@@ -244,6 +244,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
             next.records.media.unshift({
               id: `media-${editionKey}-${card.id}`, kind: card.mediaKind, title: card.title, creator: "",
               addedAt: new Date().toISOString(), color: card.color, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel,
+              status: "candidate",
             });
           } else {
             next.keeps.push({

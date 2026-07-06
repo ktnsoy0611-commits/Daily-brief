@@ -90,13 +90,15 @@ export interface MediaKindDef {
   label: string;
   en: string;
   creatorPlaceholder: string;
+  // KEEPしたメディア(candidate)を実際にやったログ(done)へ進める際のボタン文言
+  doneActionLabel: string;
 }
 export const MEDIA_KINDS: MediaKindDef[] = [
-  { id: "movie", label: "映画", en: "CINEMA", creatorPlaceholder: "監督（任意）" },
-  { id: "exhibition", label: "展覧会", en: "EXHIBITION", creatorPlaceholder: "会場（任意）" },
-  { id: "live", label: "ライブ・コンサート", en: "LIVE", creatorPlaceholder: "アーティスト（任意）" },
-  { id: "book", label: "読書", en: "BOOK", creatorPlaceholder: "著者（任意）" },
-  { id: "album", label: "音楽", en: "MUSIC", creatorPlaceholder: "アーティスト（任意）" },
+  { id: "movie", label: "映画", en: "CINEMA", creatorPlaceholder: "監督（任意）", doneActionLabel: "観た" },
+  { id: "exhibition", label: "展覧会", en: "EXHIBITION", creatorPlaceholder: "会場（任意）", doneActionLabel: "観た" },
+  { id: "live", label: "ライブ・コンサート", en: "LIVE", creatorPlaceholder: "アーティスト（任意）", doneActionLabel: "観た" },
+  { id: "book", label: "読書", en: "BOOK", creatorPlaceholder: "著者（任意）", doneActionLabel: "読んだ" },
+  { id: "album", label: "音楽", en: "MUSIC", creatorPlaceholder: "アーティスト（任意）", doneActionLabel: "聴いた" },
 ];
 export const mediaKindOf = (id: string) => MEDIA_KINDS.find((k) => k.id === id) ?? MEDIA_KINDS[0];
 

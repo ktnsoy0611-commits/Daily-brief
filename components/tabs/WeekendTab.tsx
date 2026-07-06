@@ -258,7 +258,7 @@ export function WeekendTab({ appState, persist }: TabProps) {
       const mediaKind = inferMediaKind(k.category);
       if (mediaKind) {
         next.records = next.records ?? { media: [] };
-        next.records.media.unshift({ id: `media-${Date.now()}`, kind: mediaKind, title: k.title, creator: "", addedAt: k.doneAt, image: k.images?.[0], color: k.color, sourceKeepId: k.id });
+        next.records.media.unshift({ id: `media-${Date.now()}`, kind: mediaKind, title: k.title, creator: "", addedAt: k.doneAt, status: "done", doneAt: k.doneAt, image: k.images?.[0], color: k.color, sourceKeepId: k.id });
       }
     }
     if (next.magazine!.itemIds.length === 0) { next.magazine = null; setEditingMag(false); }

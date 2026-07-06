@@ -41,6 +41,10 @@ export interface MediaRecord {
   title: string;
   creator?: string;
   addedAt: string;
+  // KEEPしただけでまだ読んでいない/観ていない状態。省略時は既存経路(マガジン✓/
+  // 行きましたか通知/手動+)と同じ"done"として扱う。
+  status?: "candidate" | "done";
+  doneAt?: string;
   image?: string;
   color?: string;
   good?: boolean;

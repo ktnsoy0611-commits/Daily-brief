@@ -10,7 +10,7 @@ import type { AppState, Keep, MediaKindId, TabProps } from "@/lib/types";
 
 // 記録タブ内で繰り返し使う「ポスター」カード。メディア/エリア共通。
 // sizeを省略すると親グリッドに合わせて広がる。
-function PosterCard({ image, color, title, sub, label, good, onToggleGood, onClick, size }: {
+function PosterCard({ image, color, title, sub, label, good, onToggleGood, action, onClick, size }: {
   image?: string | null;
   color?: string;
   title: string;
@@ -18,6 +18,7 @@ function PosterCard({ image, color, title, sub, label, good, onToggleGood, onCli
   label?: string;
   good?: boolean;
   onToggleGood?: () => void;
+  action?: { label: string; onClick: () => void };
   onClick?: () => void;
   size?: number | string;
 }) {
@@ -53,6 +54,12 @@ function PosterCard({ image, color, title, sub, label, good, onToggleGood, onCli
         }}>
           <Star size={14} fill={good ? "#fff" : "none"} color="#fff" strokeWidth={2} />
         </button>
+      )}
+      {action && (
+        <button onClick={(e) => { e.stopPropagation(); action.onClick(); }} style={{
+          position: "absolute", top: 8, right: 8, padding: "6px 11px", borderRadius: 999, border: "none", cursor: "pointer",
+          background: INK, color: PAPER, fontFamily: SANS, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em",
+        }}>{action.label}</button>
       )}
     </div>
   );
@@ -188,7 +195,14 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
   const [shelfOpen, setShelfOpen] = useState(false);
 
   const doneKeeps = appState.keeps.filter((k) => k.status === "done");
-  const mediaRecords = (appState.records?.media ?? []).slice().sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
+  // メディアは「KEEPしただけ(candidate)」と「実際にやった(done)」を分けて扱う。
+  // status省略は既存の3経路(マガジン✓/行きましたか通知/手動+)由来でdone扱い。
+  const doneMediaRecords = (appState.records?.media ?? [])
+    .filter((r) => (r.status ?? "done") === "done")
+    .sort((a, b) => new Date(b.doneAt ?? b.addedAt).getTime() - new Date(a.doneAt ?? a.addedAt).getTime());
+  const candidateMediaRecords = (appState.records?.media ?? [])
+    .filter((r) => r.status === "candidate")
+    .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
   const fulfilledWishes = appState.wishes.filter((w) => w.status === "fulfilled").sort((a, b) => new Date(b.fulfilledAt ?? b.addedAt).getTime() - new Date(a.fulfilledAt ?? a.addedAt).getTime());
   const pendingItems = (appState.pendingReview ?? []).map((id) => appState.keeps.find((k) => k.id === id)).filter((k): k is Keep => !!k);
   const activeGoals = (appState.goals ?? []).slice().sort((a, b) => new Date(b.checkIns?.[0]?.at ?? b.addedAt).getTime() - new Date(a.checkIns?.[0]?.at ?? a.addedAt).getTime());
@@ -209,13 +223,14 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
     return { area, keeps: sorted, lastAt: sorted[0].doneAt ?? sorted[0].keptAt };
   }).sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime());
 
-  const totalCount = doneKeeps.length + mediaRecords.length + fulfilledWishes.length;
+  const totalCount = doneKeeps.length + doneMediaRecords.length + fulfilledWishes.length;
 
   const addMedia = ({ kind, title, creator }: { kind: MediaKindId; title: string; creator: string }) => {
     haptic();
     const next = structuredClone(appState);
     next.records = next.records ?? { media: [] };
-    next.records.media.unshift({ id: `media-${Date.now()}`, kind, title, creator, addedAt: new Date().toISOString(), color: POSTER_PALETTE[hashStr(title) % POSTER_PALETTE.length] });
+    const now = new Date().toISOString();
+    next.records.media.unshift({ id: `media-${Date.now()}`, kind, title, creator, addedAt: now, status: "done", doneAt: now, color: POSTER_PALETTE[hashStr(title) % POSTER_PALETTE.length] });
     persist(next);
   };
   const toggleGood = (id: string) => {
@@ -223,6 +238,17 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
     const next = structuredClone(appState);
     const r = next.records.media.find((x) => x.id === id);
     if (r) r.good = !r.good;
+    persist(next);
+  };
+  // KEEPしたメディア(candidate)を「読んだ/観た/聴いた」で実際にやったログ(done)へ進める
+  const markMediaDone = (id: string) => {
+    haptic(10);
+    const next = structuredClone(appState);
+    const r = next.records.media.find((x) => x.id === id);
+    if (r) {
+      r.status = "done";
+      r.doneAt = new Date().toISOString();
+    }
     persist(next);
   };
   const resolvePending = (id: string, went: boolean) => {
@@ -237,7 +263,7 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
         const mediaKind = inferMediaKind(k.category);
         if (mediaKind) {
           next.records = next.records ?? { media: [] };
-          next.records.media.unshift({ id: `media-${Date.now()}`, kind: mediaKind, title: k.title, creator: "", addedAt: k.doneAt, image: k.images?.[0], color: k.color, sourceKeepId: k.id });
+          next.records.media.unshift({ id: `media-${Date.now()}`, kind: mediaKind, title: k.title, creator: "", addedAt: k.doneAt, status: "done", doneAt: k.doneAt, image: k.images?.[0], color: k.color, sourceKeepId: k.id });
         }
       } else {
         k.status = "candidate";
@@ -289,6 +315,11 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
           </section>
         )}
 
+        <div style={{ margin: "8px 2px 18px", paddingTop: 20, borderTop: `2px solid ${INK}` }}>
+          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17 }}>実際にやったログ</div>
+          <div style={{ fontSize: 9, letterSpacing: "0.24em", color: "#9A988E", marginTop: 3 }}>THE LOG</div>
+        </div>
+
         <section style={{ marginBottom: 30 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
             <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>メディア</span>
@@ -297,12 +328,12 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
               color: "#5A5A54", cursor: "pointer", fontSize: 15, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
             }}>＋</button>
           </div>
-          {mediaRecords.length === 0 ? (
+          {doneMediaRecords.length === 0 ? (
             <p style={{ fontSize: 11.5, color: "#9A988E" }}>マガジンで✓にしたもの、通知で「行った」を選んだもの、＋から手動記録したものが並びます。</p>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {mediaRecords.map((r) => (
-                <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.addedAt)} label={mediaLabel[r.kind]}
+              {doneMediaRecords.map((r) => (
+                <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.doneAt ?? r.addedAt)} label={mediaLabel[r.kind]}
                   good={!!r.good} onToggleGood={() => toggleGood(r.id)}
                   onClick={r.image ? () => setBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
               ))}
@@ -335,7 +366,25 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
           </div>
         )}
 
-        <section style={{ marginTop: 30 }}>
+        <div style={{ margin: "36px 2px 18px", paddingTop: 20, borderTop: `2px solid ${INK}` }}>
+          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17 }}>KEEP</div>
+          <div style={{ fontSize: 9, letterSpacing: "0.24em", color: "#9A988E", marginTop: 3 }}>STOCKED, NOT YET DONE</div>
+        </div>
+
+        {candidateMediaRecords.length > 0 && (
+          <section style={{ marginBottom: 30 }}>
+            <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 12 }}>KEEPしたメディア</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {candidateMediaRecords.map((r) => (
+                <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.addedAt)} label={mediaLabel[r.kind]}
+                  action={{ label: mediaKindOf(r.kind).doneActionLabel, onClick: () => markMediaDone(r.id) }}
+                  onClick={r.image ? () => setBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section>
           <button onClick={() => setShelfOpen(!shelfOpen)} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
             <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>候補中のKeep（{appState.keeps.filter((k) => k.status !== "done").length}）</span>
             <ChevronDown size={12} style={{ transform: shelfOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s", color: "#9A988E" }} />

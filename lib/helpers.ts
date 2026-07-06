@@ -19,6 +19,18 @@ export function shortDate(iso: string) {
   return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
 }
 
+// 記録タブの日付別ビュー用: 実行日をキー(YYYY-MM-DD, ローカル日付)と
+// 表示ラベル(7月6日（月）)に変換する。ラベルは元のisoから直接曜日を
+// 出すことで、キー文字列を再パースするタイムゾーンのズレを避ける。
+const WEEKDAYS_JA = ["日", "月", "火", "水", "木", "金", "土"];
+export function dayInfo(iso: string) {
+  const d = new Date(iso);
+  return {
+    key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    label: `${d.getMonth() + 1}月${d.getDate()}日（${WEEKDAYS_JA[d.getDay()]}）`,
+  };
+}
+
 export function daysBetween(iso: string) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }

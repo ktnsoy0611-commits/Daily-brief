@@ -1,10 +1,12 @@
 "use client";
 
-import { Star } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
-import { BLUE, GREEN, HAIRLINE, INK, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { Bookmark, Plus, Star } from "lucide-react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
+import { BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { BottomSheet } from "./BottomSheet";
+
+export type IconType = ComponentType<{ size?: number | string; strokeWidth?: number; color?: string }>;
 
 // 「My Trails」参考のような、太いサンセリフの大見出し+柔らかいグレーの
 // サブテキストという構成。以前は新聞の輪転罫線(2px罫線)で下線を引いて
@@ -55,14 +57,21 @@ export function keepStatus(k: { status: string }) {
   return { label: "候補", color: GREEN };
 }
 
-// アプリ内で繰り返し使う「ポスター」カード。メディア/エリア/願望で共通。
+// アプリ全体で統一する「アイテムカード」。写真付き(場所のKeepなど)も、
+// 文字だけ(作品など)もこの1つのデザインに揃える。写真が無い場合は
+// ただの色面にせず、アイコン(または絵文字グリフ)を薄く敷いた上に
+// 写真ありのときと同じ下部キャプション(グラデーション+タイトル)を
+// 乗せることで、どちらも同じ見た目のリズムになるようにしている。
 // sizeを省略すると親グリッドに合わせて広がる。
-export function PosterCard({ image, color, title, sub, label, good, onToggleGood, action, onClick, size }: {
+export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph, kept, good, onToggleGood, action, onClick, size }: {
   image?: string | null;
   color?: string;
   title: string;
   sub?: string;
   label?: string;
+  icon?: IconType;
+  glyph?: string;
+  kept?: boolean;
   good?: boolean;
   onToggleGood?: () => void;
   action?: { label: string; onClick: () => void };
@@ -70,31 +79,26 @@ export function PosterCard({ image, color, title, sub, label, good, onToggleGood
   size?: number | string;
 }) {
   return (
-    <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: "2 / 3", borderRadius: 18, overflow: "hidden", boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default" }}>
+    <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 18, overflow: "hidden", boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default", background: color ?? "#5A5A54" }}>
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={img(image, 340, 510)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <img src={img(image, 340, 450)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : (
-        <div style={{ width: "100%", height: "100%", background: color ?? "#5A5A54", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <span style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: PAPER, textAlign: "center", lineHeight: 1.45 }}>{title}</span>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.22 }}>
+          {Icon ? <Icon size="46%" strokeWidth={1.1} color="#fff" /> : glyph ? <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: "44%", color: "#fff" }}>{glyph}</span> : null}
         </div>
       )}
-      {image && (
-        <>
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 48%, rgba(0,0,0,0.78) 100%)" }} />
-          <div style={{ position: "absolute", bottom: 10, left: 10, right: 10 }}>
-            {label && <div style={{ fontSize: 8, letterSpacing: "0.16em", color: "rgba(255,255,255,0.7)", marginBottom: 3 }}>{label}</div>}
-            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3 }}>{title}</div>
-            {sub && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}
-          </div>
-        </>
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 42%, rgba(0,0,0,0.8) 100%)" }} />
+      {kept && (
+        <span style={{ position: "absolute", top: 8, left: 8, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
+          <Bookmark size={9} fill={INK} strokeWidth={0} /> KEEP
+        </span>
       )}
-      {!image && (
-        <div style={{ position: "absolute", bottom: 10, left: 12, right: 12, textAlign: "center" }}>
-          {label && <div style={{ fontSize: 8, letterSpacing: "0.16em", color: "rgba(251,250,247,0.6)", marginBottom: 2 }}>{label}</div>}
-          {sub && <div style={{ fontSize: 9, color: "rgba(251,250,247,0.75)" }}>{sub}</div>}
-        </div>
-      )}
+      <div style={{ position: "absolute", bottom: 10, left: 10, right: 10 }}>
+        {label && <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(255,255,255,0.7)", marginBottom: 3 }}>{label}</div>}
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+        {sub && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}
+      </div>
       {onToggleGood && (
         <button onClick={(e) => { e.stopPropagation(); onToggleGood(); }} aria-label="良かった" style={{
           position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer",
@@ -109,6 +113,83 @@ export function PosterCard({ image, color, title, sub, label, good, onToggleGood
           background: INK, color: PAPER, fontFamily: SANS, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em",
         }}>{action.label}</button>
       )}
+    </div>
+  );
+}
+
+// 目標カードだけは意図的に少し違うデザイン(比率3:5、紙の付箋のような
+// 見た目)にして、アイテムカードと視覚的に区別できるようにしている。
+export function GoalCard({ title, latestText, hasCheckIns, checkInCount, onClick, size }: {
+  title: string;
+  latestText?: string;
+  hasCheckIns: boolean;
+  checkInCount: number;
+  onClick: () => void;
+  size?: number | string;
+}) {
+  return (
+    <button onClick={onClick} style={{
+      width: size ?? "100%", aspectRatio: GOAL_CARD_ASPECT, flexShrink: 0, textAlign: "left", cursor: "pointer",
+      border: "none", borderRadius: 18, padding: "16px 15px", background: GREEN, color: PAPER,
+      display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW, position: "relative", overflow: "hidden",
+    }}>
+      <div style={{ position: "absolute", top: -18, right: -18, width: 90, height: 90, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
+      <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(251,250,247,0.6)" }}>GOAL</div>
+      <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14.5, lineHeight: 1.35, margin: "8px 0 0" }}>{title}</div>
+      <p style={{
+        fontSize: 11, lineHeight: 1.6, margin: "8px 0 0", color: hasCheckIns ? "rgba(251,250,247,0.85)" : "rgba(251,250,247,0.5)",
+        fontStyle: hasCheckIns ? "normal" : "italic", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", flex: 1,
+      }}>{hasCheckIns ? latestText : "まだ記録がありません"}</p>
+      <div style={{ fontSize: 9, color: "rgba(251,250,247,0.6)", marginTop: 8 }}>記録 {checkInCount}件</div>
+    </button>
+  );
+}
+
+// 追加専用の「＋」タイル。アイテムカード/目標カードどちらの比率でも使う。
+export function AddCardTile({ onClick, aspect = ITEM_CARD_ASPECT, size, label }: {
+  onClick: () => void;
+  aspect?: string;
+  size?: number | string;
+  label: string;
+}) {
+  return (
+    <button onClick={onClick} aria-label={label} style={{
+      width: size ?? "100%", aspectRatio: aspect, flexShrink: 0, borderRadius: 18, cursor: "pointer",
+      border: "1.5px dashed rgba(23,23,21,0.22)", background: "rgba(255,255,255,0.55)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+    }}>
+      <Plus size={26} strokeWidth={1.6} color="#8A8A82" />
+    </button>
+  );
+}
+
+// ストック等で使う「カードの束」。左から右に少しずつずらして重ね、
+// 一番右(手前)に＋タイルを置く。＋以外の束をタップすると中身の一覧が
+// シートで開く。カード自体はPosterCard/GoalCardをそのまま渡す。
+export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLabel }: {
+  items: { key: string; node: ReactNode }[];
+  aspect?: string;
+  cardWidth?: number;
+  onOpen: () => void;
+  onAdd: () => void;
+  addLabel: string;
+}) {
+  const shown = items.slice(-4);
+  const offsetStep = cardWidth * 0.32;
+  const [num, den] = (aspect ?? ITEM_CARD_ASPECT).split("/").map((s) => parseFloat(s.trim()));
+  const cardHeight = Math.round((cardWidth * den) / num);
+  const totalWidth = offsetStep * shown.length + cardWidth;
+
+  return (
+    <div style={{ position: "relative", height: cardHeight, width: Math.max(totalWidth, cardWidth) }}>
+      {shown.map((it, i) => (
+        <div key={it.key} onClick={onOpen} style={{ position: "absolute", left: i * offsetStep, top: 0, width: cardWidth, zIndex: i, cursor: "pointer" }}>
+          {it.node}
+        </div>
+      ))}
+      <div style={{ position: "absolute", left: shown.length * offsetStep, top: 0, width: cardWidth, zIndex: shown.length + 1 }}>
+        <AddCardTile aspect={aspect} size={cardWidth} onClick={onAdd} label={addLabel} />
+      </div>
     </div>
   );
 }

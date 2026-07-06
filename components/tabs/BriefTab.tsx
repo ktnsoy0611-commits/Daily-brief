@@ -3,7 +3,7 @@
 import { Flag, Sprout } from "lucide-react";
 import { useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, Masthead } from "@/components/common";
-import { CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
+import { CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
@@ -244,13 +244,13 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
             next.records.media.unshift({
               id: `media-${editionKey}-${card.id}`, kind: card.mediaKind, title: card.title, creator: "",
               addedAt: new Date().toISOString(), color: card.color, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel,
-              status: "keep",
+              status: "keep", origin: "keep",
             });
           } else {
             next.keeps.push({
               id: `brief-${editionKey}-${card.id}`, title: card.title, category: card.categoryJp, area: card.area,
               images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
-              status: "candidate", keptAt: new Date().toISOString(),
+              status: "candidate", keptAt: new Date().toISOString(), origin: "keep",
             });
           }
         }
@@ -301,7 +301,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
 
       {!done ? (
         <>
-          <main style={{ flex: 1, position: "relative", margin: "14px 0 10px", minHeight: 420 }}>
+          <main style={{ position: "relative", margin: "14px auto 10px", width: "100%", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT, maxHeight: "62vh" }}>
             {index + 1 < deck.length && (
               <div key={`peek-${deck[index + 1].id}`} style={{ position: "absolute", inset: 0, transform: `scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) translateY(8px)`, transition: drag.active ? "none" : "transform 0.28s" }}>
                 <CardFace card={deck[index + 1]} dx={0} isTop={false} checkinValue="" onCheckinChange={() => {}} milestoneText="" onMilestoneTextChange={() => {}} milestoneRating={null} onMilestoneRatingChange={() => {}} />

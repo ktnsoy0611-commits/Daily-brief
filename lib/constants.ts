@@ -44,6 +44,12 @@ export const HAIRLINE = "rgba(23,23,21,0.08)";
 export const SOFT_SHADOW = "0 4px 16px rgba(23,23,21,0.06)";
 export const SOFT_SHADOW_LG = "0 12px 32px rgba(23,23,21,0.10)";
 
+// アプリ全体で使う統一カードの縦横比。写真付き(Keepの場所など)も
+// 文字だけ(作品など)も、この比率のカード1種類に統一する。
+export const ITEM_CARD_ASPECT = "3 / 4";
+// 目標カードだけは意図的に少し違う比率にして、視覚的に区別できるようにする。
+export const GOAL_CARD_ASPECT = "3 / 5";
+
 export const POSTER_PALETTE = ["#20304A", "#1A1A18", "#3E4A3A", "#A8552F", "#2B3FBF", "#5C3A21", "#3A4A4A", "#1F2937"];
 
 // 下部固定バー(ストック・目標・実行タブ)がナビゲーションバーの直上にぴったり

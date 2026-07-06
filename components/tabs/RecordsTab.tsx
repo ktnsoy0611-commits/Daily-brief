@@ -1,12 +1,14 @@
 "use client";
 
-import { Sprout } from "lucide-react";
+import { BookOpen, Film, MapPin, Music, Music2, Palette, Sprout } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
-import { BinderModal, type BinderItem, Masthead, PosterCard } from "@/components/common";
+import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
 import { BLUE, GREEN, INK, PAPER, RUST, SANS, SERIF, SOFT_SHADOW, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, shortDate } from "@/lib/helpers";
 import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
+
+const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
 
 // 「バインダー」タイル。正方形に近いタイルの中に写真が数枚重なった束を
 // 見せ、タップで中身のカードグリップをシートで開く。エリア別・メディアの
@@ -15,8 +17,8 @@ import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 // 展開パネルがCSS Grid/flexboxどちらでも「幅ゼロでも1行分場所を使う」
 // ため隣のタイルが2列に並ばなくなる問題があり、タップでシートを開く
 // 方式に変更した。)
-function BinderTile({ title, count, coverImages, coverColor, onClick }: {
-  title: string; count: number; coverImages: string[]; coverColor?: string; onClick: () => void;
+function BinderTile({ title, count, coverImages, coverColor, icon: Icon, onClick }: {
+  title: string; count: number; coverImages: string[]; coverColor?: string; icon?: IconType; onClick: () => void;
 }) {
   const rotations = [-8, 5, -3];
   return (
@@ -27,7 +29,9 @@ function BinderTile({ title, count, coverImages, coverColor, onClick }: {
         overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
       }}>
         {coverImages.length === 0 ? (
-          <div style={{ width: "56%", height: "56%", borderRadius: 14, background: coverColor ?? "#5A5A54" }} />
+          <div style={{ width: "56%", height: "56%", borderRadius: 14, background: coverColor ?? "#5A5A54", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {Icon && <Icon size="46%" strokeWidth={1.1} color="rgba(255,255,255,0.85)" />}
+          </div>
         ) : (
           <div style={{ position: "relative", width: "62%", height: "62%" }}>
             {coverImages.slice(0, 3).map((seed, i) => (
@@ -259,11 +263,12 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
                     const kindLabel = mediaKindOf(sec.kind).label;
                     const covers = sec.records.filter((r) => r.image).slice(0, 3).map((r) => r.image!);
                     return (
-                      <BinderTile key={sec.kind} title={kindLabel} count={sec.records.length} coverImages={covers} coverColor={sec.records[0]?.color}
+                      <BinderTile key={sec.kind} title={kindLabel} count={sec.records.length} coverImages={covers} coverColor={sec.records[0]?.color} icon={MEDIA_ICON[sec.kind]}
                         onClick={() => setOpenFolder({
                           title: kindLabel,
                           content: sec.records.map((r) => (
                             <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.doneAt ?? r.addedAt)} label={mediaLabel[r.kind]}
+                              icon={MEDIA_ICON[r.kind]} kept={r.origin !== "manual"}
                               good={!!r.good} onToggleGood={() => toggleGood(r.id)}
                               onClick={r.image ? () => setBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
                           )),
@@ -281,11 +286,12 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
                   {areaSections.map((sec) => {
                     const covers = sec.keeps.filter((k) => k.images?.[0]).slice(0, 3).map((k) => k.images![0]);
                     return (
-                      <BinderTile key={sec.area} title={sec.area} count={sec.keeps.length} coverImages={covers} coverColor={sec.keeps[0]?.color}
+                      <BinderTile key={sec.area} title={sec.area} count={sec.keeps.length} coverImages={covers} coverColor={sec.keeps[0]?.color} icon={MapPin}
                         onClick={() => setOpenFolder({
                           title: sec.area,
                           content: sec.keeps.map((k) => (
                             <PosterCard key={k.id} image={k.images?.[0]} color={k.color} title={k.title} sub={shortDate(k.doneAt ?? k.keptAt)}
+                              icon={MapPin} kept={k.origin !== "manual"}
                               onClick={k.images && k.images.length > 0 ? () => setBinderItem(k) : undefined} />
                           )),
                         })} />

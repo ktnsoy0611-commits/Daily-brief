@@ -1,12 +1,14 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import { BookOpen, Check, Film, MapPin, Music, Music2, Palette } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
-import { BinderModal, Masthead } from "@/components/common";
-import { AREA_COORDS, BG, BLUE, DISPLAY, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SERIF, SOFT_SHADOW, SOFT_SHADOW_LG, mediaKindOf } from "@/lib/constants";
-import { haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, todayKey } from "@/lib/helpers";
-import type { Keep, MagazineItemRef, MediaRecord, TabProps } from "@/lib/types";
+import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
+import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, mediaKindOf } from "@/lib/constants";
+import { hashStr, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, todayKey } from "@/lib/helpers";
+import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
+
+const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
 
 function MapCanvas({ items, selectedIds, onOpenPin }: {
   items: Keep[];
@@ -42,36 +44,22 @@ function MapCanvas({ items, selectedIds, onOpenPin }: {
   );
 }
 
-// 地図の下に横スクロールで並ぶ棚。場所のKeep一覧・メディア一覧で共用する
-// カード。タップで直接「今日のリスト」への出し入れをトグルする。
-function ShelfCard({ title, image, color, sub, selected, onToggle }: {
-  title: string; image?: string; color?: string; sub?: string; selected: boolean; onToggle: () => void;
-}) {
+// 地図の下に横スクロールで並ぶ棚。場所のKeep一覧・メディア一覧で共用する、
+// アプリ全体で統一したPosterCardに選択状態のオーバーレイを乗せたもの。
+function SelectablePosterCard({ selected, onToggle, size = 108, ...cardProps }: {
+  selected: boolean; onToggle: () => void; size?: number;
+} & Omit<Parameters<typeof PosterCard>[0], "onClick" | "size">) {
   return (
-    <button onClick={onToggle} style={{ flexShrink: 0, width: 112, textAlign: "left", padding: 0, border: "none", background: "none", cursor: "pointer" }}>
-      <div style={{
-        position: "relative", width: 112, height: 112, borderRadius: 12, overflow: "hidden",
-        boxShadow: "0 6px 16px rgba(23,23,21,0.14)", border: `2.5px solid ${selected ? BLUE : "transparent"}`,
-        transition: "border-color 0.15s, transform 0.15s", transform: selected ? "scale(0.96)" : "scale(1)",
-      }}>
-        {image ? (
-          <img src={img(image, 240, 240)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        ) : (
-          <div style={{ width: "100%", height: "100%", background: color ?? "#5A5A54", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}>
-            <span style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 12, color: PAPER, textAlign: "center", lineHeight: 1.3 }}>{title}</span>
+    <div style={{ position: "relative", flexShrink: 0, width: size, transition: "transform 0.15s", transform: selected ? "scale(0.96)" : "scale(1)" }}>
+      <PosterCard {...cardProps} size={size} onClick={onToggle} />
+      {selected && (
+        <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "rgba(43,63,191,0.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+          <div style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(23,23,21,0.3)" }}>
+            <Check size={16} color={PAPER} strokeWidth={3} />
           </div>
-        )}
-        {selected && (
-          <div style={{ position: "absolute", inset: 0, background: "rgba(43,63,191,0.3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ width: 28, height: 28, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(23,23,21,0.3)" }}>
-              <Check size={16} color={PAPER} strokeWidth={3} />
-            </div>
-          </div>
-        )}
-      </div>
-      <div style={{ marginTop: 6, fontFamily: SERIF, fontWeight: 700, fontSize: 11.5, lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
-      {sub && <div style={{ fontSize: 9, color: "#9A988E", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
-    </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -83,7 +71,7 @@ function BundleCard({ label, tagline, items, onPick }: {
 }) {
   return (
     <div style={{ flexShrink: 0, width: 190, background: PAPER, border: "none", borderRadius: 18, padding: "16px 17px", boxShadow: SOFT_SHADOW }}>
-      <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17 }}>{label}</div>
+      <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17 }}>{label}</div>
       <div style={{ fontSize: 10.5, color: "#9A988E", margin: "3px 0 12px" }}>{tagline}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14, minHeight: 60 }}>
         {items.map((it) => (
@@ -137,7 +125,7 @@ function DraftBinder({ items, onRemove }: {
         ))}
       </div>
       <div>
-        <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 14 }}>{items.length}件、たまってきました</div>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14 }}>{items.length}件、たまってきました</div>
         <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2 }}>タップで外せます</div>
       </div>
     </div>
@@ -166,7 +154,7 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
   if (pool.length === 0 && mediaPool.length === 0) {
     return (
       <main style={{ padding: "48px 4px", textAlign: "center" }}>
-        <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 19, marginBottom: 10 }}>Keepが、まだありません。</div>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 19, marginBottom: 10 }}>Keepが、まだありません。</div>
         <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepするか、ストックタブの「場所」「作品」から追加すると、ここに地図として集まります。</p>
         <button onClick={onInjectDemo} style={{ padding: "13px 26px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.12em" }}>デモ用データを投入</button>
       </main>
@@ -183,8 +171,8 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
       {pool.length > 0 && (
         <HorizontalShelf title="KEEP一覧">
           {sorted.map((k) => (
-            <ShelfCard key={k.id} title={k.title} image={k.images?.[0]} color={k.color}
-              sub={k.area && k.area !== "—" ? k.area : k.category}
+            <SelectablePosterCard key={k.id} title={k.title} image={k.images?.[0]} color={k.color}
+              sub={k.area && k.area !== "—" ? k.area : k.category} icon={MapPin} kept={k.origin !== "manual"}
               selected={draftSelection.includes(k.id)} onToggle={() => onToggleKeep(k)} />
           ))}
         </HorizontalShelf>
@@ -192,8 +180,8 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
       {mediaPool.length > 0 && (
         <HorizontalShelf title="メディア">
           {mediaPool.map((r) => (
-            <ShelfCard key={r.id} title={r.title} image={r.image} color={r.color}
-              sub={mediaKindOf(r.kind).label}
+            <SelectablePosterCard key={r.id} title={r.title} image={r.image} color={r.color}
+              sub={mediaKindOf(r.kind).label} icon={MEDIA_ICON[r.kind]} kept={r.origin !== "manual"}
               selected={draftMediaSelection.includes(r.id)} onToggle={() => onToggleMedia(r)} />
           ))}
         </HorizontalShelf>
@@ -221,80 +209,21 @@ interface ExecItem {
   sourceUrl?: string;
   sourceLabel?: string;
   doneActionLabel: string;
+  kind?: MediaKindId;
+  kept?: boolean;
 }
 
-function CoverSpread({ items }: { items: { id: string; title: string }[] }) {
+// スクラップブックに紙で貼り付けたような1枚。idから決定論的に少しだけ
+// 回転・上下にずらして、規則正しいグリッドではなく散らかった感じを出す。
+function ScrapCard({ item, onClick }: { item: ExecItem; onClick: () => void }) {
+  const seed = hashStr(`${item.type}-${item.id}`);
+  const rotation = ((seed % 11) - 5) * 1.3;
+  const lift = (seed >> 4) % 16;
+  const icon = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
   return (
-    <div style={{ flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", background: GREEN, color: PAPER, borderRadius: 24, padding: "26px 22px", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: SOFT_SHADOW_LG }}>
-      <div>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "rgba(251,250,247,0.75)" }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#D9A441", flexShrink: 0 }} />
-          TODAY
-        </div>
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 26, lineHeight: 1.4, margin: "14px 0 0" }}>今日のための<br />行き先リスト</div>
-      </div>
-      <div>
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 44, lineHeight: 1, color: "#D9A441" }}>{items.length}</div>
-        <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "rgba(251,250,247,0.6)", marginTop: 4 }}>件の目的地</div>
-        <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 6, maxHeight: 150, overflow: "hidden" }}>
-          {items.map((it, i) => (
-            <div key={it.id} style={{ fontSize: 11.5, color: "rgba(251,250,247,0.85)", display: "flex", gap: 8 }}>
-              <span style={{ opacity: 0.5, flexShrink: 0 }}>{String(i + 1).padStart(2, "0")}</span>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DestinationSpread({ item, index, total, onRemove, onMarkDone }: {
-  item: ExecItem;
-  index: number;
-  total: number;
-  onRemove: () => void;
-  onMarkDone: () => void;
-}) {
-  const isMapsSource = item.type === "keep" && item.sourceLabel === "地図で見る" && !!item.sourceUrl;
-  return (
-    <div style={{ flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", borderRadius: 24, overflow: "hidden", position: "relative", boxShadow: SOFT_SHADOW_LG, background: PAPER, display: "flex", flexDirection: "column" }}>
-      <div style={{ height: "56%", position: "relative", flexShrink: 0 }}>
-        {item.images && item.images.length > 0 ? (
-          <img src={img(item.images[0], 500, 500)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        ) : (
-          <div style={{ width: "100%", height: "100%", background: item.color ?? "#5A5A54" }} />
-        )}
-        <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8 }}>
-          <button onClick={onMarkDone} aria-label={item.doneActionLabel} style={{ width: 44, height: 44, borderRadius: "50%", border: "none", background: GREEN, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 10px rgba(23,23,21,0.3)" }}><Check size={22} strokeWidth={2.5} /></button>
-          <button onClick={onRemove} aria-label="外す" style={{ width: 44, height: 44, borderRadius: "50%", border: "none", background: "rgba(23,23,21,0.55)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 10px rgba(23,23,21,0.3)" }}><X size={20} strokeWidth={2.5} /></button>
-        </div>
-        <div style={{ position: "absolute", top: 16, left: 14, fontFamily: DISPLAY, fontWeight: 700, fontSize: 13, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>
-          {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
-        </div>
-      </div>
-      <div style={{ padding: "14px 18px 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.18em", color: "#9A988E" }}>{item.categoryLabel}{item.area && item.area !== "—" ? ` ・ ${item.area}` : ""}</div>
-        <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 16, lineHeight: 1.35, margin: "6px 0 6px" }}>{item.title}</div>
-        {item.meta && item.meta.length > 0 && (
-          <div style={{ fontSize: 10.5, color: "#7A7A72", lineHeight: 1.6, flex: 1, overflow: "hidden" }}>{item.meta.slice(0, 2).join(" ・ ")}</div>
-        )}
-        {/* 地図のURLと「Googleマップ」ボタンが同じ行き先を指す場合は、二重に出さず1つにまとめる */}
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          {item.type === "keep" ? (
-            isMapsSource ? (
-              <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center", padding: "10px 0", background: INK, color: PAPER, borderRadius: 999, textDecoration: "none", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>Googleマップで開く</a>
-            ) : (
-              <>
-                <a href={mapsUrl(`${item.title} ${item.area && item.area !== "—" ? item.area : ""}`)} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center", padding: "10px 0", background: INK, color: PAPER, borderRadius: 999, textDecoration: "none", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>Googleマップ</a>
-                {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center", padding: "10px 0", border: `1.5px solid ${INK}`, borderRadius: 999, textDecoration: "none", color: INK, fontFamily: SANS, fontSize: 10.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.sourceLabel ?? "詳細"}</a>}
-              </>
-            )
-          ) : (
-            item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center", padding: "10px 0", background: INK, color: PAPER, borderRadius: 999, textDecoration: "none", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>{item.sourceLabel ?? "詳細"}</a>
-          )}
-        </div>
-      </div>
+    <div onClick={onClick} style={{ flex: "1 1 42%", maxWidth: 180, minWidth: 130, transform: `rotate(${rotation}deg) translateY(${lift}px)`, cursor: "pointer" }}>
+      <PosterCard image={item.images?.[0]} color={item.color} title={item.title} sub={item.area && item.area !== "—" ? item.area : undefined}
+        label={item.categoryLabel} icon={icon} kept={item.kept} />
     </div>
   );
 }
@@ -303,7 +232,7 @@ function DestinationSpread({ item, index, total, onRemove, onMarkDone }: {
 function AddToMagazineSheet({ pool, onAdd, onClose }: { pool: Keep[]; onAdd: (id: string) => void; onClose: () => void }) {
   return (
     <BottomSheet onClose={onClose} maxHeight="60vh">
-      <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 15, marginBottom: 12 }}>候補から追加</div>
+      <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 15, marginBottom: 12 }}>候補から追加</div>
       {pool.length === 0 ? (
         <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>追加できる候補がありません。</p>
       ) : pool.map((k, i) => (
@@ -314,7 +243,7 @@ function AddToMagazineSheet({ pool, onAdd, onClose }: { pool: Keep[]; onAdd: (id
             <div style={{ width: 42, height: 42, borderRadius: 8, background: k.color ?? "#5A5A54", flexShrink: 0 }} />
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.title}</div>
+            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.title}</div>
             <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2 }}>{k.category}{k.area && k.area !== "—" ? ` ・ ${k.area}` : ""}</div>
           </div>
           <button onClick={() => onAdd(k.id)} style={{ flexShrink: 0, padding: "8px 14px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>追加</button>
@@ -332,6 +261,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
   const [draftMediaSelection, setDraftMediaSelection] = useState<string[]>([]);
   const [editingMag, setEditingMag] = useState(false);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [detailItem, setDetailItem] = useState<ExecItem | null>(null);
 
   const showMap = !magazine || mapMode;
   // 地図には実行済み以外の全Keepをピンとして出す(マガジン掲載中plannedも、選び直しのため含める)
@@ -349,7 +279,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
         return {
           id: k.id, type: "keep", title: k.title, images: k.images, color: k.color,
           categoryLabel: k.category ?? "", area: k.area, meta: k.meta, sourceUrl: k.sourceUrl, sourceLabel: k.sourceLabel,
-          doneActionLabel: "行った",
+          doneActionLabel: "行った", kept: k.origin !== "manual",
         };
       }
       const r = appState.records.media.find((x) => x.id === ref.id);
@@ -358,6 +288,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
         id: r.id, type: "media", title: r.title, images: r.image ? [r.image] : undefined, color: r.color,
         categoryLabel: mediaKindOf(r.kind).label, meta: r.creator ? [r.creator] : undefined,
         sourceUrl: r.sourceUrl, sourceLabel: r.sourceLabel, doneActionLabel: mediaKindOf(r.kind).doneActionLabel,
+        kind: r.kind, kept: r.origin !== "manual",
       };
     })
     .filter((x): x is ExecItem => !!x) : [];
@@ -528,25 +459,35 @@ export function ExecuteTab({ appState, persist }: TabProps) {
             <button onClick={() => setEditingMag(!editingMag)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: SANS, fontSize: 11, fontWeight: 700, color: editingMag ? INK : "#9A988E" }}>{editingMag ? "完了" : "編集"}</button>
           </div>
 
-          <div style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", gap: 14, padding: "4px 0 6px", WebkitOverflowScrolling: "touch", marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
-            <CoverSpread items={magItems} />
-            {magItems.map((item, i) => (
-              <DestinationSpread key={`${item.type}-${item.id}`} item={item} index={i} total={magItems.length} onRemove={() => removeFromMagazine(item.id, item.type)} onMarkDone={() => markDoneInMagazine(item.id, item.type)} />
+          {/* スクラップブックに紙で貼り付けたようなカードの集合。以前は横スワイプの
+              カルーセルだったが、一覧性を優先して縦スクロールの散らし配置にした。 */}
+          <div style={{ background: GREEN, color: PAPER, borderRadius: 18, padding: "14px 18px", margin: "4px 0 18px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: SOFT_SHADOW }}>
+            <div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", color: "rgba(251,250,247,0.75)" }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#D9A441", flexShrink: 0 }} />TODAY
+              </div>
+              <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16, margin: "4px 0 0" }}>今日のための行き先リスト</div>
+            </div>
+            <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 30, color: "#D9A441", flexShrink: 0, marginLeft: 12 }}>{magItems.length}</div>
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 18, rowGap: 30, padding: "6px 4px 12px" }}>
+            {magItems.map((item) => (
+              <ScrapCard key={`${item.type}-${item.id}`} item={item} onClick={() => setDetailItem(item)} />
             ))}
             {editingMag && (
               <button onClick={() => setAddSheetOpen(true)} style={{
-                flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", borderRadius: 24, cursor: "pointer",
-                border: "2px dashed rgba(23,23,21,0.25)", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10,
+                flex: "1 1 42%", maxWidth: 180, minWidth: 130, aspectRatio: "3 / 4", borderRadius: 18, cursor: "pointer",
+                border: "1.5px dashed rgba(23,23,21,0.25)", background: "rgba(255,255,255,0.5)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
               }}>
-                <span style={{ fontSize: 34, color: "#9A988E", lineHeight: 1 }}>＋</span>
-                <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E", letterSpacing: "0.08em" }}>候補から追加</span>
+                <span style={{ fontSize: 28, color: "#9A988E", lineHeight: 1 }}>＋</span>
+                <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: "#9A988E", letterSpacing: "0.06em" }}>候補から追加</span>
               </button>
             )}
           </div>
-          <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "14px 2px 0" }}>横にスワイプで次へ。</p>
 
           {editingMag && (
-            <button onClick={dissolveMagazine} style={{ marginTop: 20, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: RUST, letterSpacing: "0.04em" }}>このマガジンを解散する</button>
+            <button onClick={dissolveMagazine} style={{ marginTop: 12, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: RUST, letterSpacing: "0.04em" }}>このマガジンを解散する</button>
           )}
         </main>
       )}
@@ -561,6 +502,16 @@ export function ExecuteTab({ appState, persist }: TabProps) {
             color: draftSelection.includes(pinItem.id) ? RUST : PAPER,
             border: draftSelection.includes(pinItem.id) ? `1.5px solid ${RUST}` : "none",
           }}>{draftSelection.includes(pinItem.id) ? "外す" : "＋ 今日に追加"}</button>
+        )) : undefined}
+      />
+      <BinderModal
+        item={detailItem ? { title: detailItem.title, category: detailItem.categoryLabel, images: detailItem.images, meta: detailItem.meta, sourceUrl: detailItem.sourceUrl, sourceLabel: detailItem.sourceLabel } : null}
+        onClose={() => setDetailItem(null)}
+        actionSlot={detailItem ? ((closeSheet) => (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { markDoneInMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ flex: 1, padding: "12px 0", borderRadius: 999, border: "none", background: GREEN, color: "#fff", fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{detailItem.doneActionLabel}</button>
+            <button onClick={() => { removeFromMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ flex: 1, padding: "12px 0", borderRadius: 999, border: `1.5px solid ${RUST}`, background: "transparent", color: RUST, fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>外す</button>
+          </div>
         )) : undefined}
       />
       {addSheetOpen && <AddToMagazineSheet pool={notInMagazine} onAdd={(id) => addToMagazine(id)} onClose={() => setAddSheetOpen(false)} />}

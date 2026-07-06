@@ -31,6 +31,9 @@ export interface Keep {
   sourceUrl?: string;
   sourceLabel?: string;
   color?: string;
+  // ブリーフのKEEPから来たか、ストックで手動追加したかの区別。
+  // 省略時は既存データ互換のため"keep"として扱う。
+  origin?: "keep" | "manual";
 }
 
 export type MediaKindId = "movie" | "exhibition" | "live" | "book" | "album";
@@ -51,6 +54,9 @@ export interface MediaRecord {
   sourceKeepId?: string;
   sourceUrl?: string;
   sourceLabel?: string;
+  // ブリーフのKEEPから来たか、ストックで手動追加したかの区別。
+  // 省略時は既存データ互換のため"keep"として扱う。
+  origin?: "keep" | "manual";
 }
 
 export interface CheckIn {

@@ -1,34 +1,40 @@
 "use client";
 
-import { CheckCircle2, MapPin, ShoppingBag, Trash2 } from "lucide-react";
-import { useState, type ComponentType } from "react";
+import { Trash2 } from "lucide-react";
+import { useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, Dot, keepStatus, Masthead, PosterCard, rowBtn, Thumb } from "@/components/common";
-import { BG, CATEGORIES, DISPLAY, HAIRLINE, INK, MEDIA_KINDS, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
+import { BG, DISPLAY, GREEN, HAIRLINE, INK, MEDIA_KINDS, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, mediaKindOf } from "@/lib/constants";
 import { daysBetween, hashStr, haptic, keepMedia, shortDate } from "@/lib/helpers";
-import type { CategoryId, MediaKindId, TabProps, Wish } from "@/lib/types";
+import type { MediaKindId, TabProps, Wish } from "@/lib/types";
 
-const CATEGORY_ICONS: Record<CategoryId, ComponentType<{ size?: number }>> = {
-  do: CheckCircle2, buy: ShoppingBag, go: MapPin,
-};
+// 見出し右端の小さな＋ボタン(構造化シートの入口)。作品・場所のセクションで共用。
+function AddButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button onClick={onClick} aria-label={label} style={{
+      flexShrink: 0, width: 26, height: 26, borderRadius: "50%", border: "1.5px solid rgba(23,23,21,0.25)", background: "transparent",
+      color: "#5A5A54", cursor: "pointer", fontSize: 14, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+    }}>＋</button>
+  );
+}
 
-function WishRow({ item, index, isOpen, onToggle, onFulfill, onRemove }: {
-  item: Wish; index: number; isOpen: boolean; onToggle: () => void; onFulfill: () => void; onRemove: () => void;
+function WishRow({ item, index, isOpen, onToggle, onFulfill, onMakeGoal, onRemove }: {
+  item: Wish; index: number; isOpen: boolean; onToggle: () => void; onFulfill: () => void; onMakeGoal: () => void; onRemove: () => void;
 }) {
-  const cat = catOf(item.categoryId ?? "do");
   return (
     <div>
       <div onClick={onToggle} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "12px 2px", cursor: "pointer", borderTop: index === 0 ? "none" : `1px solid ${HAIRLINE}` }}>
-        <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 700, fontSize: 15, color: cat.color, minWidth: 26, textAlign: "right" }}>{String(index + 1).padStart(2, "0")}</span>
+        <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 700, fontSize: 15, color: INK, minWidth: 26, textAlign: "right" }}>{String(index + 1).padStart(2, "0")}</span>
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 14.5, lineHeight: 1.5 }}>{item.title}</div>
-          <div style={{ marginTop: 4 }}><Dot color={cat.color} label={`${cat.label} ・ ${shortDate(item.addedAt)}`} /></div>
+          <div style={{ marginTop: 4 }}><Dot color="#9A988E" label={shortDate(item.addedAt)} /></div>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateRows: isOpen ? "1fr" : "0fr", transition: "grid-template-rows 0.22s cubic-bezier(0.32,0.72,0,1)" }}>
         <div style={{ overflow: "hidden" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 2px 12px 38px" }}>
-            <button onClick={onFulfill} style={rowBtn(INK, PAPER)}>叶えた</button>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "2px 2px 12px 38px" }}>
+            <button onClick={onFulfill} style={rowBtn(INK, PAPER)}>叶えた！</button>
+            <button onClick={onMakeGoal} style={rowBtn("transparent", GREEN, GREEN)}>目標にする</button>
             <button onClick={onRemove} aria-label="削除" style={{ background: "none", border: "none", color: RUST, cursor: "pointer", padding: 6, display: "flex" }}><Trash2 size={15} /></button>
           </div>
         </div>
@@ -179,31 +185,36 @@ function AddStockMediaSheet({ onAdd, onClose }: {
   );
 }
 
-type Segment = "memo" | "place" | "media";
-const SEGMENTS: { id: Segment; label: string }[] = [
-  { id: "memo", label: "メモ" }, { id: "place", label: "場所" }, { id: "media", label: "作品" },
-];
+function SectionHeader({ title, onAdd, addLabel }: { title: string; onAdd?: () => void; addLabel?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>{title}</span>
+      {onAdd && addLabel && <AddButton onClick={onAdd} label={addLabel} />}
+    </div>
+  );
+}
 
-// ストックタブ: 「まだ実行していないもの」を3つの棚に分けて置く。
-// メモ=単発の願望(カテゴリ付き・叶えたら完了)、場所=行き先のKeep(実行タブの
-// 地図はこのデータのビューにすぎない)、作品=観る/読む/聴くメディアのKeep
-// (唯一の出口は各カードの「観た/読んだ/聴いた」ボタン)。
+// ストックタブ: 「まだ実行していないもの」を1画面の縦スクロールに積む。
+// 入力UIは全体で2種類だけ: 下部ピル(自由文=ウィッシュリスト)と
+// 見出し右の＋(構造化シート=作品・場所)。セグメント切替は持たない。
+// 作品の唯一の出口は各カードの「観た/読んだ/聴いた」ボタン。
 export function StockTab({ appState, persist, showToast }: TabProps) {
-  const [segment, setSegment] = useState<Segment>("memo");
-
-  // ---- メモ ----
-  const [categoryFilter, setCategoryFilter] = useState<"all" | CategoryId>("all");
-  const [input, setInput] = useState("");
-  const [inputCat, setInputCat] = useState<CategoryId>("do");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [input, setInput] = useState("");
+  const [placeSelectedId, setPlaceSelectedId] = useState<string | null>(null);
+  const [placeBinderItem, setPlaceBinderItem] = useState<BinderItem | null>(null);
+  const [addingUrl, setAddingUrl] = useState(false);
+  const [addingMedia, setAddingMedia] = useState(false);
+  const [mediaBinderItem, setMediaBinderItem] = useState<BinderItem | null>(null);
 
+  // ---- ウィッシュリスト ----
   const addWish = () => {
     if (!input.trim()) return;
     haptic();
     const next = structuredClone(appState);
-    next.wishes.unshift({ id: `wish-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title: input.trim(), category: catOf(inputCat).label, categoryId: inputCat, status: "stock", addedAt: new Date().toISOString() });
+    next.wishes.unshift({ id: `wish-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title: input.trim(), category: "やりたい", categoryId: "do", status: "stock", addedAt: new Date().toISOString() });
     persist(next);
-    showToast("願望をストックしました");
+    showToast("ウィッシュリストに追加しました");
     setInput("");
   };
   const updateWish = (id: string, patch: Partial<Wish>) => {
@@ -219,14 +230,21 @@ export function StockTab({ appState, persist, showToast }: TabProps) {
     persist(next);
     setOpenId(null);
   };
-  const wishItems = appState.wishes.filter((w) => w.status === "stock" && (categoryFilter === "all" || (w.categoryId ?? "do") === categoryFilter));
+  // ウィッシュリストの項目を目標に格上げする: goalsへ追加し、wishesからは消す
+  const makeGoal = (w: Wish) => {
+    haptic(10);
+    const next = structuredClone(appState);
+    next.wishes = next.wishes.filter((x) => x.id !== w.id);
+    next.goals = next.goals ?? [];
+    next.goals.push({ id: `goal-${Date.now()}`, title: w.title, addedAt: new Date().toISOString(), checkIns: [] });
+    persist(next);
+    showToast("目標にしました");
+    setOpenId(null);
+  };
+  const wishItems = appState.wishes.filter((w) => w.status === "stock");
 
   // ---- 場所 ----
-  const [placeSelectedId, setPlaceSelectedId] = useState<string | null>(null);
-  const [placeBinderItem, setPlaceBinderItem] = useState<BinderItem | null>(null);
-  const [addingUrl, setAddingUrl] = useState(false);
   const placeItems = appState.keeps.filter((k) => k.status !== "done").sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
-
   const removeKeep = (id: string) => {
     const next = structuredClone(appState);
     next.keeps = next.keeps.filter((x) => x.id !== id);
@@ -248,11 +266,8 @@ export function StockTab({ appState, persist, showToast }: TabProps) {
   };
 
   // ---- 作品 ----
-  const [addingMedia, setAddingMedia] = useState(false);
-  const [mediaBinderItem, setMediaBinderItem] = useState<BinderItem | null>(null);
   const mediaLabel: Record<MediaKindId, string> = { movie: "CINEMA", exhibition: "EXHIBITION", live: "LIVE", book: "BOOK", album: "MUSIC" };
   const mediaItems = keepMedia(appState).slice().sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
-
   const addMediaKeep = ({ kind, title, creator }: { kind: MediaKindId; title: string; creator: string }) => {
     haptic();
     const next = structuredClone(appState);
@@ -273,54 +288,32 @@ export function StockTab({ appState, persist, showToast }: TabProps) {
     showToast("記録に移しました");
   };
 
-  const statValue = segment === "memo" ? wishItems.length : segment === "place" ? placeItems.length : mediaItems.length;
+  const totalCount = mediaItems.length + placeItems.length + wishItems.length;
 
   return (
     <>
-      <Masthead title="ストック" en="STOCK" statValue={statValue} statLabel="件" />
+      <Masthead title="ストック" en="STOCK" statValue={totalCount} statLabel="件" />
 
-      <div style={{ display: "flex", gap: 4, padding: "14px 0 10px", background: "rgba(23,23,21,0.05)", borderRadius: 999, marginTop: 4 }}>
-        {SEGMENTS.map((s) => (
-          <button key={s.id} onClick={() => setSegment(s.id)} style={{
-            flex: 1, padding: "9px 0", borderRadius: 999, cursor: "pointer", fontFamily: SERIF, fontSize: 13, fontWeight: 700,
-            background: segment === s.id ? INK : "transparent", color: segment === s.id ? PAPER : "#5A5A54", border: "none",
-            transition: "background 0.18s, color 0.18s",
-          }}>{s.label}</button>
-        ))}
-      </div>
-
-      {segment === "memo" && (
-        <nav style={{ display: "flex", gap: 6, padding: "10px 0 4px", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          {([{ id: "all" as const, label: "すべて", Icon: undefined }, ...CATEGORIES.map((c) => ({ id: c.id, label: c.label, Icon: CATEGORY_ICONS[c.id] }))]).map((c) => (
-            <button key={c.id} onClick={() => setCategoryFilter(c.id)} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 13px", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, background: categoryFilter === c.id ? INK : "transparent", color: categoryFilter === c.id ? PAPER : "#5A5A54", border: categoryFilter === c.id ? `1.5px solid ${INK}` : "1.5px solid rgba(23,23,21,0.2)" }}>
-              {c.Icon && <c.Icon size={12} />}{c.label}
-            </button>
-          ))}
-        </nav>
-      )}
-
-      {segment === "memo" && (
-        <main style={{ flex: 1, paddingTop: 8, paddingBottom: 150 }}>
-          {wishItems.length === 0 ? (
-            <div style={{ padding: "40px 4px", textAlign: "center" }}>
-              <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, marginBottom: 8 }}>まだ何もありません</div>
-              <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>ふと思った願望を、大小問わず。</p>
+      <main style={{ flex: 1, paddingTop: 18, paddingBottom: 150 }}>
+        <section style={{ marginBottom: 30 }}>
+          <SectionHeader title="作品" onAdd={() => setAddingMedia(true)} addLabel="作品を追加" />
+          {mediaItems.length === 0 ? (
+            <p style={{ fontSize: 11.5, color: "#9A988E" }}>ブリーフでKeepした作品や、手動で追加した作品が並びます。</p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {mediaItems.map((r) => (
+                <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.addedAt)} label={mediaLabel[r.kind]}
+                  action={{ label: mediaKindOf(r.kind).doneActionLabel, onClick: () => markMediaDone(r.id) }}
+                  onClick={r.image ? () => setMediaBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
+              ))}
             </div>
-          ) : wishItems.map((w, i) => (
-            <WishRow key={w.id} item={w} index={i} isOpen={openId === w.id}
-              onToggle={() => setOpenId(openId === w.id ? null : w.id)}
-              onFulfill={() => updateWish(w.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() })}
-              onRemove={() => removeWish(w.id)} />
-          ))}
-        </main>
-      )}
+          )}
+        </section>
 
-      {segment === "place" && (
-        <main style={{ flex: 1, paddingBottom: 24, paddingTop: 14 }}>
-          <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.8, margin: "0 0 10px" }}>削除しない限り消えません。実行タブの地図はこのデータのビューです。</p>
-          <button onClick={() => setAddingUrl(true)} style={{ marginBottom: 16, width: "100%", padding: "10px 0", background: "transparent", border: "1.5px dashed rgba(23,23,21,0.3)", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#5A5A54" }}>＋ URLから場所を追加</button>
+        <section style={{ marginBottom: 30 }}>
+          <SectionHeader title="場所" onAdd={() => setAddingUrl(true)} addLabel="場所を追加" />
           {placeItems.length === 0 ? (
-            <div style={{ padding: "40px 4px", textAlign: "center" }}><div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, marginBottom: 8 }}>まだKeepがありません。</div></div>
+            <p style={{ fontSize: 11.5, color: "#9A988E" }}>まだKeepがありません。</p>
           ) : placeItems.map((k, i) => {
             const status = keepStatus(k);
             const isSel = placeSelectedId === k.id;
@@ -343,61 +336,38 @@ export function StockTab({ appState, persist, showToast }: TabProps) {
               </div>
             );
           })}
-          <BinderModal item={placeBinderItem} onClose={() => setPlaceBinderItem(null)} />
-        </main>
-      )}
+        </section>
 
-      {segment === "media" && (
-        <main style={{ flex: 1, paddingBottom: 24, paddingTop: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.8, margin: 0 }}>ブリーフでKeepした作品や、手動で追加した作品が並びます。</p>
-            <button onClick={() => setAddingMedia(true)} aria-label="作品を追加" style={{
-              flexShrink: 0, width: 28, height: 28, borderRadius: "50%", border: "1.5px solid rgba(23,23,21,0.25)", background: "transparent",
-              color: "#5A5A54", cursor: "pointer", fontSize: 15, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, marginLeft: 10,
-            }}>＋</button>
-          </div>
-          {mediaItems.length === 0 ? (
-            <div style={{ padding: "40px 4px", textAlign: "center" }}><div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, marginBottom: 8 }}>まだ作品がありません。</div></div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {mediaItems.map((r) => (
-                <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.addedAt)} label={mediaLabel[r.kind]}
-                  action={{ label: mediaKindOf(r.kind).doneActionLabel, onClick: () => markMediaDone(r.id) }}
-                  onClick={r.image ? () => setMediaBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
-              ))}
-            </div>
-          )}
-          <BinderModal item={mediaBinderItem} onClose={() => setMediaBinderItem(null)} />
-        </main>
-      )}
+        <section>
+          <SectionHeader title="ウィッシュリスト" />
+          {wishItems.length === 0 ? (
+            <p style={{ fontSize: 11.5, color: "#9A988E" }}>ふと思ったことを、なんでも下から書き足せます。</p>
+          ) : wishItems.map((w, i) => (
+            <WishRow key={w.id} item={w} index={i} isOpen={openId === w.id}
+              onToggle={() => setOpenId(openId === w.id ? null : w.id)}
+              onFulfill={() => updateWish(w.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() })}
+              onMakeGoal={() => makeGoal(w)}
+              onRemove={() => removeWish(w.id)} />
+          ))}
+        </section>
+      </main>
 
-      {segment === "memo" && (
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: 60, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
-          <div style={{ width: "100%", maxWidth: 420, padding: "0 16px 10px" }}>
-            <div style={{ display: "flex", gap: 6, marginBottom: 8, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-              {CATEGORIES.map((c) => {
-                const Icon = CATEGORY_ICONS[c.id];
-                return (
-                  <button key={c.id} onClick={() => setInputCat(c.id)} style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, padding: "4px 10px", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontWeight: 700, background: inputCat === c.id ? c.color : "transparent", color: inputCat === c.id ? PAPER : "#7A7A72", border: `1px solid ${inputCat === c.id ? c.color : "rgba(23,23,21,0.2)"}` }}>
-                    <Icon size={11} />{c.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", gap: 8, background: PAPER, border: `1.5px solid ${INK}`, borderRadius: 999, padding: "4px 4px 4px 18px", boxShadow: "0 6px 20px rgba(23,23,21,0.1)" }}>
-              <input
-                value={input} onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addWish()}
-                placeholder="ふと思った願望を、なんでも"
-                style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: SANS, fontSize: 13, color: INK, minWidth: 0 }} />
-              <button onClick={addWish} style={{ background: INK, color: PAPER, border: "none", borderRadius: 999, padding: "10px 18px", cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" }}>追加</button>
-            </div>
+      <div style={{ position: "fixed", left: 0, right: 0, bottom: 60, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
+        <div style={{ width: "100%", maxWidth: 420, padding: "0 16px 10px" }}>
+          <div style={{ display: "flex", gap: 8, background: PAPER, border: `1.5px solid ${INK}`, borderRadius: 999, padding: "4px 4px 4px 18px", boxShadow: "0 6px 20px rgba(23,23,21,0.1)" }}>
+            <input
+              value={input} onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addWish()}
+              placeholder="ふと思ったことを、なんでも"
+              style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: SANS, fontSize: 13, color: INK, minWidth: 0 }} />
+            <button onClick={addWish} style={{ background: INK, color: PAPER, border: "none", borderRadius: 999, padding: "10px 18px", cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" }}>追加</button>
           </div>
         </div>
-      )}
+      </div>
 
       {addingUrl && <AddPlaceSheet onAdd={addPlaceFromUrl} onClose={() => setAddingUrl(false)} />}
       {addingMedia && <AddStockMediaSheet onAdd={addMediaKeep} onClose={() => setAddingMedia(false)} />}
+      <BinderModal item={placeBinderItem ?? mediaBinderItem} onClose={() => { setPlaceBinderItem(null); setMediaBinderItem(null); }} />
     </>
   );
 }

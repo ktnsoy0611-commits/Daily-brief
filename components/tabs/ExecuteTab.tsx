@@ -4,9 +4,114 @@ import { Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, Masthead } from "@/components/common";
-import { AREA_COORDS, BG, BLUE, DISPLAY, GREEN, HAIRLINE, INK, PAPER, RUST, SANS, SERIF, mediaKindOf } from "@/lib/constants";
-import { candidateMedia, haptic, img, inferMediaKind, mapsUrl, mostRecentThursday, pinPosition, todayKey } from "@/lib/helpers";
+import { AREA_COORDS, BG, BLUE, DISPLAY, GREEN, HAIRLINE, INK, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, mediaKindOf } from "@/lib/constants";
+import { candidateMedia, hashStr, haptic, img, inferMediaKind, mapsUrl, mostRecentThursday, pinPosition, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaRecord, TabProps } from "@/lib/types";
+
+// URLから場所を追加するシート。GoogleマップのURLは無料のPlaces APIで解析
+// (安価)、それ以外のURL(展覧会の公式サイトなど)はGeminiでの読み取りが
+// 必要になる(わずかに課金が発生しうる)、という使い分けを見せている。
+// この環境には実際のAPIがないため解析結果はモック。実装ではここを
+// サーバー側の関数呼び出しに置き換える。
+function mockParseUrl(url: string) {
+  const isMaps = /google\.com\/maps|maps\.app\.goo\.gl/.test(url);
+  let guessTitle = "新しい場所";
+  try {
+    const u = new URL(url);
+    if (isMaps) {
+      const m = decodeURIComponent(u.pathname).match(/\/place\/([^/@]+)/);
+      if (m) guessTitle = m[1].replace(/\+/g, " ");
+    } else {
+      guessTitle = u.hostname.replace(/^www\./, "");
+    }
+  } catch {
+    /* 不正なURLはデフォルトのまま */
+  }
+  return {
+    title: guessTitle,
+    category: isMaps ? "登録した場所" : "展覧会・イベント",
+    parseMethod: isMaps ? "places" : "gemini",
+  };
+}
+
+interface ParsedPlace {
+  title: string;
+  category: string;
+  area: string;
+  sourceUrl: string;
+  sourceLabel: string;
+}
+
+function AddPlaceSheet({ onAdd, onClose }: { onAdd: (data: ParsedPlace) => void; onClose: () => void }) {
+  const [step, setStep] = useState<"input" | "loading" | "confirm">("input");
+  const [url, setUrl] = useState("");
+  const [parsed, setParsed] = useState<ReturnType<typeof mockParseUrl> | null>(null);
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [area, setArea] = useState("");
+
+  const analyze = () => {
+    if (!url.trim()) return;
+    setStep("loading");
+    setTimeout(() => {
+      const guess = mockParseUrl(url.trim());
+      setParsed(guess);
+      setTitle(guess.title);
+      setCategory(guess.category);
+      setStep("confirm");
+    }, 700);
+  };
+  const isMapsUrl = /google\.com\/maps|maps\.app\.goo\.gl/.test(url);
+
+  return (
+    <BottomSheet onClose={onClose}>
+      {(requestClose) => (
+        <>
+          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>URLから場所を追加</div>
+
+          {step === "input" && (
+            <>
+              <p style={{ fontSize: 11.5, color: "#9A988E", lineHeight: 1.7, margin: "0 0 14px" }}>
+                GoogleマップのURL、または展覧会などのサイトURLを貼り付けてください。
+              </p>
+              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." style={{
+                width: "100%", boxSizing: "border-box", border: `1.5px solid ${INK}`, borderRadius: 12, padding: "12px 14px",
+                fontFamily: SANS, fontSize: 13, outline: "none", marginBottom: 14,
+              }} />
+              <button onClick={analyze} disabled={!url.trim()} style={{
+                width: "100%", padding: "13px 0", background: url.trim() ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none",
+                borderRadius: 999, cursor: url.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
+              }}>解析する</button>
+            </>
+          )}
+
+          {step === "loading" && (
+            <div style={{ padding: "28px 0", textAlign: "center" }}>
+              <p style={{ fontSize: 12, color: "#9A988E" }}>{isMapsUrl ? "Places APIで解析中…" : "Geminiで内容を読み取り中…"}</p>
+            </div>
+          )}
+
+          {step === "confirm" && (
+            <>
+              <div style={{ fontSize: 10, color: parsed?.parseMethod === "gemini" ? RUST : BLUE, marginBottom: 14, lineHeight: 1.7 }}>
+                {parsed?.parseMethod === "gemini"
+                  ? "※ Geminiで解析しました。内容を確認してください（わずかに課金が発生する場合があります）"
+                  : "※ Places APIで解析しました（無料枠内）"}
+              </div>
+              <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>名前</label>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SERIF, fontSize: 15, outline: "none", marginBottom: 12, background: "transparent" }} />
+              <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>種類</label>
+              <input value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 13, outline: "none", marginBottom: 12, background: "transparent" }} />
+              <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>エリア（任意）</label>
+              <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="例: 蔵前" style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 13, outline: "none", marginBottom: 18, background: "transparent" }} />
+              <button onClick={() => { if (!title.trim()) return; onAdd({ title: title.trim(), category: category.trim() || "登録した場所", area: area.trim(), sourceUrl: url.trim(), sourceLabel: "登録したリンクを見る" }); requestClose(); }} disabled={!title.trim()} style={{ width: "100%", padding: "13px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" }}>この内容で追加</button>
+            </>
+          )}
+        </>
+      )}
+    </BottomSheet>
+  );
+}
 
 function MapCanvas({ items, selectedIds, onOpenPin }: {
   items: Keep[];
@@ -124,7 +229,7 @@ function DraftBinder({ items, onRemove }: {
   );
 }
 
-function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOpenPin, onToggleKeep, onToggleMedia, onPickBundle, onInjectDemo, bundlesAreNew }: {
+function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOpenPin, onToggleKeep, onToggleMedia, onPickBundle, onInjectDemo, onAddUrl, bundlesAreNew }: {
   pool: Keep[];
   mediaPool: MediaRecord[];
   draftSelection: string[];
@@ -134,6 +239,7 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
   onToggleMedia: (item: MediaRecord) => void;
   onPickBundle: (ids: string[]) => void;
   onInjectDemo: () => void;
+  onAddUrl: () => void;
   bundlesAreNew: boolean;
 }) {
   const sorted = pool.slice().sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
@@ -148,7 +254,10 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
       <main style={{ padding: "48px 4px", textAlign: "center" }}>
         <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 19, marginBottom: 10 }}>Keepが、まだありません。</div>
         <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepすると、ここに地図として集まります。</p>
-        <button onClick={onInjectDemo} style={{ padding: "13px 26px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.12em" }}>デモ用データを投入</button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+          <button onClick={onInjectDemo} style={{ padding: "13px 26px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.12em" }}>デモ用データを投入</button>
+          <button onClick={onAddUrl} style={{ padding: "10px 20px", background: "transparent", border: "1.5px dashed rgba(23,23,21,0.3)", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#5A5A54" }}>＋ URLから場所を追加</button>
+        </div>
       </main>
     );
   }
@@ -158,7 +267,8 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
   return (
     <main style={{ paddingTop: 14, paddingBottom: bottomPadding }}>
       <MapCanvas items={pool} selectedIds={draftSelection} onOpenPin={onOpenPin} />
-      <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 20px" }}>ピンやカードをタップして、今日の行き先を選ぶ。</p>
+      <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 14px" }}>ピンやカードをタップして、今日の行き先を選ぶ。</p>
+      <button onClick={onAddUrl} style={{ marginBottom: 22, width: "100%", padding: "10px 0", background: "transparent", border: "1.5px dashed rgba(23,23,21,0.3)", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#5A5A54" }}>＋ URLから場所を追加</button>
 
       {pool.length > 0 && (
         <HorizontalShelf title="KEEP一覧">
@@ -302,7 +412,7 @@ function AddToMagazineSheet({ pool, onAdd, onClose }: { pool: Keep[]; onAdd: (id
   );
 }
 
-export function ExecuteTab({ appState, persist }: TabProps) {
+export function ExecuteTab({ appState, persist, showToast }: TabProps) {
   const magazine = appState.magazine;
   const [mapMode, setMapMode] = useState(false); // マガジン確定後でも地図に戻って選び直すときtrue
   const [pinItem, setPinItem] = useState<Keep | null>(null);
@@ -310,6 +420,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
   const [draftMediaSelection, setDraftMediaSelection] = useState<string[]>([]);
   const [editingMag, setEditingMag] = useState(false);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [addingUrl, setAddingUrl] = useState(false);
 
   const showMap = !magazine || mapMode;
   // 地図には実行済み以外の全Keepをピンとして出す(マガジン掲載中plannedも、選び直しのため含める)
@@ -454,6 +565,19 @@ export function ExecuteTab({ appState, persist }: TabProps) {
     });
     persist(next);
   };
+  const addPlaceFromUrl = (data: { title: string; category: string; area: string; sourceUrl: string; sourceLabel: string }) => {
+    haptic(14);
+    const next = structuredClone(appState);
+    const seed = `url-${Date.now()}`;
+    next.keeps.push({
+      id: `manual-${Date.now()}`, title: data.title, category: data.category, area: data.area || undefined,
+      status: "candidate", keptAt: new Date().toISOString(),
+      images: [seed], color: POSTER_PALETTE[hashStr(data.title) % POSTER_PALETTE.length],
+      sourceUrl: data.sourceUrl, sourceLabel: data.sourceLabel,
+    });
+    persist(next);
+    showToast("地図に追加しました");
+  };
 
   type DraftBinderEntry = { id: string; type: MagazineItemRef["type"]; title: string; image?: string; color?: string };
   const draftBinderItems: DraftBinderEntry[] = [
@@ -479,7 +603,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
           <MapPlanner
             pool={pool} mediaPool={mediaPool} draftSelection={draftSelection} draftMediaSelection={draftMediaSelection}
             onOpenPin={setPinItem} onToggleKeep={toggleDraftKeep} onToggleMedia={toggleDraftMedia}
-            onPickBundle={(ids) => confirmMagazine(ids, [])} onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
+            onPickBundle={(ids) => confirmMagazine(ids, [])} onInjectDemo={injectDemo} onAddUrl={() => setAddingUrl(true)} bundlesAreNew={bundlesAreNew}
           />
           {(draftSelection.length + draftMediaSelection.length) > 0 && (
             <div style={{ position: "fixed", left: 0, right: 0, bottom: 60, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
@@ -540,6 +664,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
         )) : undefined}
       />
       {addSheetOpen && <AddToMagazineSheet pool={notInMagazine} onAdd={(id) => addToMagazine(id)} onClose={() => setAddSheetOpen(false)} />}
+      {addingUrl && <AddPlaceSheet onAdd={addPlaceFromUrl} onClose={() => setAddingUrl(false)} />}
     </>
   );
 }

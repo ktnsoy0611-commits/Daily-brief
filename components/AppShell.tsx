@@ -13,15 +13,15 @@ import { detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers"
 import type { AppState, TabId, TabProps } from "@/lib/types";
 
 const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
-  { id: "records", label: "記録", Icon: LayoutGrid },
   { id: "brief", label: "ブリーフ", Icon: Newspaper },
   { id: "wish", label: "願望", Icon: Heart },
   { id: "execute", label: "実行", Icon: MapIcon },
+  { id: "records", label: "記録", Icon: LayoutGrid },
 ];
 
 export function AppShell() {
   const [appState, setAppState] = useState<AppState | null>(null);
-  const [tab, setTab] = useState<TabId>("records");
+  const [tab, setTab] = useState<TabId>("brief");
   const [showProfile, setShowProfile] = useState(false);
   const [storageMode, setStorageMode] = useState(DataStore.mode);
   const [toast, setToast] = useState("");

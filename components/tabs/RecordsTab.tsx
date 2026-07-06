@@ -191,7 +191,7 @@ function ShelfList({ appState, persist }: { appState: AppState; persist: (next: 
 
   return (
     <main style={{ flex: 1, paddingBottom: 24, paddingTop: 14 }}>
-      <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.8, margin: "0 0 10px" }}>Keepは削除しない限り消えません。いつでも地図に呼び出せます。行った場所はマガジンの✓で「記録」タブに移ります。</p>
+      <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.8, margin: "0 0 10px" }}>削除しない限り消えません。実行タブの地図からいつでも呼び出せます。</p>
       {all.length === 0 ? (
         <div style={{ padding: "40px 4px", textAlign: "center" }}><div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, marginBottom: 8 }}>まだKeepがありません。</div></div>
       ) : all.map((k, i) => {
@@ -387,8 +387,8 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
 
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", margin: "8px 2px 18px", paddingTop: 20, borderTop: `2px solid ${INK}` }}>
           <div>
-            <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17 }}>実際にやったログ</div>
-            <div style={{ fontSize: 9, letterSpacing: "0.24em", color: "#9A988E", marginTop: 3 }}>THE LOG</div>
+            <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17 }}>実行済み</div>
+            <div style={{ fontSize: 9, letterSpacing: "0.24em", color: "#9A988E", marginTop: 3 }}>DONE</div>
           </div>
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
             {([{ id: "list" as const, label: "リスト" }, { id: "date" as const, label: "日付" }]).map((m) => (
@@ -412,7 +412,7 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
                 }}>＋</button>
               </div>
               {doneMediaRecords.length === 0 ? (
-                <p style={{ fontSize: 11.5, color: "#9A988E" }}>マガジンで✓にしたもの、通知で「行った」を選んだもの、＋から手動記録したものが並びます。</p>
+                <p style={{ fontSize: 11.5, color: "#9A988E" }}>実行して記録したものがここに並びます。</p>
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   {doneMediaRecords.map((r) => (
@@ -455,13 +455,13 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
         {viewMode === "list" && totalCount === 0 && pendingItems.length === 0 && (
           <div style={{ padding: "36px 4px", textAlign: "center" }}>
             <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, marginBottom: 8 }}>まだ記録がありません。</div>
-            <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>実行タブのマガジンで✓にすると、行った場所が自動でここに並びます。メディアは＋から記録できます。</p>
+            <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>実行タブで行動を記録すると、ここに積み上がります。</p>
           </div>
         )}
 
         <div style={{ margin: "36px 2px 18px", paddingTop: 20, borderTop: `2px solid ${INK}` }}>
           <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17 }}>KEEP</div>
-          <div style={{ fontSize: 9, letterSpacing: "0.24em", color: "#9A988E", marginTop: 3 }}>STOCKED, NOT YET DONE</div>
+          <div style={{ fontSize: 9, letterSpacing: "0.24em", color: "#9A988E", marginTop: 3 }}>未実行</div>
         </div>
 
         {candidateMediaRecords.length > 0 && (
@@ -479,7 +479,7 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
 
         <section>
           <button onClick={() => setShelfOpen(!shelfOpen)} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-            <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>候補中のKeep（{appState.keeps.filter((k) => k.status !== "done").length}）</span>
+            <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>その他のKeep（{appState.keeps.filter((k) => k.status !== "done").length}）</span>
             <ChevronDown size={12} style={{ transform: shelfOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s", color: "#9A988E" }} />
           </button>
           {shelfOpen && <ShelfList appState={appState} persist={persist} />}

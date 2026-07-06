@@ -33,7 +33,11 @@ button:active {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* opacityのみ: transformをここに乗せると、願望・実行タブ内の
+   position:fixed な下部バーがこの祖先要素を新しい containing block と
+   見なしてしまい(CSS仕様上、transformを持つ要素は fixed 子要素の基準に
+   なる)、アニメーション中だけ画面外の位置に基準が移ってガクつく。 */
 @keyframes tab-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

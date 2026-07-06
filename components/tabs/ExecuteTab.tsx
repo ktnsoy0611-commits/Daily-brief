@@ -75,10 +75,13 @@ function ShelfCard({ title, image, color, sub, selected, onToggle }: {
   );
 }
 
-function HorizontalShelf({ title, children }: { title: string; children: React.ReactNode }) {
+function HorizontalShelf({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 22 }}>
-      <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>{title}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>{title}</span>
+        {badge && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: BLUE, borderRadius: 999, padding: "2px 7px" }}>{badge}</span>}
+      </div>
       <div style={{ display: "flex", gap: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
         {children}
       </div>
@@ -135,16 +138,16 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
 }) {
   const sorted = pool.slice().sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
   const bundles = [
-    { id: "light", label: "さらっと", tagline: "ひとつだけ、身軽に。", items: sorted.slice(0, 1) },
-    { id: "easy", label: "ゆったり", tagline: "2〜3件、無理のない範囲で。", items: sorted.slice(0, 3) },
-    { id: "full", label: "じっくり", tagline: "気になった分だけ、まとめて。", items: sorted.slice(0, 5) },
+    { id: "light", label: "さらっと", items: sorted.slice(0, 1) },
+    { id: "easy", label: "ゆったり", items: sorted.slice(0, 3) },
+    { id: "full", label: "じっくり", items: sorted.slice(0, 5) },
   ].filter((b) => b.items.length > 0);
 
   if (pool.length === 0 && mediaPool.length === 0) {
     return (
       <main style={{ padding: "48px 4px", textAlign: "center" }}>
         <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 19, marginBottom: 10 }}>Keepが、まだありません。</div>
-        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepしたカードや、願望タブでURLから追加した場所が、ここに地図として集まります。</p>
+        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepすると、ここに地図として集まります。</p>
         <button onClick={onInjectDemo} style={{ padding: "13px 26px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.12em" }}>デモ用データを投入</button>
       </main>
     );
@@ -155,28 +158,7 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
   return (
     <main style={{ paddingTop: 14, paddingBottom: bottomPadding }}>
       <MapCanvas items={pool} selectedIds={draftSelection} onOpenPin={onOpenPin} />
-      <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 20px" }}>ピンをタップして、今日行きたい場所を選んでください。</p>
-
-      {bundles.length > 0 && (
-        <>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>今週のおすすめ</span>
-            {bundlesAreNew && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: BLUE, borderRadius: 999, padding: "2px 7px" }}>NEW</span>}
-          </div>
-          <div style={{ display: "flex", gap: 10, overflowX: "auto", WebkitOverflowScrolling: "touch", padding: "2px 0 4px", marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16, marginBottom: 22 }}>
-            {bundles.map((b) => (
-              <div key={b.id} style={{ flexShrink: 0, width: 180, background: PAPER, border: `1px solid ${HAIRLINE}`, borderRadius: 14, padding: "14px 16px" }}>
-                <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 16 }}>{b.label}</div>
-                <div style={{ fontSize: 10.5, color: "#9A988E", margin: "3px 0 10px" }}>{b.tagline}</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-                  {b.items.map((it) => (<div key={it.id} style={{ fontSize: 11, color: "#5A5A54", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>・{it.title}</div>))}
-                </div>
-                <button onClick={() => onPickBundle(b.items.map((it) => it.id))} style={{ width: "100%", padding: "9px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700 }}>これにする</button>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 20px" }}>ピンやカードをタップして、今日の行き先を選ぶ。</p>
 
       {pool.length > 0 && (
         <HorizontalShelf title="KEEP一覧">
@@ -193,6 +175,14 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
             <ShelfCard key={r.id} title={r.title} image={r.image} color={r.color}
               sub={mediaKindOf(r.kind).label}
               selected={draftMediaSelection.includes(r.id)} onToggle={() => onToggleMedia(r)} />
+          ))}
+        </HorizontalShelf>
+      )}
+      {bundles.length > 0 && (
+        <HorizontalShelf title="今週のおすすめ" badge={bundlesAreNew ? "NEW" : undefined}>
+          {bundles.map((b) => (
+            <ShelfCard key={b.id} title={b.label} image={b.items[0]?.images?.[0]} color={b.items[0]?.color}
+              sub={`${b.items.length}件`} selected={false} onToggle={() => onPickBundle(b.items.map((it) => it.id))} />
           ))}
         </HorizontalShelf>
       )}
@@ -293,7 +283,7 @@ function AddToMagazineSheet({ pool, onAdd, onClose }: { pool: Keep[]; onAdd: (id
     <BottomSheet onClose={onClose} maxHeight="60vh">
       <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 15, marginBottom: 12 }}>候補から追加</div>
       {pool.length === 0 ? (
-        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>追加できる候補がありません。ブリーフや願望タブでKeepを増やしてみてください。</p>
+        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>追加できる候補がありません。</p>
       ) : pool.map((k, i) => (
         <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px", borderTop: i === 0 ? "none" : `1px solid ${HAIRLINE}` }}>
           {k.images && k.images.length > 0 ? (
@@ -529,7 +519,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
               </button>
             )}
           </div>
-          <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "14px 2px 0" }}>横にスワイプすると、次の目的地がすぐ開きます。</p>
+          <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "14px 2px 0" }}>横にスワイプで次へ。</p>
 
           {editingMag && (
             <button onClick={dissolveMagazine} style={{ marginTop: 20, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: RUST, letterSpacing: "0.04em" }}>このマガジンを解散する</button>

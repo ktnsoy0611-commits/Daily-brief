@@ -272,7 +272,7 @@ export function WishTab({ appState, persist, showToast }: TabProps) {
       sourceUrl: data.sourceUrl, sourceLabel: data.sourceLabel,
     });
     persist(next);
-    showToast("週末の地図に追加しました");
+    showToast("実行タブの地図に追加しました");
   };
 
   const wishItems = appState.wishes.filter((w) => w.status === "stock");

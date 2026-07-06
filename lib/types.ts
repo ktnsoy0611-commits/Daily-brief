@@ -156,7 +156,7 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
   return (card as GrowthCard).type === "checkin" || (card as GrowthCard).type === "milestone";
 }
 
-export type TabId = "records" | "brief" | "wish" | "goals" | "weekend";
+export type TabId = "records" | "brief" | "wish" | "weekend";
 
 export interface TabProps {
   appState: AppState;

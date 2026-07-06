@@ -1,9 +1,8 @@
 "use client";
 
-import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Sprout, User } from "lucide-react";
+import { Heart, LayoutGrid, Map as MapIcon, Newspaper, User } from "lucide-react";
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { BriefTab } from "@/components/tabs/BriefTab";
-import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { WeekendTab } from "@/components/tabs/WeekendTab";
@@ -17,7 +16,6 @@ const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; str
   { id: "records", label: "記録", Icon: LayoutGrid },
   { id: "brief", label: "ブリーフ", Icon: Newspaper },
   { id: "wish", label: "願望", Icon: Heart },
-  { id: "goals", label: "目標", Icon: Sprout },
   { id: "weekend", label: "週末", Icon: MapIcon },
 ];
 
@@ -118,7 +116,6 @@ export function AppShell() {
             </div>
             {tab === "brief" && <BriefTab {...tabProps} />}
             {tab === "wish" && <WishTab {...tabProps} />}
-            {tab === "goals" && <GoalsTab {...tabProps} />}
             {tab === "records" && <RecordsTab {...tabProps} />}
             {tab === "weekend" && <WeekendTab {...tabProps} />}
           </>

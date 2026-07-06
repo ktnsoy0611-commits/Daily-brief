@@ -294,13 +294,13 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
           <section style={{ marginBottom: 28 }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
               <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>目標</span>
-              <button onClick={() => goTab("goals")} style={{ background: "none", border: "none", color: BLUE, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>すべて見る</button>
+              <button onClick={() => goTab("wish")} style={{ background: "none", border: "none", color: BLUE, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>すべて見る</button>
             </div>
             <div style={{ display: "flex", gap: 10, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
               {activeGoals.map((g) => {
                 const latest = g.checkIns?.[0];
                 return (
-                  <button key={g.id} onClick={() => goTab("goals")} style={{ flexShrink: 0, width: 168, textAlign: "left", background: PAPER, border: `1px solid ${HAIRLINE}`, borderRadius: 14, padding: "13px 15px", cursor: "pointer" }}>
+                  <button key={g.id} onClick={() => goTab("wish")} style={{ flexShrink: 0, width: 168, textAlign: "left", background: PAPER, border: `1px solid ${HAIRLINE}`, borderRadius: 14, padding: "13px 15px", cursor: "pointer" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
                       <Sprout size={13} color={GREEN} />
                       <span style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 13.5 }}>{g.title}</span>

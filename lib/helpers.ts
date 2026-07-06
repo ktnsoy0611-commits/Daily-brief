@@ -1,5 +1,5 @@
 import { AREA_COORDS, AREA_FALLBACK, AUTO_THRESHOLD, INTEREST_RULES, KEEP_MAX_AGE_DAYS } from "./constants";
-import type { Interest, Keep, Wish } from "./types";
+import type { AppState, Interest, Keep, Wish } from "./types";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -88,6 +88,11 @@ export function detectInterests(wishes: Wish[], keeps: Keep[]): Omit<Interest, "
     }
   });
   return results;
+}
+
+// KEEPしたが、まだ読んでいない/観ていない/聴いていないメディア記録
+export function candidateMedia(state: AppState) {
+  return (state.records?.media ?? []).filter((r) => r.status === "candidate");
 }
 
 // Keepのカテゴリ文字列から、メディア記録に該当する種類を推定する。

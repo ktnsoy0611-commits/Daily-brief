@@ -337,8 +337,8 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
               <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 14 }}>{c.title}</div>
             </div>
           ))}
-          <button onClick={() => goTab("weekend")} style={{ marginTop: 22, width: "100%", padding: "13px 0", background: INK, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: PAPER }}>
-            週末タブで地図を見る
+          <button onClick={() => goTab("execute")} style={{ marginTop: 22, width: "100%", padding: "13px 0", background: INK, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: PAPER }}>
+            実行タブで地図を見る
           </button>
         </main>
       )}

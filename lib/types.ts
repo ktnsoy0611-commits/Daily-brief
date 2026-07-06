@@ -91,10 +91,15 @@ export interface Source {
   addedAt: string;
 }
 
+export interface MagazineItemRef {
+  id: string;
+  type: "keep" | "media";
+}
+
 export interface Magazine {
   dateKey: string;
   decidedAt: string;
-  itemIds: string[];
+  itemIds: MagazineItemRef[];
 }
 
 export interface BriefState {
@@ -156,7 +161,7 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
   return (card as GrowthCard).type === "checkin" || (card as GrowthCard).type === "milestone";
 }
 
-export type TabId = "records" | "brief" | "wish" | "weekend";
+export type TabId = "records" | "brief" | "wish" | "execute";
 
 export interface TabProps {
   appState: AppState;

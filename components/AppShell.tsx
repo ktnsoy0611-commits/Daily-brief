@@ -3,9 +3,9 @@
 import { Heart, LayoutGrid, Map as MapIcon, Newspaper, User } from "lucide-react";
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { BriefTab } from "@/components/tabs/BriefTab";
+import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordsTab } from "@/components/tabs/RecordsTab";
-import { WeekendTab } from "@/components/tabs/WeekendTab";
 import { WishTab } from "@/components/tabs/WishTab";
 import { BG, BLUE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
@@ -16,7 +16,7 @@ const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; str
   { id: "records", label: "記録", Icon: LayoutGrid },
   { id: "brief", label: "ブリーフ", Icon: Newspaper },
   { id: "wish", label: "願望", Icon: Heart },
-  { id: "weekend", label: "週末", Icon: MapIcon },
+  { id: "execute", label: "実行", Icon: MapIcon },
 ];
 
 export function AppShell() {
@@ -34,9 +34,11 @@ export function AppShell() {
       // ままの項目が残っていたら、ダッシュボードの通知キューに移してリセットする。
       let mutated = false;
       if (s.magazine && s.magazine.dateKey !== todayKey()) {
-        const stale = s.magazine.itemIds ?? [];
+        // メディアは候補プールに残り続けるだけなので通知は不要。場所のKeepだけ
+        // 「行きましたか？」の確認待ちに回す。
+        const staleKeepIds = (s.magazine.itemIds ?? []).filter((r) => r.type === "keep").map((r) => r.id);
         const existing = new Set(s.pendingReview ?? []);
-        stale.forEach((id) => existing.add(id));
+        staleKeepIds.forEach((id) => existing.add(id));
         s.pendingReview = Array.from(existing);
         s.magazine = null;
         mutated = true;
@@ -46,7 +48,7 @@ export function AppShell() {
       const expiredIds = s.keeps.filter(isExpiredKeep).map((k) => k.id);
       if (expiredIds.length > 0) {
         s.keeps = s.keeps.filter((k) => !expiredIds.includes(k.id));
-        if (s.magazine) s.magazine.itemIds = s.magazine.itemIds.filter((id) => !expiredIds.includes(id));
+        if (s.magazine) s.magazine.itemIds = s.magazine.itemIds.filter((r) => !(r.type === "keep" && expiredIds.includes(r.id)));
         s.pendingReview = (s.pendingReview ?? []).filter((id) => !expiredIds.includes(id));
         mutated = true;
       }
@@ -117,7 +119,7 @@ export function AppShell() {
             {tab === "brief" && <BriefTab {...tabProps} />}
             {tab === "wish" && <WishTab {...tabProps} />}
             {tab === "records" && <RecordsTab {...tabProps} />}
-            {tab === "weekend" && <WeekendTab {...tabProps} />}
+            {tab === "execute" && <ExecuteTab {...tabProps} />}
           </>
         )}
       </div>

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, Dot, Masthead, keepStatus, rowBtn, Thumb } from "@/components/common";
 import { BLUE, GREEN, HAIRLINE, INK, MEDIA_KINDS, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
-import { daysBetween, hashStr, haptic, img, inferMediaKind, shortDate } from "@/lib/helpers";
+import { candidateMedia, daysBetween, hashStr, haptic, img, inferMediaKind, shortDate } from "@/lib/helpers";
 import type { AppState, Keep, MediaKindId, TabProps } from "@/lib/types";
 
 // 記録タブ内で繰り返し使う「ポスター」カード。メディア/エリア共通。
@@ -200,8 +200,8 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
   const doneMediaRecords = (appState.records?.media ?? [])
     .filter((r) => (r.status ?? "done") === "done")
     .sort((a, b) => new Date(b.doneAt ?? b.addedAt).getTime() - new Date(a.doneAt ?? a.addedAt).getTime());
-  const candidateMediaRecords = (appState.records?.media ?? [])
-    .filter((r) => r.status === "candidate")
+  const candidateMediaRecords = candidateMedia(appState)
+    .slice()
     .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
   const fulfilledWishes = appState.wishes.filter((w) => w.status === "fulfilled").sort((a, b) => new Date(b.fulfilledAt ?? b.addedAt).getTime() - new Date(a.fulfilledAt ?? a.addedAt).getTime());
   const pendingItems = (appState.pendingReview ?? []).map((id) => appState.keeps.find((k) => k.id === id)).filter((k): k is Keep => !!k);
@@ -362,7 +362,7 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
         {totalCount === 0 && pendingItems.length === 0 && (
           <div style={{ padding: "36px 4px", textAlign: "center" }}>
             <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, marginBottom: 8 }}>まだ記録がありません。</div>
-            <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>週末タブのマガジンで✓にすると、行った場所が自動でここに並びます。メディアは＋から記録できます。</p>
+            <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>実行タブのマガジンで✓にすると、行った場所が自動でここに並びます。メディアは＋から記録できます。</p>
           </div>
         )}
 

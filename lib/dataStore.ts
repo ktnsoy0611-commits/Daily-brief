@@ -28,6 +28,28 @@ function migrate(s: any): AppState {
     merged.goals = merged.goals ?? [];
     merged.pendingReview = merged.pendingReview ?? [];
     merged.sources = merged.sources ?? [];
+
+    // 情報設計の再編: メディアの「KEEPしただけ」状態を表す値をcandidate→keepに改名。
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    merged.records.media.forEach((r: any) => {
+      if (r.status === "candidate") r.status = "keep";
+    });
+    // 旧「観たい」カテゴリの願望は、ストックタブの「作品」棚(メディア記録)に統合された。
+    // 種類が推定できない場合は「映画」として変換する。
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const legacyWatchWishes = (merged.wishes ?? []).filter((w: any) => w.categoryId === "watch");
+    if (legacyWatchWishes.length > 0) {
+      merged.wishes = merged.wishes.filter((w: { categoryId: string }) => w.categoryId !== "watch");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      legacyWatchWishes.forEach((w: any) => {
+        merged.records.media.push({
+          id: `media-migrated-${w.id}`, kind: "movie", title: w.title, creator: "",
+          addedAt: w.addedAt, status: w.status === "fulfilled" ? "done" : "keep",
+          doneAt: w.status === "fulfilled" ? (w.fulfilledAt ?? w.addedAt) : undefined,
+        });
+      });
+    }
+
     return merged as AppState;
   }
   const v2: AppState = { ...structuredClone(DEFAULT_STATE) };

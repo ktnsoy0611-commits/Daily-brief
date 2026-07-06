@@ -1,27 +1,29 @@
 "use client";
 
-import { Heart, LayoutGrid, Map as MapIcon, Newspaper, User } from "lucide-react";
+import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Sprout, User } from "lucide-react";
 import { useCallback, useEffect, useState, type ComponentType, type CSSProperties } from "react";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
+import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordsTab } from "@/components/tabs/RecordsTab";
-import { WishTab } from "@/components/tabs/WishTab";
+import { StockTab } from "@/components/tabs/StockTab";
 import { BG, BLUE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers";
 import type { AppState, TabId, TabProps } from "@/lib/types";
 
 const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
-  { id: "brief", label: "ブリーフ", Icon: Newspaper },
-  { id: "wish", label: "願望", Icon: Heart },
-  { id: "execute", label: "実行", Icon: MapIcon },
   { id: "records", label: "記録", Icon: LayoutGrid },
+  { id: "brief", label: "ブリーフ", Icon: Newspaper },
+  { id: "stock", label: "ストック", Icon: Heart },
+  { id: "goals", label: "目標", Icon: Sprout },
+  { id: "execute", label: "実行", Icon: MapIcon },
 ];
 
 export function AppShell() {
   const [appState, setAppState] = useState<AppState | null>(null);
-  const [tab, setTab] = useState<TabId>("brief");
+  const [tab, setTab] = useState<TabId>("records");
   const [showProfile, setShowProfile] = useState(false);
   const [storageMode, setStorageMode] = useState(DataStore.mode);
   const [toast, setToast] = useState("");
@@ -118,7 +120,8 @@ export function AppShell() {
             </div>
             <div key={tab} style={{ display: "flex", flexDirection: "column", flex: 1, animation: "tab-in 0.22s cubic-bezier(0.32,0.72,0,1)" }}>
               {tab === "brief" && <BriefTab {...tabProps} />}
-              {tab === "wish" && <WishTab {...tabProps} />}
+              {tab === "stock" && <StockTab {...tabProps} />}
+              {tab === "goals" && <GoalsTab {...tabProps} />}
               {tab === "records" && <RecordsTab {...tabProps} />}
               {tab === "execute" && <ExecuteTab {...tabProps} />}
             </div>

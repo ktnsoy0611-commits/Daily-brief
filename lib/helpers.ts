@@ -103,8 +103,8 @@ export function detectInterests(wishes: Wish[], keeps: Keep[]): Omit<Interest, "
 }
 
 // KEEPしたが、まだ読んでいない/観ていない/聴いていないメディア記録
-export function candidateMedia(state: AppState) {
-  return (state.records?.media ?? []).filter((r) => r.status === "candidate");
+export function keepMedia(state: AppState) {
+  return (state.records?.media ?? []).filter((r) => r.status === "keep");
 }
 
 // Keepのカテゴリ文字列から、メディア記録に該当する種類を推定する。

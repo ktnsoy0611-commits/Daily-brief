@@ -50,7 +50,6 @@ export interface Category {
 export const CATEGORIES: Category[] = [
   { id: "do", label: "やりたい", en: "TO DO", color: "#20304A" },
   { id: "buy", label: "欲しい", en: "TO BUY", color: "#A8552F" },
-  { id: "watch", label: "観たい", en: "TO WATCH", color: "#1A1A18" },
   { id: "go", label: "行きたい", en: "TO GO", color: "#3E4A3A" },
 ];
 export const catOf = (id: CategoryId) => CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[0];
@@ -65,8 +64,8 @@ export interface InterestRule {
 export const INTEREST_RULES: InterestRule[] = [
   { match: /カフェ|コーヒー|焙煎/, label: "カフェ巡り", categoryId: "do", kind: "hobby" },
   { match: /古着|ヴィンテージ/, label: "古着収集", categoryId: "buy", kind: "hobby" },
-  { match: /映画|シネマ/, label: "映画鑑賞", categoryId: "watch", kind: "hobby" },
-  { match: /展覧会|美術館|ギャラリー/, label: "アート鑑賞", categoryId: "watch", kind: "hobby" },
+  { match: /映画|シネマ/, label: "映画鑑賞", categoryId: "go", kind: "hobby" },
+  { match: /展覧会|美術館|ギャラリー/, label: "アート鑑賞", categoryId: "go", kind: "hobby" },
   { match: /建築/, label: "建築巡り", categoryId: "go", kind: "hobby" },
   { match: /陶芸|工芸|手仕事/, label: "ものづくり", categoryId: "do", kind: "hobby" },
   { match: /銭湯|温泉|サウナ/, label: "温泉・サウナ", categoryId: "go", kind: "hobby" },

@@ -3,7 +3,7 @@
 // here even though the eventual Supabase schema is snake_case (mapping happens
 // at the data-access layer when that swap happens, not in these UI-facing types).
 
-export type CategoryId = "do" | "buy" | "watch" | "go";
+export type CategoryId = "do" | "buy" | "go";
 
 export interface Wish {
   id: string;
@@ -43,7 +43,7 @@ export interface MediaRecord {
   addedAt: string;
   // KEEPしただけでまだ読んでいない/観ていない状態。省略時は既存経路(マガジン✓/
   // 行きましたか通知/手動+)と同じ"done"として扱う。
-  status?: "candidate" | "done";
+  status?: "keep" | "done";
   doneAt?: string;
   image?: string;
   color?: string;
@@ -161,7 +161,7 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
   return (card as GrowthCard).type === "checkin" || (card as GrowthCard).type === "milestone";
 }
 
-export type TabId = "records" | "brief" | "wish" | "execute";
+export type TabId = "records" | "brief" | "stock" | "goals" | "execute";
 
 export interface TabProps {
   appState: AppState;

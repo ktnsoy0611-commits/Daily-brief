@@ -1,5 +1,6 @@
 "use client";
 
+import { Star } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { BLUE, DISPLAY, GREEN, HAIRLINE, INK, PAPER, SANS, SERIF } from "@/lib/constants";
 import { img } from "@/lib/helpers";
@@ -49,6 +50,64 @@ export function keepStatus(k: { status: string }) {
   if (k.status === "planned") return { label: "マガジン掲載中", color: BLUE };
   if (k.status === "done") return { label: "実行済み", color: "#9A988E" };
   return { label: "候補", color: GREEN };
+}
+
+// アプリ内で繰り返し使う「ポスター」カード。メディア/エリア/願望で共通。
+// sizeを省略すると親グリッドに合わせて広がる。
+export function PosterCard({ image, color, title, sub, label, good, onToggleGood, action, onClick, size }: {
+  image?: string | null;
+  color?: string;
+  title: string;
+  sub?: string;
+  label?: string;
+  good?: boolean;
+  onToggleGood?: () => void;
+  action?: { label: string; onClick: () => void };
+  onClick?: () => void;
+  size?: number | string;
+}) {
+  return (
+    <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: "2 / 3", borderRadius: 14, overflow: "hidden", boxShadow: "0 8px 20px rgba(23,23,21,0.16)", cursor: onClick ? "pointer" : "default" }}>
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={img(image, 340, 510)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      ) : (
+        <div style={{ width: "100%", height: "100%", background: color ?? "#5A5A54", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <span style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17, color: PAPER, textAlign: "center", lineHeight: 1.45 }}>{title}</span>
+        </div>
+      )}
+      {image && (
+        <>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 48%, rgba(0,0,0,0.78) 100%)" }} />
+          <div style={{ position: "absolute", bottom: 10, left: 10, right: 10 }}>
+            {label && <div style={{ fontSize: 8, letterSpacing: "0.16em", color: "rgba(255,255,255,0.7)", marginBottom: 3 }}>{label}</div>}
+            <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3 }}>{title}</div>
+            {sub && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}
+          </div>
+        </>
+      )}
+      {!image && (
+        <div style={{ position: "absolute", bottom: 10, left: 12, right: 12, textAlign: "center" }}>
+          {label && <div style={{ fontSize: 8, letterSpacing: "0.16em", color: "rgba(251,250,247,0.6)", marginBottom: 2 }}>{label}</div>}
+          {sub && <div style={{ fontSize: 9, color: "rgba(251,250,247,0.75)" }}>{sub}</div>}
+        </div>
+      )}
+      {onToggleGood && (
+        <button onClick={(e) => { e.stopPropagation(); onToggleGood(); }} aria-label="良かった" style={{
+          position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer",
+          background: good ? "#D9A441" : "rgba(23,23,21,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+        }}>
+          <Star size={14} fill={good ? "#fff" : "none"} color="#fff" strokeWidth={2} />
+        </button>
+      )}
+      {action && (
+        <button onClick={(e) => { e.stopPropagation(); action.onClick(); }} style={{
+          position: "absolute", top: 8, right: 8, padding: "6px 11px", borderRadius: 999, border: "none", cursor: "pointer",
+          background: INK, color: PAPER, fontFamily: SANS, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em",
+        }}>{action.label}</button>
+      )}
+    </div>
+  );
 }
 
 export function Thumb({ seed, onOpen, size = 44 }: { seed: string; onOpen: () => void; size?: number }) {

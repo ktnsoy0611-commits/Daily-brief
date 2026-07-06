@@ -8,7 +8,7 @@ import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
-import { BG, BLUE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
+import { BG, BLUE, INK, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers";
 import type { AppState, TabId, TabProps } from "@/lib/types";
@@ -88,7 +88,7 @@ export function AppShell() {
   }, [appState?.wishes, appState?.keeps]);
 
   if (!appState) {
-    return <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SERIF, color: "#9A988E", fontSize: 13, letterSpacing: "0.28em" }}>今日の号を綴じています…</div>;
+    return <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
   }
 
   const tabProps: TabProps = { appState, persist, showToast, goTab: setTab };
@@ -105,9 +105,9 @@ export function AppShell() {
           <>
             <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 0 0" }}>
               <button onClick={() => { haptic(5); setShowProfile(true); }} aria-label="プロフィール" style={{
-                position: "relative", width: 32, height: 32, borderRadius: "50%",
-                background: PAPER, border: `1.5px solid ${INK}`, display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", color: INK, boxShadow: "0 4px 12px rgba(23,23,21,0.12)", padding: 0, flexShrink: 0,
+                position: "relative", width: 34, height: 34, borderRadius: "50%",
+                background: PAPER, border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: INK, boxShadow: SOFT_SHADOW, padding: 0, flexShrink: 0,
               }}>
                 <User size={15} strokeWidth={1.75} />
                 {interestCount > 0 && (
@@ -138,14 +138,16 @@ export function AppShell() {
       )}
 
       {!showProfile && (
-        <nav style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 25, display: "flex", justifyContent: "center", background: PAPER, borderTop: `1.5px solid ${INK}`, paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <nav style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 25, display: "flex", justifyContent: "center", background: PAPER, boxShadow: "0 -8px 24px rgba(23,23,21,0.06)", paddingBottom: "env(safe-area-inset-bottom)" }}>
           <div style={{ width: "100%", maxWidth: 420, display: "flex" }}>
             {TABS.map((t) => {
               const active = tab === t.id;
               return (
-                <button key={t.id} onClick={() => { haptic(5); setTab(t.id); }} style={{ flex: 1, padding: "10px 0", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <t.Icon size={18} strokeWidth={1.6} color={active ? INK : "rgba(23,23,21,0.32)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
-                  <span style={{ fontFamily: SANS, fontSize: 9, letterSpacing: "0.12em", color: active ? INK : "rgba(23,23,21,0.32)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
+                <button key={t.id} onClick={() => { haptic(5); setTab(t.id); }} style={{ flex: 1, padding: "12px 0 10px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <div style={{ width: 40, height: 26, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
+                    <t.Icon size={17} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
+                  </div>
+                  <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(23,23,21,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
                 </button>
               );
             })}

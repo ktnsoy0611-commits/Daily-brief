@@ -4,7 +4,7 @@ import { Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, Masthead } from "@/components/common";
-import { AREA_COORDS, BG, BLUE, DISPLAY, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SERIF, mediaKindOf } from "@/lib/constants";
+import { AREA_COORDS, BG, BLUE, DISPLAY, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SERIF, SOFT_SHADOW, SOFT_SHADOW_LG, mediaKindOf } from "@/lib/constants";
 import { haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaRecord, TabProps } from "@/lib/types";
 
@@ -82,7 +82,7 @@ function BundleCard({ label, tagline, items, onPick }: {
   label: string; tagline: string; items: { id: string; title: string }[]; onPick: () => void;
 }) {
   return (
-    <div style={{ flexShrink: 0, width: 190, background: PAPER, border: `1px solid ${HAIRLINE}`, borderRadius: 16, padding: "16px 17px", boxShadow: "0 6px 16px rgba(23,23,21,0.08)" }}>
+    <div style={{ flexShrink: 0, width: 190, background: PAPER, border: "none", borderRadius: 18, padding: "16px 17px", boxShadow: SOFT_SHADOW }}>
       <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17 }}>{label}</div>
       <div style={{ fontSize: 10.5, color: "#9A988E", margin: "3px 0 12px" }}>{tagline}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14, minHeight: 60 }}>
@@ -225,14 +225,17 @@ interface ExecItem {
 
 function CoverSpread({ items }: { items: { id: string; title: string }[] }) {
   return (
-    <div style={{ flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", background: INK, color: PAPER, borderRadius: 18, padding: "26px 22px", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 10px 30px rgba(23,23,21,0.25)" }}>
+    <div style={{ flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", background: GREEN, color: PAPER, borderRadius: 24, padding: "26px 22px", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: SOFT_SHADOW_LG }}>
       <div>
-        <div style={{ fontSize: 9, letterSpacing: "0.3em", color: "rgba(251,250,247,0.55)" }}>TODAY&apos;S ISSUE</div>
-        <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 25, lineHeight: 1.45, margin: "14px 0 0" }}>今日のための<br />特集号。</div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "rgba(251,250,247,0.75)" }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#D9A441", flexShrink: 0 }} />
+          TODAY
+        </div>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 26, lineHeight: 1.4, margin: "14px 0 0" }}>今日のための<br />行き先リスト</div>
       </div>
       <div>
-        <div style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 700, fontSize: 44, lineHeight: 1 }}>{items.length}</div>
-        <div style={{ fontSize: 10, letterSpacing: "0.14em", color: "rgba(251,250,247,0.55)", marginTop: 4 }}>ITEMS</div>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 44, lineHeight: 1, color: "#D9A441" }}>{items.length}</div>
+        <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "rgba(251,250,247,0.6)", marginTop: 4 }}>件の目的地</div>
         <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 6, maxHeight: 150, overflow: "hidden" }}>
           {items.map((it, i) => (
             <div key={it.id} style={{ fontSize: 11.5, color: "rgba(251,250,247,0.85)", display: "flex", gap: 8 }}>
@@ -255,7 +258,7 @@ function DestinationSpread({ item, index, total, onRemove, onMarkDone }: {
 }) {
   const isMapsSource = item.type === "keep" && item.sourceLabel === "地図で見る" && !!item.sourceUrl;
   return (
-    <div style={{ flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", borderRadius: 18, overflow: "hidden", position: "relative", boxShadow: "0 10px 30px rgba(23,23,21,0.2)", background: PAPER, display: "flex", flexDirection: "column" }}>
+    <div style={{ flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", borderRadius: 24, overflow: "hidden", position: "relative", boxShadow: SOFT_SHADOW_LG, background: PAPER, display: "flex", flexDirection: "column" }}>
       <div style={{ height: "56%", position: "relative", flexShrink: 0 }}>
         {item.images && item.images.length > 0 ? (
           <img src={img(item.images[0], 500, 500)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -266,7 +269,7 @@ function DestinationSpread({ item, index, total, onRemove, onMarkDone }: {
           <button onClick={onMarkDone} aria-label={item.doneActionLabel} style={{ width: 44, height: 44, borderRadius: "50%", border: "none", background: GREEN, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 10px rgba(23,23,21,0.3)" }}><Check size={22} strokeWidth={2.5} /></button>
           <button onClick={onRemove} aria-label="外す" style={{ width: 44, height: 44, borderRadius: "50%", border: "none", background: "rgba(23,23,21,0.55)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 10px rgba(23,23,21,0.3)" }}><X size={20} strokeWidth={2.5} /></button>
         </div>
-        <div style={{ position: "absolute", top: 16, left: 14, fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 700, fontSize: 13, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>
+        <div style={{ position: "absolute", top: 16, left: 14, fontFamily: DISPLAY, fontWeight: 700, fontSize: 13, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>
           {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
         </div>
       </div>
@@ -490,7 +493,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
 
   return (
     <>
-      <Masthead title="実行" en="EXECUTE" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} />
+      <Masthead title="実行" en="今日の行き先を選ぶ、または見直す" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} />
 
       {showMap ? (
         <>
@@ -532,7 +535,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
             ))}
             {editingMag && (
               <button onClick={() => setAddSheetOpen(true)} style={{
-                flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", borderRadius: 18, cursor: "pointer",
+                flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", borderRadius: 24, cursor: "pointer",
                 border: "2px dashed rgba(23,23,21,0.25)", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10,
               }}>
                 <span style={{ fontSize: 34, color: "#9A988E", lineHeight: 1 }}>＋</span>

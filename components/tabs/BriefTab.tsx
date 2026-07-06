@@ -3,7 +3,7 @@
 import { Flag, Sprout } from "lucide-react";
 import { useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, Masthead } from "@/components/common";
-import { CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
+import { CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
@@ -30,7 +30,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
       return (
         <div style={{
           width: "100%", height: "100%", background: PAPER, borderRadius: 18, overflow: "hidden",
-          display: "flex", flexDirection: "column", boxShadow: "0 10px 32px rgba(23,23,21,0.14)",
+          display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
           border: `2px solid ${GREEN}`, position: "relative", userSelect: "none",
         }}>
           <div style={{ flex: "0 0 38%", background: GREEN, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: PAPER }}>
@@ -55,7 +55,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
     return (
       <div style={{
         width: "100%", height: "100%", background: PAPER, borderRadius: 18, overflow: "hidden",
-        display: "flex", flexDirection: "column", boxShadow: "0 10px 32px rgba(23,23,21,0.14)",
+        display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
         border: `2px solid ${RUST}`, position: "relative", userSelect: "none",
       }}>
         <div style={{ flex: "0 0 34%", background: RUST, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: PAPER }}>
@@ -90,8 +90,8 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
   return (
     <div style={{
       width: "100%", height: "100%", background: PAPER, borderRadius: 18, overflow: "hidden",
-      display: "flex", flexDirection: "column", boxShadow: "0 10px 32px rgba(23,23,21,0.14)",
-      border: card.serendipity ? `2px solid ${BLUE}` : "1px solid rgba(23,23,21,0.06)", position: "relative", userSelect: "none",
+      display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
+      border: card.serendipity ? `2px solid ${BLUE}` : "none", position: "relative", userSelect: "none",
     }}>
       <div
         onPointerDown={(e) => e.stopPropagation()}
@@ -292,7 +292,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
 
   return (
     <>
-      <Masthead title="デイリーブリーフ" en="DAILY BRIEF" statValue={done ? keptCards.length : index + 1} statLabel={done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} />
+      <Masthead title="デイリーブリーフ" en="今日のための、小さな発見" statValue={done ? keptCards.length : index + 1} statLabel={done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} />
       <div style={{ display: "flex", gap: 4, padding: "12px 4px 4px" }}>
         {deck.map((c, i) => (
           <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: decisions[c.id] === "keep" || decisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : decisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(23,23,21,0.1)", transition: "background 0.3s" }} />
@@ -333,7 +333,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
           <p style={{ fontSize: 11.5, color: "#9A988E", lineHeight: 1.8, margin: "0 0 20px" }}>{edition === "am" ? "夕刊は、正午にお届けします。" : "明日の朝刊で、また。"}</p>
           {keptCards.map((c, i) => (
             <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "12px 2px", borderTop: `1px solid ${HAIRLINE}` }}>
-              <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 700, fontSize: 17, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
+              <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
               <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 14 }}>{c.title}</div>
             </div>
           ))}

@@ -4,7 +4,7 @@ import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, Dot, keepStatus, Masthead, PosterCard, rowBtn, Thumb } from "@/components/common";
-import { BG, DISPLAY, GREEN, HAIRLINE, INK, MEDIA_KINDS, NAV_OFFSET, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, mediaKindOf } from "@/lib/constants";
+import { BG, DISPLAY, GREEN, HAIRLINE, INK, MEDIA_KINDS, NAV_OFFSET, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, SOFT_SHADOW_LG, mediaKindOf } from "@/lib/constants";
 import { daysBetween, hashStr, haptic, keepMedia, shortDate } from "@/lib/helpers";
 import type { MediaKindId, TabProps, Wish } from "@/lib/types";
 
@@ -24,7 +24,7 @@ function WishRow({ item, index, isOpen, onToggle, onFulfill, onMakeGoal, onRemov
   return (
     <div>
       <div onClick={onToggle} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "12px 2px", cursor: "pointer", borderTop: index === 0 ? "none" : `1px solid ${HAIRLINE}` }}>
-        <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 700, fontSize: 15, color: INK, minWidth: 26, textAlign: "right" }}>{String(index + 1).padStart(2, "0")}</span>
+        <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 15, color: INK, minWidth: 26, textAlign: "right" }}>{String(index + 1).padStart(2, "0")}</span>
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 14.5, lineHeight: 1.5 }}>{item.title}</div>
           <div style={{ marginTop: 4 }}><Dot color="#9A988E" label={shortDate(item.addedAt)} /></div>
@@ -292,7 +292,7 @@ export function StockTab({ appState, persist, showToast }: TabProps) {
 
   return (
     <>
-      <Masthead title="ストック" en="STOCK" statValue={totalCount} statLabel="件" />
+      <Masthead title="ストック" en="まだ実行していないものが並ぶ場所" statValue={totalCount} statLabel="件" />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 150 }}>
         <section style={{ marginBottom: 30 }}>
@@ -354,7 +354,7 @@ export function StockTab({ appState, persist, showToast }: TabProps) {
 
       <div style={{ position: "fixed", left: 0, right: 0, bottom: NAV_OFFSET, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
         <div style={{ width: "100%", maxWidth: 420, padding: "0 16px 10px" }}>
-          <div style={{ display: "flex", gap: 8, background: PAPER, border: `1.5px solid ${INK}`, borderRadius: 999, padding: "4px 4px 4px 18px", boxShadow: "0 6px 20px rgba(23,23,21,0.1)" }}>
+          <div style={{ display: "flex", gap: 8, background: PAPER, border: "none", borderRadius: 999, padding: "4px 4px 4px 18px", boxShadow: SOFT_SHADOW_LG }}>
             <input
               value={input} onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addWish()}

@@ -27,9 +27,12 @@ export const SWIPE_THRESHOLD = 90;
 // ---- スタイル共通 ------------------------------------------------------
 // フォント本体は app/layout.tsx で next/font/google により読み込み、CSS変数
 // として <html> に適用している。ここではその変数を参照するだけ。
-export const SERIF = "var(--font-zen-old-mincho), serif";
+// マガジン風(明朝体の見出し+Playfairの斜体数字)の縛りは撤廃し、ミニマルで
+// リッチな1書体構成に統一した。SERIF/DISPLAYという名前は既存コード互換の
+// ために残しているが、実体はどちらもSANSを指す(見出しも本文も同じサンセリフ)。
 export const SANS = "var(--font-zen-kaku-gothic-new), sans-serif";
-export const DISPLAY = "var(--font-playfair-display), serif";
+export const SERIF = SANS;
+export const DISPLAY = SANS;
 export const INK = "#171715";
 export const PAPER = "#FBFAF7";
 export const BG = "#EFEDE6";
@@ -37,13 +40,17 @@ export const BLUE = "#2B3FBF";
 export const RUST = "#A8552F";
 export const GREEN = "#3E4A3A";
 export const HAIRLINE = "rgba(23,23,21,0.08)";
+// カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
+export const SOFT_SHADOW = "0 4px 16px rgba(23,23,21,0.06)";
+export const SOFT_SHADOW_LG = "0 12px 32px rgba(23,23,21,0.10)";
 
 export const POSTER_PALETTE = ["#20304A", "#1A1A18", "#3E4A3A", "#A8552F", "#2B3FBF", "#5C3A21", "#3A4A4A", "#1F2937"];
 
-// 下部固定バー(願望・目標・実行タブ)がナビゲーションバーの直上にぴったり
-// 収まるためのオフセット。ナビの実測高さ(56px、アイコン+ラベル+上下padding)
-// に安全域を足す。ここが合っていないと、固定バーとナビの間に隙間ができる。
-export const NAV_OFFSET = "calc(56px + env(safe-area-inset-bottom))";
+// 下部固定バー(ストック・目標・実行タブ)がナビゲーションバーの直上にぴったり
+// 収まるためのオフセット。ナビの実測高さ(66px、アイコンのピル+ラベル+
+// 上下padding)に安全域を足す。ここが合っていないと、固定バーとナビの間に
+// 隙間ができる。ナビのスタイルを変えたら実測して合わせ直すこと。
+export const NAV_OFFSET = "calc(66px + env(safe-area-inset-bottom))";
 
 export interface Category {
   id: CategoryId;

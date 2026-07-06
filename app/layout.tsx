@@ -1,26 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Playfair_Display, Zen_Kaku_Gothic_New, Zen_Old_Mincho } from "next/font/google";
+import { Zen_Kaku_Gothic_New } from "next/font/google";
 import "./globals.css";
 
-const zenOldMincho = Zen_Old_Mincho({
-  variable: "--font-zen-old-mincho",
-  weight: ["500", "600", "700", "900"],
-  subsets: ["latin"],
-  preload: false,
-});
-
+// ミニマルなデザインへの刷新に伴い、明朝体(Zen Old Mincho)とPlayfair
+// Displayの読み込みは廃止。サンセリフ1書体(太さ違い)に統一している。
 const zenKakuGothicNew = Zen_Kaku_Gothic_New({
   variable: "--font-zen-kaku-gothic-new",
   weight: ["400", "500", "700"],
   subsets: ["latin"],
   preload: false,
-});
-
-const playfairDisplay = Playfair_Display({
-  variable: "--font-playfair-display",
-  weight: ["600", "700"],
-  style: ["normal", "italic"],
-  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
@@ -49,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" className={`${zenOldMincho.variable} ${zenKakuGothicNew.variable} ${playfairDisplay.variable}`}>
+    <html lang="ja" className={zenKakuGothicNew.variable}>
       <body>{children}</body>
     </html>
   );

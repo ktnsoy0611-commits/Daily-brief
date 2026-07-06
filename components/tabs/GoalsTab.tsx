@@ -3,7 +3,7 @@
 import { ChevronDown, Sprout, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Dot, Masthead, rowBtn } from "@/components/common";
-import { BG, DISPLAY, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
+import { BG, DISPLAY, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
 import type { Goal, TabProps } from "@/lib/types";
 
@@ -15,7 +15,7 @@ function GoalRow({ item, index, isOpen, onToggle, onRemove, draft, onDraftChange
   return (
     <div style={{ borderTop: index === 0 ? "none" : `1px solid ${HAIRLINE}`, padding: "12px 2px" }}>
       <div onClick={onToggle} style={{ display: "flex", alignItems: "baseline", gap: 12, cursor: "pointer" }}>
-        <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 700, fontSize: 15, color: GREEN, minWidth: 26, textAlign: "right" }}>{String(index + 1).padStart(2, "0")}</span>
+        <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 15, color: GREEN, minWidth: 26, textAlign: "right" }}>{String(index + 1).padStart(2, "0")}</span>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <Sprout size={13} color={GREEN} style={{ flexShrink: 0 }} />
@@ -102,7 +102,7 @@ export function GoalsTab({ appState, persist }: TabProps) {
 
   return (
     <>
-      <Masthead title="目標" en="GOALS" statValue={goalItems.length} statLabel="件" />
+      <Masthead title="目標" en="終わりのない目標を、ゆるく記録する" statValue={goalItems.length} statLabel="件" />
 
       <main style={{ flex: 1, paddingTop: 14, paddingBottom: 150 }}>
         {goalItems.length === 0 ? (
@@ -121,7 +121,7 @@ export function GoalsTab({ appState, persist }: TabProps) {
 
       <div style={{ position: "fixed", left: 0, right: 0, bottom: NAV_OFFSET, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
         <div style={{ width: "100%", maxWidth: 420, padding: "0 16px 10px" }}>
-          <div style={{ display: "flex", gap: 8, background: PAPER, border: `1.5px solid ${INK}`, borderRadius: 999, padding: "4px 4px 4px 18px", boxShadow: "0 6px 20px rgba(23,23,21,0.1)" }}>
+          <div style={{ display: "flex", gap: 8, background: PAPER, border: "none", borderRadius: 999, padding: "4px 4px 4px 18px", boxShadow: SOFT_SHADOW_LG }}>
             <input
               value={input} onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addGoal()}

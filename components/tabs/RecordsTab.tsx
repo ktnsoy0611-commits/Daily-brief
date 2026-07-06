@@ -4,7 +4,7 @@ import { Sprout } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, Masthead, PosterCard } from "@/components/common";
-import { BLUE, GREEN, HAIRLINE, INK, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
+import { BLUE, GREEN, INK, PAPER, RUST, SANS, SERIF, SOFT_SHADOW, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, shortDate } from "@/lib/helpers";
 import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
@@ -23,7 +23,7 @@ function BinderTile({ title, count, coverImages, coverColor, onClick }: {
     <button onClick={onClick} style={{ minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
       <div style={{
         position: "relative", width: "100%", aspectRatio: "1 / 1", borderRadius: 18, background: PAPER,
-        border: `1px solid ${HAIRLINE}`, boxShadow: "0 8px 20px rgba(23,23,21,0.12)",
+        border: "none", boxShadow: SOFT_SHADOW,
         overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
       }}>
         {coverImages.length === 0 ? (
@@ -190,7 +190,7 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
 
   return (
     <>
-      <Masthead title="記録" en="YOUR STORY SO FAR" statValue={totalCount} statLabel="件の記録" />
+      <Masthead title="記録" en="積み上がった、これまでの記録" statValue={totalCount} statLabel="件の記録" />
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
 
         {pendingItems.length > 0 && (
@@ -216,7 +216,7 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
               {activeGoals.map((g) => {
                 const latest = g.checkIns?.[0];
                 return (
-                  <button key={g.id} onClick={() => goTab("goals")} style={{ flexShrink: 0, width: 168, textAlign: "left", background: PAPER, border: `1px solid ${HAIRLINE}`, borderRadius: 14, padding: "13px 15px", cursor: "pointer" }}>
+                  <button key={g.id} onClick={() => goTab("goals")} style={{ flexShrink: 0, width: 168, textAlign: "left", background: PAPER, border: "none", borderRadius: 16, padding: "13px 15px", cursor: "pointer", boxShadow: SOFT_SHADOW }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
                       <Sprout size={13} color={GREEN} />
                       <span style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 13.5 }}>{g.title}</span>

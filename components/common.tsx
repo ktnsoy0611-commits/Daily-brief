@@ -2,10 +2,13 @@
 
 import { Star } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
-import { BLUE, DISPLAY, GREEN, HAIRLINE, INK, PAPER, SANS, SERIF } from "@/lib/constants";
+import { BLUE, GREEN, HAIRLINE, INK, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { BottomSheet } from "./BottomSheet";
 
+// 「My Trails」参考のような、太いサンセリフの大見出し+柔らかいグレーの
+// サブテキストという構成。以前は新聞の輪転罫線(2px罫線)で下線を引いて
+// いたが、ミニマルなデザインへの刷新でその区切り線は撤廃した。
 export function Masthead({ title, en, statValue, statLabel, dateline, right }: {
   title: string;
   en: string;
@@ -15,20 +18,20 @@ export function Masthead({ title, en, statValue, statLabel, dateline, right }: {
   right?: ReactNode;
 }) {
   return (
-    <header style={{ padding: "16px 4px 12px", borderBottom: `2px solid ${INK}` }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+    <header style={{ padding: "18px 4px 16px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 22, letterSpacing: "0.02em", lineHeight: 1 }}>{title}</div>
-          <div style={{ fontSize: 9, letterSpacing: "0.28em", color: "#9A988E", marginTop: 5 }}>{en}</div>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 28, letterSpacing: "-0.01em", lineHeight: 1.15, color: INK }}>{title}</div>
+          <div style={{ fontSize: 13, color: "#9A988E", marginTop: 4 }}>{en}</div>
         </div>
         {right ? right : (
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 700, fontSize: 22, lineHeight: 1, color: INK }}>{statValue}</div>
-            <div style={{ fontSize: 9, color: "#9A988E", letterSpacing: "0.08em", marginTop: 3 }}>{statLabel}</div>
+          <div style={{ textAlign: "right", background: PAPER, borderRadius: 14, padding: "8px 14px", boxShadow: SOFT_SHADOW }}>
+            <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 20, lineHeight: 1, color: INK }}>{statValue}</div>
+            <div style={{ fontSize: 9, color: "#9A988E", letterSpacing: "0.04em", marginTop: 3 }}>{statLabel}</div>
           </div>
         )}
       </div>
-      {dateline && <div style={{ fontSize: 10, color: "#9A988E", letterSpacing: "0.06em", marginTop: 8 }}>{dateline}</div>}
+      {dateline && <div style={{ fontSize: 12, color: "#9A988E", marginTop: 10 }}>{dateline}</div>}
     </header>
   );
 }
@@ -67,13 +70,13 @@ export function PosterCard({ image, color, title, sub, label, good, onToggleGood
   size?: number | string;
 }) {
   return (
-    <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: "2 / 3", borderRadius: 14, overflow: "hidden", boxShadow: "0 8px 20px rgba(23,23,21,0.16)", cursor: onClick ? "pointer" : "default" }}>
+    <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: "2 / 3", borderRadius: 18, overflow: "hidden", boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default" }}>
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={img(image, 340, 510)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : (
         <div style={{ width: "100%", height: "100%", background: color ?? "#5A5A54", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <span style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17, color: PAPER, textAlign: "center", lineHeight: 1.45 }}>{title}</span>
+          <span style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: PAPER, textAlign: "center", lineHeight: 1.45 }}>{title}</span>
         </div>
       )}
       {image && (
@@ -81,7 +84,7 @@ export function PosterCard({ image, color, title, sub, label, good, onToggleGood
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 48%, rgba(0,0,0,0.78) 100%)" }} />
           <div style={{ position: "absolute", bottom: 10, left: 10, right: 10 }}>
             {label && <div style={{ fontSize: 8, letterSpacing: "0.16em", color: "rgba(255,255,255,0.7)", marginBottom: 3 }}>{label}</div>}
-            <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3 }}>{title}</div>
+            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3 }}>{title}</div>
             {sub && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}
           </div>
         </>
@@ -141,7 +144,7 @@ export function BinderModal({ item, onClose, actionSlot }: {
       {(requestClose) => (
         <>
           <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
-          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 16, marginBottom: actionSlot ? 12 : 16 }}>{item.title}</div>
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: actionSlot ? 12 : 16 }}>{item.title}</div>
           {actionSlot && <div style={{ marginBottom: 16 }}>{actionSlot(requestClose)}</div>}
           <div style={{ display: "flex", justifyContent: "center", padding: "4px 0 22px" }}>
             {(item.images ?? []).map((seed, i) => (

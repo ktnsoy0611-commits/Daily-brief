@@ -1,7 +1,7 @@
 "use client";
 
 import { Heart, LayoutGrid, Map as MapIcon, Newspaper, User } from "lucide-react";
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useState, type ComponentType, type CSSProperties } from "react";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
@@ -12,7 +12,7 @@ import { DataStore } from "@/lib/dataStore";
 import { detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers";
 import type { AppState, TabId, TabProps } from "@/lib/types";
 
-const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string }> }[] = [
+const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
   { id: "records", label: "記録", Icon: LayoutGrid },
   { id: "brief", label: "ブリーフ", Icon: Newspaper },
   { id: "wish", label: "願望", Icon: Heart },
@@ -116,15 +116,23 @@ export function AppShell() {
                 )}
               </button>
             </div>
-            {tab === "brief" && <BriefTab {...tabProps} />}
-            {tab === "wish" && <WishTab {...tabProps} />}
-            {tab === "records" && <RecordsTab {...tabProps} />}
-            {tab === "execute" && <ExecuteTab {...tabProps} />}
+            <div key={tab} style={{ display: "flex", flexDirection: "column", flex: 1, animation: "tab-in 0.22s cubic-bezier(0.32,0.72,0,1)" }}>
+              {tab === "brief" && <BriefTab {...tabProps} />}
+              {tab === "wish" && <WishTab {...tabProps} />}
+              {tab === "records" && <RecordsTab {...tabProps} />}
+              {tab === "execute" && <ExecuteTab {...tabProps} />}
+            </div>
           </>
         )}
       </div>
 
-      {toast && <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: 999, fontSize: 11, letterSpacing: "0.06em", padding: "8px 18px", boxShadow: "0 8px 24px rgba(23,23,21,0.25)", zIndex: 50 }}>{toast}</div>}
+      {toast && (
+        <div key={toast} style={{
+          position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: 999,
+          fontSize: 11, letterSpacing: "0.06em", padding: "8px 18px", boxShadow: "0 8px 24px rgba(23,23,21,0.25)", zIndex: 50,
+          animation: "toast-in 0.3s cubic-bezier(0.32,0.72,0,1)",
+        }}>{toast}</div>
+      )}
 
       {!showProfile && (
         <nav style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 25, display: "flex", justifyContent: "center", background: PAPER, borderTop: `1.5px solid ${INK}`, paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -133,8 +141,8 @@ export function AppShell() {
               const active = tab === t.id;
               return (
                 <button key={t.id} onClick={() => { haptic(5); setTab(t.id); }} style={{ flex: 1, padding: "10px 0", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <t.Icon size={18} strokeWidth={1.6} color={active ? INK : "rgba(23,23,21,0.32)"} />
-                  <span style={{ fontFamily: SANS, fontSize: 9, letterSpacing: "0.12em", color: active ? INK : "rgba(23,23,21,0.32)", fontWeight: active ? 700 : 400 }}>{t.label}</span>
+                  <t.Icon size={18} strokeWidth={1.6} color={active ? INK : "rgba(23,23,21,0.32)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
+                  <span style={{ fontFamily: SANS, fontSize: 9, letterSpacing: "0.12em", color: active ? INK : "rgba(23,23,21,0.32)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
                 </button>
               );
             })}

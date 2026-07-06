@@ -129,12 +129,14 @@ function WishRow({ item, index, isOpen, onToggle, onFulfill, onRemove }: {
           <div style={{ marginTop: 4 }}><Dot color={cat.color} label={`${cat.label} ・ ${shortDate(item.addedAt)}`} /></div>
         </div>
       </div>
-      {isOpen && (
-        <div style={{ display: "flex", gap: 8, padding: "2px 2px 12px 38px" }}>
-          <button onClick={onFulfill} style={rowBtn(INK, PAPER)}>叶えた！</button>
-          <button onClick={onRemove} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+      <div style={{ display: "grid", gridTemplateRows: isOpen ? "1fr" : "0fr", transition: "grid-template-rows 0.22s cubic-bezier(0.32,0.72,0,1)" }}>
+        <div style={{ overflow: "hidden" }}>
+          <div style={{ display: "flex", gap: 8, padding: "2px 2px 12px 38px" }}>
+            <button onClick={onFulfill} style={rowBtn(INK, PAPER)}>叶えた！</button>
+            <button onClick={onRemove} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -171,26 +173,28 @@ function GoalRow({ item, index, isOpen, onToggle, onRemove, draft, onDraftChange
         <button onClick={onRemove} style={{ background: "none", border: "none", color: "#9A988E", fontSize: 11, cursor: "pointer" }}>削除</button>
       </div>
 
-      {isOpen && (
-        <div style={{ marginTop: 12, marginLeft: 38 }}>
-          {(item.checkIns ?? []).length === 0 ? (
-            <p style={{ fontSize: 11.5, color: "#9A988E" }}>まだ記録がありません。</p>
-          ) : item.checkIns.map((ci) => (
-            <div key={ci.id} style={{ padding: "8px 0", borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                <span style={{ fontSize: 9.5, color: "#9A988E" }}>{shortDate(ci.at)}{ci.source === "prompted" && " ・ ブリーフより"}</span>
-                {ci.kind === "milestone" && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: RUST, borderRadius: 999, padding: "2px 7px" }}>{ratingLabel(ci.rating)}</span>}
+      <div style={{ display: "grid", gridTemplateRows: isOpen ? "1fr" : "0fr", transition: "grid-template-rows 0.26s cubic-bezier(0.32,0.72,0,1)" }}>
+        <div style={{ overflow: "hidden" }}>
+          <div style={{ marginTop: 12, marginLeft: 38 }}>
+            {(item.checkIns ?? []).length === 0 ? (
+              <p style={{ fontSize: 11.5, color: "#9A988E" }}>まだ記録がありません。</p>
+            ) : item.checkIns.map((ci) => (
+              <div key={ci.id} style={{ padding: "8px 0", borderTop: `1px solid ${HAIRLINE}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                  <span style={{ fontSize: 9.5, color: "#9A988E" }}>{shortDate(ci.at)}{ci.source === "prompted" && " ・ ブリーフより"}</span>
+                  {ci.kind === "milestone" && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: RUST, borderRadius: 999, padding: "2px 7px" }}>{ratingLabel(ci.rating)}</span>}
+                </div>
+                <div style={{ fontSize: 12, color: "#4A4A44", lineHeight: 1.6 }}>{ci.text}</div>
               </div>
-              <div style={{ fontSize: 12, color: "#4A4A44", lineHeight: 1.6 }}>{ci.text}</div>
+            ))}
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <input value={draft} onChange={(e) => onDraftChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onManualAdd()}
+                placeholder="今の様子を書き足す" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: 12.5, padding: "6px 2px", outline: "none" }} />
+              <button onClick={onManualAdd} style={rowBtn(INK, PAPER)}>記録</button>
             </div>
-          ))}
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <input value={draft} onChange={(e) => onDraftChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onManualAdd()}
-              placeholder="今の様子を書き足す" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: 12.5, padding: "6px 2px", outline: "none" }} />
-            <button onClick={onManualAdd} style={rowBtn(INK, PAPER)}>記録</button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

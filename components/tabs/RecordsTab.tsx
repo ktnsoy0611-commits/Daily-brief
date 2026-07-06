@@ -95,11 +95,13 @@ function CollapsibleFolder({ title, count, coverImages, coverColor, children }: 
         </div>
         <ChevronDown size={16} color="#9A988E" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s", flexShrink: 0 }} />
       </button>
-      {open && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-          {children}
+      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 0.28s cubic-bezier(0.32,0.72,0,1)" }}>
+        <div style={{ overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+            {children}
+          </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }
@@ -204,11 +206,13 @@ function ShelfList({ appState, persist }: { appState: AppState; persist: (next: 
                 <div style={{ marginTop: 4 }}><Dot color={status.color} label={`${status.label} ・ ${k.category}${k.area && k.area !== "—" ? "・" + k.area : ""} ・ ${daysBetween(k.keptAt) === 0 ? "今日" : daysBetween(k.keptAt) + "日前"}`} /></div>
               </div>
             </div>
-            {isSel && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "0 2px 14px" }}>
-                <button onClick={() => removeKeep(k.id)} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+            <div style={{ display: "grid", gridTemplateRows: isSel ? "1fr" : "0fr", transition: "grid-template-rows 0.22s cubic-bezier(0.32,0.72,0,1)" }}>
+              <div style={{ overflow: "hidden" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "0 2px 14px" }}>
+                  <button onClick={() => removeKeep(k.id)} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+                </div>
               </div>
-            )}
+            </div>
           </div>
         );
       })}

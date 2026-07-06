@@ -4,7 +4,7 @@ import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, Dot, keepStatus, Masthead, PosterCard, rowBtn, Thumb } from "@/components/common";
-import { BG, DISPLAY, GREEN, HAIRLINE, INK, MEDIA_KINDS, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, mediaKindOf } from "@/lib/constants";
+import { BG, DISPLAY, GREEN, HAIRLINE, INK, MEDIA_KINDS, NAV_OFFSET, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, mediaKindOf } from "@/lib/constants";
 import { daysBetween, hashStr, haptic, keepMedia, shortDate } from "@/lib/helpers";
 import type { MediaKindId, TabProps, Wish } from "@/lib/types";
 
@@ -352,7 +352,7 @@ export function StockTab({ appState, persist, showToast }: TabProps) {
         </section>
       </main>
 
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 60, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
+      <div style={{ position: "fixed", left: 0, right: 0, bottom: NAV_OFFSET, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
         <div style={{ width: "100%", maxWidth: 420, padding: "0 16px 10px" }}>
           <div style={{ display: "flex", gap: 8, background: PAPER, border: `1.5px solid ${INK}`, borderRadius: 999, padding: "4px 4px 4px 18px", boxShadow: "0 6px 20px rgba(23,23,21,0.1)" }}>
             <input

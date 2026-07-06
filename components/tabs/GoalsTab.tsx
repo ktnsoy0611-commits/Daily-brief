@@ -3,7 +3,7 @@
 import { ChevronDown, Sprout, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Dot, Masthead, rowBtn } from "@/components/common";
-import { BG, DISPLAY, GREEN, HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
+import { BG, DISPLAY, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
 import type { Goal, TabProps } from "@/lib/types";
 
@@ -119,7 +119,7 @@ export function GoalsTab({ appState, persist }: TabProps) {
         ))}
       </main>
 
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 60, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
+      <div style={{ position: "fixed", left: 0, right: 0, bottom: NAV_OFFSET, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
         <div style={{ width: "100%", maxWidth: 420, padding: "0 16px 10px" }}>
           <div style={{ display: "flex", gap: 8, background: PAPER, border: `1.5px solid ${INK}`, borderRadius: 999, padding: "4px 4px 4px 18px", boxShadow: "0 6px 20px rgba(23,23,21,0.1)" }}>
             <input

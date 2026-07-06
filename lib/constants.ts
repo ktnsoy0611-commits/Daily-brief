@@ -40,6 +40,11 @@ export const HAIRLINE = "rgba(23,23,21,0.08)";
 
 export const POSTER_PALETTE = ["#20304A", "#1A1A18", "#3E4A3A", "#A8552F", "#2B3FBF", "#5C3A21", "#3A4A4A", "#1F2937"];
 
+// 下部固定バー(願望・目標・実行タブ)がナビゲーションバーの直上にぴったり
+// 収まるためのオフセット。ナビの実測高さ(56px、アイコン+ラベル+上下padding)
+// に安全域を足す。ここが合っていないと、固定バーとナビの間に隙間ができる。
+export const NAV_OFFSET = "calc(56px + env(safe-area-inset-bottom))";
+
 export interface Category {
   id: CategoryId;
   label: string;

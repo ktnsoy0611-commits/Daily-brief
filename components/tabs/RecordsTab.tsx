@@ -1,62 +1,65 @@
 "use client";
 
-import { ChevronDown, Sprout } from "lucide-react";
+import { Sprout } from "lucide-react";
 import { useState } from "react";
+import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, Masthead, PosterCard } from "@/components/common";
 import { BLUE, GREEN, HAIRLINE, INK, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, shortDate } from "@/lib/helpers";
-import type { Keep, MediaKindId, TabProps } from "@/lib/types";
+import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
-// 「バインダーフォルダー」。閉じているときは写真が重なった束、タップで
-// 開くと中身のカードのグリッドが現れる。エリア別・日付別の両方で共用する。
-function CollapsibleFolder({ title, count, coverImages, coverColor, children }: {
-  title: string; count: number; coverImages: string[]; coverColor?: string; children: React.ReactNode;
+// 「バインダー」タイル。正方形に近いタイルの中に写真が数枚重なった束を
+// 見せ、タップで中身のカードグリップをシートで開く。エリア別・メディアの
+// ジャンル別・日付別で共用し、デザインとサイズを統一している。
+// (以前はタイルの直下に展開するアコーディオン式だったが、閉じた状態の
+// 展開パネルがCSS Grid/flexboxどちらでも「幅ゼロでも1行分場所を使う」
+// ため隣のタイルが2列に並ばなくなる問題があり、タップでシートを開く
+// 方式に変更した。)
+function BinderTile({ title, count, coverImages, coverColor, onClick }: {
+  title: string; count: number; coverImages: string[]; coverColor?: string; onClick: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const rotations = [-6, 4, -2];
+  const rotations = [-8, 5, -3];
   return (
-    <section style={{ marginBottom: open ? 26 : 14 }}>
-      <button onClick={() => { haptic(6); setOpen(!open); }} style={{
-        width: "100%", display: "flex", alignItems: "center", gap: 14, background: PAPER, border: `1px solid ${HAIRLINE}`,
-        borderRadius: 16, padding: "14px 16px", cursor: "pointer", textAlign: "left", boxShadow: open ? "none" : "0 6px 16px rgba(23,23,21,0.08)",
+    <button onClick={onClick} style={{ minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+      <div style={{
+        position: "relative", width: "100%", aspectRatio: "1 / 1", borderRadius: 18, background: PAPER,
+        border: `1px solid ${HAIRLINE}`, boxShadow: "0 8px 20px rgba(23,23,21,0.12)",
+        overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
       }}>
-        <div style={{ position: "relative", width: 64, height: 64, flexShrink: 0 }}>
-          {coverImages.length === 0 ? (
-            <div style={{ width: 56, height: 56, borderRadius: 10, background: coverColor ?? "#5A5A54", margin: 4 }} />
-          ) : coverImages.map((seed, i) => (
-            <img key={seed} src={img(seed, 120, 120)} alt="" style={{
-              position: "absolute", top: 4, left: 4, width: 54, height: 54, objectFit: "cover", borderRadius: 8,
-              border: "2.5px solid #fff", boxShadow: "0 3px 8px rgba(23,23,21,0.25)",
-              transform: `rotate(${rotations[i]}deg) translate(${i * 3}px, ${i * -2}px)`, zIndex: i,
-            }} />
-          ))}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 18 }}>{title}</div>
-          <div style={{ fontSize: 10, color: "#9A988E", marginTop: 3 }}>{count}件の記録</div>
-        </div>
-        <ChevronDown size={16} color="#9A988E" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s", flexShrink: 0 }} />
-      </button>
-      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 0.28s cubic-bezier(0.32,0.72,0,1)" }}>
-        <div style={{ overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-            {children}
+        {coverImages.length === 0 ? (
+          <div style={{ width: "56%", height: "56%", borderRadius: 14, background: coverColor ?? "#5A5A54" }} />
+        ) : (
+          <div style={{ position: "relative", width: "62%", height: "62%" }}>
+            {coverImages.slice(0, 3).map((seed, i) => (
+              <img key={seed} src={img(seed, 220, 220)} alt="" style={{
+                position: "absolute", top: "50%", left: "50%", width: "82%", height: "82%", objectFit: "cover", borderRadius: 12,
+                border: "3px solid #fff", boxShadow: "0 5px 14px rgba(23,23,21,0.25)",
+                transform: `translate(-50%, -50%) rotate(${rotations[i]}deg) translate(${i * 7}px, ${i * -5}px)`, zIndex: i,
+              }} />
+            ))}
           </div>
-        </div>
+        )}
+        <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(23,23,21,0.6)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px" }}>{count}</div>
       </div>
-    </section>
+      <div style={{ marginTop: 8, fontFamily: SERIF, fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+    </button>
   );
 }
 
-function AreaFolder({ area, keeps, onOpenItem }: { area: string; keeps: Keep[]; onOpenItem: (k: Keep) => void }) {
-  const covers = keeps.filter((k) => k.images?.[0]).slice(0, 3).map((k) => k.images![0]);
+function BinderGrid({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>{children}</div>;
+}
+
+// タップしたバインダーの中身を見せる共通シート。開くとスライドアップ
+// アニメーションとともにカードグリッドが現れる(BottomSheet標準の動き)。
+function BinderContentsSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <CollapsibleFolder title={area} count={keeps.length} coverImages={covers} coverColor={keeps[0]?.color}>
-      {keeps.map((k) => (
-        <PosterCard key={k.id} image={k.images?.[0]} color={k.color} title={k.title} sub={shortDate(k.doneAt ?? k.keptAt)}
-          onClick={k.images && k.images.length > 0 ? () => onOpenItem(k) : undefined} />
-      ))}
-    </CollapsibleFolder>
+    <BottomSheet onClose={onClose} maxHeight="80vh">
+      <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17, margin: "4px 0 16px" }}>{title}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingBottom: 8 }}>
+        {children}
+      </div>
+    </BottomSheet>
   );
 }
 
@@ -70,16 +73,9 @@ interface DayEntry {
   binderItem?: BinderItem;
 }
 
-function DayFolder({ label, entries, onOpenItem }: { label: string; entries: DayEntry[]; onOpenItem: (item: BinderItem) => void }) {
-  const covers = entries.filter((e) => e.image).slice(0, 3).map((e) => e.image!);
-  return (
-    <CollapsibleFolder title={label} count={entries.length} coverImages={covers} coverColor={entries[0]?.color}>
-      {entries.map((e) => (
-        <PosterCard key={e.key} image={e.image} color={e.color} title={e.title} sub={e.sub} label={e.label}
-          onClick={e.binderItem ? () => onOpenItem(e.binderItem!) : undefined} />
-      ))}
-    </CollapsibleFolder>
-  );
+interface OpenFolder {
+  title: string;
+  content: React.ReactNode;
 }
 
 // ==================================================================
@@ -88,6 +84,7 @@ function DayFolder({ label, entries, onOpenItem }: { label: string; entries: Day
 // ==================================================================
 export function RecordsTab({ appState, persist, goTab }: TabProps) {
   const [binderItem, setBinderItem] = useState<BinderItem | null>(null);
+  const [openFolder, setOpenFolder] = useState<OpenFolder | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "date">("list");
 
   const doneKeeps = appState.keeps.filter((k) => k.status === "done");
@@ -114,6 +111,18 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
   const areaSections = Array.from(areaGroups.entries()).map(([area, keeps]) => {
     const sorted = keeps.slice().sort((a, b) => new Date(b.doneAt ?? b.keptAt).getTime() - new Date(a.doneAt ?? a.keptAt).getTime());
     return { area, keeps: sorted, lastAt: sorted[0].doneAt ?? sorted[0].keptAt };
+  }).sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime());
+
+  // メディアをジャンル(kind)ごとにまとめ、エリアフォルダーと同じバインダー
+  // タイルで統一して見せる。カードが大きすぎて画面を占有する問題への対応。
+  const mediaGroups = new Map<MediaKindId, MediaRecord[]>();
+  doneMediaRecords.forEach((r) => {
+    if (!mediaGroups.has(r.kind)) mediaGroups.set(r.kind, []);
+    mediaGroups.get(r.kind)!.push(r);
+  });
+  const mediaSections = Array.from(mediaGroups.entries()).map(([kind, records]) => {
+    const sorted = records.slice().sort((a, b) => new Date(b.doneAt ?? b.addedAt).getTime() - new Date(a.doneAt ?? a.addedAt).getTime());
+    return { kind, records: sorted, lastAt: sorted[0].doneAt ?? sorted[0].addedAt };
   }).sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime());
 
   const totalCount = doneKeeps.length + doneMediaRecords.length + fulfilledWishes.length;
@@ -240,29 +249,51 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
 
         {viewMode === "list" ? (
           <>
-            <section style={{ marginBottom: 30 }}>
-              <div style={{ marginBottom: 12 }}>
-                <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>メディア</span>
-              </div>
-              {doneMediaRecords.length === 0 ? (
-                <p style={{ fontSize: 11.5, color: "#9A988E" }}>実行して記録したものがここに並びます。</p>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  {doneMediaRecords.map((r) => (
-                    <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.doneAt ?? r.addedAt)} label={mediaLabel[r.kind]}
-                      good={!!r.good} onToggleGood={() => toggleGood(r.id)}
-                      onClick={r.image ? () => setBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
-                  ))}
+            {mediaSections.length > 0 && (
+              <section style={{ marginBottom: 30 }}>
+                <div style={{ marginBottom: 12 }}>
+                  <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>メディア</span>
                 </div>
-              )}
-            </section>
+                <BinderGrid>
+                  {mediaSections.map((sec) => {
+                    const kindLabel = mediaKindOf(sec.kind).label;
+                    const covers = sec.records.filter((r) => r.image).slice(0, 3).map((r) => r.image!);
+                    return (
+                      <BinderTile key={sec.kind} title={kindLabel} count={sec.records.length} coverImages={covers} coverColor={sec.records[0]?.color}
+                        onClick={() => setOpenFolder({
+                          title: kindLabel,
+                          content: sec.records.map((r) => (
+                            <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.doneAt ?? r.addedAt)} label={mediaLabel[r.kind]}
+                              good={!!r.good} onToggleGood={() => toggleGood(r.id)}
+                              onClick={r.image ? () => setBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
+                          )),
+                        })} />
+                    );
+                  })}
+                </BinderGrid>
+              </section>
+            )}
 
             {areaSections.length > 0 && (
-              <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 12 }}>行った場所</div>
+              <section style={{ marginBottom: 30 }}>
+                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 12 }}>行った場所</div>
+                <BinderGrid>
+                  {areaSections.map((sec) => {
+                    const covers = sec.keeps.filter((k) => k.images?.[0]).slice(0, 3).map((k) => k.images![0]);
+                    return (
+                      <BinderTile key={sec.area} title={sec.area} count={sec.keeps.length} coverImages={covers} coverColor={sec.keeps[0]?.color}
+                        onClick={() => setOpenFolder({
+                          title: sec.area,
+                          content: sec.keeps.map((k) => (
+                            <PosterCard key={k.id} image={k.images?.[0]} color={k.color} title={k.title} sub={shortDate(k.doneAt ?? k.keptAt)}
+                              onClick={k.images && k.images.length > 0 ? () => setBinderItem(k) : undefined} />
+                          )),
+                        })} />
+                    );
+                  })}
+                </BinderGrid>
+              </section>
             )}
-            {areaSections.map((sec) => (
-              <AreaFolder key={sec.area} area={sec.area} keeps={sec.keeps} onOpenItem={setBinderItem} />
-            ))}
 
             {fulfilledWishes.length > 0 && (
               <section style={{ margin: "28px 0 0" }}>
@@ -279,9 +310,23 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
           <>
             {daySections.length === 0 ? (
               <p style={{ fontSize: 11.5, color: "#9A988E", padding: "4px 2px" }}>まだ記録がありません。</p>
-            ) : daySections.map((sec) => (
-              <DayFolder key={sec.label} label={sec.label} entries={sec.entries} onOpenItem={setBinderItem} />
-            ))}
+            ) : (
+              <BinderGrid>
+                {daySections.map((sec) => {
+                  const covers = sec.entries.filter((e) => e.image).slice(0, 3).map((e) => e.image!);
+                  return (
+                    <BinderTile key={sec.label} title={sec.label} count={sec.entries.length} coverImages={covers} coverColor={sec.entries[0]?.color}
+                      onClick={() => setOpenFolder({
+                        title: sec.label,
+                        content: sec.entries.map((e) => (
+                          <PosterCard key={e.key} image={e.image} color={e.color} title={e.title} sub={e.sub} label={e.label}
+                            onClick={e.binderItem ? () => setBinderItem(e.binderItem!) : undefined} />
+                        )),
+                      })} />
+                  );
+                })}
+              </BinderGrid>
+            )}
           </>
         )}
 
@@ -293,6 +338,7 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
         )}
       </main>
 
+      {openFolder && <BinderContentsSheet title={openFolder.title} onClose={() => setOpenFolder(null)}>{openFolder.content}</BinderContentsSheet>}
       <BinderModal item={binderItem} onClose={() => setBinderItem(null)} />
     </>
   );

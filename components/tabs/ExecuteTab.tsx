@@ -4,7 +4,7 @@ import { Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, Masthead } from "@/components/common";
-import { AREA_COORDS, BG, BLUE, DISPLAY, GREEN, HAIRLINE, INK, PAPER, RUST, SANS, SERIF, mediaKindOf } from "@/lib/constants";
+import { AREA_COORDS, BG, BLUE, DISPLAY, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SERIF, mediaKindOf } from "@/lib/constants";
 import { haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaRecord, TabProps } from "@/lib/types";
 
@@ -75,6 +75,26 @@ function ShelfCard({ title, image, color, sub, selected, onToggle }: {
   );
 }
 
+// 「今週のおすすめ」専用カード。ShelfCardの正方形サムネイルだけでは中身が
+// 何もわからなくなるため、タグライン+件名リスト+明示的な選択ボタンを持つ、
+// 統合前(round4以前)の情報量を復元したカード。
+function BundleCard({ label, tagline, items, onPick }: {
+  label: string; tagline: string; items: { id: string; title: string }[]; onPick: () => void;
+}) {
+  return (
+    <div style={{ flexShrink: 0, width: 190, background: PAPER, border: `1px solid ${HAIRLINE}`, borderRadius: 16, padding: "16px 17px", boxShadow: "0 6px 16px rgba(23,23,21,0.08)" }}>
+      <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17 }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: "#9A988E", margin: "3px 0 12px" }}>{tagline}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14, minHeight: 60 }}>
+        {items.map((it) => (
+          <div key={it.id} style={{ fontSize: 11, color: "#5A5A54", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>・{it.title}</div>
+        ))}
+      </div>
+      <button onClick={onPick} style={{ width: "100%", padding: "10px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11.5, fontWeight: 700 }}>これにする</button>
+    </div>
+  );
+}
+
 function HorizontalShelf({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 22 }}>
@@ -138,9 +158,9 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
 }) {
   const sorted = pool.slice().sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
   const bundles = [
-    { id: "light", label: "さらっと", items: sorted.slice(0, 1) },
-    { id: "easy", label: "ゆったり", items: sorted.slice(0, 3) },
-    { id: "full", label: "じっくり", items: sorted.slice(0, 5) },
+    { id: "light", label: "さらっと", tagline: "ひとつだけ、身軽に。", items: sorted.slice(0, 1) },
+    { id: "easy", label: "ゆったり", tagline: "2〜3件、無理のない範囲で。", items: sorted.slice(0, 3) },
+    { id: "full", label: "じっくり", tagline: "気になった分だけ、まとめて。", items: sorted.slice(0, 5) },
   ].filter((b) => b.items.length > 0);
 
   if (pool.length === 0 && mediaPool.length === 0) {
@@ -181,8 +201,7 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
       {bundles.length > 0 && (
         <HorizontalShelf title="今週のおすすめ" badge={bundlesAreNew ? "NEW" : undefined}>
           {bundles.map((b) => (
-            <ShelfCard key={b.id} title={b.label} image={b.items[0]?.images?.[0]} color={b.items[0]?.color}
-              sub={`${b.items.length}件`} selected={false} onToggle={() => onPickBundle(b.items.map((it) => it.id))} />
+            <BundleCard key={b.id} label={b.label} tagline={b.tagline} items={b.items} onPick={() => onPickBundle(b.items.map((it) => it.id))} />
           ))}
         </HorizontalShelf>
       )}
@@ -206,7 +225,7 @@ interface ExecItem {
 
 function CoverSpread({ items }: { items: { id: string; title: string }[] }) {
   return (
-    <div style={{ flexShrink: 0, width: "78%", minWidth: 240, scrollSnapAlign: "center", height: 460, background: INK, color: PAPER, borderRadius: 18, padding: "26px 22px", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 10px 30px rgba(23,23,21,0.25)" }}>
+    <div style={{ flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", background: INK, color: PAPER, borderRadius: 18, padding: "26px 22px", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 10px 30px rgba(23,23,21,0.25)" }}>
       <div>
         <div style={{ fontSize: 9, letterSpacing: "0.3em", color: "rgba(251,250,247,0.55)" }}>TODAY&apos;S ISSUE</div>
         <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 25, lineHeight: 1.45, margin: "14px 0 0" }}>今日のための<br />特集号。</div>
@@ -236,7 +255,7 @@ function DestinationSpread({ item, index, total, onRemove, onMarkDone }: {
 }) {
   const isMapsSource = item.type === "keep" && item.sourceLabel === "地図で見る" && !!item.sourceUrl;
   return (
-    <div style={{ flexShrink: 0, width: "78%", minWidth: 240, scrollSnapAlign: "center", height: 460, borderRadius: 18, overflow: "hidden", position: "relative", boxShadow: "0 10px 30px rgba(23,23,21,0.2)", background: PAPER, display: "flex", flexDirection: "column" }}>
+    <div style={{ flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", borderRadius: 18, overflow: "hidden", position: "relative", boxShadow: "0 10px 30px rgba(23,23,21,0.2)", background: PAPER, display: "flex", flexDirection: "column" }}>
       <div style={{ height: "56%", position: "relative", flexShrink: 0 }}>
         {item.images && item.images.length > 0 ? (
           <img src={img(item.images[0], 500, 500)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -484,7 +503,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
             onPickBundle={(ids) => confirmMagazine(ids, [])} onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
           />
           {(draftSelection.length + draftMediaSelection.length) > 0 && (
-            <div style={{ position: "fixed", left: 0, right: 0, bottom: 60, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
+            <div style={{ position: "fixed", left: 0, right: 0, bottom: NAV_OFFSET, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
               <div style={{ width: "100%", maxWidth: 420, padding: "0 16px 10px" }}>
                 <DraftBinder items={draftBinderItems} onRemove={removeDraftItem} />
                 <button onClick={() => confirmMagazine(draftSelection, draftMediaSelection)} style={{ width: "100%", padding: "14px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: "0 8px 24px rgba(23,23,21,0.2)" }}>
@@ -513,7 +532,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
             ))}
             {editingMag && (
               <button onClick={() => setAddSheetOpen(true)} style={{
-                flexShrink: 0, width: "78%", minWidth: 240, scrollSnapAlign: "center", height: 460, borderRadius: 18, cursor: "pointer",
+                flexShrink: 0, width: "86%", minWidth: 270, scrollSnapAlign: "center", height: "min(66vh, 580px)", borderRadius: 18, cursor: "pointer",
                 border: "2px dashed rgba(23,23,21,0.25)", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10,
               }}>
                 <span style={{ fontSize: 34, color: "#9A988E", lineHeight: 1 }}>＋</span>

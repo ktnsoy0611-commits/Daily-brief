@@ -2,7 +2,7 @@
 
 import { BookOpen, Film, MapPin, Music, Music2, Palette, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
+import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, CardStack, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
 import { GREEN, HAIRLINE, INK, MEDIA_KINDS, PAPER, POSTER_PALETTE, RUST, SANS, mediaKindOf } from "@/lib/constants";
 import { hashStr, haptic, keepMedia, shortDate } from "@/lib/helpers";
@@ -315,26 +315,38 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
 
       {openStack === "media" && (
         <BottomSheet onClose={() => setOpenStack(null)} maxHeight="74vh">
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>作品</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
-            {mediaItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : mediaItemsDesc.map((r) => mediaCard(r))}
-          </div>
+          {(requestClose) => (
+            <>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>作品</div>
+              <div onClick={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
+                {mediaItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : mediaItemsDesc.map((r) => mediaCard(r))}
+              </div>
+            </>
+          )}
         </BottomSheet>
       )}
       {openStack === "place" && (
         <BottomSheet onClose={() => setOpenStack(null)} maxHeight="74vh">
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>場所</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
-            {placeItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : placeItemsDesc.map((k) => placeCard(k))}
-          </div>
+          {(requestClose) => (
+            <>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>場所</div>
+              <div onClick={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
+                {placeItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : placeItemsDesc.map((k) => placeCard(k))}
+              </div>
+            </>
+          )}
         </BottomSheet>
       )}
       {openStack === "wish" && (
         <BottomSheet onClose={() => setOpenStack(null)} maxHeight="74vh">
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>ウィッシュリスト</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
-            {wishItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : wishItemsDesc.map((w) => wishCard(w))}
-          </div>
+          {(requestClose) => (
+            <>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>ウィッシュリスト</div>
+              <div onClick={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
+                {wishItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : wishItemsDesc.map((w) => wishCard(w))}
+              </div>
+            </>
+          )}
         </BottomSheet>
       )}
 

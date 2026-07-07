@@ -150,12 +150,18 @@ export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }:
           <p style={{ fontSize: 10.5, lineHeight: 1.5, color: "#7A7A72", margin: "6px 0 0", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
         )}
       </div>
-      {/* 下側: 巻かれたロール紙。楕円の頂部で「筒」のような丸みを出す */}
+      {/* 下側: 巻かれたロール紙。楕円の頂部で「筒」のような丸みを出し、
+          上のカードとの境目にはうっすら折り目の影を入れて奥行きを足す。 */}
       <div style={{ flex: "0 0 36%", position: "relative" }}>
+        <div style={{ position: "absolute", top: 0, left: "6%", right: "6%", height: 5, borderRadius: "50%", background: "rgba(28,28,30,0.1)", filter: "blur(2px)" }} />
         <div style={{
           position: "absolute", inset: 0, borderRadius: "50% 50% 0 0 / 22px 22px 0 0",
-          background: "linear-gradient(180deg, #FDFBF5 0%, #EEE6D3 40%, #E1D7C0 58%, #ECE3D0 100%)",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.7)",
+          background: "linear-gradient(180deg, #FDFBF5 0%, #EEE6D3 38%, #DDD2B8 54%, #F1EADA 72%, #EEE6D3 100%)",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.8)",
+        }} />
+        <div style={{
+          position: "absolute", top: "26%", left: "14%", width: "34%", height: "30%", borderRadius: "50%",
+          background: "radial-gradient(ellipse at center, rgba(255,255,255,0.55), rgba(255,255,255,0) 70%)",
         }} />
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 10 }}>
           <span style={{ fontSize: 8.5, color: "#8A8477", fontWeight: 700, letterSpacing: "0.03em" }}>

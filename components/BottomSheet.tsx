@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { PAPER, SOFT_SHADOW_LG } from "@/lib/constants";
 
 interface BottomSheetProps {
@@ -29,15 +29,24 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
     setTimeout(onClose, 220);
   };
 
+  // 中身は呼び出し側ごとに構造がバラバラ(フォームや複数カードのグリッドなど)
+  // なので、子要素にstopPropagationを仕込む方式だと、見た目は背景(ブラー)
+  // なのに実はスクロール領域の余白だった、という場所でタップしても閉じない
+  // 事故が起きやすい。代わりに「クリックされた要素がこの判定対象そのもの
+  // かどうか」だけで見る、より確実な方式にしている。
+  const closeIfSelf = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) requestClose();
+  };
+
   return (
-    <div onClick={requestClose} style={{
+    <div onClick={closeIfSelf} style={{
       position: "fixed", inset: 0, zIndex: 45, display: "flex", alignItems: "flex-end", justifyContent: "center",
       background: open ? "rgba(16,16,20,0.4)" : "rgba(16,16,20,0)",
       backdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
       WebkitBackdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
       transition: "background 0.3s ease, backdrop-filter 0.3s ease, -webkit-backdrop-filter 0.3s ease",
     }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
+      <div style={{
         width: "calc(100% - 48px)", maxWidth: 380, marginBottom: 20, maxHeight,
         display: "flex", flexDirection: "column", overflow: "hidden",
         transform: open ? "translateY(0) scale(1)" : "translateY(26px) scale(0.94)",
@@ -45,12 +54,22 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
         transformOrigin: "50% 100%",
         transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease",
       }}>
-        <div style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "6px 4px 0", paddingBottom: "max(18px, env(safe-area-inset-bottom))" }}>
+        <div onClick={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "6px 4px 0", paddingBottom: "max(18px, env(safe-area-inset-bottom))" }}>
           {typeof children === "function" ? children(requestClose) : children}
         </div>
       </div>
     </div>
   );
+}
+
+// BottomSheetの中に置くグリッドなど、独自の入れ物(div)を挟む場合に、
+// その入れ物の余白(カードが無い空セルなど)をタップしても閉じられるように
+// するためのヘルパー。onClickに渡すだけで、そのdiv自身がクリックされた
+// 時だけhandlerを呼ぶ(子要素のカードをタップした時は呼ばれない)。
+export function closeOnSelfClick(handler: () => void) {
+  return (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) handler();
+  };
 }
 
 // フォームや一覧など、ブラー背景の上でもそれ自体が読める不透明な面が

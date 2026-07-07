@@ -88,7 +88,7 @@ export function AppShell() {
   }, [appState?.wishes, appState?.keeps]);
 
   if (!appState) {
-    return <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
+    return <div style={{ minHeight: "100dvh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
   }
 
   const interestCount = (appState.profile?.interests ?? []).length;
@@ -110,8 +110,8 @@ export function AppShell() {
   const tabProps: TabProps = { appState, persist, showToast, goTab: setTab, profileButton };
 
   return (
-    <div style={{ minHeight: "100vh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
-      <div style={{ width: "100%", maxWidth: 420, flex: 1, display: "flex", flexDirection: "column", padding: `0 16px ${showProfile ? 24 : 84}px` }}>
+    <div style={{ minHeight: "100dvh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
+      <div style={{ width: "100%", maxWidth: 420, flex: 1, display: "flex", flexDirection: "column", padding: `env(safe-area-inset-top) 16px ${showProfile ? 24 : 84}px` }}>
         {storageMode === "memory" && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
 
         {showProfile ? (

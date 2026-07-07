@@ -2,7 +2,7 @@
 
 import { BookOpen, Film, MapPin, Music, Music2, Paperclip, Palette } from "lucide-react";
 import { useState } from "react";
-import { BottomSheet } from "@/components/BottomSheet";
+import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, GoalCard, type IconType, Masthead, PosterCard } from "@/components/common";
 import { BLUE, GREEN, INK, ITEM_CARD_ASPECT, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, shade, shortDate } from "@/lib/helpers";
@@ -101,10 +101,14 @@ function BinderGrid({ children }: { children: React.ReactNode }) {
 function BinderContentsSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <BottomSheet onClose={onClose} maxHeight="74vh">
-      <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{title}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
-        {children}
-      </div>
+      {(requestClose) => (
+        <>
+          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{title}</div>
+          <div onClick={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
+            {children}
+          </div>
+        </>
+      )}
     </BottomSheet>
   );
 }

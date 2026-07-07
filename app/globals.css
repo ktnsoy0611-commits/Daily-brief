@@ -9,6 +9,26 @@ body {
   height: 100%;
   max-width: 100vw;
   overflow-x: hidden;
+  /* iOSのオーバースクロール(バウンス)時に、この背景色より外側の
+     真っ白な地が一瞬見えて継ぎ目のようになるのを防ぐため、アプリの
+     背景色をhtml/bodyそのものにも敷いておく。 */
+  background-color: #F3F1EC;
+  /* ブリーフのカードを横スワイプする時、指の動きにわずかな縦成分が
+     混ざるだけでページ本体が引っ張られてバウンス/スクロールしてしまう
+     のを防ぐ。 */
+  overscroll-behavior-y: none;
+}
+
+/* オーバーレイのスクロール領域でOS標準のスクロールバーを隠すための
+   ユーティリティ。スクロール自体は無効化しない。 */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 a {

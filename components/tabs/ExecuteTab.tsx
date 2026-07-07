@@ -211,6 +211,7 @@ interface ExecItem {
   doneActionLabel: string;
   kind?: MediaKindId;
   kept?: boolean;
+  done?: boolean;
 }
 
 // ボード(コルクボード風)に留められた写真、というイメージの1枚。idから
@@ -234,8 +235,20 @@ function ScrapCard({ item, onClick }: { item: ExecItem; onClick: () => void }) {
         background: `radial-gradient(circle at 34% 30%, ${shade(pin, 45)}, ${pin} 55%, ${shade(pin, -30)} 100%)`,
         boxShadow: "0 3px 5px rgba(0,0,0,0.45)",
       }} />
-      <PosterCard image={item.images?.[0]} color={item.color} title={item.title} sub={item.area && item.area !== "—" ? item.area : undefined}
-        label={item.categoryLabel} icon={icon} kept={item.kept} />
+      {/* 行った/観たにしたカードは、ボードから消さずグレーアウトして
+          「済んだこと」がその場でわかるようにする。 */}
+      <div style={{ filter: item.done ? "grayscale(0.85) opacity(0.55)" : "none" }}>
+        <PosterCard image={item.images?.[0]} color={item.color} title={item.title} sub={item.area && item.area !== "—" ? item.area : undefined}
+          label={item.categoryLabel} icon={icon} kept={item.kept} />
+      </div>
+      {item.done && (
+        <div style={{
+          position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%", background: "rgba(28,28,30,0.7)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 6,
+        }}>
+          <Check size={12} color="#fff" strokeWidth={3} />
+        </div>
+      )}
     </div>
   );
 }
@@ -293,7 +306,7 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
         return {
           id: k.id, type: "keep", title: k.title, images: k.images, color: k.color,
           categoryLabel: k.category ?? "", area: k.area, meta: k.meta, sourceUrl: k.sourceUrl, sourceLabel: k.sourceLabel,
-          doneActionLabel: "行った", kept: k.origin !== "manual",
+          doneActionLabel: "行った", kept: k.origin !== "manual", done: k.status === "done",
         };
       }
       const r = appState.records.media.find((x) => x.id === ref.id);
@@ -302,7 +315,7 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
         id: r.id, type: "media", title: r.title, images: r.image ? [r.image] : undefined, color: r.color,
         categoryLabel: mediaKindOf(r.kind).label, meta: r.creator ? [r.creator] : undefined,
         sourceUrl: r.sourceUrl, sourceLabel: r.sourceLabel, doneActionLabel: mediaKindOf(r.kind).doneActionLabel,
-        kind: r.kind, kept: r.origin !== "manual",
+        kind: r.kind, kept: r.origin !== "manual", done: (r.status ?? "done") === "done",
       };
     })
     .filter((x): x is ExecItem => !!x) : [];
@@ -371,10 +384,12 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
     if (next.magazine!.itemIds.length === 0) { next.magazine = null; setEditingMag(false); }
     persist(next);
   };
+  // 行った/観たにしても、ボードからはすぐには消さない。itemIdsはそのまま
+  // 残し、状態をdoneにするだけにして、ScrapCard側でグレーアウト表示にする
+  // ことで「今日やったこと」がその場に積み上がって見えるようにしている。
   const markDoneInMagazine = (id: string, type: MagazineItemRef["type"]) => {
     haptic(14);
     const next = structuredClone(appState);
-    next.magazine!.itemIds = next.magazine!.itemIds.filter((r) => !(r.id === id && r.type === type));
     if (type === "keep") {
       const k = next.keeps.find((x) => x.id === id);
       if (k) {
@@ -393,7 +408,6 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
         r.doneAt = new Date().toISOString();
       }
     }
-    if (next.magazine!.itemIds.length === 0) { next.magazine = null; setEditingMag(false); }
     persist(next);
   };
   const dissolveMagazine = () => {
@@ -532,10 +546,14 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
         item={detailItem ? { title: detailItem.title, category: detailItem.categoryLabel, images: detailItem.images, meta: detailItem.meta, sourceUrl: detailItem.sourceUrl, sourceLabel: detailItem.sourceLabel } : null}
         onClose={() => setDetailItem(null)}
         actionSlot={detailItem ? ((closeSheet) => (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => { markDoneInMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ flex: 1, padding: "12px 0", borderRadius: 999, border: "none", background: GREEN, color: "#fff", fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{detailItem.doneActionLabel}</button>
-            <button onClick={() => { removeFromMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ flex: 1, padding: "12px 0", borderRadius: 999, border: `1.5px solid ${RUST}`, background: "transparent", color: RUST, fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>外す</button>
-          </div>
+          detailItem.done ? (
+            <button onClick={() => { removeFromMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ width: "100%", padding: "12px 0", borderRadius: 999, border: `1.5px solid ${RUST}`, background: "transparent", color: RUST, fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>ボードから外す</button>
+          ) : (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { markDoneInMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ flex: 1, padding: "12px 0", borderRadius: 999, border: "none", background: GREEN, color: "#fff", fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{detailItem.doneActionLabel}</button>
+              <button onClick={() => { removeFromMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ flex: 1, padding: "12px 0", borderRadius: 999, border: `1.5px solid ${RUST}`, background: "transparent", color: RUST, fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>外す</button>
+            </div>
+          )
         )) : undefined}
       />
       {addSheetOpen && <AddToMagazineSheet pool={notInMagazine} onAdd={(id) => addToMagazine(id)} onClose={() => setAddSheetOpen(false)} />}

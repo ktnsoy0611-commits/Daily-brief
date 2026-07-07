@@ -301,7 +301,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
       {!done ? (
         <>
-          <main style={{ position: "relative", margin: "14px auto 10px", width: "100%", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT, maxHeight: "62vh" }}>
+          <main style={{ position: "relative", margin: "10px auto 8px", width: "100%", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT, maxHeight: "52dvh" }}>
             {index + 1 < deck.length && (
               <div key={`peek-${deck[index + 1].id}`} style={{ position: "absolute", inset: 0, transform: `scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) translateY(8px)`, transition: drag.active ? "none" : "transform 0.28s" }}>
                 <CardFace card={deck[index + 1]} dx={0} isTop={false} checkinValue="" onCheckinChange={() => {}} milestoneText="" onMilestoneTextChange={() => {}} milestoneRating={null} onMilestoneRatingChange={() => {}} />

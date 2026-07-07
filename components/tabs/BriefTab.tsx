@@ -301,7 +301,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
       {!done ? (
         <>
-          <main style={{ position: "relative", margin: "10px auto 8px", width: "100%", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT, maxHeight: "52dvh" }}>
+          <main style={{ position: "relative", margin: "10px auto 8px", width: "100%", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT, maxHeight: "58dvh" }}>
             {index + 1 < deck.length && (
               <div key={`peek-${deck[index + 1].id}`} style={{ position: "absolute", inset: 0, transform: `scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) translateY(8px)`, transition: drag.active ? "none" : "transform 0.28s" }}>
                 <CardFace card={deck[index + 1]} dx={0} isTop={false} checkinValue="" onCheckinChange={() => {}} milestoneText="" onMilestoneTextChange={() => {}} milestoneRating={null} onMilestoneRatingChange={() => {}} />
@@ -312,19 +312,23 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               <CardFace card={deck[index]} dx={drag.dx} isTop onOpenBinder={() => setBinderItem(deck[index] as BriefCard)} checkinValue={checkinAnswer} onCheckinChange={setCheckinAnswer} milestoneText={milestoneText} onMilestoneTextChange={setMilestoneText} milestoneRating={milestoneRating} onMilestoneRatingChange={setMilestoneRating} flagged={!!feedback[deck[index].id]} onFlag={() => toggleFlag(deck[index].id)} />
             </div>
           </main>
-          <footer style={{ paddingBottom: 8 }}>
-            {isGrowth ? (
+          {/* 育成カード(テキスト入力を伴う)はドラッグを無効にしているため、
+              代わりにボタンで決定させる必要がある。通常カードはスワイプだけで
+              完結するため、下部のSKIP/KEEPボタンは廃止し、控えめなヒントの
+              みに留める(実機Safariで、この固定ボタンぶんの高さがビューポート
+              計算とズレてカードが見切れる問題が繰り返し起きていたため)。 */}
+          {isGrowth ? (
+            <footer style={{ paddingBottom: 8 }}>
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => commit("skip")} style={{ flex: 1, padding: "13px 0", background: "transparent", border: "1.5px solid rgba(23,23,21,0.3)", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: "#5A5A54", cursor: "pointer" }}>あとで</button>
                 <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: "13px 0", background: isMilestone ? RUST : GREEN, border: "none", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: PAPER, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
               </div>
-            ) : (
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => commit("skip")} style={{ flex: 1, padding: "13px 0", background: "transparent", border: "1.5px solid rgba(23,23,21,0.3)", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.18em", color: "#5A5A54", cursor: "pointer" }}>SKIP</button>
-                <button onClick={() => commit("keep")} style={{ flex: 1.4, padding: "13px 0", background: INK, border: "none", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.18em", color: PAPER, cursor: "pointer" }}>KEEP</button>
-              </div>
-            )}
-          </footer>
+            </footer>
+          ) : (
+            <div style={{ textAlign: "center", fontSize: 10, letterSpacing: "0.08em", color: "#B3B1A6", paddingBottom: 8 }}>
+              ← SKIP　　KEEP →
+            </div>
+          )}
         </>
       ) : (
         <main style={{ flex: 1, padding: "28px 4px" }}>

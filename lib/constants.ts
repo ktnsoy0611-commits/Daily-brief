@@ -50,10 +50,9 @@ export const SOFT_SHADOW_LG = "0 12px 32px rgba(28,28,30,0.12)";
 export const HEADER_CHIP_SIZE = 40;
 
 // アプリ全体で使う統一カードの縦横比。写真付き(Keepの場所など)も
-// 文字だけ(作品など)も、この比率のカード1種類に統一する。
+// 文字だけ(作品など)も、目標のバインダーも、この比率1種類に統一する。
 export const ITEM_CARD_ASPECT = "3 / 4";
-// 目標カードだけは意図的に少し違う比率にして、視覚的に区別できるようにする。
-export const GOAL_CARD_ASPECT = "3 / 5";
+export const GOAL_CARD_ASPECT = ITEM_CARD_ASPECT;
 
 // 色数を絞った、写真が映えるための控えめなパレット。以前は8色の
 // ビビッドな色相を持っていたが、カードが並んだ時に色がぶつかり合って

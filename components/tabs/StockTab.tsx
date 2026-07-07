@@ -10,6 +10,9 @@ import type { Keep, MediaKindId, MediaRecord, TabProps, Wish } from "@/lib/types
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
 const MEDIA_LABEL: Record<MediaKindId, string> = { movie: "CINEMA", exhibition: "EXHIBITION", live: "LIVE", book: "BOOK", album: "MUSIC" };
+// ルーズリーフの穴+切り取り線が小さすぎるカードだと窮屈に見えるため、
+// スタック表示時の1枚幅を広めに確保する。
+const STACK_CARD_WIDTH = 132;
 
 // URLから場所を追加するシート。GoogleマップのURLは無料のPlaces APIで解析
 // (安価)、それ以外のURL(展覧会の公式サイトなど)はGeminiでの読み取りが
@@ -295,20 +298,20 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         <StackSection title="作品" count={mediaItemsDesc.length}>
-          <CardStack
-            items={mediaItemsDesc.slice().reverse().map((r) => ({ key: r.id, node: mediaCard(r, 108) }))}
+          <CardStack cardWidth={STACK_CARD_WIDTH}
+            items={mediaItemsDesc.slice().reverse().map((r) => ({ key: r.id, node: mediaCard(r, STACK_CARD_WIDTH) }))}
             onOpen={() => setOpenStack("media")} onAdd={() => setAddingMedia(true)} addLabel="作品を追加" />
         </StackSection>
 
         <StackSection title="場所" count={placeItemsDesc.length}>
-          <CardStack
-            items={placeItemsDesc.slice().reverse().map((k) => ({ key: k.id, node: placeCard(k, 108) }))}
+          <CardStack cardWidth={STACK_CARD_WIDTH}
+            items={placeItemsDesc.slice().reverse().map((k) => ({ key: k.id, node: placeCard(k, STACK_CARD_WIDTH) }))}
             onOpen={() => setOpenStack("place")} onAdd={() => setAddingUrl(true)} addLabel="場所を追加" />
         </StackSection>
 
         <StackSection title="ウィッシュリスト" count={wishItemsDesc.length}>
-          <CardStack
-            items={wishItemsDesc.slice().reverse().map((w) => ({ key: w.id, node: wishCard(w, 108) }))}
+          <CardStack cardWidth={STACK_CARD_WIDTH}
+            items={wishItemsDesc.slice().reverse().map((w) => ({ key: w.id, node: wishCard(w, STACK_CARD_WIDTH) }))}
             onOpen={() => setOpenStack("wish")} onAdd={() => setAddingWish(true)} addLabel="ウィッシュリストに追加" />
         </StackSection>
       </main>

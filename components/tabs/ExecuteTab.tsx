@@ -2,10 +2,9 @@
 
 import { BookOpen, Check, ChevronLeft, ChevronRight, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
-import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, mediaKindOf } from "@/lib/constants";
-import { hashStr, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
+import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, mediaKindOf } from "@/lib/constants";
+import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
@@ -46,7 +45,7 @@ function MapCanvas({ items, selectedIds, onOpenPin }: {
 
 // 地図の下に横スクロールで並ぶ棚。場所のKeep一覧・メディア一覧で共用する、
 // アプリ全体で統一したPosterCardに選択状態のオーバーレイを乗せたもの。
-function SelectablePosterCard({ selected, onToggle, size = 108, ...cardProps }: {
+function SelectablePosterCard({ selected, onToggle, size = 132, ...cardProps }: {
   selected: boolean; onToggle: () => void; size?: number;
 } & Omit<Parameters<typeof PosterCard>[0], "onClick" | "size">) {
   return (
@@ -214,53 +213,25 @@ interface ExecItem {
   done?: boolean;
 }
 
-// ボード(コルクボード風)に留められた写真、というイメージの1枚。idから
-// 決定論的に少しだけ回転・上下にずらし、上端には画鋲を1本のせることで、
-// 単なる散らしグリッドではなく「実際にピンで留めた」ような手触りを足す。
-// 画鋲の色は1色に絞り、写真やカード自体の色が主役になるようにしている。
-const PIN_COLOR = RUST;
-function ScrapCard({ item, onClick }: { item: ExecItem; onClick: () => void }) {
-  const seed = hashStr(`${item.type}-${item.id}`);
-  const rotation = ((seed % 9) - 4) * 1.4;
-  const lift = (seed >> 4) % 14;
-  const pin = PIN_COLOR;
-  const icon = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
-  return (
-    <div onClick={onClick} style={{
-      position: "relative", flex: "1 1 42%", maxWidth: 180, minWidth: 130, cursor: "pointer",
-      transform: `rotate(${rotation}deg) translateY(${lift}px)`, filter: "drop-shadow(0 10px 16px rgba(0,0,0,0.35))",
-    }}>
-      <div style={{
-        position: "absolute", top: -6, left: "50%", transform: "translateX(-50%)", width: 13, height: 13, borderRadius: "50%", zIndex: 5,
-        background: `radial-gradient(circle at 34% 30%, ${shade(pin, 45)}, ${pin} 55%, ${shade(pin, -30)} 100%)`,
-        boxShadow: "0 3px 5px rgba(0,0,0,0.45)",
-      }} />
-      {/* 行った/観たにしたカードは、ボードから消さずグレーアウトして
-          「済んだこと」がその場でわかるようにする。 */}
-      <div style={{ filter: item.done ? "grayscale(0.85) opacity(0.55)" : "none" }}>
-        <PosterCard image={item.images?.[0]} color={item.color} title={item.title} sub={item.area && item.area !== "—" ? item.area : undefined}
-          label={item.categoryLabel} icon={icon} kept={item.kept} />
-      </div>
-      {item.done && (
-        <div style={{
-          position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%", background: "rgba(28,28,30,0.7)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 6,
-        }}>
-          <Check size={12} color="#fff" strokeWidth={3} />
-        </div>
-      )}
-    </div>
-  );
-}
-
 // フルスクリーンの本1ページ分。バインダーの表紙/GoalCardと同じ左端の
 // リング金具モチーフを踏襲し、「バインダーに閉じられたルーズリーフの束」
-// であることが一目でわかるようにしている。
-function BookPage({ item, index, total }: { item: ExecItem; index: number; total: number }) {
+// であることが一目でわかるようにしている。行った/行ってないは本文を隠さず、
+// 右上の小さな2つのアイコンだけで完結させる。
+function BookPage({ item, index, total, falling, onMarkDone, onDrop }: {
+  item: ExecItem; index: number; total: number; falling?: boolean;
+  onMarkDone: () => void;
+  onDrop: () => void;
+}) {
   const IconComp = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
   const fill = item.color ?? "#5A5A54";
   return (
-    <div style={{ position: "absolute", inset: 0, background: "#FBF8EF", borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 1px rgba(28,28,30,0.06)" }}>
+    <div style={{
+      position: "absolute", inset: 0, background: "#FBF8EF", borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column",
+      boxShadow: "inset 0 0 0 1px rgba(28,28,30,0.06)",
+      transform: falling ? "translateY(140%) rotate(10deg)" : "translateY(0) rotate(0deg)",
+      opacity: falling ? 0 : 1,
+      transition: falling ? "transform 0.42s cubic-bezier(0.55,0,1,0.45), opacity 0.42s ease-in" : "none",
+    }}>
       {[0.12, 0.5, 0.88].map((y) => (
         <div key={y} style={{
           position: "absolute", left: 14, top: `${y * 100}%`, transform: "translateY(-50%)", width: 13, height: 13, borderRadius: "50%", zIndex: 5,
@@ -287,36 +258,72 @@ function BookPage({ item, index, total }: { item: ExecItem; index: number; total
             {item.meta.map((m, i) => <div key={i} style={{ fontSize: 11.5, color: "#5A5A54" }}>{m}</div>)}
           </div>
         )}
-        {item.done && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 10, fontSize: 10, fontWeight: 700, color: GREEN }}>
-            <Check size={11} strokeWidth={3} />完了ずみ
-          </div>
-        )}
         <div style={{ marginTop: "auto", fontSize: 9.5, color: "#B7B4A6", letterSpacing: "0.06em" }}>{index + 1} / {total} ページ</div>
+      </div>
+      <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, zIndex: 6 }}>
+        <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
+          width: 34, height: 34, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
+          background: item.done ? GREEN : "rgba(28,28,30,0.08)", color: item.done ? "#fff" : "#8A8A82",
+          display: "flex", alignItems: "center", justifyContent: "center", boxShadow: item.done ? "0 3px 8px rgba(46,154,92,0.4)" : "none",
+        }}><Check size={16} strokeWidth={3} /></button>
+        <button onClick={(e) => { e.stopPropagation(); onDrop(); }} aria-label={item.done ? "外す" : "行ってない"} style={{
+          width: 34, height: 34, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
+          background: "rgba(193,90,52,0.12)", color: RUST, display: "flex", alignItems: "center", justifyContent: "center",
+        }}><X size={16} strokeWidth={3} /></button>
       </div>
     </div>
   );
 }
 
-// マガジン確定後の「今日の行き先リスト」を、バインダーに閉じられた1冊の本
-// として画面いっぱいに展開するビュー。スワイプ(または左右の矢印)で
-// ページが3D回転して捲れる。ヒンジは常に左端(リング金具側)に固定し、
-// 現実の本のように「右のページ束が左へ倒れ込む」向きで統一している。
-function BookReader({ items, onClose, onMarkDone, onOpenDetail }: {
+// 全ページを捲り終えた先にある裏表紙。ここに来て初めて「登録」が現れる、
+// 本を閉じる最後の1ページという位置づけ。
+function BackCoverPage({ dateLabel, count }: { dateLabel: string; count: number }) {
+  return (
+    <div style={{ position: "absolute", inset: 0, background: "#FBF8EF", borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", boxShadow: "inset 0 0 0 1px rgba(28,28,30,0.06)" }}>
+      {[0.12, 0.5, 0.88].map((y) => (
+        <div key={y} style={{
+          position: "absolute", left: 14, top: `${y * 100}%`, transform: "translateY(-50%)", width: 13, height: 13, borderRadius: "50%", zIndex: 5,
+          background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.5)",
+        }}>
+          <div style={{ position: "absolute", inset: 2.5, borderRadius: "50%", background: "#F3F1EC" }} />
+        </div>
+      ))}
+      <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", fontWeight: 700, marginLeft: 34 }}>{dateLabel}</div>
+      <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16, margin: "8px 0 26px", textAlign: "center", padding: "0 30px" }}>{count}件、今日はここまで</div>
+    </div>
+  );
+}
+
+// マガジン確定後の「今日の行き先リスト」を、リングで閉じられた1冊の
+// バインダーとして画面いっぱいに展開するビュー。スワイプ(または左右の
+// 矢印)でページが3D回転して捲れる。ヒンジは常に左端(リング金具側)に
+// 固定し、現実の本のように「右のページ束が左へ倒れ込む」向きで統一する。
+// 最後のアイテムページの先に裏表紙があり、そこで「登録」を押すとバインダー
+// ごと下に落ちて記録タブへ向かう。
+function BinderBook({ items, dateLabel, onBack, onMarkDone, onDrop, onRegister }: {
   items: ExecItem[];
-  onClose: () => void;
+  dateLabel: string;
+  onBack: () => void;
   onMarkDone: (item: ExecItem) => void;
-  onOpenDetail: (item: ExecItem) => void;
+  onDrop: (item: ExecItem) => void;
+  onRegister: () => void;
 }) {
   const [pageIndex, setPageIndex] = useState(0);
   const [flip, setFlip] = useState<{ dir: "next" | "prev"; angle: number } | null>(null);
+  const [dropping, setDropping] = useState<{ item: ExecItem; fallen: boolean } | null>(null);
+  const [registering, setRegistering] = useState(false);
   const animating = useRef(false);
   const dragRef = useRef({ startX: 0, active: false });
+  const totalPages = items.length + 1; // +1: 裏表紙
+
+  useEffect(() => {
+    setPageIndex((p) => Math.min(p, totalPages - 1));
+  }, [totalPages]);
 
   const turn = (dir: "next" | "prev") => {
-    if (animating.current) return;
+    if (animating.current || dropping) return;
     const target = dir === "next" ? pageIndex + 1 : pageIndex - 1;
-    if (target < 0 || target >= items.length) return;
+    if (target < 0 || target >= totalPages) return;
     animating.current = true;
     haptic(8);
     setFlip({ dir, angle: dir === "next" ? 0 : -180 });
@@ -339,94 +346,105 @@ function BookReader({ items, onClose, onMarkDone, onOpenDetail }: {
     else if (dx > 40) turn("prev");
   };
 
-  const underIndex = flip ? (flip.dir === "next" ? pageIndex + 1 : pageIndex) : pageIndex;
+  // 「行ってない」で外すと、そのページが下に落ちて消える。落ちている間
+  // 下の層には次のページ(または裏表紙)をあらかじめ覗かせておき、
+  // 落ち切った時に自然に切り替わって見えるようにする。まず静止状態で
+  // マウントしてから次のフレームで「落下後」の見た目に切り替えることで、
+  // トランジションが確実に発火するようにしている(フリップ演出と同じ手法)。
+  const handleDrop = (item: ExecItem) => {
+    if (dropping || animating.current) return;
+    haptic(12);
+    setDropping({ item, fallen: false });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      setDropping((d) => (d ? { ...d, fallen: true } : d));
+    }));
+    setTimeout(() => {
+      onDrop(item);
+      setDropping(null);
+    }, 420);
+  };
+
+  const handleRegister = () => {
+    if (registering) return;
+    haptic(18);
+    setRegistering(true);
+    setTimeout(onRegister, 480);
+  };
+
+  const baseIndex = dropping ? Math.min(pageIndex + 1, totalPages - 1) : flip ? (flip.dir === "next" ? pageIndex + 1 : pageIndex) : pageIndex;
   const leafIndex = flip ? (flip.dir === "next" ? pageIndex : pageIndex - 1) : null;
-  const underItem = items[underIndex];
-  const leafItem = leafIndex !== null ? items[leafIndex] : null;
-  const current = items[pageIndex];
+
+  const renderPage = (idx: number, opts?: { falling?: boolean }) => {
+    if (idx === items.length) return <BackCoverPage dateLabel={dateLabel} count={items.length} />;
+    const it = items[idx];
+    if (!it) return null;
+    return <BookPage item={it} index={idx} total={items.length} falling={opts?.falling} onMarkDone={() => onMarkDone(it)} onDrop={() => handleDrop(it)} />;
+  };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "linear-gradient(180deg, #16161c 0%, #201f26 100%)", display: "flex", flexDirection: "column" }}>
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 60, background: "linear-gradient(180deg, #16161c 0%, #201f26 100%)", display: "flex", flexDirection: "column",
+      transform: registering ? "translateY(120%)" : "translateY(0)", opacity: registering ? 0 : 1,
+      transition: registering ? "transform 0.48s cubic-bezier(0.5,0,1,0.5), opacity 0.4s ease-in" : "none",
+    }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "calc(env(safe-area-inset-top) + 14px) 18px 8px" }}>
-        <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.1em" }}>{pageIndex + 1} / {items.length}</span>
-        <button onClick={onClose} aria-label="閉じる" style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
+        <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.1em" }}>{dateLabel}</span>
+        <button onClick={onBack} aria-label="選び直す" style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
           <X size={16} />
         </button>
       </div>
 
       <div onPointerDown={onDown} onPointerUp={onUp} style={{ flex: 1, position: "relative", margin: "6px 22px", perspective: 1800, touchAction: "pan-y" }}>
-        {underItem && <BookPage item={underItem} index={underIndex} total={items.length} />}
-        {flip && leafItem && (
+        {renderPage(baseIndex)}
+        {dropping && (
+          <BookPage item={dropping.item} index={pageIndex} total={items.length} falling={dropping.fallen} onMarkDone={() => {}} onDrop={() => {}} />
+        )}
+        {flip && leafIndex !== null && (
           <div style={{
             position: "absolute", inset: 0, transformStyle: "preserve-3d", transformOrigin: "0% 50%",
             transform: `rotateY(${flip.angle}deg)`, transition: "transform 0.46s cubic-bezier(0.45,0,0.55,1)",
             WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
             filter: "drop-shadow(0 22px 40px rgba(0,0,0,0.5))",
           }}>
-            <BookPage item={leafItem} index={leafIndex ?? 0} total={items.length} />
+            {renderPage(leafIndex)}
           </div>
+        )}
+        {pageIndex === items.length && (
+          <button onClick={handleRegister} aria-label="登録" style={{
+            position: "absolute", left: "50%", bottom: "16%", transform: "translateX(-50%)", zIndex: 8,
+            width: 78, height: 78, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
+            background: INK, color: PAPER, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+            boxShadow: "0 12px 26px rgba(0,0,0,0.4)",
+          }}>
+            <Check size={22} strokeWidth={2.5} />
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em" }}>登録</span>
+          </button>
         )}
         <button onClick={() => turn("prev")} disabled={pageIndex === 0} aria-label="前のページ" style={{
           position: "absolute", left: -14, top: "50%", transform: "translateY(-50%)", width: 34, height: 34, borderRadius: "50%",
           border: "none", background: "rgba(28,28,30,0.65)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
           boxShadow: "0 4px 12px rgba(0,0,0,0.35)", cursor: pageIndex === 0 ? "default" : "pointer", opacity: pageIndex === 0 ? 0.3 : 1, padding: 0, zIndex: 10,
         }}><ChevronLeft size={18} /></button>
-        <button onClick={() => turn("next")} disabled={pageIndex === items.length - 1} aria-label="次のページ" style={{
+        <button onClick={() => turn("next")} disabled={pageIndex === totalPages - 1} aria-label="次のページ" style={{
           position: "absolute", right: -14, top: "50%", transform: "translateY(-50%)", width: 34, height: 34, borderRadius: "50%",
           border: "none", background: "rgba(28,28,30,0.65)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.35)", cursor: pageIndex === items.length - 1 ? "default" : "pointer", opacity: pageIndex === items.length - 1 ? 0.3 : 1, padding: 0, zIndex: 10,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.35)", cursor: pageIndex === totalPages - 1 ? "default" : "pointer", opacity: pageIndex === totalPages - 1 ? 0.3 : 1, padding: 0, zIndex: 10,
         }}><ChevronRight size={18} /></button>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "center", gap: 10, padding: "10px 20px calc(env(safe-area-inset-bottom) + 18px)" }}>
-        {current && !current.done && (
-          <button onClick={() => onMarkDone(current)} style={{ flex: 1, maxWidth: 220, padding: "13px 0", borderRadius: 999, border: "none", background: GREEN, color: "#fff", fontFamily: SANS, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{current.doneActionLabel}</button>
-        )}
-        {current && (
-          <button onClick={() => onOpenDetail(current)} style={{ flex: 1, maxWidth: 220, padding: "13px 0", borderRadius: 999, border: "1.5px solid rgba(255,255,255,0.3)", background: "transparent", color: "#fff", fontFamily: SANS, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>くわしく見る</button>
-        )}
+      <div style={{ textAlign: "center", fontSize: 10, letterSpacing: "0.1em", color: "rgba(255,255,255,0.35)", padding: "6px 0 calc(env(safe-area-inset-bottom) + 14px)" }}>
+        {pageIndex + 1} / {totalPages}
       </div>
     </div>
   );
 }
 
-// マガジン編集モードで開く「候補から追加」シート(場所のKeepのみ)
-function AddToMagazineSheet({ pool, onAdd, onClose }: { pool: Keep[]; onAdd: (id: string) => void; onClose: () => void }) {
-  return (
-    <BottomSheet onClose={onClose} maxHeight="56vh">
-      <OverlayCard>
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 15, marginBottom: 12 }}>候補から追加</div>
-        {pool.length === 0 ? (
-          <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>追加できる候補がありません。</p>
-        ) : pool.map((k, i) => (
-          <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px", borderTop: i === 0 ? "none" : `1px solid ${HAIRLINE}` }}>
-            {k.images && k.images.length > 0 ? (
-              <img src={img(k.images[0], 90, 90)} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-            ) : (
-              <div style={{ width: 42, height: 42, borderRadius: 8, background: k.color ?? "#5A5A54", flexShrink: 0 }} />
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.title}</div>
-              <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2 }}>{k.category}{k.area && k.area !== "—" ? ` ・ ${k.area}` : ""}</div>
-            </div>
-            <button onClick={() => onAdd(k.id)} style={{ flexShrink: 0, padding: "8px 14px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>追加</button>
-          </div>
-        ))}
-      </OverlayCard>
-    </BottomSheet>
-  );
-}
-
-export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
+export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps) {
   const magazine = appState.magazine;
-  const [mapMode, setMapMode] = useState(false); // マガジン確定後でも地図に戻って選び直すときtrue
+  const [mapMode, setMapMode] = useState(false); // バインダー確定後でも地図に戻って選び直すときtrue
   const [pinItem, setPinItem] = useState<Keep | null>(null);
   const [draftSelection, setDraftSelection] = useState<string[]>([]);
   const [draftMediaSelection, setDraftMediaSelection] = useState<string[]>([]);
-  const [editingMag, setEditingMag] = useState(false);
-  const [addSheetOpen, setAddSheetOpen] = useState(false);
-  const [detailItem, setDetailItem] = useState<ExecItem | null>(null);
-  const [bookOpen, setBookOpen] = useState(false);
 
   const showMap = !magazine || mapMode;
   // 地図には実行済み以外の全Keepをピンとして出す(マガジン掲載中plannedも、選び直しのため含める)
@@ -435,7 +453,6 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
   // ビュー。ここでの「観た/読んだ/聴いた」もストック側と全く同じ状態遷移(status→done)
   // を起こす、唯一の出口を複数の入口から呼べるようにしているだけ。
   const mediaPool = keepMedia(appState);
-  const notInMagazine = pool.filter((k) => !(magazine?.itemIds ?? []).some((r) => r.type === "keep" && r.id === k.id));
   const magItems: ExecItem[] = magazine ? magazine.itemIds
     .map((ref): ExecItem | null => {
       if (ref.type === "keep") {
@@ -502,15 +519,6 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
     setDraftSelection([]);
     setDraftMediaSelection([]);
     setMapMode(false);
-    setEditingMag(false);
-  };
-  const addToMagazine = (id: string) => {
-    haptic(10);
-    const next = structuredClone(appState);
-    const k = next.keeps.find((x) => x.id === id);
-    if (k) k.status = "planned";
-    next.magazine!.itemIds = [...next.magazine!.itemIds, { id, type: "keep" }];
-    persist(next);
   };
   const removeFromMagazine = (id: string, type: MagazineItemRef["type"]) => {
     const next = structuredClone(appState);
@@ -519,7 +527,7 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
       const k = next.keeps.find((x) => x.id === id);
       if (k) k.status = "candidate";
     }
-    if (next.magazine!.itemIds.length === 0) { next.magazine = null; setEditingMag(false); }
+    if (next.magazine!.itemIds.length === 0) next.magazine = null;
     persist(next);
   };
   // 行った/観たにしても、ボードからはすぐには消さない。itemIdsはそのまま
@@ -548,18 +556,24 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
     }
     persist(next);
   };
-  const dissolveMagazine = () => {
+  // 裏表紙の「登録」。バインダーを閉じて今日を締めくくる操作。まだ行った/
+  // 行ってないが付いていない場所のKeepだけ、記録タブの「行きましたか？」
+  // 待ちに回す(観た/読んだ済みのメディアや、行った済みの場所は不要)。
+  const registerBinder = () => {
     const next = structuredClone(appState);
-    (next.magazine?.itemIds ?? []).forEach((r) => {
-      if (r.type === "keep") {
-        const k = next.keeps.find((x) => x.id === r.id);
-        if (k) k.status = "candidate";
-      }
-    });
+    const stillOpenKeepIds = (next.magazine?.itemIds ?? [])
+      .filter((r) => r.type === "keep")
+      .map((r) => r.id)
+      .filter((id) => next.keeps.find((k) => k.id === id)?.status !== "done");
+    if (stillOpenKeepIds.length > 0) {
+      const existing = new Set(next.pendingReview ?? []);
+      stillOpenKeepIds.forEach((id) => existing.add(id));
+      next.pendingReview = Array.from(existing);
+    }
     next.magazine = null;
     persist(next);
-    setEditingMag(false);
     setMapMode(false);
+    goTab("records");
   };
   const injectDemo = () => {
     const next = structuredClone(appState);
@@ -590,12 +604,14 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
 
   return (
     <>
-      <Masthead title="実行" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
+      {showMap && (
+        <Masthead title="実行" statValue={pool.length + mediaPool.length} statLabel="件の候補" corner={profileButton} />
+      )}
 
       {showMap ? (
         <>
           {magazine && (
-            <button onClick={() => { setMapMode(false); setDraftSelection([]); setDraftMediaSelection([]); }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← マガジンに戻る</button>
+            <button onClick={() => { setMapMode(false); setDraftSelection([]); setDraftMediaSelection([]); }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← バインダーに戻る</button>
           )}
           <MapPlanner
             pool={pool} mediaPool={mediaPool} draftSelection={draftSelection} draftMediaSelection={draftMediaSelection}
@@ -607,80 +623,27 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
               <div style={{ width: "100%", maxWidth: 420, padding: "0 16px 10px" }}>
                 <DraftBinder items={draftBinderItems} onRemove={removeDraftItem} />
                 <button onClick={() => confirmMagazine(draftSelection, draftMediaSelection)} style={{ width: "100%", padding: "14px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: "0 8px 24px rgba(23,23,21,0.2)" }}>
-                  {draftSelection.length + draftMediaSelection.length}件で{magazine ? "マガジンを更新" : "マガジンを作る"}
+                  {draftSelection.length + draftMediaSelection.length}件で{magazine ? "バインダーを更新" : "バインダーを作る"}
                 </button>
               </div>
             </div>
           )}
         </>
-      ) : (
-        <main style={{ paddingTop: 6, paddingBottom: 24 }}>
-          {/* 編集への入り口は控えめに: 小さなテキストのみ */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 2px 10px" }}>
-            <button onClick={() => {
-              setDraftSelection(magazine!.itemIds.filter((r) => r.type === "keep").map((r) => r.id));
-              setDraftMediaSelection(magazine!.itemIds.filter((r) => r.type === "media").map((r) => r.id));
-              setMapMode(true);
-            }} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← 地図で選び直す</button>
-            <button onClick={() => setEditingMag(!editingMag)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: SANS, fontSize: 11, fontWeight: 700, color: editingMag ? INK : "#9A988E" }}>{editingMag ? "完了" : "編集"}</button>
-          </div>
-
-          {/* 今日のマガジンは「バインダーに閉じられた1冊の本」として見せる。
-              タップするとBookReaderが画面いっぱいに展開し、スワイプでページが
-              捲れる。奥に控えめに重なる2枚の紙の縁で「束ねられた本」感を出す。 */}
-          {magItems.length > 0 && (
-            <button onClick={() => setBookOpen(true)} style={{ position: "relative", width: "100%", textAlign: "left", cursor: "pointer", border: "none", padding: 0, background: "none", display: "block", margin: "4px 0 18px" }}>
-              <div style={{ position: "absolute", inset: "5px -3px -6px 3px", borderRadius: 16, background: "#F1ECDD", boxShadow: "0 6px 14px rgba(28,28,30,0.1)" }} />
-              <div style={{ position: "absolute", inset: "2.5px -1.5px -3px 1.5px", borderRadius: 17, background: "#F7F3E7", boxShadow: "0 6px 12px rgba(28,28,30,0.08)" }} />
-              <div style={{ position: "relative", background: PAPER, color: INK, borderRadius: 18, padding: "14px 18px 14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: SOFT_SHADOW_LG }}>
-                {[0.24, 0.76].map((y) => (
-                  <div key={y} style={{
-                    position: "absolute", left: 9, top: `${y * 100}%`, transform: "translateY(-50%)", width: 11, height: 11, borderRadius: "50%",
-                    background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)", boxShadow: "inset 0 1px 1.5px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.5)",
-                  }}>
-                    <div style={{ position: "absolute", inset: 2.5, borderRadius: "50%", background: BG }} />
-                  </div>
-                ))}
-                <div>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", color: "#9A988E" }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#9A988E", flexShrink: 0 }} />TODAY
-                  </div>
-                  <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16, margin: "4px 0 0" }}>今日のための行き先リスト</div>
-                  <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 3 }}>タップして開く</div>
-                </div>
-                <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 30, color: INK, flexShrink: 0, marginLeft: 12 }}>{magItems.length}</div>
-              </div>
-            </button>
-          )}
-
-          {/* 白いが質感のある板(リネン/キャンバス調)。細かい織り目のテクスチャと
-              柔らかい陰影で「物理的な板」を演出し、その上にScrapCard(画鋲留めの
-              写真)をスタイライズ+ちょっとリアルの中間くらいの見た目で配置する。 */}
-          <div style={{
-            position: "relative", borderRadius: 22, padding: "26px 16px 22px",
-            background: "radial-gradient(rgba(28,28,30,0.035) 1px, transparent 1.6px) 0 0/14px 14px, #F0EBDD",
-            boxShadow: "inset 0 2px 10px rgba(28,28,30,0.09), inset 0 -1px 0 rgba(255,255,255,0.6), 0 8px 22px rgba(28,28,30,0.1)",
-          }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 18, rowGap: 32 }}>
-              {magItems.map((item) => (
-                <ScrapCard key={`${item.type}-${item.id}`} item={item} onClick={() => setDetailItem(item)} />
-              ))}
-              {editingMag && (
-                <button onClick={() => setAddSheetOpen(true)} style={{
-                  flex: "1 1 42%", maxWidth: 180, minWidth: 130, aspectRatio: "3 / 4", borderRadius: 18, cursor: "pointer",
-                  border: "1.5px dashed rgba(28,28,30,0.22)", background: "rgba(255,255,255,0.4)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
-                }}>
-                  <span style={{ fontSize: 28, color: "#9A988E", lineHeight: 1 }}>＋</span>
-                  <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: "#9A988E", letterSpacing: "0.06em" }}>候補から追加</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {editingMag && (
-            <button onClick={dissolveMagazine} style={{ marginTop: 12, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: RUST, letterSpacing: "0.04em" }}>このマガジンを解散する</button>
-          )}
-        </main>
+      ) : magazine && (
+        // 確定後は「バインダー」そのものが実行タブの全て。ボードや編集UIは
+        // 廃止し、画面いっぱいのページ捲りビューだけを見せるミニマルな構成にした。
+        <BinderBook
+          items={magItems}
+          dateLabel={dayInfo(magazine.decidedAt).label}
+          onBack={() => {
+            setDraftSelection(magazine.itemIds.filter((r) => r.type === "keep").map((r) => r.id));
+            setDraftMediaSelection(magazine.itemIds.filter((r) => r.type === "media").map((r) => r.id));
+            setMapMode(true);
+          }}
+          onMarkDone={(item) => markDoneInMagazine(item.id, item.type)}
+          onDrop={(item) => removeFromMagazine(item.id, item.type)}
+          onRegister={registerBinder}
+        />
       )}
 
       <BinderModal
@@ -695,29 +658,6 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
           }}>{draftSelection.includes(pinItem.id) ? "外す" : "＋ 今日に追加"}</button>
         )) : undefined}
       />
-      <BinderModal
-        item={detailItem ? { title: detailItem.title, category: detailItem.categoryLabel, images: detailItem.images, meta: detailItem.meta, sourceUrl: detailItem.sourceUrl, sourceLabel: detailItem.sourceLabel } : null}
-        onClose={() => setDetailItem(null)}
-        actionSlot={detailItem ? ((closeSheet) => (
-          detailItem.done ? (
-            <button onClick={() => { removeFromMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ width: "100%", padding: "12px 0", borderRadius: 999, border: `1.5px solid ${RUST}`, background: "transparent", color: RUST, fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>ボードから外す</button>
-          ) : (
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => { markDoneInMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ flex: 1, padding: "12px 0", borderRadius: 999, border: "none", background: GREEN, color: "#fff", fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{detailItem.doneActionLabel}</button>
-              <button onClick={() => { removeFromMagazine(detailItem.id, detailItem.type); closeSheet(); }} style={{ flex: 1, padding: "12px 0", borderRadius: 999, border: `1.5px solid ${RUST}`, background: "transparent", color: RUST, fontFamily: SANS, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>外す</button>
-            </div>
-          )
-        )) : undefined}
-      />
-      {addSheetOpen && <AddToMagazineSheet pool={notInMagazine} onAdd={(id) => addToMagazine(id)} onClose={() => setAddSheetOpen(false)} />}
-      {bookOpen && magItems.length > 0 && (
-        <BookReader
-          items={magItems}
-          onClose={() => setBookOpen(false)}
-          onMarkDone={(item) => markDoneInMagazine(item.id, item.type)}
-          onOpenDetail={(item) => { setBookOpen(false); setDetailItem(item); }}
-        />
-      )}
     </>
   );
 }

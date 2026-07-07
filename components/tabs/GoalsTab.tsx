@@ -1,12 +1,30 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { AddCardTile, GoalCard, Masthead, rowBtn } from "@/components/common";
+import { GoalCard, Masthead, rowBtn } from "@/components/common";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
 import type { Goal, TabProps } from "@/lib/types";
+
+// 目標タブの追加タイルだけは、並ぶ目標たちと同じ「スパイン+表紙」の
+// シルエットを点線でなぞる。ここに置かれるのが普通のカードではなく
+// バインダーであることを、追加前から示すため。
+function AddGoalBinderTile({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} aria-label="目標を追加" style={{
+      width: "100%", aspectRatio: GOAL_CARD_ASPECT, flexShrink: 0, borderRadius: 18, cursor: "pointer",
+      border: "1.5px dashed rgba(23,23,21,0.22)", background: "rgba(255,255,255,0.5)",
+      display: "flex", overflow: "hidden", padding: 0,
+    }}>
+      <div style={{ width: "20%", minWidth: 24, flexShrink: 0, borderRight: "1.5px dashed rgba(23,23,21,0.22)" }} />
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Plus size={26} strokeWidth={1.6} color="#8A8A82" />
+      </div>
+    </button>
+  );
+}
 
 function AddGoalSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onClose: () => void }) {
   const [title, setTitle] = useState("");
@@ -110,7 +128,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
             <GoalCard key={g.id} title={g.title} recentCheckIns={g.checkIns ?? []}
               checkInCount={g.checkIns?.length ?? 0} onClick={() => setOpenGoalId(g.id)} />
           ))}
-          <AddCardTile aspect={GOAL_CARD_ASPECT} onClick={() => setAdding(true)} label="目標を追加" />
+          <AddGoalBinderTile onClick={() => setAdding(true)} />
         </div>
       </main>
 

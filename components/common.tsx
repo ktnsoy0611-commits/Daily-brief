@@ -100,21 +100,21 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 42%, rgba(0,0,0,0.8) 100%)" }} />
       {holeYs.map((y) => (
         <div key={y} style={{
-          position: "absolute", left: 14, top: y, transform: "translateY(-50%)", width: 11, height: 11, borderRadius: "50%",
+          position: "absolute", left: 12, top: y, transform: "translateY(-50%)", width: 10, height: 10, borderRadius: "50%",
           background: "rgba(253,251,245,0.92)",
           boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.38), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 1px rgba(255,255,255,0.3)",
         }} />
       ))}
       <div style={{
-        position: "absolute", left: 23, top: 8, bottom: 8, width: 1,
+        position: "absolute", left: 26, top: 8, bottom: 8, width: 1,
         backgroundImage: "repeating-linear-gradient(to bottom, rgba(253,251,245,0.85) 0 4px, transparent 4px 9px)",
       }} />
       {kept && (
-        <span style={{ position: "absolute", top: 8, left: 30, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
+        <span style={{ position: "absolute", top: 8, left: 33, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
           <Bookmark size={9} fill={INK} strokeWidth={0} /> KEEP
         </span>
       )}
-      <div style={{ position: "absolute", bottom: 10, left: 30, right: 10 }}>
+      <div style={{ position: "absolute", bottom: 10, left: 33, right: 10 }}>
         {label && <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(255,255,255,0.7)", marginBottom: 3 }}>{label}</div>}
         <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
         {sub && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}
@@ -179,34 +179,40 @@ export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }:
           }} />
         );
       })}
-      {/* 表紙: リング金具+タイトル+直近の記録を見せる不透明な面 */}
+      {/* 表紙: 他のカードの「穴+切り取り線」の装飾と混同されないよう、
+          スパイン(リング金具を持つ帯)と表紙面を別の色面としてはっきり
+          分け、「バインダーという物体そのもの」に見えるようにしている。 */}
       <div style={{
-        position: "absolute", inset: 0, zIndex: GOAL_STACK_CAP + 1, borderRadius: 18, background: PAPER,
-        display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG, overflow: "hidden",
+        position: "absolute", inset: 0, zIndex: GOAL_STACK_CAP + 1, borderRadius: 18,
+        display: "flex", boxShadow: SOFT_SHADOW_LG, overflow: "hidden",
       }}>
-        {[0.16, 0.5, 0.84].map((y) => (
-          <div key={y} style={{
-            position: "absolute", left: 9, top: `${y * 100}%`, transform: "translateY(-50%)", width: 12, height: 12, borderRadius: "50%",
-            background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)",
-            boxShadow: "inset 0 1px 1.5px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.5)",
-          }}>
-            <div style={{ position: "absolute", inset: 2.5, borderRadius: "50%", background: BG }} />
-          </div>
-        ))}
-        <div style={{ flex: 1, padding: "13px 14px 8px 26px", display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <Sprout size={11} color={GREEN} strokeWidth={2} />
-            <span style={{ fontSize: 8, letterSpacing: "0.14em", color: GREEN, fontWeight: 700 }}>GOAL</span>
-          </div>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, lineHeight: 1.3, marginTop: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
-          {latest && (
-            <p style={{ fontSize: 10.5, lineHeight: 1.5, color: "#7A7A72", margin: "6px 0 0", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
-          )}
+        <div style={{ width: "20%", minWidth: 24, flexShrink: 0, position: "relative", background: "linear-gradient(90deg, #E7E1D2 0%, #F0EBDD 55%, #DED7C4 100%)", boxShadow: "inset -1px 0 0 rgba(28,28,30,0.06)" }}>
+          {[0.16, 0.5, 0.84].map((y) => (
+            <div key={y} style={{
+              position: "absolute", left: "50%", top: `${y * 100}%`, transform: "translate(-50%, -50%)", width: 12, height: 12, borderRadius: "50%",
+              background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)",
+              boxShadow: "inset 0 1px 1.5px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.5)",
+            }}>
+              <div style={{ position: "absolute", inset: 2.5, borderRadius: "50%", background: BG }} />
+            </div>
+          ))}
         </div>
-        <div style={{ padding: "0 14px 12px 26px", borderTop: `1px solid ${HAIRLINE}`, marginTop: "auto", paddingTop: 8 }}>
-          <span style={{ fontSize: 9.5, color: "#8A8477", fontWeight: 700, letterSpacing: "0.03em" }}>
-            {checkInCount > 0 ? `記録 ${checkInCount}件・つづきを見る` : "まだ記録がありません"}
-          </span>
+        <div style={{ flex: 1, minWidth: 0, background: PAPER, display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: 1, padding: "13px 12px 8px 11px", display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <Sprout size={11} color={GREEN} strokeWidth={2} />
+              <span style={{ fontSize: 8, letterSpacing: "0.14em", color: GREEN, fontWeight: 700 }}>GOAL</span>
+            </div>
+            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, lineHeight: 1.3, marginTop: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+            {latest && (
+              <p style={{ fontSize: 10.5, lineHeight: 1.5, color: "#7A7A72", margin: "6px 0 0", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
+            )}
+          </div>
+          <div style={{ padding: "0 12px 12px 11px", borderTop: `1px solid ${HAIRLINE}`, marginTop: "auto", paddingTop: 8 }}>
+            <span style={{ fontSize: 9.5, color: "#8A8477", fontWeight: 700, letterSpacing: "0.03em" }}>
+              {checkInCount > 0 ? `記録 ${checkInCount}件・つづきを見る` : "まだ記録がありません"}
+            </span>
+          </div>
         </div>
       </div>
     </button>
@@ -277,6 +283,11 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   const rawStep = shown.length > 1 ? fanRightBound / (shown.length - 1) : 0;
   const offsetStep = Math.min(rawStep, cardWidth * 0.75);
 
+  // 触れているカードの両隣は、主役をしっかり見せるためにはっきり左右へ
+  // 逃がす。カード幅に比例させ、サイズが変わっても同じ見た目の余白になる
+  // ようにしている。
+  const neighborSpread = Math.round(cardWidth * 0.34);
+
   return (
     <div ref={containerRef} style={{ position: "relative", height: Math.round(cardHeight * 1.16) + 8, width: "100%" }}>
       {shown.map((it, i) => {
@@ -284,7 +295,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
         const rotation = ((seed % 9) - 4) * 1.3;
         const jitterY = ((seed >> 3) % 11) - 5;
         const isTouched = i === touchedIdx;
-        const spread = touchedIdx >= 0 && !isTouched ? (i < touchedIdx ? -9 : 9) : 0;
+        const spread = touchedIdx >= 0 && !isTouched ? (i < touchedIdx ? -neighborSpread : neighborSpread) : 0;
         const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
           setTouchedKey(it.key);
           dragRef.current = { active: true, startX: e.clientX, startIdx: i };
@@ -311,7 +322,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
             style={{
               position: "absolute", left: i * offsetStep + spread, top: (isTouched ? jitterY - 8 : jitterY) + 8,
               width: cardWidth, zIndex: isTouched ? 20 : shown.length - i, cursor: "pointer",
-              transform: `rotate(${isTouched ? 0 : rotation}deg) scale(${isTouched ? 1.16 : 1})`,
+              transform: `rotate(${isTouched ? 0 : rotation}deg) scale(${isTouched ? 1.3 : 1})`,
               transformOrigin: "50% 100%",
               transition: "transform 0.28s cubic-bezier(0.32,0.72,0,1), left 0.28s cubic-bezier(0.32,0.72,0,1), top 0.28s cubic-bezier(0.32,0.72,0,1)",
               filter: isTouched ? "drop-shadow(0 14px 22px rgba(28,28,30,0.22))" : "none",

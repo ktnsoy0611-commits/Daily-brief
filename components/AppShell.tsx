@@ -145,26 +145,34 @@ export function AppShell() {
           一度再発したバグ)。stickyなら実スクロール位置基準になるため、
           この種のズレを避けられる。navの箱自体はbottom:0(実際の画面下端)
           まで届かせておき、ピルはその中でmarginBottomにより浮かせる。
-          こうすることでnavの箱の裏に敷いたグラデーション(下地色へ溶け込む
-          フェード)が画面の本当の下端まで途切れなく続き、ピルの角の隙間や
-          セーフエリア帯からスクロール中のコンテンツが覗くのを防げる。 */}
+          下地へ溶け込むグラデーションは、以前はnavの内側(nav自身のzIndex
+          =25)に敷いていたが、それだとExecuteTabの選択確定バー(zIndex=20)
+          のような「navより低いが、それ自体は不透明な独立UI」の上にまで
+          このグラデーションが被さり、その下端が白っぽく洗われて見える
+          事故があった。グラデーションは「素通しのスクロールコンテンツ」
+          だけを対象にしたいので、nav本体(タップ対象のピル、zIndex=25)とは
+          別レイヤー(zIndex=15、ExecuteTabの確定バーより下)に分離した。 */}
       {!showProfile && (
-        <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
-          <div style={{ position: "absolute", left: 0, right: 0, top: -44, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 44px, ${BG} 100%)` }} />
-          <div style={{ position: "relative", width: "100%", maxWidth: 420 - 32, display: "flex", background: PAPER, borderRadius: 999, boxShadow: SOFT_SHADOW_LG, padding: 7, marginBottom: "calc(6px + env(safe-area-inset-bottom))", pointerEvents: "auto" }}>
-            {TABS.map((t) => {
-              const active = tab === t.id;
-              return (
-                <button key={t.id} onClick={() => { haptic(5); setTab(t.id); }} style={{ flex: 1, padding: "8px 0 7px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                  <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
-                    <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
-                  </div>
-                  <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(23,23,21,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
-                </button>
-              );
-            })}
+        <>
+          <div aria-hidden style={{ position: "sticky", bottom: 0, width: "100%", height: 0, zIndex: 15, pointerEvents: "none" }}>
+            <div style={{ position: "absolute", left: 0, right: 0, top: -44, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 44px, ${BG} 100%)` }} />
           </div>
-        </nav>
+          <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
+            <div style={{ position: "relative", width: "100%", maxWidth: 420 - 32, display: "flex", background: PAPER, borderRadius: 999, boxShadow: SOFT_SHADOW_LG, padding: 7, marginBottom: "calc(2px + env(safe-area-inset-bottom))", pointerEvents: "auto" }}>
+              {TABS.map((t) => {
+                const active = tab === t.id;
+                return (
+                  <button key={t.id} onClick={() => { haptic(5); setTab(t.id); }} style={{ flex: 1, padding: "8px 0 7px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                    <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
+                      <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
+                    </div>
+                    <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(23,23,21,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        </>
       )}
     </div>
   );

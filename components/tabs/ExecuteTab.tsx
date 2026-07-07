@@ -3,7 +3,7 @@
 import { BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
-import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, catOf, mediaKindOf } from "@/lib/constants";
+import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
@@ -108,23 +108,27 @@ function HorizontalShelf({ title, badge, children }: { title: string; badge?: st
   );
 }
 
-// タップで追加したものが積み上がっていく様子を見せる「バインダー」。
-// 束の写真をタップすると外せる。AreaFolder/BinderModalと同じ重なり写真の
-// 表現を踏襲し、アプリ全体で一貫した「束ねる」ビジュアルにしている。
-function DraftBinder({ items, onRemove }: {
+// タップで追加したものが積み上がっていく様子を見せる、確定ボタンまで
+// 一体化した1行のフローティングバー。以前はこの束(写真)と確定ボタンを
+// 縦に2段重ねていたため、地図/一覧の下側をかなりの高さで占有してしまい、
+// スクロールできる範囲や視認できる範囲を圧迫していた。1行に収めることで
+// 画面占有を大きく減らしている。
+function DraftBinder({ items, onRemove, onConfirm, confirmLabel }: {
   items: { id: string; type: MagazineItemRef["type"]; title: string; image?: string; color?: string }[];
   onRemove: (id: string, type: MagazineItemRef["type"]) => void;
+  onConfirm: () => void;
+  confirmLabel: string;
 }) {
-  const shown = items.slice(-5);
-  const rotations = [-9, 6, -4, 8, -6];
+  const shown = items.slice(-3);
+  const rotations = [-8, 6, -4];
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "2px 2px 14px" }}>
-      <div style={{ position: "relative", width: 62, height: 62, flexShrink: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px 8px 12px", background: PAPER, borderRadius: 22, boxShadow: SOFT_SHADOW_LG }}>
+      <div style={{ position: "relative", width: 38, height: 38, flexShrink: 0 }}>
         {shown.map((it, i) => (
           <button key={`${it.type}-${it.id}`} onClick={() => onRemove(it.id, it.type)} aria-label={`${it.title}を外す`} style={{
-            position: "absolute", top: 2, left: 2, width: 50, height: 50, borderRadius: 8, overflow: "hidden", padding: 0, cursor: "pointer",
-            border: "2.5px solid #fff", boxShadow: "0 3px 8px rgba(23,23,21,0.3)", background: "none",
-            transform: `rotate(${rotations[i % rotations.length]}deg) translate(${i * 2}px, ${i * -2}px)`, zIndex: i,
+            position: "absolute", top: 0, left: 0, width: 32, height: 32, borderRadius: 7, overflow: "hidden", padding: 0, cursor: "pointer",
+            border: "2px solid #fff", boxShadow: "0 2px 6px rgba(23,23,21,0.28)", background: "none",
+            transform: `rotate(${rotations[i % rotations.length]}deg) translate(${i * 3}px, ${i * -3}px)`, zIndex: i,
             transition: "transform 0.2s",
           }}>
             {it.image ? (
@@ -135,10 +139,13 @@ function DraftBinder({ items, onRemove }: {
           </button>
         ))}
       </div>
-      <div>
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14 }}>{items.length}件、たまってきました</div>
-        <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2 }}>タップで外せます</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{items.length}件、たまってきました</div>
+        <div style={{ fontSize: 8.5, color: "#9A988E", marginTop: 1 }}>タップで外せます</div>
       </div>
+      <button onClick={onConfirm} style={{ flexShrink: 0, padding: "11px 16px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+        {confirmLabel}
+      </button>
     </div>
   );
 }
@@ -172,7 +179,7 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
     );
   }
 
-  const bottomPadding = draftSelection.length + draftMediaSelection.length > 0 ? 168 : 24;
+  const bottomPadding = draftSelection.length + draftMediaSelection.length > 0 ? 96 : 24;
 
   return (
     <main style={{ paddingTop: 14, paddingBottom: bottomPadding }}>
@@ -724,20 +731,23 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
             onOpenPin={setPinItem} onToggleKeep={toggleDraftKeep} onToggleMedia={toggleDraftMedia}
             onPickBundle={(ids) => confirmMagazine(ids, [])} onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
           />
-          {/* このバーはposition:fixedでタブバー(AppShellのnav、下端8px+safe-area
-              に浮くピル)の真上に置く。以前はbottom:NAV_OFFSETで背景ごと
-              そこで打ち切っていたため、navのピルと本UIの間の隙間から
-              スクロール中の地図下コンテンツが覗いてしまっていた。navより
-              zIndexは低いままnav自体には隠れるので、背景をbottom:0まで
-              途切れさせずに伸ばしてしまって問題ない。 */}
+          {/* このバーはposition:fixedでタブバー(AppShellのnav)の真上に浮かせる。
+              以前は写真の束と確定ボタンを縦2段+背景の下地グラデーションで
+              構成しており、画面下部をかなりの高さで占有するうえ、その
+              グラデーションがAppShellのnav側のグラデーション(zIndexが
+              本UIより高いnavの子要素)と重なって、本UIの下側が白っぽく
+              洗われて見えてしまっていた。1行の不透明なPAPERカードにした
+              ことで、占有面積を大きく減らしつつ、下地を必要としない
+              (カード自体が既に不透明なので、navのグラデーションと重なる
+              問題も併せて解消される)。 */}
           {(draftSelection.length + draftMediaSelection.length) > 0 && (
             <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-              <div style={{ position: "absolute", left: 0, right: 0, top: -28, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 28px, ${BG} 100%)` }} />
-              <div style={{ position: "relative", width: "100%", maxWidth: 420, padding: `16px 16px ${NAV_OFFSET}`, pointerEvents: "auto" }}>
-                <DraftBinder items={draftBinderItems} onRemove={removeDraftItem} />
-                <button onClick={() => confirmMagazine(draftSelection, draftMediaSelection)} style={{ width: "100%", padding: "14px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: "0 8px 24px rgba(23,23,21,0.2)" }}>
-                  {draftSelection.length + draftMediaSelection.length}件で{magazine ? "バインダーを更新" : "バインダーを作る"}
-                </button>
+              <div style={{ position: "relative", width: "100%", maxWidth: 420, padding: `0 16px calc(${NAV_OFFSET} + 8px)`, pointerEvents: "auto" }}>
+                <DraftBinder
+                  items={draftBinderItems} onRemove={removeDraftItem}
+                  onConfirm={() => confirmMagazine(draftSelection, draftMediaSelection)}
+                  confirmLabel={magazine ? "更新する" : "作る"}
+                />
               </div>
             </div>
           )}

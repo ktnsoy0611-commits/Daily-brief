@@ -271,7 +271,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   const [num, den] = (aspect ?? ITEM_CARD_ASPECT).split("/").map((s) => parseFloat(s.trim()));
   const cardHeight = Math.round((cardWidth * den) / num);
   const touchedIdx = shown.findIndex((it) => it.key === touchedKey);
-  const dragRef = useRef({ active: false, startX: 0, startIdx: 0 });
+  const dragRef = useRef({ active: false, startX: 0, startY: 0, startIdx: 0, moved: false });
   const release = () => { dragRef.current.active = false; setTouchedKey(null); };
 
   useEffect(() => {
@@ -294,6 +294,12 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   const rawStep = totalSlots > 1 ? (containerWidth - cardWidth) / (totalSlots - 1) : 0;
   const offsetStep = Math.min(rawStep, cardWidth * 0.85);
   const addLeft = shown.length * offsetStep;
+  // カード枚数が多いとoffsetStepが目一杯詰まり、＋タイルが最後のカードと
+  // ぴったりくっついてしまう(特に触れて1.3倍に拡大した最後のカードが
+  // 被さる)。＋タイル自体を一回り小さく描き、元の枠内で中央寄せすることで、
+  // 全体の配置計算(コンテナ幅への収まり)を変えずに左右へ均等な隙間を作る。
+  const addTileWidth = Math.max(Math.round(cardWidth * 0.82), 60);
+  const addTileLeft = addLeft + (cardWidth - addTileWidth) / 2;
 
   // 触れているカードより左は全部さらに左へ、右は全部さらに右へ逃がす。
   // 隣接1枚だけでなく、触れているカードからの距離に比例して逃げ幅を
@@ -311,7 +317,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
         const spread = touchedIdx >= 0 && !isTouched ? (i - touchedIdx) * neighborSpread : 0;
         const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
           setTouchedKey(it.key);
-          dragRef.current = { active: true, startX: e.clientX, startIdx: i };
+          dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, startIdx: i, moved: false };
           e.currentTarget.setPointerCapture?.(e.pointerId);
         };
         // 拡大表示のまま左右に指を動かすと、その位置に応じて隣のカードへ
@@ -319,18 +325,30 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
         const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
           if (!dragRef.current.active) return;
           const dx = e.clientX - dragRef.current.startX;
+          const dy = e.clientY - dragRef.current.startY;
+          if (Math.abs(dx) > 6 || Math.abs(dy) > 6) dragRef.current.moved = true;
           const shift = Math.round(dx / offsetStep);
           const newIdx = Math.min(shown.length - 1, Math.max(0, dragRef.current.startIdx + shift));
           const newKey = shown[newIdx]?.key;
           if (newKey && newKey !== touchedKey) setTouchedKey(newKey);
         };
+        // pointerCaptureのおかげで指がどれだけ動いてもpointerupはこの
+        // (最初に触れた)要素で発火し続けるため、以前はここにonClickを
+        // 素直に付けていただけだと、隣のカードへスワイプして指を離した
+        // 場合でも「タップ」とみなされてonOpenが発火してしまっていた。
+        // 実際に動いた距離(moved)を見て、動いていなければタップとして
+        // 扱い、動いていればプレビューの切り替えだけで終わらせる。
+        const onUp = () => {
+          const wasTap = dragRef.current.active && !dragRef.current.moved;
+          release();
+          if (wasTap) onOpen();
+        };
         return (
           <div
             key={it.key}
-            onClick={onOpen}
             onPointerDown={onDown}
             onPointerMove={onMove}
-            onPointerUp={release}
+            onPointerUp={onUp}
             onPointerCancel={release}
             style={{
               position: "absolute", left: i * offsetStep + spread, top: (isTouched ? jitterY - 8 : jitterY) + 8,
@@ -346,8 +364,8 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
           </div>
         );
       })}
-      <div style={{ position: "absolute", left: addLeft, top: 8, width: cardWidth, zIndex: shown.length + 1 }}>
-        <AddCardTile aspect={aspect} size={cardWidth} onClick={onAdd} label={addLabel} />
+      <div style={{ position: "absolute", left: addTileLeft, top: 8, width: addTileWidth, zIndex: shown.length + 1 }}>
+        <AddCardTile aspect={aspect} size={addTileWidth} onClick={onAdd} label={addLabel} />
       </div>
     </div>
   );

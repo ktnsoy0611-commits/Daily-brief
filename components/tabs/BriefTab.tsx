@@ -323,16 +323,19 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
       {!done ? (
         // ページ本体はスクロールしない(useEffectでbodyをロック)ので、
-        // ここがそのまま「残りの高さいっぱい」になる。以前は横幅基準
-        // (width:100%+aspect-ratio)でカードを組んでいたため、縦の余白が
-        // 少ない機種では高さがはみ出し、中央寄せが実質効かず上に張り付いて
-        // 見えていた。カード置き場を「余白いっぱいに伸びるflexの箱」にし、
-        // カード自体は高さ基準(height:100%+aspect-ratio→幅が決まる)で
-        // 組み直すことで、縦にどれだけ余白があっても必ずその中に収まって
-        // 中央に来るようにしている。
+        // ここがそのまま「残りの高さいっぱい」になる。カードのサイズは
+        // 「幅(min(88vw,340px))を基準にaspect-ratioで高さを出しつつ、
+        // maxHeightを100dvh基準(56dvh)で直接キャップする」方式にしている。
+        // 以前はheight:100%を親のflexから継承させ、そこからaspect-ratioで
+        // 幅を逆算する方式だったが、これは間に挟まる複数階層のflexすべてが
+        // 正しくパーセント高さを解決して初めて成立する連鎖で、環境によっては
+        // 途中の解決に失敗し、カード自体の実寸が0になって(下のSKIP/KEEPの
+        // ヒント文字だけが残る)「カードが表示されない」不具合の疑いがあった。
+        // widthとmaxHeightを祖先のflexに依存せず直接指定することで、
+        // その連鎖を断ち切り、常に何らかの実寸を持つようにしている。
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ flex: "1 1 0", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }}>
-            <main style={{ position: "relative", height: "100%", maxHeight: "56dvh", width: "auto", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT }}>
+          <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0", overflow: "hidden" }}>
+            <main style={{ position: "relative", width: "min(88vw, 340px, calc(56dvh * 0.75))", aspectRatio: ITEM_CARD_ASPECT }}>
               {visibleCards.map(({ card, isTop }) => (
                 <div
                   key={card.id}

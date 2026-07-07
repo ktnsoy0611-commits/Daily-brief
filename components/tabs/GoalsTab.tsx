@@ -2,7 +2,7 @@
 
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
-import { BottomSheet } from "@/components/BottomSheet";
+import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { AddCardTile, GoalCard, Masthead, rowBtn } from "@/components/common";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
@@ -13,7 +13,7 @@ function AddGoalSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onCl
   return (
     <BottomSheet onClose={onClose}>
       {(requestClose) => (
-        <>
+        <OverlayCard>
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>目標を追加</div>
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="終わりのない目標を"
             style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 15, outline: "none", marginBottom: 20, background: "transparent" }} />
@@ -21,7 +21,7 @@ function AddGoalSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onCl
             width: "100%", padding: "13px 0", background: title.trim() ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none",
             borderRadius: 999, cursor: title.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
           }}>追加する</button>
-        </>
+        </OverlayCard>
       )}
     </BottomSheet>
   );
@@ -32,31 +32,33 @@ function GoalDetailSheet({ goal, draft, onDraftChange, onManualAdd, onRemove, on
 }) {
   return (
     <BottomSheet onClose={onClose} maxHeight="82vh">
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, lineHeight: 1.4 }}>{goal.title}</div>
-        <button onClick={onRemove} aria-label="削除" style={{ flexShrink: 0, background: "none", border: "none", color: "#9A988E", cursor: "pointer", padding: 4, display: "flex" }}><Trash2 size={16} /></button>
-      </div>
-      <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 10 }}>記録（{goal.checkIns?.length ?? 0}）</div>
-      {(goal.checkIns ?? []).length === 0 ? (
-        <p style={{ fontSize: 11.5, color: "#9A988E", marginBottom: 16 }}>まだ記録がありません</p>
-      ) : (
-        <div style={{ marginBottom: 16, maxHeight: "40vh", overflowY: "auto" }}>
-          {goal.checkIns.map((ci) => (
-            <div key={ci.id} style={{ padding: "8px 0", borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                <span style={{ fontSize: 9.5, color: "#9A988E" }}>{shortDate(ci.at)}{ci.source === "prompted" && " ・ ブリーフより"}</span>
-                {ci.kind === "milestone" && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: RUST, borderRadius: 999, padding: "2px 7px" }}>{ratingLabel(ci.rating)}</span>}
-              </div>
-              <div style={{ fontSize: 12, color: "#4A4A44", lineHeight: 1.6 }}>{ci.text}</div>
-            </div>
-          ))}
+      <OverlayCard>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, lineHeight: 1.4 }}>{goal.title}</div>
+          <button onClick={onRemove} aria-label="削除" style={{ flexShrink: 0, background: "none", border: "none", color: "#9A988E", cursor: "pointer", padding: 4, display: "flex" }}><Trash2 size={16} /></button>
         </div>
-      )}
-      <div style={{ display: "flex", gap: 8 }}>
-        <input value={draft} onChange={(e) => onDraftChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onManualAdd()}
-          placeholder="今の様子を書き足す" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: 12.5, padding: "6px 2px", outline: "none" }} />
-        <button onClick={onManualAdd} style={rowBtn(INK, PAPER)}>記録</button>
-      </div>
+        <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 10 }}>記録（{goal.checkIns?.length ?? 0}）</div>
+        {(goal.checkIns ?? []).length === 0 ? (
+          <p style={{ fontSize: 11.5, color: "#9A988E", marginBottom: 16 }}>まだ記録がありません</p>
+        ) : (
+          <div style={{ marginBottom: 16, maxHeight: "40vh", overflowY: "auto" }}>
+            {goal.checkIns.map((ci) => (
+              <div key={ci.id} style={{ padding: "8px 0", borderTop: `1px solid ${HAIRLINE}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                  <span style={{ fontSize: 9.5, color: "#9A988E" }}>{shortDate(ci.at)}{ci.source === "prompted" && " ・ ブリーフより"}</span>
+                  {ci.kind === "milestone" && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: RUST, borderRadius: 999, padding: "2px 7px" }}>{ratingLabel(ci.rating)}</span>}
+                </div>
+                <div style={{ fontSize: 12, color: "#4A4A44", lineHeight: 1.6 }}>{ci.text}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <input value={draft} onChange={(e) => onDraftChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onManualAdd()}
+            placeholder="今の様子を書き足す" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: 12.5, padding: "6px 2px", outline: "none" }} />
+          <button onClick={onManualAdd} style={rowBtn(INK, PAPER)}>記録</button>
+        </div>
+      </OverlayCard>
     </BottomSheet>
   );
 }

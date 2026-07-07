@@ -5,56 +5,64 @@ import { useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
 import { BLUE, GREEN, INK, PAPER, RUST, SANS, SERIF, SOFT_SHADOW, catOf, mediaKindOf } from "@/lib/constants";
-import { dayInfo, haptic, img, inferMediaKind, shade, shortDate } from "@/lib/helpers";
+import { dayInfo, haptic, img, inferMediaKind, shortDate } from "@/lib/helpers";
 import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
 
-// 「バインダー」タイル。ただの正方形カードではなく、タブ付きのフォルダーの
-// 中に写真(またはアイコン)のカードが数枚差し込まれ、上端だけのぞいている
-// ように見せる。リアルな紙のフォルダーとスタイライズされた色面カードの
-// 中間ぐらいの見た目を狙い、タップで中身のカードグリッドをシートで開く。
-// エリア別・メディアのジャンル別・日付別で共用し、デザインとサイズを統一
-// している。
+// 「バインダー」タイル。主役はあくまで扇形にスタックしたカード本体で、
+// 左下に小さなバインダーの土台を置き、カードがそこから飛び出してきた
+// ように見せる(以前の「フォルダーが主役でカードが少しだけ覗く」構成を
+// 反転した)。バインダー自体は無地の落ち着いた色にして、写真やカードの
+// 色が主役として映えるようにしている。タップで中身のカードグリッドを
+// シートで開く。エリア別・メディアのジャンル別・日付別で共用し、デザインと
+// サイズを統一している。
 // (以前はタイルの直下に展開するアコーディオン式だったが、閉じた状態の
 // 展開パネルがCSS Grid/flexboxどちらでも「幅ゼロでも1行分場所を使う」
 // ため隣のタイルが2列に並ばなくなる問題があり、タップでシートを開く
 // 方式に変更した。)
+const BINDER_CASE = "#DAD4C6";
 function BinderTile({ title, count, coverImages, coverColor, icon: Icon, onClick }: {
   title: string; count: number; coverImages: string[]; coverColor?: string; icon?: IconType; onClick: () => void;
 }) {
   const base = coverColor ?? "#5A5A54";
-  const folderBack = shade(base, 62);
-  const folderFlap = shade(base, 50);
-  const rotations = [-10, 5, -3];
+  const fan = [
+    { left: 6, bottom: 8, width: 46, rotate: -16 },
+    { left: 26, bottom: 4, width: 48, rotate: -1 },
+    { left: 44, bottom: 10, width: 46, rotate: 12 },
+  ];
   return (
     <button onClick={onClick} style={{ minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
       <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1" }}>
-        {/* フォルダーのタブ(背面シートの一部) */}
-        <div style={{ position: "absolute", top: "4%", left: "8%", width: "34%", height: "13%", borderRadius: "8px 8px 0 0", background: folderBack }} />
-        {/* フォルダー本体(背面) */}
-        <div style={{ position: "absolute", top: "13%", left: "3%", width: "94%", height: "83%", borderRadius: 16, background: folderBack, boxShadow: SOFT_SHADOW }} />
-        {/* 中に差し込まれたカード。下側はこの後ろの前面フラップに隠れ、上端だけのぞく */}
+        {/* バインダーの土台。左下に小さく置き、そこからカードが飛び出しているように見せる */}
+        <div style={{
+          position: "absolute", left: 0, bottom: 0, width: "56%", height: "40%", borderRadius: "4px 12px 12px 4px",
+          background: BINDER_CASE, transform: "rotate(-5deg)", transformOrigin: "0% 100%", boxShadow: SOFT_SHADOW,
+        }}>
+          <div style={{ position: "absolute", left: "10%", top: "12%", bottom: "12%", width: 2, borderRadius: 1, background: "rgba(28,28,30,0.12)" }} />
+        </div>
+        {/* 土台から飛び出す、扇形にスタックしたカード本体 */}
         {coverImages.length > 0 ? (
-          coverImages.slice(0, 3).map((seed, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={seed} src={img(seed, 220, 220)} alt="" style={{
-              position: "absolute", top: "17%", left: `${50 + (i - 1) * 13}%`, width: "42%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 8,
-              border: "2.5px solid #fff", boxShadow: "0 6px 14px rgba(28,28,30,0.22)",
-              transform: `translateX(-50%) rotate(${rotations[i]}deg)`, transformOrigin: "50% 100%", zIndex: 10 + i,
-            }} />
-          ))
+          coverImages.slice(0, 3).map((seed, i) => {
+            const f = fan[i];
+            return (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={seed} src={img(seed, 220, 220)} alt="" style={{
+                position: "absolute", left: `${f.left}%`, bottom: `${f.bottom}%`, width: `${f.width}%`, aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 10,
+                border: "2.5px solid #fff", boxShadow: "0 8px 16px rgba(28,28,30,0.28)",
+                transform: `rotate(${f.rotate}deg)`, transformOrigin: "0% 100%", zIndex: 10 + i,
+              }} />
+            );
+          })
         ) : (
           <div style={{
-            position: "absolute", top: "19%", left: "50%", width: "46%", aspectRatio: "3 / 4", borderRadius: 10, background: base,
-            transform: "translateX(-50%) rotate(-4deg)", transformOrigin: "50% 100%", boxShadow: "0 6px 14px rgba(28,28,30,0.22)",
+            position: "absolute", left: `${fan[0].left}%`, bottom: `${fan[0].bottom}%`, width: "50%", aspectRatio: "3 / 4", borderRadius: 10, background: base,
+            transform: `rotate(${fan[0].rotate}deg)`, transformOrigin: "0% 100%", boxShadow: "0 8px 16px rgba(28,28,30,0.28)",
             display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10,
           }}>
             {Icon && <Icon size="42%" strokeWidth={1.2} color="rgba(255,255,255,0.9)" />}
           </div>
         )}
-        {/* フォルダーの前面フラップ。カードの下半分を隠して「差し込まれている」見た目にする */}
-        <div style={{ position: "absolute", top: "47%", left: 0, width: "100%", height: "53%", borderRadius: "5px 16px 16px 16px", background: folderFlap, zIndex: 20, boxShadow: SOFT_SHADOW }} />
         <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(28,28,30,0.62)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", zIndex: 30 }}>{count}</div>
       </div>
       <div style={{ marginTop: 8, fontFamily: SERIF, fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
@@ -66,13 +74,14 @@ function BinderGrid({ children }: { children: React.ReactNode }) {
   return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>{children}</div>;
 }
 
-// タップしたバインダーの中身を見せる共通シート。開くとスライドアップ
-// アニメーションとともにカードグリッドが現れる(BottomSheet標準の動き)。
+// タップしたバインダーの中身を見せる共通シート。カード自体が完結した
+// ビジュアルを持つので、白い台紙には包まずブラー背景の上に直接浮かせる。
+// タイトルはブラー越しでも読めるよう明るい色にしている。
 function BinderContentsSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <BottomSheet onClose={onClose} maxHeight="80vh">
-      <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17, margin: "4px 0 16px" }}>{title}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingBottom: 8 }}>
+      <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{title}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
         {children}
       </div>
     </BottomSheet>

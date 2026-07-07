@@ -2,7 +2,7 @@
 
 import { BookOpen, Film, MapPin, Music, Music2, Palette, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { BottomSheet } from "@/components/BottomSheet";
+import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, CardStack, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
 import { GREEN, HAIRLINE, INK, MEDIA_KINDS, PAPER, POSTER_PALETTE, RUST, SANS, mediaKindOf } from "@/lib/constants";
 import { hashStr, haptic, keepMedia, shortDate } from "@/lib/helpers";
@@ -69,7 +69,7 @@ function AddPlaceSheet({ onAdd, onClose }: { onAdd: (data: ParsedPlace) => void;
   return (
     <BottomSheet onClose={onClose}>
       {(requestClose) => (
-        <>
+        <OverlayCard>
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>URLから場所を追加</div>
 
           {step === "input" && (
@@ -110,7 +110,7 @@ function AddPlaceSheet({ onAdd, onClose }: { onAdd: (data: ParsedPlace) => void;
               <button onClick={() => { if (!title.trim()) return; onAdd({ title: title.trim(), category: category.trim() || "登録した場所", area: area.trim(), sourceUrl: url.trim(), sourceLabel: "登録したリンクを見る" }); requestClose(); }} disabled={!title.trim()} style={{ width: "100%", padding: "13px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" }}>この内容で追加</button>
             </>
           )}
-        </>
+        </OverlayCard>
       )}
     </BottomSheet>
   );
@@ -128,7 +128,7 @@ function AddStockMediaSheet({ onAdd, onClose }: {
   return (
     <BottomSheet onClose={onClose}>
       {(requestClose) => (
-        <>
+        <OverlayCard>
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>作品をストックに追加</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
             {MEDIA_KINDS.map((k) => (
@@ -147,7 +147,7 @@ function AddStockMediaSheet({ onAdd, onClose }: {
             width: "100%", padding: "13px 0", background: title.trim() ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none",
             borderRadius: 999, cursor: title.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
           }}>ストックする</button>
-        </>
+        </OverlayCard>
       )}
     </BottomSheet>
   );
@@ -158,7 +158,7 @@ function AddWishSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onCl
   return (
     <BottomSheet onClose={onClose}>
       {(requestClose) => (
-        <>
+        <OverlayCard>
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>ウィッシュリストに追加</div>
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="ふと思ったことを、なんでも"
             style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 15, outline: "none", marginBottom: 20, background: "transparent" }} />
@@ -166,7 +166,7 @@ function AddWishSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onCl
             width: "100%", padding: "13px 0", background: title.trim() ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none",
             borderRadius: 999, cursor: title.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
           }}>追加する</button>
-        </>
+        </OverlayCard>
       )}
     </BottomSheet>
   );
@@ -315,25 +315,25 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
 
       {openStack === "media" && (
         <BottomSheet onClose={() => setOpenStack(null)} maxHeight="80vh">
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, margin: "4px 0 16px" }}>作品</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingBottom: 8 }}>
-            {mediaItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "#9A988E" }}>まだありません。</p> : mediaItemsDesc.map((r) => mediaCard(r))}
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>作品</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
+            {mediaItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : mediaItemsDesc.map((r) => mediaCard(r))}
           </div>
         </BottomSheet>
       )}
       {openStack === "place" && (
         <BottomSheet onClose={() => setOpenStack(null)} maxHeight="80vh">
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, margin: "4px 0 16px" }}>場所</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingBottom: 8 }}>
-            {placeItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "#9A988E" }}>まだありません。</p> : placeItemsDesc.map((k) => placeCard(k))}
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>場所</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
+            {placeItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : placeItemsDesc.map((k) => placeCard(k))}
           </div>
         </BottomSheet>
       )}
       {openStack === "wish" && (
         <BottomSheet onClose={() => setOpenStack(null)} maxHeight="80vh">
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, margin: "4px 0 16px" }}>ウィッシュリスト</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingBottom: 8 }}>
-            {wishItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "#9A988E" }}>まだありません。</p> : wishItemsDesc.map((w) => wishCard(w))}
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>ウィッシュリスト</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
+            {wishItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : wishItemsDesc.map((w) => wishCard(w))}
           </div>
         </BottomSheet>
       )}

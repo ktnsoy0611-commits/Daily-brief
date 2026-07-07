@@ -1,10 +1,10 @@
 "use client";
 
 import { Bookmark, Plus, Star } from "lucide-react";
-import { useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
-import { BottomSheet } from "./BottomSheet";
+import { BottomSheet, OverlayCard } from "./BottomSheet";
 
 export type IconType = ComponentType<{ size?: number | string; strokeWidth?: number; color?: string }>;
 
@@ -191,7 +191,8 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   const cardHeight = Math.round((cardWidth * den) / num);
   const totalWidth = offsetStep * shown.length + cardWidth;
   const touchedIdx = shown.findIndex((it) => it.key === touchedKey);
-  const release = () => setTouchedKey(null);
+  const dragRef = useRef({ active: false, startX: 0, startIdx: 0 });
+  const release = () => { dragRef.current.active = false; setTouchedKey(null); };
 
   return (
     <div style={{ position: "relative", height: Math.round(cardHeight * 1.16) + 8, width: Math.max(totalWidth, cardWidth) }}>
@@ -201,13 +202,28 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
         const jitterY = ((seed >> 3) % 11) - 5;
         const isTouched = i === touchedIdx;
         const spread = touchedIdx >= 0 && !isTouched ? (i < touchedIdx ? -9 : 9) : 0;
+        const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+          setTouchedKey(it.key);
+          dragRef.current = { active: true, startX: e.clientX, startIdx: i };
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+        };
+        // 拡大表示のまま左右に指を動かすと、その位置に応じて隣のカードへ
+        // 追従して主役が切り替わる(スワイプでプレビューが移り変わる動き)。
+        const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+          if (!dragRef.current.active) return;
+          const dx = e.clientX - dragRef.current.startX;
+          const shift = Math.round(dx / offsetStep);
+          const newIdx = Math.min(shown.length - 1, Math.max(0, dragRef.current.startIdx + shift));
+          const newKey = shown[newIdx]?.key;
+          if (newKey && newKey !== touchedKey) setTouchedKey(newKey);
+        };
         return (
           <div
             key={it.key}
             onClick={onOpen}
-            onPointerDown={() => setTouchedKey(it.key)}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
             onPointerUp={release}
-            onPointerLeave={release}
             onPointerCancel={release}
             style={{
               position: "absolute", left: i * offsetStep + spread, top: (isTouched ? jitterY - 8 : jitterY) + 8,
@@ -216,6 +232,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
               transformOrigin: "50% 100%",
               transition: "transform 0.28s cubic-bezier(0.32,0.72,0,1), left 0.28s cubic-bezier(0.32,0.72,0,1), top 0.28s cubic-bezier(0.32,0.72,0,1)",
               filter: isTouched ? "drop-shadow(0 14px 22px rgba(28,28,30,0.22))" : "none",
+              touchAction: "none", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
             }}
           >
             {it.node}
@@ -259,26 +276,30 @@ export function BinderModal({ item, onClose, actionSlot }: {
     <BottomSheet onClose={onClose} maxHeight="82vh">
       {(requestClose) => (
         <>
-          <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: actionSlot ? 12 : 16 }}>{item.title}</div>
-          {actionSlot && <div style={{ marginBottom: 16 }}>{actionSlot(requestClose)}</div>}
-          <div style={{ display: "flex", justifyContent: "center", padding: "4px 0 22px" }}>
-            {(item.images ?? []).map((seed, i) => (
-              <img key={seed} src={img(seed, 300, 380)} alt="" style={{ width: "32%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 6, border: "4px solid #fff", boxShadow: "0 8px 20px rgba(23,23,21,0.3)", transform: `rotate(${rotations[i % 3]}deg)`, marginLeft: i === 0 ? 0 : -18, position: "relative", zIndex: i }} />
-            ))}
-          </div>
-          {item.meta && item.meta.length > 0 && (
-            <div style={{ borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`, padding: "12px 2px", margin: "0 0 18px", display: "flex", flexDirection: "column", gap: 7 }}>
-              {item.meta.map((m, i) => (
-                <div key={i} style={{ fontSize: 12.5, color: "#4A4A44", fontFamily: SANS }}>{m}</div>
+          {(item.images ?? []).length > 0 && (
+            <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 18px" }}>
+              {(item.images ?? []).map((seed, i) => (
+                <img key={seed} src={img(seed, 300, 380)} alt="" style={{ width: "32%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 6, border: "4px solid #fff", boxShadow: "0 8px 20px rgba(23,23,21,0.3)", transform: `rotate(${rotations[i % 3]}deg)`, marginLeft: i === 0 ? 0 : -18, position: "relative", zIndex: i }} />
               ))}
             </div>
           )}
-          {item.sourceUrl && (
-            <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: "13px 0", background: INK, color: PAPER, borderRadius: 999, textDecoration: "none", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" }}>
-              {item.sourceLabel ?? "情報ソースを見る"} ↗
-            </a>
-          )}
+          <OverlayCard>
+            <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
+            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: actionSlot ? 12 : 16 }}>{item.title}</div>
+            {actionSlot && <div style={{ marginBottom: 16 }}>{actionSlot(requestClose)}</div>}
+            {item.meta && item.meta.length > 0 && (
+              <div style={{ borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`, padding: "12px 2px", margin: "0 0 18px", display: "flex", flexDirection: "column", gap: 7 }}>
+                {item.meta.map((m, i) => (
+                  <div key={i} style={{ fontSize: 12.5, color: "#4A4A44", fontFamily: SANS }}>{m}</div>
+                ))}
+              </div>
+            )}
+            {item.sourceUrl && (
+              <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: "13px 0", background: INK, color: PAPER, borderRadius: 999, textDecoration: "none", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" }}>
+                {item.sourceLabel ?? "情報ソースを見る"} ↗
+              </a>
+            )}
+          </OverlayCard>
         </>
       )}
     </BottomSheet>

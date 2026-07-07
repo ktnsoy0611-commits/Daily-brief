@@ -2,7 +2,7 @@
 
 import { BookOpen, Check, Film, MapPin, Music, Music2, Palette } from "lucide-react";
 import { useEffect, useState } from "react";
-import { BottomSheet } from "@/components/BottomSheet";
+import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
 import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, mediaKindOf } from "@/lib/constants";
 import { hashStr, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
@@ -216,12 +216,13 @@ interface ExecItem {
 // ボード(コルクボード風)に留められた写真、というイメージの1枚。idから
 // 決定論的に少しだけ回転・上下にずらし、上端には画鋲を1本のせることで、
 // 単なる散らしグリッドではなく「実際にピンで留めた」ような手触りを足す。
-const PIN_COLORS = [BLUE, "#FF6A3D", "#2FBF6E", "#F0A020", "#E23D6B"];
+// 画鋲の色は1色に絞り、写真やカード自体の色が主役になるようにしている。
+const PIN_COLOR = RUST;
 function ScrapCard({ item, onClick }: { item: ExecItem; onClick: () => void }) {
   const seed = hashStr(`${item.type}-${item.id}`);
   const rotation = ((seed % 9) - 4) * 1.4;
   const lift = (seed >> 4) % 14;
-  const pin = PIN_COLORS[seed % PIN_COLORS.length];
+  const pin = PIN_COLOR;
   const icon = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
   return (
     <div onClick={onClick} style={{
@@ -243,23 +244,25 @@ function ScrapCard({ item, onClick }: { item: ExecItem; onClick: () => void }) {
 function AddToMagazineSheet({ pool, onAdd, onClose }: { pool: Keep[]; onAdd: (id: string) => void; onClose: () => void }) {
   return (
     <BottomSheet onClose={onClose} maxHeight="60vh">
-      <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 15, marginBottom: 12 }}>候補から追加</div>
-      {pool.length === 0 ? (
-        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>追加できる候補がありません。</p>
-      ) : pool.map((k, i) => (
-        <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px", borderTop: i === 0 ? "none" : `1px solid ${HAIRLINE}` }}>
-          {k.images && k.images.length > 0 ? (
-            <img src={img(k.images[0], 90, 90)} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
-          ) : (
-            <div style={{ width: 42, height: 42, borderRadius: 8, background: k.color ?? "#5A5A54", flexShrink: 0 }} />
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.title}</div>
-            <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2 }}>{k.category}{k.area && k.area !== "—" ? ` ・ ${k.area}` : ""}</div>
+      <OverlayCard>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 15, marginBottom: 12 }}>候補から追加</div>
+        {pool.length === 0 ? (
+          <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>追加できる候補がありません。</p>
+        ) : pool.map((k, i) => (
+          <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px", borderTop: i === 0 ? "none" : `1px solid ${HAIRLINE}` }}>
+            {k.images && k.images.length > 0 ? (
+              <img src={img(k.images[0], 90, 90)} alt="" style={{ width: 42, height: 42, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+            ) : (
+              <div style={{ width: 42, height: 42, borderRadius: 8, background: k.color ?? "#5A5A54", flexShrink: 0 }} />
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.title}</div>
+              <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2 }}>{k.category}{k.area && k.area !== "—" ? ` ・ ${k.area}` : ""}</div>
+            </div>
+            <button onClick={() => onAdd(k.id)} style={{ flexShrink: 0, padding: "8px 14px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>追加</button>
           </div>
-          <button onClick={() => onAdd(k.id)} style={{ flexShrink: 0, padding: "8px 14px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>追加</button>
-        </div>
-      ))}
+        ))}
+      </OverlayCard>
     </BottomSheet>
   );
 }
@@ -410,12 +413,12 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
     const next = structuredClone(appState);
     const now = Date.now();
     ([
-      { title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", color: "#1E3A8A", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"] },
-      { title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", color: "#0E9F6E", meta: ["COFFEE WRIGHTS", "9:00–18:00"] },
-      { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", color: "#D2601A", meta: ["高円寺北口エリア"] },
-      { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", color: "#0E9F6E", meta: ["神保町"] },
-      { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", color: "#1E3A8A", meta: ["江戸東京博物館"] },
-      { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", color: "#3D5AFE", meta: ["蔵前"] },
+      { title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", color: "#33467C", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"] },
+      { title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["COFFEE WRIGHTS", "9:00–18:00"] },
+      { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", color: "#8B4A2E", meta: ["高円寺北口エリア"] },
+      { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["神保町"] },
+      { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", color: "#33467C", meta: ["江戸東京博物館"] },
+      { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", color: "#5C4B6B", meta: ["蔵前"] },
     ]).forEach((d, i) => {
       next.keeps.push({ id: `demo-${now}-${i}`, title: d.title, category: d.category, area: d.area, status: "candidate", keptAt: new Date(now - i * 86400000).toISOString(), images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color: d.color });
     });

@@ -1,69 +1,76 @@
 "use client";
 
-import { BookOpen, Film, MapPin, Music, Music2, Palette, Sprout } from "lucide-react";
+import { BookOpen, Film, MapPin, Music, Music2, Paperclip, Palette } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
-import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
-import { BLUE, GREEN, INK, PAPER, RUST, SANS, SERIF, SOFT_SHADOW, catOf, mediaKindOf } from "@/lib/constants";
-import { dayInfo, haptic, img, inferMediaKind, shortDate } from "@/lib/helpers";
+import { BinderModal, type BinderItem, GoalCard, type IconType, Masthead, PosterCard } from "@/components/common";
+import { BLUE, GREEN, INK, ITEM_CARD_ASPECT, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
+import { dayInfo, haptic, img, inferMediaKind, shade, shortDate } from "@/lib/helpers";
 import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
 
-// 「バインダー」タイル。主役はあくまで扇形にスタックしたカード本体で、
-// 左下に小さなバインダーの土台を置き、カードがそこから飛び出してきた
-// ように見せる(以前の「フォルダーが主役でカードが少しだけ覗く」構成を
-// 反転した)。バインダー自体は無地の落ち着いた色にして、写真やカードの
-// 色が主役として映えるようにしている。タップで中身のカードグリッドを
-// シートで開く。エリア別・メディアのジャンル別・日付別で共用し、デザインと
-// サイズを統一している。
+// カード本体の見た目だけをPosterCardから借りた、キャプションなしの
+// 小さな縮小カード。バインダータイルの中で複数枚スタックして見せる用。
+function MiniCard({ image, color, icon: Icon }: { image?: string; color?: string; icon?: IconType }) {
+  const fill = color ?? "#5A5A54";
+  return (
+    <div style={{
+      width: "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 10, overflow: "hidden", position: "relative",
+      border: "2px solid #fff", boxShadow: "0 6px 14px rgba(28,28,30,0.22)",
+      background: image ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)`,
+    }}>
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={img(image, 200, 260)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      ) : (
+        Icon && (
+          <div style={{ position: "absolute", bottom: "-14%", right: "-12%", width: "60%", aspectRatio: "1 / 1", transform: "rotate(-16deg)", opacity: 0.18 }}>
+            <Icon size="100%" strokeWidth={1} color="#fff" />
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+// 「バインダー」タイル。フォルダー型の入れ物は撤廃し、他タブのCardStackと
+// 同じ視覚言語(スタックしたカード本体が主役)に揃えた上で、左上をクリップで
+// 留めたような見た目にしている。2列グリッドで、一画面に4枚ほど収まる
+// サイズ感。タップで中身のカードグリッドをシートで開く。エリア別・メディアの
+// ジャンル別・日付別で共用し、デザインとサイズを統一している。
 // (以前はタイルの直下に展開するアコーディオン式だったが、閉じた状態の
 // 展開パネルがCSS Grid/flexboxどちらでも「幅ゼロでも1行分場所を使う」
 // ため隣のタイルが2列に並ばなくなる問題があり、タップでシートを開く
 // 方式に変更した。)
-const BINDER_CASE = "#DAD4C6";
 function BinderTile({ title, count, coverImages, coverColor, icon: Icon, onClick }: {
   title: string; count: number; coverImages: string[]; coverColor?: string; icon?: IconType; onClick: () => void;
 }) {
-  const base = coverColor ?? "#5A5A54";
+  // 左のカードが一番手前(最前面)に来るよう、他タブのCardStackと同じ
+  // 重なり順にする。位置はすべてタイルの内側(0〜100%)に収まるよう固定し、
+  // データによって並びがズレて見えないようにしている。
   const fan = [
-    { left: 6, bottom: 8, width: 46, rotate: -16 },
-    { left: 26, bottom: 4, width: 48, rotate: -1 },
-    { left: 44, bottom: 10, width: 46, rotate: 12 },
+    { left: "6%", top: "20%", rotate: -9, z: 3 },
+    { left: "26%", top: "10%", rotate: 3, z: 2 },
+    { left: "46%", top: "18%", rotate: 13, z: 1 },
   ];
+  const cards = coverImages.length > 0 ? coverImages.slice(0, 3) : [undefined];
   return (
     <button onClick={onClick} style={{ minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-      <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1" }}>
-        {/* バインダーの土台。左下に小さく置き、そこからカードが飛び出しているように見せる */}
-        <div style={{
-          position: "absolute", left: 0, bottom: 0, width: "56%", height: "40%", borderRadius: "4px 12px 12px 4px",
-          background: BINDER_CASE, transform: "rotate(-5deg)", transformOrigin: "0% 100%", boxShadow: SOFT_SHADOW,
-        }}>
-          <div style={{ position: "absolute", left: "10%", top: "12%", bottom: "12%", width: 2, borderRadius: 1, background: "rgba(28,28,30,0.12)" }} />
+      <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 5" }}>
+        {cards.map((seed, i) => {
+          const f = fan[i];
+          return (
+            <div key={seed ?? i} style={{ position: "absolute", left: f.left, top: f.top, width: "50%", transform: `rotate(${f.rotate}deg)`, transformOrigin: "50% 100%", zIndex: f.z }}>
+              <MiniCard image={seed} color={coverColor} icon={Icon} />
+            </div>
+          );
+        })}
+        {/* 左上をとめるクリップ */}
+        <div style={{ position: "absolute", top: "3%", left: "8%", zIndex: 4, transform: "rotate(-20deg)", filter: "drop-shadow(0 2px 3px rgba(28,28,30,0.35))" }}>
+          <Paperclip size={22} color="#8A8A82" strokeWidth={2} />
         </div>
-        {/* 土台から飛び出す、扇形にスタックしたカード本体 */}
-        {coverImages.length > 0 ? (
-          coverImages.slice(0, 3).map((seed, i) => {
-            const f = fan[i];
-            return (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={seed} src={img(seed, 220, 220)} alt="" style={{
-                position: "absolute", left: `${f.left}%`, bottom: `${f.bottom}%`, width: `${f.width}%`, aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 10,
-                border: "2.5px solid #fff", boxShadow: "0 8px 16px rgba(28,28,30,0.28)",
-                transform: `rotate(${f.rotate}deg)`, transformOrigin: "0% 100%", zIndex: 10 + i,
-              }} />
-            );
-          })
-        ) : (
-          <div style={{
-            position: "absolute", left: `${fan[0].left}%`, bottom: `${fan[0].bottom}%`, width: "50%", aspectRatio: "3 / 4", borderRadius: 10, background: base,
-            transform: `rotate(${fan[0].rotate}deg)`, transformOrigin: "0% 100%", boxShadow: "0 8px 16px rgba(28,28,30,0.28)",
-            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10,
-          }}>
-            {Icon && <Icon size="42%" strokeWidth={1.2} color="rgba(255,255,255,0.9)" />}
-          </div>
-        )}
-        <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(28,28,30,0.62)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", zIndex: 30 }}>{count}</div>
+        <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(28,28,30,0.6)", color: "#fff", fontSize: 9.5, fontWeight: 700, borderRadius: 999, padding: "2px 8px", zIndex: 5 }}>{count}</div>
       </div>
       <div style={{ marginTop: 8, fontFamily: SERIF, fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
     </button>
@@ -71,7 +78,7 @@ function BinderTile({ title, count, coverImages, coverColor, icon: Icon, onClick
 }
 
 function BinderGrid({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>{children}</div>;
+  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, rowGap: 22 }}>{children}</div>;
 }
 
 // タップしたバインダーの中身を見せる共通シート。カード自体が完結した
@@ -79,7 +86,7 @@ function BinderGrid({ children }: { children: React.ReactNode }) {
 // タイトルはブラー越しでも読めるよう明るい色にしている。
 function BinderContentsSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <BottomSheet onClose={onClose} maxHeight="80vh">
+    <BottomSheet onClose={onClose} maxHeight="74vh">
       <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{title}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
         {children}
@@ -238,20 +245,10 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
               <button onClick={() => goTab("goals")} style={{ background: "none", border: "none", color: BLUE, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>すべて見る</button>
             </div>
             <div style={{ display: "flex", gap: 10, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
-              {activeGoals.map((g) => {
-                const latest = g.checkIns?.[0];
-                return (
-                  <button key={g.id} onClick={() => goTab("goals")} style={{ flexShrink: 0, width: 168, textAlign: "left", background: PAPER, border: "none", borderRadius: 16, padding: "13px 15px", cursor: "pointer", boxShadow: SOFT_SHADOW }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                      <Sprout size={13} color={GREEN} />
-                      <span style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 13.5 }}>{g.title}</span>
-                    </div>
-                    <p style={{ fontSize: 10.5, color: latest ? "#5A5A54" : "#9A988E", lineHeight: 1.6, margin: 0, fontStyle: latest ? "normal" : "italic", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                      {latest ? latest.text : "まだ記録がありません"}
-                    </p>
-                  </button>
-                );
-              })}
+              {activeGoals.map((g) => (
+                <GoalCard key={g.id} title={g.title} recentCheckIns={g.checkIns ?? []} checkInCount={g.checkIns?.length ?? 0}
+                  size={120} onClick={() => goTab("goals")} />
+              ))}
             </div>
           </section>
         )}

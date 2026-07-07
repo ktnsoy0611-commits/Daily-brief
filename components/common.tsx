@@ -3,7 +3,7 @@
 import { Bookmark, Plus, Star } from "lucide-react";
 import { useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
-import { hashStr, img, shade } from "@/lib/helpers";
+import { hashStr, img, shade, shortDate } from "@/lib/helpers";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
 export type IconType = ComponentType<{ size?: number | string; strokeWidth?: number; color?: string }>;
@@ -22,12 +22,12 @@ export function Masthead({ title, en, statValue, statLabel, dateline, right, cor
 }) {
   return (
     <header style={{ padding: "10px 4px 16px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 28, letterSpacing: "-0.01em", lineHeight: 1.15, color: INK }}>{title}</div>
-          <div style={{ fontSize: 13, color: "#9A988E", marginTop: 4 }}>{en}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 28, letterSpacing: "-0.01em", lineHeight: 1.15, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+          <div style={{ fontSize: 13, color: "#9A988E", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{en}</div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {corner}
           {right ? right : (
             <div style={{ textAlign: "right", background: PAPER, borderRadius: 14, padding: "8px 14px", boxShadow: SOFT_SHADOW }}>
@@ -122,30 +122,42 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
   );
 }
 
-// 目標カードだけは意図的に少し違うデザイン(比率3:5、紙の付箋のような
-// 見た目)にして、アイテムカードと視覚的に区別できるようにしている。
-export function GoalCard({ title, latestText, hasCheckIns, checkInCount, onClick, size }: {
+// 目標カードだけは意図的に少し違うデザイン(比率3:5)にして、アイテム
+// カードと視覚的に区別できるようにしている。ロール紙(レシートロール)を
+// イメージし、上部の巻き取り口から紙が続いているような見た目にした上で、
+// 直近の記録を印字された行のように2件まで常時カード面に出す。下端は
+// フェードさせ、まだ紙が続いていく(記録が積み重なっていく)ことを示す。
+export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }: {
   title: string;
-  latestText?: string;
-  hasCheckIns: boolean;
+  recentCheckIns: { text: string; at: string }[];
   checkInCount: number;
   onClick: () => void;
   size?: number | string;
 }) {
+  const shown = recentCheckIns.slice(0, 2);
   return (
     <button onClick={onClick} style={{
       width: size ?? "100%", aspectRatio: GOAL_CARD_ASPECT, flexShrink: 0, textAlign: "left", cursor: "pointer",
-      border: "none", borderRadius: 18, padding: "16px 15px", background: GREEN, color: PAPER,
+      border: "none", borderRadius: 18, padding: 0, background: "#FBF8F1", color: INK,
       display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW, position: "relative", overflow: "hidden",
     }}>
-      <div style={{ position: "absolute", top: -18, right: -18, width: 90, height: 90, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
-      <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(251,250,247,0.6)" }}>GOAL</div>
-      <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14.5, lineHeight: 1.35, margin: "8px 0 0" }}>{title}</div>
-      <p style={{
-        fontSize: 11, lineHeight: 1.6, margin: "8px 0 0", color: hasCheckIns ? "rgba(251,250,247,0.85)" : "rgba(251,250,247,0.5)",
-        fontStyle: hasCheckIns ? "normal" : "italic", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", flex: 1,
-      }}>{hasCheckIns ? latestText : "まだ記録がありません"}</p>
-      <div style={{ fontSize: 9, color: "rgba(251,250,247,0.6)", marginTop: 8 }}>記録 {checkInCount}件</div>
+      <div style={{ background: GREEN, color: PAPER, padding: "12px 14px 13px", position: "relative" }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(251,250,247,0.65)" }}>GOAL</div>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, marginTop: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+      </div>
+      <div style={{ borderTop: "1.5px dashed rgba(28,28,30,0.16)" }} />
+      <div style={{ flex: 1, padding: "8px 14px 10px", display: "flex", flexDirection: "column", gap: 7, position: "relative", minHeight: 0, overflow: "hidden" }}>
+        {shown.length > 0 ? shown.map((ci, i) => (
+          <div key={i} style={{ paddingBottom: 7, borderBottom: i < shown.length - 1 ? "1px dashed rgba(28,28,30,0.14)" : "none" }}>
+            <div style={{ fontSize: 8.5, color: "#9A988E", marginBottom: 2 }}>{shortDate(ci.at)}</div>
+            <div style={{ fontSize: 11, lineHeight: 1.5, color: "#3A3A36", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{ci.text}</div>
+          </div>
+        )) : (
+          <p style={{ fontSize: 11, lineHeight: 1.6, color: "#9A988E", fontStyle: "italic", margin: 0 }}>まだ記録がありません</p>
+        )}
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 22, background: "linear-gradient(to bottom, rgba(251,248,241,0), #FBF8F1)", pointerEvents: "none" }} />
+      </div>
+      <div style={{ fontSize: 9, color: "#9A988E", padding: "0 14px 12px" }}>記録 {checkInCount}件</div>
     </button>
   );
 }
@@ -168,9 +180,10 @@ export function AddCardTile({ onClick, aspect = ITEM_CARD_ASPECT, size, label }:
   );
 }
 
-// ストック等で使う「カードの束」。左から右に少しずつずらして重ね、
-// 一番右(手前)に＋タイルを置く。＋以外の束をタップすると中身の一覧が
-// シートで開く。カード自体はPosterCard/GoalCardをそのまま渡す。
+// ストック等で使う「カードの束」。左から右に少しずつずらして重ねるが、
+// 一番手前(最前面)は左端のカード。＋タイルは束の右端に常に置く。
+// ＋以外の束をタップすると中身の一覧がシートで開く。カード自体は
+// PosterCard/GoalCardをそのまま渡す。
 // 単に横一列にずらすだけだと機械的に見えるため、カードごとに小さな回転と
 // 上下のズレ(idから決定論的に導出。再レンダーでガタつかない)を与えて、
 // 実際に紙の束を軽く広げたような自然さを出す。さらに指で触れているカードは
@@ -227,7 +240,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
             onPointerCancel={release}
             style={{
               position: "absolute", left: i * offsetStep + spread, top: (isTouched ? jitterY - 8 : jitterY) + 8,
-              width: cardWidth, zIndex: isTouched ? 20 : i, cursor: "pointer",
+              width: cardWidth, zIndex: isTouched ? 20 : shown.length - i, cursor: "pointer",
               transform: `rotate(${isTouched ? 0 : rotation}deg) scale(${isTouched ? 1.16 : 1})`,
               transformOrigin: "50% 100%",
               transition: "transform 0.28s cubic-bezier(0.32,0.72,0,1), left 0.28s cubic-bezier(0.32,0.72,0,1), top 0.28s cubic-bezier(0.32,0.72,0,1)",
@@ -273,7 +286,7 @@ export function BinderModal({ item, onClose, actionSlot }: {
   const rotations = [-7, 3, 9];
 
   return (
-    <BottomSheet onClose={onClose} maxHeight="82vh">
+    <BottomSheet onClose={onClose} maxHeight="76vh">
       {(requestClose) => (
         <>
           {(item.images ?? []).length > 0 && (

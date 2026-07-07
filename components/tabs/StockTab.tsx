@@ -314,7 +314,7 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
       </main>
 
       {openStack === "media" && (
-        <BottomSheet onClose={() => setOpenStack(null)} maxHeight="80vh">
+        <BottomSheet onClose={() => setOpenStack(null)} maxHeight="74vh">
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>作品</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
             {mediaItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : mediaItemsDesc.map((r) => mediaCard(r))}
@@ -322,7 +322,7 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
         </BottomSheet>
       )}
       {openStack === "place" && (
-        <BottomSheet onClose={() => setOpenStack(null)} maxHeight="80vh">
+        <BottomSheet onClose={() => setOpenStack(null)} maxHeight="74vh">
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>場所</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
             {placeItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : placeItemsDesc.map((k) => placeCard(k))}
@@ -330,7 +330,7 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
         </BottomSheet>
       )}
       {openStack === "wish" && (
-        <BottomSheet onClose={() => setOpenStack(null)} maxHeight="80vh">
+        <BottomSheet onClose={() => setOpenStack(null)} maxHeight="74vh">
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>ウィッシュリスト</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
             {wishItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : wishItemsDesc.map((w) => wishCard(w))}

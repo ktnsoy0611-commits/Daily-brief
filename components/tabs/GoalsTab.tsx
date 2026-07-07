@@ -31,7 +31,7 @@ function GoalDetailSheet({ goal, draft, onDraftChange, onManualAdd, onRemove, on
   goal: Goal; draft: string; onDraftChange: (v: string) => void; onManualAdd: () => void; onRemove: () => void; onClose: () => void;
 }) {
   return (
-    <BottomSheet onClose={onClose} maxHeight="82vh">
+    <BottomSheet onClose={onClose} maxHeight="76vh">
       <OverlayCard>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, lineHeight: 1.4 }}>{goal.title}</div>
@@ -107,7 +107,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {goalItems.map((g) => (
-            <GoalCard key={g.id} title={g.title} latestText={g.checkIns?.[0]?.text} hasCheckIns={(g.checkIns?.length ?? 0) > 0}
+            <GoalCard key={g.id} title={g.title} recentCheckIns={g.checkIns ?? []}
               checkInCount={g.checkIns?.length ?? 0} onClick={() => setOpenGoalId(g.id)} />
           ))}
           <AddCardTile aspect={GOAL_CARD_ASPECT} onClick={() => setAdding(true)} label="目標を追加" />

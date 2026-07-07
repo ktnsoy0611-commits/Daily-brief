@@ -243,7 +243,7 @@ function ScrapCard({ item, onClick }: { item: ExecItem; onClick: () => void }) {
 // マガジン編集モードで開く「候補から追加」シート(場所のKeepのみ)
 function AddToMagazineSheet({ pool, onAdd, onClose }: { pool: Keep[]; onAdd: (id: string) => void; onClose: () => void }) {
   return (
-    <BottomSheet onClose={onClose} maxHeight="60vh">
+    <BottomSheet onClose={onClose} maxHeight="56vh">
       <OverlayCard>
         <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 15, marginBottom: 12 }}>候補から追加</div>
         {pool.length === 0 ? (
@@ -473,16 +473,17 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
             <button onClick={() => setEditingMag(!editingMag)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: SANS, fontSize: 11, fontWeight: 700, color: editingMag ? INK : "#9A988E" }}>{editingMag ? "完了" : "編集"}</button>
           </div>
 
-          {/* スクラップブックに紙で貼り付けたようなカードの集合。以前は横スワイプの
-              カルーセルだったが、一覧性を優先して縦スクロールの散らし配置にした。 */}
-          <div style={{ background: GREEN, color: PAPER, borderRadius: 18, padding: "14px 18px", margin: "4px 0 18px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: SOFT_SHADOW }}>
+          {/* このページの主役はあくまで下のボードに並ぶカードなので、要約バンダーは
+              色を使わず控えめに留める。以前は緑色の塗りだったが、無彩色のカードに
+              変えてカード自体が浮き立つようにした。 */}
+          <div style={{ background: PAPER, color: INK, borderRadius: 18, padding: "14px 18px", margin: "4px 0 18px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: SOFT_SHADOW }}>
             <div>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", color: "rgba(251,250,247,0.75)" }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#D9A441", flexShrink: 0 }} />TODAY
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", color: "#9A988E" }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#9A988E", flexShrink: 0 }} />TODAY
               </div>
               <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16, margin: "4px 0 0" }}>今日のための行き先リスト</div>
             </div>
-            <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 30, color: "#D9A441", flexShrink: 0, marginLeft: 12 }}>{magItems.length}</div>
+            <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 30, color: INK, flexShrink: 0, marginLeft: 12 }}>{magItems.length}</div>
           </div>
 
           {/* コルクボード風の板。細かいドットのテクスチャ+暗めのグラデーションで

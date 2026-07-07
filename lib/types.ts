@@ -3,6 +3,8 @@
 // here even though the eventual Supabase schema is snake_case (mapping happens
 // at the data-access layer when that swap happens, not in these UI-facing types).
 
+import type { ReactNode } from "react";
+
 export type CategoryId = "do" | "buy" | "go";
 
 export interface Wish {
@@ -174,4 +176,5 @@ export interface TabProps {
   persist: (next: AppState) => void;
   showToast: (msg: string) => void;
   goTab: (tab: TabId) => void;
+  profileButton?: ReactNode;
 }

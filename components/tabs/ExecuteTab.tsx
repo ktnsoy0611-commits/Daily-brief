@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
 import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, mediaKindOf } from "@/lib/constants";
-import { hashStr, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, todayKey } from "@/lib/helpers";
+import { hashStr, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
@@ -213,15 +213,26 @@ interface ExecItem {
   kept?: boolean;
 }
 
-// スクラップブックに紙で貼り付けたような1枚。idから決定論的に少しだけ
-// 回転・上下にずらして、規則正しいグリッドではなく散らかった感じを出す。
+// ボード(コルクボード風)に留められた写真、というイメージの1枚。idから
+// 決定論的に少しだけ回転・上下にずらし、上端には画鋲を1本のせることで、
+// 単なる散らしグリッドではなく「実際にピンで留めた」ような手触りを足す。
+const PIN_COLORS = [BLUE, "#FF6A3D", "#2FBF6E", "#F0A020", "#E23D6B"];
 function ScrapCard({ item, onClick }: { item: ExecItem; onClick: () => void }) {
   const seed = hashStr(`${item.type}-${item.id}`);
-  const rotation = ((seed % 11) - 5) * 1.3;
-  const lift = (seed >> 4) % 16;
+  const rotation = ((seed % 9) - 4) * 1.4;
+  const lift = (seed >> 4) % 14;
+  const pin = PIN_COLORS[seed % PIN_COLORS.length];
   const icon = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
   return (
-    <div onClick={onClick} style={{ flex: "1 1 42%", maxWidth: 180, minWidth: 130, transform: `rotate(${rotation}deg) translateY(${lift}px)`, cursor: "pointer" }}>
+    <div onClick={onClick} style={{
+      position: "relative", flex: "1 1 42%", maxWidth: 180, minWidth: 130, cursor: "pointer",
+      transform: `rotate(${rotation}deg) translateY(${lift}px)`, filter: "drop-shadow(0 10px 16px rgba(0,0,0,0.35))",
+    }}>
+      <div style={{
+        position: "absolute", top: -6, left: "50%", transform: "translateX(-50%)", width: 13, height: 13, borderRadius: "50%", zIndex: 5,
+        background: `radial-gradient(circle at 34% 30%, ${shade(pin, 45)}, ${pin} 55%, ${shade(pin, -30)} 100%)`,
+        boxShadow: "0 3px 5px rgba(0,0,0,0.45)",
+      }} />
       <PosterCard image={item.images?.[0]} color={item.color} title={item.title} sub={item.area && item.area !== "—" ? item.area : undefined}
         label={item.categoryLabel} icon={icon} kept={item.kept} />
     </div>
@@ -253,7 +264,7 @@ function AddToMagazineSheet({ pool, onAdd, onClose }: { pool: Keep[]; onAdd: (id
   );
 }
 
-export function ExecuteTab({ appState, persist }: TabProps) {
+export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
   const magazine = appState.magazine;
   const [mapMode, setMapMode] = useState(false); // マガジン確定後でも地図に戻って選び直すときtrue
   const [pinItem, setPinItem] = useState<Keep | null>(null);
@@ -399,12 +410,12 @@ export function ExecuteTab({ appState, persist }: TabProps) {
     const next = structuredClone(appState);
     const now = Date.now();
     ([
-      { title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", color: "#20304A", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"] },
-      { title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", color: "#3E4A3A", meta: ["COFFEE WRIGHTS", "9:00–18:00"] },
-      { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", color: "#5C3A21", meta: ["高円寺北口エリア"] },
-      { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", color: "#3E4A3A", meta: ["神保町"] },
-      { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", color: "#20304A", meta: ["江戸東京博物館"] },
-      { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", color: "#2B3FBF", meta: ["蔵前"] },
+      { title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", color: "#1E3A8A", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"] },
+      { title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", color: "#0E9F6E", meta: ["COFFEE WRIGHTS", "9:00–18:00"] },
+      { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", color: "#D2601A", meta: ["高円寺北口エリア"] },
+      { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", color: "#0E9F6E", meta: ["神保町"] },
+      { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", color: "#1E3A8A", meta: ["江戸東京博物館"] },
+      { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", color: "#3D5AFE", meta: ["蔵前"] },
     ]).forEach((d, i) => {
       next.keeps.push({ id: `demo-${now}-${i}`, title: d.title, category: d.category, area: d.area, status: "candidate", keptAt: new Date(now - i * 86400000).toISOString(), images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color: d.color });
     });
@@ -424,7 +435,7 @@ export function ExecuteTab({ appState, persist }: TabProps) {
 
   return (
     <>
-      <Masthead title="実行" en="今日の行き先を選ぶ、または見直す" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} />
+      <Masthead title="実行" en="今日の行き先を選ぶ、または見直す" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
 
       {showMap ? (
         <>
@@ -471,19 +482,28 @@ export function ExecuteTab({ appState, persist }: TabProps) {
             <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 30, color: "#D9A441", flexShrink: 0, marginLeft: 12 }}>{magItems.length}</div>
           </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 18, rowGap: 30, padding: "6px 4px 12px" }}>
-            {magItems.map((item) => (
-              <ScrapCard key={`${item.type}-${item.id}`} item={item} onClick={() => setDetailItem(item)} />
-            ))}
-            {editingMag && (
-              <button onClick={() => setAddSheetOpen(true)} style={{
-                flex: "1 1 42%", maxWidth: 180, minWidth: 130, aspectRatio: "3 / 4", borderRadius: 18, cursor: "pointer",
-                border: "1.5px dashed rgba(23,23,21,0.25)", background: "rgba(255,255,255,0.5)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
-              }}>
-                <span style={{ fontSize: 28, color: "#9A988E", lineHeight: 1 }}>＋</span>
-                <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: "#9A988E", letterSpacing: "0.06em" }}>候補から追加</span>
-              </button>
-            )}
+          {/* コルクボード風の板。細かいドットのテクスチャ+暗めのグラデーションで
+              「物理的な板」を演出し、その上にScrapCard(画鋲留めの写真)を
+              スタイライズ+ちょっとリアルの中間くらいの見た目で配置する。 */}
+          <div style={{
+            position: "relative", borderRadius: 22, padding: "26px 16px 22px",
+            background: "radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1.6px) 0 0/16px 16px, linear-gradient(160deg, #2C303A 0%, #1D1F26 100%)",
+            boxShadow: "inset 0 2px 12px rgba(0,0,0,0.4), inset 0 -1px 0 rgba(255,255,255,0.04), 0 10px 26px rgba(28,28,30,0.2)",
+          }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 18, rowGap: 32 }}>
+              {magItems.map((item) => (
+                <ScrapCard key={`${item.type}-${item.id}`} item={item} onClick={() => setDetailItem(item)} />
+              ))}
+              {editingMag && (
+                <button onClick={() => setAddSheetOpen(true)} style={{
+                  flex: "1 1 42%", maxWidth: 180, minWidth: 130, aspectRatio: "3 / 4", borderRadius: 18, cursor: "pointer",
+                  border: "1.5px dashed rgba(255,255,255,0.22)", background: "rgba(255,255,255,0.05)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+                }}>
+                  <span style={{ fontSize: 28, color: "rgba(255,255,255,0.4)", lineHeight: 1 }}>＋</span>
+                  <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.06em" }}>候補から追加</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {editingMag && (

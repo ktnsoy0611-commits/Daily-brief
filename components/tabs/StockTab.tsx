@@ -188,7 +188,7 @@ function StackSection({ title, count, children }: { title: string; count: number
 // どの束もタップすると中身が一覧できるシートが開き、束の一番手前(右)の
 // ＋タイルをタップすると新規追加シートが開く。KEEP由来のカードには
 // 左上に小さなKEEPバッジを表示し、手動追加したものと見分けられるようにする。
-export function StockTab({ appState, persist, showToast }: TabProps) {
+export function StockTab({ appState, persist, showToast, profileButton }: TabProps) {
   const [openStack, setOpenStack] = useState<"media" | "place" | "wish" | null>(null);
   const [addingUrl, setAddingUrl] = useState(false);
   const [addingMedia, setAddingMedia] = useState(false);
@@ -291,7 +291,7 @@ export function StockTab({ appState, persist, showToast }: TabProps) {
 
   return (
     <>
-      <Masthead title="ストック" en="まだ実行していないものが並ぶ場所" statValue={totalCount} statLabel="件" />
+      <Masthead title="ストック" en="まだ実行していないものが並ぶ場所" statValue={totalCount} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         <StackSection title="作品" count={mediaItemsDesc.length}>

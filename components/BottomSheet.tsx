@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { PAPER } from "@/lib/constants";
 
 interface BottomSheetProps {
@@ -9,54 +9,45 @@ interface BottomSheetProps {
   maxHeight?: string;
 }
 
-// 全オーバーレイ共通の下部シート。エントランス(下から滑り上がる)・ドラッグで
-// 閉じる・背景タップで閉じる・閉じる際のスライドダウンを、すべて同じ動きで
-// 統一する。children は "そのままの要素" か "requestClose を受け取る関数"
-// のどちらでも良い(内部の確定ボタンなどからも同じ演出で閉じたい場合に使う)。
+// 全オーバーレイ共通のポップアップ。以前は上端に掴んで下にドラッグして
+// 閉じるハンドルを持つ「下部シート」だったが、片手操作だと上端まで指が
+// 届きにくく閉じづらいという指摘を受けて撤廃した。今はスタックやバインダー
+// をタップした先で、背景にブラーがかかると同時にカードの束がパッと手前に
+// 浮いて展開するような1つのポップアニメーションに統一し、閉じる操作は
+// 常に「カード(パネル)以外の場所をタップ」だけにしている。
+// children は "そのままの要素" か "requestClose を受け取る関数" のどちらでも
+// 良い(内部の確定ボタンなどからも同じ演出で閉じたい場合に使う)。
 export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomSheetProps) {
-  const [dragY, setDragY] = useState(500);
-  const dragRef = useRef({ startY: 0, active: false, base: 0 });
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const raf = requestAnimationFrame(() => setDragY(0));
+    const raf = requestAnimationFrame(() => setOpen(true));
     return () => cancelAnimationFrame(raf);
   }, []);
 
   const requestClose = () => {
-    dragRef.current.active = false;
-    setDragY(560);
+    setOpen(false);
     setTimeout(onClose, 220);
-  };
-  const onHandleDown = (e: PointerEvent<HTMLDivElement>) => {
-    dragRef.current = { startY: e.clientY, active: true, base: dragY };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-  };
-  const onHandleMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.active) return;
-    setDragY(Math.max(0, dragRef.current.base + (e.clientY - dragRef.current.startY)));
-  };
-  const onHandleUp = () => {
-    if (!dragRef.current.active) return;
-    dragRef.current.active = false;
-    if (dragY > 90) requestClose();
-    else setDragY(0);
   };
 
   return (
-    <div onClick={requestClose} style={{ position: "fixed", inset: 0, zIndex: 45, background: "rgba(23,23,21,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+    <div onClick={requestClose} style={{
+      position: "fixed", inset: 0, zIndex: 45, display: "flex", alignItems: "flex-end", justifyContent: "center",
+      background: open ? "rgba(16,16,20,0.4)" : "rgba(16,16,20,0)",
+      backdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
+      WebkitBackdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
+      transition: "background 0.3s ease, backdrop-filter 0.3s ease, -webkit-backdrop-filter 0.3s ease",
+    }}>
       <div onClick={(e) => e.stopPropagation()} style={{
-        width: "100%", maxWidth: 420, background: PAPER, borderRadius: "20px 20px 0 0", maxHeight,
+        width: "calc(100% - 20px)", maxWidth: 400, marginBottom: 10, background: PAPER, borderRadius: 24, maxHeight,
         display: "flex", flexDirection: "column", overflow: "hidden",
-        transform: `translateY(${dragY}px)`,
-        transition: dragRef.current.active ? "none" : "transform 0.24s cubic-bezier(0.32,0.72,0,1)",
+        transform: open ? "translateY(0) scale(1)" : "translateY(26px) scale(0.94)",
+        opacity: open ? 1 : 0,
+        transformOrigin: "50% 100%",
+        transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease",
+        boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
       }}>
-        <div
-          onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}
-          style={{ touchAction: "none", cursor: "grab", padding: "12px 0 6px", display: "flex", justifyContent: "center", flexShrink: 0 }}
-        >
-          <div style={{ width: 32, height: 4, borderRadius: 2, background: "rgba(23,23,21,0.15)" }} />
-        </div>
-        <div style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "0 20px", paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}>
+        <div style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "20px 20px 0", paddingBottom: "max(20px, env(safe-area-inset-bottom))" }}>
           {typeof children === "function" ? children(requestClose) : children}
         </div>
       </div>

@@ -64,7 +64,7 @@ function GoalDetailSheet({ goal, draft, onDraftChange, onManualAdd, onRemove, on
 // 目標タブ: 終わりのない継続の記録。カードは2列グリッドで並び、他のカード
 // (比率3:4)とは違う比率(3:5)・色で目標カードだと視覚的にわかるようにする。
 // 追加は末尾の＋タイルから。
-export function GoalsTab({ appState, persist }: TabProps) {
+export function GoalsTab({ appState, persist, profileButton }: TabProps) {
   const [openGoalId, setOpenGoalId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [manualDraft, setManualDraft] = useState<Record<string, string>>({});
@@ -100,7 +100,7 @@ export function GoalsTab({ appState, persist }: TabProps) {
 
   return (
     <>
-      <Masthead title="目標" en="終わりのない目標を、ゆるく記録する" statValue={goalItems.length} statLabel="件" />
+      <Masthead title="目標" en="終わりのない目標を、ゆるく記録する" statValue={goalItems.length} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

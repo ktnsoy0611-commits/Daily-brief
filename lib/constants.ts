@@ -33,16 +33,16 @@ export const SWIPE_THRESHOLD = 90;
 export const SANS = "var(--font-zen-kaku-gothic-new), sans-serif";
 export const SERIF = SANS;
 export const DISPLAY = SANS;
-export const INK = "#171715";
-export const PAPER = "#FBFAF7";
-export const BG = "#EFEDE6";
-export const BLUE = "#2B3FBF";
-export const RUST = "#A8552F";
-export const GREEN = "#3E4A3A";
-export const HAIRLINE = "rgba(23,23,21,0.08)";
+export const INK = "#1C1C1E";
+export const PAPER = "#FFFFFF";
+export const BG = "#F1F1F6";
+export const BLUE = "#3D5AFE";
+export const RUST = "#FF6A3D";
+export const GREEN = "#2FBF6E";
+export const HAIRLINE = "rgba(28,28,30,0.08)";
 // カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
-export const SOFT_SHADOW = "0 4px 16px rgba(23,23,21,0.06)";
-export const SOFT_SHADOW_LG = "0 12px 32px rgba(23,23,21,0.10)";
+export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";
+export const SOFT_SHADOW_LG = "0 12px 32px rgba(28,28,30,0.12)";
 
 // アプリ全体で使う統一カードの縦横比。写真付き(Keepの場所など)も
 // 文字だけ(作品など)も、この比率のカード1種類に統一する。
@@ -50,7 +50,7 @@ export const ITEM_CARD_ASPECT = "3 / 4";
 // 目標カードだけは意図的に少し違う比率にして、視覚的に区別できるようにする。
 export const GOAL_CARD_ASPECT = "3 / 5";
 
-export const POSTER_PALETTE = ["#20304A", "#1A1A18", "#3E4A3A", "#A8552F", "#2B3FBF", "#5C3A21", "#3A4A4A", "#1F2937"];
+export const POSTER_PALETTE = ["#3D5AFE", "#FF6A3D", "#2FBF6E", "#8B5CF6", "#1E3A8A", "#14B8A6", "#E23D6B", "#F0A020"];
 
 // 下部固定バー(ストック・目標・実行タブ)がナビゲーションバーの直上にぴったり
 // 収まるためのオフセット。ナビの実測高さ(66px、アイコンのピル+ラベル+
@@ -66,9 +66,9 @@ export interface Category {
 }
 
 export const CATEGORIES: Category[] = [
-  { id: "do", label: "やりたい", en: "TO DO", color: "#20304A" },
-  { id: "buy", label: "欲しい", en: "TO BUY", color: "#A8552F" },
-  { id: "go", label: "行きたい", en: "TO GO", color: "#3E4A3A" },
+  { id: "do", label: "やりたい", en: "TO DO", color: "#3D5AFE" },
+  { id: "buy", label: "欲しい", en: "TO BUY", color: "#FF6A3D" },
+  { id: "go", label: "行きたい", en: "TO GO", color: "#2FBF6E" },
 ];
 export const catOf = (id: CategoryId) => CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[0];
 
@@ -123,57 +123,57 @@ export const mediaKindOf = (id: string) => MEDIA_KINDS.find((k) => k.id === id) 
 // フェーズ1はダミーデータのままデプロイする(実装引き継ぎドキュメント §8)。
 // フェーズ2でGemini生成のブリーフに置き換わる。
 export const CARDS: BriefCard[] = [
-  { id: 1, glyph: "展", category: "ART & EXHIBITION", categoryJp: "展覧会", trigger: "タイムリー", area: "竹橋", color: "#20304A",
+  { id: 1, glyph: "展", category: "ART & EXHIBITION", categoryJp: "展覧会", trigger: "タイムリー", area: "竹橋", color: "#1E3A8A",
     title: "「建築と自然」展、今日から開幕",
     body: "願望リストの「安藤忠雄の建築を観る」に関連。国立近代美術館で本日より。会期は8月末まで、混雑は初週が最も少ない予測。",
-    meta: ["国立近代美術館", "10:00 – 17:00", "¥1,800"], bg: "#20304A", fg: "#E8EDF5", accent: "#8FB4E8",
+    meta: ["国立近代美術館", "10:00 – 17:00", "¥1,800"], bg: "#1E3A8A", fg: "#EAF0FF", accent: "#9FC1FF",
     images: ["momat-a", "momat-b", "momat-c"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る" },
-  { id: 2, glyph: "映", category: "CINEMA", categoryJp: "映画", trigger: "タイムリー", area: "日比谷", color: "#1A1A18",
+  { id: 2, glyph: "映", category: "CINEMA", categoryJp: "映画", trigger: "タイムリー", area: "日比谷", color: "#1C1B22",
     title: "観たかったあの映画、公開初週",
     body: "リスト登録済みの『Perfect Days 2』が昨日公開。金曜夜のレイトショーなら、仕事帰りの動線上の劇場で21:10の回に間に合います。",
-    meta: ["TOHOシネマズ 日比谷", "21:10 レイトショー", "¥1,500"], bg: "#1A1A18", fg: "#F2EFE8", accent: "#D9C87A",
+    meta: ["TOHOシネマズ 日比谷", "21:10 レイトショー", "¥1,500"], bg: "#1C1B22", fg: "#F4F1FF", accent: "#FFCB4D",
     images: ["hibiya-a", "hibiya-b"], sourceUrl: "https://www.tohotheater.jp/", sourceLabel: "上映情報・チケットを見る" },
-  { id: 3, glyph: "珈", category: "NEIGHBORHOOD", categoryJp: "近所の発見", trigger: "ロケーション", area: "蔵前", color: "#3E4A3A",
+  { id: 3, glyph: "珈", category: "NEIGHBORHOOD", categoryJp: "近所の発見", trigger: "ロケーション", area: "蔵前", color: "#0E9F6E",
     title: "明日の予定の途中に、あの焙煎所",
     body: "土曜の外出ルートから徒歩4分。願望リストの「浅煎りの豆を買う」が達成できます。土曜は焼き菓子の入荷日でもあります。",
-    meta: ["蔵前・COFFEE WRIGHTS", "9:00 – 18:00", "徒歩4分の寄り道"], bg: "#3E4A3A", fg: "#EEF0E8", accent: "#B8C87A",
+    meta: ["蔵前・COFFEE WRIGHTS", "9:00 – 18:00", "徒歩4分の寄り道"], bg: "#0E9F6E", fg: "#EAFBF3", accent: "#8FF0C8",
     images: ["kuramae-a", "kuramae-b", "kuramae-c"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("COFFEE WRIGHTS 蔵前")}`, sourceLabel: "地図で見る" },
-  { id: 4, glyph: "貯", category: "FINANCE", categoryJp: "貯金の進捗", trigger: "フィナンシャル", area: "—", color: "#A8552F",
+  { id: 4, glyph: "貯", category: "FINANCE", categoryJp: "貯金の進捗", trigger: "フィナンシャル", area: "—", color: "#FF6A3D",
     title: "カメラ貯金、あと12%で目標達成",
     body: "先週末の予算余剰¥6,400を自動振り分け。現在の達成率88%。このペースなら7月中旬に「フィルムカメラ購入」に手が届きます。",
-    meta: ["目標 ¥72,000", "現在 ¥63,400", "達成率 88%"], bg: "#F3EFE6", fg: "#1F1E1A", accent: "#A8552F",
+    meta: ["目標 ¥72,000", "現在 ¥63,400", "達成率 88%"], bg: "#FFF3E9", fg: "#1C1C1E", accent: "#FF6A3D",
     images: ["camera-a", "camera-b"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("中古カメラ店 東京")}`, sourceLabel: "地図で見る" },
-  { id: 5, glyph: "陶", category: "SERENDIPITY", categoryJp: "未知との遭遇", trigger: "セレンディピティ", area: "清澄白河", color: "#2B3FBF",
+  { id: 5, glyph: "陶", category: "SERENDIPITY", categoryJp: "未知との遭遇", trigger: "セレンディピティ", area: "清澄白河", color: "#3D5AFE",
     title: "陶芸、はじめてみませんか",
     body: "あなたの「手を動かす趣味」への関心から一歩外へ。日曜午前の一日体験クラスに空きが2席。建築好きの参加者が多い教室です。",
-    meta: ["清澄白河・陶房", "日曜 10:00 – 12:30", "体験 ¥4,500"], bg: "#2B3FBF", fg: "#F5F4EE", accent: "#F5F4EE", serendipity: true,
+    meta: ["清澄白河・陶房", "日曜 10:00 – 12:30", "体験 ¥4,500"], bg: "#3D5AFE", fg: "#F1F4FF", accent: "#F1F4FF", serendipity: true,
     images: ["pottery-a", "pottery-b", "pottery-c"], sourceUrl: `https://www.google.com/search?q=${encodeURIComponent("清澄白河 陶芸体験 一日")}`, sourceLabel: "詳しく調べる" },
-  { id: 6, glyph: "古", category: "VINTAGE", categoryJp: "古着", trigger: "ロケーション", area: "高円寺", color: "#5C3A21",
+  { id: 6, glyph: "古", category: "VINTAGE", categoryJp: "古着", trigger: "ロケーション", area: "高円寺", color: "#D2601A",
     title: "高円寺の一点物古着屋、新しい入荷情報",
     body: "願望リストの「古着でジャケットを探す」に近いお店。個人経営で入荷が読めない分、タイミングが合う今週末が狙い目です。",
-    meta: ["高円寺北口エリア", "12:00 – 20:00", "現金のみ"], bg: "#5C3A21", fg: "#F2E8DA", accent: "#D9B98A",
+    meta: ["高円寺北口エリア", "12:00 – 20:00", "現金のみ"], bg: "#D2601A", fg: "#FFF3E2", accent: "#FFC98A",
     images: ["vintage-a", "vintage-b", "vintage-c"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("高円寺 古着屋")}`, sourceLabel: "地図で見る" },
-  { id: 7, glyph: "雑", category: "ZAKKA", categoryJp: "雑貨", trigger: "タイムリー", area: "谷根千", color: "#3A4A4A",
+  { id: 7, glyph: "雑", category: "ZAKKA", categoryJp: "雑貨", trigger: "タイムリー", area: "谷根千", color: "#14B8A6",
     title: "谷根千の小さな雑貨店、一年に一度の陶器市",
     body: "普段は棚に並びきらない作家ものの器が、期間限定で店先に広がります。年に一度なので、今週を逃すと来年までお預けです。",
-    meta: ["谷中エリア", "11:00 – 17:00", "会期は今週末まで"], bg: "#3A4A4A", fg: "#EDF2F0", accent: "#9AC2BC",
+    meta: ["谷中エリア", "11:00 – 17:00", "会期は今週末まで"], bg: "#14B8A6", fg: "#EAFFFB", accent: "#9FF3E8",
     images: ["zakka-a", "zakka-b"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("谷中 雑貨店")}`, sourceLabel: "地図で見る" },
-  { id: 8, glyph: "登", category: "PHYSICAL", categoryJp: "身体", trigger: "ロケーション", area: "浅草橋", color: "#1F2937",
+  { id: 8, glyph: "登", category: "PHYSICAL", categoryJp: "身体", trigger: "ロケーション", area: "浅草橋", color: "#2563EB",
     title: "近所にできたボルダリングジム、初回体験無料",
     body: "願望リストの「筋力向上」に直結。浅草橋なら他のKeepとも動線を組みやすいエリアです。初回体験は道具レンタル込み。",
-    meta: ["浅草橋駅から徒歩6分", "初回体験 無料", "予約制"], bg: "#1F2937", fg: "#E7ECF2", accent: "#7FA8D9",
+    meta: ["浅草橋駅から徒歩6分", "初回体験 無料", "予約制"], bg: "#2563EB", fg: "#EAF2FF", accent: "#9CC5FF",
     images: ["climb-a", "climb-b", "climb-c"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("浅草橋 ボルダリングジム")}`, sourceLabel: "地図で見る" },
   // 本の提案は「行く場所」ではないため、KEEPすると地図ではなく記録タブの
   // メディアへ直接入る(mediaKind指定)。area/imagesは持たせず、地図には出さない。
-  { id: 9, glyph: "本", category: "BOOK", categoryJp: "読書", trigger: "興味との一致", mediaKind: "book", color: "#4A3728",
+  { id: 9, glyph: "本", category: "BOOK", categoryJp: "読書", trigger: "興味との一致", mediaKind: "book", color: "#9C5B22",
     title: "積んでいた分野、今週読み切れる一冊",
     body: "最近の興味の傾向から、建築家の手による随筆集はいかがでしょう。新書サイズで通勤の隙間時間でも読み切れる分量です。",
-    meta: ["新書・224ページ", "¥900前後"], bg: "#4A3728", fg: "#F2E8DA", accent: "#D9B98A",
+    meta: ["新書・224ページ", "¥900前後"], bg: "#9C5B22", fg: "#FBEEDD", accent: "#FFCE8A",
     images: [], sourceUrl: `https://www.google.com/search?q=${encodeURIComponent("建築家 エッセイ おすすめ 新書")}`, sourceLabel: "書店で探す" },
   // 登録サイト(例: Rate Your Music)から拾ってくるカードの例。
-  { id: 10, glyph: "音", category: "MUSIC", categoryJp: "音楽", trigger: "登録サイトより", mediaKind: "album", color: "#2E2A3F",
+  { id: 10, glyph: "音", category: "MUSIC", categoryJp: "音楽", trigger: "登録サイトより", mediaKind: "album", color: "#8B5CF6",
     title: "評価の高い一枚、通勤で聴き切るアルバム",
     body: "登録サイトのチャートから、あなたの傾向に近いジャンルで高評価の一枚を。全42分、往復の通勤でちょうど聴き終わります。",
-    meta: ["出典: rateyourmusic.com", "1971年 ・ 42分"], bg: "#2E2A3F", fg: "#EAE6F2", accent: "#B8A8E8",
+    meta: ["出典: rateyourmusic.com", "1971年 ・ 42分"], bg: "#8B5CF6", fg: "#F5F0FF", accent: "#D8C7FF",
     images: [], sourceUrl: "https://rateyourmusic.com/charts/", sourceLabel: "チャートで見る" },
 ];

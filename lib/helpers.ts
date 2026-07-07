@@ -59,6 +59,18 @@ export function hashStr(s: string) {
   return h;
 }
 
+// hex色をpercent(-100〜100)分だけ明るく/暗くする。カードの単色塗りに
+// 斜めグラデーションの陰影を足すためだけの簡易実装。
+export function shade(hex: string, percent: number) {
+  const n = hex.replace("#", "");
+  const num = parseInt(n.length === 3 ? n.split("").map((c) => c + c).join("") : n, 16);
+  const amt = Math.round(2.55 * percent);
+  const r = Math.min(255, Math.max(0, (num >> 16) + amt));
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amt));
+  const b = Math.min(255, Math.max(0, (num & 0xff) + amt));
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
 // Keepの自動失効: 展覧会/ライブなどexpiresAt(会期末・予約締切)を持つものは
 // それを過ぎたら、持たないものも一律30日を過ぎたら削除する。実行済み(done)は
 // 記録として残すため対象外。

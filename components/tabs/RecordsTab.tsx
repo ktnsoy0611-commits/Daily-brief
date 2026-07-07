@@ -5,14 +5,17 @@ import { useState } from "react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
 import { BLUE, GREEN, INK, PAPER, RUST, SANS, SERIF, SOFT_SHADOW, catOf, mediaKindOf } from "@/lib/constants";
-import { dayInfo, haptic, img, inferMediaKind, shortDate } from "@/lib/helpers";
+import { dayInfo, haptic, img, inferMediaKind, shade, shortDate } from "@/lib/helpers";
 import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
 
-// 「バインダー」タイル。正方形に近いタイルの中に写真が数枚重なった束を
-// 見せ、タップで中身のカードグリップをシートで開く。エリア別・メディアの
-// ジャンル別・日付別で共用し、デザインとサイズを統一している。
+// 「バインダー」タイル。ただの正方形カードではなく、タブ付きのフォルダーの
+// 中に写真(またはアイコン)のカードが数枚差し込まれ、上端だけのぞいている
+// ように見せる。リアルな紙のフォルダーとスタイライズされた色面カードの
+// 中間ぐらいの見た目を狙い、タップで中身のカードグリッドをシートで開く。
+// エリア別・メディアのジャンル別・日付別で共用し、デザインとサイズを統一
+// している。
 // (以前はタイルの直下に展開するアコーディオン式だったが、閉じた状態の
 // 展開パネルがCSS Grid/flexboxどちらでも「幅ゼロでも1行分場所を使う」
 // ため隣のタイルが2列に並ばなくなる問題があり、タップでシートを開く
@@ -20,30 +23,39 @@ const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Pal
 function BinderTile({ title, count, coverImages, coverColor, icon: Icon, onClick }: {
   title: string; count: number; coverImages: string[]; coverColor?: string; icon?: IconType; onClick: () => void;
 }) {
-  const rotations = [-8, 5, -3];
+  const base = coverColor ?? "#5A5A54";
+  const folderBack = shade(base, 62);
+  const folderFlap = shade(base, 50);
+  const rotations = [-10, 5, -3];
   return (
     <button onClick={onClick} style={{ minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-      <div style={{
-        position: "relative", width: "100%", aspectRatio: "1 / 1", borderRadius: 18, background: PAPER,
-        border: "none", boxShadow: SOFT_SHADOW,
-        overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
-        {coverImages.length === 0 ? (
-          <div style={{ width: "56%", height: "56%", borderRadius: 14, background: coverColor ?? "#5A5A54", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {Icon && <Icon size="46%" strokeWidth={1.1} color="rgba(255,255,255,0.85)" />}
-          </div>
+      <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1" }}>
+        {/* フォルダーのタブ(背面シートの一部) */}
+        <div style={{ position: "absolute", top: "4%", left: "8%", width: "34%", height: "13%", borderRadius: "8px 8px 0 0", background: folderBack }} />
+        {/* フォルダー本体(背面) */}
+        <div style={{ position: "absolute", top: "13%", left: "3%", width: "94%", height: "83%", borderRadius: 16, background: folderBack, boxShadow: SOFT_SHADOW }} />
+        {/* 中に差し込まれたカード。下側はこの後ろの前面フラップに隠れ、上端だけのぞく */}
+        {coverImages.length > 0 ? (
+          coverImages.slice(0, 3).map((seed, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={seed} src={img(seed, 220, 220)} alt="" style={{
+              position: "absolute", top: "17%", left: `${50 + (i - 1) * 13}%`, width: "42%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 8,
+              border: "2.5px solid #fff", boxShadow: "0 6px 14px rgba(28,28,30,0.22)",
+              transform: `translateX(-50%) rotate(${rotations[i]}deg)`, transformOrigin: "50% 100%", zIndex: 10 + i,
+            }} />
+          ))
         ) : (
-          <div style={{ position: "relative", width: "62%", height: "62%" }}>
-            {coverImages.slice(0, 3).map((seed, i) => (
-              <img key={seed} src={img(seed, 220, 220)} alt="" style={{
-                position: "absolute", top: "50%", left: "50%", width: "82%", height: "82%", objectFit: "cover", borderRadius: 12,
-                border: "3px solid #fff", boxShadow: "0 5px 14px rgba(23,23,21,0.25)",
-                transform: `translate(-50%, -50%) rotate(${rotations[i]}deg) translate(${i * 7}px, ${i * -5}px)`, zIndex: i,
-              }} />
-            ))}
+          <div style={{
+            position: "absolute", top: "19%", left: "50%", width: "46%", aspectRatio: "3 / 4", borderRadius: 10, background: base,
+            transform: "translateX(-50%) rotate(-4deg)", transformOrigin: "50% 100%", boxShadow: "0 6px 14px rgba(28,28,30,0.22)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10,
+          }}>
+            {Icon && <Icon size="42%" strokeWidth={1.2} color="rgba(255,255,255,0.9)" />}
           </div>
         )}
-        <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(23,23,21,0.6)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px" }}>{count}</div>
+        {/* フォルダーの前面フラップ。カードの下半分を隠して「差し込まれている」見た目にする */}
+        <div style={{ position: "absolute", top: "47%", left: 0, width: "100%", height: "53%", borderRadius: "5px 16px 16px 16px", background: folderFlap, zIndex: 20, boxShadow: SOFT_SHADOW }} />
+        <div style={{ position: "absolute", top: 10, right: 10, background: "rgba(28,28,30,0.62)", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "3px 9px", zIndex: 30 }}>{count}</div>
       </div>
       <div style={{ marginTop: 8, fontFamily: SERIF, fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
     </button>
@@ -86,7 +98,7 @@ interface OpenFolder {
 // アプリのホーム。「実際にやった/読んだ/叶えた」ことだけが積み上がる。
 // KEEPしただけの未実行のものはストックタブ・目標タブが担当する。
 // ==================================================================
-export function RecordsTab({ appState, persist, goTab }: TabProps) {
+export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps) {
   const [binderItem, setBinderItem] = useState<BinderItem | null>(null);
   const [openFolder, setOpenFolder] = useState<OpenFolder | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "date">("list");
@@ -194,7 +206,7 @@ export function RecordsTab({ appState, persist, goTab }: TabProps) {
 
   return (
     <>
-      <Masthead title="記録" en="積み上がった、これまでの記録" statValue={totalCount} statLabel="件の記録" />
+      <Masthead title="記録" en="積み上がった、これまでの記録" statValue={totalCount} statLabel="件の記録" corner={profileButton} />
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
 
         {pendingItems.length > 0 && (

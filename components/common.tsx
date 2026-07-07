@@ -1,9 +1,9 @@
 "use client";
 
 import { Bookmark, Plus, Star } from "lucide-react";
-import type { ComponentType, CSSProperties, ReactNode } from "react";
+import { useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
-import { img } from "@/lib/helpers";
+import { hashStr, img, shade } from "@/lib/helpers";
 import { BottomSheet } from "./BottomSheet";
 
 export type IconType = ComponentType<{ size?: number | string; strokeWidth?: number; color?: string }>;
@@ -11,27 +11,31 @@ export type IconType = ComponentType<{ size?: number | string; strokeWidth?: num
 // 「My Trails」参考のような、太いサンセリフの大見出し+柔らかいグレーの
 // サブテキストという構成。以前は新聞の輪転罫線(2px罫線)で下線を引いて
 // いたが、ミニマルなデザインへの刷新でその区切り線は撤廃した。
-export function Masthead({ title, en, statValue, statLabel, dateline, right }: {
+export function Masthead({ title, en, statValue, statLabel, dateline, right, corner }: {
   title: string;
   en: string;
   statValue?: ReactNode;
   statLabel?: ReactNode;
   dateline?: ReactNode;
   right?: ReactNode;
+  corner?: ReactNode;
 }) {
   return (
-    <header style={{ padding: "18px 4px 16px" }}>
+    <header style={{ padding: "10px 4px 16px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <div>
           <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 28, letterSpacing: "-0.01em", lineHeight: 1.15, color: INK }}>{title}</div>
           <div style={{ fontSize: 13, color: "#9A988E", marginTop: 4 }}>{en}</div>
         </div>
-        {right ? right : (
-          <div style={{ textAlign: "right", background: PAPER, borderRadius: 14, padding: "8px 14px", boxShadow: SOFT_SHADOW }}>
-            <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 20, lineHeight: 1, color: INK }}>{statValue}</div>
-            <div style={{ fontSize: 9, color: "#9A988E", letterSpacing: "0.04em", marginTop: 3 }}>{statLabel}</div>
-          </div>
-        )}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+          {corner}
+          {right ? right : (
+            <div style={{ textAlign: "right", background: PAPER, borderRadius: 14, padding: "8px 14px", boxShadow: SOFT_SHADOW }}>
+              <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 20, lineHeight: 1, color: INK }}>{statValue}</div>
+              <div style={{ fontSize: 9, color: "#9A988E", letterSpacing: "0.04em", marginTop: 3 }}>{statLabel}</div>
+            </div>
+          )}
+        </div>
       </div>
       {dateline && <div style={{ fontSize: 12, color: "#9A988E", marginTop: 10 }}>{dateline}</div>}
     </header>
@@ -78,14 +82,15 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
   onClick?: () => void;
   size?: number | string;
 }) {
+  const fill = color ?? "#5A5A54";
   return (
-    <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 18, overflow: "hidden", boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default", background: color ?? "#5A5A54" }}>
+    <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 18, overflow: "hidden", boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default", background: image ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)` }}>
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={img(image, 340, 450)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.22 }}>
-          {Icon ? <Icon size="46%" strokeWidth={1.1} color="#fff" /> : glyph ? <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: "44%", color: "#fff" }}>{glyph}</span> : null}
+        <div style={{ position: "absolute", bottom: "-16%", right: "-14%", width: "64%", aspectRatio: "1 / 1", transform: "rotate(-16deg)", opacity: 0.15 }}>
+          {Icon ? <Icon size="100%" strokeWidth={1} color="#fff" /> : glyph ? <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: "220%", color: "#fff" }}>{glyph}</span> : null}
         </div>
       )}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 42%, rgba(0,0,0,0.8) 100%)" }} />
@@ -166,6 +171,11 @@ export function AddCardTile({ onClick, aspect = ITEM_CARD_ASPECT, size, label }:
 // ストック等で使う「カードの束」。左から右に少しずつずらして重ね、
 // 一番右(手前)に＋タイルを置く。＋以外の束をタップすると中身の一覧が
 // シートで開く。カード自体はPosterCard/GoalCardをそのまま渡す。
+// 単に横一列にずらすだけだと機械的に見えるため、カードごとに小さな回転と
+// 上下のズレ(idから決定論的に導出。再レンダーでガタつかない)を与えて、
+// 実際に紙の束を軽く広げたような自然さを出す。さらに指で触れているカードは
+// 一回り拡大し、その両隣のカードは逃げるように少しずれる、というプレミア
+// アプリでよく見る「押した手応え」のアニメーションを加えている。
 export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLabel }: {
   items: { key: string; node: ReactNode }[];
   aspect?: string;
@@ -174,20 +184,45 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   onAdd: () => void;
   addLabel: string;
 }) {
+  const [touchedKey, setTouchedKey] = useState<string | null>(null);
   const shown = items.slice(-4);
   const offsetStep = cardWidth * 0.32;
   const [num, den] = (aspect ?? ITEM_CARD_ASPECT).split("/").map((s) => parseFloat(s.trim()));
   const cardHeight = Math.round((cardWidth * den) / num);
   const totalWidth = offsetStep * shown.length + cardWidth;
+  const touchedIdx = shown.findIndex((it) => it.key === touchedKey);
+  const release = () => setTouchedKey(null);
 
   return (
-    <div style={{ position: "relative", height: cardHeight, width: Math.max(totalWidth, cardWidth) }}>
-      {shown.map((it, i) => (
-        <div key={it.key} onClick={onOpen} style={{ position: "absolute", left: i * offsetStep, top: 0, width: cardWidth, zIndex: i, cursor: "pointer" }}>
-          {it.node}
-        </div>
-      ))}
-      <div style={{ position: "absolute", left: shown.length * offsetStep, top: 0, width: cardWidth, zIndex: shown.length + 1 }}>
+    <div style={{ position: "relative", height: Math.round(cardHeight * 1.16) + 8, width: Math.max(totalWidth, cardWidth) }}>
+      {shown.map((it, i) => {
+        const seed = hashStr(it.key);
+        const rotation = ((seed % 9) - 4) * 1.3;
+        const jitterY = ((seed >> 3) % 11) - 5;
+        const isTouched = i === touchedIdx;
+        const spread = touchedIdx >= 0 && !isTouched ? (i < touchedIdx ? -9 : 9) : 0;
+        return (
+          <div
+            key={it.key}
+            onClick={onOpen}
+            onPointerDown={() => setTouchedKey(it.key)}
+            onPointerUp={release}
+            onPointerLeave={release}
+            onPointerCancel={release}
+            style={{
+              position: "absolute", left: i * offsetStep + spread, top: (isTouched ? jitterY - 8 : jitterY) + 8,
+              width: cardWidth, zIndex: isTouched ? 20 : i, cursor: "pointer",
+              transform: `rotate(${isTouched ? 0 : rotation}deg) scale(${isTouched ? 1.16 : 1})`,
+              transformOrigin: "50% 100%",
+              transition: "transform 0.28s cubic-bezier(0.32,0.72,0,1), left 0.28s cubic-bezier(0.32,0.72,0,1), top 0.28s cubic-bezier(0.32,0.72,0,1)",
+              filter: isTouched ? "drop-shadow(0 14px 22px rgba(28,28,30,0.22))" : "none",
+            }}
+          >
+            {it.node}
+          </div>
+        );
+      })}
+      <div style={{ position: "absolute", left: shown.length * offsetStep, top: 8, width: cardWidth, zIndex: shown.length + 1 }}>
         <AddCardTile aspect={aspect} size={cardWidth} onClick={onAdd} label={addLabel} />
       </div>
     </div>

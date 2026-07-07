@@ -91,8 +91,23 @@ export function AppShell() {
     return <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
   }
 
-  const tabProps: TabProps = { appState, persist, showToast, goTab: setTab };
   const interestCount = (appState.profile?.interests ?? []).length;
+  const profileButton = (
+    <button onClick={() => { haptic(5); setShowProfile(true); }} aria-label="プロフィール" style={{
+      position: "relative", width: 34, height: 34, borderRadius: "50%",
+      background: PAPER, border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+      cursor: "pointer", color: INK, boxShadow: SOFT_SHADOW, padding: 0, flexShrink: 0,
+    }}>
+      <User size={15} strokeWidth={1.75} />
+      {interestCount > 0 && (
+        <span style={{
+          position: "absolute", top: -3, right: -3, minWidth: 15, height: 15, borderRadius: 999, background: BLUE,
+          color: PAPER, fontSize: 8, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+        }}>{interestCount}</span>
+      )}
+    </button>
+  );
+  const tabProps: TabProps = { appState, persist, showToast, goTab: setTab, profileButton };
 
   return (
     <div style={{ minHeight: "100vh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
@@ -103,21 +118,6 @@ export function AppShell() {
           <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)} />
         ) : (
           <>
-            <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 0 0" }}>
-              <button onClick={() => { haptic(5); setShowProfile(true); }} aria-label="プロフィール" style={{
-                position: "relative", width: 34, height: 34, borderRadius: "50%",
-                background: PAPER, border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", color: INK, boxShadow: SOFT_SHADOW, padding: 0, flexShrink: 0,
-              }}>
-                <User size={15} strokeWidth={1.75} />
-                {interestCount > 0 && (
-                  <span style={{
-                    position: "absolute", top: -3, right: -3, minWidth: 15, height: 15, borderRadius: 999, background: BLUE,
-                    color: PAPER, fontSize: 8, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
-                  }}>{interestCount}</span>
-                )}
-              </button>
-            </div>
             <div key={tab} style={{ display: "flex", flexDirection: "column", flex: 1, animation: "tab-in 0.22s cubic-bezier(0.32,0.72,0,1)" }}>
               {tab === "brief" && <BriefTab {...tabProps} />}
               {tab === "stock" && <StockTab {...tabProps} />}

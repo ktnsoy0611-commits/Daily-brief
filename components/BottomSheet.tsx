@@ -11,15 +11,16 @@ interface BottomSheetProps {
 
 // iOSでキーボードが開くと、レイアウト上のビューポート(inset:0の基準)は
 // そのままなのに実際に見える領域(visualViewport)だけが狭くなり、下寄せの
-// オーバーレイがキーボードの裏に隠れてしまう。visualViewportの高さを
-// 追って、その高さぶんだけ器を狭めることで、常にキーボードの上に来る
-// ようにする。
-function useVisualViewportHeight() {
-  const [height, setHeight] = useState<number | null>(null);
+// オーバーレイがキーボードの裏に隠れてしまう。heightだけを見て器を狭めても、
+// フォーカスした入力欄をSafariが画面内に収めようとvisualViewport自体を
+// 上へスクロールさせた(offsetTopが0でなくなった)場合には器がズレて宙に
+// 浮いてしまうため、offsetTopも一緒に追って器の上端も動かす。
+function useVisualViewport() {
+  const [rect, setRect] = useState<{ top: number; height: number } | null>(null);
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
-    const update = () => setHeight(vv.height);
+    const update = () => setRect({ top: vv.offsetTop, height: vv.height });
     update();
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
@@ -28,7 +29,7 @@ function useVisualViewportHeight() {
       vv.removeEventListener("scroll", update);
     };
   }, []);
-  return height;
+  return rect;
 }
 
 // 全オーバーレイ共通のポップアップ。以前は白い1枚のシート(下部シート)の
@@ -40,7 +41,7 @@ function useVisualViewportHeight() {
 // 包んでもらう。閉じる操作は常に「カード(パネル)以外の場所をタップ」だけ。
 export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomSheetProps) {
   const [open, setOpen] = useState(false);
-  const vvHeight = useVisualViewportHeight();
+  const vv = useVisualViewport();
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setOpen(true));
@@ -63,7 +64,7 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
 
   return (
     <div onClick={closeIfSelf} style={{
-      position: "fixed", top: 0, left: 0, right: 0, height: vvHeight ? `${vvHeight}px` : "100dvh",
+      position: "fixed", top: vv ? `${vv.top}px` : 0, left: 0, right: 0, height: vv ? `${vv.height}px` : "100dvh",
       zIndex: 45, display: "flex", alignItems: "flex-end", justifyContent: "center",
       background: open ? "rgba(16,16,20,0.4)" : "rgba(16,16,20,0)",
       backdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",

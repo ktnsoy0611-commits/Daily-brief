@@ -1,7 +1,7 @@
 "use client";
 
 import { Flag, Sprout } from "lucide-react";
-import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, Masthead } from "@/components/common";
 import { CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
@@ -155,6 +155,16 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const [milestoneRating, setMilestoneRating] = useState<1 | 2 | 3 | null>(null);
   const startRef = useRef({ x: 0, y: 0 });
 
+  // このタブはページ全体が縦スクロールできてしまうと、スワイプの縦成分
+  // に引っ張られてページ本体がバウンス/ズレしやすく、Safariのメニューバー
+  // の出入りも誘発してレイアウトが崩れる。スワイプで完結する1枚のカード
+  // という設計上、このタブにいる間だけ本文の縦スクロールを止める。
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prevOverflow; };
+  }, []);
+
   const dateKey = todayKey();
   // ブリーフは1日2回更新される: 正午を境に「朝刊」と「夕刊」。
   // エディションごとに独立したキーを持つため、午後になるとデッキが再び届く。
@@ -289,6 +299,18 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
     ? `translate(${exitX}px, ${drag.dy - 40}px) rotate(${exit === "keep" ? 22 : -22}deg)`
     : `translate(${drag.dx}px, ${drag.dy}px) rotate(${drag.dx * 0.06}deg)`;
   const topTransition = exit ? "transform 0.32s cubic-bezier(0.32,0.72,0,1)" : drag.active ? "none" : "transform 0.28s cubic-bezier(0.32,0.72,0,1)";
+  const peekTransform = `scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) translateY(8px)`;
+  const peekTransition = drag.active ? "none" : "transform 0.28s cubic-bezier(0.32,0.72,0,1)";
+  // top(手前)とpeek(次)を別々のDOM要素として固定していると、決定直後に
+  // indexが進んだ瞬間、peekだったカードの要素が一旦消えてtop要素として
+  // 新規マウントし直され、それまでのtransformが引き継がれずガクッと
+  // スナップして見えていた。カードのidそのものをkeyにして同じ要素を
+  // 使い回すことで、「peekの見た目→topの見た目」への変化を1枚の要素の
+  // transformアニメーションとして連続させる。
+  const visibleCards: { card: DeckCard; isTop: boolean }[] = [
+    ...(deck[index] ? [{ card: deck[index], isTop: true }] : []),
+    ...(deck[index + 1] ? [{ card: deck[index + 1], isTop: false }] : []),
+  ];
 
   return (
     <>
@@ -300,17 +322,30 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
       </div>
 
       {!done ? (
-        <>
-          <main style={{ position: "relative", margin: "10px auto 8px", width: "100%", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT, maxHeight: "58dvh" }}>
-            {index + 1 < deck.length && (
-              <div key={`peek-${deck[index + 1].id}`} style={{ position: "absolute", inset: 0, transform: `scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) translateY(8px)`, transition: drag.active ? "none" : "transform 0.28s" }}>
-                <CardFace card={deck[index + 1]} dx={0} isTop={false} checkinValue="" onCheckinChange={() => {}} milestoneText="" onMilestoneTextChange={() => {}} milestoneRating={null} onMilestoneRatingChange={() => {}} />
+        // ページ本体はスクロールしない(useEffectでbodyをロック)ので、
+        // ここがそのまま「残りの高さいっぱい」になる。その中でカード+
+        // フッターを縦方向に中央寄せし、以前のような上寄りの窮屈さを無くす。
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <main style={{ position: "relative", margin: "0 auto 8px", width: "100%", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT, maxHeight: "56dvh", flexShrink: 0 }}>
+            {visibleCards.map(({ card, isTop }) => (
+              <div
+                key={card.id}
+                {...(isTop ? { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp } : {})}
+                style={isTop ? {
+                  position: "absolute", inset: 0, zIndex: 2, transform: topTransform, transition: topTransition,
+                  touchAction: isGrowth ? "auto" : "none", cursor: isGrowth ? "default" : drag.active ? "grabbing" : "grab",
+                } : {
+                  position: "absolute", inset: 0, zIndex: 1, transform: peekTransform, transition: peekTransition,
+                }}
+              >
+                <CardFace card={card} dx={isTop ? drag.dx : 0} isTop={isTop}
+                  onOpenBinder={isTop ? () => setBinderItem(card as BriefCard) : undefined}
+                  checkinValue={isTop ? checkinAnswer : ""} onCheckinChange={isTop ? setCheckinAnswer : () => {}}
+                  milestoneText={isTop ? milestoneText : ""} onMilestoneTextChange={isTop ? setMilestoneText : () => {}}
+                  milestoneRating={isTop ? milestoneRating : null} onMilestoneRatingChange={isTop ? setMilestoneRating : () => {}}
+                  flagged={isTop ? !!feedback[card.id] : undefined} onFlag={isTop ? () => toggleFlag(card.id) : undefined} />
               </div>
-            )}
-            <div key={`top-${deck[index].id}`} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-              style={{ position: "absolute", inset: 0, transform: topTransform, transition: topTransition, touchAction: isGrowth ? "auto" : "none", cursor: isGrowth ? "default" : drag.active ? "grabbing" : "grab" }}>
-              <CardFace card={deck[index]} dx={drag.dx} isTop onOpenBinder={() => setBinderItem(deck[index] as BriefCard)} checkinValue={checkinAnswer} onCheckinChange={setCheckinAnswer} milestoneText={milestoneText} onMilestoneTextChange={setMilestoneText} milestoneRating={milestoneRating} onMilestoneRatingChange={setMilestoneRating} flagged={!!feedback[deck[index].id]} onFlag={() => toggleFlag(deck[index].id)} />
-            </div>
+            ))}
           </main>
           {/* 育成カード(テキスト入力を伴う)はドラッグを無効にしているため、
               代わりにボタンで決定させる必要がある。通常カードはスワイプだけで
@@ -318,20 +353,20 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               みに留める(実機Safariで、この固定ボタンぶんの高さがビューポート
               計算とズレてカードが見切れる問題が繰り返し起きていたため)。 */}
           {isGrowth ? (
-            <footer style={{ paddingBottom: 8 }}>
+            <footer style={{ paddingBottom: 8, flexShrink: 0 }}>
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => commit("skip")} style={{ flex: 1, padding: "13px 0", background: "transparent", border: "1.5px solid rgba(23,23,21,0.3)", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: "#5A5A54", cursor: "pointer" }}>あとで</button>
                 <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: "13px 0", background: isMilestone ? RUST : GREEN, border: "none", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: PAPER, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
               </div>
             </footer>
           ) : (
-            <div style={{ textAlign: "center", fontSize: 10, letterSpacing: "0.08em", color: "#B3B1A6", paddingBottom: 8 }}>
+            <div style={{ textAlign: "center", fontSize: 10, letterSpacing: "0.08em", color: "#B3B1A6", paddingBottom: 8, flexShrink: 0 }}>
               ← SKIP　　KEEP →
             </div>
           )}
-        </>
+        </div>
       ) : (
-        <main style={{ flex: 1, padding: "28px 4px" }}>
+        <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.28em", color: "#9A988E" }}>END OF ISSUE</div>
           <h2 style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 26, lineHeight: 1.4, margin: "10px 0 20px" }}>{editionLabel}は、<br />ここまで。</h2>
           <p style={{ fontSize: 11.5, color: "#9A988E", lineHeight: 1.8, margin: "0 0 20px" }}>{edition === "am" ? "夕刊は、正午にお届けします。" : "明日の朝刊で、また。"}</p>

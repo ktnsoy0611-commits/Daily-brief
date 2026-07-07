@@ -190,7 +190,7 @@ export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }:
         display: "flex", boxShadow: SOFT_SHADOW_LG, overflow: "hidden",
       }}>
         <div style={{ width: "17%", minWidth: 21, flexShrink: 0, position: "relative", background: `linear-gradient(180deg, ${shade(fill, -4)} 0%, ${shade(fill, -26)} 100%)`, boxShadow: "inset -2px 0 3px rgba(0,0,0,0.28)" }}>
-          {[0.16, 0.5, 0.84].map((y) => (
+          {[0.24, 0.76].map((y) => (
             <div key={y} style={{
               position: "absolute", left: "50%", top: `${y * 100}%`, transform: "translate(-50%, -50%)", width: 11, height: 11, borderRadius: "50%",
               background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)",

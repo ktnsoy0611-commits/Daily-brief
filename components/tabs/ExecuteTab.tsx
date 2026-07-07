@@ -1,9 +1,10 @@
 "use client";
 
 import { BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useState } from "react";
+import { BinderCoverFace, BinderFlipDeck, HoleRings, holeMaskStyle } from "@/components/Binder";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
-import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
+import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
@@ -232,56 +233,8 @@ interface ExecItem {
   done?: boolean;
 }
 
-// PosterCardと同じ「ルーズリーフの穴+切り取り線」モチーフを、今度は
-// mask-imageで本物の透過にして使う。バインダーは常にタブの地の色(BG)の
-// 上に浮くだけなので、どんな背景の上でも安全な装飾円ではなく、実際に
-// 下地が透けて見える本物の穴を開けられる。PosterCardと同じ2つ穴。
-const HOLE_MASK = (() => {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 347"><rect width="260" height="347" fill="white"/><circle cx="15" cy="83" r="5.5" fill="black"/><circle cx="15" cy="264" r="5.5" fill="black"/></svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-})();
-const holeMaskStyle: CSSProperties = {
-  WebkitMaskImage: HOLE_MASK, maskImage: HOLE_MASK,
-  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-  WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
-};
-// バインダーの紙(#FBF8EF)とタブの地の色(BG、#F3F1EC)は非常に近い色なので、
-// 穴を本物の透過にするだけでは下地がほぼ同化して見えなくなってしまう。
-// マスクされた紙の「外側」に、穴の位置にだけ薄い縁取り(輪郭)を重ねて、
-// 背景色に関わらず「穴が空いている」ことがちゃんと読めるようにしている。
-function HoleRings() {
-  return (
-    <>
-      {["24%", "76%"].map((y) => (
-        <div key={y} style={{
-          position: "absolute", left: "5.8%", top: y, transform: "translate(-50%, -50%)",
-          width: 12, height: 12, borderRadius: "50%", pointerEvents: "none", zIndex: 5,
-          boxShadow: "inset 0 1.5px 2px rgba(28,28,30,0.22), inset 0 -1px 1px rgba(255,255,255,0.4), 0 0 0 1px rgba(28,28,30,0.05)",
-        }} />
-      ))}
-    </>
-  );
-}
-
-// バインダーを綴じている実際のリング金具。ページ側の穴(HoleRings)は
-// ページと一緒に回転して見た目の奥行きを出すが、こちらは逆にリング自体は
-// 常に静止していて、ページだけがその周りを回って捲れる…という現実の
-// バインダーの機構を再現するため、BinderBook側で1回だけ描画する固定レイヤー。
-function BinderRings() {
-  return (
-    <div style={{ position: "absolute", inset: 0, zIndex: 20, pointerEvents: "none" }}>
-      <div style={{ position: "absolute", left: "3.2%", top: 10, bottom: 10, width: 7, borderRadius: 4, background: "linear-gradient(to right, rgba(28,28,30,0.24), rgba(28,28,30,0.04) 75%, transparent)" }} />
-      {["24%", "76%"].map((y) => (
-        <div key={y} style={{
-          position: "absolute", left: "5.8%", top: y, width: 30, height: 16, transform: "translate(-64%, -50%)",
-          borderRadius: 999, border: "3px solid #AEA78F",
-          background: "linear-gradient(135deg, rgba(255,255,255,0.62), rgba(118,111,92,0.32))",
-          boxShadow: "0 2px 5px rgba(28,28,30,0.38), inset 0 1px 1px rgba(255,255,255,0.7), inset 0 -1.5px 1.5px rgba(28,28,30,0.4)",
-        }} />
-      ))}
-    </div>
-  );
-}
+// 穴+リング金具(HOLE_MASK/holeMaskStyle/HoleRings/BinderRings)はアプリ全体の
+// バインダー共通モデル(components/Binder.tsx)に統一したので、ここではimportして使う。
 
 // バインダーの1ページ。PosterCard/GoalCardと同じ穴+切り取り線の余白列を
 // 左端に確保し、行った/行ってないは本文を隠さない右上の2アイコンで
@@ -365,14 +318,31 @@ function BackCoverPage({ dateLabel, count, onRegister }: { dateLabel: string; co
   );
 }
 
+// バインダー表紙(1ページ目)。棚(Binder3D/BinderCoverflowRow)で見ていた
+// のと同じBinderCoverFaceをそのままページとして差し込むことで、確定直後の
+// 初期状態が「表紙がこちらを向いて置いてある」見た目になる(以前は独自の
+// ルーズリーフ1枚目がいきなり見えていた)。スワイプすると共通の
+// BinderFlipDeckがこの表紙をめくって中身のページへ進む。
+function FrontCoverPage({ dateLabel, count }: { dateLabel: string; count: number }) {
+  return (
+    <div style={{ position: "absolute", inset: 0 }}>
+      <div style={{ position: "absolute", inset: 0, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle }}>
+        <BinderCoverFace
+          color={INK} eyebrowLabel={dateLabel} title="今日の行き先"
+          footer={<div style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", fontWeight: 700, textAlign: "center", letterSpacing: "0.04em" }}>{count}件・スワイプで開く</div>}
+        />
+      </div>
+      <HoleRings />
+    </div>
+  );
+}
+
 // バインダー本体。他のタブと同じアイテムカード比率(3:4)のまま、
 // 通常のカードよりふたまわりほど大きいサイズで、タブの中央にちょこんと
-// 置く。全画面の演出や専用の背景は持たず、タブの地の色の上にそのまま
-// 浮かべることで、他のタブと同じ「普通のタブの中に主役が1つ」という
-// 見え方に揃えている。操作はスワイプのみ(矢印ボタンは廃止)で、指の
-// 動きにページがその場で追従してから、指を離した位置に応じてめくり切る
-// か元に戻るかがスナップで決まる。最後のアイテムページの先に裏表紙が
-// あり、そこで「登録」を押すとバインダーごと下に落ちて記録タブへ向かう。
+// 置く。ページめくりの機構自体はcomponents/Binder.tsxのBinderFlipDeckを
+// 使い、「行ってない」で外した時にページが下へ落ちる演出と、「登録」で
+// バインダーごと下に落ちて記録タブへ向かう演出だけをこの画面固有の
+// 上乗せとして持たせている。
 const BINDER_MAX_WIDTH = 260;
 
 function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
@@ -382,71 +352,9 @@ function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   onDrop: (item: ExecItem) => void;
   onRegister: () => void;
 }) {
-  const [pageIndex, setPageIndex] = useState(0);
-  // progress: 0(未着手)〜1(めくり切り)。settlingがfalseの間は指の動きに
-  // 1:1で追従(transitionなし)、指を離した瞬間だけsettling=trueにして
-  // 短いスナップ遷移で0か1に収束させる。ボタン起点のアニメーションを
-  // 廃止し、ドラッグの続きとして常に同じレイヤーで完結させることで、
-  // 「離した位置から不連続にジャンプする」違和感を無くしている。
-  const [drag, setDrag] = useState<{ dir: "next" | "prev"; progress: number; settling: boolean } | null>(null);
-  const [dropping, setDropping] = useState<{ item: ExecItem; fallen: boolean } | null>(null);
+  const [dropping, setDropping] = useState<{ item: ExecItem; contentIndex: number; fallen: boolean } | null>(null);
   const [registering, setRegistering] = useState(false);
-  const animating = useRef(false);
-  const dragRef = useRef({ startX: 0, startY: 0, startTime: 0, active: false, dir: null as "next" | "prev" | null, width: BINDER_MAX_WIDTH });
-  const cardRef = useRef<HTMLDivElement>(null);
-  const totalPages = items.length + 1; // +1: 裏表紙
-
-  useEffect(() => {
-    setPageIndex((p) => Math.min(p, totalPages - 1));
-  }, [totalPages]);
-
-  const settle = (dir: "next" | "prev", commit: boolean) => {
-    animating.current = true;
-    haptic(commit ? 10 : 4);
-    setDrag({ dir, progress: commit ? 1 : 0, settling: true });
-    setTimeout(() => {
-      if (commit) setPageIndex((p) => (dir === "next" ? p + 1 : p - 1));
-      setDrag(null);
-      animating.current = false;
-    }, 230);
-  };
-
-  const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (animating.current || dropping || registering) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startTime: performance.now(), active: true, dir: null, width: cardRef.current?.offsetWidth ?? BINDER_MAX_WIDTH };
-  };
-  const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-    if (!d.active) return;
-    const dx = e.clientX - d.startX;
-    if (!d.dir) {
-      const dy = e.clientY - d.startY;
-      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-      if (Math.abs(dy) > Math.abs(dx)) { d.active = false; return; } // 縦方向は素通しでスクロールに譲る
-      const wantNext = dx < 0;
-      const boundary = wantNext ? pageIndex >= totalPages - 1 : pageIndex <= 0;
-      if (boundary) { d.active = false; return; }
-      d.dir = wantNext ? "next" : "prev";
-    }
-    const progress = Math.min(1, Math.abs(dx) / (d.width * 0.55));
-    setDrag({ dir: d.dir, progress, settling: false });
-  };
-  const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-    if (!d.active || !d.dir) { d.active = false; return; }
-    d.active = false;
-    const dx = e.clientX - d.startX;
-    const dt = Math.max(1, performance.now() - d.startTime);
-    const velocity = Math.abs(dx) / dt; // px/ms、短い距離でも素早く弾けばめくれる
-    const progress = Math.min(1, Math.abs(dx) / (d.width * 0.55));
-    settle(d.dir, progress > 0.24 || velocity > 0.5);
-  };
-  const onCancel = () => {
-    const d = dragRef.current;
-    if (d.active && d.dir) settle(d.dir, false);
-    d.active = false;
-  };
+  const pageCount = items.length + 2; // 表紙 + 本文 + 裏表紙
 
   // 「行ってない」で外すと、そのページが下に落ちて消える。落ちている間
   // 下の層には次のページ(または裏表紙)をあらかじめ覗かせておき、
@@ -454,9 +362,10 @@ function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   // マウントしてから次のフレームで「落下後」の見た目に切り替えることで、
   // トランジションが確実に発火するようにしている(フリップ演出と同じ手法)。
   const handleDrop = (item: ExecItem) => {
-    if (dropping || animating.current) return;
+    if (dropping) return;
     haptic(12);
-    setDropping({ item, fallen: false });
+    const contentIndex = items.findIndex((x) => x.id === item.id);
+    setDropping({ item, contentIndex, fallen: false });
     requestAnimationFrame(() => requestAnimationFrame(() => {
       setDropping((d) => (d ? { ...d, fallen: true } : d));
     }));
@@ -473,19 +382,12 @@ function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
     setTimeout(onRegister, 420);
   };
 
-  const baseIndex = dropping ? Math.min(pageIndex + 1, totalPages - 1) : drag ? (drag.dir === "next" ? pageIndex + 1 : pageIndex) : pageIndex;
-  const leafIndex = drag ? (drag.dir === "next" ? pageIndex : pageIndex - 1) : null;
-  const progress = drag ? drag.progress : 0;
-  // 「next」は0度→-180度へ、「prev」は-180度(裏返って隠れている状態)から
-  // 0度へ戻る向きなので、同じprogress(0〜1)でも回転の起点・終点が逆になる。
-  const dragAngle = !drag ? 0 : drag.dir === "next" ? -180 * progress : -180 * (1 - progress);
-  const liftZ = 44 * Math.sin(Math.min(progress, 1) * Math.PI);
-
   const renderPage = (idx: number) => {
-    if (idx === items.length) return <BackCoverPage dateLabel={dateLabel} count={items.length} onRegister={handleRegister} />;
-    const it = items[idx];
+    if (idx === 0) return <FrontCoverPage dateLabel={dateLabel} count={items.length} />;
+    if (idx === items.length + 1) return <BackCoverPage dateLabel={dateLabel} count={items.length} onRegister={handleRegister} />;
+    const it = items[idx - 1];
     if (!it) return null;
-    return <BookPage item={it} index={idx} total={items.length} onMarkDone={() => onMarkDone(it)} onDrop={() => handleDrop(it)} />;
+    return <BookPage item={it} index={idx - 1} total={items.length} onMarkDone={() => onMarkDone(it)} onDrop={() => handleDrop(it)} />;
   };
 
   return (
@@ -494,37 +396,15 @@ function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
       transform: registering ? "translateY(70%)" : "translateY(0)", opacity: registering ? 0 : 1,
       transition: registering ? "transform 0.42s cubic-bezier(0.5,0,1,0.5), opacity 0.36s ease-in" : "none",
     }}>
-      <div
-        ref={cardRef}
-        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel}
-        style={{
-          position: "relative", width: "100%", maxWidth: BINDER_MAX_WIDTH, aspectRatio: ITEM_CARD_ASPECT, perspective: 700,
-          touchAction: "pan-y", filter: "drop-shadow(0 12px 26px rgba(28,28,30,0.2))",
-        }}
-      >
-        {[10, 5].map((inset, i) => (
-          <div key={inset} style={{ position: "absolute", right: -inset * 0.6, top: 7 + i * 2, bottom: 7 + i * 2, width: inset, borderRadius: "0 4px 4px 0", background: `#EDE7D6`, boxShadow: "1px 0 2px rgba(28,28,30,0.1)" }} />
-        ))}
-        {renderPage(baseIndex)}
-        {dropping && (
-          <BookPage item={dropping.item} index={pageIndex} total={items.length} falling={dropping.fallen} onMarkDone={() => {}} onDrop={() => {}} />
+      <BinderFlipDeck
+        pageCount={pageCount}
+        maxWidth={BINDER_MAX_WIDTH}
+        disabled={registering || !!dropping}
+        renderPage={renderPage}
+        extraOverlay={() => dropping && (
+          <BookPage item={dropping.item} index={dropping.contentIndex} total={items.length} falling={dropping.fallen} onMarkDone={() => {}} onDrop={() => {}} />
         )}
-        {drag && leafIndex !== null && leafIndex >= 0 && leafIndex < totalPages && (
-          <div style={{
-            position: "absolute", inset: 0, transformStyle: "preserve-3d", transformOrigin: "0% 50%",
-            transform: `rotateY(${dragAngle}deg) translateZ(${liftZ}px) scale(${1 + 0.045 * Math.sin(Math.min(progress, 1) * Math.PI)})`,
-            transition: drag.settling ? "transform 0.22s cubic-bezier(0.16,1,0.3,1)" : "none",
-            WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
-            filter: `drop-shadow(0 ${10 + liftZ * 0.3}px ${16 + liftZ * 0.4}px rgba(28,28,30,${0.16 + Math.sin(Math.min(progress, 1) * Math.PI) * 0.14}))`,
-          }}>
-            {renderPage(leafIndex)}
-          </div>
-        )}
-        <BinderRings />
-      </div>
-      <div style={{ marginTop: 14, padding: "5px 13px", borderRadius: 999, background: PAPER, boxShadow: SOFT_SHADOW, fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: "#8A8778" }}>
-        {pageIndex + 1} / {totalPages}
-      </div>
+      />
     </div>
   );
 }

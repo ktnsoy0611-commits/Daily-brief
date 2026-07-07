@@ -283,9 +283,10 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   const rawStep = shown.length > 1 ? fanRightBound / (shown.length - 1) : 0;
   const offsetStep = Math.min(rawStep, cardWidth * 0.75);
 
-  // 触れているカードの両隣は、主役をしっかり見せるためにはっきり左右へ
-  // 逃がす。カード幅に比例させ、サイズが変わっても同じ見た目の余白になる
-  // ようにしている。
+  // 触れているカードより左は全部さらに左へ、右は全部さらに右へ逃がす。
+  // 隣接1枚だけでなく、触れているカードからの距離に比例して逃げ幅を
+  // 積み増していく(遠いカードほど大きく逃げる)ので、画面外に出るカードが
+  // あっても構わない前提で、主役をはっきり手前に見せる。
   const neighborSpread = Math.round(cardWidth * 0.34);
 
   return (
@@ -295,7 +296,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
         const rotation = ((seed % 9) - 4) * 1.3;
         const jitterY = ((seed >> 3) % 11) - 5;
         const isTouched = i === touchedIdx;
-        const spread = touchedIdx >= 0 && !isTouched ? (i < touchedIdx ? -neighborSpread : neighborSpread) : 0;
+        const spread = touchedIdx >= 0 && !isTouched ? (i - touchedIdx) * neighborSpread : 0;
         const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
           setTouchedKey(it.key);
           dragRef.current = { active: true, startX: e.clientX, startIdx: i };

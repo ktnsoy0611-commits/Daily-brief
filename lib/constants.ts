@@ -59,11 +59,11 @@ export const GOAL_CARD_ASPECT = ITEM_CARD_ASPECT;
 // ごちゃついたため、渋めで馴染みやすい4色まで減らした。
 export const POSTER_PALETTE = ["#33467C", "#B85C38", "#3F6B4A", "#5C4B6B"];
 
-// 下部固定バー(ストック・目標・実行タブ)がナビゲーションバーの直上にぴったり
-// 収まるためのオフセット。ナビの実測高さ(66px、アイコンのピル+ラベル+
-// 上下padding)に安全域を足す。ここが合っていないと、固定バーとナビの間に
-// 隙間ができる。ナビのスタイルを変えたら実測して合わせ直すこと。
-export const NAV_OFFSET = "calc(66px + env(safe-area-inset-bottom))";
+// タブ本文やストック/目標/実行タブの下部固定バーが、フローティングの
+// タブバー(AppShellのnav)の直上に収まるためのオフセット。navは画面
+// 下端から14px浮いたピル(高さ実測約63px)なので、63+14に少し余白を
+// 足した値。navのスタイルを変えたら実測して合わせ直すこと。
+export const NAV_OFFSET = "calc(92px + env(safe-area-inset-bottom))";
 
 export interface Category {
   id: CategoryId;

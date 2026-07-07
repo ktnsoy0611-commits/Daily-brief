@@ -315,7 +315,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   return (
     <>
       <Masthead title="デイリーブリーフ" statValue={done ? keptCards.length : index + 1} statLabel={done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
-      <div style={{ display: "flex", gap: 4, padding: "12px 4px 4px" }}>
+      <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
         {deck.map((c, i) => (
           <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: decisions[c.id] === "keep" || decisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : decisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(23,23,21,0.1)", transition: "background 0.3s" }} />
         ))}
@@ -323,30 +323,37 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
       {!done ? (
         // ページ本体はスクロールしない(useEffectでbodyをロック)ので、
-        // ここがそのまま「残りの高さいっぱい」になる。その中でカード+
-        // フッターを縦方向に中央寄せし、以前のような上寄りの窮屈さを無くす。
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <main style={{ position: "relative", margin: "0 auto 8px", width: "100%", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT, maxHeight: "56dvh", flexShrink: 0 }}>
-            {visibleCards.map(({ card, isTop }) => (
-              <div
-                key={card.id}
-                {...(isTop ? { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp } : {})}
-                style={isTop ? {
-                  position: "absolute", inset: 0, zIndex: 2, transform: topTransform, transition: topTransition,
-                  touchAction: isGrowth ? "auto" : "none", cursor: isGrowth ? "default" : drag.active ? "grabbing" : "grab",
-                } : {
-                  position: "absolute", inset: 0, zIndex: 1, transform: peekTransform, transition: peekTransition,
-                }}
-              >
-                <CardFace card={card} dx={isTop ? drag.dx : 0} isTop={isTop}
-                  onOpenBinder={isTop ? () => setBinderItem(card as BriefCard) : undefined}
-                  checkinValue={isTop ? checkinAnswer : ""} onCheckinChange={isTop ? setCheckinAnswer : () => {}}
-                  milestoneText={isTop ? milestoneText : ""} onMilestoneTextChange={isTop ? setMilestoneText : () => {}}
-                  milestoneRating={isTop ? milestoneRating : null} onMilestoneRatingChange={isTop ? setMilestoneRating : () => {}}
-                  flagged={isTop ? !!feedback[card.id] : undefined} onFlag={isTop ? () => toggleFlag(card.id) : undefined} />
-              </div>
-            ))}
-          </main>
+        // ここがそのまま「残りの高さいっぱい」になる。以前は横幅基準
+        // (width:100%+aspect-ratio)でカードを組んでいたため、縦の余白が
+        // 少ない機種では高さがはみ出し、中央寄せが実質効かず上に張り付いて
+        // 見えていた。カード置き場を「余白いっぱいに伸びるflexの箱」にし、
+        // カード自体は高さ基準(height:100%+aspect-ratio→幅が決まる)で
+        // 組み直すことで、縦にどれだけ余白があっても必ずその中に収まって
+        // 中央に来るようにしている。
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: "1 1 0", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }}>
+            <main style={{ position: "relative", height: "100%", maxHeight: "56dvh", width: "auto", maxWidth: 340, aspectRatio: ITEM_CARD_ASPECT }}>
+              {visibleCards.map(({ card, isTop }) => (
+                <div
+                  key={card.id}
+                  {...(isTop ? { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp } : {})}
+                  style={isTop ? {
+                    position: "absolute", inset: 0, zIndex: 2, transform: topTransform, transition: topTransition,
+                    touchAction: isGrowth ? "auto" : "none", cursor: isGrowth ? "default" : drag.active ? "grabbing" : "grab",
+                  } : {
+                    position: "absolute", inset: 0, zIndex: 1, transform: peekTransform, transition: peekTransition,
+                  }}
+                >
+                  <CardFace card={card} dx={isTop ? drag.dx : 0} isTop={isTop}
+                    onOpenBinder={isTop ? () => setBinderItem(card as BriefCard) : undefined}
+                    checkinValue={isTop ? checkinAnswer : ""} onCheckinChange={isTop ? setCheckinAnswer : () => {}}
+                    milestoneText={isTop ? milestoneText : ""} onMilestoneTextChange={isTop ? setMilestoneText : () => {}}
+                    milestoneRating={isTop ? milestoneRating : null} onMilestoneRatingChange={isTop ? setMilestoneRating : () => {}}
+                    flagged={isTop ? !!feedback[card.id] : undefined} onFlag={isTop ? () => toggleFlag(card.id) : undefined} />
+                </div>
+              ))}
+            </main>
+          </div>
           {/* 育成カード(テキスト入力を伴う)はドラッグを無効にしているため、
               代わりにボタンで決定させる必要がある。通常カードはスワイプだけで
               完結するため、下部のSKIP/KEEPボタンは廃止し、控えめなヒントの

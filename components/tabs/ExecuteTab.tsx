@@ -1,9 +1,9 @@
 "use client";
 
 import { BookOpen, Check, ChevronLeft, ChevronRight, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
-import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, mediaKindOf } from "@/lib/constants";
+import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
@@ -213,10 +213,40 @@ interface ExecItem {
   done?: boolean;
 }
 
-// フルスクリーンの本1ページ分。バインダーの表紙/GoalCardと同じ左端の
-// リング金具モチーフを踏襲し、「バインダーに閉じられたルーズリーフの束」
-// であることが一目でわかるようにしている。行った/行ってないは本文を隠さず、
-// 右上の小さな2つのアイコンだけで完結させる。
+// PosterCardと同じ「ルーズリーフの穴+切り取り線」モチーフを、今度は
+// mask-imageで本物の透過にして使う。バインダーは常にタブの地の色(BG)の
+// 上に浮くだけなので、どんな背景の上でも安全な装飾円ではなく、実際に
+// 下地が透けて見える本物の穴を開けられる。PosterCardと同じ2つ穴。
+const HOLE_MASK = (() => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 347"><rect width="260" height="347" fill="white"/><circle cx="15" cy="83" r="5.5" fill="black"/><circle cx="15" cy="264" r="5.5" fill="black"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+})();
+const holeMaskStyle: CSSProperties = {
+  WebkitMaskImage: HOLE_MASK, maskImage: HOLE_MASK,
+  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+  WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
+};
+// バインダーの紙(#FBF8EF)とタブの地の色(BG、#F3F1EC)は非常に近い色なので、
+// 穴を本物の透過にするだけでは下地がほぼ同化して見えなくなってしまう。
+// マスクされた紙の「外側」に、穴の位置にだけ薄い縁取り(輪郭)を重ねて、
+// 背景色に関わらず「穴が空いている」ことがちゃんと読めるようにしている。
+function HoleRings() {
+  return (
+    <>
+      {["24%", "76%"].map((y) => (
+        <div key={y} style={{
+          position: "absolute", left: "5.8%", top: y, transform: "translate(-50%, -50%)",
+          width: 12, height: 12, borderRadius: "50%", pointerEvents: "none", zIndex: 5,
+          boxShadow: "inset 0 1.5px 2px rgba(28,28,30,0.22), inset 0 -1px 1px rgba(255,255,255,0.4), 0 0 0 1px rgba(28,28,30,0.05)",
+        }} />
+      ))}
+    </>
+  );
+}
+
+// バインダーの1ページ。PosterCard/GoalCardと同じ穴+切り取り線の余白列を
+// 左端に確保し、行った/行ってないは本文を隠さない右上の2アイコンで
+// 完結させる。
 function BookPage({ item, index, total, falling, onMarkDone, onDrop }: {
   item: ExecItem; index: number; total: number; falling?: boolean;
   onMarkDone: () => void;
@@ -226,90 +256,94 @@ function BookPage({ item, index, total, falling, onMarkDone, onDrop }: {
   const fill = item.color ?? "#5A5A54";
   return (
     <div style={{
-      position: "absolute", inset: 0, background: "#FBF8EF", borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column",
-      boxShadow: "inset 0 0 0 1px rgba(28,28,30,0.06)",
+      position: "absolute", inset: 0,
       transform: falling ? "translateY(140%) rotate(10deg)" : "translateY(0) rotate(0deg)",
       opacity: falling ? 0 : 1,
       transition: falling ? "transform 0.42s cubic-bezier(0.55,0,1,0.45), opacity 0.42s ease-in" : "none",
     }}>
-      {[0.12, 0.5, 0.88].map((y) => (
-        <div key={y} style={{
-          position: "absolute", left: 14, top: `${y * 100}%`, transform: "translateY(-50%)", width: 13, height: 13, borderRadius: "50%", zIndex: 5,
-          background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.5)",
-        }}>
-          <div style={{ position: "absolute", inset: 2.5, borderRadius: "50%", background: "#F3F1EC" }} />
+      <div style={{
+        position: "absolute", inset: 0, background: "#FBF8EF", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column",
+        boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle,
+      }}>
+        <div style={{ position: "absolute", left: 23, top: 6, bottom: 6, width: 1, backgroundImage: "repeating-linear-gradient(to bottom, rgba(28,28,30,0.14) 0 3px, transparent 3px 7px)" }} />
+        <div style={{ position: "relative", flex: "0 0 44%", margin: "0 0 0 30px", overflow: "hidden", background: item.images?.[0] ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)` }}>
+          {item.images?.[0] ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={img(item.images[0], 500, 460)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ) : IconComp ? (
+            <div style={{ position: "absolute", bottom: "-18%", right: "-10%", width: "56%", aspectRatio: "1 / 1", transform: "rotate(-14deg)", opacity: 0.16 }}>
+              <IconComp size="100%" strokeWidth={1} color="#fff" />
+            </div>
+          ) : null}
         </div>
-      ))}
-      <div style={{ position: "relative", flex: "0 0 46%", margin: "0 0 0 34px", overflow: "hidden", background: item.images?.[0] ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)` }}>
-        {item.images?.[0] ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={img(item.images[0], 500, 460)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        ) : IconComp ? (
-          <div style={{ position: "absolute", bottom: "-18%", right: "-10%", width: "56%", aspectRatio: "1 / 1", transform: "rotate(-14deg)", opacity: 0.16 }}>
-            <IconComp size="100%" strokeWidth={1} color="#fff" />
-          </div>
-        ) : null}
+        <div style={{ flex: 1, padding: "12px 16px 12px 30px", display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700 }}>{item.categoryLabel}{item.area && item.area !== "—" ? ` ・ ${item.area}` : ""}</div>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14, lineHeight: 1.28, marginTop: 5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</div>
+          {item.meta && item.meta.length > 0 && (
+            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
+              {item.meta.slice(0, 2).map((m, i) => <div key={i} style={{ fontSize: 9.5, color: "#5A5A54", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m}</div>)}
+            </div>
+          )}
+          <div style={{ marginTop: "auto", fontSize: 8, color: "#B7B4A6", letterSpacing: "0.06em" }}>{index + 1} / {total}</div>
+        </div>
+        <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 5, zIndex: 6 }}>
+          <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
+            width: 25, height: 25, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
+            background: item.done ? GREEN : "rgba(28,28,30,0.08)", color: item.done ? "#fff" : "#8A8A82",
+            display: "flex", alignItems: "center", justifyContent: "center", boxShadow: item.done ? "0 3px 8px rgba(46,154,92,0.4)" : "none",
+          }}><Check size={12} strokeWidth={3} /></button>
+          <button onClick={(e) => { e.stopPropagation(); onDrop(); }} aria-label={item.done ? "外す" : "行ってない"} style={{
+            width: 25, height: 25, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
+            background: "rgba(193,90,52,0.12)", color: RUST, display: "flex", alignItems: "center", justifyContent: "center",
+          }}><X size={12} strokeWidth={3} /></button>
+        </div>
       </div>
-      <div style={{ flex: 1, padding: "18px 22px 16px 34px", display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700 }}>{item.categoryLabel}{item.area && item.area !== "—" ? ` ・ ${item.area}` : ""}</div>
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 19, lineHeight: 1.32, marginTop: 8 }}>{item.title}</div>
-        {item.meta && item.meta.length > 0 && (
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-            {item.meta.map((m, i) => <div key={i} style={{ fontSize: 11.5, color: "#5A5A54" }}>{m}</div>)}
-          </div>
-        )}
-        <div style={{ marginTop: "auto", fontSize: 9.5, color: "#B7B4A6", letterSpacing: "0.06em" }}>{index + 1} / {total} ページ</div>
-      </div>
-      <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 8, zIndex: 6 }}>
-        <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
-          width: 34, height: 34, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
-          background: item.done ? GREEN : "rgba(28,28,30,0.08)", color: item.done ? "#fff" : "#8A8A82",
-          display: "flex", alignItems: "center", justifyContent: "center", boxShadow: item.done ? "0 3px 8px rgba(46,154,92,0.4)" : "none",
-        }}><Check size={16} strokeWidth={3} /></button>
-        <button onClick={(e) => { e.stopPropagation(); onDrop(); }} aria-label={item.done ? "外す" : "行ってない"} style={{
-          width: 34, height: 34, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
-          background: "rgba(193,90,52,0.12)", color: RUST, display: "flex", alignItems: "center", justifyContent: "center",
-        }}><X size={16} strokeWidth={3} /></button>
-      </div>
+      <HoleRings />
     </div>
   );
 }
 
 // 全ページを捲り終えた先にある裏表紙。ここに来て初めて「登録」が現れる、
 // 本を閉じる最後の1ページという位置づけ。
-function BackCoverPage({ dateLabel, count }: { dateLabel: string; count: number }) {
+function BackCoverPage({ dateLabel, count, onRegister }: { dateLabel: string; count: number; onRegister: () => void }) {
   return (
-    <div style={{ position: "absolute", inset: 0, background: "#FBF8EF", borderRadius: 10, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", boxShadow: "inset 0 0 0 1px rgba(28,28,30,0.06)" }}>
-      {[0.12, 0.5, 0.88].map((y) => (
-        <div key={y} style={{
-          position: "absolute", left: 14, top: `${y * 100}%`, transform: "translateY(-50%)", width: 13, height: 13, borderRadius: "50%", zIndex: 5,
-          background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.5)",
+    <div style={{ position: "absolute", inset: 0 }}>
+      <div style={{ position: "absolute", inset: 0, background: "#FBF8EF", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle }}>
+        <div style={{ position: "absolute", left: 23, top: 6, bottom: 6, width: 1, backgroundImage: "repeating-linear-gradient(to bottom, rgba(28,28,30,0.14) 0 3px, transparent 3px 7px)" }} />
+        <div style={{ fontSize: 8, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, marginLeft: 30 }}>{dateLabel}</div>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 13, margin: "6px 0 16px", textAlign: "center", padding: "0 26px" }}>{count}件、今日はここまで</div>
+        <button onClick={(e) => { e.stopPropagation(); onRegister(); }} aria-label="登録" style={{
+          width: 52, height: 52, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
+          background: INK, color: PAPER, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+          boxShadow: "0 8px 18px rgba(28,28,30,0.28)",
         }}>
-          <div style={{ position: "absolute", inset: 2.5, borderRadius: "50%", background: "#F3F1EC" }} />
-        </div>
-      ))}
-      <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", fontWeight: 700, marginLeft: 34 }}>{dateLabel}</div>
-      <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16, margin: "8px 0 26px", textAlign: "center", padding: "0 30px" }}>{count}件、今日はここまで</div>
+          <Check size={16} strokeWidth={2.5} />
+          <span style={{ fontSize: 7.5, fontWeight: 700, letterSpacing: "0.06em" }}>登録</span>
+        </button>
+      </div>
+      <HoleRings />
     </div>
   );
 }
 
-// マガジン確定後の「今日の行き先リスト」を、リングで閉じられた1冊の
-// バインダーとして画面いっぱいに展開するビュー。スワイプ(または左右の
-// 矢印)でページが3D回転して捲れる。ヒンジは常に左端(リング金具側)に
-// 固定し、現実の本のように「右のページ束が左へ倒れ込む」向きで統一する。
-// 最後のアイテムページの先に裏表紙があり、そこで「登録」を押すとバインダー
-// ごと下に落ちて記録タブへ向かう。
-function BinderBook({ items, dateLabel, onBack, onMarkDone, onDrop, onRegister }: {
+// バインダー本体。他のタブと同じアイテムカード比率(3:4)のまま、
+// 通常のカードよりふたまわりほど大きいサイズで、タブの中央にちょこんと
+// 置く。全画面の演出や専用の背景は持たず、タブの地の色の上にそのまま
+// 浮かべることで、他のタブと同じ「普通のタブの中に主役が1つ」という
+// 見え方に揃えている。スワイプ(または左右の矢印)でページが半立体に
+// 手前へ持ち上がりながら捲れる。最後のアイテムページの先に裏表紙が
+// あり、そこで「登録」を押すとバインダーごと下に落ちて記録タブへ向かう。
+const BINDER_MAX_WIDTH = 260;
+
+function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   items: ExecItem[];
   dateLabel: string;
-  onBack: () => void;
   onMarkDone: (item: ExecItem) => void;
   onDrop: (item: ExecItem) => void;
   onRegister: () => void;
 }) {
   const [pageIndex, setPageIndex] = useState(0);
-  const [flip, setFlip] = useState<{ dir: "next" | "prev"; angle: number } | null>(null);
+  const [flip, setFlip] = useState<{ dir: "next" | "prev"; nonce: number } | null>(null);
   const [dropping, setDropping] = useState<{ item: ExecItem; fallen: boolean } | null>(null);
   const [registering, setRegistering] = useState(false);
   const animating = useRef(false);
@@ -326,10 +360,7 @@ function BinderBook({ items, dateLabel, onBack, onMarkDone, onDrop, onRegister }
     if (target < 0 || target >= totalPages) return;
     animating.current = true;
     haptic(8);
-    setFlip({ dir, angle: dir === "next" ? 0 : -180 });
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      setFlip({ dir, angle: dir === "next" ? -180 : 0 });
-    }));
+    setFlip({ dir, nonce: Date.now() });
     setTimeout(() => {
       setPageIndex(target);
       setFlip(null);
@@ -342,8 +373,8 @@ function BinderBook({ items, dateLabel, onBack, onMarkDone, onDrop, onRegister }
     if (!dragRef.current.active) return;
     dragRef.current.active = false;
     const dx = e.clientX - dragRef.current.startX;
-    if (dx < -40) turn("next");
-    else if (dx > 40) turn("prev");
+    if (dx < -30) turn("next");
+    else if (dx > 30) turn("prev");
   };
 
   // 「行ってない」で外すと、そのページが下に落ちて消える。落ちている間
@@ -368,71 +399,53 @@ function BinderBook({ items, dateLabel, onBack, onMarkDone, onDrop, onRegister }
     if (registering) return;
     haptic(18);
     setRegistering(true);
-    setTimeout(onRegister, 480);
+    setTimeout(onRegister, 420);
   };
 
   const baseIndex = dropping ? Math.min(pageIndex + 1, totalPages - 1) : flip ? (flip.dir === "next" ? pageIndex + 1 : pageIndex) : pageIndex;
   const leafIndex = flip ? (flip.dir === "next" ? pageIndex : pageIndex - 1) : null;
 
-  const renderPage = (idx: number, opts?: { falling?: boolean }) => {
-    if (idx === items.length) return <BackCoverPage dateLabel={dateLabel} count={items.length} />;
+  const renderPage = (idx: number) => {
+    if (idx === items.length) return <BackCoverPage dateLabel={dateLabel} count={items.length} onRegister={handleRegister} />;
     const it = items[idx];
     if (!it) return null;
-    return <BookPage item={it} index={idx} total={items.length} falling={opts?.falling} onMarkDone={() => onMarkDone(it)} onDrop={() => handleDrop(it)} />;
+    return <BookPage item={it} index={idx} total={items.length} onMarkDone={() => onMarkDone(it)} onDrop={() => handleDrop(it)} />;
   };
 
   return (
     <div style={{
-      position: "fixed", inset: 0, zIndex: 60, background: "linear-gradient(180deg, #16161c 0%, #201f26 100%)", display: "flex", flexDirection: "column",
-      transform: registering ? "translateY(120%)" : "translateY(0)", opacity: registering ? 0 : 1,
-      transition: registering ? "transform 0.48s cubic-bezier(0.5,0,1,0.5), opacity 0.4s ease-in" : "none",
+      flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      transform: registering ? "translateY(70%)" : "translateY(0)", opacity: registering ? 0 : 1,
+      transition: registering ? "transform 0.42s cubic-bezier(0.5,0,1,0.5), opacity 0.36s ease-in" : "none",
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "calc(env(safe-area-inset-top) + 14px) 18px 8px" }}>
-        <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.1em" }}>{dateLabel}</span>
-        <button onClick={onBack} aria-label="選び直す" style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
-          <X size={16} />
-        </button>
-      </div>
-
-      <div onPointerDown={onDown} onPointerUp={onUp} style={{ flex: 1, position: "relative", margin: "6px 22px", perspective: 1800, touchAction: "pan-y" }}>
+      <div onPointerDown={onDown} onPointerUp={onUp} style={{ position: "relative", width: "100%", maxWidth: BINDER_MAX_WIDTH, aspectRatio: ITEM_CARD_ASPECT, perspective: 700, touchAction: "pan-y" }}>
         {renderPage(baseIndex)}
         {dropping && (
           <BookPage item={dropping.item} index={pageIndex} total={items.length} falling={dropping.fallen} onMarkDone={() => {}} onDrop={() => {}} />
         )}
         {flip && leafIndex !== null && (
-          <div style={{
+          <div key={flip.nonce} style={{
             position: "absolute", inset: 0, transformStyle: "preserve-3d", transformOrigin: "0% 50%",
-            transform: `rotateY(${flip.angle}deg)`, transition: "transform 0.46s cubic-bezier(0.45,0,0.55,1)",
+            animationName: flip.dir === "next" ? "binder-page-next" : "binder-page-prev",
+            animationDuration: "0.46s", animationTimingFunction: "cubic-bezier(0.45,0,0.4,1)", animationFillMode: "forwards",
             WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
-            filter: "drop-shadow(0 22px 40px rgba(0,0,0,0.5))",
+            filter: "drop-shadow(0 14px 22px rgba(28,28,30,0.22))",
           }}>
             {renderPage(leafIndex)}
           </div>
         )}
-        {pageIndex === items.length && (
-          <button onClick={handleRegister} aria-label="登録" style={{
-            position: "absolute", left: "50%", bottom: "16%", transform: "translateX(-50%)", zIndex: 8,
-            width: 78, height: 78, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
-            background: INK, color: PAPER, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
-            boxShadow: "0 12px 26px rgba(0,0,0,0.4)",
-          }}>
-            <Check size={22} strokeWidth={2.5} />
-            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em" }}>登録</span>
-          </button>
-        )}
         <button onClick={() => turn("prev")} disabled={pageIndex === 0} aria-label="前のページ" style={{
-          position: "absolute", left: -14, top: "50%", transform: "translateY(-50%)", width: 34, height: 34, borderRadius: "50%",
-          border: "none", background: "rgba(28,28,30,0.65)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.35)", cursor: pageIndex === 0 ? "default" : "pointer", opacity: pageIndex === 0 ? 0.3 : 1, padding: 0, zIndex: 10,
-        }}><ChevronLeft size={18} /></button>
+          position: "absolute", left: -16, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, borderRadius: "50%",
+          border: "none", background: PAPER, color: INK, display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: SOFT_SHADOW, cursor: pageIndex === 0 ? "default" : "pointer", opacity: pageIndex === 0 ? 0.3 : 1, padding: 0, zIndex: 10,
+        }}><ChevronLeft size={16} /></button>
         <button onClick={() => turn("next")} disabled={pageIndex === totalPages - 1} aria-label="次のページ" style={{
-          position: "absolute", right: -14, top: "50%", transform: "translateY(-50%)", width: 34, height: 34, borderRadius: "50%",
-          border: "none", background: "rgba(28,28,30,0.65)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.35)", cursor: pageIndex === totalPages - 1 ? "default" : "pointer", opacity: pageIndex === totalPages - 1 ? 0.3 : 1, padding: 0, zIndex: 10,
-        }}><ChevronRight size={18} /></button>
+          position: "absolute", right: -16, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, borderRadius: "50%",
+          border: "none", background: PAPER, color: INK, display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: SOFT_SHADOW, cursor: pageIndex === totalPages - 1 ? "default" : "pointer", opacity: pageIndex === totalPages - 1 ? 0.3 : 1, padding: 0, zIndex: 10,
+        }}><ChevronRight size={16} /></button>
       </div>
-
-      <div style={{ textAlign: "center", fontSize: 10, letterSpacing: "0.1em", color: "rgba(255,255,255,0.35)", padding: "6px 0 calc(env(safe-area-inset-bottom) + 14px)" }}>
+      <div style={{ marginTop: 14, fontSize: 10, letterSpacing: "0.1em", color: "#9A988E" }}>
         {pageIndex + 1} / {totalPages}
       </div>
     </div>
@@ -556,20 +569,16 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
     }
     persist(next);
   };
-  // 裏表紙の「登録」。バインダーを閉じて今日を締めくくる操作。まだ行った/
-  // 行ってないが付いていない場所のKeepだけ、記録タブの「行きましたか？」
-  // 待ちに回す(観た/読んだ済みのメディアや、行った済みの場所は不要)。
+  // 裏表紙の「登録」。バインダーを閉じて今日を締めくくる操作。「行きましたか？」
+  // のような追加の確認は挟まず、まだ行った/行ってないが付いていない場所の
+  // Keepはそのまま候補に戻し、そのまま記録タブへ向かう。
   const registerBinder = () => {
     const next = structuredClone(appState);
-    const stillOpenKeepIds = (next.magazine?.itemIds ?? [])
-      .filter((r) => r.type === "keep")
-      .map((r) => r.id)
-      .filter((id) => next.keeps.find((k) => k.id === id)?.status !== "done");
-    if (stillOpenKeepIds.length > 0) {
-      const existing = new Set(next.pendingReview ?? []);
-      stillOpenKeepIds.forEach((id) => existing.add(id));
-      next.pendingReview = Array.from(existing);
-    }
+    (next.magazine?.itemIds ?? []).forEach((r) => {
+      if (r.type !== "keep") return;
+      const k = next.keeps.find((x) => x.id === r.id);
+      if (k && k.status !== "done") k.status = "candidate";
+    });
     next.magazine = null;
     persist(next);
     setMapMode(false);
@@ -604,9 +613,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
 
   return (
     <>
-      {showMap && (
-        <Masthead title="実行" statValue={pool.length + mediaPool.length} statLabel="件の候補" corner={profileButton} />
-      )}
+      <Masthead title="実行" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
 
       {showMap ? (
         <>
@@ -630,20 +637,22 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
           )}
         </>
       ) : magazine && (
-        // 確定後は「バインダー」そのものが実行タブの全て。ボードや編集UIは
-        // 廃止し、画面いっぱいのページ捲りビューだけを見せるミニマルな構成にした。
-        <BinderBook
-          items={magItems}
-          dateLabel={dayInfo(magazine.decidedAt).label}
-          onBack={() => {
+        // 確定後は他のタブと同じ普通の構成(ヘッダー+地の色の背景)のまま、
+        // タブの中央にバインダーが1つちょこんと乗るだけのミニマルな見た目。
+        <>
+          <button onClick={() => {
             setDraftSelection(magazine.itemIds.filter((r) => r.type === "keep").map((r) => r.id));
             setDraftMediaSelection(magazine.itemIds.filter((r) => r.type === "media").map((r) => r.id));
             setMapMode(true);
-          }}
-          onMarkDone={(item) => markDoneInMagazine(item.id, item.type)}
-          onDrop={(item) => removeFromMagazine(item.id, item.type)}
-          onRegister={registerBinder}
-        />
+          }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← 選び直す</button>
+          <BinderBook
+            items={magItems}
+            dateLabel={dayInfo(magazine.decidedAt).label}
+            onMarkDone={(item) => markDoneInMagazine(item.id, item.type)}
+            onDrop={(item) => removeFromMagazine(item.id, item.type)}
+            onRegister={registerBinder}
+          />
+        </>
       )}
 
       <BinderModal

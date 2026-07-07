@@ -291,7 +291,7 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
 
   return (
     <>
-      <Masthead title="ストック" en="まだ実行していないものが並ぶ場所" statValue={totalCount} statLabel="件" corner={profileButton} />
+      <Masthead title="ストック" statValue={totalCount} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         <StackSection title="作品" count={mediaItemsDesc.length}>

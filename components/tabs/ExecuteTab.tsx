@@ -438,7 +438,7 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
 
   return (
     <>
-      <Masthead title="実行" en="今日の行き先を選ぶ、または見直す" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
+      <Masthead title="実行" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
 
       {showMap ? (
         <>

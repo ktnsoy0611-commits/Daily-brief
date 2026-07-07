@@ -102,7 +102,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
 
   return (
     <>
-      <Masthead title="目標" en="終わりのない目標を、ゆるく記録する" statValue={goalItems.length} statLabel="件" corner={profileButton} />
+      <Masthead title="目標" statValue={goalItems.length} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

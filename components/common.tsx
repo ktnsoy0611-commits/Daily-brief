@@ -11,9 +11,8 @@ export type IconType = ComponentType<{ size?: number | string; strokeWidth?: num
 // 「My Trails」参考のような、太いサンセリフの大見出し+柔らかいグレーの
 // サブテキストという構成。以前は新聞の輪転罫線(2px罫線)で下線を引いて
 // いたが、ミニマルなデザインへの刷新でその区切り線は撤廃した。
-export function Masthead({ title, en, statValue, statLabel, dateline, right, corner }: {
+export function Masthead({ title, statValue, statLabel, dateline, right, corner }: {
   title: string;
-  en: string;
   statValue?: ReactNode;
   statLabel?: ReactNode;
   dateline?: ReactNode;
@@ -25,7 +24,6 @@ export function Masthead({ title, en, statValue, statLabel, dateline, right, cor
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 28, letterSpacing: "-0.01em", lineHeight: 1.15, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-          <div style={{ fontSize: 13, color: "#9A988E", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{en}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {corner}
@@ -229,7 +227,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   // ＋タイルの手前までの範囲に均等に重ねて配置し、行の幅いっぱいを使う。
   // カード枚数が少ない時でも重なりが失われないよう、間隔には上限を設ける。
   const addLeft = Math.max(0, containerWidth - cardWidth);
-  const fanRightBound = Math.max(0, addLeft - 14);
+  const fanRightBound = Math.max(0, addLeft - 14 - cardWidth);
   const rawStep = shown.length > 1 ? fanRightBound / (shown.length - 1) : 0;
   const offsetStep = Math.min(rawStep, cardWidth * 0.75);
 

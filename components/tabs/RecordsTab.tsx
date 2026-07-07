@@ -38,8 +38,24 @@ function MiniCard({ image, color, icon: Icon }: { image?: string; color?: string
 // 同じ座標)。枚数によって並びが変わるとタイルごとに重心がズレてグリッドが
 // 整列して見えなくなるため、常にこの2枚構成にしている。フロントのカードを
 // 大きく取り、写真そのものが主役として見えるようにした。
-const BINDER_FRONT = { left: "3%", top: "20%", width: "80%", rotate: -3 };
-const BINDER_BACK = { left: "26%", top: "5%", width: "72%", rotate: 7 };
+// 数値はすべて「カードの縦横比(3:4)×タイルの縦横比(4:5)」から逆算した、
+// タイルの内側(0〜100%)に確実に収まる値。以前はここが計算違いで、回転した
+// フロントカードの下端がタイル枠の外(タイトル文字の位置)まではみ出して
+// しまっていた。
+const BINDER_FRONT = { left: "8%", top: "15%", width: "68%", rotate: -3 };
+const BINDER_BACK = { left: "34%", top: "3%", width: "56%", rotate: 7 };
+
+// 金属のクリップらしい厚み・立体感を出すため、暗いトーンのコピーを1枚
+// 少しずらして下に敷き、明るいクリーム色のコピーを上に重ねる。lucideの
+// アイコンをそのまま1色で置くだけだと安っぽく見えるための工夫。
+function BinderClip({ size = 27, rotate = -22 }: { size?: number; rotate?: number }) {
+  return (
+    <div style={{ position: "relative", width: size, height: size, transform: `rotate(${rotate}deg)`, filter: "drop-shadow(0 3px 4px rgba(28,28,30,0.4))" }}>
+      <Paperclip size={size} strokeWidth={2.6} color="#9C9482" style={{ position: "absolute", top: 1.5, left: 1 }} />
+      <Paperclip size={size} strokeWidth={2.1} color="#F5F1E4" style={{ position: "absolute", top: 0, left: 0 }} />
+    </div>
+  );
+}
 
 // 「バインダー」タイル。フォルダー型の入れ物は撤廃し、他タブのCardStackと
 // 同じ視覚言語(スタックしたカード本体が主役)に揃えた上で、左上の角を
@@ -66,8 +82,8 @@ function BinderTile({ title, count, coverImages, coverColor, icon: Icon, onClick
           <MiniCard image={coverImages[0]} color={coverColor} icon={Icon} />
         </div>
         {/* フロントカードの左上の角をとめるクリップ */}
-        <div style={{ position: "absolute", left: "1%", top: "13%", zIndex: 3, transform: "rotate(-24deg)", filter: "drop-shadow(0 2px 3px rgba(28,28,30,0.35))" }}>
-          <Paperclip size={24} color="#8A8A82" strokeWidth={2} />
+        <div style={{ position: "absolute", left: "4%", top: "8%", zIndex: 3 }}>
+          <BinderClip />
         </div>
       </div>
       <div style={{ marginTop: 8, fontFamily: SERIF, fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
@@ -220,7 +236,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
   return (
     <>
-      <Masthead title="記録" en="積み上がった、これまでの記録" statValue={totalCount} statLabel="件の記録" corner={profileButton} />
+      <Masthead title="記録" statValue={totalCount} statLabel="件の記録" corner={profileButton} />
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
 
         {pendingItems.length > 0 && (

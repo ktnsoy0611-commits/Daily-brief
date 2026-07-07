@@ -126,7 +126,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           </span>
         </div>
         <h2 style={{ margin: "0 0 7px", fontFamily: SERIF, fontWeight: 700, fontSize: 19, lineHeight: 1.35, color: INK }}>{card.title}</h2>
-        <p style={{ margin: 0, flex: 1, fontFamily: SANS, fontSize: 12.5, lineHeight: 1.7, color: "#4A4A44" }}>{card.body}</p>
+        <p style={{ margin: 0, flex: 1, fontFamily: SANS, fontSize: 12.5, lineHeight: 1.7, color: "#4A4A44", display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: isTop && onFlag ? 26 : 0 }}>{card.body}</p>
         {isTop && onFlag && (
           <button
             onClick={(e) => { e.stopPropagation(); onFlag(); }}

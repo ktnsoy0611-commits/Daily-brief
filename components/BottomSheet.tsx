@@ -9,6 +9,28 @@ interface BottomSheetProps {
   maxHeight?: string;
 }
 
+// iOSでキーボードが開くと、レイアウト上のビューポート(inset:0の基準)は
+// そのままなのに実際に見える領域(visualViewport)だけが狭くなり、下寄せの
+// オーバーレイがキーボードの裏に隠れてしまう。visualViewportの高さを
+// 追って、その高さぶんだけ器を狭めることで、常にキーボードの上に来る
+// ようにする。
+function useVisualViewportHeight() {
+  const [height, setHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setHeight(vv.height);
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+  return height;
+}
+
 // 全オーバーレイ共通のポップアップ。以前は白い1枚のシート(下部シート)の
 // 中にあらゆる中身を入れていたが、「背景がブラーになり、その上にカードが
 // 浮いている」デザインに変更したため、この器自体はもう背景を持たない
@@ -18,6 +40,7 @@ interface BottomSheetProps {
 // 包んでもらう。閉じる操作は常に「カード(パネル)以外の場所をタップ」だけ。
 export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomSheetProps) {
   const [open, setOpen] = useState(false);
+  const vvHeight = useVisualViewportHeight();
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setOpen(true));
@@ -40,7 +63,8 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
 
   return (
     <div onClick={closeIfSelf} style={{
-      position: "fixed", inset: 0, zIndex: 45, display: "flex", alignItems: "flex-end", justifyContent: "center",
+      position: "fixed", top: 0, left: 0, right: 0, height: vvHeight ? `${vvHeight}px` : "100dvh",
+      zIndex: 45, display: "flex", alignItems: "flex-end", justifyContent: "center",
       background: open ? "rgba(16,16,20,0.4)" : "rgba(16,16,20,0)",
       backdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
       WebkitBackdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",

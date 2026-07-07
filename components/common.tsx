@@ -2,7 +2,7 @@
 
 import { Bookmark, Plus, Sprout, Star } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BG, BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
@@ -81,6 +81,12 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
   size?: number | string;
 }) {
   const fill = color ?? "#5A5A54";
+  // ルーズリーフとカードの中間のような見た目にするため、左端に縦の
+  // 余白列(穴+切り取り線)を確保し、バッジ/キャプションはその右側から
+  // 始まるようにインセットを右へずらしている。穴は本物の透過ではなく、
+  // どんな下地(写真/グラデーション/掲示板テクスチャ)の上でも同じ見た目
+  // で「窪んで見える」よう、内側シャドウ付きの生成りの円で表現している。
+  const holeYs = ["24%", "76%"];
   return (
     <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 18, overflow: "hidden", boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default", background: image ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)` }}>
       {image ? (
@@ -92,12 +98,23 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
         </div>
       )}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 42%, rgba(0,0,0,0.8) 100%)" }} />
+      {holeYs.map((y) => (
+        <div key={y} style={{
+          position: "absolute", left: 14, top: y, transform: "translateY(-50%)", width: 11, height: 11, borderRadius: "50%",
+          background: "rgba(253,251,245,0.92)",
+          boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.38), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 1px rgba(255,255,255,0.3)",
+        }} />
+      ))}
+      <div style={{
+        position: "absolute", left: 23, top: 8, bottom: 8, width: 1,
+        backgroundImage: "repeating-linear-gradient(to bottom, rgba(253,251,245,0.85) 0 4px, transparent 4px 9px)",
+      }} />
       {kept && (
-        <span style={{ position: "absolute", top: 8, left: 8, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
+        <span style={{ position: "absolute", top: 8, left: 30, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
           <Bookmark size={9} fill={INK} strokeWidth={0} /> KEEP
         </span>
       )}
-      <div style={{ position: "absolute", bottom: 10, left: 10, right: 10 }}>
+      <div style={{ position: "absolute", bottom: 10, left: 30, right: 10 }}>
         {label && <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(255,255,255,0.7)", marginBottom: 3 }}>{label}</div>}
         <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
         {sub && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}
@@ -120,11 +137,13 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
   );
 }
 
-// 目標カードだけは意図的に少し違うデザイン(比率3:5)にして、アイテム
-// カードと視覚的に区別できるようにしている。上2/3は普通のフラットな
-// カードとしてタイトルと直近の記録を見せ、下1/3だけロール紙のように
-// 巻かれた見た目にして、「この下にまだ記録が巻き込まれている」ことを
-// 示す。タップすると詳細シートが開き、巻かれた記録の続きを最後まで見れる。
+// 目標カードは「中にルーズリーフがバインドされたバインダー」として見せる。
+// 表紙(前面)は左端に3つのリング金具を並べた不透明な面で、タイトルと
+// 直近の記録を見せる。表紙の背後には、記録が貯まるほど右下にページの
+// 束がわずかにはみ出して重なっていく(枚数は上限を設け、それ以上は
+// 一番外側の束の厚みだけがわずかに増す扱いにして破綻を防ぐ)。
+const GOAL_STACK_CAP = 4;
+
 export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }: {
   title: string;
   recentCheckIns: { text: string; at: string }[];
@@ -133,38 +152,59 @@ export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }:
   size?: number | string;
 }) {
   const latest = recentCheckIns[0];
+  const stackCount = Math.min(checkInCount, GOAL_STACK_CAP);
+  const seed = hashStr(title);
+
   return (
     <button onClick={onClick} style={{
       width: size ?? "100%", aspectRatio: GOAL_CARD_ASPECT, flexShrink: 0, textAlign: "left", cursor: "pointer",
-      border: "none", borderRadius: 18, padding: 0, background: PAPER, color: INK,
-      display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW, position: "relative", overflow: "hidden",
+      border: "none", padding: 0, background: "none", color: INK, position: "relative",
     }}>
-      {/* 上側: 普通のカード部分 */}
-      <div style={{ flex: "1 1 64%", padding: "13px 14px 8px", display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <Sprout size={11} color={GREEN} strokeWidth={2} />
-          <span style={{ fontSize: 8, letterSpacing: "0.14em", color: GREEN, fontWeight: 700 }}>GOAL</span>
+      {Array.from({ length: stackCount }).map((_, i) => {
+        // 一番奥(表紙から遠い=zが低い)のページほど大きくはみ出させ、
+        // 表紙のすぐ下の層ほどはみ出しを小さくする。逆にすると外側の層が
+        // 内側の層を覆い隠して「1枚しか無い」ように見えてしまうため。
+        const depth = stackCount - i;
+        const layerSeed = seed + i * 37;
+        const dx = 3 + depth * 3.2 + ((layerSeed % 5) - 2) * 0.4;
+        const dy = 3 + depth * 2.8 + (((layerSeed >> 2) % 5) - 2) * 0.4;
+        const rot = ((layerSeed >> 4) % 7) - 3;
+        return (
+          <div key={i} style={{
+            position: "absolute", inset: 0, borderRadius: 16, background: "#FBF8EF",
+            border: "1px solid rgba(28,28,30,0.08)",
+            boxShadow: "0 1px 3px rgba(28,28,30,0.16)",
+            transform: `translate(${dx}px, ${dy}px) rotate(${rot}deg)`,
+            zIndex: i,
+          }} />
+        );
+      })}
+      {/* 表紙: リング金具+タイトル+直近の記録を見せる不透明な面 */}
+      <div style={{
+        position: "absolute", inset: 0, zIndex: GOAL_STACK_CAP + 1, borderRadius: 18, background: PAPER,
+        display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG, overflow: "hidden",
+      }}>
+        {[0.16, 0.5, 0.84].map((y) => (
+          <div key={y} style={{
+            position: "absolute", left: 9, top: `${y * 100}%`, transform: "translateY(-50%)", width: 12, height: 12, borderRadius: "50%",
+            background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)",
+            boxShadow: "inset 0 1px 1.5px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.5)",
+          }}>
+            <div style={{ position: "absolute", inset: 2.5, borderRadius: "50%", background: BG }} />
+          </div>
+        ))}
+        <div style={{ flex: 1, padding: "13px 14px 8px 26px", display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <Sprout size={11} color={GREEN} strokeWidth={2} />
+            <span style={{ fontSize: 8, letterSpacing: "0.14em", color: GREEN, fontWeight: 700 }}>GOAL</span>
+          </div>
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, lineHeight: 1.3, marginTop: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+          {latest && (
+            <p style={{ fontSize: 10.5, lineHeight: 1.5, color: "#7A7A72", margin: "6px 0 0", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
+          )}
         </div>
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, lineHeight: 1.3, marginTop: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
-        {latest && (
-          <p style={{ fontSize: 10.5, lineHeight: 1.5, color: "#7A7A72", margin: "6px 0 0", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
-        )}
-      </div>
-      {/* 下側: 巻かれたロール紙。楕円の頂部で「筒」のような丸みを出し、
-          上のカードとの境目にはうっすら折り目の影を入れて奥行きを足す。 */}
-      <div style={{ flex: "0 0 36%", position: "relative" }}>
-        <div style={{ position: "absolute", top: 0, left: "6%", right: "6%", height: 5, borderRadius: "50%", background: "rgba(28,28,30,0.1)", filter: "blur(2px)" }} />
-        <div style={{
-          position: "absolute", inset: 0, borderRadius: "50% 50% 0 0 / 22px 22px 0 0",
-          background: "linear-gradient(180deg, #FDFBF5 0%, #EEE6D3 38%, #DDD2B8 54%, #F1EADA 72%, #EEE6D3 100%)",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.8)",
-        }} />
-        <div style={{
-          position: "absolute", top: "26%", left: "14%", width: "34%", height: "30%", borderRadius: "50%",
-          background: "radial-gradient(ellipse at center, rgba(255,255,255,0.55), rgba(255,255,255,0) 70%)",
-        }} />
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 10 }}>
-          <span style={{ fontSize: 8.5, color: "#8A8477", fontWeight: 700, letterSpacing: "0.03em" }}>
+        <div style={{ padding: "0 14px 12px 26px", borderTop: `1px solid ${HAIRLINE}`, marginTop: "auto", paddingTop: 8 }}>
+          <span style={{ fontSize: 9.5, color: "#8A8477", fontWeight: 700, letterSpacing: "0.03em" }}>
             {checkInCount > 0 ? `記録 ${checkInCount}件・つづきを見る` : "まだ記録がありません"}
           </span>
         </div>

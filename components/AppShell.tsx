@@ -138,7 +138,7 @@ export function AppShell() {
       )}
 
       {!showProfile && (
-        <nav style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 25, display: "flex", justifyContent: "center", background: PAPER, boxShadow: "0 -8px 24px rgba(23,23,21,0.06)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", justifyContent: "center", background: PAPER, boxShadow: "0 -8px 24px rgba(23,23,21,0.06)", paddingBottom: "env(safe-area-inset-bottom)" }}>
           <div style={{ width: "100%", maxWidth: 420, display: "flex" }}>
             {TABS.map((t) => {
               const active = tab === t.id;

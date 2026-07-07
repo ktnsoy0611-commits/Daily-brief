@@ -1,7 +1,7 @@
 "use client";
 
-import { BookOpen, Film, MapPin, Music, Music2, Paperclip, Palette } from "lucide-react";
-import { useState } from "react";
+import { BookOpen, Film, MapPin, Music, Music2, Palette } from "lucide-react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
 import { BinderModal, type BinderItem, GoalCard, type IconType, Masthead, PosterCard } from "@/components/common";
 import { BLUE, GREEN, INK, ITEM_CARD_ASPECT, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
@@ -34,65 +34,109 @@ function MiniCard({ image, color, icon: Icon }: { image?: string; color?: string
   );
 }
 
-// バックの位置・フロントの位置・クリップの位置は常に固定(データに関わらず
-// 同じ座標)。枚数によって並びが変わるとタイルごとに重心がズレてグリッドが
-// 整列して見えなくなるため、常にこの2枚構成にしている。フロントのカードを
-// 大きく取り、写真そのものが主役として見えるようにした。
-// 数値はすべて「カードの縦横比(3:4)×タイルの縦横比(4:5)」から逆算した、
-// タイルの内側(0〜100%)に確実に収まる値。以前はここが計算違いで、回転した
-// フロントカードの下端がタイル枠の外(タイトル文字の位置)まではみ出して
-// しまっていた。
-const BINDER_FRONT = { left: "8%", top: "15%", width: "68%", rotate: -3 };
-const BINDER_BACK = { left: "34%", top: "3%", width: "56%", rotate: 7 };
+// 背から見た本の厚み。中身の件数に比例させるが、無限に太くなると棚の
+// 見た目が崩れるため上限を設ける(目標バインダーのように件数が際限なく
+// 増えるものを想定した安全弁)。
+const SPINE_MIN_W = 32;
+const SPINE_MAX_W = 58;
+const SPINE_BASE_W = 26;
+const SPINE_PER_ITEM = 3;
+function spineWidth(count: number) {
+  return Math.max(SPINE_MIN_W, Math.min(SPINE_MAX_W, SPINE_BASE_W + count * SPINE_PER_ITEM));
+}
 
-// 金属のクリップらしい厚み・立体感を出すため、暗いトーンのコピーを1枚
-// 少しずらして下に敷き、明るいクリーム色のコピーを上に重ねる。lucideの
-// アイコンをそのまま1色で置くだけだと安っぽく見えるための工夫。
-function BinderClip({ size = 27, rotate = -22 }: { size?: number; rotate?: number }) {
+export interface SpineItem {
+  key: string;
+  title: string;
+  count: number;
+  coverColor?: string;
+  coverImages: string[];
+  icon?: IconType;
+  onOpen: () => void;
+}
+
+// 本棚を背から見たような半分3Dの列。エリア別・メディアのジャンル別・
+// 日付別で共用し、デザインとサイズ感を統一している。指で触れた本は
+// 正面(rotateY 0)を向いて手前にせり出し、両隣は棚に押し出されるように
+// 少しずれて逃げる(CardStackの「押した手応え」と同じ操作感)。ドラッグで
+// 触れたまま指を動かすと隣の本へ選択が移り、軽いプレビュー(表紙3枚まで)が
+// 選ばれた本の右に浮かぶ。タップ(ドラッグなしのクリック)は常に中身の
+// 一覧シートを開く、というのもCardStackと共通の使い分け。
+function BookSpineShelf({ items }: { items: SpineItem[] }) {
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const selectedIdx = items.findIndex((it) => it.key === selectedKey);
+  const dragRef = useRef({ active: false, startX: 0, startIdx: 0 });
+  const release = () => { dragRef.current.active = false; setSelectedKey(null); };
+
   return (
-    <div style={{ position: "relative", width: size, height: size, transform: `rotate(${rotate}deg)`, filter: "drop-shadow(0 3px 4px rgba(28,28,30,0.4))" }}>
-      <Paperclip size={size} strokeWidth={2.6} color="#9C9482" style={{ position: "absolute", top: 1.5, left: 1 }} />
-      <Paperclip size={size} strokeWidth={2.1} color="#F5F1E4" style={{ position: "absolute", top: 0, left: 0 }} />
+    <div className="no-scrollbar" style={{ display: "flex", alignItems: "flex-end", gap: 2, overflowX: "auto", WebkitOverflowScrolling: "touch", padding: "18px 6px 6px", perspective: 900 }}>
+      {items.map((it, i) => {
+        const selected = it.key === selectedKey;
+        const dist = selectedIdx < 0 ? 0 : i - selectedIdx;
+        const push = selectedIdx < 0 ? 0 : dist === 1 ? 86 : dist === -1 ? 14 : 0;
+        const rotate = selected ? 0 : dist === 0 ? (i % 2 === 0 ? 4 : 7) : dist > 0 ? 14 : -14;
+        const fill = it.coverColor ?? "#5A5A54";
+        const w = spineWidth(it.count);
+
+        const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+          dragRef.current = { active: true, startX: e.clientX, startIdx: i };
+          setSelectedKey(it.key);
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+        };
+        const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+          if (!dragRef.current.active) return;
+          const dx = e.clientX - dragRef.current.startX;
+          const shift = Math.round(dx / 46);
+          const newIdx = Math.min(items.length - 1, Math.max(0, dragRef.current.startIdx + shift));
+          const newKey = items[newIdx]?.key;
+          if (newKey && newKey !== selectedKey) setSelectedKey(newKey);
+        };
+
+        return (
+          <div
+            key={it.key}
+            onClick={it.onOpen}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={release}
+            onPointerCancel={release}
+            style={{
+              position: "relative", width: w, height: 168, flexShrink: 0, cursor: "pointer",
+              marginLeft: dist === -1 ? push : 0, marginRight: dist === 1 ? push : 0,
+              transformStyle: "preserve-3d", transformOrigin: dist < 0 ? "100% 50%" : "0% 50%",
+              transform: selected ? "rotateY(0deg) translateZ(22px) scale(1.08)" : `rotateY(${rotate}deg)`,
+              transition: "transform 0.3s cubic-bezier(0.32,0.72,0,1), margin 0.3s cubic-bezier(0.32,0.72,0,1)",
+              zIndex: selected ? 30 : 20 - Math.abs(dist),
+              touchAction: "none", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
+            }}
+          >
+            <div style={{
+              position: "absolute", inset: 0, borderRadius: "3px 8px 8px 3px",
+              background: `linear-gradient(90deg, ${shade(fill, -24)} 0%, ${fill} 12%, ${shade(fill, 12)} 46%, ${fill} 84%, ${shade(fill, -30)} 100%)`,
+              boxShadow: selected ? "0 20px 34px rgba(28,28,30,0.4)" : "0 3px 7px rgba(28,28,30,0.22)",
+              display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+            }}>
+              <div style={{ position: "absolute", left: 3, top: 4, bottom: 4, width: 1.5, background: "rgba(255,255,255,0.4)", borderRadius: 2 }} />
+              <span style={{
+                writingMode: "vertical-rl", textOrientation: "mixed", fontFamily: SANS, fontWeight: 700, fontSize: 11.5,
+                color: "#fff", letterSpacing: "0.03em", maxHeight: "82%", overflow: "hidden", textShadow: "0 1px 3px rgba(0,0,0,0.25)",
+              }}>{it.title}</span>
+              <span style={{ position: "absolute", bottom: 7, left: 0, right: 0, textAlign: "center", fontSize: 8.5, fontWeight: 700, color: "rgba(255,255,255,0.7)" }}>{it.count}</span>
+            </div>
+            {selected && it.coverImages.length > 0 && (
+              <div style={{ position: "absolute", left: "100%", bottom: 2, display: "flex", zIndex: 25, pointerEvents: "none" }}>
+                {it.coverImages.slice(0, 3).map((src, ci) => (
+                  <div key={ci} style={{ width: 44, marginLeft: ci === 0 ? 10 : -24, transform: `rotate(${(ci - 1) * 8}deg) translateY(${ci * 4}px)`, transformOrigin: "50% 100%" }}>
+                    <MiniCard image={src} color={it.coverColor} icon={it.icon} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
-}
-
-// 「バインダー」タイル。フォルダー型の入れ物は撤廃し、他タブのCardStackと
-// 同じ視覚言語(スタックしたカード本体が主役)に揃えた上で、左上の角を
-// クリップで留めたような見た目にしている。2列グリッドで、一画面に4枚ほど
-// 収まるサイズ感。タップで中身のカードグリッドをシートで開く。エリア別・
-// メディアのジャンル別・日付別で共用し、デザインとサイズを統一している。
-// (以前はタイルの直下に展開するアコーディオン式だったが、閉じた状態の
-// 展開パネルがCSS Grid/flexboxどちらでも「幅ゼロでも1行分場所を使う」
-// ため隣のタイルが2列に並ばなくなる問題があり、タップでシートを開く
-// 方式に変更した。)
-function BinderTile({ title, count, coverImages, coverColor, icon: Icon, onClick }: {
-  title: string; count: number; coverImages: string[]; coverColor?: string; icon?: IconType; onClick: () => void;
-}) {
-  const showBack = count > 1;
-  return (
-    <button onClick={onClick} style={{ minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-      <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 5" }}>
-        {showBack && (
-          <div style={{ position: "absolute", left: BINDER_BACK.left, top: BINDER_BACK.top, width: BINDER_BACK.width, transform: `rotate(${BINDER_BACK.rotate}deg)`, transformOrigin: "50% 100%", zIndex: 1, opacity: 0.85 }}>
-            <MiniCard image={coverImages[1]} color={coverColor} icon={Icon} />
-          </div>
-        )}
-        <div style={{ position: "absolute", left: BINDER_FRONT.left, top: BINDER_FRONT.top, width: BINDER_FRONT.width, transform: `rotate(${BINDER_FRONT.rotate}deg)`, transformOrigin: "50% 100%", zIndex: 2 }}>
-          <MiniCard image={coverImages[0]} color={coverColor} icon={Icon} />
-        </div>
-        {/* フロントカードの左上の角をとめるクリップ */}
-        <div style={{ position: "absolute", left: "4%", top: "8%", zIndex: 3 }}>
-          <BinderClip />
-        </div>
-      </div>
-      <div style={{ marginTop: 8, fontFamily: SERIF, fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-    </button>
-  );
-}
-
-function BinderGrid({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, rowGap: 22 }}>{children}</div>;
 }
 
 // タップしたバインダーの中身を見せる共通シート。カード自体が完結した
@@ -294,46 +338,42 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
                 <div style={{ marginBottom: 12 }}>
                   <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>メディア</span>
                 </div>
-                <BinderGrid>
-                  {mediaSections.map((sec) => {
-                    const kindLabel = mediaKindOf(sec.kind).label;
-                    const covers = sec.records.filter((r) => r.image).slice(0, 3).map((r) => r.image!);
-                    return (
-                      <BinderTile key={sec.kind} title={kindLabel} count={sec.records.length} coverImages={covers} coverColor={sec.records[0]?.color} icon={MEDIA_ICON[sec.kind]}
-                        onClick={() => setOpenFolder({
-                          title: kindLabel,
-                          content: sec.records.map((r) => (
-                            <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.doneAt ?? r.addedAt)} label={mediaLabel[r.kind]}
-                              icon={MEDIA_ICON[r.kind]} kept={r.origin !== "manual"}
-                              good={!!r.good} onToggleGood={() => toggleGood(r.id)}
-                              onClick={r.image ? () => setBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
-                          )),
-                        })} />
-                    );
-                  })}
-                </BinderGrid>
+                <BookSpineShelf items={mediaSections.map((sec) => {
+                  const kindLabel = mediaKindOf(sec.kind).label;
+                  const covers = sec.records.filter((r) => r.image).slice(0, 3).map((r) => r.image!);
+                  return {
+                    key: sec.kind, title: kindLabel, count: sec.records.length, coverImages: covers, coverColor: sec.records[0]?.color, icon: MEDIA_ICON[sec.kind],
+                    onOpen: () => setOpenFolder({
+                      title: kindLabel,
+                      content: sec.records.map((r) => (
+                        <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.doneAt ?? r.addedAt)} label={mediaLabel[r.kind]}
+                          icon={MEDIA_ICON[r.kind]} kept={r.origin !== "manual"}
+                          good={!!r.good} onToggleGood={() => toggleGood(r.id)}
+                          onClick={r.image ? () => setBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
+                      )),
+                    }),
+                  };
+                })} />
               </section>
             )}
 
             {areaSections.length > 0 && (
               <section style={{ marginBottom: 30 }}>
                 <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 12 }}>行った場所</div>
-                <BinderGrid>
-                  {areaSections.map((sec) => {
-                    const covers = sec.keeps.filter((k) => k.images?.[0]).slice(0, 3).map((k) => k.images![0]);
-                    return (
-                      <BinderTile key={sec.area} title={sec.area} count={sec.keeps.length} coverImages={covers} coverColor={sec.keeps[0]?.color} icon={MapPin}
-                        onClick={() => setOpenFolder({
-                          title: sec.area,
-                          content: sec.keeps.map((k) => (
-                            <PosterCard key={k.id} image={k.images?.[0]} color={k.color} title={k.title} sub={shortDate(k.doneAt ?? k.keptAt)}
-                              icon={MapPin} kept={k.origin !== "manual"}
-                              onClick={k.images && k.images.length > 0 ? () => setBinderItem(k) : undefined} />
-                          )),
-                        })} />
-                    );
-                  })}
-                </BinderGrid>
+                <BookSpineShelf items={areaSections.map((sec) => {
+                  const covers = sec.keeps.filter((k) => k.images?.[0]).slice(0, 3).map((k) => k.images![0]);
+                  return {
+                    key: sec.area, title: sec.area, count: sec.keeps.length, coverImages: covers, coverColor: sec.keeps[0]?.color, icon: MapPin,
+                    onOpen: () => setOpenFolder({
+                      title: sec.area,
+                      content: sec.keeps.map((k) => (
+                        <PosterCard key={k.id} image={k.images?.[0]} color={k.color} title={k.title} sub={shortDate(k.doneAt ?? k.keptAt)}
+                          icon={MapPin} kept={k.origin !== "manual"}
+                          onClick={k.images && k.images.length > 0 ? () => setBinderItem(k) : undefined} />
+                      )),
+                    }),
+                  };
+                })} />
               </section>
             )}
 
@@ -353,21 +393,19 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
             {daySections.length === 0 ? (
               <p style={{ fontSize: 11.5, color: "#9A988E", padding: "4px 2px" }}>まだ記録がありません。</p>
             ) : (
-              <BinderGrid>
-                {daySections.map((sec) => {
-                  const covers = sec.entries.filter((e) => e.image).slice(0, 3).map((e) => e.image!);
-                  return (
-                    <BinderTile key={sec.label} title={sec.label} count={sec.entries.length} coverImages={covers} coverColor={sec.entries[0]?.color}
-                      onClick={() => setOpenFolder({
-                        title: sec.label,
-                        content: sec.entries.map((e) => (
-                          <PosterCard key={e.key} image={e.image} color={e.color} title={e.title} sub={e.sub} label={e.label}
-                            onClick={e.binderItem ? () => setBinderItem(e.binderItem!) : undefined} />
-                        )),
-                      })} />
-                  );
-                })}
-              </BinderGrid>
+              <BookSpineShelf items={daySections.map((sec) => {
+                const covers = sec.entries.filter((e) => e.image).slice(0, 3).map((e) => e.image!);
+                return {
+                  key: sec.label, title: sec.label, count: sec.entries.length, coverImages: covers, coverColor: sec.entries[0]?.color,
+                  onOpen: () => setOpenFolder({
+                    title: sec.label,
+                    content: sec.entries.map((e) => (
+                      <PosterCard key={e.key} image={e.image} color={e.color} title={e.title} sub={e.sub} label={e.label}
+                        onClick={e.binderItem ? () => setBinderItem(e.binderItem!) : undefined} />
+                    )),
+                  }),
+                };
+              })} />
             )}
           </>
         )}

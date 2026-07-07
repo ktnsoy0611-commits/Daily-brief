@@ -18,7 +18,7 @@
 // 物体を、違う状況で見ている」という一貫性を保っている。
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import { INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
+import { ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
 import { haptic, shade } from "@/lib/helpers";
 import type { IconType } from "@/components/common";
 
@@ -73,52 +73,67 @@ interface CoverContent {
   color: string;
   EyebrowIcon?: IconType;
   eyebrowLabel?: string;
-  eyebrowColor?: string;
   title: string;
   footer?: ReactNode;
 }
 
-// 布張り/レザー張りのような不透明な色面+中央の白いラベルプレート、という
-// GoalCardで確立した「表紙が付いたバインダー」の語彙をそのまま共通化した表紙面。
-export function BinderCoverFace({ color, EyebrowIcon, eyebrowLabel, eyebrowColor, title, footer }: CoverContent) {
+// 表紙面。以前は色面の上に白いラベルプレートを乗せていたが、角丸のプレート
+// +装飾的な斜め縞テクスチャが「学童文具っぽくてダサい」という指摘を受け、
+// リングバインダーのモックアップ写真(布/紙の色面に、ロゴマークと太字の
+// タイトルを直接置くだけ)に寄せてシンプルにした。プレートを廃止し、
+// タイトルは色面に直接置く。全体は角丸なし(四角)で統一する。
+export function BinderCoverFace({ color, EyebrowIcon, eyebrowLabel, title, footer }: CoverContent) {
   return (
     <div style={{
-      position: "absolute", inset: 0, display: "flex", flexDirection: "column",
-      background: `linear-gradient(135deg, ${shade(color, 16)} 0%, ${color} 45%, ${shade(color, -18)} 100%)`,
+      position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "14px 14px 12px",
+      background: `linear-gradient(160deg, ${shade(color, 14)} 0%, ${color} 55%, ${shade(color, -12)} 100%)`,
     }}>
-      <div style={{ position: "absolute", inset: 0, opacity: 0.07, backgroundImage: "repeating-linear-gradient(45deg, #fff 0 1px, transparent 1px 6px)" }} />
-      <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -14px 18px -14px rgba(0,0,0,0.35)" }} />
-      <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 12px 6px" }}>
-        <div style={{ width: "100%", background: PAPER, borderRadius: 6, padding: "9px 9px 8px", textAlign: "center", boxShadow: "0 3px 7px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.05)" }}>
-          {(EyebrowIcon || eyebrowLabel) && (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 5 }}>
-              {EyebrowIcon && <EyebrowIcon size={10} color={eyebrowColor ?? color} strokeWidth={2} />}
-              {eyebrowLabel && <span style={{ fontSize: 7.5, letterSpacing: "0.16em", color: eyebrowColor ?? color, fontWeight: 700 }}>{eyebrowLabel}</span>}
-            </div>
-          )}
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, lineHeight: 1.32, color: INK, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+      {/* スタジオ光のような柔らかい斜めのハイライトのみ。装飾的な縞は使わない。 */}
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 45%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", pointerEvents: "none" }} />
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        {(EyebrowIcon || eyebrowLabel) && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            {EyebrowIcon && (
+              <span style={{ width: 19, height: 19, borderRadius: "50%", border: "1.2px solid rgba(255,255,255,0.65)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <EyebrowIcon size={9.5} color="#fff" strokeWidth={2} />
+              </span>
+            )}
+            {eyebrowLabel && <span style={{ fontSize: 8, letterSpacing: "0.17em", color: "rgba(255,255,255,0.82)", fontWeight: 700 }}>{eyebrowLabel}</span>}
+          </div>
+        )}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end" }}>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: "#fff", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
         </div>
+        {footer && <div style={{ marginTop: 8, flexShrink: 0 }}>{footer}</div>}
       </div>
-      {footer && <div style={{ position: "relative", padding: "0 11px 11px" }}>{footer}</div>}
     </div>
   );
 }
 
-// 背表紙面: 縦書きのタイトル+件数バッジ+リング金具。棚に並んだ時に
-// 主に目に入る面。
-export function BinderSpineFace({ color, title, count }: { color: string; title: string; count?: number }) {
+// 背表紙面。以前は表紙と無関係などす黒い帯+縦書き文字だけの構成で、
+// 表紙と背表紙が別デザインに見えてしまっていた。表紙と同じ色面・同じ
+// ハイライトの向き・同じ丸バッジ(アイコン)を使い、1つの物体の2つの面
+// として整合するようにしている。
+export function BinderSpineFace({ color, title, count, EyebrowIcon }: { color: string; title: string; count?: number; EyebrowIcon?: IconType }) {
   return (
     <div style={{
-      position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-      background: `linear-gradient(180deg, ${shade(color, -4)} 0%, ${shade(color, -26)} 100%)`,
+      position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", padding: "10px 0 8px",
+      background: `linear-gradient(160deg, ${shade(color, 14)} 0%, ${color} 55%, ${shade(color, -12)} 100%)`,
     }}>
-      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "38%", background: "rgba(0,0,0,0.14)" }} />
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(120deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 55%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", pointerEvents: "none" }} />
+      {EyebrowIcon && (
+        <span style={{ position: "relative", width: 15, height: 15, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.6)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginBottom: 8 }}>
+          <EyebrowIcon size={7.5} color="#fff" strokeWidth={2} />
+        </span>
+      )}
       <span style={{
-        writingMode: "vertical-rl", textOrientation: "mixed", fontFamily: SANS, fontWeight: 700, fontSize: 11,
-        color: "#fff", letterSpacing: "0.04em", maxHeight: "78%", overflow: "hidden", textShadow: "0 1px 3px rgba(0,0,0,0.3)",
+        position: "relative", writingMode: "vertical-rl", textOrientation: "mixed", fontFamily: SANS, fontWeight: 700, fontSize: 10.5,
+        color: "#fff", letterSpacing: "0.05em", flex: 1, overflow: "hidden", textShadow: "0 1px 2px rgba(0,0,0,0.22)",
       }}>{title}</span>
       {typeof count === "number" && (
-        <span style={{ position: "absolute", bottom: 8, left: 0, right: 0, textAlign: "center", fontSize: 8.5, fontWeight: 700, color: "rgba(255,255,255,0.72)" }}>{count}</span>
+        <span style={{ position: "relative", marginTop: 8, fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.78)" }}>{count}</span>
       )}
     </div>
   );
@@ -135,11 +150,18 @@ export function binderTiltAngle(d: number, rest = 80, focused = 0) {
   return Math.sign(d) * angle;
 }
 
-export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth = 20, rotateY, transitionMs, color, EyebrowIcon, eyebrowLabel, eyebrowColor, title, footer, spineTitle, count, onClick }: CoverContent & {
+// リングバインダーの実物写真を参考に、角丸を廃止して四角い箱にした
+// (角丸カードは他の「カード」で使う語彙なので、バインダーはあえて
+// 直角にして両者を視覚的に区別する)。scaleは棚(BinderCoverflowRow)で
+// 中央に来たものだけをその場でひとまわり大きく見せるための上乗せで、
+// レイアウト上の幅(width)自体は変えない(隣接アイテムの詰まり方=
+// スワイプのピッチはscaleの影響を受けない)。
+export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth = 18, rotateY, scale = 1, transitionMs, color, EyebrowIcon, eyebrowLabel, title, footer, spineTitle, count, onClick }: CoverContent & {
   width: number | string;
   aspect?: string;
   depth?: number;
   rotateY: number;
+  scale?: number;
   transitionMs?: number;
   spineTitle?: string;
   count?: number;
@@ -149,22 +171,22 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth = 20, rotateY
     <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 900, cursor: onClick ? "pointer" : "default" }}>
       <div style={{
         position: "relative", width: "100%", height: "100%", transformStyle: "preserve-3d",
-        transform: `rotateY(${rotateY}deg)`,
+        transform: `scale(${scale}) rotateY(${rotateY}deg)`,
         transition: transitionMs ? `transform ${transitionMs}ms cubic-bezier(0.22,0.9,0.32,1)` : "none",
       }}>
         {/* 表紙面(正面) */}
         <div style={{
-          position: "absolute", inset: 0, borderRadius: 14, overflow: "hidden", boxShadow: SOFT_SHADOW_LG,
+          position: "absolute", inset: 0, overflow: "hidden", boxShadow: SOFT_SHADOW_LG,
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: `translateZ(${depth / 2}px)`,
         }}>
-          <BinderCoverFace color={color} EyebrowIcon={EyebrowIcon} eyebrowLabel={eyebrowLabel} eyebrowColor={eyebrowColor} title={title} footer={footer} />
+          <BinderCoverFace color={color} EyebrowIcon={EyebrowIcon} eyebrowLabel={eyebrowLabel} title={title} footer={footer} />
         </div>
         {/* 背表紙面(左端の側面) */}
         <div style={{
-          position: "absolute", left: 0, top: 0, bottom: 0, width: depth, borderRadius: "14px 0 0 14px", overflow: "hidden",
+          position: "absolute", left: 0, top: 0, bottom: 0, width: depth, overflow: "hidden",
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: "rotateY(-90deg) translateZ(" + depth / 2 + "px)",
         }}>
-          <BinderSpineFace color={color} title={spineTitle ?? title} count={count} />
+          <BinderSpineFace color={color} title={spineTitle ?? title} count={count} EyebrowIcon={EyebrowIcon} />
         </div>
       </div>
     </div>
@@ -185,7 +207,11 @@ export interface BinderShelfItem extends CoverContent {
 // 実装したCardStack/ExecuteTabの経験から、この手の判定を手で書くと
 // タップ判定の事故が起きやすいことが分かっているため)。スクロール位置
 // から各アイテムの中心からの距離を算出し、Binder3Dのrotateyへ直接反映する。
-export function BinderCoverflowRow({ items, itemWidth = 118, aspect = ITEM_CARD_ASPECT, gap = 26 }: {
+// 以前はitemWidth/gapが大きく、本と本の間がスカスカで「遠い」印象だった。
+// 実物の本棚に近い詰まったピッチにしつつ、中心に来たものだけをscaleで
+// ひとまわり持ち上げて主役をはっきりさせる(レイアウト幅自体は変えない
+// ので、詰まったピッチのままスワイプできる)。
+export function BinderCoverflowRow({ items, itemWidth = 92, aspect = ITEM_CARD_ASPECT, gap = 9 }: {
   items: BinderShelfItem[];
   itemWidth?: number;
   aspect?: string;
@@ -220,17 +246,19 @@ export function BinderCoverflowRow({ items, itemWidth = 118, aspect = ITEM_CARD_
   return (
     <div
       ref={scrollRef} onScroll={onScroll} className="no-scrollbar"
-      style={{ display: "flex", overflowX: "auto", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch", padding: "10px 0 6px" }}
+      style={{ display: "flex", overflowX: "auto", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch", padding: "20px 0 10px" }}
     >
       <div style={{ flex: "0 0 auto", width: sidePad }} />
       {items.map((it, i) => {
         const d = i - centerRef.current;
         const angle = binderTiltAngle(d);
+        const focus = Math.max(0, 1 - Math.min(1, Math.abs(d)));
+        const scale = 1 + focus * 0.14;
         return (
-          <div key={it.key} style={{ flex: "0 0 auto", width: itemWidth, marginRight: i === items.length - 1 ? 0 : gap, scrollSnapAlign: "center" }}>
+          <div key={it.key} style={{ position: "relative", flex: "0 0 auto", width: itemWidth, marginRight: i === items.length - 1 ? 0 : gap, scrollSnapAlign: "center", zIndex: Math.round(focus * 100) }}>
             <Binder3D
-              width={itemWidth} aspect={aspect} rotateY={angle} transitionMs={60}
-              color={it.color} EyebrowIcon={it.EyebrowIcon} eyebrowLabel={it.eyebrowLabel} eyebrowColor={it.eyebrowColor}
+              width={itemWidth} aspect={aspect} rotateY={angle} scale={scale} transitionMs={60}
+              color={it.color} EyebrowIcon={it.EyebrowIcon} eyebrowLabel={it.eyebrowLabel}
               title={it.title} spineTitle={it.spineTitle} count={it.count} onClick={it.onOpen}
             />
           </div>
@@ -331,7 +359,7 @@ export function BinderFlipDeck({ pageCount, renderPage, maxWidth = 260, aspect =
         }}
       >
         {[10, 5].map((inset, i) => (
-          <div key={inset} style={{ position: "absolute", right: -inset * 0.6, top: 7 + i * 2, bottom: 7 + i * 2, width: inset, borderRadius: "0 4px 4px 0", background: "#EDE7D6", boxShadow: "1px 0 2px rgba(28,28,30,0.1)" }} />
+          <div key={inset} style={{ position: "absolute", right: -inset * 0.6, top: 7 + i * 2, bottom: 7 + i * 2, width: inset, background: "#EDE7D6", boxShadow: "1px 0 2px rgba(28,28,30,0.1)" }} />
         ))}
         {renderPage(baseIndex)}
         {extraOverlay?.(pageIndex)}

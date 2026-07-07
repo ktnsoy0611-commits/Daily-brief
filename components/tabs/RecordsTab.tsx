@@ -194,7 +194,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   // 小さな横並びを別枠で出していたが、他の完了バインダーと見た目・操作感を
   // 揃えるため同じ棚の1行として並べ、タップで目標タブへ向かう。
   const goalRowItems: BinderShelfItem[] = goals.map((g) => ({
-    key: g.id, color: "#6B4A3F", EyebrowIcon: Sprout, eyebrowLabel: "GOAL", eyebrowColor: GREEN,
+    key: g.id, color: "#6B4A3F", EyebrowIcon: Sprout, eyebrowLabel: "GOAL",
     title: g.title, spineTitle: g.title, count: g.checkIns?.length ?? 0,
     footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{g.checkIns?.length ? `記録${g.checkIns.length}件・タップで見る` : "タップで見る"}</div>,
     onOpen: () => goTab("goals"),

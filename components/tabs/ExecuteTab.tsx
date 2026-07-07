@@ -1,9 +1,9 @@
 "use client";
 
-import { BookOpen, Check, ChevronLeft, ChevronRight, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
+import { BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
-import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, mediaKindOf } from "@/lib/constants";
+import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
@@ -48,8 +48,20 @@ function MapCanvas({ items, selectedIds, onOpenPin }: {
 function SelectablePosterCard({ selected, onToggle, size = 132, ...cardProps }: {
   selected: boolean; onToggle: () => void; size?: number;
 } & Omit<Parameters<typeof PosterCard>[0], "onClick" | "size">) {
+  const [pressed, setPressed] = useState(false);
+  const release = () => setPressed(false);
   return (
-    <div style={{ position: "relative", flexShrink: 0, width: size, transition: "transform 0.15s", transform: selected ? "scale(0.96)" : "scale(1)" }}>
+    <div
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onPointerLeave={release}
+      style={{
+        position: "relative", flexShrink: 0, width: size,
+        transition: pressed ? "transform 0.06s" : "transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
+        transform: pressed ? "scale(0.92)" : selected ? "scale(0.96)" : "scale(1)",
+      }}
+    >
       <PosterCard {...cardProps} size={size} onClick={onToggle} />
       {selected && (
         <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "rgba(43,63,191,0.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
@@ -244,6 +256,26 @@ function HoleRings() {
   );
 }
 
+// バインダーを綴じている実際のリング金具。ページ側の穴(HoleRings)は
+// ページと一緒に回転して見た目の奥行きを出すが、こちらは逆にリング自体は
+// 常に静止していて、ページだけがその周りを回って捲れる…という現実の
+// バインダーの機構を再現するため、BinderBook側で1回だけ描画する固定レイヤー。
+function BinderRings() {
+  return (
+    <div style={{ position: "absolute", inset: 0, zIndex: 20, pointerEvents: "none" }}>
+      <div style={{ position: "absolute", left: "3.2%", top: 10, bottom: 10, width: 7, borderRadius: 4, background: "linear-gradient(to right, rgba(28,28,30,0.24), rgba(28,28,30,0.04) 75%, transparent)" }} />
+      {["24%", "76%"].map((y) => (
+        <div key={y} style={{
+          position: "absolute", left: "5.8%", top: y, width: 30, height: 16, transform: "translate(-64%, -50%)",
+          borderRadius: 999, border: "3px solid #AEA78F",
+          background: "linear-gradient(135deg, rgba(255,255,255,0.62), rgba(118,111,92,0.32))",
+          boxShadow: "0 2px 5px rgba(28,28,30,0.38), inset 0 1px 1px rgba(255,255,255,0.7), inset 0 -1.5px 1.5px rgba(28,28,30,0.4)",
+        }} />
+      ))}
+    </div>
+  );
+}
+
 // バインダーの1ページ。PosterCard/GoalCardと同じ穴+切り取り線の余白列を
 // 左端に確保し、行った/行ってないは本文を隠さない右上の2アイコンで
 // 完結させる。
@@ -330,8 +362,9 @@ function BackCoverPage({ dateLabel, count, onRegister }: { dateLabel: string; co
 // 通常のカードよりふたまわりほど大きいサイズで、タブの中央にちょこんと
 // 置く。全画面の演出や専用の背景は持たず、タブの地の色の上にそのまま
 // 浮かべることで、他のタブと同じ「普通のタブの中に主役が1つ」という
-// 見え方に揃えている。スワイプ(または左右の矢印)でページが半立体に
-// 手前へ持ち上がりながら捲れる。最後のアイテムページの先に裏表紙が
+// 見え方に揃えている。操作はスワイプのみ(矢印ボタンは廃止)で、指の
+// 動きにページがその場で追従してから、指を離した位置に応じてめくり切る
+// か元に戻るかがスナップで決まる。最後のアイテムページの先に裏表紙が
 // あり、そこで「登録」を押すとバインダーごと下に落ちて記録タブへ向かう。
 const BINDER_MAX_WIDTH = 260;
 
@@ -343,38 +376,69 @@ function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   onRegister: () => void;
 }) {
   const [pageIndex, setPageIndex] = useState(0);
-  const [flip, setFlip] = useState<{ dir: "next" | "prev"; nonce: number } | null>(null);
+  // progress: 0(未着手)〜1(めくり切り)。settlingがfalseの間は指の動きに
+  // 1:1で追従(transitionなし)、指を離した瞬間だけsettling=trueにして
+  // 短いスナップ遷移で0か1に収束させる。ボタン起点のアニメーションを
+  // 廃止し、ドラッグの続きとして常に同じレイヤーで完結させることで、
+  // 「離した位置から不連続にジャンプする」違和感を無くしている。
+  const [drag, setDrag] = useState<{ dir: "next" | "prev"; progress: number; settling: boolean } | null>(null);
   const [dropping, setDropping] = useState<{ item: ExecItem; fallen: boolean } | null>(null);
   const [registering, setRegistering] = useState(false);
   const animating = useRef(false);
-  const dragRef = useRef({ startX: 0, active: false });
+  const dragRef = useRef({ startX: 0, startY: 0, startTime: 0, active: false, dir: null as "next" | "prev" | null, width: BINDER_MAX_WIDTH });
+  const cardRef = useRef<HTMLDivElement>(null);
   const totalPages = items.length + 1; // +1: 裏表紙
 
   useEffect(() => {
     setPageIndex((p) => Math.min(p, totalPages - 1));
   }, [totalPages]);
 
-  const turn = (dir: "next" | "prev") => {
-    if (animating.current || dropping) return;
-    const target = dir === "next" ? pageIndex + 1 : pageIndex - 1;
-    if (target < 0 || target >= totalPages) return;
+  const settle = (dir: "next" | "prev", commit: boolean) => {
     animating.current = true;
-    haptic(8);
-    setFlip({ dir, nonce: Date.now() });
+    haptic(commit ? 10 : 4);
+    setDrag({ dir, progress: commit ? 1 : 0, settling: true });
     setTimeout(() => {
-      setPageIndex(target);
-      setFlip(null);
+      if (commit) setPageIndex((p) => (dir === "next" ? p + 1 : p - 1));
+      setDrag(null);
       animating.current = false;
-    }, 460);
+    }, 230);
   };
 
-  const onDown = (e: ReactPointerEvent<HTMLDivElement>) => { dragRef.current = { startX: e.clientX, active: true }; };
+  const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (animating.current || dropping || registering) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startTime: performance.now(), active: true, dir: null, width: cardRef.current?.offsetWidth ?? BINDER_MAX_WIDTH };
+  };
+  const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    const dx = e.clientX - d.startX;
+    if (!d.dir) {
+      const dy = e.clientY - d.startY;
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dy) > Math.abs(dx)) { d.active = false; return; } // 縦方向は素通しでスクロールに譲る
+      const wantNext = dx < 0;
+      const boundary = wantNext ? pageIndex >= totalPages - 1 : pageIndex <= 0;
+      if (boundary) { d.active = false; return; }
+      d.dir = wantNext ? "next" : "prev";
+    }
+    const progress = Math.min(1, Math.abs(dx) / (d.width * 0.55));
+    setDrag({ dir: d.dir, progress, settling: false });
+  };
   const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.active) return;
-    dragRef.current.active = false;
-    const dx = e.clientX - dragRef.current.startX;
-    if (dx < -30) turn("next");
-    else if (dx > 30) turn("prev");
+    const d = dragRef.current;
+    if (!d.active || !d.dir) { d.active = false; return; }
+    d.active = false;
+    const dx = e.clientX - d.startX;
+    const dt = Math.max(1, performance.now() - d.startTime);
+    const velocity = Math.abs(dx) / dt; // px/ms、短い距離でも素早く弾けばめくれる
+    const progress = Math.min(1, Math.abs(dx) / (d.width * 0.55));
+    settle(d.dir, progress > 0.24 || velocity > 0.5);
+  };
+  const onCancel = () => {
+    const d = dragRef.current;
+    if (d.active && d.dir) settle(d.dir, false);
+    d.active = false;
   };
 
   // 「行ってない」で外すと、そのページが下に落ちて消える。落ちている間
@@ -402,8 +466,13 @@ function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
     setTimeout(onRegister, 420);
   };
 
-  const baseIndex = dropping ? Math.min(pageIndex + 1, totalPages - 1) : flip ? (flip.dir === "next" ? pageIndex + 1 : pageIndex) : pageIndex;
-  const leafIndex = flip ? (flip.dir === "next" ? pageIndex : pageIndex - 1) : null;
+  const baseIndex = dropping ? Math.min(pageIndex + 1, totalPages - 1) : drag ? (drag.dir === "next" ? pageIndex + 1 : pageIndex) : pageIndex;
+  const leafIndex = drag ? (drag.dir === "next" ? pageIndex : pageIndex - 1) : null;
+  const progress = drag ? drag.progress : 0;
+  // 「next」は0度→-180度へ、「prev」は-180度(裏返って隠れている状態)から
+  // 0度へ戻る向きなので、同じprogress(0〜1)でも回転の起点・終点が逆になる。
+  const dragAngle = !drag ? 0 : drag.dir === "next" ? -180 * progress : -180 * (1 - progress);
+  const liftZ = 44 * Math.sin(Math.min(progress, 1) * Math.PI);
 
   const renderPage = (idx: number) => {
     if (idx === items.length) return <BackCoverPage dateLabel={dateLabel} count={items.length} onRegister={handleRegister} />;
@@ -418,34 +487,35 @@ function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
       transform: registering ? "translateY(70%)" : "translateY(0)", opacity: registering ? 0 : 1,
       transition: registering ? "transform 0.42s cubic-bezier(0.5,0,1,0.5), opacity 0.36s ease-in" : "none",
     }}>
-      <div onPointerDown={onDown} onPointerUp={onUp} style={{ position: "relative", width: "100%", maxWidth: BINDER_MAX_WIDTH, aspectRatio: ITEM_CARD_ASPECT, perspective: 700, touchAction: "pan-y" }}>
+      <div
+        ref={cardRef}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel}
+        style={{
+          position: "relative", width: "100%", maxWidth: BINDER_MAX_WIDTH, aspectRatio: ITEM_CARD_ASPECT, perspective: 700,
+          touchAction: "pan-y", filter: "drop-shadow(0 12px 26px rgba(28,28,30,0.2))",
+        }}
+      >
+        {[10, 5].map((inset, i) => (
+          <div key={inset} style={{ position: "absolute", right: -inset * 0.6, top: 7 + i * 2, bottom: 7 + i * 2, width: inset, borderRadius: "0 4px 4px 0", background: `#EDE7D6`, boxShadow: "1px 0 2px rgba(28,28,30,0.1)" }} />
+        ))}
         {renderPage(baseIndex)}
         {dropping && (
           <BookPage item={dropping.item} index={pageIndex} total={items.length} falling={dropping.fallen} onMarkDone={() => {}} onDrop={() => {}} />
         )}
-        {flip && leafIndex !== null && (
-          <div key={flip.nonce} style={{
+        {drag && leafIndex !== null && leafIndex >= 0 && leafIndex < totalPages && (
+          <div style={{
             position: "absolute", inset: 0, transformStyle: "preserve-3d", transformOrigin: "0% 50%",
-            animationName: flip.dir === "next" ? "binder-page-next" : "binder-page-prev",
-            animationDuration: "0.46s", animationTimingFunction: "cubic-bezier(0.45,0,0.4,1)", animationFillMode: "forwards",
+            transform: `rotateY(${dragAngle}deg) translateZ(${liftZ}px) scale(${1 + 0.045 * Math.sin(Math.min(progress, 1) * Math.PI)})`,
+            transition: drag.settling ? "transform 0.22s cubic-bezier(0.16,1,0.3,1)" : "none",
             WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
-            filter: "drop-shadow(0 14px 22px rgba(28,28,30,0.22))",
+            filter: `drop-shadow(0 ${10 + liftZ * 0.3}px ${16 + liftZ * 0.4}px rgba(28,28,30,${0.16 + Math.sin(Math.min(progress, 1) * Math.PI) * 0.14}))`,
           }}>
             {renderPage(leafIndex)}
           </div>
         )}
-        <button onClick={() => turn("prev")} disabled={pageIndex === 0} aria-label="前のページ" style={{
-          position: "absolute", left: -16, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, borderRadius: "50%",
-          border: "none", background: PAPER, color: INK, display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: SOFT_SHADOW, cursor: pageIndex === 0 ? "default" : "pointer", opacity: pageIndex === 0 ? 0.3 : 1, padding: 0, zIndex: 10,
-        }}><ChevronLeft size={16} /></button>
-        <button onClick={() => turn("next")} disabled={pageIndex === totalPages - 1} aria-label="次のページ" style={{
-          position: "absolute", right: -16, top: "50%", transform: "translateY(-50%)", width: 30, height: 30, borderRadius: "50%",
-          border: "none", background: PAPER, color: INK, display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: SOFT_SHADOW, cursor: pageIndex === totalPages - 1 ? "default" : "pointer", opacity: pageIndex === totalPages - 1 ? 0.3 : 1, padding: 0, zIndex: 10,
-        }}><ChevronRight size={16} /></button>
+        <BinderRings />
       </div>
-      <div style={{ marginTop: 14, fontSize: 10, letterSpacing: "0.1em", color: "#9A988E" }}>
+      <div style={{ marginTop: 14, padding: "5px 13px", borderRadius: 999, background: PAPER, boxShadow: SOFT_SHADOW, fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: "#8A8778" }}>
         {pageIndex + 1} / {totalPages}
       </div>
     </div>
@@ -584,6 +654,9 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
     setMapMode(false);
     goTab("records");
   };
+  // 場所のKeepだけでなく、作品(メディア)・ウィッシュリスト・目標も
+  // まとめて投入する。地図(場所)だけ投入してもストック/目標タブは
+  // 空のままでテストしづらいため、アプリ全体を一度に試せる分量にしている。
   const injectDemo = () => {
     const next = structuredClone(appState);
     const now = Date.now();
@@ -594,9 +667,35 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
       { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["神保町"] },
       { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", color: "#33467C", meta: ["江戸東京博物館"] },
       { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", color: "#5C4B6B", meta: ["蔵前"] },
+      { title: "下北沢のライブハウスへ", category: "音楽", area: "下北沢", images: ["live-a", "live-b"], sourceUrl: mapsUrl("下北沢 ライブハウス"), sourceLabel: "地図で見る", color: "#2E4A3F", meta: ["下北沢"] },
+      { title: "谷根千の坂道を散歩する", category: "身体", area: "谷根千", images: ["zakka-a", "zakka-b"], sourceUrl: mapsUrl("谷根千 散歩コース"), sourceLabel: "地図で見る", color: "#5A3A2E", meta: ["谷根千エリア"] },
     ]).forEach((d, i) => {
       next.keeps.push({ id: `demo-${now}-${i}`, title: d.title, category: d.category, area: d.area, status: "candidate", keptAt: new Date(now - i * 86400000).toISOString(), images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color: d.color });
     });
+    ([
+      { kind: "book" as const, title: "建築家のエッセイ集", creator: "", color: "#7A5636" },
+      { kind: "album" as const, title: "通勤で聴き切る一枚", creator: "", color: "#6B4558" },
+      { kind: "movie" as const, title: "Perfect Days 2", creator: "", color: "#1C1B22" },
+      { kind: "exhibition" as const, title: "「建築と自然」展", creator: "国立近代美術館", color: "#33467C" },
+    ]).forEach((d, i) => {
+      next.records.media.unshift({ id: `demo-media-${now}-${i}`, kind: d.kind, title: d.title, creator: d.creator, addedAt: new Date(now - i * 43200000).toISOString(), color: d.color, status: i === 0 ? "keep" : "done", doneAt: i === 0 ? undefined : new Date(now - i * 43200000).toISOString() });
+    });
+    ([
+      { title: "フィルムカメラを買う", categoryId: "buy" as const },
+      { title: "陶芸をはじめる", categoryId: "do" as const },
+      { title: "秋に一人旅へ行く", categoryId: "go" as const },
+    ]).forEach((d, i) => {
+      next.wishes.push({ id: `demo-wish-${now}-${i}`, title: d.title, category: catOf(d.categoryId).label, categoryId: d.categoryId, status: "stock", addedAt: new Date(now - i * 86400000).toISOString() });
+    });
+    if ((next.goals ?? []).length === 0) {
+      next.goals = [
+        { id: `demo-goal-${now}`, title: "毎週どこか知らない街を歩く", addedAt: new Date(now - 20 * 86400000).toISOString(), checkIns: [
+          { id: `demo-ci-${now}-1`, at: new Date(now - 2 * 86400000).toISOString(), text: "神保町の路地を歩いた。古本の匂いが良かった。", source: "manual" },
+          { id: `demo-ci-${now}-2`, at: new Date(now - 9 * 86400000).toISOString(), text: "蔵前をぶらぶら。焙煎所で豆を買った。", source: "manual" },
+        ] },
+        { id: `demo-goal-${now}-2`, title: "月に一度は展覧会へ行く", addedAt: new Date(now - 40 * 86400000).toISOString(), checkIns: [] },
+      ];
+    }
     persist(next);
   };
   type DraftBinderEntry = { id: string; type: MagazineItemRef["type"]; title: string; image?: string; color?: string };
@@ -625,9 +724,16 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
             onOpenPin={setPinItem} onToggleKeep={toggleDraftKeep} onToggleMedia={toggleDraftMedia}
             onPickBundle={(ids) => confirmMagazine(ids, [])} onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
           />
+          {/* このバーはposition:fixedでタブバー(AppShellのnav、下端8px+safe-area
+              に浮くピル)の真上に置く。以前はbottom:NAV_OFFSETで背景ごと
+              そこで打ち切っていたため、navのピルと本UIの間の隙間から
+              スクロール中の地図下コンテンツが覗いてしまっていた。navより
+              zIndexは低いままnav自体には隠れるので、背景をbottom:0まで
+              途切れさせずに伸ばしてしまって問題ない。 */}
           {(draftSelection.length + draftMediaSelection.length) > 0 && (
-            <div style={{ position: "fixed", left: 0, right: 0, bottom: NAV_OFFSET, zIndex: 20, display: "flex", justifyContent: "center", background: `linear-gradient(to top, ${BG} 75%, rgba(239,237,230,0))`, paddingTop: 16 }}>
-              <div style={{ width: "100%", maxWidth: 420, padding: "0 16px 10px" }}>
+            <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: 0, right: 0, top: -28, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 28px, ${BG} 100%)` }} />
+              <div style={{ position: "relative", width: "100%", maxWidth: 420, padding: `16px 16px ${NAV_OFFSET}`, pointerEvents: "auto" }}>
                 <DraftBinder items={draftBinderItems} onRemove={removeDraftItem} />
                 <button onClick={() => confirmMagazine(draftSelection, draftMediaSelection)} style={{ width: "100%", padding: "14px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: "0 8px 24px rgba(23,23,21,0.2)" }}>
                   {draftSelection.length + draftMediaSelection.length}件で{magazine ? "バインダーを更新" : "バインダーを作る"}

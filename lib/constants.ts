@@ -61,8 +61,8 @@ export const POSTER_PALETTE = ["#33467C", "#B85C38", "#3F6B4A", "#5C4B6B"];
 
 // タブ本文やストック/目標/実行タブの下部固定バーが、フローティングの
 // タブバー(AppShellのnav)の直上に収まるためのオフセット。navは画面
-// 下端から14px浮いたピル(高さ実測約63px)なので、63+14に少し余白を
-// 足した値。navのスタイルを変えたら実測して合わせ直すこと。
+// 下端から6px浮いたピル(アイコン拡大後の高さ実測約78px)なので、
+// 78+6に少し余白を足した値。navのスタイルを変えたら実測して合わせ直すこと。
 export const NAV_OFFSET = "calc(92px + env(safe-area-inset-bottom))";
 
 export interface Category {
@@ -183,4 +183,44 @@ export const CARDS: BriefCard[] = [
     body: "登録サイトのチャートから、あなたの傾向に近いジャンルで高評価の一枚を。全42分、往復の通勤でちょうど聴き終わります。",
     meta: ["出典: rateyourmusic.com", "1971年 ・ 42分"], bg: "#6B4558", fg: "#F0EEE6", accent: "#D8B6C6",
     images: [], sourceUrl: "https://rateyourmusic.com/charts/", sourceLabel: "チャートで見る" },
+  { id: 11, glyph: "劇", category: "LIVE", categoryJp: "音楽", trigger: "興味との一致", area: "下北沢", color: "#2E4A3F",
+    title: "下北沢の小箱、対バンライブが今夜",
+    body: "最近チェックが増えているインディーバンドの対バン。キャパ100人ほどの箱なので、当日券でも近くで観られる公算が高いです。",
+    meta: ["下北沢 CLUB", "開場19:00 / 開演19:30", "前売¥3,200"], bg: "#2E4A3F", fg: "#F0EEE6", accent: "#A9CFC0",
+    images: ["live-a", "live-b"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("下北沢 ライブハウス")}`, sourceLabel: "地図で見る" },
+  { id: 12, glyph: "銭", category: "SERENDIPITY", categoryJp: "未知との遭遇", trigger: "ロケーション", area: "蔵前", color: "#4A5A6B",
+    title: "蔵前に薪火の銭湯サウナ、今週末オープン",
+    body: "リニューアルオープン記念で今週末は入浴料が半額。願望リストの「サウナを開拓する」に一歩近づきます。",
+    meta: ["蔵前", "6:00 – 24:00", "半額 ¥400"], bg: "#4A5A6B", fg: "#F0EEE6", accent: "#B9C6D4", serendipity: true,
+    images: ["sauna-a", "sauna-b"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("蔵前 サウナ")}`, sourceLabel: "地図で見る" },
+  { id: 13, glyph: "映", category: "CINEMA", categoryJp: "映画", trigger: "興味との一致", area: "両国", color: "#3A2E4A",
+    title: "単館上映のドキュメンタリー、今週が最終週",
+    body: "建築をテーマにしたドキュメンタリーが両国のミニシアターで上映中。今週の金曜が最終日、その後の上映予定は未定です。",
+    meta: ["両国のミニシアター", "19:40の回", "¥1,900"], bg: "#3A2E4A", fg: "#F0EEE6", accent: "#C6B6D8",
+    images: ["carpentry-a"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("両国 ミニシアター")}`, sourceLabel: "地図で見る" },
+  { id: 14, glyph: "器", category: "ZAKKA", categoryJp: "雑貨", trigger: "ロケーション", area: "神保町", color: "#6B5A3A",
+    title: "神保町の器店、作家の個展が始まりました",
+    body: "普段使いの器を作る作家の個展。会期中は作家本人が在廊している日もあり、器についての話が聞けるかもしれません。",
+    meta: ["神保町", "12:00 – 19:00", "会期は今月いっぱい"], bg: "#6B5A3A", fg: "#F0EEE6", accent: "#D8C9A0",
+    images: ["books-a"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("神保町 器 個展")}`, sourceLabel: "地図で見る" },
+  { id: 15, glyph: "貯", category: "FINANCE", categoryJp: "貯金の進捗", trigger: "フィナンシャル", area: "—", color: "#2E6B5C",
+    title: "旅行貯金、今月分の積立が完了しました",
+    body: "毎月の自動積立が完了。現在の達成率は54%で、このペースなら年末までに「秋の一人旅」の予算に届く見込みです。",
+    meta: ["目標 ¥180,000", "現在 ¥97,200", "達成率 54%"], bg: "#F5F0E8", fg: "#1C1C1E", accent: "#2E6B5C",
+    images: [], sourceUrl: `https://www.google.com/search?q=${encodeURIComponent("国内 一人旅 秋 おすすめ")}`, sourceLabel: "詳しく調べる" },
+  { id: 16, glyph: "登", category: "PHYSICAL", categoryJp: "身体", trigger: "興味との一致", area: "谷根千", color: "#5A3A2E",
+    title: "谷根千の坂道散歩コース、朝の時間帯が快適",
+    body: "願望リストの「もっと歩く」に沿った提案。夕方より朝7時台のほうが人通りも少なく、坂の多いこのエリアを歩きやすいです。",
+    meta: ["谷根千エリア", "推奨 7:00 – 8:30", "所要 約50分"], bg: "#5A3A2E", fg: "#F0EEE6", accent: "#D9B896",
+    images: ["zakka-b"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("谷根千 散歩コース")}`, sourceLabel: "地図で見る" },
+  { id: 17, glyph: "本", category: "BOOK", categoryJp: "読書", trigger: "登録サイトより", mediaKind: "book", color: "#3A5A6B",
+    title: "書評サイトで話題の短編集、電子版が今週セール",
+    body: "普段読む作家の系統からやや外れた一冊ですが、書評サイトでの評価が高く、電子版は今週末まで20%オフです。",
+    meta: ["文庫・288ページ", "セール価格 ¥720"], bg: "#3A5A6B", fg: "#F0EEE6", accent: "#A9C6D8",
+    images: [], sourceUrl: `https://www.google.com/search?q=${encodeURIComponent("短編集 話題 書評 電子書籍")}`, sourceLabel: "書店で探す" },
+  { id: 18, glyph: "陶", category: "VINTAGE", categoryJp: "古着", trigger: "タイムリー", area: "高円寺", color: "#6B3A4A",
+    title: "高円寺の古着市、年に2回の大型セールが明日から",
+    body: "願望リストの「古着でジャケットを探す」に関連。複数の店舗が合同で開く大型セールで、掘り出し物が出やすいタイミングです。",
+    meta: ["高円寺北口一帯", "10:00 – 19:00", "セールは3日間"], bg: "#6B3A4A", fg: "#F0EEE6", accent: "#D8AAB6",
+    images: ["vintage-c"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("高円寺 古着 セール")}`, sourceLabel: "地図で見る" },
 ];

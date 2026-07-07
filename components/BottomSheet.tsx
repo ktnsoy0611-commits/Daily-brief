@@ -63,24 +63,36 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
   };
 
   return (
+    // ブラー+暗転の背景は常に画面いっぱいに固定する。以前はこの背景自体を
+    // visualViewportの高さに合わせて縮めていたが、キーボードが開くと
+    // レイアウト上のビューポートはそのまま(縮まない)なのに背景だけ縮む
+    // ことになり、背景の下端とキーボードの間に「ブラーの効いていない
+    // 素の背景」が帯状に見えてしまっていた。位置決め(キーボードの上に
+    // パネルを置く)は内側の透明な箱だけに任せ、見た目のブラー/暗転は
+    // 常に画面全体を覆うようにして、継ぎ目が絶対に出ないようにしている。
     <div onClick={closeIfSelf} style={{
-      position: "fixed", top: vv ? `${vv.top}px` : 0, left: 0, right: 0, height: vv ? `${vv.height}px` : "100dvh",
-      zIndex: 45, display: "flex", alignItems: "flex-end", justifyContent: "center",
+      position: "fixed", inset: 0, zIndex: 45,
       background: open ? "rgba(16,16,20,0.4)" : "rgba(16,16,20,0)",
       backdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
       WebkitBackdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
       transition: "background 0.3s ease, backdrop-filter 0.3s ease, -webkit-backdrop-filter 0.3s ease",
     }}>
       <div style={{
-        width: "calc(100% - 48px)", maxWidth: 380, marginBottom: 20, maxHeight,
-        display: "flex", flexDirection: "column", overflow: "hidden",
-        transform: open ? "translateY(0) scale(1)" : "translateY(26px) scale(0.94)",
-        opacity: open ? 1 : 0,
-        transformOrigin: "50% 100%",
-        transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease",
+        position: "fixed", top: vv ? `${vv.top}px` : 0, left: 0, right: 0, height: vv ? `${vv.height}px` : "100dvh",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "max(20px, env(safe-area-inset-top)) 0 max(20px, env(safe-area-inset-bottom))",
+        pointerEvents: "none",
       }}>
-        <div onClick={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "6px 4px 0", paddingBottom: "max(18px, env(safe-area-inset-bottom))" }}>
-          {typeof children === "function" ? children(requestClose) : children}
+        <div style={{
+          width: "calc(100% - 48px)", maxWidth: 380, maxHeight, pointerEvents: "auto",
+          display: "flex", flexDirection: "column", overflow: "hidden",
+          transform: open ? "translateY(0) scale(1)" : "translateY(14px) scale(0.94)",
+          opacity: open ? 1 : 0,
+          transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease",
+        }}>
+          <div onClick={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "6px 4px" }}>
+            {typeof children === "function" ? children(requestClose) : children}
+          </div>
         </div>
       </div>
     </div>

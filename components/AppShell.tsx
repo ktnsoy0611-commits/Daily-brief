@@ -111,7 +111,7 @@ export function AppShell() {
 
   return (
     <div style={{ minHeight: "100dvh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
-      <div style={{ width: "100%", maxWidth: 420, flex: 1, display: "flex", flexDirection: "column", padding: `env(safe-area-inset-top) 16px ${showProfile ? "24px" : NAV_OFFSET}` }}>
+      <div style={{ width: "100%", maxWidth: 420, flex: 1, display: "flex", flexDirection: "column", padding: `max(16px, env(safe-area-inset-top)) 16px ${showProfile ? "24px" : NAV_OFFSET}` }}>
         {storageMode === "memory" && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
 
         {showProfile ? (
@@ -138,24 +138,28 @@ export function AppShell() {
       )}
 
       {/* ヘッダーのプロフィール丸アイコン/件数ピルと同じ「PAPERの丸背景+
-          SOFT_SHADOWで浮く」語彙に揃えたフローティングタブバー。以前は
-          画面幅いっぱいの不透明な帯をsticky配置していたが、standalone
-          (ホーム画面に追加したWebアプリ)モードだとホームインジケーター
-          领域にその不透明な帯がそのまま伸び、下に不自然な余白/継ぎ目が
-          見えていた。fixed配置の浮いたピルにして、その周りは常にBGの
-          背景色が見えるようにすることで、safe-area分の余白があっても
-          違和感が出ないようにしている。 */}
+          SOFT_SHADOWで浮く」語彙に揃えたフローティングタブバー。position:
+          fixedにすると、iOS SafariのURLバー(動的ツールバー)の表示/非表示
+          遷移中に固定要素が実際のビューポートとズレて、下に不自然な隙間が
+          生まれることがある(このアプリで以前sticky→fixedへの変更で
+          一度再発したバグ)。stickyなら実スクロール位置基準になるため、
+          この種のズレを避けられる。navの箱自体はbottom:0(実際の画面下端)
+          まで届かせておき、ピルはその中でmarginBottomにより浮かせる。
+          こうすることでnavの箱の裏に敷いたグラデーション(下地色へ溶け込む
+          フェード)が画面の本当の下端まで途切れなく続き、ピルの角の隙間や
+          セーフエリア帯からスクロール中のコンテンツが覗くのを防げる。 */}
       {!showProfile && (
-        <nav style={{ position: "fixed", left: 0, right: 0, bottom: "calc(14px + env(safe-area-inset-bottom))", zIndex: 25, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
-          <div style={{ width: "100%", maxWidth: 420 - 32, display: "flex", background: PAPER, borderRadius: 999, boxShadow: SOFT_SHADOW_LG, padding: 6, pointerEvents: "auto" }}>
+        <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
+          <div style={{ position: "absolute", left: 0, right: 0, top: -44, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 44px, ${BG} 100%)` }} />
+          <div style={{ position: "relative", width: "100%", maxWidth: 420 - 32, display: "flex", background: PAPER, borderRadius: 999, boxShadow: SOFT_SHADOW_LG, padding: 7, marginBottom: "calc(6px + env(safe-area-inset-bottom))", pointerEvents: "auto" }}>
             {TABS.map((t) => {
               const active = tab === t.id;
               return (
-                <button key={t.id} onClick={() => { haptic(5); setTab(t.id); }} style={{ flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                  <div style={{ width: 38, height: 24, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
-                    <t.Icon size={16} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
+                <button key={t.id} onClick={() => { haptic(5); setTab(t.id); }} style={{ flex: 1, padding: "8px 0 7px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                  <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
+                    <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
                   </div>
-                  <span style={{ fontFamily: SANS, fontSize: 8.5, color: active ? INK : "rgba(23,23,21,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
+                  <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(23,23,21,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
                 </button>
               );
             })}

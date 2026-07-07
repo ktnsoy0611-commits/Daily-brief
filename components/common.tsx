@@ -2,7 +2,7 @@
 
 import { Bookmark, Plus, Sprout, Star } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BG, BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
+import { BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, POSTER_PALETTE, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
@@ -138,8 +138,11 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
 }
 
 // 目標カードは「中にルーズリーフがバインドされたバインダー」として見せる。
-// 表紙(前面)は左端に3つのリング金具を並べた不透明な面で、タイトルと
-// 直近の記録を見せる。表紙の背後には、記録が貯まるほど右下にページの
+// 前バージョンは表紙面を白紙(PAPER)にしていたため、背後に覗くページと
+// 見分けがつかず「ルーズリーフの一枚」に見えてしまっていた。表紙そのものを
+// 布張り/レザー張りのような不透明な色面にし、中央にラベル(名札)を貼った
+// ような別素材のプレートを乗せることで、「閉じた表紙付きバインダー」だと
+// 一目でわかるようにしている。背後には、記録が貯まるほど右下にページの
 // 束がわずかにはみ出して重なっていく(枚数は上限を設け、それ以上は
 // 一番外側の束の厚みだけがわずかに増す扱いにして破綻を防ぐ)。
 const GOAL_STACK_CAP = 4;
@@ -154,6 +157,7 @@ export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }:
   const latest = recentCheckIns[0];
   const stackCount = Math.min(checkInCount, GOAL_STACK_CAP);
   const seed = hashStr(title);
+  const fill = POSTER_PALETTE[seed % POSTER_PALETTE.length];
 
   return (
     <button onClick={onClick} style={{
@@ -179,39 +183,45 @@ export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }:
           }} />
         );
       })}
-      {/* 表紙: 他のカードの「穴+切り取り線」の装飾と混同されないよう、
-          スパイン(リング金具を持つ帯)と表紙面を別の色面としてはっきり
-          分け、「バインダーという物体そのもの」に見えるようにしている。 */}
+      {/* 表紙: スパイン(リング金具を持つ帯)と、色のついた不透明な表紙面を
+          はっきり分け、「バインダーという物体そのもの」に見えるようにしている。 */}
       <div style={{
         position: "absolute", inset: 0, zIndex: GOAL_STACK_CAP + 1, borderRadius: 18,
         display: "flex", boxShadow: SOFT_SHADOW_LG, overflow: "hidden",
       }}>
-        <div style={{ width: "20%", minWidth: 24, flexShrink: 0, position: "relative", background: "linear-gradient(90deg, #E7E1D2 0%, #F0EBDD 55%, #DED7C4 100%)", boxShadow: "inset -1px 0 0 rgba(28,28,30,0.06)" }}>
+        <div style={{ width: "17%", minWidth: 21, flexShrink: 0, position: "relative", background: `linear-gradient(180deg, ${shade(fill, -4)} 0%, ${shade(fill, -26)} 100%)`, boxShadow: "inset -2px 0 3px rgba(0,0,0,0.28)" }}>
           {[0.16, 0.5, 0.84].map((y) => (
             <div key={y} style={{
-              position: "absolute", left: "50%", top: `${y * 100}%`, transform: "translate(-50%, -50%)", width: 12, height: 12, borderRadius: "50%",
+              position: "absolute", left: "50%", top: `${y * 100}%`, transform: "translate(-50%, -50%)", width: 11, height: 11, borderRadius: "50%",
               background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)",
-              boxShadow: "inset 0 1px 1.5px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.5)",
+              boxShadow: "inset 0 1px 1.5px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.4)",
             }}>
-              <div style={{ position: "absolute", inset: 2.5, borderRadius: "50%", background: BG }} />
+              <div style={{ position: "absolute", inset: 2.3, borderRadius: "50%", background: shade(fill, -26) }} />
             </div>
           ))}
         </div>
-        <div style={{ flex: 1, minWidth: 0, background: PAPER, display: "flex", flexDirection: "column" }}>
-          <div style={{ flex: 1, padding: "13px 12px 8px 11px", display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <Sprout size={11} color={GREEN} strokeWidth={2} />
-              <span style={{ fontSize: 8, letterSpacing: "0.14em", color: GREEN, fontWeight: 700 }}>GOAL</span>
+        <div style={{
+          flex: 1, minWidth: 0, position: "relative", display: "flex", flexDirection: "column",
+          background: `linear-gradient(135deg, ${shade(fill, 16)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)`,
+        }}>
+          <div style={{ position: "absolute", inset: 0, opacity: 0.07, backgroundImage: "repeating-linear-gradient(45deg, #fff 0 1px, transparent 1px 6px)" }} />
+          <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -14px 18px -14px rgba(0,0,0,0.35)" }} />
+          <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 10px 6px" }}>
+            <div style={{ width: "100%", background: PAPER, borderRadius: 6, padding: "9px 9px 8px", textAlign: "center", boxShadow: "0 3px 7px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.05)" }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 5 }}>
+                <Sprout size={10} color={GREEN} strokeWidth={2} />
+                <span style={{ fontSize: 7.5, letterSpacing: "0.16em", color: GREEN, fontWeight: 700 }}>GOAL</span>
+              </div>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, lineHeight: 1.32, color: INK, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
             </div>
-            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, lineHeight: 1.3, marginTop: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
-            {latest && (
-              <p style={{ fontSize: 10.5, lineHeight: 1.5, color: "#7A7A72", margin: "6px 0 0", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
-            )}
           </div>
-          <div style={{ padding: "0 12px 12px 11px", borderTop: `1px solid ${HAIRLINE}`, marginTop: "auto", paddingTop: 8 }}>
-            <span style={{ fontSize: 9.5, color: "#8A8477", fontWeight: 700, letterSpacing: "0.03em" }}>
+          <div style={{ position: "relative", padding: "0 11px 11px" }}>
+            {latest && (
+              <p style={{ fontSize: 9.5, lineHeight: 1.42, color: "rgba(255,255,255,0.88)", margin: "0 0 7px", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
+            )}
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, letterSpacing: "0.03em", borderTop: "1px solid rgba(255,255,255,0.24)", paddingTop: 7 }}>
               {checkInCount > 0 ? `記録 ${checkInCount}件・つづきを見る` : "まだ記録がありません"}
-            </span>
+            </div>
           </div>
         </div>
       </div>
@@ -275,13 +285,15 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
     return () => ro.disconnect();
   }, []);
 
-  // ＋タイルは常にこの束の右端に固定する。スタックしたカードは左端から
-  // ＋タイルの手前までの範囲に均等に重ねて配置し、行の幅いっぱいを使う。
-  // カード枚数が少ない時でも重なりが失われないよう、間隔には上限を設ける。
-  const addLeft = Math.max(0, containerWidth - cardWidth);
-  const fanRightBound = Math.max(0, addLeft - 14 - cardWidth);
-  const rawStep = shown.length > 1 ? fanRightBound / (shown.length - 1) : 0;
-  const offsetStep = Math.min(rawStep, cardWidth * 0.75);
+  // ＋タイルも「束の最後の1枚」として同じ等間隔の並びに含めることで、
+  // 行の幅をカード+＋タイル全体でめいっぱい使う。以前は＋タイルだけ右端に
+  // 固定していたため、カード同士の間隔がかなり狭くなり(重なりが深く)、
+  // 触れているカード以外の「自分の指で押せる余白」がとても細くなって、
+  // 実機では狙った1枚を選びにくい原因になっていた。
+  const totalSlots = shown.length + 1;
+  const rawStep = totalSlots > 1 ? (containerWidth - cardWidth) / (totalSlots - 1) : 0;
+  const offsetStep = Math.min(rawStep, cardWidth * 0.85);
+  const addLeft = shown.length * offsetStep;
 
   // 触れているカードより左は全部さらに左へ、右は全部さらに右へ逃がす。
   // 隣接1枚だけでなく、触れているカードからの距離に比例して逃げ幅を

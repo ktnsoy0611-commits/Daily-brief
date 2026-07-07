@@ -1,9 +1,9 @@
 "use client";
 
-import { Bookmark, Plus, Star } from "lucide-react";
-import { useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
-import { hashStr, img, shade, shortDate } from "@/lib/helpers";
+import { Bookmark, Plus, Sprout, Star } from "lucide-react";
+import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { hashStr, img, shade } from "@/lib/helpers";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
 export type IconType = ComponentType<{ size?: number | string; strokeWidth?: number; color?: string }>;
@@ -30,9 +30,9 @@ export function Masthead({ title, en, statValue, statLabel, dateline, right, cor
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {corner}
           {right ? right : (
-            <div style={{ textAlign: "right", background: PAPER, borderRadius: 14, padding: "8px 14px", boxShadow: SOFT_SHADOW }}>
-              <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 20, lineHeight: 1, color: INK }}>{statValue}</div>
-              <div style={{ fontSize: 9, color: "#9A988E", letterSpacing: "0.04em", marginTop: 3 }}>{statLabel}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, height: HEADER_CHIP_SIZE, background: PAPER, borderRadius: 999, padding: "0 16px", boxShadow: SOFT_SHADOW }}>
+              <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16, lineHeight: 1, color: INK }}>{statValue}</span>
+              <span style={{ fontSize: 10, color: "#9A988E", lineHeight: 1 }}>{statLabel}</span>
             </div>
           )}
         </div>
@@ -123,10 +123,10 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
 }
 
 // 目標カードだけは意図的に少し違うデザイン(比率3:5)にして、アイテム
-// カードと視覚的に区別できるようにしている。ロール紙(レシートロール)を
-// イメージし、上部の巻き取り口から紙が続いているような見た目にした上で、
-// 直近の記録を印字された行のように2件まで常時カード面に出す。下端は
-// フェードさせ、まだ紙が続いていく(記録が積み重なっていく)ことを示す。
+// カードと視覚的に区別できるようにしている。上2/3は普通のフラットな
+// カードとしてタイトルと直近の記録を見せ、下1/3だけロール紙のように
+// 巻かれた見た目にして、「この下にまだ記録が巻き込まれている」ことを
+// 示す。タップすると詳細シートが開き、巻かれた記録の続きを最後まで見れる。
 export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }: {
   title: string;
   recentCheckIns: { text: string; at: string }[];
@@ -134,30 +134,37 @@ export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }:
   onClick: () => void;
   size?: number | string;
 }) {
-  const shown = recentCheckIns.slice(0, 2);
+  const latest = recentCheckIns[0];
   return (
     <button onClick={onClick} style={{
       width: size ?? "100%", aspectRatio: GOAL_CARD_ASPECT, flexShrink: 0, textAlign: "left", cursor: "pointer",
-      border: "none", borderRadius: 18, padding: 0, background: "#FBF8F1", color: INK,
+      border: "none", borderRadius: 18, padding: 0, background: PAPER, color: INK,
       display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW, position: "relative", overflow: "hidden",
     }}>
-      <div style={{ background: GREEN, color: PAPER, padding: "12px 14px 13px", position: "relative" }}>
-        <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(251,250,247,0.65)" }}>GOAL</div>
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, marginTop: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
-      </div>
-      <div style={{ borderTop: "1.5px dashed rgba(28,28,30,0.16)" }} />
-      <div style={{ flex: 1, padding: "8px 14px 10px", display: "flex", flexDirection: "column", gap: 7, position: "relative", minHeight: 0, overflow: "hidden" }}>
-        {shown.length > 0 ? shown.map((ci, i) => (
-          <div key={i} style={{ paddingBottom: 7, borderBottom: i < shown.length - 1 ? "1px dashed rgba(28,28,30,0.14)" : "none" }}>
-            <div style={{ fontSize: 8.5, color: "#9A988E", marginBottom: 2 }}>{shortDate(ci.at)}</div>
-            <div style={{ fontSize: 11, lineHeight: 1.5, color: "#3A3A36", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{ci.text}</div>
-          </div>
-        )) : (
-          <p style={{ fontSize: 11, lineHeight: 1.6, color: "#9A988E", fontStyle: "italic", margin: 0 }}>まだ記録がありません</p>
+      {/* 上側: 普通のカード部分 */}
+      <div style={{ flex: "1 1 64%", padding: "13px 14px 8px", display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <Sprout size={11} color={GREEN} strokeWidth={2} />
+          <span style={{ fontSize: 8, letterSpacing: "0.14em", color: GREEN, fontWeight: 700 }}>GOAL</span>
+        </div>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, lineHeight: 1.3, marginTop: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+        {latest && (
+          <p style={{ fontSize: 10.5, lineHeight: 1.5, color: "#7A7A72", margin: "6px 0 0", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
         )}
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 22, background: "linear-gradient(to bottom, rgba(251,248,241,0), #FBF8F1)", pointerEvents: "none" }} />
       </div>
-      <div style={{ fontSize: 9, color: "#9A988E", padding: "0 14px 12px" }}>記録 {checkInCount}件</div>
+      {/* 下側: 巻かれたロール紙。楕円の頂部で「筒」のような丸みを出す */}
+      <div style={{ flex: "0 0 36%", position: "relative" }}>
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: "50% 50% 0 0 / 22px 22px 0 0",
+          background: "linear-gradient(180deg, #FDFBF5 0%, #EEE6D3 40%, #E1D7C0 58%, #ECE3D0 100%)",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.7)",
+        }} />
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 10 }}>
+          <span style={{ fontSize: 8.5, color: "#8A8477", fontWeight: 700, letterSpacing: "0.03em" }}>
+            {checkInCount > 0 ? `記録 ${checkInCount}件・つづきを見る` : "まだ記録がありません"}
+          </span>
+        </div>
+      </div>
     </button>
   );
 }
@@ -198,17 +205,36 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   addLabel: string;
 }) {
   const [touchedKey, setTouchedKey] = useState<string | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const shown = items.slice(-4);
-  const offsetStep = cardWidth * 0.32;
   const [num, den] = (aspect ?? ITEM_CARD_ASPECT).split("/").map((s) => parseFloat(s.trim()));
   const cardHeight = Math.round((cardWidth * den) / num);
-  const totalWidth = offsetStep * shown.length + cardWidth;
   const touchedIdx = shown.findIndex((it) => it.key === touchedKey);
   const dragRef = useRef({ active: false, startX: 0, startIdx: 0 });
   const release = () => { dragRef.current.active = false; setTouchedKey(null); };
 
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setContainerWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // ＋タイルは常にこの束の右端に固定する。スタックしたカードは左端から
+  // ＋タイルの手前までの範囲に均等に重ねて配置し、行の幅いっぱいを使う。
+  // カード枚数が少ない時でも重なりが失われないよう、間隔には上限を設ける。
+  const addLeft = Math.max(0, containerWidth - cardWidth);
+  const fanRightBound = Math.max(0, addLeft - 14);
+  const rawStep = shown.length > 1 ? fanRightBound / (shown.length - 1) : 0;
+  const offsetStep = Math.min(rawStep, cardWidth * 0.75);
+
   return (
-    <div style={{ position: "relative", height: Math.round(cardHeight * 1.16) + 8, width: Math.max(totalWidth, cardWidth) }}>
+    <div ref={containerRef} style={{ position: "relative", height: Math.round(cardHeight * 1.16) + 8, width: "100%" }}>
       {shown.map((it, i) => {
         const seed = hashStr(it.key);
         const rotation = ((seed % 9) - 4) * 1.3;
@@ -252,7 +278,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
           </div>
         );
       })}
-      <div style={{ position: "absolute", left: shown.length * offsetStep, top: 8, width: cardWidth, zIndex: shown.length + 1 }}>
+      <div style={{ position: "absolute", left: addLeft, top: 8, width: cardWidth, zIndex: shown.length + 1 }}>
         <AddCardTile aspect={aspect} size={cardWidth} onClick={onAdd} label={addLabel} />
       </div>
     </div>

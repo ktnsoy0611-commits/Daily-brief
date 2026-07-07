@@ -486,13 +486,13 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
             <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 30, color: INK, flexShrink: 0, marginLeft: 12 }}>{magItems.length}</div>
           </div>
 
-          {/* コルクボード風の板。細かいドットのテクスチャ+暗めのグラデーションで
-              「物理的な板」を演出し、その上にScrapCard(画鋲留めの写真)を
-              スタイライズ+ちょっとリアルの中間くらいの見た目で配置する。 */}
+          {/* 白いが質感のある板(リネン/キャンバス調)。細かい織り目のテクスチャと
+              柔らかい陰影で「物理的な板」を演出し、その上にScrapCard(画鋲留めの
+              写真)をスタイライズ+ちょっとリアルの中間くらいの見た目で配置する。 */}
           <div style={{
             position: "relative", borderRadius: 22, padding: "26px 16px 22px",
-            background: "radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1.6px) 0 0/16px 16px, linear-gradient(160deg, #2C303A 0%, #1D1F26 100%)",
-            boxShadow: "inset 0 2px 12px rgba(0,0,0,0.4), inset 0 -1px 0 rgba(255,255,255,0.04), 0 10px 26px rgba(28,28,30,0.2)",
+            background: "radial-gradient(rgba(28,28,30,0.035) 1px, transparent 1.6px) 0 0/14px 14px, #F0EBDD",
+            boxShadow: "inset 0 2px 10px rgba(28,28,30,0.09), inset 0 -1px 0 rgba(255,255,255,0.6), 0 8px 22px rgba(28,28,30,0.1)",
           }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 18, rowGap: 32 }}>
               {magItems.map((item) => (
@@ -501,10 +501,10 @@ export function ExecuteTab({ appState, persist, profileButton }: TabProps) {
               {editingMag && (
                 <button onClick={() => setAddSheetOpen(true)} style={{
                   flex: "1 1 42%", maxWidth: 180, minWidth: 130, aspectRatio: "3 / 4", borderRadius: 18, cursor: "pointer",
-                  border: "1.5px dashed rgba(255,255,255,0.22)", background: "rgba(255,255,255,0.05)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+                  border: "1.5px dashed rgba(28,28,30,0.22)", background: "rgba(255,255,255,0.4)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
                 }}>
-                  <span style={{ fontSize: 28, color: "rgba(255,255,255,0.4)", lineHeight: 1 }}>＋</span>
-                  <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: "rgba(255,255,255,0.4)", letterSpacing: "0.06em" }}>候補から追加</span>
+                  <span style={{ fontSize: 28, color: "#9A988E", lineHeight: 1 }}>＋</span>
+                  <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: "#9A988E", letterSpacing: "0.06em" }}>候補から追加</span>
                 </button>
               )}
             </div>

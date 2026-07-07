@@ -34,11 +34,18 @@ function MiniCard({ image, color, icon: Icon }: { image?: string; color?: string
   );
 }
 
+// バックの位置・フロントの位置・クリップの位置は常に固定(データに関わらず
+// 同じ座標)。枚数によって並びが変わるとタイルごとに重心がズレてグリッドが
+// 整列して見えなくなるため、常にこの2枚構成にしている。フロントのカードを
+// 大きく取り、写真そのものが主役として見えるようにした。
+const BINDER_FRONT = { left: "3%", top: "20%", width: "80%", rotate: -3 };
+const BINDER_BACK = { left: "26%", top: "5%", width: "72%", rotate: 7 };
+
 // 「バインダー」タイル。フォルダー型の入れ物は撤廃し、他タブのCardStackと
-// 同じ視覚言語(スタックしたカード本体が主役)に揃えた上で、左上をクリップで
-// 留めたような見た目にしている。2列グリッドで、一画面に4枚ほど収まる
-// サイズ感。タップで中身のカードグリッドをシートで開く。エリア別・メディアの
-// ジャンル別・日付別で共用し、デザインとサイズを統一している。
+// 同じ視覚言語(スタックしたカード本体が主役)に揃えた上で、左上の角を
+// クリップで留めたような見た目にしている。2列グリッドで、一画面に4枚ほど
+// 収まるサイズ感。タップで中身のカードグリッドをシートで開く。エリア別・
+// メディアのジャンル別・日付別で共用し、デザインとサイズを統一している。
 // (以前はタイルの直下に展開するアコーディオン式だったが、閉じた状態の
 // 展開パネルがCSS Grid/flexboxどちらでも「幅ゼロでも1行分場所を使う」
 // ため隣のタイルが2列に並ばなくなる問題があり、タップでシートを開く
@@ -46,31 +53,22 @@ function MiniCard({ image, color, icon: Icon }: { image?: string; color?: string
 function BinderTile({ title, count, coverImages, coverColor, icon: Icon, onClick }: {
   title: string; count: number; coverImages: string[]; coverColor?: string; icon?: IconType; onClick: () => void;
 }) {
-  // 左のカードが一番手前(最前面)に来るよう、他タブのCardStackと同じ
-  // 重なり順にする。位置はすべてタイルの内側(0〜100%)に収まるよう固定し、
-  // データによって並びがズレて見えないようにしている。
-  const fan = [
-    { left: "6%", top: "20%", rotate: -9, z: 3 },
-    { left: "26%", top: "10%", rotate: 3, z: 2 },
-    { left: "46%", top: "18%", rotate: 13, z: 1 },
-  ];
-  const cards = coverImages.length > 0 ? coverImages.slice(0, 3) : [undefined];
+  const showBack = count > 1;
   return (
     <button onClick={onClick} style={{ minWidth: 0, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
       <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 5" }}>
-        {cards.map((seed, i) => {
-          const f = fan[i];
-          return (
-            <div key={seed ?? i} style={{ position: "absolute", left: f.left, top: f.top, width: "50%", transform: `rotate(${f.rotate}deg)`, transformOrigin: "50% 100%", zIndex: f.z }}>
-              <MiniCard image={seed} color={coverColor} icon={Icon} />
-            </div>
-          );
-        })}
-        {/* 左上をとめるクリップ */}
-        <div style={{ position: "absolute", top: "3%", left: "8%", zIndex: 4, transform: "rotate(-20deg)", filter: "drop-shadow(0 2px 3px rgba(28,28,30,0.35))" }}>
-          <Paperclip size={22} color="#8A8A82" strokeWidth={2} />
+        {showBack && (
+          <div style={{ position: "absolute", left: BINDER_BACK.left, top: BINDER_BACK.top, width: BINDER_BACK.width, transform: `rotate(${BINDER_BACK.rotate}deg)`, transformOrigin: "50% 100%", zIndex: 1, opacity: 0.85 }}>
+            <MiniCard image={coverImages[1]} color={coverColor} icon={Icon} />
+          </div>
+        )}
+        <div style={{ position: "absolute", left: BINDER_FRONT.left, top: BINDER_FRONT.top, width: BINDER_FRONT.width, transform: `rotate(${BINDER_FRONT.rotate}deg)`, transformOrigin: "50% 100%", zIndex: 2 }}>
+          <MiniCard image={coverImages[0]} color={coverColor} icon={Icon} />
         </div>
-        <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(28,28,30,0.6)", color: "#fff", fontSize: 9.5, fontWeight: 700, borderRadius: 999, padding: "2px 8px", zIndex: 5 }}>{count}</div>
+        {/* フロントカードの左上の角をとめるクリップ */}
+        <div style={{ position: "absolute", left: "1%", top: "13%", zIndex: 3, transform: "rotate(-24deg)", filter: "drop-shadow(0 2px 3px rgba(28,28,30,0.35))" }}>
+          <Paperclip size={24} color="#8A8A82" strokeWidth={2} />
+        </div>
       </div>
       <div style={{ marginTop: 8, fontFamily: SERIF, fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
     </button>

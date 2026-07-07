@@ -8,7 +8,7 @@ import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
-import { BG, BLUE, INK, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BG, BLUE, HEADER_CHIP_SIZE, INK, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers";
 import type { AppState, TabId, TabProps } from "@/lib/types";
@@ -94,11 +94,11 @@ export function AppShell() {
   const interestCount = (appState.profile?.interests ?? []).length;
   const profileButton = (
     <button onClick={() => { haptic(5); setShowProfile(true); }} aria-label="プロフィール" style={{
-      position: "relative", width: 34, height: 34, borderRadius: "50%",
+      position: "relative", width: HEADER_CHIP_SIZE, height: HEADER_CHIP_SIZE, borderRadius: "50%",
       background: PAPER, border: "none", display: "flex", alignItems: "center", justifyContent: "center",
       cursor: "pointer", color: INK, boxShadow: SOFT_SHADOW, padding: 0, flexShrink: 0,
     }}>
-      <User size={15} strokeWidth={1.75} />
+      <User size={17} strokeWidth={1.75} />
       {interestCount > 0 && (
         <span style={{
           position: "absolute", top: -3, right: -3, minWidth: 15, height: 15, borderRadius: 999, background: BLUE,

@@ -44,6 +44,11 @@ export const HAIRLINE = "rgba(28,28,30,0.08)";
 export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";
 export const SOFT_SHADOW_LG = "0 12px 32px rgba(28,28,30,0.12)";
 
+// ヘッダー行に並ぶ「丸いアイコンボタン」と「件数ピル」の高さを揃えるための
+// 共通サイズ。形(円/ピル)は違っても高さを合わせることで、同じ行の部品として
+// 統一感を持たせる。
+export const HEADER_CHIP_SIZE = 40;
+
 // アプリ全体で使う統一カードの縦横比。写真付き(Keepの場所など)も
 // 文字だけ(作品など)も、この比率のカード1種類に統一する。
 export const ITEM_CARD_ASPECT = "3 / 4";

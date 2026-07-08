@@ -182,8 +182,8 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
     const kindLabel = mediaKindOf(sec.kind).label;
     return {
       key: sec.kind, color: MEDIA_BASE, eyebrowLabel: mediaLabel[sec.kind], accent: MEDIA_ACCENT[sec.kind],
-      title: kindLabel, spineTitle: kindLabel, count: sec.records.length,
-      footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{sec.records.length}件・タップで見る</div>,
+      title: kindLabel, count: sec.records.length,
+      footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.records.length}件・タップで見る</div>,
       onOpen: () => setOpenFolder({
         title: kindLabel,
         content: sec.records.map((r) => (
@@ -198,7 +198,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
   const areaRowItems: BinderShelfItem[] = areaSections.map((sec) => ({
     key: sec.area, color: PLACE_BASE, eyebrowLabel: "PLACE", accent: PLACE_ACCENT,
-    title: sec.area, spineTitle: sec.area, count: sec.keeps.length,
+    title: sec.area, count: sec.keeps.length,
     footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.keeps.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
       title: sec.area,
@@ -215,13 +215,13 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   // 揃えるため同じ棚の1行として並べ、タップで目標タブへ向かう。
   const goalRowItems: BinderShelfItem[] = goals.map((g) => ({
     key: g.id, color: GOAL_BASE, eyebrowLabel: "GOAL", accent: GOAL_ACCENT,
-    title: g.title, spineTitle: g.title, count: g.checkIns?.length ?? 0,
+    title: g.title, count: g.checkIns?.length ?? 0,
     footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{g.checkIns?.length ? `記録${g.checkIns.length}件・タップで見る` : "タップで見る"}</div>,
     onOpen: () => goTab("goals"),
   }));
 
   const dayRowItems: BinderShelfItem[] = daySections.map((sec) => ({
-    key: sec.label, color: PLACE_BASE, title: sec.label, spineTitle: sec.label, count: sec.entries.length,
+    key: sec.label, color: PLACE_BASE, title: sec.label, count: sec.entries.length,
     footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.entries.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
       title: sec.label,

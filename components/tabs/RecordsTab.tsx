@@ -1,9 +1,9 @@
 "use client";
 
-import { BookOpen, Film, MapPin, Music, Music2, Palette, Sprout } from "lucide-react";
+import { BookOpen, Film, MapPin, Music, Music2, Palette } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
-import { BinderCoverflowRow, type BinderShelfItem } from "@/components/Binder";
+import { BinderCoverflowRow, binderTone, type BinderShelfItem } from "@/components/Binder";
 import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
 import { GREEN, INK, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, inferMediaKind, shortDate } from "@/lib/helpers";
@@ -161,7 +161,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const mediaRowItems: BinderShelfItem[] = mediaSections.map((sec) => {
     const kindLabel = mediaKindOf(sec.kind).label;
     return {
-      key: sec.kind, color: sec.records[0]?.color ?? "#5A5A54", EyebrowIcon: MEDIA_ICON[sec.kind], eyebrowLabel: kindLabel,
+      key: sec.kind, color: binderTone(sec.kind), eyebrowLabel: kindLabel,
       title: kindLabel, spineTitle: kindLabel, count: sec.records.length,
       footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{sec.records.length}件・タップで見る</div>,
       onOpen: () => setOpenFolder({
@@ -177,7 +177,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   });
 
   const areaRowItems: BinderShelfItem[] = areaSections.map((sec) => ({
-    key: sec.area, color: sec.keeps[0]?.color ?? "#5A5A54", EyebrowIcon: MapPin, eyebrowLabel: "PLACE",
+    key: sec.area, color: binderTone(sec.area), eyebrowLabel: "PLACE",
     title: sec.area, spineTitle: sec.area, count: sec.keeps.length,
     footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{sec.keeps.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
@@ -194,14 +194,14 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   // 小さな横並びを別枠で出していたが、他の完了バインダーと見た目・操作感を
   // 揃えるため同じ棚の1行として並べ、タップで目標タブへ向かう。
   const goalRowItems: BinderShelfItem[] = goals.map((g) => ({
-    key: g.id, color: "#6B4A3F", EyebrowIcon: Sprout, eyebrowLabel: "GOAL",
+    key: g.id, color: binderTone(g.id), eyebrowLabel: "GOAL",
     title: g.title, spineTitle: g.title, count: g.checkIns?.length ?? 0,
     footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{g.checkIns?.length ? `記録${g.checkIns.length}件・タップで見る` : "タップで見る"}</div>,
     onOpen: () => goTab("goals"),
   }));
 
   const dayRowItems: BinderShelfItem[] = daySections.map((sec) => ({
-    key: sec.label, color: sec.entries[0]?.color ?? "#5A5A54", title: sec.label, spineTitle: sec.label, count: sec.entries.length,
+    key: sec.label, color: binderTone(sec.label), title: sec.label, spineTitle: sec.label, count: sec.entries.length,
     footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{sec.entries.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
       title: sec.label,

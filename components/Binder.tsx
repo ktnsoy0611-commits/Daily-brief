@@ -5,8 +5,8 @@
 // 軽く傾けるだけ)とExecuteTabの確定バインダー(独自のページめくり)が、
 // それぞれ別々に似て非なる見た目/動きを持っていた。ここでは
 //   - 穴+リング金具(HOLE_MASK/HoleRings/BinderRings): 全バインダー共通で2つ穴
-//   - 表紙面(BinderCoverFace)と背表紙面(BinderSpineFace): 同じ色面+ラベル
-//     プレートの語彙を共有する2つの「面」
+//   - 表紙面(BinderCoverFace)と背表紙面(BinderSpineFace): 白・黒・グレーの
+//     単色+ミッドセンチュリー風の簡素な幾何学模様を共有する2つの「面」
 //   - Binder3D: 上の2面を実際に厚みを持った3D箱として組み立て、rotateYで
 //     「背から見る⇄表紙から見る」を連続的に行き来できる物体
 //   - BinderCoverflowRow: Binder3Dを横に並べ、中央に来たものほど表紙が
@@ -18,9 +18,17 @@
 // 物体を、違う状況で見ている」という一貫性を保っている。
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import { ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
-import { haptic, shade } from "@/lib/helpers";
-import type { IconType } from "@/components/common";
+import { INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { hashStr, haptic } from "@/lib/helpers";
+
+// ---- バインダーの色(白・黒・グレーの無彩色のみ) ---------------------------
+// 映画/音楽アイコンのような装飾に頼らず、面積の大きい濃淡の違いだけで
+// バインダーごとの見分けをつける。文字列(タイトルなど)からハッシュで
+// 決定的に1色を選ぶことで、同じバインダーは常に同じ色になる。
+export const BINDER_TONES = ["#1C1C1E", "#3B3B39", "#5C5952", "#8B8780", "#B7B3A7", "#D9D6CB"];
+export function binderTone(seed: string) {
+  return BINDER_TONES[hashStr(seed) % BINDER_TONES.length];
+}
 
 // ---- 穴+リング金具(2穴で統一) -------------------------------------------
 
@@ -34,13 +42,18 @@ export const holeMaskStyle: CSSProperties = {
   WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
 };
 
+// 穴の位置・大きさをHoleRings/BinderRings/表紙面のヒントで揃えるための
+// 共通定数。
+const RING_X = "5.8%";
+const RING_YS = ["24%", "76%"];
+
 // ページ側の穴の縁取り(ページと一緒に回転し、奥行きの陰影を出す)。
 export function HoleRings() {
   return (
     <>
-      {["24%", "76%"].map((y) => (
+      {RING_YS.map((y) => (
         <div key={y} style={{
-          position: "absolute", left: "5.8%", top: y, transform: "translate(-50%, -50%)",
+          position: "absolute", left: RING_X, top: y, transform: "translate(-50%, -50%)",
           width: 12, height: 12, borderRadius: "50%", pointerEvents: "none", zIndex: 5,
           boxShadow: "inset 0 1.5px 2px rgba(28,28,30,0.22), inset 0 -1px 1px rgba(255,255,255,0.4), 0 0 0 1px rgba(28,28,30,0.05)",
         }} />
@@ -50,17 +63,18 @@ export function HoleRings() {
 }
 
 // バインダーを綴じる実際のリング金具(静止していて、ページや表紙だけが
-// その周りを動く)。
+// その周りを動く)。以前は金色っぽいメタリックな縁取りリングで、他の
+// バインダー面が使う「穴」の語彙と食い違う独自パーツに見えてしまって
+// いた(「変なクリップ」)。HoleRingsと全く同じ「窪んだ穴」の見た目に
+// 揃えることで、ページの穴と地続きの1つのリング穴に見えるようにする。
 export function BinderRings() {
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 20, pointerEvents: "none" }}>
-      <div style={{ position: "absolute", left: "3.2%", top: 10, bottom: 10, width: 7, borderRadius: 4, background: "linear-gradient(to right, rgba(28,28,30,0.24), rgba(28,28,30,0.04) 75%, transparent)" }} />
-      {["24%", "76%"].map((y) => (
+      {RING_YS.map((y) => (
         <div key={y} style={{
-          position: "absolute", left: "5.8%", top: y, width: 30, height: 16, transform: "translate(-64%, -50%)",
-          borderRadius: 999, border: "3px solid #AEA78F",
-          background: "linear-gradient(135deg, rgba(255,255,255,0.62), rgba(118,111,92,0.32))",
-          boxShadow: "0 2px 5px rgba(28,28,30,0.38), inset 0 1px 1px rgba(255,255,255,0.7), inset 0 -1.5px 1.5px rgba(28,28,30,0.4)",
+          position: "absolute", left: RING_X, top: y, transform: "translate(-50%, -50%)",
+          width: 12, height: 12, borderRadius: "50%", background: "rgba(253,251,245,0.95)",
+          boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.35), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.28)",
         }} />
       ))}
     </div>
@@ -71,89 +85,96 @@ export function BinderRings() {
 
 interface CoverContent {
   color: string;
-  EyebrowIcon?: IconType;
   eyebrowLabel?: string;
   title: string;
   footer?: ReactNode;
+  showRingHint?: boolean;
 }
 
-// 表紙面。以前は色面の上に白いラベルプレートを乗せていたが、角丸のプレート
-// +装飾的な斜め縞テクスチャが「学童文具っぽくてダサい」という指摘を受け、
-// リングバインダーのモックアップ写真(布/紙の色面に、ロゴマークと太字の
-// タイトルを直接置くだけ)に寄せてシンプルにした。プレートを廃止し、
-// タイトルは色面に直接置く。全体は角丸なし(四角)で統一する。
-export function BinderCoverFace({ color, EyebrowIcon, eyebrowLabel, title, footer }: CoverContent) {
+function isLightTone(hex: string) {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150;
+}
+
+// ミッドセンチュリーのポスター/装丁を参考にした、色面の上の簡素な幾何学
+// 模様。派手な色は使わず、地の色よりわずかに明/暗いだけの円+線の2種類を
+// タイトルの文字列から決定論的に切り替える。
+function BinderPattern({ seed, tint }: { seed: number; tint: string }) {
+  if (seed % 2 === 0) {
+    return <div style={{ position: "absolute", right: "-20%", bottom: "-16%", width: "68%", aspectRatio: "1 / 1", borderRadius: "50%", background: tint, pointerEvents: "none" }} />;
+  }
   return (
-    <div style={{
-      position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "14px 14px 12px",
-      background: `linear-gradient(160deg, ${shade(color, 14)} 0%, ${color} 55%, ${shade(color, -12)} 100%)`,
-    }}>
-      {/* スタジオ光のような柔らかい斜めのハイライトのみ。装飾的な縞は使わない。 */}
-      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 45%)", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", pointerEvents: "none" }} />
-      {/* 表紙が正面を向いている間(背表紙面が真横を向いて見えない間)も、
-          リング穴が左端にちらっと見えることで「これはリングバインダーだ」
-          と伝わるようにする、背表紙のリングと呼応する左端のヒント。 */}
-      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", background: "rgba(0,0,0,0.1)", pointerEvents: "none" }} />
-      {["18%", "82%"].map((y) => (
-        <div key={y} style={{
-          position: "absolute", left: "4.5%", top: y, transform: "translate(-50%, -50%)",
-          width: 8, height: 8, borderRadius: "50%", border: "1.3px solid rgba(255,255,255,0.75)",
-          boxShadow: "0 1px 1.5px rgba(0,0,0,0.35), inset 0 0.5px 1px rgba(0,0,0,0.28)", pointerEvents: "none",
-        }} />
-      ))}
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, marginLeft: "5%" }}>
-        {(EyebrowIcon || eyebrowLabel) && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-            {EyebrowIcon && (
-              <span style={{ width: 19, height: 19, borderRadius: "50%", border: "1.2px solid rgba(255,255,255,0.65)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <EyebrowIcon size={9.5} color="#fff" strokeWidth={2} />
-              </span>
-            )}
-            {eyebrowLabel && <span style={{ fontSize: 8, letterSpacing: "0.17em", color: "rgba(255,255,255,0.82)", fontWeight: 700 }}>{eyebrowLabel}</span>}
-          </div>
+    <>
+      <div style={{ position: "absolute", left: "12%", right: "12%", top: "40%", height: 1.5, background: tint, pointerEvents: "none" }} />
+      <div style={{ position: "absolute", right: "16%", bottom: "18%", width: "20%", aspectRatio: "1 / 1", borderRadius: "50%", background: tint, pointerEvents: "none" }} />
+    </>
+  );
+}
+
+// 表紙面。白・黒・グレーの単色(colorはBINDER_TONESから渡される)に、
+// ミッドセンチュリー風の簡素な幾何学模様を薄く重ねるだけの構成。以前は
+// アイコンバッジ+彩度の高い色面(紺・レンガ色などの「濁った和風」の
+// トーン)を使っていたが、アプリ全体のミニマルなトーンと不一致で
+// ダサいという指摘を受け、白黒グレーのみ+テキストだけで種類を伝える
+// デザインに変更した。アイコンは一切使わない。
+export function BinderCoverFace({ color, eyebrowLabel, title, footer, showRingHint = true }: CoverContent) {
+  const light = isLightTone(color);
+  const fg = light ? INK : "#fff";
+  const fgMuted = light ? "rgba(28,28,30,0.62)" : "rgba(255,255,255,0.75)";
+  const tint = light ? "rgba(28,28,30,0.06)" : "rgba(255,255,255,0.07)";
+  const ringBorder = light ? "rgba(28,28,30,0.5)" : "rgba(255,255,255,0.75)";
+  const seed = title.length + title.charCodeAt(0);
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "14px 14px 12px", background: color, overflow: "hidden" }}>
+      <BinderPattern seed={seed} tint={tint} />
+      <div style={{ position: "absolute", inset: 0, boxShadow: `inset 0 0 0 1px ${light ? "rgba(28,28,30,0.1)" : "rgba(255,255,255,0.08)"}`, pointerEvents: "none" }} />
+      {showRingHint && (
+        <>
+          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", background: light ? "rgba(0,0,0,0.05)" : "rgba(0,0,0,0.12)", pointerEvents: "none" }} />
+          {RING_YS.map((y) => (
+            <div key={y} style={{
+              position: "absolute", left: RING_X, top: y, transform: "translate(-50%, -50%)",
+              width: 8, height: 8, borderRadius: "50%", border: `1.3px solid ${ringBorder}`, pointerEvents: "none",
+            }} />
+          ))}
+        </>
+      )}
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, marginLeft: showRingHint ? "5%" : 0 }}>
+        {eyebrowLabel && (
+          <span style={{ fontSize: 8, letterSpacing: "0.17em", color: fgMuted, fontWeight: 700, flexShrink: 0 }}>{eyebrowLabel}</span>
         )}
         <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end" }}>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: "#fff", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: fg, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
         </div>
-        {footer && <div style={{ marginTop: 8, flexShrink: 0 }}>{footer}</div>}
+        {footer && <div style={{ marginTop: 8, flexShrink: 0, color: fgMuted }}>{footer}</div>}
       </div>
     </div>
   );
 }
 
-// 背表紙面。以前は表紙と無関係などす黒い帯+縦書き文字だけの構成で、
-// 表紙と背表紙が別デザインに見えてしまっていた。表紙と同じ色面・同じ
-// ハイライトの向き・同じ丸バッジ(アイコン)を使い、1つの物体の2つの面
-// として整合するようにしている。さらに、色のついた四角い箱というだけでは
-// 「バインダーに見えない」という指摘を受けたため、実際のリング穴を上下に
-// 配置して、一目でリングバインダーだとわかる決め手にしている。
-export function BinderSpineFace({ color, title, count, EyebrowIcon }: { color: string; title: string; count?: number; EyebrowIcon?: IconType }) {
+// 背表紙面。表紙と同じ単色+パターンの語彙を使い、実際のリング穴を上下に
+// 配置することで一目でリングバインダーだとわかるようにしている。
+export function BinderSpineFace({ color, title, count }: { color: string; title: string; count?: number }) {
+  const light = isLightTone(color);
+  const fg = light ? INK : "#fff";
+  const fgMuted = light ? "rgba(28,28,30,0.62)" : "rgba(255,255,255,0.75)";
+  const ringBorder = light ? "rgba(28,28,30,0.55)" : "rgba(255,255,255,0.85)";
   return (
-    <div style={{
-      position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", padding: "16px 0 14px",
-      background: `linear-gradient(160deg, ${shade(color, 14)} 0%, ${color} 55%, ${shade(color, -12)} 100%)`,
-    }}>
-      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(120deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 55%)", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", pointerEvents: "none" }} />
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", padding: "16px 0 14px", background: color }}>
+      <div style={{ position: "absolute", inset: 0, boxShadow: `inset 0 0 0 1px ${light ? "rgba(28,28,30,0.1)" : "rgba(255,255,255,0.08)"}`, pointerEvents: "none" }} />
       {["13%", "87%"].map((y) => (
         <div key={y} style={{
           position: "absolute", left: "50%", top: y, transform: "translate(-50%, -50%)",
-          width: 9, height: 9, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.92)",
-          boxShadow: "0 1px 1.5px rgba(0,0,0,0.4), inset 0 0.5px 1px rgba(0,0,0,0.3)",
+          width: 9, height: 9, borderRadius: "50%", border: `1.5px solid ${ringBorder}`,
         }} />
       ))}
-      {EyebrowIcon && (
-        <span style={{ position: "relative", width: 15, height: 15, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.6)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 10, marginBottom: 8 }}>
-          <EyebrowIcon size={7.5} color="#fff" strokeWidth={2} />
-        </span>
-      )}
       <span style={{
         position: "relative", writingMode: "vertical-rl", textOrientation: "mixed", fontFamily: SANS, fontWeight: 700, fontSize: 10.5,
-        color: "#fff", letterSpacing: "0.05em", flex: 1, overflow: "hidden", textShadow: "0 1px 2px rgba(0,0,0,0.22)",
+        color: fg, letterSpacing: "0.05em", flex: 1, overflow: "hidden", marginTop: 34,
       }}>{title}</span>
       {typeof count === "number" && (
-        <span style={{ position: "relative", marginTop: 8, marginBottom: 10, fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.78)" }}>{count}</span>
+        <span style={{ position: "relative", marginTop: 8, marginBottom: 10, fontSize: 8, fontWeight: 700, color: fgMuted }}>{count}</span>
       )}
     </div>
   );
@@ -180,8 +201,12 @@ export function binderTiltAngle(d: number, rest = 80, focused = 0) {
 // 直角にして両者を視覚的に区別する)。scaleは棚(BinderCoverflowRow)で
 // 中央に来たものだけをその場でひとまわり大きく見せるための上乗せで、
 // レイアウト上の幅(width)自体は変えない(隣接アイテムの詰まり方=
-// スワイプのピッチはscaleの影響を受けない)。
-export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth = 18, rotateY, scale = 1, transitionMs, color, EyebrowIcon, eyebrowLabel, title, footer, spineTitle, count, onClick }: CoverContent & {
+// スワイプのピッチはscaleの影響を受けない)。transformOriginを底辺
+// 中央にしているのは、回転・拡大の中心を中央(50% 50%)のままにすると
+// scaleが変わるたびに上端だけでなく下端も動いてしまい、スワイプ中に
+// 本棚全体が上下にガクガク揺れて見える不具合があったため。棚に本の
+// 底が固定されているのと同じように、常に下端を基準に伸び縮みさせる。
+export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth = 18, rotateY, scale = 1, transitionMs, color, eyebrowLabel, title, footer, spineTitle, count, onClick }: CoverContent & {
   width: number | string;
   aspect?: string;
   depth?: number;
@@ -195,23 +220,23 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth = 18, rotateY
   return (
     <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 900, cursor: onClick ? "pointer" : "default" }}>
       <div style={{
-        position: "relative", width: "100%", height: "100%", transformStyle: "preserve-3d",
+        position: "relative", width: "100%", height: "100%", transformStyle: "preserve-3d", transformOrigin: "50% 100%",
         transform: `scale(${scale}) rotateY(${rotateY}deg)`,
         transition: transitionMs ? `transform ${transitionMs}ms cubic-bezier(0.22,0.9,0.32,1)` : "none",
       }}>
         {/* 表紙面(正面) */}
         <div style={{
-          position: "absolute", inset: 0, overflow: "hidden", boxShadow: SOFT_SHADOW_LG,
+          position: "absolute", inset: 0, overflow: "hidden", boxShadow: SOFT_SHADOW,
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: `translateZ(${depth / 2}px)`,
         }}>
-          <BinderCoverFace color={color} EyebrowIcon={EyebrowIcon} eyebrowLabel={eyebrowLabel} title={title} footer={footer} />
+          <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} />
         </div>
         {/* 背表紙面(左端の側面) */}
         <div style={{
           position: "absolute", left: 0, top: 0, bottom: 0, width: depth, overflow: "hidden",
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: "rotateY(-90deg) translateZ(" + depth / 2 + "px)",
         }}>
-          <BinderSpineFace color={color} title={spineTitle ?? title} count={count} EyebrowIcon={EyebrowIcon} />
+          <BinderSpineFace color={color} title={spineTitle ?? title} count={count} />
         </div>
       </div>
     </div>
@@ -271,7 +296,7 @@ export function BinderCoverflowRow({ items, itemWidth = 128, aspect = ITEM_CARD_
   return (
     <div
       ref={scrollRef} onScroll={onScroll} className="no-scrollbar"
-      style={{ display: "flex", overflowX: "auto", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch", padding: "20px 0 10px" }}
+      style={{ display: "flex", alignItems: "flex-end", overflowX: "auto", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch", padding: "20px 0 10px" }}
     >
       <div style={{ flex: "0 0 auto", width: sidePad }} />
       {items.map((it, i) => {
@@ -283,7 +308,7 @@ export function BinderCoverflowRow({ items, itemWidth = 128, aspect = ITEM_CARD_
           <div key={it.key} style={{ position: "relative", flex: "0 0 auto", width: itemWidth, marginRight: i === items.length - 1 ? 0 : gap, scrollSnapAlign: "center", zIndex: Math.round(focus * 100) }}>
             <Binder3D
               width={itemWidth} aspect={aspect} rotateY={angle} scale={scale} transitionMs={60}
-              color={it.color} EyebrowIcon={it.EyebrowIcon} eyebrowLabel={it.eyebrowLabel}
+              color={it.color} eyebrowLabel={it.eyebrowLabel}
               title={it.title} spineTitle={it.spineTitle} count={it.count} onClick={it.onOpen}
             />
           </div>
@@ -310,7 +335,7 @@ export function BinderFlipDeck({ pageCount, renderPage, maxWidth = 260, aspect =
   disabled?: boolean;
 }) {
   const [pageIndex, setPageIndex] = useState(0);
-  const [drag, setDrag] = useState<{ dir: "next" | "prev"; progress: number; settling: boolean } | null>(null);
+  const [drag, setDrag] = useState<{ dir: "next" | "prev"; progress: number; settling: boolean; settleMs: number } | null>(null);
   const animating = useRef(false);
   const dragRef = useRef({ startX: 0, startY: 0, startTime: 0, active: false, dir: null as "next" | "prev" | null, width: maxWidth });
   const cardRef = useRef<HTMLDivElement>(null);
@@ -319,15 +344,22 @@ export function BinderFlipDeck({ pageCount, renderPage, maxWidth = 260, aspect =
     setPageIndex((p) => Math.min(p, pageCount - 1));
   }, [pageCount]);
 
-  const settle = (dir: "next" | "prev", commit: boolean) => {
+  // 素早く軽くはじいた場合、進捗(progress)がまだ小さいうちにコミットが
+  // 決まる。以前はここから常に固定230msでめくり切っていたため、進捗が
+  // 小さいほど「短い時間で大きな角度を一気に動かす」ことになり、
+  // ガクッとした早回しに見えていた。残りの角度に比例して所要時間を
+  // 決めることで、どの進捗から離しても体感速度が揃うようにする。
+  const settle = (dir: "next" | "prev", commit: boolean, fromProgress: number) => {
     animating.current = true;
     haptic(commit ? 10 : 4);
-    setDrag({ dir, progress: commit ? 1 : 0, settling: true });
+    const remaining = commit ? 1 - fromProgress : fromProgress;
+    const ms = Math.round(150 + remaining * 220);
+    setDrag({ dir, progress: commit ? 1 : 0, settling: true, settleMs: ms });
     setTimeout(() => {
       if (commit) setPageIndex((p) => (dir === "next" ? p + 1 : p - 1));
       setDrag(null);
       animating.current = false;
-    }, 230);
+    }, ms);
   };
 
   const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -349,7 +381,7 @@ export function BinderFlipDeck({ pageCount, renderPage, maxWidth = 260, aspect =
       d.dir = wantNext ? "next" : "prev";
     }
     const progress = Math.min(1, Math.abs(dx) / (d.width * 0.55));
-    setDrag({ dir: d.dir, progress, settling: false });
+    setDrag({ dir: d.dir, progress, settling: false, settleMs: 0 });
   };
   const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
@@ -359,11 +391,11 @@ export function BinderFlipDeck({ pageCount, renderPage, maxWidth = 260, aspect =
     const dt = Math.max(1, performance.now() - d.startTime);
     const velocity = Math.abs(dx) / dt;
     const progress = Math.min(1, Math.abs(dx) / (d.width * 0.55));
-    settle(d.dir, progress > 0.24 || velocity > 0.5);
+    settle(d.dir, progress > 0.24 || velocity > 0.5, progress);
   };
   const onCancel = () => {
     const d = dragRef.current;
-    if (d.active && d.dir) settle(d.dir, false);
+    if (d.active && d.dir) settle(d.dir, false, drag?.progress ?? 0);
     d.active = false;
   };
 
@@ -392,7 +424,7 @@ export function BinderFlipDeck({ pageCount, renderPage, maxWidth = 260, aspect =
           <div style={{
             position: "absolute", inset: 0, transformStyle: "preserve-3d", transformOrigin: "0% 50%",
             transform: `rotateY(${dragAngle}deg) translateZ(${liftZ}px) scale(${1 + 0.045 * Math.sin(Math.min(progress, 1) * Math.PI)})`,
-            transition: drag.settling ? "transform 0.22s cubic-bezier(0.16,1,0.3,1)" : "none",
+            transition: drag.settling ? `transform ${drag.settleMs}ms cubic-bezier(0.16,1,0.3,1)` : "none",
             WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
             filter: `drop-shadow(0 ${10 + liftZ * 0.3}px ${16 + liftZ * 0.4}px rgba(28,28,30,${0.16 + Math.sin(Math.min(progress, 1) * Math.PI) * 0.14}))`,
           }}>

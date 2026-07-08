@@ -81,11 +81,10 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
   size?: number | string;
 }) {
   const fill = color ?? "#5A5A54";
-  // ルーズリーフとカードの中間のような見た目にするため、左端に縦の
-  // 余白列(穴+切り取り線)を確保し、バッジ/キャプションはその右側から
-  // 始まるようにインセットを右へずらしている。穴は本物の透過ではなく、
-  // どんな下地(写真/グラデーション/掲示板テクスチャ)の上でも同じ見た目
-  // で「窪んで見える」よう、内側シャドウ付きの生成りの円で表現している。
+  // ルーズリーフとカードの中間のような見た目にするため、左端に穴を
+  // 配置している。本物の透過ではなく、どんな下地(写真/グラデーション/
+  // 掲示板テクスチャ)の上でも同じ見た目で「窪んで見える」よう、内側
+  // シャドウ付きの生成りの円で表現している。
   const holeYs = ["24%", "76%"];
   return (
     <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 18, overflow: "hidden", boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default", background: image ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)` }}>
@@ -105,10 +104,6 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
           boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.38), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 1px rgba(255,255,255,0.3)",
         }} />
       ))}
-      <div style={{
-        position: "absolute", left: 26, top: 8, bottom: 8, width: 1,
-        backgroundImage: "repeating-linear-gradient(to bottom, rgba(253,251,245,0.85) 0 4px, transparent 4px 9px)",
-      }} />
       {kept && (
         <span style={{ position: "absolute", top: 8, left: 33, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
           <Bookmark size={9} fill={INK} strokeWidth={0} /> KEEP

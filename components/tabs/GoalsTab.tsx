@@ -1,12 +1,12 @@
 "use client";
 
-import { Sprout, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { Binder3D } from "@/components/Binder";
+import { Binder3D, binderTone } from "@/components/Binder";
 import { AddCardTile, Masthead, rowBtn } from "@/components/common";
-import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, POSTER_PALETTE, RUST, SANS } from "@/lib/constants";
-import { hashStr, haptic, ratingLabel, shortDate } from "@/lib/helpers";
+import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
+import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
 import type { Goal, TabProps } from "@/lib/types";
 
 function AddGoalSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onClose: () => void }) {
@@ -114,11 +114,11 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
           {goalItems.map((g) => {
             const latest = g.checkIns?.[0];
             const count = g.checkIns?.length ?? 0;
-            const color = POSTER_PALETTE[hashStr(g.title) % POSTER_PALETTE.length];
+            const color = binderTone(g.id);
             return (
               <Binder3D
                 key={g.id} width="100%" aspect={GOAL_CARD_ASPECT} rotateY={0}
-                color={color} EyebrowIcon={Sprout} eyebrowLabel="GOAL" title={g.title}
+                color={color} eyebrowLabel="GOAL" title={g.title}
                 onClick={() => setOpenGoalId(g.id)}
                 footer={
                   <div>

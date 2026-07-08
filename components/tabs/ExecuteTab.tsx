@@ -257,7 +257,6 @@ function BookPage({ item, index, total, falling, onMarkDone, onDrop }: {
         position: "absolute", inset: 0, background: "#FBF8EF", overflow: "hidden", display: "flex", flexDirection: "column",
         boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle,
       }}>
-        <div style={{ position: "absolute", left: 23, top: 6, bottom: 6, width: 1, backgroundImage: "repeating-linear-gradient(to bottom, rgba(28,28,30,0.14) 0 3px, transparent 3px 7px)" }} />
         <div style={{ position: "relative", flex: "0 0 44%", margin: "0 0 0 30px", overflow: "hidden", background: item.images?.[0] ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)` }}>
           {item.images?.[0] ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -301,7 +300,6 @@ function BackCoverPage({ dateLabel, count, onRegister }: { dateLabel: string; co
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       <div style={{ position: "absolute", inset: 0, background: "#FBF8EF", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle }}>
-        <div style={{ position: "absolute", left: 23, top: 6, bottom: 6, width: 1, backgroundImage: "repeating-linear-gradient(to bottom, rgba(28,28,30,0.14) 0 3px, transparent 3px 7px)" }} />
         <div style={{ fontSize: 8, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, marginLeft: 30 }}>{dateLabel}</div>
         <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 13, margin: "6px 0 16px", textAlign: "center", padding: "0 26px" }}>{count}件、今日はここまで</div>
         <button onClick={(e) => { e.stopPropagation(); onRegister(); }} aria-label="登録" style={{
@@ -328,7 +326,7 @@ function FrontCoverPage({ dateLabel, count }: { dateLabel: string; count: number
     <div style={{ position: "absolute", inset: 0 }}>
       <div style={{ position: "absolute", inset: 0, overflow: "hidden", boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle }}>
         <BinderCoverFace
-          color={INK} eyebrowLabel={dateLabel} title="今日の行き先"
+          color={INK} eyebrowLabel={dateLabel} title="今日の行き先" showRingHint={false}
           footer={<div style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", fontWeight: 700, textAlign: "center", letterSpacing: "0.04em" }}>{count}件・スワイプで開く</div>}
         />
       </div>

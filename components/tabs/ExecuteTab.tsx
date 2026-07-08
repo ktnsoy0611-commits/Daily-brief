@@ -1,10 +1,11 @@
 "use client";
 
-import { BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
+import { Bookmark, BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { MEDIA_ACCENT, placeAccent } from "@/components/Binder";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
 import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
-import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, todayKey } from "@/lib/helpers";
+import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
@@ -140,7 +141,7 @@ function DraftBinder({ items, onRemove, onConfirm, confirmLabel }: {
         ))}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{items.length}件、たまってきました</div>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{items.length}件バインド中</div>
         <div style={{ fontSize: 8.5, color: "#9A988E", marginTop: 1 }}>タップで外せます</div>
       </div>
       <button onClick={onConfirm} style={{ flexShrink: 0, padding: "11px 16px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
@@ -251,19 +252,84 @@ function OpenBinderBackdrop({ closed }: { closed: boolean }) {
         <div style={{ position: "absolute", inset: 0, borderRadius: 6, background: "linear-gradient(100deg, rgba(28,28,30,0.06) 0%, rgba(28,28,30,0) 30%)" }} />
         {/* リング穴のヒント(左端。実際のリングはカードの下に隠れる背表紙側にある) */}
         {["30%", "70%"].map((y) => (
-          <div key={y} style={{ position: "absolute", left: "6%", top: y, transform: "translate(-50%, -50%)", width: 9, height: 9, borderRadius: "50%", background: "rgba(28,28,30,0.1)", boxShadow: "inset 0 1px 2px rgba(28,28,30,0.25)" }} />
+          <div key={y} style={{ position: "absolute", left: "6%", top: y, transform: "translate(-50%, -50%)", width: 7, height: 7, borderRadius: "50%", background: "rgba(28,28,30,0.1)", boxShadow: "inset 0 1px 2px rgba(28,28,30,0.25)" }} />
         ))}
       </div>
     </div>
   );
 }
 
-// 実行タブの確定後の1枚のカード。他のタブと全く同じPosterCardをそのまま
-// 使い、独自のカードデザインを持たない(以前は自前で組んだカードで、
-// 見た目が他のタブのカードと食い違っていた)。右にスワイプすると背後に
-// 「外す」の下地が現れ、閾値を超えて離すとカードが右へ飛んでリストから
-// 外れる(以前のX ボタンに代わる操作)。行った/観たは従来通り右上の
-// チェックで個別にマークでき、外すとは独立した状態として残る。
+// ブリーフタブのカード(上部が写真、下部が白背景の説明)と統一したデザイン。
+// 以前は他のタブと共有のPosterCard(写真全面+下部に白文字)をそのまま
+// 使っていたが、ブリーフのお気に入りのデザインに揃えてほしいという要望で
+// 専用のフェイスに差し替えた。パンチ穴には実際にリングが通っているように
+// 見せる金属調の輪を重ね、下部には地図と(あれば)公式サイトへのリンクを
+// 置く。地図リンクは、情報ソースが既にGoogleマップへのURLならそれを
+// そのまま使い、そうでなければ場所名からその場で生成する。
+function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => void }) {
+  const IconComp = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
+  const fill = item.color ?? "#5A5A54";
+  const hasPhoto = (item.images?.length ?? 0) > 0;
+  const isMapsSource = !!item.sourceUrl && item.sourceUrl.includes("google.com/maps");
+  const mapsHref = item.type === "keep"
+    ? (isMapsSource ? item.sourceUrl : mapsUrl(item.area && item.area !== "—" ? `${item.area} ${item.title}` : item.title))
+    : undefined;
+  const officialHref = item.sourceUrl && !isMapsSource ? item.sourceUrl : undefined;
+
+  return (
+    <div style={{ width: "100%", height: "100%", background: PAPER, borderRadius: 18, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG }}>
+      <div style={{ position: "relative", flex: "0 0 52%", overflow: "hidden", background: fill }}>
+        {hasPhoto ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={img(item.images![0], 400, 320)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        ) : IconComp ? (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <IconComp size="34%" strokeWidth={1} color="rgba(255,255,255,0.85)" />
+          </div>
+        ) : null}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.12), rgba(0,0,0,0) 40%)", pointerEvents: "none" }} />
+        {/* パンチ穴+実際に通っているリング(金属調のグラデーションの輪+中央の暗い穴) */}
+        {["26%", "74%"].map((y) => (
+          <div key={y} style={{ position: "absolute", left: 16, top: y, transform: "translateY(-50%)", width: 18, height: 18, borderRadius: "50%", background: "linear-gradient(135deg, #f0f0ec, #a9a9a2 45%, #6d6d68 100%)", boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>
+            <div style={{ position: "absolute", inset: 3.5, borderRadius: "50%", background: "rgba(20,20,20,0.88)", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.6)" }} />
+          </div>
+        ))}
+        {item.kept && (
+          <span style={{ position: "absolute", top: 10, left: 42, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3.5px 9px 3.5px 7px" }}>
+            <Bookmark size={10} fill={INK} strokeWidth={0} /> KEEP
+          </span>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
+          position: "absolute", top: 10, right: 10, width: 32, height: 32, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
+          background: item.done ? GREEN : "rgba(255,255,255,0.92)", color: item.done ? "#fff" : "#3A3A36",
+          display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 8px rgba(28,28,30,0.28)",
+        }}><Check size={15} strokeWidth={3} /></button>
+        {item.done && <div style={{ position: "absolute", inset: 0, background: "rgba(28,28,30,0.4)", pointerEvents: "none" }} />}
+      </div>
+      <div style={{ flex: 1, minHeight: 0, padding: "11px 14px 12px", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5, flexShrink: 0 }}>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#5A5A54", flexShrink: 0 }} />
+          <span style={{ fontSize: 8.5, color: "#5A5A54", fontWeight: 700, letterSpacing: "0.05em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.categoryLabel}{item.area && item.area !== "—" ? ` ・ ${item.area}` : ""}</span>
+        </div>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13, lineHeight: 1.35, color: INK, marginBottom: "auto", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</div>
+        {(mapsHref || officialHref) && (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexShrink: 0 }}>
+            {mapsHref && (
+              <a href={mapsHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: "#F0EEE6", color: "#3A3A36", textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>地図 ↗</a>
+            )}
+            {officialHref && (
+              <a href={officialHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: "#F0EEE6", color: "#3A3A36", textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>サイト ↗</a>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 実行タブの確定後の1枚のカード。右にスワイプすると背後に「外す」の下地が
+// 現れ、閾値を超えて離すとカードが右へ飛んでリストから外れる。行った/観た
+// は右上のチェックで個別にマークでき、外すとは独立した状態として残る。
 const CONFIRMED_REMOVE_THRESHOLD = 96;
 
 function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove, disabled }: {
@@ -278,31 +344,29 @@ function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const dragRef = useRef({ startX: 0, startY: 0, active: false, locked: false });
-  const IconComp = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
+  const dragRef = useRef({ startX: 0, active: false });
 
   const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (disabled || removing) return;
-    dragRef.current = { startX: e.clientX, startY: e.clientY, active: true, locked: false };
+    dragRef.current = { startX: e.clientX, active: true };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
+  // touchAction:"pan-y"により、縦方向のドラッグはブラウザ標準のスクロールに
+  // 任せ、横方向だけこのハンドラでdxを追う。以前は最初の数px移動が縦方向
+  // 寄りだと判定した瞬間にdragRef.active=falseへ倒し、以後ずっとその
+  // フラグを見て即returnしていたため、指が斜めに動き始めただけで残りの
+  // 横スワイプが二度と拾われず「右スワイプで外せない」不具合になっていた。
+  // pan-yがすでにブラウザ側で縦/横を仕分けているので、JS側では単純にdxだけ
+  // 追えば十分。
   const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-    if (!d.active) return;
-    const dx = e.clientX - d.startX;
-    const dy = e.clientY - d.startY;
-    if (!d.locked) {
-      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-      if (Math.abs(dy) > Math.abs(dx)) { d.active = false; return; } // 縦方向はリストのスクロールに譲る
-      d.locked = true;
-      setDragging(true);
-    }
+    if (!dragRef.current.active) return;
+    const dx = e.clientX - dragRef.current.startX;
+    if (!dragging && Math.abs(dx) > 4) setDragging(true);
     setDragX(Math.max(0, dx));
   };
   const finish = () => {
-    const d = dragRef.current;
-    if (!d.active) return;
-    d.active = false;
+    if (!dragRef.current.active) return;
+    dragRef.current.active = false;
     setDragging(false);
     if (dragX > CONFIRMED_REMOVE_THRESHOLD) {
       haptic(10);
@@ -333,17 +397,7 @@ function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={finish} onPointerCancel={finish}
         style={{ position: "absolute", inset: 0, touchAction: "pan-y", zIndex: 1, transform, opacity, transition }}
       >
-        <PosterCard
-          image={item.images?.[0]} color={item.color} title={item.title}
-          sub={item.area && item.area !== "—" ? item.area : undefined}
-          label={item.categoryLabel} icon={IconComp} kept={item.kept}
-        />
-        {item.done && <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "rgba(28,28,30,0.45)", pointerEvents: "none" }} />}
-        <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
-          position: "absolute", top: 12, right: 12, width: 34, height: 34, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
-          background: item.done ? GREEN : "rgba(255,255,255,0.92)", color: item.done ? "#fff" : "#3A3A36",
-          display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 8px rgba(28,28,30,0.28)",
-        }}><Check size={16} strokeWidth={3} /></button>
+        <ExecCardFace item={item} onMarkDone={onMarkDone} />
       </div>
     </div>
   );
@@ -357,6 +411,12 @@ function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove
 // (2)バインダーが閉じ、(3)閉じたバインダーごと下へ落ちる、という
 // 3段階のアニメーションのあとに実際の登録処理を呼ぶ。
 const CONFIRMED_MAX_WIDTH = 380;
+// 確定カード自体の幅。以前はコンテナいっぱい(最大380px)に広げていたが、
+// 大きすぎるという指摘を受け、1枚1枚をぐっと小さくした。パンチ穴・リング・
+// KEEPバッジのサイズはこのCARD_WIDTHを基準に決めているため、ここを変えれば
+// バインダーの背景装飾(OpenBinderBackdrop、%指定なので自動追従)も含めて
+// 一括で比率が揃う。
+const CARD_WIDTH = 220;
 const STACK_MS = 420;
 const CLOSE_MS = 320;
 const FALL_MS = 420;
@@ -402,11 +462,11 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
           ...(falling ? { transform: "translateY(60%)", opacity: 0, transition: `transform ${FALL_MS}ms cubic-bezier(0.55,0,1,0.45), opacity ${FALL_MS - 40}ms ease-in` } : {}),
         }}
       >
-        <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, margin: "0 auto", padding: `6px 16px calc(${NAV_OFFSET} + 92px)` }}>
+        <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, margin: "0 auto", padding: `6px 16px calc(${NAV_OFFSET} + 24px)` }}>
           <div style={{ fontSize: 10, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "8px 2px 16px" }}>{dateLabel} ・ {items.length}件</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
             {items.map((it, i) => (
-              <div key={it.id} style={{ position: "relative" }}>
+              <div key={it.id} style={{ position: "relative", width: CARD_WIDTH }}>
                 {i === 0 && <OpenBinderBackdrop closed={closed} />}
                 <ConfirmedCard
                   item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
@@ -419,20 +479,20 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
               </div>
             ))}
           </div>
-        </div>
-      </div>
-      {!stacking && (
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-          <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, padding: `0 16px calc(${NAV_OFFSET} + 8px)`, pointerEvents: "auto" }}>
+          {/* 以前はこのボタンを画面下部にposition:fixedで常時浮かせており、
+              リストの下の方を操作している最中も指の近くに居座って邪魔に
+              なっていた。リストの最後に普通に流れる要素として置くことで、
+              一番下までスクロールしてはじめて現れるようにした。 */}
+          {!stacking && (
             <button onClick={handleRegister} style={{
-              width: "100%", padding: "15px 0", background: INK, color: PAPER, border: "none", borderRadius: 999,
+              display: "block", width: CARD_WIDTH, margin: "26px auto 0", padding: "15px 0", background: INK, color: PAPER, border: "none", borderRadius: 999,
               cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: SOFT_SHADOW_LG,
             }}>
-              登録する
+              バインド！
             </button>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </>
   );
 }
@@ -588,57 +648,62 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
     const next = structuredClone(appState);
     const now = Date.now();
     ([
-      { title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", color: "#33467C", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"], done: true },
-      { title: "竹橋のギャラリーで版画展を観る", category: "展覧会", area: "竹橋", images: ["print-a", "print-b"], sourceUrl: mapsUrl("竹橋 ギャラリー"), sourceLabel: "地図で見る", color: "#3A4A5C", meta: ["竹橋"], done: true },
-      { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["神保町"], done: true },
-      { title: "神保町の器店、作家の個展", category: "雑貨", area: "神保町", images: ["books-c"], sourceUrl: mapsUrl("神保町 器 個展"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["神保町", "会期は今月いっぱい"], done: true },
-      { title: "喫茶店でゆっくり読書する", category: "近所の発見", area: "神保町", images: ["kissa-a"], sourceUrl: mapsUrl("神保町 純喫茶"), sourceLabel: "地図で見る", color: "#5A3A2E", meta: ["神保町"], done: false },
-      { title: "日比谷公園を散歩する", category: "身体", area: "日比谷", images: ["hibiya-park-a"], sourceUrl: mapsUrl("日比谷公園"), sourceLabel: "地図で見る", color: "#3A4A5C", meta: ["日比谷公園"], done: true },
-      { title: "日比谷のミッドセンチュリー家具店", category: "雑貨", area: "日比谷", images: ["furniture-a"], sourceUrl: mapsUrl("日比谷 家具店"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["日比谷"], done: false },
-      { title: "谷根千の坂道を散歩する", category: "身体", area: "谷根千", images: ["zakka-a", "zakka-b"], sourceUrl: mapsUrl("谷根千 散歩コース"), sourceLabel: "地図で見る", color: "#5A3A2E", meta: ["谷根千エリア"], done: true },
-      { title: "谷中の陶器市を覗く", category: "雑貨", area: "谷根千", images: ["zakka-c"], sourceUrl: mapsUrl("谷中 陶器市"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["谷中エリア", "会期は今週末まで"], done: true },
-      { title: "谷根千の純喫茶でひと休み", category: "近所の発見", area: "谷根千", images: ["kissa-b"], sourceUrl: mapsUrl("谷根千 純喫茶"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["谷根千エリア"], done: true },
-      { title: "浅草橋のボルダリングジムへ", category: "身体", area: "浅草橋", images: ["climb-a", "climb-b"], sourceUrl: mapsUrl("浅草橋 ボルダリングジム"), sourceLabel: "地図で見る", color: "#3A4A5C", meta: ["浅草橋駅から徒歩6分"], done: true },
-      { title: "浅草橋の手芸問屋街を歩く", category: "雑貨", area: "浅草橋", images: ["zakka-d"], sourceUrl: mapsUrl("浅草橋 問屋街"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["浅草橋"], done: false },
-      { title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["COFFEE WRIGHTS", "9:00–18:00"], done: true },
-      { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", color: "#5C4B6B", meta: ["蔵前"], done: true },
-      { title: "蔵前のレザー工房を覗く", category: "雑貨", area: "蔵前", images: ["leather-a"], sourceUrl: mapsUrl("蔵前 レザー工房"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["蔵前"], done: true },
-      { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", color: "#33467C", meta: ["江戸東京博物館"], done: true },
-      { title: "両国国技館のまわりを歩く", category: "身体", area: "両国", images: ["ryogoku-a"], sourceUrl: mapsUrl("両国国技館"), sourceLabel: "地図で見る", color: "#3A4A5C", meta: ["両国"], done: false },
-      { title: "清澄白河で陶芸体験をする", category: "未知との遭遇", area: "清澄白河", images: ["pottery-a", "pottery-b"], sourceUrl: mapsUrl("清澄白河 陶芸体験"), sourceLabel: "地図で見る", color: "#5C4B6B", meta: ["清澄白河・陶房"], done: true },
-      { title: "清澄白河のロースタリー巡り", category: "近所の発見", area: "清澄白河", images: ["kiyosumi-a"], sourceUrl: mapsUrl("清澄白河 ロースタリー"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["清澄白河"], done: true },
-      { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", color: "#8B4A2E", meta: ["高円寺北口エリア"], done: true },
-      { title: "高円寺の古着市、大型セール", category: "古着", area: "高円寺", images: ["vintage-c"], sourceUrl: mapsUrl("高円寺 古着 セール"), sourceLabel: "地図で見る", color: "#6B3A4A", meta: ["高円寺北口一帯", "セールは3日間"], done: true },
-      { title: "高円寺の小さなレコード店", category: "音楽", area: "高円寺", images: ["record-a"], sourceUrl: mapsUrl("高円寺 レコード店"), sourceLabel: "地図で見る", color: "#2E4A3F", meta: ["高円寺"], done: false },
+      { title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"], done: true },
+      { title: "竹橋のギャラリーで版画展を観る", category: "展覧会", area: "竹橋", images: ["print-a", "print-b"], sourceUrl: mapsUrl("竹橋 ギャラリー"), sourceLabel: "地図で見る", meta: ["竹橋"], done: true },
+      { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", meta: ["神保町"], done: true },
+      { title: "神保町の器店、作家の個展", category: "雑貨", area: "神保町", images: ["books-c"], sourceUrl: mapsUrl("神保町 器 個展"), sourceLabel: "地図で見る", meta: ["神保町", "会期は今月いっぱい"], done: true },
+      { title: "喫茶店でゆっくり読書する", category: "近所の発見", area: "神保町", images: ["kissa-a"], sourceUrl: mapsUrl("神保町 純喫茶"), sourceLabel: "地図で見る", meta: ["神保町"], done: false },
+      { title: "日比谷公園を散歩する", category: "身体", area: "日比谷", images: ["hibiya-park-a"], sourceUrl: mapsUrl("日比谷公園"), sourceLabel: "地図で見る", meta: ["日比谷公園"], done: true },
+      { title: "日比谷のミッドセンチュリー家具店", category: "雑貨", area: "日比谷", images: ["furniture-a"], sourceUrl: mapsUrl("日比谷 家具店"), sourceLabel: "地図で見る", meta: ["日比谷"], done: false },
+      { title: "谷根千の坂道を散歩する", category: "身体", area: "谷根千", images: ["zakka-a", "zakka-b"], sourceUrl: mapsUrl("谷根千 散歩コース"), sourceLabel: "地図で見る", meta: ["谷根千エリア"], done: true },
+      { title: "谷中の陶器市を覗く", category: "雑貨", area: "谷根千", images: ["zakka-c"], sourceUrl: mapsUrl("谷中 陶器市"), sourceLabel: "地図で見る", meta: ["谷中エリア", "会期は今週末まで"], done: true },
+      { title: "谷根千の純喫茶でひと休み", category: "近所の発見", area: "谷根千", images: ["kissa-b"], sourceUrl: mapsUrl("谷根千 純喫茶"), sourceLabel: "地図で見る", meta: ["谷根千エリア"], done: true },
+      { title: "浅草橋のボルダリングジムへ", category: "身体", area: "浅草橋", images: ["climb-a", "climb-b"], sourceUrl: mapsUrl("浅草橋 ボルダリングジム"), sourceLabel: "地図で見る", meta: ["浅草橋駅から徒歩6分"], done: true },
+      { title: "浅草橋の手芸問屋街を歩く", category: "雑貨", area: "浅草橋", images: ["zakka-d"], sourceUrl: mapsUrl("浅草橋 問屋街"), sourceLabel: "地図で見る", meta: ["浅草橋"], done: false },
+      { title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", meta: ["COFFEE WRIGHTS", "9:00–18:00"], done: true },
+      { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", meta: ["蔵前"], done: true },
+      { title: "蔵前のレザー工房を覗く", category: "雑貨", area: "蔵前", images: ["leather-a"], sourceUrl: mapsUrl("蔵前 レザー工房"), sourceLabel: "地図で見る", meta: ["蔵前"], done: true },
+      { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", meta: ["江戸東京博物館"], done: true },
+      { title: "両国国技館のまわりを歩く", category: "身体", area: "両国", images: ["ryogoku-a"], sourceUrl: mapsUrl("両国国技館"), sourceLabel: "地図で見る", meta: ["両国"], done: false },
+      { title: "清澄白河で陶芸体験をする", category: "未知との遭遇", area: "清澄白河", images: ["pottery-a", "pottery-b"], sourceUrl: mapsUrl("清澄白河 陶芸体験"), sourceLabel: "地図で見る", meta: ["清澄白河・陶房"], done: true },
+      { title: "清澄白河のロースタリー巡り", category: "近所の発見", area: "清澄白河", images: ["kiyosumi-a"], sourceUrl: mapsUrl("清澄白河 ロースタリー"), sourceLabel: "地図で見る", meta: ["清澄白河"], done: true },
+      { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", meta: ["高円寺北口エリア"], done: true },
+      { title: "高円寺の古着市、大型セール", category: "古着", area: "高円寺", images: ["vintage-c"], sourceUrl: mapsUrl("高円寺 古着 セール"), sourceLabel: "地図で見る", meta: ["高円寺北口一帯", "セールは3日間"], done: true },
+      { title: "高円寺の小さなレコード店", category: "音楽", area: "高円寺", images: ["record-a"], sourceUrl: mapsUrl("高円寺 レコード店"), sourceLabel: "地図で見る", meta: ["高円寺"], done: false },
     ]).forEach((d, i) => {
+      // 場所カードの色は、バインダー側の「行った場所」棚が同じエリア名から
+      // 生成する色(placeAccent)と揃え、カードとバインダーが同一のエリアを
+      // 指していることが色でもわかるようにしている。
       next.keeps.push({
         id: `demo-${now}-${i}`, title: d.title, category: d.category, area: d.area,
         status: d.done ? "done" : "candidate",
         keptAt: new Date(now - (i + 3) * 30 * 3600 * 1000).toISOString(),
         doneAt: d.done ? new Date(now - i * 22 * 3600 * 1000).toISOString() : undefined,
-        images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color: d.color,
+        images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color: placeAccent(d.area).color,
       });
     });
     ([
-      { kind: "movie" as const, title: "Perfect Days 2", creator: "", color: "#1C1B22", done: true },
-      { kind: "movie" as const, title: "単館上映のドキュメンタリー", creator: "", color: "#3A2E4A", done: true },
-      { kind: "movie" as const, title: "深夜のホラー特集上映", creator: "", color: "#22201F", done: false },
-      { kind: "exhibition" as const, title: "「建築と自然」展", creator: "国立近代美術館", color: "#33467C", done: true },
-      { kind: "exhibition" as const, title: "谷根千の器作家、個展", creator: "個人ギャラリー", color: "#6B5A3A", done: true },
-      { kind: "exhibition" as const, title: "写真家の回顧展", creator: "損保ジャパン美術館", color: "#3A4A5C", done: false },
-      { kind: "live" as const, title: "下北沢の対バンライブ", creator: "", color: "#2E4A3F", done: true },
-      { kind: "live" as const, title: "高円寺の弾き語りナイト", creator: "", color: "#4A5A6B", done: true },
-      { kind: "live" as const, title: "野外音楽フェス", creator: "", color: "#2E6B5C", done: false },
-      { kind: "book" as const, title: "建築家のエッセイ集", creator: "", color: "#7A5636", done: true },
-      { kind: "book" as const, title: "書評サイトで話題の短編集", creator: "", color: "#3A5A6B", done: true },
-      { kind: "book" as const, title: "積読中の長編小説", creator: "", color: "#5A3A2E", done: false },
-      { kind: "album" as const, title: "通勤で聴き切る一枚", creator: "", color: "#6B4558", done: true },
-      { kind: "album" as const, title: "学生時代によく聴いたアルバム", creator: "", color: "#5C4B6B", done: true },
-      { kind: "album" as const, title: "評判の新譜", creator: "", color: "#8B4A2E", done: false },
+      { kind: "movie" as const, title: "Perfect Days 2", creator: "", done: true },
+      { kind: "movie" as const, title: "単館上映のドキュメンタリー", creator: "", done: true },
+      { kind: "movie" as const, title: "深夜のホラー特集上映", creator: "", done: false },
+      { kind: "exhibition" as const, title: "「建築と自然」展", creator: "国立近代美術館", done: true },
+      { kind: "exhibition" as const, title: "谷根千の器作家、個展", creator: "個人ギャラリー", done: true },
+      { kind: "exhibition" as const, title: "写真家の回顧展", creator: "損保ジャパン美術館", done: false },
+      { kind: "live" as const, title: "下北沢の対バンライブ", creator: "", done: true },
+      { kind: "live" as const, title: "高円寺の弾き語りナイト", creator: "", done: true },
+      { kind: "live" as const, title: "野外音楽フェス", creator: "", done: false },
+      { kind: "book" as const, title: "建築家のエッセイ集", creator: "", done: true },
+      { kind: "book" as const, title: "書評サイトで話題の短編集", creator: "", done: true },
+      { kind: "book" as const, title: "積読中の長編小説", creator: "", done: false },
+      { kind: "album" as const, title: "通勤で聴き切る一枚", creator: "", done: true },
+      { kind: "album" as const, title: "学生時代によく聴いたアルバム", creator: "", done: true },
+      { kind: "album" as const, title: "評判の新譜", creator: "", done: false },
     ]).forEach((d, i) => {
+      // メディアカードの色はジャンルのバインダー色(MEDIA_ACCENT)を基準に、
+      // 同じジャンル内でも一枚一枚が識別できるよう明暗を振った近似色にする。
       next.records.media.unshift({
         id: `demo-media-${now}-${i}`, kind: d.kind, title: d.title, creator: d.creator,
-        addedAt: new Date(now - (i + 2) * 20 * 3600 * 1000).toISOString(), color: d.color,
+        addedAt: new Date(now - (i + 2) * 20 * 3600 * 1000).toISOString(), color: shade(MEDIA_ACCENT[d.kind].color, ((i % 3) - 1) * 13),
         status: d.done ? "done" : "keep",
         doneAt: d.done ? new Date(now - i * 15 * 3600 * 1000).toISOString() : undefined,
       });

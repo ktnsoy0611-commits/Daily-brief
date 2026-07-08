@@ -22,20 +22,50 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { shade } from "@/lib/helpers";
+import type { MediaKindId } from "@/lib/types";
 
 // ---- ワンポイントの図形+色(ジャンルなどの意味づけ) -------------------------
+//
+// 種類が固定されている(映画/展覧会/ライブ/読書/音楽/目標)ものは、色相環を
+// 60度ずつずらした6色+固有の図形の組み合わせを1つずつ割り当てることで、
+// 色も図形もどれ一つとして被らない(MECE)ようにしている。無彩色寄りの
+// くすんだトーンに揃えているのは、BLUE/RUST/GREENなど他のUIで使う
+// 「状態を表す彩度の高い色」とは別の語彙(=ジャンルを表す色)だと感じ
+// させるため。
+//
+// 一方、行った場所(エリア)や日付のように、ユーザーの利用に伴って
+// 際限なく種類が増えていくものは、固定パレットを使い切ってしまう。
+// これらは少数の色相を循環させつつ、縞(エリア)・市松(日付)の
+// 本数/マス目をハッシュ値から決めることで、色が同じになっても柄が
+// 違えば区別できるようにしている(#areaAccent/#dateAccent参照)。
 
-export type AccentShape = "square" | "triangle" | "circle" | "diamond";
+export type AccentShape = "square" | "triangle" | "circle" | "diamond" | "cross" | "ring";
 export interface Accent {
-  shape: AccentShape;
   color: string;
+  shape?: AccentShape;
+  // 無限に増える種類向け: 図形の代わりに縞/市松のパターンを敷く。
+  pattern?: "stripe" | "check";
+  // patternがstripeなら縞の本数、checkならマス目の分割数。
+  bands?: number;
 }
 
 // 全バインダー共通の「目標」の下地色+ワンポイント(RecordsTabの棚・
 // GoalsTabのグリッドどちらでも同じ組み合わせにして揃える)。表紙自体は
 // 常に白なので、colorは背表紙の単色フォールバック(accent未指定時)としてのみ使う。
 export const GOAL_BASE = "#F7F6F2";
-export const GOAL_ACCENT: Accent = { shape: "square", color: "#9C7A68" };
+export const GOAL_ACCENT: Accent = { shape: "ring", color: "#9C6242" };
+
+// メディア5ジャンルのワンポイント(図形+色)。RecordsTabの棚だけでなく、
+// ExecuteTabのデモデータ(写真の無いカードの下地色)もこれを基準にした
+// 色調で揃え、バインダーとカードの色が世界観として一致するようにしている。
+export const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
+  movie: { shape: "square", color: "#4B4C8C" },
+  exhibition: { shape: "triangle", color: "#3E7A82" },
+  live: { shape: "circle", color: "#8C4A72" },
+  book: { shape: "diamond", color: "#4C7A5C" },
+  album: { shape: "cross", color: "#8C8A3E" },
+};
 
 function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string; size: number }) {
   switch (shape) {
@@ -47,7 +77,54 @@ function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string
       return <div style={{ width: size * 0.72, height: size * 0.72, background: color, borderRadius: 2, transform: "rotate(45deg)" }} />;
     case "triangle":
       return <div style={{ width: 0, height: 0, borderLeft: `${size * 0.52}px solid transparent`, borderRight: `${size * 0.52}px solid transparent`, borderBottom: `${size * 0.92}px solid ${color}` }} />;
+    case "cross":
+      return (
+        <div style={{ position: "relative", width: size, height: size }}>
+          <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: size * 0.26, transform: "translateX(-50%)", background: color, borderRadius: 1 }} />
+          <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: size * 0.26, transform: "translateY(-50%)", background: color, borderRadius: 1 }} />
+        </div>
+      );
+    case "ring":
+      return <div style={{ width: size, height: size, borderRadius: "50%", border: `${Math.max(2.5, size * 0.24)}px solid ${color}`, boxSizing: "border-box" }} />;
   }
+}
+
+// 文字列から安定したハッシュ値を作る(同じ名前なら常に同じ柄になる)。
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function stripeGradient(color: string, bands: number) {
+  const n = Math.max(2, Math.min(6, bands));
+  const light = shade(color, 26);
+  const step = 100 / n;
+  return `repeating-linear-gradient(180deg, ${color} 0, ${color} ${step / 2}%, ${light} ${step / 2}%, ${light} ${step}%)`;
+}
+
+function checkStyle(color: string, cells: number): { backgroundImage: string; backgroundSize: string } {
+  const n = Math.max(3, Math.min(6, cells));
+  const light = shade(color, 26);
+  const cellPct = 100 / n;
+  return { backgroundImage: `repeating-conic-gradient(${color} 0% 25%, ${light} 0% 50%)`, backgroundSize: `${cellPct * 2}% ${cellPct * 2}%` };
+}
+
+// 行った場所(エリア)は際限なく増えるため固定色を割り当てず、名前の
+// ハッシュから色相と縞の本数を決める。色が他のエリアと重なっても、
+// 縞の粗さが違えば見分けがつく。
+const PLACE_HUES = ["#3E6B7A", "#6B5A3E", "#4E6B4A", "#6B3E5A", "#3E5A6B", "#5A4A6B"];
+export function placeAccent(seed: string): Accent {
+  const h = hashString(seed);
+  return { color: PLACE_HUES[h % PLACE_HUES.length], pattern: "stripe", bands: 2 + (h % 4) };
+}
+
+// 日付ビューの各日も同様に無限に増える。縞ではなく市松にして、
+// 場所の棚と隣り合っても柄で区別できるようにしている。
+const DATE_HUES = ["#5A5A4E", "#4E5A5A", "#5A4E5A", "#4E5A4E", "#5A4E4E"];
+export function dateAccent(seed: string): Accent {
+  const h = hashString(seed);
+  return { color: DATE_HUES[h % DATE_HUES.length], pattern: "check", bands: 3 + (h % 3) };
 }
 
 // ---- 表紙面・背表紙面・無地の側面・裏表紙 -----------------------------------
@@ -73,8 +150,13 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
       borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
     }}>
       {accent && (
-        <div style={{ flex: "0 0 32%", background: accentColor, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <AccentGlyph shape={accent.shape} color={PAPER} size={30} />
+        <div style={{
+          flex: "0 0 32%", position: "relative", overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+          background: accent.pattern ? undefined : accentColor,
+          ...(accent.pattern === "stripe" ? { backgroundImage: stripeGradient(accent.color, accent.bands ?? 3) } : {}),
+          ...(accent.pattern === "check" ? checkStyle(accent.color, accent.bands ?? 4) : {}),
+        }}>
+          {accent.shape && <AccentGlyph shape={accent.shape} color={PAPER} size={30} />}
         </div>
       )}
       <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: "12px 14px 12px" }}>
@@ -94,11 +176,16 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
 }
 
 // 背表紙面(リング側=バインダーの左端)。厚みがごく薄いため、リング穴や
-// タイトル文字は載せない。アクセントカラーの単色だけで、棚に並んだ時に
-// そこだけが色の点として見える。
-function BinderSpineFace({ color }: { color: string }) {
+// タイトル文字は載せない。アクセントカラーの単色(または縞/市松)だけで、
+// 棚に並んだ時にそこだけが色の点として見える。
+function BinderSpineFace({ accent }: { accent: Accent }) {
   return (
-    <div style={{ position: "absolute", inset: 0, background: color }}>
+    <div style={{
+      position: "absolute", inset: 0,
+      background: accent.pattern ? undefined : accent.color,
+      ...(accent.pattern === "stripe" ? { backgroundImage: stripeGradient(accent.color, accent.bands ?? 3) } : {}),
+      ...(accent.pattern === "check" ? checkStyle(accent.color, accent.bands ?? 4) : {}),
+    }}>
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(255,255,255,0.16), rgba(0,0,0,0.1))" }} />
     </div>
   );
@@ -172,7 +259,7 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
   onClick?: () => void;
 }) {
   const resolvedDepth = depth ?? Math.max(5, Math.min(14, 6 + (count ?? 0) * 0.5));
-  const spineColor = accent?.color ?? color;
+  const spineAccent: Accent = accent ?? { color };
   return (
     <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 900, cursor: onClick ? "pointer" : "default" }}>
       <div style={{
@@ -195,7 +282,7 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
           position: "absolute", left: 0, top: 0, bottom: 0, width: resolvedDepth, overflow: "hidden",
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: `rotateY(-90deg) translateZ(${resolvedDepth / 2}px)`,
         }}>
-          <BinderSpineFace color={spineColor} />
+          <BinderSpineFace accent={spineAccent} />
         </div>
         {/* 無地の側面(右端=リングの反対側=開く側) */}
         <div style={{

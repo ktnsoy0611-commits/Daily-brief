@@ -3,7 +3,7 @@
 import { BookOpen, Film, MapPin, Music, Music2, Palette } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
-import { BinderCoverflowRow, GOAL_ACCENT, GOAL_BASE, type Accent, type BinderShelfItem } from "@/components/Binder";
+import { BinderCoverflowRow, dateAccent, GOAL_ACCENT, GOAL_BASE, MEDIA_ACCENT, placeAccent, type BinderShelfItem } from "@/components/Binder";
 import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
 import { GREEN, INK, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, inferMediaKind, shortDate } from "@/lib/helpers";
@@ -11,25 +11,10 @@ import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
 
-// バインダーの下地色は種類ごとに固定(場所=薄いグレー、メディア=グレー。
-// 目標はcomponents/Binder.tsxのGOAL_BASE=白を共用)。黒は強すぎるという
-// 指摘を受け、白〜グレーの範囲だけで種類を分けている。
+// 表紙は常に白なので、この値は背表紙の単色フォールバック(accent未指定時)
+// としてのみ使う。
 const PLACE_BASE = "#CFCCC3";
 const MEDIA_BASE = "#8C897F";
-
-// バインダー表紙の右上に小さく載せる「ワンポイント」の幾何学。図形+色
-// だけでジャンルを判別できるようにする(映画/音楽のような具象アイコンは
-// 使わない)。以前は彩度の高いミッドセンチュリー調の色を大きく載せていたが、
-// ミニマルでスタイリッシュな見た目にするため、くすんだ控えめな色に
-// 変更した。
-const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
-  movie: { shape: "square", color: "#5E6E88" },
-  exhibition: { shape: "triangle", color: "#897890" },
-  live: { shape: "circle", color: "#AD7860" },
-  book: { shape: "diamond", color: "#788A78" },
-  album: { shape: "square", color: "#B0A070" },
-};
-const PLACE_ACCENT: Accent = { shape: "circle", color: "#6C8480" };
 
 // タップしたバインダーの中身を見せる共通シート。カード自体が完結した
 // ビジュアルを持つので、白い台紙には包まずブラー背景の上に直接浮かせる。
@@ -197,7 +182,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   });
 
   const areaRowItems: BinderShelfItem[] = areaSections.map((sec) => ({
-    key: sec.area, color: PLACE_BASE, eyebrowLabel: "PLACE", accent: PLACE_ACCENT,
+    key: sec.area, color: PLACE_BASE, eyebrowLabel: "PLACE", accent: placeAccent(sec.area),
     title: sec.area, count: sec.keeps.length,
     footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.keeps.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
@@ -221,7 +206,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   }));
 
   const dayRowItems: BinderShelfItem[] = daySections.map((sec) => ({
-    key: sec.label, color: PLACE_BASE, title: sec.label, count: sec.entries.length,
+    key: sec.label, color: PLACE_BASE, eyebrowLabel: "DATE", accent: dateAccent(sec.label), title: sec.label, count: sec.entries.length,
     footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.entries.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
       title: sec.label,

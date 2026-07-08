@@ -359,20 +359,16 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
           </div>
           {/* 育成カード(テキスト入力を伴う)はドラッグを無効にしているため、
               代わりにボタンで決定させる必要がある。通常カードはスワイプだけで
-              完結するため、下部のSKIP/KEEPボタンは廃止し、控えめなヒントの
-              みに留める(実機Safariで、この固定ボタンぶんの高さがビューポート
-              計算とズレてカードが見切れる問題が繰り返し起きていたため)。 */}
-          {isGrowth ? (
+              完結するため、下部にボタンは置かない。以前はSKIP/KEEPの控えめな
+              ヒント文字を置いていたが、カードのドロップシャドウがその文字と
+              重なる位置で境目のように見えてしまっていたため撤廃した。 */}
+          {isGrowth && (
             <footer style={{ paddingBottom: 8, flexShrink: 0 }}>
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => commit("skip")} style={{ flex: 1, padding: "13px 0", background: "transparent", border: "1.5px solid rgba(23,23,21,0.3)", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: "#5A5A54", cursor: "pointer" }}>あとで</button>
                 <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: "13px 0", background: isMilestone ? RUST : GREEN, border: "none", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: PAPER, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
               </div>
             </footer>
-          ) : (
-            <div style={{ textAlign: "center", fontSize: 10, letterSpacing: "0.08em", color: "#B3B1A6", paddingBottom: 8, flexShrink: 0 }}>
-              ← SKIP　　KEEP →
-            </div>
           )}
         </div>
       ) : (

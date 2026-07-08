@@ -1,12 +1,9 @@
 "use client";
 
 // アプリ全体で「バインダー」という物体の見た目・動きを1つに揃えるための
-// 共通モデル。以前はRecordsTabの棚(平らな背表紙テクスチャをrotateYで
-// 軽く傾けるだけ)とExecuteTabの確定バインダー(独自のページめくり)が、
-// それぞれ別々に似て非なる見た目/動きを持っていた。ここでは
-//   - 穴+リング金具(HOLE_MASK/HoleRings/BinderRings): 全バインダー共通で2つ穴
-//     (これはExecuteTabのページめくりが使う「本物の紙」側の演出。棚に並ぶ
-//     バインダー自体の表紙は無地なので、こちらの穴の演出は持たない)
+// 共通モデル。RecordsTabの棚(BinderCoverflowRow)とGoalsTabのグリッドは
+// どちらもここで定義するBinder3Dを組み合わせて作られており、「同じ
+// バインダーという物体を、違う状況で見ている」という一貫性を保っている。
 //   - 表紙面(BinderCoverFace)と背表紙面(BinderSpineFace)・無地の側面
 //     (BinderEdgeFace): 無地の下地の上に、ミッドセンチュリーのポスターを
 //     思わせる大きな幾何学のワンポイント(AccentGlyph/BigAccentShape)だけで
@@ -18,15 +15,9 @@
 //     こちらを向くコンベア。中心より右は背表紙(リング側)、中心より左は
 //     無地の側面が見えるよう回転の符号を左右で反転させ、実際に棚を正面
 //     から覗き込んだ時のような、中心へ収束するパースを再現している。
-//   - BinderFlipDeck: 表紙が正面を向いた1冊を、スワイプでページ単位に
-//     めくって開いていく共通のリーダー。
-// という部品に分けて提供する。RecordsTabの棚とExecuteTabの確定画面は
-// どちらもこれらの部品を組み合わせて作られており、「同じバインダーという
-// 物体を、違う状況で見ている」という一貫性を保っている。
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import { INK, ITEM_CARD_ASPECT, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
-import { haptic } from "@/lib/helpers";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { INK, ITEM_CARD_ASPECT, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 
 // バインダー表紙・背表紙の見出し用、ミッドセンチュリーのポスターレタリング
 // を思わせる太いディスプレイ書体(Anton)。ラテン文字専用のフォントだが、
@@ -74,55 +65,6 @@ function BigAccentShape({ shape, color }: Accent) {
   if (shape === "square") return <div style={{ ...base, borderRadius: 3, transform: "translateX(-50%)" }} />;
   if (shape === "diamond") return <div style={{ ...base, width: "50%", borderRadius: 3, transform: "translateX(-50%) rotate(45deg)" }} />;
   return <div style={{ ...base, transform: "translateX(-50%)", clipPath: "polygon(50% 2%, 4% 96%, 96% 96%)" }} />;
-}
-
-// ---- 穴+リング金具(ExecuteTabのページめくりが使う、本物の紙の演出) -------
-
-export const HOLE_MASK = (() => {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 347"><rect width="260" height="347" fill="white"/><circle cx="15" cy="83" r="5.5" fill="black"/><circle cx="15" cy="264" r="5.5" fill="black"/></svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-})();
-export const holeMaskStyle: CSSProperties = {
-  WebkitMaskImage: HOLE_MASK, maskImage: HOLE_MASK,
-  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-  WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
-};
-
-// 穴の位置をHoleRings/BinderRingsで揃えるための共通定数。RING_Xは
-// BinderFlipDeckのヒンジ位置(実際のリングがある場所)としても再利用する。
-const RING_X = "5.8%";
-const RING_YS = ["24%", "76%"];
-
-// ページ側の穴の縁取り(ページと一緒に回転し、奥行きの陰影を出す)。
-export function HoleRings() {
-  return (
-    <>
-      {RING_YS.map((y) => (
-        <div key={y} style={{
-          position: "absolute", left: RING_X, top: y, transform: "translate(-50%, -50%)",
-          width: 12, height: 12, borderRadius: "50%", pointerEvents: "none", zIndex: 5,
-          boxShadow: "inset 0 1.5px 2px rgba(28,28,30,0.22), inset 0 -1px 1px rgba(255,255,255,0.4), 0 0 0 1px rgba(28,28,30,0.05)",
-        }} />
-      ))}
-    </>
-  );
-}
-
-// バインダーを綴じる実際のリング金具(静止していて、ページや表紙だけが
-// その周りを動く)。HoleRingsと全く同じ「窪んだ穴」の見た目に揃えることで、
-// ページの穴と地続きの1つのリング穴に見えるようにする。
-export function BinderRings() {
-  return (
-    <div style={{ position: "absolute", inset: 0, zIndex: 20, pointerEvents: "none" }}>
-      {RING_YS.map((y) => (
-        <div key={y} style={{
-          position: "absolute", left: RING_X, top: y, transform: "translate(-50%, -50%)",
-          width: 12, height: 12, borderRadius: "50%", background: "rgba(253,251,245,0.95)",
-          boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.35), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.28)",
-        }} />
-      ))}
-    </div>
-  );
 }
 
 // ---- 表紙面・背表紙面・無地の側面 ------------------------------------------
@@ -391,140 +333,6 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
         );
       })}
       <div style={{ flex: "0 0 auto", width: sidePad }} />
-    </div>
-  );
-}
-
-// ---- 開いてページをめくるリーダー(ExecuteTabなど) --------------------------
-
-// 表紙が正面を向いた状態(pageIndex=0が表紙ページ)から、スワイプでページを
-// 1枚ずつめくって開いていく共通のリーダー。ページの中身(表紙/本文/裏表紙)
-// はrenderPageに委ねるので、ExecuteTabのようにマーク済み/外すボタンを
-// 持つ本文ページを自由に組み込める。指の動きに1:1で追従し、離した位置に
-// 応じてめくり切る/元に戻るがスナップで決まる(ボタン操作は持たない)。
-export function BinderFlipDeck({ pageCount, renderPage, maxWidth = 260, aspect = ITEM_CARD_ASPECT, extraOverlay, disabled }: {
-  pageCount: number;
-  renderPage: (index: number) => ReactNode;
-  maxWidth?: number;
-  aspect?: string;
-  extraOverlay?: (pageIndex: number) => ReactNode;
-  disabled?: boolean;
-}) {
-  const [pageIndex, setPageIndex] = useState(0);
-  const [drag, setDrag] = useState<{ dir: "next" | "prev"; progress: number; settling: boolean; settleMs: number } | null>(null);
-  const animating = useRef(false);
-  const dragRef = useRef({ startX: 0, startY: 0, startTime: 0, active: false, dir: null as "next" | "prev" | null, width: maxWidth });
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setPageIndex((p) => Math.min(p, pageCount - 1));
-  }, [pageCount]);
-
-  // 素早く軽くはじいた場合、進捗(progress)がまだ小さいうちにコミットが
-  // 決まる。残りの角度に比例して所要時間を決めることで、どの進捗から
-  // 離しても体感速度が揃うようにする(以前は固定時間で早回しがガクついた)。
-  const settle = (dir: "next" | "prev", commit: boolean, fromProgress: number) => {
-    animating.current = true;
-    haptic(commit ? 10 : 4);
-    const remaining = commit ? 1 - fromProgress : fromProgress;
-    const ms = Math.round(150 + remaining * 220);
-    setDrag({ dir, progress: commit ? 1 : 0, settling: true, settleMs: ms });
-    setTimeout(() => {
-      if (commit) setPageIndex((p) => (dir === "next" ? p + 1 : p - 1));
-      setDrag(null);
-      animating.current = false;
-    }, ms);
-  };
-
-  const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (disabled || animating.current) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startTime: performance.now(), active: true, dir: null, width: cardRef.current?.offsetWidth ?? maxWidth };
-  };
-  const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-    if (!d.active) return;
-    const dx = e.clientX - d.startX;
-    if (!d.dir) {
-      const dy = e.clientY - d.startY;
-      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-      if (Math.abs(dy) > Math.abs(dx)) { d.active = false; return; }
-      const wantNext = dx < 0;
-      const boundary = wantNext ? pageIndex >= pageCount - 1 : pageIndex <= 0;
-      if (boundary) { d.active = false; return; }
-      d.dir = wantNext ? "next" : "prev";
-    }
-    const progress = Math.min(1, Math.abs(dx) / (d.width * 0.55));
-    setDrag({ dir: d.dir, progress, settling: false, settleMs: 0 });
-  };
-  const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const d = dragRef.current;
-    if (!d.active || !d.dir) { d.active = false; return; }
-    d.active = false;
-    const dx = e.clientX - d.startX;
-    const dt = Math.max(1, performance.now() - d.startTime);
-    const velocity = Math.abs(dx) / dt;
-    const progress = Math.min(1, Math.abs(dx) / (d.width * 0.55));
-    settle(d.dir, progress > 0.24 || velocity > 0.5, progress);
-  };
-  const onCancel = () => {
-    const d = dragRef.current;
-    if (d.active && d.dir) settle(d.dir, false, drag?.progress ?? 0);
-    d.active = false;
-  };
-
-  const baseIndex = drag ? (drag.dir === "next" ? pageIndex + 1 : pageIndex) : pageIndex;
-  const leafIndex = drag ? (drag.dir === "next" ? pageIndex : pageIndex - 1) : null;
-  const progress = drag ? drag.progress : 0;
-  const swing = Math.min(progress, 1) * Math.PI;
-  const dragAngle = !drag ? 0 : drag.dir === "next" ? -180 * progress : -180 * (1 - progress);
-  const liftZ = 44 * Math.sin(swing);
-  // ヒンジ(実際のリング位置)からどれだけ折り目が回転したかを0〜1で表す指標。
-  // 表紙側(0〜90度)と裏側(90〜180度)のどちらでも、ヒンジに近いほど影が
-  // 濃くなるようにするための山型カーブ。
-  const hingeShade = Math.sin(swing);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
-      <div
-        ref={cardRef}
-        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel}
-        style={{
-          position: "relative", width: "100%", maxWidth, aspectRatio: aspect, perspective: 700, perspectiveOrigin: `${RING_X} 50%`,
-          touchAction: "pan-y", filter: "drop-shadow(0 12px 26px rgba(28,28,30,0.2))",
-        }}
-      >
-        {/* 一番下: 積んだページの奥にわずかに覗く、裏表紙の裏側。ページの
-            束が実際に何か(空ではない台)の上に乗っているという奥行きを
-            出すための、常に一番奥に置く暗い面。 */}
-        <div style={{ position: "absolute", left: 7, right: -7, top: 6, bottom: -7, background: "#17191A", boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }} />
-        {[10, 5].map((inset, i) => (
-          <div key={inset} style={{ position: "absolute", right: -inset * 0.6, top: 7 + i * 2, bottom: 7 + i * 2, width: inset, background: "#EDE7D6", boxShadow: "1px 0 2px rgba(28,28,30,0.1)" }} />
-        ))}
-        {renderPage(baseIndex)}
-        {extraOverlay?.(pageIndex)}
-        {drag && leafIndex !== null && leafIndex >= 0 && leafIndex < pageCount && (
-          <div style={{
-            position: "absolute", inset: 0, transformStyle: "preserve-3d", transformOrigin: `${RING_X} 50%`,
-            transform: `rotateY(${dragAngle}deg) translateZ(${liftZ}px) scale(${1 + 0.045 * Math.sin(Math.min(progress, 1) * Math.PI)})`,
-            transition: drag.settling ? `transform ${drag.settleMs}ms cubic-bezier(0.16,1,0.3,1)` : "none",
-            WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
-            filter: `drop-shadow(0 ${10 + liftZ * 0.3}px ${16 + liftZ * 0.4}px rgba(28,28,30,${0.16 + hingeShade * 0.14}))`,
-          }}>
-            {renderPage(leafIndex)}
-            {/* 折り目の陰影: ヒンジ(左端)に近いほど濃く落ちる影で、紙が
-                実際に折れ曲がっている質感を足す。 */}
-            <div style={{
-              position: "absolute", inset: 0, pointerEvents: "none",
-              background: `linear-gradient(90deg, rgba(0,0,0,${0.32 * hingeShade}) 0%, rgba(0,0,0,0) 26%)`,
-            }} />
-          </div>
-        )}
-        <BinderRings />
-      </div>
-      <div style={{ marginTop: 14, padding: "5px 13px", borderRadius: 999, background: PAPER, boxShadow: SOFT_SHADOW, fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: "#8A8778" }}>
-        {pageIndex + 1} / {pageCount}
-      </div>
     </div>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
 import { BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
-import { useEffect, useState } from "react";
-import { BinderCoverFace, BinderFlipDeck, HoleRings, holeMaskStyle } from "@/components/Binder";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
-import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
+import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
@@ -90,7 +89,7 @@ function BundleCard({ label, tagline, items, onPick }: {
           <div key={it.id} style={{ fontSize: 11, color: "#5A5A54", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>・{it.title}</div>
         ))}
       </div>
-      <button onClick={onPick} style={{ width: "100%", padding: "10px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11.5, fontWeight: 700 }}>これにする</button>
+      <button onClick={onPick} style={{ width: "100%", padding: "10px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11.5, fontWeight: 700 }}>候補に追加</button>
     </div>
   );
 }
@@ -233,183 +232,227 @@ interface ExecItem {
   done?: boolean;
 }
 
-// 穴+リング金具(HOLE_MASK/holeMaskStyle/HoleRings/BinderRings)はアプリ全体の
-// バインダー共通モデル(components/Binder.tsx)に統一したので、ここではimportして使う。
+// 開いた状態のバインダーを、一番上のカードの背後にだけ置く背景装飾。
+// 背表紙はカードの下に隠れて見えず、表表紙だけが左手前へ開いてきた
+// ような角度で覗く(perspective+rotateYで実際に奥行きのある紙として
+// 傾ける)。カードよりひとまわり大きく、四隅からわずかにはみ出すことで
+// 「カードはこのバインダーに挟まっている」という関係性を伝える。
+// 登録アニメーションの後半でこの表紙が閉じる(closed=true)。
+function OpenBinderBackdrop({ closed }: { closed: boolean }) {
+  return (
+    <div style={{ position: "absolute", left: "-15%", right: "-4%", top: "-6%", bottom: "-5%", perspective: 500, zIndex: 0, pointerEvents: "none" }}>
+      <div style={{
+        position: "absolute", inset: 0, background: INK, borderRadius: 6, boxShadow: SOFT_SHADOW_LG,
+        transformOrigin: "6% 50%", transformStyle: "preserve-3d",
+        transform: closed ? "rotateY(0deg) rotateZ(0deg)" : "rotateY(-36deg) rotateZ(-3deg)",
+        transition: "transform 0.34s cubic-bezier(0.4,0,0.2,1)",
+      }}>
+        {/* 表紙の内側の面であることを示す、わずかに明るいハイライト */}
+        <div style={{ position: "absolute", inset: 0, borderRadius: 6, background: "linear-gradient(100deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 30%)" }} />
+        {/* リング穴のヒント(左端。実際のリングはカードの下に隠れる背表紙側にある) */}
+        {["30%", "70%"].map((y) => (
+          <div key={y} style={{ position: "absolute", left: "6%", top: y, transform: "translate(-50%, -50%)", width: 9, height: 9, borderRadius: "50%", background: "rgba(0,0,0,0.35)", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.4)" }} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-// バインダーの1ページ。四角い紙のページ(左端に穴)と、そこにリングで
-// 挟まれた1枚の角丸カード(他タブのアイテムカードと全く同じ意匠)を分けて
-// 描く。以前はページ自体が写真+文字を持つ独自のカードになっており、
-// 「四角いバインダーに角丸のカードが挟まっている」という実物のリング
-// バインダーらしさが出ていなかった。
-function BookPage({ item, index, total, falling, onMarkDone, onDrop }: {
-  item: ExecItem; index: number; total: number; falling?: boolean;
+// 実行タブの確定後の1枚のカード。他のタブのアイテムカードと同じ角丸の
+// 意匠を、通常より大きく表示する。右にスワイプすると背後に「外す」の
+// 下地が現れ、閾値を超えて離すとカードが右へ飛んでリストから外れる
+// (以前のX ボタンに代わる操作)。行った/観たは従来通り右上のチェックで
+// 個別にマークでき、外すとは独立した状態として残る。
+const CONFIRMED_REMOVE_THRESHOLD = 96;
+
+function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove, disabled }: {
+  item: ExecItem;
+  elRef: (el: HTMLDivElement | null) => void;
+  stackTransform?: string;
+  hide?: boolean;
   onMarkDone: () => void;
-  onDrop: () => void;
+  onRemove: () => void;
+  disabled?: boolean;
 }) {
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const dragRef = useRef({ startX: 0, startY: 0, active: false, locked: false });
   const IconComp = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
   const fill = item.color ?? "#5A5A54";
+
+  const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (disabled || removing) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, active: true, locked: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.locked) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dy) > Math.abs(dx)) { d.active = false; return; } // 縦方向はリストのスクロールに譲る
+      d.locked = true;
+      setDragging(true);
+    }
+    setDragX(Math.max(0, dx));
+  };
+  const finish = () => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    d.active = false;
+    setDragging(false);
+    if (dragX > CONFIRMED_REMOVE_THRESHOLD) {
+      haptic(10);
+      setRemoving(true);
+      setTimeout(onRemove, 240);
+    } else {
+      setDragX(0);
+    }
+  };
+
+  const transform = stackTransform ?? (removing ? "translateX(160%) rotate(10deg)" : `translateX(${dragX}px) rotate(${dragX * 0.045}deg)`);
+  const opacity = hide || removing ? 0 : 1;
+  const transition = stackTransform ? "transform 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease" : dragging ? "none" : "transform 0.26s cubic-bezier(0.32,0.72,0,1), opacity 0.2s ease";
+
   return (
-    <div style={{
-      position: "absolute", inset: 0,
-      transform: falling ? "translateY(140%) rotate(10deg)" : "translateY(0) rotate(0deg)",
-      opacity: falling ? 0 : 1,
-      transition: falling ? "transform 0.42s cubic-bezier(0.55,0,1,0.45), opacity 0.42s ease-in" : "none",
-    }}>
-      {/* ページ本体: バインダーと同じ四角い紙、左端に穴 */}
-      <div style={{ position: "absolute", inset: 0, background: "#FBF8EF", boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle }} />
-      {/* リングに挟まれた、角丸1枚のカード */}
+    <div ref={elRef} style={{ position: "relative", width: "100%", aspectRatio: ITEM_CARD_ASPECT }}>
+      {/* 右にスワイプすると下から現れる「外す」の下地 */}
       <div style={{
-        position: "absolute", left: 30, right: 9, top: 9, bottom: 9, borderRadius: 16, overflow: "hidden",
-        boxShadow: SOFT_SHADOW_LG, display: "flex", flexDirection: "column",
-        background: item.images?.[0] ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)`,
+        position: "absolute", inset: 0, borderRadius: 20, background: RUST,
+        display: "flex", alignItems: "center", paddingLeft: 22,
+        opacity: Math.min(dragX / CONFIRMED_REMOVE_THRESHOLD, 1),
       }}>
-        <div style={{ position: "relative", flex: "0 0 46%", overflow: "hidden" }}>
+        <span style={{ color: PAPER, fontFamily: SANS, fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 6 }}>
+          <X size={16} strokeWidth={3} /> 外す
+        </span>
+      </div>
+      <div
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={finish} onPointerCancel={finish}
+        style={{
+          position: "absolute", inset: 0, borderRadius: 20, overflow: "hidden", boxShadow: SOFT_SHADOW_LG,
+          display: "flex", flexDirection: "column", touchAction: "pan-y", zIndex: 1,
+          background: item.images?.[0] ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)`,
+          transform, opacity, transition,
+        }}
+      >
+        <div style={{ position: "relative", flex: "0 0 52%", overflow: "hidden" }}>
           {item.images?.[0] ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={img(item.images[0], 500, 460)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            <img src={img(item.images[0], 560, 520)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           ) : IconComp ? (
             <div style={{ position: "absolute", bottom: "-18%", right: "-10%", width: "56%", aspectRatio: "1 / 1", transform: "rotate(-14deg)", opacity: 0.16 }}>
               <IconComp size="100%" strokeWidth={1} color="#fff" />
             </div>
           ) : null}
+          {item.done && <div style={{ position: "absolute", inset: 0, background: "rgba(28,28,30,0.45)" }} />}
         </div>
-        <div style={{ flex: 1, padding: "10px 13px 11px", display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700 }}>{item.categoryLabel}{item.area && item.area !== "—" ? ` ・ ${item.area}` : ""}</div>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 13.5, lineHeight: 1.28, marginTop: 5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</div>
+        <div style={{ flex: 1, padding: "14px 16px 16px", display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ fontSize: 9.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700 }}>{item.categoryLabel}{item.area && item.area !== "—" ? ` ・ ${item.area}` : ""}</div>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16.5, lineHeight: 1.32, marginTop: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</div>
           {item.meta && item.meta.length > 0 && (
-            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
-              {item.meta.slice(0, 2).map((m, i) => <div key={i} style={{ fontSize: 9.5, color: "#5A5A54", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m}</div>)}
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>
+              {item.meta.slice(0, 2).map((m, i) => <div key={i} style={{ fontSize: 10.5, color: "#5A5A54", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m}</div>)}
             </div>
           )}
-          <div style={{ marginTop: "auto", fontSize: 8, color: "#B7B4A6", letterSpacing: "0.06em" }}>{index + 1} / {total}</div>
         </div>
-        <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 5, zIndex: 6 }}>
-          <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
-            width: 25, height: 25, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
-            background: item.done ? GREEN : "rgba(28,28,30,0.08)", color: item.done ? "#fff" : "#8A8A82",
-            display: "flex", alignItems: "center", justifyContent: "center", boxShadow: item.done ? "0 3px 8px rgba(46,154,92,0.4)" : "none",
-          }}><Check size={12} strokeWidth={3} /></button>
-          <button onClick={(e) => { e.stopPropagation(); onDrop(); }} aria-label={item.done ? "外す" : "行ってない"} style={{
-            width: 25, height: 25, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
-            background: "rgba(193,90,52,0.12)", color: RUST, display: "flex", alignItems: "center", justifyContent: "center",
-          }}><X size={12} strokeWidth={3} /></button>
-        </div>
+        <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
+          position: "absolute", top: 12, right: 12, width: 34, height: 34, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
+          background: item.done ? GREEN : "rgba(255,255,255,0.92)", color: item.done ? "#fff" : "#3A3A36",
+          display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 8px rgba(28,28,30,0.28)",
+        }}><Check size={16} strokeWidth={3} /></button>
       </div>
-      <HoleRings />
     </div>
   );
 }
 
-// 全ページを捲り終えた先にある裏表紙。ここに来て初めて「登録」が現れる、
-// 本を閉じる最後の1ページという位置づけ。
-function BackCoverPage({ dateLabel, count, onRegister }: { dateLabel: string; count: number; onRegister: () => void }) {
-  return (
-    <div style={{ position: "absolute", inset: 0 }}>
-      <div style={{ position: "absolute", inset: 0, background: "#FBF8EF", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle }}>
-        <div style={{ fontSize: 8, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, marginLeft: 30 }}>{dateLabel}</div>
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 13, margin: "6px 0 16px", textAlign: "center", padding: "0 26px" }}>{count}件、今日はここまで</div>
-        <button onClick={(e) => { e.stopPropagation(); onRegister(); }} aria-label="登録" style={{
-          width: 52, height: 52, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
-          background: INK, color: PAPER, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
-          boxShadow: "0 8px 18px rgba(28,28,30,0.28)",
-        }}>
-          <Check size={16} strokeWidth={2.5} />
-          <span style={{ fontSize: 7.5, fontWeight: 700, letterSpacing: "0.06em" }}>登録</span>
-        </button>
-      </div>
-      <HoleRings />
-    </div>
-  );
-}
+// 確定後の画面全体。以前はページをめくる本の形だったが、選んだカードが
+// 縦一列に大きく並び、右スワイプで外していくシンプルなリストに変更した。
+// 一番上のカードの下にだけ「開いたバインダー」を覗かせ、まだこのリストが
+// バインダーに挟まっている途中である、という関係を伝える。登録を押すと
+// (1)全カードが先頭カードの位置まで迫り上がってスタックし、
+// (2)バインダーが閉じ、(3)閉じたバインダーごと下へ落ちる、という
+// 3段階のアニメーションのあとに実際の登録処理を呼ぶ。
+const CONFIRMED_MAX_WIDTH = 380;
+const STACK_MS = 420;
+const CLOSE_MS = 320;
+const FALL_MS = 420;
 
-// バインダー表紙(1ページ目)。棚(Binder3D/BinderCoverflowRow)で見ていた
-// のと同じBinderCoverFaceをそのままページとして差し込むことで、確定直後の
-// 初期状態が「表紙がこちらを向いて置いてある」見た目になる(以前は独自の
-// ルーズリーフ1枚目がいきなり見えていた)。スワイプすると共通の
-// BinderFlipDeckがこの表紙をめくって中身のページへ進む。
-function FrontCoverPage({ dateLabel, count }: { dateLabel: string; count: number }) {
-  return (
-    <div style={{ position: "absolute", inset: 0 }}>
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden", boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle }}>
-        <BinderCoverFace
-          color={INK} eyebrowLabel={dateLabel} title="今日の行き先"
-          footer={<div style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", fontWeight: 700, textAlign: "center", letterSpacing: "0.04em" }}>{count}件・スワイプで開く</div>}
-        />
-      </div>
-      <HoleRings />
-    </div>
-  );
-}
-
-// バインダー本体。他のタブと同じアイテムカード比率(3:4)のまま、
-// 通常のカードよりふたまわりほど大きいサイズで、タブの中央にちょこんと
-// 置く。ページめくりの機構自体はcomponents/Binder.tsxのBinderFlipDeckを
-// 使い、「行ってない」で外した時にページが下へ落ちる演出と、「登録」で
-// バインダーごと下に落ちて記録タブへ向かう演出だけをこの画面固有の
-// 上乗せとして持たせている。
-const BINDER_MAX_WIDTH = 260;
-
-function BinderBook({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
+function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   items: ExecItem[];
   dateLabel: string;
   onMarkDone: (item: ExecItem) => void;
   onDrop: (item: ExecItem) => void;
   onRegister: () => void;
 }) {
-  const [dropping, setDropping] = useState<{ item: ExecItem; contentIndex: number; fallen: boolean } | null>(null);
-  const [registering, setRegistering] = useState(false);
-  const pageCount = items.length + 2; // 表紙 + 本文 + 裏表紙
-
-  // 「行ってない」で外すと、そのページが下に落ちて消える。落ちている間
-  // 下の層には次のページ(または裏表紙)をあらかじめ覗かせておき、
-  // 落ち切った時に自然に切り替わって見えるようにする。まず静止状態で
-  // マウントしてから次のフレームで「落下後」の見た目に切り替えることで、
-  // トランジションが確実に発火するようにしている(フリップ演出と同じ手法)。
-  const handleDrop = (item: ExecItem) => {
-    if (dropping) return;
-    haptic(12);
-    const contentIndex = items.findIndex((x) => x.id === item.id);
-    setDropping({ item, contentIndex, fallen: false });
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      setDropping((d) => (d ? { ...d, fallen: true } : d));
-    }));
-    setTimeout(() => {
-      onDrop(item);
-      setDropping(null);
-    }, 420);
-  };
+  const [registerPhase, setRegisterPhase] = useState<null | "stack" | "close" | "fall">(null);
+  const [stackOffsets, setStackOffsets] = useState<Record<string, number>>({});
+  const cardEls = useRef<Record<string, HTMLDivElement | null>>({});
 
   const handleRegister = () => {
-    if (registering) return;
-    haptic(18);
-    setRegistering(true);
-    setTimeout(onRegister, 420);
+    if (registerPhase || items.length === 0) return;
+    haptic(16);
+    const topEl = items[0] ? cardEls.current[items[0].id] : null;
+    const topY = topEl?.getBoundingClientRect().top ?? 0;
+    const offsets: Record<string, number> = {};
+    items.forEach((it) => {
+      const el = cardEls.current[it.id];
+      offsets[it.id] = el ? topY - el.getBoundingClientRect().top : 0;
+    });
+    setStackOffsets(offsets);
+    setRegisterPhase("stack");
+    setTimeout(() => setRegisterPhase("close"), STACK_MS);
+    setTimeout(() => setRegisterPhase("fall"), STACK_MS + CLOSE_MS);
+    setTimeout(onRegister, STACK_MS + CLOSE_MS + FALL_MS);
   };
 
-  const renderPage = (idx: number) => {
-    if (idx === 0) return <FrontCoverPage dateLabel={dateLabel} count={items.length} />;
-    if (idx === items.length + 1) return <BackCoverPage dateLabel={dateLabel} count={items.length} onRegister={handleRegister} />;
-    const it = items[idx - 1];
-    if (!it) return null;
-    return <BookPage item={it} index={idx - 1} total={items.length} onMarkDone={() => onMarkDone(it)} onDrop={() => handleDrop(it)} />;
-  };
+  const stacking = registerPhase !== null;
+  const closed = registerPhase === "close" || registerPhase === "fall";
+  const falling = registerPhase === "fall";
 
   return (
-    <div style={{
-      flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      transform: registering ? "translateY(70%)" : "translateY(0)", opacity: registering ? 0 : 1,
-      transition: registering ? "transform 0.42s cubic-bezier(0.5,0,1,0.5), opacity 0.36s ease-in" : "none",
-    }}>
-      <BinderFlipDeck
-        pageCount={pageCount}
-        maxWidth={BINDER_MAX_WIDTH}
-        disabled={registering || !!dropping}
-        renderPage={renderPage}
-        extraOverlay={() => dropping && (
-          <BookPage item={dropping.item} index={dropping.contentIndex} total={items.length} falling={dropping.fallen} onMarkDone={() => {}} onDrop={() => {}} />
-        )}
-      />
-    </div>
+    <>
+      <div
+        className="no-scrollbar"
+        style={{
+          flex: 1, minHeight: 0, overflowY: falling ? "hidden" : "auto", WebkitOverflowScrolling: "touch",
+          ...(falling ? { transform: "translateY(60%)", opacity: 0, transition: `transform ${FALL_MS}ms cubic-bezier(0.55,0,1,0.45), opacity ${FALL_MS - 40}ms ease-in` } : {}),
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, margin: "0 auto", padding: `6px 16px calc(${NAV_OFFSET} + 92px)` }}>
+          <div style={{ fontSize: 10, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "8px 2px 16px" }}>{dateLabel} ・ {items.length}件</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {items.map((it, i) => (
+              <div key={it.id} style={{ position: "relative" }}>
+                {i === 0 && <OpenBinderBackdrop closed={closed} />}
+                <ConfirmedCard
+                  item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
+                  stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px) scale(${i === 0 ? 1 : 0.92})` : undefined}
+                  hide={closed}
+                  disabled={stacking}
+                  onMarkDone={() => onMarkDone(it)}
+                  onRemove={() => onDrop(it)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {!stacking && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+          <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, padding: `0 16px calc(${NAV_OFFSET} + 8px)`, pointerEvents: "auto" }}>
+            <button onClick={handleRegister} style={{
+              width: "100%", padding: "15px 0", background: INK, color: PAPER, border: "none", borderRadius: 999,
+              cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: SOFT_SHADOW_LG,
+            }}>
+              登録する
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -466,6 +509,14 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
   const toggleDraftKeep = (item: Keep) => {
     haptic(8);
     setDraftSelection((prev) => prev.includes(item.id) ? prev.filter((x) => x !== item.id) : [...prev, item.id]);
+  };
+  // 「今週のおすすめ」の「これにする」は、以前はそのまま確定してバインダー
+  // 画面へ遷移していたが、他の選び方(ピン/カードのタップ)と同じく、
+  // まず下書きの選択に加えるだけにする(ユーザーがまだ他のKeepも
+  // 追加/除外してから自分のタイミングで確定できるようにするため)。
+  const pickBundle = (ids: string[]) => {
+    haptic(10);
+    setDraftSelection((prev) => Array.from(new Set([...prev, ...ids])));
   };
   const toggleDraftMedia = (item: MediaRecord) => {
     haptic(8);
@@ -653,7 +704,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
           <MapPlanner
             pool={pool} mediaPool={mediaPool} draftSelection={draftSelection} draftMediaSelection={draftMediaSelection}
             onOpenPin={setPinItem} onToggleKeep={toggleDraftKeep} onToggleMedia={toggleDraftMedia}
-            onPickBundle={(ids) => confirmMagazine(ids, [])} onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
+            onPickBundle={pickBundle} onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
           />
           {/* このバーはposition:fixedでタブバー(AppShellのnav)の真上に浮かせる。
               以前は写真の束と確定ボタンを縦2段+背景の下地グラデーションで
@@ -677,15 +728,15 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
           )}
         </>
       ) : magazine && (
-        // 確定後は他のタブと同じ普通の構成(ヘッダー+地の色の背景)のまま、
-        // タブの中央にバインダーが1つちょこんと乗るだけのミニマルな見た目。
+        // 確定後は選んだカードが縦一列に大きく並ぶリストになり、その上に
+        // 開いたバインダーが覗く。「選び直す」で地図に戻れるのは以前と同じ。
         <>
           <button onClick={() => {
             setDraftSelection(magazine.itemIds.filter((r) => r.type === "keep").map((r) => r.id));
             setDraftMediaSelection(magazine.itemIds.filter((r) => r.type === "media").map((r) => r.id));
             setMapMode(true);
           }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← 選び直す</button>
-          <BinderBook
+          <ConfirmedStack
             items={magItems}
             dateLabel={dayInfo(magazine.decidedAt).label}
             onMarkDone={(item) => markDoneInMagazine(item.id, item.type)}

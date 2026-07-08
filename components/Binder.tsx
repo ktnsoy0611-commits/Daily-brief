@@ -170,6 +170,19 @@ function BinderEdgeFace({ color }: { color: string }) {
   );
 }
 
+// 裏表紙(表紙面の真裏)。実物のバインダーと同じく無地で、印字は持たない。
+// 棚(BinderCoverflowRow)で中心より右側の本を、90度(背表紙の正面)より
+// 少しだけ回した時にわずかに覗かせることで、実際に棚を正面から見た時の
+// 「右にある本ほど裏表紙が見える」というパースを再現するために使う。
+function BinderBackCoverFace({ color }: { color: string }) {
+  const light = isLightTone(color);
+  return (
+    <div style={{ position: "absolute", inset: 0, background: color }}>
+      <div style={{ position: "absolute", inset: 0, boxShadow: `inset 0 0 0 1px ${light ? "rgba(28,28,30,0.1)" : "rgba(255,255,255,0.08)"}` }} />
+    </div>
+  );
+}
+
 // ---- 3D箱としてのバインダー ------------------------------------------------
 
 // rotateYが0(表紙が正面)から離れるほど、遠いものは側面側の角度へ寄せる。
@@ -182,13 +195,12 @@ export function binderTiltAngle(d: number, rest = 80, focused = 0) {
 
 // リングバインダーの実物写真を参考に、角丸を廃止して四角い箱にした
 // (角丸カードは他の「カード」で使う語彙なので、バインダーはあえて
-// 直角にして両者を視覚的に区別する)。表紙・背表紙(リング側)・無地の
-// 側面(反対側)の3面を持つ箱として組み立てる。背表紙面はrotateY(-90deg)
-// で構成しているため、外側のrotateYが常にプラスの時だけ正しく正面を
-// 向く(backface-visibilityの都合上、マイナスだと裏返って消えてしまう)。
-// 棚(BinderCoverflowRow)側は左右どちらの隣に対しても常にプラスの角度
-// だけを渡すことで、左右どちら側にいても常に背表紙(ラベルが読める面)
-// が見えるようにしている。
+// 直角にして両者を視覚的に区別する)。表紙・背表紙(リング側)・裏表紙・
+// 無地の側面(開く側)の4面を持つ箱として組み立てる。rotateYが0度→90度→
+// 180度→270度(=-90度)と回るにつれ、表紙→背表紙→裏表紙→無地の側面→
+// (元の表紙に戻る)の順に正面を向く(同じ軸のrotateYは足し算で合成
+// されるため、各面のローカル回転+外側のrotateYの合計が-90〜90度の
+// 範囲に入っている時だけbackface-visibilityにより正しく見える)。
 // 厚み(depth)は明示的に渡さなければ挟んでいる件数(count)から自動的に
 // 太く/細くなり、「中身が多いほど分厚く見える」という物理的な説得力を
 // 持たせている。scaleは棚(BinderCoverflowRow)で中央に来たものだけを
@@ -231,12 +243,19 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
         }}>
           <BinderSpineFace color={color} title={spineTitle ?? title} count={count} accent={accent} />
         </div>
-        {/* 無地の側面(右端=リングの反対側) */}
+        {/* 無地の側面(右端=リングの反対側=開く側) */}
         <div style={{
           position: "absolute", right: 0, top: 0, bottom: 0, width: resolvedDepth, overflow: "hidden",
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: "rotateY(90deg) translateZ(" + resolvedDepth / 2 + "px)",
         }}>
           <BinderEdgeFace color={color} />
+        </div>
+        {/* 裏表紙(表紙の真裏) */}
+        <div style={{
+          position: "absolute", inset: 0, overflow: "hidden",
+          backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: `rotateY(180deg) translateZ(${resolvedDepth / 2}px)`,
+        }}>
+          <BinderBackCoverFace color={color} />
         </div>
       </div>
     </div>
@@ -252,15 +271,17 @@ export interface BinderShelfItem extends CoverContent {
   onOpen: () => void;
 }
 
-const ROW_FOCUS_SCALE = 0.12;
-// フォーカス中の1冊(表紙が正面)の両脇にいる本を、ストックタブの
-// CardStackと同じ考え方で押し広げる: 中心からの距離1につきこの量だけ
-// 押し広げていく(距離が大きいほど、より遠くへ)。これにより、実寸で
-// 表示されるフォーカス中の表紙の裏に、隣の本が重なって隠れることが
-// なくなる。フォーカス中の本自身(d=0)は押し広げない。あまり遠い
-// アイテムまで際限なく広げ続けると不自然なので、距離4分でキャップする。
-const FOCUS_SPREAD_STEP = 30;
-const FOCUS_SPREAD_MAX_D = 4;
+// フォーカスした本を手前に迫り出させる量。以前は12%も拡大しており
+// 「手前にスライドしてくる」感じが強すぎたため、控えめな値に絞った。
+const ROW_FOCUS_SCALE = 0.04;
+
+// 中心より右側の本を回す静止角。90度(背表紙が真正面)より少しだけ多く
+// 回すことで、裏表紙がわずかに覗く(実際の棚を正面から見た時、右にある
+// 本ほど裏表紙が見えるのと同じ理屈)。
+const REST_RIGHT = 98;
+// 中心より左側の本を回す静止角。90度より少しだけ小さく留めることで、
+// 表紙がわずかに多めに覗く(左にある本ほど表紙が見えるのと同じ理屈)。
+const REST_LEFT = 70;
 
 // ネイティブの横スクロール+スナップを使うことで、「タップ」と「スワイプで
 // 送る」の判定をブラウザの標準挙動に任せられる。スクロール位置から各
@@ -271,9 +292,13 @@ const FOCUS_SPREAD_MAX_D = 4;
 // のはほぼ背表紙の薄い幅だけなので、ピッチ自体はその薄さに合わせて詰める。
 // DOM上の各スロットはpitch幅の空箱にし、その中央にitemWidth幅のBinder3Dを
 // 絶対配置で重ねて迫り出させることで、「表紙は大きいのに本棚としては
-// ぎっしり詰まっている」という実物の本棚に近い密度を再現している
-// (フォーカスした1冊がscaleでさらに一回り迫り出し、FOCUS_SPREAD_STEPで
-// 両隣以遠との重なりを避ける)。
+// ぎっしり詰まっている」という実物の本棚に近い密度を再現している。
+// フォーカス中の本の両隣より先(|d|>=1)は、フォーカス中の表紙の実際の
+// 右端/左端のすぐ外側から始まる固定の隙間(GAP)だけシフトし、そこから
+// 先は元のpitchのまま詰めて並べる(距離に比例して隙間が広がり続ける
+// わけではない)。GAPはフォーカス中の表紙の半幅(itemWidth×拡大率÷2)を
+// 基準に、スロット自体の半幅を差し引いて、常に表紙の外側から棚の隣が
+// 始まるように計算している。
 //
 // スロット自体にもitemHeight相当の高さを明示している。以前はBinder3D側の
 // scaleTransformが「見た目だけ」拡大縮小するもので、レイアウト上の高さには
@@ -317,6 +342,11 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const [aspNum, aspDen] = aspect.split("/").map((s) => parseFloat(s.trim()));
   const itemHeight = itemWidth * (aspDen / aspNum);
   const topPad = Math.ceil(itemHeight * ROW_FOCUS_SCALE) + 22;
+  // フォーカス中の表紙の実際の半幅(拡大込み)から、隣のスロット自身の
+  // 半幅を差し引き、余裕(隙間+背表紙の最大想定幅)を足した値。これだけ
+  // 両隣をシフトすれば、表紙の外側ぴったりから背表紙の列が始まる。
+  const coverHalfWidth = (itemWidth * (1 + ROW_FOCUS_SCALE)) / 2;
+  const gap = Math.max(0, coverHalfWidth - pitch / 2) + 26;
 
   return (
     <div
@@ -326,12 +356,17 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       <div style={{ flex: "0 0 auto", width: sidePad }} />
       {items.map((it, i) => {
         const d = i - centerRef.current;
-        // 常にプラスの角度だけを使う: 左右どちらの隣も常に背表紙
-        // (リング側、ラベルが読める面)が正面を向く。
-        const angle = binderTiltAngle(Math.abs(d));
+        // 左右どちらの隣も背表紙(リング側、ラベルが読める面)が正面を
+        // 向くのは共通だが、静止角は左右で非対称にしている: 右側は90度を
+        // 少し超えて裏表紙がわずかに覗き、左側は90度に届く前で止めて
+        // 表紙がわずかに多めに覗く。実際に棚を正面から見た時の収束する
+        // パースを再現している。
+        const angle = d >= 0 ? binderTiltAngle(d, REST_RIGHT) : binderTiltAngle(-d, REST_LEFT);
         const focus = Math.max(0, 1 - Math.min(1, Math.abs(d)));
         const scale = 1 + focus * ROW_FOCUS_SCALE;
-        const spread = FOCUS_SPREAD_STEP * Math.max(-FOCUS_SPREAD_MAX_D, Math.min(FOCUS_SPREAD_MAX_D, d));
+        // フォーカス中(d=0)は0、|d|>=1では固定のgapだけシフトし、その間は
+        // 滑らかに補間する。
+        const spread = gap * Math.max(-1, Math.min(1, d));
         return (
           <div key={it.key} style={{ position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center", zIndex: Math.round(focus * 100) }}>
             <div style={{ position: "absolute", left: "50%", bottom: 0, width: itemWidth, transform: `translateX(calc(-50% + ${spread}px))` }}>

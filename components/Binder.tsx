@@ -5,52 +5,48 @@
 // 軽く傾けるだけ)とExecuteTabの確定バインダー(独自のページめくり)が、
 // それぞれ別々に似て非なる見た目/動きを持っていた。ここでは
 //   - 穴+リング金具(HOLE_MASK/HoleRings/BinderRings): 全バインダー共通で2つ穴
-//   - 表紙面(BinderCoverFace)と背表紙面(BinderSpineFace): 白・黒・グレーの
-//     単色+ミッドセンチュリー風の簡素な幾何学模様を共有する2つの「面」
-//   - AccentGlyph/AccentBadge: 表紙・背表紙の隅に置く、四角/三角/円/チェック
-//     などの単純図形+色1点だけの「ワンポイント」。ジャンル(メディアの種類・
-//     場所・目標など)を一目で伝えるための記号で、映画/音楽のような具象
-//     アイコンではなく抽象図形に留めている。
-//   - Binder3D: 上の2面を実際に厚みを持った3D箱として組み立て、rotateYで
-//     「背から見る⇄表紙から見る」を連続的に行き来できる物体。厚み(depth)は
-//     挟んでいる件数(count)から自動的に太くなる。
+//     (これはExecuteTabのページめくりが使う「本物の紙」側の演出。棚に並ぶ
+//     バインダー自体の表紙は無地なので、こちらの穴の演出は持たない)
+//   - 表紙面(BinderCoverFace)と背表紙面(BinderSpineFace)・無地の側面
+//     (BinderEdgeFace): 無地の下地の上に、ミッドセンチュリーのポスターを
+//     思わせる大きな幾何学のワンポイント(AccentGlyph/BigAccentShape)だけで
+//     ジャンルを伝える3つの「面」。
+//   - Binder3D: 上の3面を実際に厚みを持った3D箱として組み立て、rotateYで
+//     「表紙⇄背表紙(リング側)⇄無地の側面(反対側)」を連続的に行き来できる
+//     物体。厚み(depth)は挟んでいる件数(count)から自動的に太くなる。
 //   - BinderCoverflowRow: Binder3Dを横に並べ、中央に来たものほど表紙が
-//     こちらを向くコンベア(本棚を斜めから覗き込むような見た目)。本棚らしい
-//     詰まったピッチと、フォーカスした本だけ実寸まで迫り出す大きさを、
-//     「棚のピッチ(pitch)」と「本の見た目サイズ(itemWidth)」を分離すること
-//     で両立させている。
+//     こちらを向くコンベア。中心より右は背表紙(リング側)、中心より左は
+//     無地の側面が見えるよう回転の符号を左右で反転させ、実際に棚を正面
+//     から覗き込んだ時のような、中心へ収束するパースを再現している。
 //   - BinderFlipDeck: 表紙が正面を向いた1冊を、スワイプでページ単位に
-//     めくって開いていく共通のリーダー。ヒンジ位置での視点合わせ・めくれる
-//     ページの折り目の影・一番下の裏表紙が奥にわずかに覗く見た目を加えて
-//     実物のリングバインダーに近づけている。
+//     めくって開いていく共通のリーダー。
 // という部品に分けて提供する。RecordsTabの棚とExecuteTabの確定画面は
 // どちらもこれらの部品を組み合わせて作られており、「同じバインダーという
 // 物体を、違う状況で見ている」という一貫性を保っている。
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import { BLUE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
-import { hashStr, haptic } from "@/lib/helpers";
+import { INK, ITEM_CARD_ASPECT, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { haptic } from "@/lib/helpers";
 
-// ---- バインダーの色(白・黒・グレーの無彩色のみ) ---------------------------
-// 映画/音楽アイコンのような装飾に頼らず、面積の大きい濃淡の違いだけで
-// バインダーごとの見分けをつける。文字列(タイトルなど)からハッシュで
-// 決定的に1色を選ぶことで、同じバインダーは常に同じ色になる。
-export const BINDER_TONES = ["#1C1C1E", "#3B3B39", "#5C5952", "#8B8780", "#B7B3A7", "#D9D6CB"];
-export function binderTone(seed: string) {
-  return BINDER_TONES[hashStr(seed) % BINDER_TONES.length];
-}
+// バインダー表紙・背表紙の見出し用、ミッドセンチュリーのポスターレタリング
+// を思わせる太いディスプレイ書体(Anton)。ラテン文字専用のフォントだが、
+// フォールバック先に和文書体を指定しているため、和文タイトルが来た場合は
+// 文字単位で自動的にZen Kaku Gothic Newへ切り替わる。英字の見出し
+// (PLACE/GOAL/CINEMAなど)だけにこの書体が効く形で共存する。
+const POSTER_FONT = "var(--font-anton), var(--font-zen-kaku-gothic-new), sans-serif";
 
 // ---- ワンポイントの図形+色(ジャンルなどの意味づけ) -------------------------
 
-export type AccentShape = "square" | "triangle" | "circle" | "check" | "diamond";
+export type AccentShape = "square" | "triangle" | "circle" | "diamond";
 export interface Accent {
   shape: AccentShape;
   color: string;
 }
 
-// 全バインダー共通の「目標」ワンポイント(RecordsTabの棚・GoalsTabのグリッド
-// どちらでも同じ記号にして、目標という種類を一目で揃って伝える)。
-export const GOAL_ACCENT: Accent = { shape: "check", color: BLUE };
+// 全バインダー共通の「目標」の下地色+ワンポイント(RecordsTabの棚・
+// GoalsTabのグリッドどちらでも同じ組み合わせにして揃える)。
+export const GOAL_BASE = "#EAE1C8";
+export const GOAL_ACCENT: Accent = { shape: "square", color: RUST };
 
 function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string; size: number }) {
   switch (shape) {
@@ -62,29 +58,25 @@ function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string
       return <div style={{ width: size * 0.72, height: size * 0.72, background: color, borderRadius: 1.5, transform: "rotate(45deg)" }} />;
     case "triangle":
       return <div style={{ width: 0, height: 0, borderLeft: `${size * 0.52}px solid transparent`, borderRight: `${size * 0.52}px solid transparent`, borderBottom: `${size * 0.92}px solid ${color}` }} />;
-    case "check":
-      return (
-        <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
-          <path d="M4 10.5L8 14.5L16 5.5" stroke={color} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
   }
 }
 
-// 表紙の右上に置く、白い円台紙付きのワンポイント。台紙があることで、
-// バインダーの地の色(白〜黒のどのトーンでも)の上で常にくっきり見える。
-function AccentBadge({ accent, size = 20 }: { accent: Accent; size?: number }) {
-  return (
-    <div style={{
-      position: "absolute", top: 12, right: 12, width: size, height: size, borderRadius: "50%", background: "rgba(255,255,255,0.94)",
-      display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", flexShrink: 0, zIndex: 2,
-    }}>
-      <AccentGlyph shape={accent.shape} color={accent.color} size={size * 0.5} />
-    </div>
-  );
+// 表紙の中央上寄りに大きく置く、ミッドセンチュリーのポスターを思わせる
+// ワンポイントの幾何学。以前は右上の小さなバッジだったが、無地の下地の
+// 上に大きく1つ置くほうがジャンルの判別性・デザイン性の両方で勝るため、
+// カード幅の6割ほどを占める大きさに変えた。タイトルが乗る下側の余白は
+// 侵さない高さに収めている。
+function BigAccentShape({ shape, color }: Accent) {
+  const base: CSSProperties = {
+    position: "absolute", left: "50%", top: "9%", width: "60%", aspectRatio: "1 / 1", background: color, pointerEvents: "none",
+  };
+  if (shape === "circle") return <div style={{ ...base, borderRadius: "50%", transform: "translateX(-50%)" }} />;
+  if (shape === "square") return <div style={{ ...base, borderRadius: 3, transform: "translateX(-50%)" }} />;
+  if (shape === "diamond") return <div style={{ ...base, width: "50%", borderRadius: 3, transform: "translateX(-50%) rotate(45deg)" }} />;
+  return <div style={{ ...base, transform: "translateX(-50%)", clipPath: "polygon(50% 2%, 4% 96%, 96% 96%)" }} />;
 }
 
-// ---- 穴+リング金具(2穴で統一) -------------------------------------------
+// ---- 穴+リング金具(ExecuteTabのページめくりが使う、本物の紙の演出) -------
 
 export const HOLE_MASK = (() => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 347"><rect width="260" height="347" fill="white"/><circle cx="15" cy="83" r="5.5" fill="black"/><circle cx="15" cy="264" r="5.5" fill="black"/></svg>`;
@@ -96,9 +88,8 @@ export const holeMaskStyle: CSSProperties = {
   WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
 };
 
-// 穴の位置・大きさをHoleRings/BinderRings/表紙面のヒントで揃えるための
-// 共通定数。RING_XはBinderFlipDeckのヒンジ位置(実際のリングがある場所)
-// としても再利用する。
+// 穴の位置をHoleRings/BinderRingsで揃えるための共通定数。RING_Xは
+// BinderFlipDeckのヒンジ位置(実際のリングがある場所)としても再利用する。
 const RING_X = "5.8%";
 const RING_YS = ["24%", "76%"];
 
@@ -134,14 +125,13 @@ export function BinderRings() {
   );
 }
 
-// ---- 表紙面・背表紙面 -----------------------------------------------------
+// ---- 表紙面・背表紙面・無地の側面 ------------------------------------------
 
 interface CoverContent {
   color: string;
   eyebrowLabel?: string;
   title: string;
   footer?: ReactNode;
-  showRingHint?: boolean;
   accent?: Accent;
 }
 
@@ -151,54 +141,24 @@ function isLightTone(hex: string) {
   return (0.299 * r + 0.587 * g + 0.114 * b) > 150;
 }
 
-// ミッドセンチュリーのポスター/装丁を参考にした、色面の上の簡素な幾何学
-// 模様。派手な色は使わず、地の色よりわずかに明/暗いだけの円+線の2種類を
-// タイトルの文字列から決定論的に切り替える。
-function BinderPattern({ seed, tint }: { seed: number; tint: string }) {
-  if (seed % 2 === 0) {
-    return <div style={{ position: "absolute", right: "-20%", bottom: "-16%", width: "68%", aspectRatio: "1 / 1", borderRadius: "50%", background: tint, pointerEvents: "none" }} />;
-  }
-  return (
-    <>
-      <div style={{ position: "absolute", left: "12%", right: "12%", top: "40%", height: 1.5, background: tint, pointerEvents: "none" }} />
-      <div style={{ position: "absolute", right: "16%", bottom: "18%", width: "20%", aspectRatio: "1 / 1", borderRadius: "50%", background: tint, pointerEvents: "none" }} />
-    </>
-  );
-}
-
-// 表紙面。白・黒・グレーの単色(colorはBINDER_TONESから渡される)に、
-// ミッドセンチュリー風の簡素な幾何学模様を薄く重ねるだけの構成。種類の
-// 判別は具象アイコンではなく、右上のワンポイント(accent)+テキストだけで
-// 伝える。
-export function BinderCoverFace({ color, eyebrowLabel, title, footer, showRingHint = true, accent }: CoverContent) {
+// 表紙面。無地の下地(colorは種類ごとに固定: 目標=生成り、場所=グレー、
+// メディア=チャコール)の上に、ジャンルのワンポイント(accent)を大きく
+// 1つ置くだけの構成。以前はここに柄+穴のヒントも重ねていたが、「変な柄」
+// という指摘で撤廃し、無地+ワンポイントだけのミニマルな構成にした。
+export function BinderCoverFace({ color, eyebrowLabel, title, footer, accent }: CoverContent) {
   const light = isLightTone(color);
   const fg = light ? INK : "#fff";
   const fgMuted = light ? "rgba(28,28,30,0.62)" : "rgba(255,255,255,0.75)";
-  const tint = light ? "rgba(28,28,30,0.06)" : "rgba(255,255,255,0.07)";
-  const ringBorder = light ? "rgba(28,28,30,0.5)" : "rgba(255,255,255,0.75)";
-  const seed = title.length + title.charCodeAt(0);
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "14px 14px 12px", background: color, overflow: "hidden" }}>
-      <BinderPattern seed={seed} tint={tint} />
       <div style={{ position: "absolute", inset: 0, boxShadow: `inset 0 0 0 1px ${light ? "rgba(28,28,30,0.1)" : "rgba(255,255,255,0.08)"}`, pointerEvents: "none" }} />
-      {showRingHint && (
-        <>
-          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", background: light ? "rgba(0,0,0,0.05)" : "rgba(0,0,0,0.12)", pointerEvents: "none" }} />
-          {RING_YS.map((y) => (
-            <div key={y} style={{
-              position: "absolute", left: RING_X, top: y, transform: "translate(-50%, -50%)",
-              width: 8, height: 8, borderRadius: "50%", border: `1.3px solid ${ringBorder}`, pointerEvents: "none",
-            }} />
-          ))}
-        </>
-      )}
-      {accent && <AccentBadge accent={accent} />}
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, marginLeft: showRingHint ? "5%" : 0 }}>
+      {accent && <BigAccentShape shape={accent.shape} color={accent.color} />}
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         {eyebrowLabel && (
-          <span style={{ fontSize: 8, letterSpacing: "0.17em", color: fgMuted, fontWeight: 700, flexShrink: 0 }}>{eyebrowLabel}</span>
+          <span style={{ fontFamily: POSTER_FONT, fontSize: 10, letterSpacing: "0.14em", color: fgMuted, fontWeight: 400, flexShrink: 0 }}>{eyebrowLabel}</span>
         )}
         <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end" }}>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: fg, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: fg, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
         </div>
         {footer && <div style={{ marginTop: 8, flexShrink: 0, color: fgMuted }}>{footer}</div>}
       </div>
@@ -206,10 +166,10 @@ export function BinderCoverFace({ color, eyebrowLabel, title, footer, showRingHi
   );
 }
 
-// 背表紙面。表紙と同じ単色+パターンの語彙を使い、実際のリング穴を上下に
-// 配置することで一目でリングバインダーだとわかるようにしている。棚が
-// ほぼ背表紙だけを見せる構図になるため、ワンポイント(accent)はここにも
-// 小さく置き、遠目でもジャンルを判別できるようにする。
+// 背表紙面(リング側=バインダーの左端)。実際のリング穴を上下に配置する
+// ことで一目でリングバインダーだとわかるようにしている。棚がほぼ背表紙
+// だけを見せる構図になるため、ワンポイント(accent)はここにも小さく置き、
+// 遠目でもジャンルを判別できるようにする。
 export function BinderSpineFace({ color, title, count, accent }: { color: string; title: string; count?: number; accent?: Accent }) {
   const light = isLightTone(color);
   const fg = light ? INK : "#fff";
@@ -230,23 +190,34 @@ export function BinderSpineFace({ color, title, count, accent }: { color: string
         </div>
       )}
       <span style={{
-        position: "relative", writingMode: "vertical-rl", textOrientation: "mixed", fontFamily: SANS, fontWeight: 700, fontSize: 10.5,
+        position: "relative", writingMode: "vertical-rl", textOrientation: "mixed", fontFamily: POSTER_FONT, fontWeight: 400, fontSize: 11,
         color: fg, letterSpacing: "0.05em", flex: 1, overflow: "hidden", marginTop: accent ? 42 : 34,
       }}>{title}</span>
       {typeof count === "number" && (
-        <span style={{ position: "relative", marginTop: 8, marginBottom: 10, fontSize: 8, fontWeight: 700, color: fgMuted }}>{count}</span>
+        <span style={{ position: "relative", marginTop: 8, marginBottom: 10, fontFamily: POSTER_FONT, fontSize: 9, color: fgMuted }}>{count}</span>
       )}
+    </div>
+  );
+}
+
+// 無地の側面(リングの反対側=バインダーの右端)。実物のリングバインダーの
+// この面には何も印字されないので、ラベルを持たない無地の面として作る。
+// コンベア(BinderCoverflowRow)で中心より左側にある本を、その本の右側面
+// から覗き込んでいるように見せるために使う。
+function BinderEdgeFace({ color }: { color: string }) {
+  const light = isLightTone(color);
+  return (
+    <div style={{ position: "absolute", inset: 0, background: color }}>
+      <div style={{ position: "absolute", inset: 0, background: light ? "linear-gradient(90deg, rgba(0,0,0,0.12), rgba(0,0,0,0))" : "linear-gradient(90deg, rgba(0,0,0,0.26), rgba(0,0,0,0))" }} />
     </div>
   );
 }
 
 // ---- 3D箱としてのバインダー ------------------------------------------------
 
-// rotateYが0(表紙が正面)から離れるほど、遠いものは背表紙側の角度へ寄せる。
-// dは中心からの符号付き距離(コンベア上の位置)。距離の絶対値だけを見て
-// 常に同じ符号(プラス)の角度を返すことで、左右どちらの隣も同じように
-// 正しく背表紙を向くようにする(マイナスだと背表紙面のbackface-visibility
-// が裏返って消え、薄いスライバーに見えるバグになるため)。
+// rotateYが0(表紙が正面)から離れるほど、遠いものは側面側の角度へ寄せる。
+// dは中心からの符号付き距離(コンベア上の位置)で、大きさ(絶対値)だけを
+// 元に角度を計算する。符号(左右どちら向きに回すか)は呼び出し側で決める。
 export function binderTiltAngle(d: number, rest = 80, focused = 0) {
   const amt = Math.max(0, 1 - Math.min(1, Math.abs(d)));
   return rest - (rest - focused) * amt;
@@ -254,15 +225,23 @@ export function binderTiltAngle(d: number, rest = 80, focused = 0) {
 
 // リングバインダーの実物写真を参考に、角丸を廃止して四角い箱にした
 // (角丸カードは他の「カード」で使う語彙なので、バインダーはあえて
-// 直角にして両者を視覚的に区別する)。厚み(depth)は明示的に渡さなければ
-// 挟んでいる件数(count)から自動的に太く/細くなり、「中身が多いほど
-// 分厚く見える」という物理的な説得力を持たせている。scaleは棚
-// (BinderCoverflowRow)で中央に来たものだけをその場でひとまわり大きく
-// 見せるための上乗せで、レイアウト上の幅(width)自体は変えない。
-// transformOriginを底辺中央にしているのは、回転・拡大の中心を中央のまま
-// にするとscaleが変わるたびに上端だけでなく下端も動いてしまい、スワイプ中
-// に本棚全体が上下にガクガク揺れて見える不具合があったため。棚に本の底が
-// 固定されているのと同じように、常に下端を基準に伸び縮みさせる。
+// 直角にして両者を視覚的に区別する)。表紙・背表紙(リング側)・無地の
+// 側面(反対側)の3面を持つ箱として組み立てる。背表紙面はrotateY(-90deg)
+// で、無地の側面はrotateY(+90deg)で構成しているため、外側のrotateYが
+// プラスの時は背表紙、マイナスの時は無地の側面が正しく正面を向く
+// (backface-visibilityの都合上、片方の面は常に反対の符号でしか正しく
+// 見えない)。どちらの符号で呼んでも常にどちらかの面が正しく見えるので、
+// 呼び出し側は「右にある本はプラス、左にある本はマイナス」で呼べば、
+// 棚を正面から覗き込んだ時のように収束するパースになる。
+// 厚み(depth)は明示的に渡さなければ挟んでいる件数(count)から自動的に
+// 太く/細くなり、「中身が多いほど分厚く見える」という物理的な説得力を
+// 持たせている。scaleは棚(BinderCoverflowRow)で中央に来たものだけを
+// その場でひとまわり大きく見せるための上乗せで、レイアウト上の幅
+// (width)自体は変えない。transformOriginを底辺中央にしているのは、
+// 回転・拡大の中心を中央のままにするとscaleが変わるたびに上端だけでなく
+// 下端も動いてしまい、スワイプ中に本棚全体が上下にガクガク揺れて見える
+// 不具合があったため。棚に本の底が固定されているのと同じように、常に
+// 下端を基準に伸び縮みさせる。
 export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, scale = 1, transitionMs, color, eyebrowLabel, title, footer, spineTitle, count, accent, onClick }: CoverContent & {
   width: number | string;
   aspect?: string;
@@ -289,12 +268,19 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
         }}>
           <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
         </div>
-        {/* 背表紙面(左端の側面) */}
+        {/* 背表紙面(左端=リング側) */}
         <div style={{
           position: "absolute", left: 0, top: 0, bottom: 0, width: resolvedDepth, overflow: "hidden",
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: "rotateY(-90deg) translateZ(" + resolvedDepth / 2 + "px)",
         }}>
           <BinderSpineFace color={color} title={spineTitle ?? title} count={count} accent={accent} />
+        </div>
+        {/* 無地の側面(右端=リングの反対側) */}
+        <div style={{
+          position: "absolute", right: 0, top: 0, bottom: 0, width: resolvedDepth, overflow: "hidden",
+          backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: "rotateY(90deg) translateZ(" + resolvedDepth / 2 + "px)",
+        }}>
+          <BinderEdgeFace color={color} />
         </div>
       </div>
     </div>
@@ -311,6 +297,12 @@ export interface BinderShelfItem extends CoverContent {
 }
 
 const ROW_FOCUS_SCALE = 0.12;
+// 表紙が正面を向いているフォーカス中の1冊の両脇に確保する、追加の
+// 余白(px)。これがないと、フォーカス中の本(実寸で表示される)と、
+// すぐ隣の背表紙だけの本(ピッチ上は近い)が重なって窮屈に見えてしまう。
+// フォーカスが隣へ移るにつれて滑らかに0へ戻る(=フォーカス中の本自身は
+// 余白を持たない)ようclampした符号付き距離で滲ませている。
+const FOCUS_SPREAD = 30;
 
 // ネイティブの横スクロール+スナップを使うことで、「タップ」と「スワイプで
 // 送る」の判定をブラウザの標準挙動に任せられる。スクロール位置から各
@@ -322,7 +314,8 @@ const ROW_FOCUS_SCALE = 0.12;
 // DOM上の各スロットはpitch幅の空箱にし、その中央にitemWidth幅のBinder3Dを
 // 絶対配置で重ねて迫り出させることで、「表紙は大きいのに本棚としては
 // ぎっしり詰まっている」という実物の本棚に近い密度を再現している
-// (フォーカスした1冊がscaleでさらに一回り迫り出し、両隣に重なる)。
+// (フォーカスした1冊がscaleでさらに一回り迫り出し、FOCUS_SPREADで
+// 両隣との重なりを避ける)。
 //
 // スロット自体にもitemHeight相当の高さを明示している。以前はBinder3D側の
 // scaleTransformが「見た目だけ」拡大縮小するもので、レイアウト上の高さには
@@ -375,12 +368,19 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       <div style={{ flex: "0 0 auto", width: sidePad }} />
       {items.map((it, i) => {
         const d = i - centerRef.current;
-        const angle = binderTiltAngle(d);
+        // 中心より右(d>=0)は常にプラスの角度で背表紙(リング側)を、
+        // 中心より左(d<0)は常にマイナスの角度で無地の側面を見せる。
+        // これにより、フォーカス中の1冊を正面から見た時、その右は
+        // 左側面越しに、左は右側面越しに覗き込んでいるような、実際に
+        // 棚を正面から見た時と同じ収束するパースになる。
+        const magnitude = binderTiltAngle(Math.abs(d));
+        const angle = d >= 0 ? magnitude : -magnitude;
         const focus = Math.max(0, 1 - Math.min(1, Math.abs(d)));
         const scale = 1 + focus * ROW_FOCUS_SCALE;
+        const spread = FOCUS_SPREAD * Math.max(-1, Math.min(1, d));
         return (
           <div key={it.key} style={{ position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center", zIndex: Math.round(focus * 100) }}>
-            <div style={{ position: "absolute", left: "50%", bottom: 0, width: itemWidth, transform: "translateX(-50%)" }}>
+            <div style={{ position: "absolute", left: "50%", bottom: 0, width: itemWidth, transform: `translateX(calc(-50% + ${spread}px))` }}>
               <Binder3D
                 width={itemWidth} aspect={aspect} rotateY={angle} scale={scale} transitionMs={60}
                 color={it.color} eyebrowLabel={it.eyebrowLabel} accent={it.accent}

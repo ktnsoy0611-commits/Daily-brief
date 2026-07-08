@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Zen_Kaku_Gothic_New } from "next/font/google";
+import { Anton, Zen_Kaku_Gothic_New } from "next/font/google";
 import "./globals.css";
 
 // ミニマルなデザインへの刷新に伴い、明朝体(Zen Old Mincho)とPlayfair
@@ -7,6 +7,18 @@ import "./globals.css";
 const zenKakuGothicNew = Zen_Kaku_Gothic_New({
   variable: "--font-zen-kaku-gothic-new",
   weight: ["400", "500", "700"],
+  subsets: ["latin"],
+  preload: false,
+});
+
+// バインダー(components/Binder.tsx)専用の、ミッドセンチュリーのポスター
+// レタリングを思わせる太いディスプレイ書体。ラテン文字のみのフォントだが、
+// 和文が来た場合はfont-familyのフォールバックでZen Kaku Gothic Newへ
+// 自動的に切り替わるため、英字の見出し(PLACE/GOALなど)だけにこの書体が
+// 効く形で共存できる。
+const anton = Anton({
+  variable: "--font-anton",
+  weight: "400",
   subsets: ["latin"],
   preload: false,
 });
@@ -37,7 +49,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" className={zenKakuGothicNew.variable}>
+    <html lang="ja" className={`${zenKakuGothicNew.variable} ${anton.variable}`}>
       <body>{children}</body>
     </html>
   );

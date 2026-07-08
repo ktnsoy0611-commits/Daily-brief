@@ -332,7 +332,7 @@ function FrontCoverPage({ dateLabel, count }: { dateLabel: string; count: number
     <div style={{ position: "absolute", inset: 0 }}>
       <div style={{ position: "absolute", inset: 0, overflow: "hidden", boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle }}>
         <BinderCoverFace
-          color={INK} eyebrowLabel={dateLabel} title="今日の行き先" showRingHint={false}
+          color={INK} eyebrowLabel={dateLabel} title="今日の行き先"
           footer={<div style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", fontWeight: 700, textAlign: "center", letterSpacing: "0.04em" }}>{count}件・スワイプで開く</div>}
         />
       </div>

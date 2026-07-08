@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { Binder3D, binderTone, GOAL_ACCENT } from "@/components/Binder";
+import { Binder3D, GOAL_ACCENT, GOAL_BASE } from "@/components/Binder";
 import { AddCardTile, Masthead, rowBtn } from "@/components/common";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
@@ -114,11 +114,10 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
           {goalItems.map((g) => {
             const latest = g.checkIns?.[0];
             const count = g.checkIns?.length ?? 0;
-            const color = binderTone(g.id);
             return (
               <Binder3D
                 key={g.id} width="100%" aspect={GOAL_CARD_ASPECT} rotateY={0} count={count}
-                color={color} eyebrowLabel="GOAL" title={g.title} accent={GOAL_ACCENT}
+                color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={GOAL_ACCENT}
                 onClick={() => setOpenGoalId(g.id)}
                 footer={
                   <div>

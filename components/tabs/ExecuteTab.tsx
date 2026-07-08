@@ -4,7 +4,7 @@ import { BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
 import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
-import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
+import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
@@ -242,27 +242,28 @@ function OpenBinderBackdrop({ closed }: { closed: boolean }) {
   return (
     <div style={{ position: "absolute", left: "-15%", right: "-4%", top: "-6%", bottom: "-5%", perspective: 500, zIndex: 0, pointerEvents: "none" }}>
       <div style={{
-        position: "absolute", inset: 0, background: INK, borderRadius: 6, boxShadow: SOFT_SHADOW_LG,
+        position: "absolute", inset: 0, background: PAPER, borderRadius: 6, boxShadow: SOFT_SHADOW_LG,
         transformOrigin: "6% 50%", transformStyle: "preserve-3d",
         transform: closed ? "rotateY(0deg) rotateZ(0deg)" : "rotateY(-36deg) rotateZ(-3deg)",
         transition: "transform 0.34s cubic-bezier(0.4,0,0.2,1)",
       }}>
-        {/* 表紙の内側の面であることを示す、わずかに明るいハイライト */}
-        <div style={{ position: "absolute", inset: 0, borderRadius: 6, background: "linear-gradient(100deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 30%)" }} />
+        {/* 表紙の内側の面であることを示す、わずかな陰影 */}
+        <div style={{ position: "absolute", inset: 0, borderRadius: 6, background: "linear-gradient(100deg, rgba(28,28,30,0.06) 0%, rgba(28,28,30,0) 30%)" }} />
         {/* リング穴のヒント(左端。実際のリングはカードの下に隠れる背表紙側にある) */}
         {["30%", "70%"].map((y) => (
-          <div key={y} style={{ position: "absolute", left: "6%", top: y, transform: "translate(-50%, -50%)", width: 9, height: 9, borderRadius: "50%", background: "rgba(0,0,0,0.35)", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.4)" }} />
+          <div key={y} style={{ position: "absolute", left: "6%", top: y, transform: "translate(-50%, -50%)", width: 9, height: 9, borderRadius: "50%", background: "rgba(28,28,30,0.1)", boxShadow: "inset 0 1px 2px rgba(28,28,30,0.25)" }} />
         ))}
       </div>
     </div>
   );
 }
 
-// 実行タブの確定後の1枚のカード。他のタブのアイテムカードと同じ角丸の
-// 意匠を、通常より大きく表示する。右にスワイプすると背後に「外す」の
-// 下地が現れ、閾値を超えて離すとカードが右へ飛んでリストから外れる
-// (以前のX ボタンに代わる操作)。行った/観たは従来通り右上のチェックで
-// 個別にマークでき、外すとは独立した状態として残る。
+// 実行タブの確定後の1枚のカード。他のタブと全く同じPosterCardをそのまま
+// 使い、独自のカードデザインを持たない(以前は自前で組んだカードで、
+// 見た目が他のタブのカードと食い違っていた)。右にスワイプすると背後に
+// 「外す」の下地が現れ、閾値を超えて離すとカードが右へ飛んでリストから
+// 外れる(以前のX ボタンに代わる操作)。行った/観たは従来通り右上の
+// チェックで個別にマークでき、外すとは独立した状態として残る。
 const CONFIRMED_REMOVE_THRESHOLD = 96;
 
 function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove, disabled }: {
@@ -279,7 +280,6 @@ function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove
   const [removing, setRemoving] = useState(false);
   const dragRef = useRef({ startX: 0, startY: 0, active: false, locked: false });
   const IconComp = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
-  const fill = item.color ?? "#5A5A54";
 
   const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (disabled || removing) return;
@@ -331,33 +331,14 @@ function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove
       </div>
       <div
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={finish} onPointerCancel={finish}
-        style={{
-          position: "absolute", inset: 0, borderRadius: 20, overflow: "hidden", boxShadow: SOFT_SHADOW_LG,
-          display: "flex", flexDirection: "column", touchAction: "pan-y", zIndex: 1,
-          background: item.images?.[0] ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)`,
-          transform, opacity, transition,
-        }}
+        style={{ position: "absolute", inset: 0, touchAction: "pan-y", zIndex: 1, transform, opacity, transition }}
       >
-        <div style={{ position: "relative", flex: "0 0 52%", overflow: "hidden" }}>
-          {item.images?.[0] ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={img(item.images[0], 560, 520)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          ) : IconComp ? (
-            <div style={{ position: "absolute", bottom: "-18%", right: "-10%", width: "56%", aspectRatio: "1 / 1", transform: "rotate(-14deg)", opacity: 0.16 }}>
-              <IconComp size="100%" strokeWidth={1} color="#fff" />
-            </div>
-          ) : null}
-          {item.done && <div style={{ position: "absolute", inset: 0, background: "rgba(28,28,30,0.45)" }} />}
-        </div>
-        <div style={{ flex: 1, padding: "14px 16px 16px", display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ fontSize: 9.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700 }}>{item.categoryLabel}{item.area && item.area !== "—" ? ` ・ ${item.area}` : ""}</div>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16.5, lineHeight: 1.32, marginTop: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</div>
-          {item.meta && item.meta.length > 0 && (
-            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>
-              {item.meta.slice(0, 2).map((m, i) => <div key={i} style={{ fontSize: 10.5, color: "#5A5A54", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m}</div>)}
-            </div>
-          )}
-        </div>
+        <PosterCard
+          image={item.images?.[0]} color={item.color} title={item.title}
+          sub={item.area && item.area !== "—" ? item.area : undefined}
+          label={item.categoryLabel} icon={IconComp} kept={item.kept}
+        />
+        {item.done && <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "rgba(28,28,30,0.45)", pointerEvents: "none" }} />}
         <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
           position: "absolute", top: 12, right: 12, width: 34, height: 34, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
           background: item.done ? GREEN : "rgba(255,255,255,0.92)", color: item.done ? "#fff" : "#3A3A36",

@@ -5,31 +5,31 @@ import { useState } from "react";
 import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
 import { BinderCoverflowRow, GOAL_ACCENT, GOAL_BASE, type Accent, type BinderShelfItem } from "@/components/Binder";
 import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
-import { GREEN, INK, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
+import { GREEN, INK, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, inferMediaKind, shortDate } from "@/lib/helpers";
 import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
 
-// バインダーの下地色は種類ごとに固定(場所=グレー、メディア=チャコール。
-// 目標はcomponents/Binder.tsxのGOAL_BASEを共用)。以前はタイトルの
-// ハッシュから個体ごとにグレーの濃淡を変えていたが、種類が一目でわかる
-// ほうを優先し、無地の固定色に統一した。
-const PLACE_BASE = "#6E6B63";
-const MEDIA_BASE = "#232320";
+// バインダーの下地色は種類ごとに固定(場所=薄いグレー、メディア=グレー。
+// 目標はcomponents/Binder.tsxのGOAL_BASE=白を共用)。黒は強すぎるという
+// 指摘を受け、白〜グレーの範囲だけで種類を分けている。
+const PLACE_BASE = "#CFCCC3";
+const MEDIA_BASE = "#8C897F";
 
-// バインダー表紙に大きく載せる「ワンポイント」の幾何学。図形+色だけで
-// ジャンルを判別できるようにする(映画/音楽のような具象アイコンは使わない)。
-// 種類ごとに固定の図形+ミッドセンチュリー調の色を割り当てることで、棚に
-// 並んだ背表紙だけを見ても一目で見分けがつくようにしている。
+// バインダー表紙の右上に小さく載せる「ワンポイント」の幾何学。図形+色
+// だけでジャンルを判別できるようにする(映画/音楽のような具象アイコンは
+// 使わない)。以前は彩度の高いミッドセンチュリー調の色を大きく載せていたが、
+// ミニマルでスタイリッシュな見た目にするため、くすんだ控えめな色に
+// 変更した。
 const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
-  movie: { shape: "square", color: POSTER_PALETTE[0] },
-  exhibition: { shape: "triangle", color: POSTER_PALETTE[3] },
-  live: { shape: "circle", color: RUST },
-  book: { shape: "diamond", color: POSTER_PALETTE[2] },
-  album: { shape: "square", color: "#C9A227" },
+  movie: { shape: "square", color: "#5E6E88" },
+  exhibition: { shape: "triangle", color: "#897890" },
+  live: { shape: "circle", color: "#AD7860" },
+  book: { shape: "diamond", color: "#788A78" },
+  album: { shape: "square", color: "#B0A070" },
 };
-const PLACE_ACCENT: Accent = { shape: "circle", color: "#2F6F6B" };
+const PLACE_ACCENT: Accent = { shape: "circle", color: "#6C8480" };
 
 // タップしたバインダーの中身を見せる共通シート。カード自体が完結した
 // ビジュアルを持つので、白い台紙には包まずブラー背景の上に直接浮かせる。
@@ -199,7 +199,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const areaRowItems: BinderShelfItem[] = areaSections.map((sec) => ({
     key: sec.area, color: PLACE_BASE, eyebrowLabel: "PLACE", accent: PLACE_ACCENT,
     title: sec.area, spineTitle: sec.area, count: sec.keeps.length,
-    footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{sec.keeps.length}件・タップで見る</div>,
+    footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.keeps.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
       title: sec.area,
       content: sec.keeps.map((k) => (
@@ -216,13 +216,13 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const goalRowItems: BinderShelfItem[] = goals.map((g) => ({
     key: g.id, color: GOAL_BASE, eyebrowLabel: "GOAL", accent: GOAL_ACCENT,
     title: g.title, spineTitle: g.title, count: g.checkIns?.length ?? 0,
-    footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{g.checkIns?.length ? `記録${g.checkIns.length}件・タップで見る` : "タップで見る"}</div>,
+    footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{g.checkIns?.length ? `記録${g.checkIns.length}件・タップで見る` : "タップで見る"}</div>,
     onOpen: () => goTab("goals"),
   }));
 
   const dayRowItems: BinderShelfItem[] = daySections.map((sec) => ({
     key: sec.label, color: PLACE_BASE, title: sec.label, spineTitle: sec.label, count: sec.entries.length,
-    footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{sec.entries.length}件・タップで見る</div>,
+    footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.entries.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
       title: sec.label,
       content: sec.entries.map((e) => (

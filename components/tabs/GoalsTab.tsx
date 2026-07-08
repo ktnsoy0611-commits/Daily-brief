@@ -122,9 +122,9 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
                 footer={
                   <div>
                     {latest && (
-                      <p style={{ margin: "0 0 5px", fontSize: 9.5, lineHeight: 1.4, color: "rgba(255,255,255,0.85)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
+                      <p style={{ margin: "0 0 5px", fontSize: 9.5, lineHeight: 1.4, color: "rgba(28,28,30,0.7)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
                     )}
-                    <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.78)", borderTop: "1px solid rgba(255,255,255,0.22)", paddingTop: 6 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(28,28,30,0.6)", borderTop: "1px solid rgba(28,28,30,0.14)", paddingTop: 6 }}>
                       {count > 0 ? `記録 ${count}件・タップで見る` : "まだ記録がありません"}
                     </div>
                   </div>

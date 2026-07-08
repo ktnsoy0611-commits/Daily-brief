@@ -5,25 +5,30 @@
 // どちらもここで定義するBinder3Dを組み合わせて作られており、「同じ
 // バインダーという物体を、違う状況で見ている」という一貫性を保っている。
 //   - 表紙面(BinderCoverFace)と背表紙面(BinderSpineFace)・無地の側面
-//     (BinderEdgeFace): 無地の下地の上に、ミッドセンチュリーのポスターを
-//     思わせる大きな幾何学のワンポイント(AccentGlyph/BigAccentShape)だけで
-//     ジャンルを伝える3つの「面」。
+//     (BinderEdgeFace): 白〜グレーの無彩色の下地の上に、小さく控えめな
+//     ワンポイント(AccentGlyph/BigAccentShape)だけでジャンルを伝える
+//     3つの「面」。開く側(右端)には紙の小口を思わせる細い縞を入れ、
+//     ただの単色の箱に見えないようにしている。
 //   - Binder3D: 上の3面を実際に厚みを持った3D箱として組み立て、rotateYで
-//     「表紙⇄背表紙(リング側)⇄無地の側面(反対側)」を連続的に行き来できる
-//     物体。厚み(depth)は挟んでいる件数(count)から自動的に太くなる。
+//     「表紙⇄背表紙(リング側)」を連続的に行き来できる物体。厚み(depth)は
+//     挟んでいる件数(count)から自動的に太くなる。
 //   - BinderCoverflowRow: Binder3Dを横に並べ、中央に来たものほど表紙が
-//     こちらを向くコンベア。中心より右は背表紙(リング側)、中心より左は
-//     無地の側面が見えるよう回転の符号を左右で反転させ、実際に棚を正面
-//     から覗き込んだ時のような、中心へ収束するパースを再現している。
+//     こちらを向くコンベア。左右どちらの隣も常に背表紙(リング側、ラベルが
+//     読める面)が正面を向くよう回転は常に同じ符号にし、フォーカス中の
+//     1冊の両脇はCardStackと同じように距離に比例して押し広げることで、
+//     隣のバインダーがフォーカス中の表紙の裏に隠れないようにしている。
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { INK, ITEM_CARD_ASPECT, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { INK, ITEM_CARD_ASPECT, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { shade } from "@/lib/helpers";
 
-// バインダー表紙・背表紙の見出し用、ミッドセンチュリーのポスターレタリング
-// を思わせる太いディスプレイ書体(Anton)。ラテン文字専用のフォントだが、
-// フォールバック先に和文書体を指定しているため、和文タイトルが来た場合は
-// 文字単位で自動的にZen Kaku Gothic Newへ切り替わる。英字の見出し
-// (PLACE/GOAL/CINEMAなど)だけにこの書体が効く形で共存する。
+// バインダー表紙・背表紙の見出し用のディスプレイ書体(Anton)。ラテン文字
+// 専用のフォントだが、フォールバック先に和文書体を指定しているため、
+// 和文タイトルが来た場合は文字単位で自動的にZen Kaku Gothic Newへ
+// 切り替わる。英字の見出し(PLACE/GOAL/CINEMAなど)だけにこの書体が効く
+// 形で共存する。以前は柄・下地色ともにミッドセンチュリー色が強すぎたため、
+// 下地は白〜グレーの無彩色のみ、ワンポイントも小さく・くすんだ色に
+// 抑えてミニマルなトーンへ寄せている。
 const POSTER_FONT = "var(--font-anton), var(--font-zen-kaku-gothic-new), sans-serif";
 
 // ---- ワンポイントの図形+色(ジャンルなどの意味づけ) -------------------------
@@ -36,8 +41,8 @@ export interface Accent {
 
 // 全バインダー共通の「目標」の下地色+ワンポイント(RecordsTabの棚・
 // GoalsTabのグリッドどちらでも同じ組み合わせにして揃える)。
-export const GOAL_BASE = "#EAE1C8";
-export const GOAL_ACCENT: Accent = { shape: "square", color: RUST };
+export const GOAL_BASE = "#F7F6F2";
+export const GOAL_ACCENT: Accent = { shape: "square", color: "#9C7A68" };
 
 function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string; size: number }) {
   switch (shape) {
@@ -52,19 +57,19 @@ function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string
   }
 }
 
-// 表紙の中央上寄りに大きく置く、ミッドセンチュリーのポスターを思わせる
-// ワンポイントの幾何学。以前は右上の小さなバッジだったが、無地の下地の
-// 上に大きく1つ置くほうがジャンルの判別性・デザイン性の両方で勝るため、
-// カード幅の6割ほどを占める大きさに変えた。タイトルが乗る下側の余白は
-// 侵さない高さに収めている。
+// 表紙の右上に置く、控えめなワンポイントの幾何学。以前はカード幅の6割を
+// 占める大きなポスター風の図形だったが、「ミッドセンチュリー感が強すぎる」
+// という指摘を受け、もっとミニマル・スタイリッシュな見た目にするため、
+// 小さな1点の印(スタンプ)程度の大きさへ縮小した。色もくすんだトーンに
+// 抑え、下地の白〜グレーと喧嘩しないようにしている。
 function BigAccentShape({ shape, color }: Accent) {
   const base: CSSProperties = {
-    position: "absolute", left: "50%", top: "9%", width: "60%", aspectRatio: "1 / 1", background: color, pointerEvents: "none",
+    position: "absolute", top: "14px", right: "14px", width: 26, height: 26, background: color, pointerEvents: "none",
   };
-  if (shape === "circle") return <div style={{ ...base, borderRadius: "50%", transform: "translateX(-50%)" }} />;
-  if (shape === "square") return <div style={{ ...base, borderRadius: 3, transform: "translateX(-50%)" }} />;
-  if (shape === "diamond") return <div style={{ ...base, width: "50%", borderRadius: 3, transform: "translateX(-50%) rotate(45deg)" }} />;
-  return <div style={{ ...base, transform: "translateX(-50%)", clipPath: "polygon(50% 2%, 4% 96%, 96% 96%)" }} />;
+  if (shape === "circle") return <div style={{ ...base, borderRadius: "50%" }} />;
+  if (shape === "square") return <div style={{ ...base, borderRadius: 2 }} />;
+  if (shape === "diamond") return <div style={{ ...base, width: 21, height: 21, borderRadius: 2, transform: "rotate(45deg)" }} />;
+  return <div style={{ ...base, clipPath: "polygon(50% 4%, 6% 94%, 94% 94%)" }} />;
 }
 
 // ---- 表紙面・背表紙面・無地の側面 ------------------------------------------
@@ -83,16 +88,26 @@ function isLightTone(hex: string) {
   return (0.299 * r + 0.587 * g + 0.114 * b) > 150;
 }
 
-// 表紙面。無地の下地(colorは種類ごとに固定: 目標=生成り、場所=グレー、
-// メディア=チャコール)の上に、ジャンルのワンポイント(accent)を大きく
-// 1つ置くだけの構成。以前はここに柄+穴のヒントも重ねていたが、「変な柄」
-// という指摘で撤廃し、無地+ワンポイントだけのミニマルな構成にした。
+// 開く側(リングの反対側=右端)の紙の断面を思わせる、細い縞のテクスチャ。
+// ただの箱に見えないよう、表紙面の右端と無地の側面(BinderEdgeFace)の
+// 両方で共有して使う。
+function pageEdgeStripes(color: string, light: boolean) {
+  const c1 = shade(color, light ? -7 : 12);
+  const c2 = shade(color, light ? -17 : 24);
+  return `repeating-linear-gradient(180deg, ${c1} 0px, ${c1} 2px, ${c2} 2px, ${c2} 4px)`;
+}
+
+// 表紙面。無地の下地(colorは種類ごとに固定: 目標=白、場所=グレー、
+// メディア=グレー)の上に、ジャンルのワンポイント(accent)を右上に小さく
+// 置くだけの構成。右端には紙が挟まっていることを示す細い縞を入れ、
+// ただの単色の箱に見えないようにしている。
 export function BinderCoverFace({ color, eyebrowLabel, title, footer, accent }: CoverContent) {
   const light = isLightTone(color);
   const fg = light ? INK : "#fff";
   const fgMuted = light ? "rgba(28,28,30,0.62)" : "rgba(255,255,255,0.75)";
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", padding: "14px 14px 12px", background: color, overflow: "hidden" }}>
+      <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 5, backgroundImage: pageEdgeStripes(color, light), opacity: light ? 0.9 : 0.7, pointerEvents: "none" }} />
       <div style={{ position: "absolute", inset: 0, boxShadow: `inset 0 0 0 1px ${light ? "rgba(28,28,30,0.1)" : "rgba(255,255,255,0.08)"}`, pointerEvents: "none" }} />
       {accent && <BigAccentShape shape={accent.shape} color={accent.color} />}
       <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -142,15 +157,15 @@ export function BinderSpineFace({ color, title, count, accent }: { color: string
   );
 }
 
-// 無地の側面(リングの反対側=バインダーの右端)。実物のリングバインダーの
-// この面には何も印字されないので、ラベルを持たない無地の面として作る。
-// コンベア(BinderCoverflowRow)で中心より左側にある本を、その本の右側面
-// から覗き込んでいるように見せるために使う。
+// 無地の側面(リングの反対側=バインダーの右端=開く側)。ラベルは持たないが、
+// ただの単色の箱に見えないよう、挟んである紙の小口(断面)を思わせる細い
+// 縞のテクスチャを入れている。表紙面の右端の縞(pageEdgeStripes)と同じ
+// 語彙で、「この箱には本当に紙が挟まっている」という説得力を持たせる。
 function BinderEdgeFace({ color }: { color: string }) {
   const light = isLightTone(color);
   return (
-    <div style={{ position: "absolute", inset: 0, background: color }}>
-      <div style={{ position: "absolute", inset: 0, background: light ? "linear-gradient(90deg, rgba(0,0,0,0.12), rgba(0,0,0,0))" : "linear-gradient(90deg, rgba(0,0,0,0.26), rgba(0,0,0,0))" }} />
+    <div style={{ position: "absolute", inset: 0, background: color, backgroundImage: pageEdgeStripes(color, light) }}>
+      <div style={{ position: "absolute", inset: 0, background: light ? "linear-gradient(90deg, rgba(0,0,0,0.1), rgba(0,0,0,0))" : "linear-gradient(90deg, rgba(0,0,0,0.22), rgba(0,0,0,0))" }} />
     </div>
   );
 }
@@ -169,12 +184,11 @@ export function binderTiltAngle(d: number, rest = 80, focused = 0) {
 // (角丸カードは他の「カード」で使う語彙なので、バインダーはあえて
 // 直角にして両者を視覚的に区別する)。表紙・背表紙(リング側)・無地の
 // 側面(反対側)の3面を持つ箱として組み立てる。背表紙面はrotateY(-90deg)
-// で、無地の側面はrotateY(+90deg)で構成しているため、外側のrotateYが
-// プラスの時は背表紙、マイナスの時は無地の側面が正しく正面を向く
-// (backface-visibilityの都合上、片方の面は常に反対の符号でしか正しく
-// 見えない)。どちらの符号で呼んでも常にどちらかの面が正しく見えるので、
-// 呼び出し側は「右にある本はプラス、左にある本はマイナス」で呼べば、
-// 棚を正面から覗き込んだ時のように収束するパースになる。
+// で構成しているため、外側のrotateYが常にプラスの時だけ正しく正面を
+// 向く(backface-visibilityの都合上、マイナスだと裏返って消えてしまう)。
+// 棚(BinderCoverflowRow)側は左右どちらの隣に対しても常にプラスの角度
+// だけを渡すことで、左右どちら側にいても常に背表紙(ラベルが読める面)
+// が見えるようにしている。
 // 厚み(depth)は明示的に渡さなければ挟んでいる件数(count)から自動的に
 // 太く/細くなり、「中身が多いほど分厚く見える」という物理的な説得力を
 // 持たせている。scaleは棚(BinderCoverflowRow)で中央に来たものだけを
@@ -239,12 +253,14 @@ export interface BinderShelfItem extends CoverContent {
 }
 
 const ROW_FOCUS_SCALE = 0.12;
-// 表紙が正面を向いているフォーカス中の1冊の両脇に確保する、追加の
-// 余白(px)。これがないと、フォーカス中の本(実寸で表示される)と、
-// すぐ隣の背表紙だけの本(ピッチ上は近い)が重なって窮屈に見えてしまう。
-// フォーカスが隣へ移るにつれて滑らかに0へ戻る(=フォーカス中の本自身は
-// 余白を持たない)ようclampした符号付き距離で滲ませている。
-const FOCUS_SPREAD = 30;
+// フォーカス中の1冊(表紙が正面)の両脇にいる本を、ストックタブの
+// CardStackと同じ考え方で押し広げる: 中心からの距離1につきこの量だけ
+// 押し広げていく(距離が大きいほど、より遠くへ)。これにより、実寸で
+// 表示されるフォーカス中の表紙の裏に、隣の本が重なって隠れることが
+// なくなる。フォーカス中の本自身(d=0)は押し広げない。あまり遠い
+// アイテムまで際限なく広げ続けると不自然なので、距離4分でキャップする。
+const FOCUS_SPREAD_STEP = 30;
+const FOCUS_SPREAD_MAX_D = 4;
 
 // ネイティブの横スクロール+スナップを使うことで、「タップ」と「スワイプで
 // 送る」の判定をブラウザの標準挙動に任せられる。スクロール位置から各
@@ -256,8 +272,8 @@ const FOCUS_SPREAD = 30;
 // DOM上の各スロットはpitch幅の空箱にし、その中央にitemWidth幅のBinder3Dを
 // 絶対配置で重ねて迫り出させることで、「表紙は大きいのに本棚としては
 // ぎっしり詰まっている」という実物の本棚に近い密度を再現している
-// (フォーカスした1冊がscaleでさらに一回り迫り出し、FOCUS_SPREADで
-// 両隣との重なりを避ける)。
+// (フォーカスした1冊がscaleでさらに一回り迫り出し、FOCUS_SPREAD_STEPで
+// 両隣以遠との重なりを避ける)。
 //
 // スロット自体にもitemHeight相当の高さを明示している。以前はBinder3D側の
 // scaleTransformが「見た目だけ」拡大縮小するもので、レイアウト上の高さには
@@ -310,16 +326,12 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       <div style={{ flex: "0 0 auto", width: sidePad }} />
       {items.map((it, i) => {
         const d = i - centerRef.current;
-        // 中心より右(d>=0)は常にプラスの角度で背表紙(リング側)を、
-        // 中心より左(d<0)は常にマイナスの角度で無地の側面を見せる。
-        // これにより、フォーカス中の1冊を正面から見た時、その右は
-        // 左側面越しに、左は右側面越しに覗き込んでいるような、実際に
-        // 棚を正面から見た時と同じ収束するパースになる。
-        const magnitude = binderTiltAngle(Math.abs(d));
-        const angle = d >= 0 ? magnitude : -magnitude;
+        // 常にプラスの角度だけを使う: 左右どちらの隣も常に背表紙
+        // (リング側、ラベルが読める面)が正面を向く。
+        const angle = binderTiltAngle(Math.abs(d));
         const focus = Math.max(0, 1 - Math.min(1, Math.abs(d)));
         const scale = 1 + focus * ROW_FOCUS_SCALE;
-        const spread = FOCUS_SPREAD * Math.max(-1, Math.min(1, d));
+        const spread = FOCUS_SPREAD_STEP * Math.max(-FOCUS_SPREAD_MAX_D, Math.min(FOCUS_SPREAD_MAX_D, d));
         return (
           <div key={it.key} style={{ position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center", zIndex: Math.round(focus * 100) }}>
             <div style={{ position: "absolute", left: "50%", bottom: 0, width: itemWidth, transform: `translateX(calc(-50% + ${spread}px))` }}>

@@ -14,10 +14,10 @@ import { detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers"
 import type { AppState, TabId, TabProps } from "@/lib/types";
 
 const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
-  { id: "records", label: "記録", Icon: LayoutGrid },
+  { id: "records", label: "アーカイブ", Icon: LayoutGrid },
   { id: "brief", label: "ブリーフ", Icon: Newspaper },
   { id: "stock", label: "ストック", Icon: Heart },
-  { id: "goals", label: "目標", Icon: Sprout },
+  { id: "goals", label: "ゴール", Icon: Sprout },
   { id: "execute", label: "実行", Icon: MapIcon },
 ];
 
@@ -66,7 +66,7 @@ export function AppShell() {
     DataStore.save(next).then(setStorageMode);
   }, []);
   // タブ切り替え時にページの縦スクロール位置をリセットする。以前は
-  // setTabだけを呼んでおり、記録タブなどを下にスクロールした状態のまま
+  // setTabだけを呼んでおり、アーカイブタブなどを下にスクロールした状態のまま
   // 別タブ(特にブリーフタブ)へ切り替えると、その残ったスクロール位置の
   // せいでヘッダーが画面上端からはみ出して見切れる不具合があった。
   const goTab = useCallback((id: TabId) => {

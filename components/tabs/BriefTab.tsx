@@ -2,7 +2,7 @@
 
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { BinderModal, Masthead } from "@/components/common";
+import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
 import { CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
@@ -37,7 +37,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             <Sprout size={32} strokeWidth={1.5} />
             <span style={{ fontSize: 9, letterSpacing: "0.26em", opacity: 0.8 }}>CHECK-IN</span>
           </div>
-          <div style={{ flex: 1, padding: "18px 20px 20px", display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: 1, padding: "18px 20px 20px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
             <div style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E", marginBottom: 8 }}>{card.goalTitle}</div>
             <h2 style={{ margin: "0 0 12px", fontFamily: SERIF, fontWeight: 700, fontSize: 18, lineHeight: 1.4, color: INK }}>最近は、どうですか？</h2>
             <textarea
@@ -48,6 +48,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
               style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: 10, padding: 12, fontFamily: SANS, fontSize: 13, outline: "none", background: "#FAFAF6", color: INK }}
             />
           </div>
+          <PunchHoles />
         </div>
       );
     }
@@ -62,7 +63,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           <Sprout size={30} strokeWidth={1.5} />
           <span style={{ fontSize: 9, letterSpacing: "0.26em", opacity: 0.85 }}>MILESTONE</span>
         </div>
-        <div style={{ flex: 1, padding: "16px 20px 20px", display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, padding: "16px 20px 20px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E", marginBottom: 8 }}>{card.goalTitle}</div>
           <h2 style={{ margin: "0 0 10px", fontFamily: SERIF, fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: INK }}>できるようになったこと、ありますか？</h2>
           <textarea
@@ -82,6 +83,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             ))}
           </div>
         </div>
+        <PunchHoles />
       </div>
     );
   }
@@ -118,7 +120,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           }}>写真 {card.images!.length} を見る ⤢</span>
         )}
       </div>
-      <div style={{ flex: 1, padding: "16px 20px 18px", display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, padding: "16px 20px 18px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
         <div style={{ marginBottom: 8 }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: card.serendipity ? BLUE : "#5A5A54", flexShrink: 0 }} />
@@ -140,6 +142,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
       </div>
       <div style={{ position: "absolute", top: 20, left: 18, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: "0.15em", padding: "3px 12px", borderRadius: 6, background: "rgba(251,250,247,0.85)", pointerEvents: "none" }}>KEEP</div>
       <div style={{ position: "absolute", top: 20, right: 18, transform: "rotate(12deg)", opacity: skipOpacity, border: "3px solid #8A8A82", color: "#8A8A82", fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: "0.15em", padding: "3px 12px", borderRadius: 6, background: "rgba(251,250,247,0.85)", pointerEvents: "none" }}>SKIP</div>
+      <PunchHoles />
     </div>
   );
 }
@@ -159,10 +162,27 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   // に引っ張られてページ本体がバウンス/ズレしやすく、Safariのメニューバー
   // の出入りも誘発してレイアウトが崩れる。スワイプで完結する1枚のカード
   // という設計上、このタブにいる間だけ本文の縦スクロールを止める。
+  //
+  // 別タブを下にスクロールした状態でこのタブへ切り替えると、タブ切替の
+  // クリックハンドラ側でwindow.scrollTo(0,0)を呼んでいても、iOSの慣性
+  // スクロールがそのあとまで残っていて上の行の実行後にさらにスクロール
+  // 位置がズレてしまうことがあった(その状態でoverflow:hiddenを掛けると
+  // ズレた位置のまま固定されてしまい、ヘッダーが見切れて見える)。
+  // マウント時にも改めてscrollTo(0,0)するだけでなく、このタブにいる間は
+  // scrollイベントを監視して0以外にズレたら即座に0へ戻し続けることで、
+  // 慣性スクロールが後から効いてきても必ず先頭に固定されるようにする。
   useEffect(() => {
+    window.scrollTo(0, 0);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prevOverflow; };
+    const pinTop = () => {
+      if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0) window.scrollTo(0, 0);
+    };
+    window.addEventListener("scroll", pinTop, { passive: true });
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("scroll", pinTop);
+    };
   }, []);
 
   const dateKey = todayKey();
@@ -314,7 +334,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
   return (
     <>
-      <Masthead title="デイリーブリーフ" statValue={done ? keptCards.length : index + 1} statLabel={done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
+      <Masthead title="ブリーフ" statValue={done ? keptCards.length : index + 1} statLabel={done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
       <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
         {deck.map((c, i) => (
           <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: decisions[c.id] === "keep" || decisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : decisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(23,23,21,0.1)", transition: "background 0.3s" }} />

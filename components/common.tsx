@@ -59,6 +59,31 @@ export function keepStatus(k: { status: string }) {
   return { label: "候補", color: GREEN };
 }
 
+// カードの左端に開ける、「バインダーに綴じられている」ことを示すパンチ穴。
+// PosterCard・ブリーフのカード・実行タブの確定カードなど、アプリ内の
+// 「1枚もの」アイテムカードすべてでこの穴を共有し、位置・見た目を統一
+// する。本物の透過ではなく、どんな下地(写真/グラデーション/色面)の上でも
+// 同じ見た目で「窪んで見える」よう、内側シャドウ付きの生成りの円で表現
+// している。カード側は、キャプションやバッジをこの穴の右
+// (目安HOLE_CLEARpx)から置くことで、穴と文字が重ならないようにする。
+export const HOLE_CLEAR = 33;
+const HOLE_YS = ["24%", "76%"];
+
+export function PunchHoles() {
+  return (
+    <>
+      {HOLE_YS.map((y) => (
+        <div key={y} style={{
+          position: "absolute", left: 12, top: y, transform: "translateY(-50%)", width: 10, height: 10, borderRadius: "50%",
+          background: "rgba(253,251,245,0.92)",
+          boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.38), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 1px rgba(255,255,255,0.3)",
+          pointerEvents: "none",
+        }} />
+      ))}
+    </>
+  );
+}
+
 // アプリ全体で統一する「アイテムカード」。写真付き(場所のKeepなど)も、
 // 文字だけ(作品など)もこの1つのデザインに揃える。写真が無い場合は
 // ただの色面にせず、アイコン(または絵文字グリフ)を薄く敷いた上に
@@ -81,11 +106,6 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
   size?: number | string;
 }) {
   const fill = color ?? "#5A5A54";
-  // ルーズリーフとカードの中間のような見た目にするため、左端に穴を
-  // 配置している。本物の透過ではなく、どんな下地(写真/グラデーション/
-  // 掲示板テクスチャ)の上でも同じ見た目で「窪んで見える」よう、内側
-  // シャドウ付きの生成りの円で表現している。
-  const holeYs = ["24%", "76%"];
   return (
     <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 18, overflow: "hidden", boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default", background: image ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)` }}>
       {image ? (
@@ -97,19 +117,13 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
         </div>
       )}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 42%, rgba(0,0,0,0.8) 100%)" }} />
-      {holeYs.map((y) => (
-        <div key={y} style={{
-          position: "absolute", left: 12, top: y, transform: "translateY(-50%)", width: 10, height: 10, borderRadius: "50%",
-          background: "rgba(253,251,245,0.92)",
-          boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.38), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 1px rgba(255,255,255,0.3)",
-        }} />
-      ))}
+      <PunchHoles />
       {kept && (
-        <span style={{ position: "absolute", top: 8, left: 33, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
+        <span style={{ position: "absolute", top: 8, left: HOLE_CLEAR, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
           <Bookmark size={9} fill={INK} strokeWidth={0} /> KEEP
         </span>
       )}
-      <div style={{ position: "absolute", bottom: 10, left: 33, right: 10 }}>
+      <div style={{ position: "absolute", bottom: 10, left: HOLE_CLEAR, right: 10 }}>
         {label && <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(255,255,255,0.7)", marginBottom: 3 }}>{label}</div>}
         <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
         {sub && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}

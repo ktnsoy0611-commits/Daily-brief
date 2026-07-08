@@ -15,8 +15,8 @@ function AddGoalSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onCl
     <BottomSheet onClose={onClose}>
       {(requestClose) => (
         <OverlayCard>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>目標を追加</div>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="終わりのない目標を"
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>ゴールを追加</div>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="終わりのないゴールを"
             style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 15, outline: "none", marginBottom: 20, background: "transparent" }} />
           <button onClick={() => { if (!title.trim()) return; onAdd(title.trim()); requestClose(); }} disabled={!title.trim()} style={{
             width: "100%", padding: "13px 0", background: title.trim() ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none",
@@ -64,7 +64,7 @@ function GoalDetailSheet({ goal, draft, onDraftChange, onManualAdd, onRemove, on
   );
 }
 
-// 目標タブ: 終わりのない継続の記録。カードは2列グリッドで並び、他のカード
+// ゴールタブ: 終わりのない継続の記録。カードは2列グリッドで並び、他のカード
 // (比率3:4)とは違う比率(3:5)・色で目標カードだと視覚的にわかるようにする。
 // 追加は末尾の＋タイルから。
 export function GoalsTab({ appState, persist, profileButton }: TabProps) {
@@ -103,11 +103,11 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
 
   return (
     <>
-      <Masthead title="目標" statValue={goalItems.length} statLabel="件" corner={profileButton} />
+      <Masthead title="ゴール" statValue={goalItems.length} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
-        {/* 目標もアプリ共通のBinder3D(表紙+背表紙を持つリングバインダー)で
-            統一する。以前は専用のGoalCardを使っており、記録タブの棚と
+        {/* ゴールもアプリ共通のBinder3D(表紙+背表紙を持つリングバインダー)で
+            統一する。以前は専用のGoalCardを使っており、アーカイブタブの棚と
             見た目が食い違っていた。グリッドでは常に表紙が正面(rotateY:0)
             を向いた状態で並べ、タイトルを読み取りやすくしている。 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -132,7 +132,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
               />
             );
           })}
-          <AddCardTile aspect={GOAL_CARD_ASPECT} onClick={() => setAdding(true)} label="目標を追加" />
+          <AddCardTile aspect={GOAL_CARD_ASPECT} onClick={() => setAdding(true)} label="ゴールを追加" />
         </div>
       </main>
 

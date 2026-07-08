@@ -3,7 +3,7 @@
 import { Bookmark, BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { MEDIA_ACCENT, placeAccent } from "@/components/Binder";
-import { BinderModal, type IconType, Masthead, PosterCard } from "@/components/common";
+import { BinderModal, HOLE_CLEAR, type IconType, Masthead, PosterCard, PunchHoles } from "@/components/common";
 import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
@@ -260,12 +260,13 @@ function OpenBinderBackdrop({ closed }: { closed: boolean }) {
 }
 
 // ブリーフタブのカード(上部が写真、下部が白背景の説明)と統一したデザイン。
-// 以前は他のタブと共有のPosterCard(写真全面+下部に白文字)をそのまま
-// 使っていたが、ブリーフのお気に入りのデザインに揃えてほしいという要望で
-// 専用のフェイスに差し替えた。パンチ穴には実際にリングが通っているように
-// 見せる金属調の輪を重ね、下部には地図と(あれば)公式サイトへのリンクを
-// 置く。地図リンクは、情報ソースが既にGoogleマップへのURLならそれを
-// そのまま使い、そうでなければ場所名からその場で生成する。
+// パンチ穴は他のタブと同じPunchHoles(common.tsx)を使い、位置・見た目を
+// 揃えている。以前は専用の金属調リング装飾を作っていたが、ストックタブの
+// カードと見た目が食い違い、穴の配置も浮いていたため撤廃した。穴はカード
+// 全体の左端を通しで貫くため、下の白い説明エリアの文字はHOLE_CLEAR分だけ
+// 右にずらして穴と重ならないようにしている。下部には地図と(あれば)公式
+// サイトへのリンクを置く。地図リンクは、情報ソースが既にGoogleマップへの
+// URLならそれをそのまま使い、そうでなければ場所名からその場で生成する。
 function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => void }) {
   const IconComp = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
   const fill = item.color ?? "#5A5A54";
@@ -277,7 +278,7 @@ function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => 
   const officialHref = item.sourceUrl && !isMapsSource ? item.sourceUrl : undefined;
 
   return (
-    <div style={{ width: "100%", height: "100%", background: PAPER, borderRadius: 18, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG }}>
+    <div style={{ position: "relative", width: "100%", height: "100%", background: PAPER, borderRadius: 18, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG }}>
       <div style={{ position: "relative", flex: "0 0 52%", overflow: "hidden", background: fill }}>
         {hasPhoto ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -288,14 +289,8 @@ function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => 
           </div>
         ) : null}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.12), rgba(0,0,0,0) 40%)", pointerEvents: "none" }} />
-        {/* パンチ穴+実際に通っているリング(金属調のグラデーションの輪+中央の暗い穴) */}
-        {["26%", "74%"].map((y) => (
-          <div key={y} style={{ position: "absolute", left: 16, top: y, transform: "translateY(-50%)", width: 18, height: 18, borderRadius: "50%", background: "linear-gradient(135deg, #f0f0ec, #a9a9a2 45%, #6d6d68 100%)", boxShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>
-            <div style={{ position: "absolute", inset: 3.5, borderRadius: "50%", background: "rgba(20,20,20,0.88)", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.6)" }} />
-          </div>
-        ))}
         {item.kept && (
-          <span style={{ position: "absolute", top: 10, left: 42, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3.5px 9px 3.5px 7px" }}>
+          <span style={{ position: "absolute", top: 10, left: HOLE_CLEAR, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3.5px 9px 3.5px 7px" }}>
             <Bookmark size={10} fill={INK} strokeWidth={0} /> KEEP
           </span>
         )}
@@ -306,7 +301,7 @@ function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => 
         }}><Check size={15} strokeWidth={3} /></button>
         {item.done && <div style={{ position: "absolute", inset: 0, background: "rgba(28,28,30,0.4)", pointerEvents: "none" }} />}
       </div>
-      <div style={{ flex: 1, minHeight: 0, padding: "11px 14px 12px", display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, minHeight: 0, padding: "11px 14px 12px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5, flexShrink: 0 }}>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#5A5A54", flexShrink: 0 }} />
           <span style={{ fontSize: 8.5, color: "#5A5A54", fontWeight: 700, letterSpacing: "0.05em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.categoryLabel}{item.area && item.area !== "—" ? ` ・ ${item.area}` : ""}</span>
@@ -323,6 +318,7 @@ function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => 
           </div>
         )}
       </div>
+      <PunchHoles />
     </div>
   );
 }
@@ -624,7 +620,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
   };
   // 裏表紙の「登録」。バインダーを閉じて今日を締めくくる操作。「行きましたか？」
   // のような追加の確認は挟まず、まだ行った/行ってないが付いていない場所の
-  // Keepはそのまま候補に戻し、そのまま記録タブへ向かう。
+  // Keepはそのまま候補に戻し、そのままアーカイブタブへ向かう。
   const registerBinder = () => {
     const next = structuredClone(appState);
     (next.magazine?.itemIds ?? []).forEach((r) => {
@@ -638,9 +634,9 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
     goTab("records");
   };
   // 場所のKeepだけでなく、作品(メディア)・ウィッシュリスト・目標も
-  // まとめて投入する。地図(場所)だけ投入してもストック/目標タブは
+  // まとめて投入する。地図(場所)だけ投入してもストック/ゴールタブは
   // 空のままでテストしづらいため、アプリ全体を一度に試せる分量にしている。
-  // 記録タブの棚は「実行済み(done)」しか並ばないため、バインダーが
+  // アーカイブタブの棚は「実行済み(done)」しか並ばないため、バインダーが
   // 何冊も、しかも厚みの違いも含めて並んだ様子を最初から見られるよう、
   // ほとんどの場所・メディアをdone状態(日付をずらして)で投入し、
   // 地図での選び直しを試せる分だけ候補(candidate/keep)を残す。

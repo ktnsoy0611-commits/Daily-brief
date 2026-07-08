@@ -420,6 +420,14 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
         // フォーカス中(d=0)は0、|d|>=1では固定のgapだけシフトし、その間は
         // 滑らかに補間する。
         const spread = gap * Math.max(-1, Math.min(1, d));
+        // Binder3DにtransitionMsを渡さない(=CSSトランジション無し)のは
+        // 意図的。スクロールスナップがmandatoryのため、指を離すとブラウザ
+        // 自身が滑らかなスナップアニメーションでscrollLeftを動かす。そこに
+        // さらにCSSトランジションを重ねると、rotateY/scaleの目標値が毎フレーム
+        // 変わり続けるものを90msかけて追いかける形になり、ネイティブの
+        // スナップに対して常に半歩遅れて「ガクッ」と収束するように見える
+        // 不具合があった。rAFで1フレームごとに値を更新しているのでこれ
+        // だけで十分滑らかに追従する。
         return (
           <div key={it.key} style={{
             position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center", zIndex: Math.round(focus * 100),
@@ -427,7 +435,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
           }}>
             <div style={{ position: "absolute", left: "50%", bottom: 0, width: itemWidth, transform: `translateX(calc(-50% + ${spread}px))` }}>
               <Binder3D
-                width={itemWidth} aspect={aspect} rotateY={angle} scale={scale} transitionMs={90}
+                width={itemWidth} aspect={aspect} rotateY={angle} scale={scale}
                 openDeg={flap ? OPEN_DEG_ACTIVE : OPEN_DEG_REST}
                 color={it.color} eyebrowLabel={it.eyebrowLabel} accent={it.accent}
                 title={it.title} count={it.count} onClick={it.onOpen}

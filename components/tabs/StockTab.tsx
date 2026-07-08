@@ -210,7 +210,7 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
     persist(next);
     showToast("作品をストックしました");
   };
-  // 作品の唯一の出口: 観た/読んだ/聴いたを押すと実際にやったログ(done)へ進み、記録タブへ移る
+  // 作品の唯一の出口: 観た/読んだ/聴いたを押すと実際にやったログ(done)へ進み、アーカイブタブへ移る
   const markMediaDone = (id: string) => {
     haptic(10);
     const next = structuredClone(appState);
@@ -220,7 +220,7 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
       r.doneAt = new Date().toISOString();
     }
     persist(next);
-    showToast("記録に移しました");
+    showToast("アーカイブに移しました");
   };
   const mediaCard = (r: MediaRecord, size?: number) => (
     <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.addedAt)} label={MEDIA_LABEL[r.kind]}
@@ -275,7 +275,7 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
     next.wishes = next.wishes.filter((x) => x.id !== id);
     persist(next);
   };
-  // ウィッシュリストの項目を目標に格上げする: goalsへ追加し、wishesからは消す
+  // ウィッシュリストの項目をゴールに格上げする: goalsへ追加し、wishesからは消す
   const makeGoal = (w: Wish) => {
     haptic(10);
     const next = structuredClone(appState);
@@ -283,7 +283,7 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
     next.goals = next.goals ?? [];
     next.goals.push({ id: `goal-${Date.now()}`, title: w.title, addedAt: new Date().toISOString(), checkIns: [] });
     persist(next);
-    showToast("目標にしました");
+    showToast("ゴールにしました");
   };
   const wishCard = (w: Wish, size?: number) => (
     <PosterCard key={w.id} color={POSTER_PALETTE[hashStr(w.title) % POSTER_PALETTE.length]} title={w.title} sub={shortDate(w.addedAt)}
@@ -370,7 +370,7 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
         actionSlot={(close) => (
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
             <button onClick={() => { updateWish(wishDetail!.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() }); close(); }} style={rowBtn(INK, PAPER)}>叶えた！</button>
-            <button onClick={() => { makeGoal(wishDetail!); close(); }} style={rowBtn("transparent", GREEN, GREEN)}>目標にする</button>
+            <button onClick={() => { makeGoal(wishDetail!); close(); }} style={rowBtn("transparent", GREEN, GREEN)}>ゴールにする</button>
             <button onClick={() => { removeWish(wishDetail!.id); close(); }} aria-label="削除" style={{ background: "none", border: "none", color: RUST, cursor: "pointer", padding: 6, display: "flex" }}><Trash2 size={16} /></button>
           </div>
         )} />

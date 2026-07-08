@@ -51,7 +51,7 @@ interface OpenFolder {
 
 // ==================================================================
 // アプリのホーム。「実際にやった/読んだ/叶えた」ことだけが積み上がる。
-// KEEPしただけの未実行のものはストックタブ・目標タブが担当する。
+// KEEPしただけの未実行のものはストックタブ・ゴールタブが担当する。
 // 完了したバインダーは種類ごとの行(メディアのジャンル別・行った場所の
 // エリア別・目標)に並び、components/Binder.tsxの共通モデルで背表紙から
 // 覗く棚として見せる。目標も他の種類と同じ棚の1行として扱い、以前のように
@@ -197,7 +197,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
   // 目標も「種類ごとの1行」という同じ扱いにする。以前はここだけGoalCardの
   // 小さな横並びを別枠で出していたが、他の完了バインダーと見た目・操作感を
-  // 揃えるため同じ棚の1行として並べ、タップで目標タブへ向かう。
+  // 揃えるため同じ棚の1行として並べ、タップでゴールタブへ向かう。
   const goalRowItems: BinderShelfItem[] = goals.map((g) => ({
     key: g.id, color: GOAL_BASE, eyebrowLabel: "GOAL", accent: GOAL_ACCENT,
     title: g.title, count: g.checkIns?.length ?? 0,
@@ -219,7 +219,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
   return (
     <>
-      <Masthead title="記録" statValue={totalCount} statLabel="件の記録" corner={profileButton} />
+      <Masthead title="アーカイブ" statValue={totalCount} statLabel="件の記録" corner={profileButton} />
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
 
         {pendingItems.length > 0 && (
@@ -269,7 +269,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
             {goalRowItems.length > 0 && (
               <section style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>目標</div>
+                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>ゴール</div>
                 <BinderCoverflowRow items={goalRowItems} />
               </section>
             )}

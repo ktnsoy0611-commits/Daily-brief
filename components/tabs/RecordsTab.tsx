@@ -3,13 +3,26 @@
 import { BookOpen, Film, MapPin, Music, Music2, Palette } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
-import { BinderCoverflowRow, binderTone, type BinderShelfItem } from "@/components/Binder";
+import { BinderCoverflowRow, binderTone, GOAL_ACCENT, type Accent, type BinderShelfItem } from "@/components/Binder";
 import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
-import { GREEN, INK, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
+import { BLUE, GREEN, INK, PAPER, POSTER_PALETTE, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, inferMediaKind, shortDate } from "@/lib/helpers";
 import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
+
+// バインダーの表紙・背表紙に載せる「ワンポイント」。図形+色1点だけで
+// ジャンルを判別できるようにする(映画/音楽のような具象アイコンは使わない)。
+// 種類ごとに固定の図形+色を割り当てることで、棚に並んだ背表紙だけを見ても
+// 「これはメディア」「これは場所」と一目で見分けがつくようにしている。
+const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
+  movie: { shape: "square", color: BLUE },
+  exhibition: { shape: "triangle", color: POSTER_PALETTE[3] },
+  live: { shape: "circle", color: RUST },
+  book: { shape: "check", color: GREEN },
+  album: { shape: "diamond", color: POSTER_PALETTE[1] },
+};
+const PLACE_ACCENT: Accent = { shape: "circle", color: POSTER_PALETTE[0] };
 
 // タップしたバインダーの中身を見せる共通シート。カード自体が完結した
 // ビジュアルを持つので、白い台紙には包まずブラー背景の上に直接浮かせる。
@@ -161,7 +174,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const mediaRowItems: BinderShelfItem[] = mediaSections.map((sec) => {
     const kindLabel = mediaKindOf(sec.kind).label;
     return {
-      key: sec.kind, color: binderTone(sec.kind), eyebrowLabel: kindLabel,
+      key: sec.kind, color: binderTone(sec.kind), eyebrowLabel: kindLabel, accent: MEDIA_ACCENT[sec.kind],
       title: kindLabel, spineTitle: kindLabel, count: sec.records.length,
       footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{sec.records.length}件・タップで見る</div>,
       onOpen: () => setOpenFolder({
@@ -177,7 +190,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   });
 
   const areaRowItems: BinderShelfItem[] = areaSections.map((sec) => ({
-    key: sec.area, color: binderTone(sec.area), eyebrowLabel: "PLACE",
+    key: sec.area, color: binderTone(sec.area), eyebrowLabel: "PLACE", accent: PLACE_ACCENT,
     title: sec.area, spineTitle: sec.area, count: sec.keeps.length,
     footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{sec.keeps.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
@@ -194,7 +207,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   // 小さな横並びを別枠で出していたが、他の完了バインダーと見た目・操作感を
   // 揃えるため同じ棚の1行として並べ、タップで目標タブへ向かう。
   const goalRowItems: BinderShelfItem[] = goals.map((g) => ({
-    key: g.id, color: binderTone(g.id), eyebrowLabel: "GOAL",
+    key: g.id, color: binderTone(g.id), eyebrowLabel: "GOAL", accent: GOAL_ACCENT,
     title: g.title, spineTitle: g.title, count: g.checkIns?.length ?? 0,
     footer: <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, textAlign: "center" }}>{g.checkIns?.length ? `記録${g.checkIns.length}件・タップで見る` : "タップで見る"}</div>,
     onOpen: () => goTab("goals"),

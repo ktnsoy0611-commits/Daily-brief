@@ -236,9 +236,11 @@ interface ExecItem {
 // 穴+リング金具(HOLE_MASK/holeMaskStyle/HoleRings/BinderRings)はアプリ全体の
 // バインダー共通モデル(components/Binder.tsx)に統一したので、ここではimportして使う。
 
-// バインダーの1ページ。PosterCard/GoalCardと同じ穴+切り取り線の余白列を
-// 左端に確保し、行った/行ってないは本文を隠さない右上の2アイコンで
-// 完結させる。
+// バインダーの1ページ。四角い紙のページ(左端に穴)と、そこにリングで
+// 挟まれた1枚の角丸カード(他タブのアイテムカードと全く同じ意匠)を分けて
+// 描く。以前はページ自体が写真+文字を持つ独自のカードになっており、
+// 「四角いバインダーに角丸のカードが挟まっている」という実物のリング
+// バインダーらしさが出ていなかった。
 function BookPage({ item, index, total, falling, onMarkDone, onDrop }: {
   item: ExecItem; index: number; total: number; falling?: boolean;
   onMarkDone: () => void;
@@ -253,11 +255,15 @@ function BookPage({ item, index, total, falling, onMarkDone, onDrop }: {
       opacity: falling ? 0 : 1,
       transition: falling ? "transform 0.42s cubic-bezier(0.55,0,1,0.45), opacity 0.42s ease-in" : "none",
     }}>
+      {/* ページ本体: バインダーと同じ四角い紙、左端に穴 */}
+      <div style={{ position: "absolute", inset: 0, background: "#FBF8EF", boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle }} />
+      {/* リングに挟まれた、角丸1枚のカード */}
       <div style={{
-        position: "absolute", inset: 0, background: "#FBF8EF", overflow: "hidden", display: "flex", flexDirection: "column",
-        boxShadow: "0 1px 2px rgba(28,28,30,0.08)", ...holeMaskStyle,
+        position: "absolute", left: 30, right: 9, top: 9, bottom: 9, borderRadius: 16, overflow: "hidden",
+        boxShadow: SOFT_SHADOW_LG, display: "flex", flexDirection: "column",
+        background: item.images?.[0] ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)`,
       }}>
-        <div style={{ position: "relative", flex: "0 0 44%", margin: "0 0 0 30px", overflow: "hidden", background: item.images?.[0] ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)` }}>
+        <div style={{ position: "relative", flex: "0 0 46%", overflow: "hidden" }}>
           {item.images?.[0] ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={img(item.images[0], 500, 460)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -267,9 +273,9 @@ function BookPage({ item, index, total, falling, onMarkDone, onDrop }: {
             </div>
           ) : null}
         </div>
-        <div style={{ flex: 1, padding: "12px 16px 12px 30px", display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ flex: 1, padding: "10px 13px 11px", display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700 }}>{item.categoryLabel}{item.area && item.area !== "—" ? ` ・ ${item.area}` : ""}</div>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14, lineHeight: 1.28, marginTop: 5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</div>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 13.5, lineHeight: 1.28, marginTop: 5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title}</div>
           {item.meta && item.meta.length > 0 && (
             <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
               {item.meta.slice(0, 2).map((m, i) => <div key={i} style={{ fontSize: 9.5, color: "#5A5A54", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m}</div>)}
@@ -542,28 +548,68 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
   // 場所のKeepだけでなく、作品(メディア)・ウィッシュリスト・目標も
   // まとめて投入する。地図(場所)だけ投入してもストック/目標タブは
   // 空のままでテストしづらいため、アプリ全体を一度に試せる分量にしている。
+  // 記録タブの棚は「実行済み(done)」しか並ばないため、バインダーが
+  // 何冊も、しかも厚みの違いも含めて並んだ様子を最初から見られるよう、
+  // ほとんどの場所・メディアをdone状態(日付をずらして)で投入し、
+  // 地図での選び直しを試せる分だけ候補(candidate/keep)を残す。
   const injectDemo = () => {
     const next = structuredClone(appState);
     const now = Date.now();
     ([
-      { title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", color: "#33467C", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"] },
-      { title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["COFFEE WRIGHTS", "9:00–18:00"] },
-      { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", color: "#8B4A2E", meta: ["高円寺北口エリア"] },
-      { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["神保町"] },
-      { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", color: "#33467C", meta: ["江戸東京博物館"] },
-      { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", color: "#5C4B6B", meta: ["蔵前"] },
-      { title: "下北沢のライブハウスへ", category: "音楽", area: "下北沢", images: ["live-a", "live-b"], sourceUrl: mapsUrl("下北沢 ライブハウス"), sourceLabel: "地図で見る", color: "#2E4A3F", meta: ["下北沢"] },
-      { title: "谷根千の坂道を散歩する", category: "身体", area: "谷根千", images: ["zakka-a", "zakka-b"], sourceUrl: mapsUrl("谷根千 散歩コース"), sourceLabel: "地図で見る", color: "#5A3A2E", meta: ["谷根千エリア"] },
+      { title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", color: "#33467C", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"], done: true },
+      { title: "竹橋のギャラリーで版画展を観る", category: "展覧会", area: "竹橋", images: ["print-a", "print-b"], sourceUrl: mapsUrl("竹橋 ギャラリー"), sourceLabel: "地図で見る", color: "#3A4A5C", meta: ["竹橋"], done: true },
+      { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["神保町"], done: true },
+      { title: "神保町の器店、作家の個展", category: "雑貨", area: "神保町", images: ["books-c"], sourceUrl: mapsUrl("神保町 器 個展"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["神保町", "会期は今月いっぱい"], done: true },
+      { title: "喫茶店でゆっくり読書する", category: "近所の発見", area: "神保町", images: ["kissa-a"], sourceUrl: mapsUrl("神保町 純喫茶"), sourceLabel: "地図で見る", color: "#5A3A2E", meta: ["神保町"], done: false },
+      { title: "日比谷公園を散歩する", category: "身体", area: "日比谷", images: ["hibiya-park-a"], sourceUrl: mapsUrl("日比谷公園"), sourceLabel: "地図で見る", color: "#3A4A5C", meta: ["日比谷公園"], done: true },
+      { title: "日比谷のミッドセンチュリー家具店", category: "雑貨", area: "日比谷", images: ["furniture-a"], sourceUrl: mapsUrl("日比谷 家具店"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["日比谷"], done: false },
+      { title: "谷根千の坂道を散歩する", category: "身体", area: "谷根千", images: ["zakka-a", "zakka-b"], sourceUrl: mapsUrl("谷根千 散歩コース"), sourceLabel: "地図で見る", color: "#5A3A2E", meta: ["谷根千エリア"], done: true },
+      { title: "谷中の陶器市を覗く", category: "雑貨", area: "谷根千", images: ["zakka-c"], sourceUrl: mapsUrl("谷中 陶器市"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["谷中エリア", "会期は今週末まで"], done: true },
+      { title: "谷根千の純喫茶でひと休み", category: "近所の発見", area: "谷根千", images: ["kissa-b"], sourceUrl: mapsUrl("谷根千 純喫茶"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["谷根千エリア"], done: true },
+      { title: "浅草橋のボルダリングジムへ", category: "身体", area: "浅草橋", images: ["climb-a", "climb-b"], sourceUrl: mapsUrl("浅草橋 ボルダリングジム"), sourceLabel: "地図で見る", color: "#3A4A5C", meta: ["浅草橋駅から徒歩6分"], done: true },
+      { title: "浅草橋の手芸問屋街を歩く", category: "雑貨", area: "浅草橋", images: ["zakka-d"], sourceUrl: mapsUrl("浅草橋 問屋街"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["浅草橋"], done: false },
+      { title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["COFFEE WRIGHTS", "9:00–18:00"], done: true },
+      { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", color: "#5C4B6B", meta: ["蔵前"], done: true },
+      { title: "蔵前のレザー工房を覗く", category: "雑貨", area: "蔵前", images: ["leather-a"], sourceUrl: mapsUrl("蔵前 レザー工房"), sourceLabel: "地図で見る", color: "#6B5A3A", meta: ["蔵前"], done: true },
+      { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", color: "#33467C", meta: ["江戸東京博物館"], done: true },
+      { title: "両国国技館のまわりを歩く", category: "身体", area: "両国", images: ["ryogoku-a"], sourceUrl: mapsUrl("両国国技館"), sourceLabel: "地図で見る", color: "#3A4A5C", meta: ["両国"], done: false },
+      { title: "清澄白河で陶芸体験をする", category: "未知との遭遇", area: "清澄白河", images: ["pottery-a", "pottery-b"], sourceUrl: mapsUrl("清澄白河 陶芸体験"), sourceLabel: "地図で見る", color: "#5C4B6B", meta: ["清澄白河・陶房"], done: true },
+      { title: "清澄白河のロースタリー巡り", category: "近所の発見", area: "清澄白河", images: ["kiyosumi-a"], sourceUrl: mapsUrl("清澄白河 ロースタリー"), sourceLabel: "地図で見る", color: "#3F6B4A", meta: ["清澄白河"], done: true },
+      { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", color: "#8B4A2E", meta: ["高円寺北口エリア"], done: true },
+      { title: "高円寺の古着市、大型セール", category: "古着", area: "高円寺", images: ["vintage-c"], sourceUrl: mapsUrl("高円寺 古着 セール"), sourceLabel: "地図で見る", color: "#6B3A4A", meta: ["高円寺北口一帯", "セールは3日間"], done: true },
+      { title: "高円寺の小さなレコード店", category: "音楽", area: "高円寺", images: ["record-a"], sourceUrl: mapsUrl("高円寺 レコード店"), sourceLabel: "地図で見る", color: "#2E4A3F", meta: ["高円寺"], done: false },
     ]).forEach((d, i) => {
-      next.keeps.push({ id: `demo-${now}-${i}`, title: d.title, category: d.category, area: d.area, status: "candidate", keptAt: new Date(now - i * 86400000).toISOString(), images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color: d.color });
+      next.keeps.push({
+        id: `demo-${now}-${i}`, title: d.title, category: d.category, area: d.area,
+        status: d.done ? "done" : "candidate",
+        keptAt: new Date(now - (i + 3) * 30 * 3600 * 1000).toISOString(),
+        doneAt: d.done ? new Date(now - i * 22 * 3600 * 1000).toISOString() : undefined,
+        images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color: d.color,
+      });
     });
     ([
-      { kind: "book" as const, title: "建築家のエッセイ集", creator: "", color: "#7A5636" },
-      { kind: "album" as const, title: "通勤で聴き切る一枚", creator: "", color: "#6B4558" },
-      { kind: "movie" as const, title: "Perfect Days 2", creator: "", color: "#1C1B22" },
-      { kind: "exhibition" as const, title: "「建築と自然」展", creator: "国立近代美術館", color: "#33467C" },
+      { kind: "movie" as const, title: "Perfect Days 2", creator: "", color: "#1C1B22", done: true },
+      { kind: "movie" as const, title: "単館上映のドキュメンタリー", creator: "", color: "#3A2E4A", done: true },
+      { kind: "movie" as const, title: "深夜のホラー特集上映", creator: "", color: "#22201F", done: false },
+      { kind: "exhibition" as const, title: "「建築と自然」展", creator: "国立近代美術館", color: "#33467C", done: true },
+      { kind: "exhibition" as const, title: "谷根千の器作家、個展", creator: "個人ギャラリー", color: "#6B5A3A", done: true },
+      { kind: "exhibition" as const, title: "写真家の回顧展", creator: "損保ジャパン美術館", color: "#3A4A5C", done: false },
+      { kind: "live" as const, title: "下北沢の対バンライブ", creator: "", color: "#2E4A3F", done: true },
+      { kind: "live" as const, title: "高円寺の弾き語りナイト", creator: "", color: "#4A5A6B", done: true },
+      { kind: "live" as const, title: "野外音楽フェス", creator: "", color: "#2E6B5C", done: false },
+      { kind: "book" as const, title: "建築家のエッセイ集", creator: "", color: "#7A5636", done: true },
+      { kind: "book" as const, title: "書評サイトで話題の短編集", creator: "", color: "#3A5A6B", done: true },
+      { kind: "book" as const, title: "積読中の長編小説", creator: "", color: "#5A3A2E", done: false },
+      { kind: "album" as const, title: "通勤で聴き切る一枚", creator: "", color: "#6B4558", done: true },
+      { kind: "album" as const, title: "学生時代によく聴いたアルバム", creator: "", color: "#5C4B6B", done: true },
+      { kind: "album" as const, title: "評判の新譜", creator: "", color: "#8B4A2E", done: false },
     ]).forEach((d, i) => {
-      next.records.media.unshift({ id: `demo-media-${now}-${i}`, kind: d.kind, title: d.title, creator: d.creator, addedAt: new Date(now - i * 43200000).toISOString(), color: d.color, status: i === 0 ? "keep" : "done", doneAt: i === 0 ? undefined : new Date(now - i * 43200000).toISOString() });
+      next.records.media.unshift({
+        id: `demo-media-${now}-${i}`, kind: d.kind, title: d.title, creator: d.creator,
+        addedAt: new Date(now - (i + 2) * 20 * 3600 * 1000).toISOString(), color: d.color,
+        status: d.done ? "done" : "keep",
+        doneAt: d.done ? new Date(now - i * 15 * 3600 * 1000).toISOString() : undefined,
+      });
     });
     ([
       { title: "フィルムカメラを買う", categoryId: "buy" as const },

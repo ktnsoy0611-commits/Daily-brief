@@ -334,7 +334,14 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         // widthとmaxHeightを祖先のflexに依存せず直接指定することで、
         // その連鎖を断ち切り、常に何らかの実寸を持つようにしている。
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0", overflow: "hidden" }}>
+          {/* overflowはvisibleのまま(以前はhiddenにしていた)。カードの
+              SOFT_SHADOW_LGは要素の外側に描かれるため、hiddenだと左右・
+              下側で途中から切れて見えていた。スワイプ確定後にカードを
+              画面外まで大きくtranslateXさせるアニメーションがあるが、
+              このタブは滞在中ずっとdocument.body.style.overflowを
+              hiddenにロックしているため、ここをvisibleにしても実際に
+              ページがスクロール/横に伸びることはない。 */}
+          <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }}>
             <main style={{ position: "relative", width: "min(88vw, 340px, calc(56dvh * 0.75))", aspectRatio: ITEM_CARD_ASPECT }}>
               {visibleCards.map(({ card, isTop }) => (
                 <div

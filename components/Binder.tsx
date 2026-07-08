@@ -404,7 +404,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   return (
     <div
       ref={scrollRef} onScroll={onScroll} className="no-scrollbar"
-      style={{ display: "flex", alignItems: "flex-end", overflowX: "auto", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch", padding: `${topPad}px 0 14px` }}
+      style={{ display: "flex", alignItems: "flex-end", overflowX: "auto", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", padding: `${topPad}px 0 14px` }}
     >
       <div style={{ flex: "0 0 auto", width: sidePad }} />
       {items.map((it, i) => {
@@ -421,7 +421,10 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
         // 滑らかに補間する。
         const spread = gap * Math.max(-1, Math.min(1, d));
         return (
-          <div key={it.key} style={{ position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center", zIndex: Math.round(focus * 100) }}>
+          <div key={it.key} style={{
+            position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center", zIndex: Math.round(focus * 100),
+            animation: "binder-in 0.46s cubic-bezier(0.22,0.9,0.32,1) both", animationDelay: `${Math.min(i, 12) * 26}ms`,
+          }}>
             <div style={{ position: "absolute", left: "50%", bottom: 0, width: itemWidth, transform: `translateX(calc(-50% + ${spread}px))` }}>
               <Binder3D
                 width={itemWidth} aspect={aspect} rotateY={angle} scale={scale} transitionMs={90}

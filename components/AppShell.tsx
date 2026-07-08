@@ -65,6 +65,14 @@ export function AppShell() {
     setAppState(next);
     DataStore.save(next).then(setStorageMode);
   }, []);
+  // タブ切り替え時にページの縦スクロール位置をリセットする。以前は
+  // setTabだけを呼んでおり、記録タブなどを下にスクロールした状態のまま
+  // 別タブ(特にブリーフタブ)へ切り替えると、その残ったスクロール位置の
+  // せいでヘッダーが画面上端からはみ出して見切れる不具合があった。
+  const goTab = useCallback((id: TabId) => {
+    window.scrollTo(0, 0);
+    setTab(id);
+  }, []);
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 1600); };
 
   useEffect(() => {
@@ -107,7 +115,7 @@ export function AppShell() {
       )}
     </button>
   );
-  const tabProps: TabProps = { appState, persist, showToast, goTab: setTab, profileButton };
+  const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton };
 
   return (
     <div style={{ minHeight: "100dvh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
@@ -162,7 +170,7 @@ export function AppShell() {
               {TABS.map((t) => {
                 const active = tab === t.id;
                 return (
-                  <button key={t.id} onClick={() => { haptic(5); setTab(t.id); }} style={{ flex: 1, padding: "8px 0 7px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                  <button key={t.id} onClick={() => { haptic(5); goTab(t.id); }} style={{ flex: 1, padding: "8px 0 7px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                     <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
                       <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
                     </div>

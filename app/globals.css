@@ -61,3 +61,12 @@ button:active {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* RecordsTabの棚(BinderCoverflowRow)の各バインダーが、下から順に
+   立ち上がってくる入場アニメーション用。ストックタブのカードの束が
+   幅を検知した瞬間に広がって見える動きに近い賑やかさを、記録タブにも
+   持たせるために使う。 */
+@keyframes binder-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}

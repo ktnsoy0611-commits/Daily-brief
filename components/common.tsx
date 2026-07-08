@@ -1,8 +1,8 @@
 "use client";
 
-import { Bookmark, Plus, Sprout, Star } from "lucide-react";
+import { Bookmark, Plus, Star } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, GOAL_CARD_ASPECT, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, POSTER_PALETTE, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
+import { BLUE, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
@@ -137,98 +137,6 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
   );
 }
 
-// 目標カードは「中にルーズリーフがバインドされたバインダー」として見せる。
-// 前バージョンは表紙面を白紙(PAPER)にしていたため、背後に覗くページと
-// 見分けがつかず「ルーズリーフの一枚」に見えてしまっていた。表紙そのものを
-// 布張り/レザー張りのような不透明な色面にし、中央にラベル(名札)を貼った
-// ような別素材のプレートを乗せることで、「閉じた表紙付きバインダー」だと
-// 一目でわかるようにしている。背後には、記録が貯まるほど右下にページの
-// 束がわずかにはみ出して重なっていく(枚数は上限を設け、それ以上は
-// 一番外側の束の厚みだけがわずかに増す扱いにして破綻を防ぐ)。
-const GOAL_STACK_CAP = 4;
-
-export function GoalCard({ title, recentCheckIns, checkInCount, onClick, size }: {
-  title: string;
-  recentCheckIns: { text: string; at: string }[];
-  checkInCount: number;
-  onClick: () => void;
-  size?: number | string;
-}) {
-  const latest = recentCheckIns[0];
-  const stackCount = Math.min(checkInCount, GOAL_STACK_CAP);
-  const seed = hashStr(title);
-  const fill = POSTER_PALETTE[seed % POSTER_PALETTE.length];
-
-  return (
-    <button onClick={onClick} style={{
-      width: size ?? "100%", aspectRatio: GOAL_CARD_ASPECT, flexShrink: 0, textAlign: "left", cursor: "pointer",
-      border: "none", padding: 0, background: "none", color: INK, position: "relative",
-    }}>
-      {Array.from({ length: stackCount }).map((_, i) => {
-        // 一番奥(表紙から遠い=zが低い)のページほど大きくはみ出させ、
-        // 表紙のすぐ下の層ほどはみ出しを小さくする。逆にすると外側の層が
-        // 内側の層を覆い隠して「1枚しか無い」ように見えてしまうため。
-        const depth = stackCount - i;
-        const layerSeed = seed + i * 37;
-        const dx = 3 + depth * 3.2 + ((layerSeed % 5) - 2) * 0.4;
-        const dy = 3 + depth * 2.8 + (((layerSeed >> 2) % 5) - 2) * 0.4;
-        const rot = ((layerSeed >> 4) % 7) - 3;
-        return (
-          <div key={i} style={{
-            position: "absolute", inset: 0, borderRadius: 16, background: "#FBF8EF",
-            border: "1px solid rgba(28,28,30,0.08)",
-            boxShadow: "0 1px 3px rgba(28,28,30,0.16)",
-            transform: `translate(${dx}px, ${dy}px) rotate(${rot}deg)`,
-            zIndex: i,
-          }} />
-        );
-      })}
-      {/* 表紙: スパイン(リング金具を持つ帯)と、色のついた不透明な表紙面を
-          はっきり分け、「バインダーという物体そのもの」に見えるようにしている。 */}
-      <div style={{
-        position: "absolute", inset: 0, zIndex: GOAL_STACK_CAP + 1, borderRadius: 18,
-        display: "flex", boxShadow: SOFT_SHADOW_LG, overflow: "hidden",
-      }}>
-        <div style={{ width: "17%", minWidth: 21, flexShrink: 0, position: "relative", background: `linear-gradient(180deg, ${shade(fill, -4)} 0%, ${shade(fill, -26)} 100%)`, boxShadow: "inset -2px 0 3px rgba(0,0,0,0.28)" }}>
-          {[0.24, 0.76].map((y) => (
-            <div key={y} style={{
-              position: "absolute", left: "50%", top: `${y * 100}%`, transform: "translate(-50%, -50%)", width: 11, height: 11, borderRadius: "50%",
-              background: "linear-gradient(135deg, #E2DFD3 0%, #B8B4A6 100%)",
-              boxShadow: "inset 0 1px 1.5px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.4)",
-            }}>
-              <div style={{ position: "absolute", inset: 2.3, borderRadius: "50%", background: shade(fill, -26) }} />
-            </div>
-          ))}
-        </div>
-        <div style={{
-          flex: 1, minWidth: 0, position: "relative", display: "flex", flexDirection: "column",
-          background: `linear-gradient(135deg, ${shade(fill, 16)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)`,
-        }}>
-          <div style={{ position: "absolute", inset: 0, opacity: 0.07, backgroundImage: "repeating-linear-gradient(45deg, #fff 0 1px, transparent 1px 6px)" }} />
-          <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.32), inset 0 -14px 18px -14px rgba(0,0,0,0.35)" }} />
-          <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 10px 6px" }}>
-            <div style={{ width: "100%", background: PAPER, borderRadius: 6, padding: "9px 9px 8px", textAlign: "center", boxShadow: "0 3px 7px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.05)" }}>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 5 }}>
-                <Sprout size={10} color={GREEN} strokeWidth={2} />
-                <span style={{ fontSize: 7.5, letterSpacing: "0.16em", color: GREEN, fontWeight: 700 }}>GOAL</span>
-              </div>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, lineHeight: 1.32, color: INK, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
-            </div>
-          </div>
-          <div style={{ position: "relative", padding: "0 11px 11px" }}>
-            {latest && (
-              <p style={{ fontSize: 9.5, lineHeight: 1.42, color: "rgba(255,255,255,0.88)", margin: "0 0 7px", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
-            )}
-            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", fontWeight: 700, letterSpacing: "0.03em", borderTop: "1px solid rgba(255,255,255,0.24)", paddingTop: 7 }}>
-              {checkInCount > 0 ? `記録 ${checkInCount}件・つづきを見る` : "まだ記録がありません"}
-            </div>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-}
-
 // 追加専用の「＋」タイル。アイテムカード/目標カードどちらの比率でも使う。
 export function AddCardTile({ onClick, aspect = ITEM_CARD_ASPECT, size, label }: {
   onClick: () => void;
@@ -239,7 +147,7 @@ export function AddCardTile({ onClick, aspect = ITEM_CARD_ASPECT, size, label }:
   return (
     <button onClick={onClick} aria-label={label} style={{
       width: size ?? "100%", aspectRatio: aspect, flexShrink: 0, borderRadius: 18, cursor: "pointer",
-      border: "1.5px dashed rgba(23,23,21,0.22)", background: "rgba(255,255,255,0.55)",
+      border: "1.5px dashed rgba(23,23,21,0.22)", background: PAPER,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
     }}>
       <Plus size={26} strokeWidth={1.6} color="#8A8A82" />
@@ -285,21 +193,18 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
     return () => ro.disconnect();
   }, []);
 
-  // ＋タイルも「束の最後の1枚」として同じ等間隔の並びに含めることで、
-  // 行の幅をカード+＋タイル全体でめいっぱい使う。以前は＋タイルだけ右端に
-  // 固定していたため、カード同士の間隔がかなり狭くなり(重なりが深く)、
-  // 触れているカード以外の「自分の指で押せる余白」がとても細くなって、
-  // 実機では狙った1枚を選びにくい原因になっていた。
-  const totalSlots = shown.length + 1;
-  const rawStep = totalSlots > 1 ? (containerWidth - cardWidth) / (totalSlots - 1) : 0;
-  const offsetStep = Math.min(rawStep, cardWidth * 0.85);
-  const addLeft = shown.length * offsetStep;
-  // カード枚数が多いとoffsetStepが目一杯詰まり、＋タイルが最後のカードと
-  // ぴったりくっついてしまう(特に触れて1.3倍に拡大した最後のカードが
-  // 被さる)。＋タイル自体を一回り小さく描き、元の枠内で中央寄せすることで、
-  // 全体の配置計算(コンテナ幅への収まり)を変えずに左右へ均等な隙間を作る。
-  const addTileWidth = Math.max(Math.round(cardWidth * 0.82), 60);
-  const addTileLeft = addLeft + (cardWidth - addTileWidth) / 2;
+  // ＋タイルは元の大きさ(cardWidthそのまま)で右端に固定する。カード自体は
+  // 枚数が増えるほど重なって詰まっていって構わないが、＋タイルとだけは
+  // 「＋タイルの左1/4くらいだけに重なる」という決まった量に抑えたいので、
+  // 両者の配置計算を分離した: ＋タイルは常にコンテナ右端、カードの間隔は
+  // 「最後のカードの右端が、＋タイルの左から25%の位置にちょうど来る」
+  // ように逆算する(枚数が少なければ0.82倍キャップの方が効いて、＋タイルの
+  // 手前でもっと手前寄りに収まる=隙間が空くだけで重なりすぎない)。
+  const addTileWidth = cardWidth;
+  const addLeft = Math.max(0, containerWidth - addTileWidth);
+  const targetLastCardLeft = addLeft + addTileWidth * 0.25 - cardWidth;
+  const rawStep = shown.length > 1 ? targetLastCardLeft / (shown.length - 1) : 0;
+  const offsetStep = Math.max(0, Math.min(rawStep, cardWidth * 0.82));
 
   // 触れているカードより左は全部さらに左へ、右は全部さらに右へ逃がす。
   // 隣接1枚だけでなく、触れているカードからの距離に比例して逃げ幅を
@@ -364,7 +269,10 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
           </div>
         );
       })}
-      <div style={{ position: "absolute", left: addTileLeft, top: 8, width: addTileWidth, zIndex: shown.length + 1 }}>
+      {/* zIndex:0でカード全員より奥に置く。カードは常にzIndex>=1(タッチ中は
+          20)なので、拡大されたカードが被さってきても＋タイルが手前に
+          出てくることはない。 */}
+      <div style={{ position: "absolute", left: addLeft, top: 8, width: addTileWidth, zIndex: 0 }}>
         <AddCardTile aspect={aspect} size={addTileWidth} onClick={onAdd} label={addLabel} />
       </div>
     </div>

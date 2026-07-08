@@ -1,11 +1,12 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Sprout, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { AddCardTile, GoalCard, Masthead, rowBtn } from "@/components/common";
-import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
-import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
+import { Binder3D } from "@/components/Binder";
+import { AddCardTile, Masthead, rowBtn } from "@/components/common";
+import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, POSTER_PALETTE, RUST, SANS } from "@/lib/constants";
+import { hashStr, haptic, ratingLabel, shortDate } from "@/lib/helpers";
 import type { Goal, TabProps } from "@/lib/types";
 
 function AddGoalSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onClose: () => void }) {
@@ -105,11 +106,33 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
       <Masthead title="目標" statValue={goalItems.length} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {goalItems.map((g) => (
-            <GoalCard key={g.id} title={g.title} recentCheckIns={g.checkIns ?? []}
-              checkInCount={g.checkIns?.length ?? 0} onClick={() => setOpenGoalId(g.id)} />
-          ))}
+        {/* 目標もアプリ共通のBinder3D(表紙+背表紙を持つリングバインダー)で
+            統一する。以前は専用のGoalCardを使っており、記録タブの棚と
+            見た目が食い違っていた。グリッドでは常に表紙が正面(rotateY:0)
+            を向いた状態で並べ、タイトルを読み取りやすくしている。 */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          {goalItems.map((g) => {
+            const latest = g.checkIns?.[0];
+            const count = g.checkIns?.length ?? 0;
+            const color = POSTER_PALETTE[hashStr(g.title) % POSTER_PALETTE.length];
+            return (
+              <Binder3D
+                key={g.id} width="100%" aspect={GOAL_CARD_ASPECT} rotateY={0}
+                color={color} EyebrowIcon={Sprout} eyebrowLabel="GOAL" title={g.title}
+                onClick={() => setOpenGoalId(g.id)}
+                footer={
+                  <div>
+                    {latest && (
+                      <p style={{ margin: "0 0 5px", fontSize: 9.5, lineHeight: 1.4, color: "rgba(255,255,255,0.85)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
+                    )}
+                    <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.78)", borderTop: "1px solid rgba(255,255,255,0.22)", paddingTop: 6 }}>
+                      {count > 0 ? `記録 ${count}件・タップで見る` : "まだ記録がありません"}
+                    </div>
+                  </div>
+                }
+              />
+            );
+          })}
           <AddCardTile aspect={GOAL_CARD_ASPECT} onClick={() => setAdding(true)} label="目標を追加" />
         </div>
       </main>

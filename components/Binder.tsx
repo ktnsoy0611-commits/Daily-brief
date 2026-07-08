@@ -91,7 +91,18 @@ export function BinderCoverFace({ color, EyebrowIcon, eyebrowLabel, title, foote
       {/* スタジオ光のような柔らかい斜めのハイライトのみ。装飾的な縞は使わない。 */}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 45%)", pointerEvents: "none" }} />
       <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", pointerEvents: "none" }} />
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      {/* 表紙が正面を向いている間(背表紙面が真横を向いて見えない間)も、
+          リング穴が左端にちらっと見えることで「これはリングバインダーだ」
+          と伝わるようにする、背表紙のリングと呼応する左端のヒント。 */}
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", background: "rgba(0,0,0,0.1)", pointerEvents: "none" }} />
+      {["18%", "82%"].map((y) => (
+        <div key={y} style={{
+          position: "absolute", left: "4.5%", top: y, transform: "translate(-50%, -50%)",
+          width: 8, height: 8, borderRadius: "50%", border: "1.3px solid rgba(255,255,255,0.75)",
+          boxShadow: "0 1px 1.5px rgba(0,0,0,0.35), inset 0 0.5px 1px rgba(0,0,0,0.28)", pointerEvents: "none",
+        }} />
+      ))}
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, marginLeft: "5%" }}>
         {(EyebrowIcon || eyebrowLabel) && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             {EyebrowIcon && (
@@ -114,17 +125,26 @@ export function BinderCoverFace({ color, EyebrowIcon, eyebrowLabel, title, foote
 // 背表紙面。以前は表紙と無関係などす黒い帯+縦書き文字だけの構成で、
 // 表紙と背表紙が別デザインに見えてしまっていた。表紙と同じ色面・同じ
 // ハイライトの向き・同じ丸バッジ(アイコン)を使い、1つの物体の2つの面
-// として整合するようにしている。
+// として整合するようにしている。さらに、色のついた四角い箱というだけでは
+// 「バインダーに見えない」という指摘を受けたため、実際のリング穴を上下に
+// 配置して、一目でリングバインダーだとわかる決め手にしている。
 export function BinderSpineFace({ color, title, count, EyebrowIcon }: { color: string; title: string; count?: number; EyebrowIcon?: IconType }) {
   return (
     <div style={{
-      position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", padding: "10px 0 8px",
+      position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", padding: "16px 0 14px",
       background: `linear-gradient(160deg, ${shade(color, 14)} 0%, ${color} 55%, ${shade(color, -12)} 100%)`,
     }}>
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(120deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 55%)", pointerEvents: "none" }} />
       <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)", pointerEvents: "none" }} />
+      {["13%", "87%"].map((y) => (
+        <div key={y} style={{
+          position: "absolute", left: "50%", top: y, transform: "translate(-50%, -50%)",
+          width: 9, height: 9, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.92)",
+          boxShadow: "0 1px 1.5px rgba(0,0,0,0.4), inset 0 0.5px 1px rgba(0,0,0,0.3)",
+        }} />
+      ))}
       {EyebrowIcon && (
-        <span style={{ position: "relative", width: 15, height: 15, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.6)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginBottom: 8 }}>
+        <span style={{ position: "relative", width: 15, height: 15, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.6)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 10, marginBottom: 8 }}>
           <EyebrowIcon size={7.5} color="#fff" strokeWidth={2} />
         </span>
       )}
@@ -133,7 +153,7 @@ export function BinderSpineFace({ color, title, count, EyebrowIcon }: { color: s
         color: "#fff", letterSpacing: "0.05em", flex: 1, overflow: "hidden", textShadow: "0 1px 2px rgba(0,0,0,0.22)",
       }}>{title}</span>
       {typeof count === "number" && (
-        <span style={{ position: "relative", marginTop: 8, fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.78)" }}>{count}</span>
+        <span style={{ position: "relative", marginTop: 8, marginBottom: 10, fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.78)" }}>{count}</span>
       )}
     </div>
   );
@@ -143,11 +163,16 @@ export function BinderSpineFace({ color, title, count, EyebrowIcon }: { color: s
 
 // rotateYが0(表紙が正面)から離れるほど、遠いものは背表紙側の角度へ寄せる。
 // dは中心からの符号付き距離(コンベア上の位置)。
+// 背表紙面(BinderSpineFace)はrotateY(-90deg)で組み立てているため、外側の
+// 箱をプラスの角度で回した時だけ正しく正面を向く(マイナス側は逆に背表紙の
+// 裏側が向いてしまいbackface-visibility:hiddenで消え、表紙もほぼ真横を
+// 向いた薄いスライバーしか見えなくなる)。以前はMath.sign(d)で中心の左右に
+// 符号付きの角度を与えていたため、左隣だけが「薄っぺらく」壊れて見える
+// 非対称なバグになっていた。距離の絶対値だけを見て常に同じ符号(プラス)の
+// 角度を返すことで、左右どちらの隣も同じように正しく背表紙を向くようにする。
 export function binderTiltAngle(d: number, rest = 80, focused = 0) {
-  if (d === 0) return focused;
   const amt = Math.max(0, 1 - Math.min(1, Math.abs(d)));
-  const angle = rest - (rest - focused) * amt;
-  return Math.sign(d) * angle;
+  return rest - (rest - focused) * amt;
 }
 
 // リングバインダーの実物写真を参考に、角丸を廃止して四角い箱にした
@@ -211,7 +236,7 @@ export interface BinderShelfItem extends CoverContent {
 // 実物の本棚に近い詰まったピッチにしつつ、中心に来たものだけをscaleで
 // ひとまわり持ち上げて主役をはっきりさせる(レイアウト幅自体は変えない
 // ので、詰まったピッチのままスワイプできる)。
-export function BinderCoverflowRow({ items, itemWidth = 92, aspect = ITEM_CARD_ASPECT, gap = 9 }: {
+export function BinderCoverflowRow({ items, itemWidth = 128, aspect = ITEM_CARD_ASPECT, gap = 5 }: {
   items: BinderShelfItem[];
   itemWidth?: number;
   aspect?: string;

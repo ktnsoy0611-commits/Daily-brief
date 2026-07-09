@@ -27,44 +27,44 @@ import type { MediaKindId } from "@/lib/types";
 
 // ---- ワンポイントの図形+色(ジャンルなどの意味づけ) -------------------------
 //
-// 種類が固定されている(映画/展覧会/ライブ/読書/音楽/目標)ものは、色相環を
-// 60度ずつずらした6色+固有の図形の組み合わせを1つずつ割り当てることで、
-// 色も図形もどれ一つとして被らない(MECE)ようにしている。無彩色寄りの
-// くすんだトーンに揃えているのは、BLUE/RUST/GREENなど他のUIで使う
-// 「状態を表す彩度の高い色」とは別の語彙(=ジャンルを表す色)だと感じ
-// させるため。
-//
-// 一方、行った場所(エリア)や日付のように、ユーザーの利用に伴って
-// 際限なく種類が増えていくものは、固定パレットを使い切ってしまう。
-// これらは少数の色相を循環させつつ、縞(エリア)・市松(日付)の
-// 本数/マス目をハッシュ値から決めることで、色が同じになっても柄が
-// 違えば区別できるようにしている(#areaAccent/#dateAccent参照)。
+// バウハウスのポスターや北欧家具のような、少数の幾何学(円・三角・四角・
+// 十字)を大胆に配置する語彙で3つの「扱いの違い」を表現する。
+//   - target: 目標専用の的(同心円)のエンブレム。種類が1つしかなく、
+//     個体を見分ける必要がないため、常に同じ静かなマークにしている。
+//   - media: 映画/展覧会/ライブ/読書/音楽の5ジャンル専用。大きな図形を
+//     右下、小さな丸のサインを左上に置く、という「配置の型」を5ジャンル
+//     共通にすることで、色や図形が違っても「メディアの仲間」だと一目で
+//     わかるようにしている(色ではなく配置での家族的類似)。
+//   - geo: 行った場所・日付のように際限なく増えるもの専用。斜め分割・
+//     角丸コーナー・2x2グリッド・棒グラフ状、の4つの構図から名前の
+//     ハッシュで1つを選び、角度や本数などの細部もハッシュでランダムに
+//     振ることで、増えるたびに1冊1冊はっきり個性の違う見た目になる。
+// 色は無彩色寄りのくすんだトーンに揃えている。BLUE/RUST/GREENなど他の
+// UIで使う「状態を表す彩度の高い色」とは別の語彙(=ジャンルを表す色)
+// だと感じさせるため。
 
-export type AccentShape = "square" | "triangle" | "circle" | "diamond" | "cross" | "ring";
-export interface Accent {
-  color: string;
-  shape?: AccentShape;
-  // 無限に増える種類向け: 図形の代わりに縞/市松のパターンを敷く。
-  pattern?: "stripe" | "check";
-  // patternがstripeなら縞の本数、checkならマス目の分割数。
-  bands?: number;
-}
+export type AccentShape = "square" | "triangle" | "circle" | "diamond" | "cross";
+type GeoLayout = "diagonal" | "corner" | "grid" | "bars";
 
-// 全バインダー共通の「目標」の下地色+ワンポイント(RecordsTabの棚・
-// GoalsTabのグリッドどちらでも同じ組み合わせにして揃える)。表紙自体は
-// 常に白なので、colorは背表紙の単色フォールバック(accent未指定時)としてのみ使う。
+export type Accent =
+  | { kind: "target"; color: string }
+  | { kind: "media"; color: string; shape: AccentShape }
+  | { kind: "geo"; color: string; layout: GeoLayout; seed: number };
+
+// 全バインダー共通の「目標」の下地色(表紙自体は常に白なので、これは
+// 背表紙の単色フォールバック(accent未指定時)としてのみ使う)。
 export const GOAL_BASE = "#F7F6F2";
-export const GOAL_ACCENT: Accent = { shape: "ring", color: "#9C6242" };
+export const GOAL_ACCENT: Accent = { kind: "target", color: "#9C6242" };
 
 // メディア5ジャンルのワンポイント(図形+色)。RecordsTabの棚だけでなく、
 // ExecuteTabのデモデータ(写真の無いカードの下地色)もこれを基準にした
 // 色調で揃え、バインダーとカードの色が世界観として一致するようにしている。
 export const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
-  movie: { shape: "square", color: "#4B4C8C" },
-  exhibition: { shape: "triangle", color: "#3E7A82" },
-  live: { shape: "circle", color: "#8C4A72" },
-  book: { shape: "diamond", color: "#4C7A5C" },
-  album: { shape: "cross", color: "#8C8A3E" },
+  movie: { kind: "media", shape: "square", color: "#4B4C8C" },
+  exhibition: { kind: "media", shape: "triangle", color: "#3E7A82" },
+  live: { kind: "media", shape: "circle", color: "#8C4A72" },
+  book: { kind: "media", shape: "diamond", color: "#4C7A5C" },
+  album: { kind: "media", shape: "cross", color: "#8C8A3E" },
 };
 
 function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string; size: number }) {
@@ -84,9 +84,103 @@ function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string
           <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: size * 0.26, transform: "translateY(-50%)", background: color, borderRadius: 1 }} />
         </div>
       );
-    case "ring":
-      return <div style={{ width: size, height: size, borderRadius: "50%", border: `${Math.max(2.5, size * 0.24)}px solid ${color}`, boxSizing: "border-box" }} />;
   }
+}
+
+// 的(同心円)のエンブレム。目標だけの専用マークで、メディアの「大きな
+// 図形+左上の丸サイン」とも、場所の幾何学構図とも似ないようにすることで、
+// 「目標のバインダーだけ扱いが違う」と一目でわかるようにしている。
+function TargetMotif() {
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ position: "relative", width: 42, height: 42 }}>
+        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `4px solid ${PAPER}` }} />
+        <div style={{ position: "absolute", inset: 10, borderRadius: "50%", border: `4px solid ${PAPER}` }} />
+        <div style={{ position: "absolute", inset: 20, borderRadius: "50%", background: PAPER }} />
+      </div>
+    </div>
+  );
+}
+
+// メディア用: 右下に大きな図形(ジャンルごとに違う)、左上に小さな丸
+// (5ジャンル共通)という「配置の型」を固定することで、図形自体は違って
+// も同じ家族だとわかるようにしている。
+function MediaMotif({ shape }: { shape: AccentShape }) {
+  return (
+    <>
+      <div style={{ position: "absolute", right: "14%", bottom: "10%" }}>
+        <AccentGlyph shape={shape} color={PAPER} size={34} />
+      </div>
+      <div style={{ position: "absolute", left: "16%", top: "18%", width: 7, height: 7, borderRadius: "50%", background: PAPER, opacity: 0.85 }} />
+    </>
+  );
+}
+
+const GEO_SHAPES: AccentShape[] = ["circle", "square", "triangle", "diamond", "cross"];
+
+// 際限なく増える種類(場所・日付)専用。4つの構図から1つをハッシュで
+// 選び、角度・本数・図形などの細部もハッシュで振ることで、同じ色相が
+// 重なっても構図や細部の違いで個体を見分けられるようにしている。
+function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; seed: number }) {
+  const light = shade(color, 30);
+  const dark = shade(color, -16);
+  const shape = GEO_SHAPES[seed % GEO_SHAPES.length];
+  const shape2 = GEO_SHAPES[(seed >> 3) % GEO_SHAPES.length];
+
+  if (layout === "diagonal") {
+    const angle = 18 + (seed % 45);
+    return (
+      <div style={{ position: "absolute", inset: 0, background: `linear-gradient(${angle}deg, ${color} 56%, ${light} 56%)` }}>
+        <div style={{ position: "absolute", right: "14%", top: "50%", transform: "translateY(-50%)" }}>
+          <AccentGlyph shape={shape} color={PAPER} size={28} />
+        </div>
+      </div>
+    );
+  }
+  if (layout === "corner") {
+    const fromLeft = (seed >> 2) % 2 === 0;
+    const size = 55 + (seed % 35);
+    return (
+      <div style={{ position: "absolute", inset: 0, background: color, overflow: "hidden" }}>
+        <div style={{
+          position: "absolute", bottom: `-${size * 0.35}%`, [fromLeft ? "left" : "right"]: `-${size * 0.35}%`,
+          width: `${size}%`, aspectRatio: "1 / 1", borderRadius: "50%", background: light,
+        }} />
+        <div style={{ position: "absolute", left: "14%", top: "14%" }}>
+          <AccentGlyph shape={shape} color={PAPER} size={18} />
+        </div>
+      </div>
+    );
+  }
+  if (layout === "grid") {
+    return (
+      <div style={{ position: "absolute", inset: 0, background: color, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", padding: "16%", gap: "10%" }}>
+        {[0, 1, 2, 3].map((i) => {
+          const on = (seed >> i) & 1;
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {on ? <AccentGlyph shape={i % 2 ? shape : shape2} color={light} size={14} /> : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  // bars: 縦棒を並べた、北欧のテキスタイルのような構図。
+  const barCount = 3 + (seed % 3);
+  return (
+    <div style={{ position: "absolute", inset: 0, background: color, display: "flex", alignItems: "flex-end", gap: "7%", padding: "18% 16%" }}>
+      {Array.from({ length: barCount }).map((_, i) => (
+        <div key={i} style={{ flex: 1, height: `${28 + ((seed >> (i * 2)) % 4) * 16}%`, background: i % 2 ? light : dark, borderRadius: 2 }} />
+      ))}
+    </div>
+  );
+}
+
+function AccentMotif({ accent }: { accent: Accent }) {
+  if (accent.kind === "target") return <TargetMotif />;
+  if (accent.kind === "media") return <MediaMotif shape={accent.shape} />;
+  return <GeoMotif color={accent.color} layout={accent.layout} seed={accent.seed} />;
 }
 
 // 文字列から安定したハッシュ値を作る(同じ名前なら常に同じ柄になる)。
@@ -96,35 +190,23 @@ function hashString(s: string): number {
   return h;
 }
 
-function stripeGradient(color: string, bands: number) {
-  const n = Math.max(2, Math.min(6, bands));
-  const light = shade(color, 26);
-  const step = 100 / n;
-  return `repeating-linear-gradient(180deg, ${color} 0, ${color} ${step / 2}%, ${light} ${step / 2}%, ${light} ${step}%)`;
-}
-
-function checkStyle(color: string, cells: number): { backgroundImage: string; backgroundSize: string } {
-  const n = Math.max(3, Math.min(6, cells));
-  const light = shade(color, 26);
-  const cellPct = 100 / n;
-  return { backgroundImage: `repeating-conic-gradient(${color} 0% 25%, ${light} 0% 50%)`, backgroundSize: `${cellPct * 2}% ${cellPct * 2}%` };
-}
+const GEO_LAYOUTS: GeoLayout[] = ["diagonal", "corner", "grid", "bars"];
 
 // 行った場所(エリア)は際限なく増えるため固定色を割り当てず、名前の
-// ハッシュから色相と縞の本数を決める。色が他のエリアと重なっても、
-// 縞の粗さが違えば見分けがつく。
-const PLACE_HUES = ["#3E6B7A", "#6B5A3E", "#4E6B4A", "#6B3E5A", "#3E5A6B", "#5A4A6B"];
+// ハッシュから色相・構図・細部をすべて決める。同じ色相のエリアが
+// 出てきても、構図や角度/本数が違うので1冊1冊に個性が出る。
+const PLACE_HUES = ["#3E6B7A", "#6B5A3E", "#4E6B4A", "#6B3E5A", "#3E5A6B", "#5A4A6B", "#4A6B5A", "#6B4A3E"];
 export function placeAccent(seed: string): Accent {
   const h = hashString(seed);
-  return { color: PLACE_HUES[h % PLACE_HUES.length], pattern: "stripe", bands: 2 + (h % 4) };
+  return { kind: "geo", color: PLACE_HUES[h % PLACE_HUES.length], layout: GEO_LAYOUTS[(h >> 4) % GEO_LAYOUTS.length], seed: h };
 }
 
-// 日付ビューの各日も同様に無限に増える。縞ではなく市松にして、
-// 場所の棚と隣り合っても柄で区別できるようにしている。
-const DATE_HUES = ["#5A5A4E", "#4E5A5A", "#5A4E5A", "#4E5A4E", "#5A4E4E"];
+// 日付ビューの各日も同様に無限に増える。場所とは別の色相セットにして、
+// 隣り合っても混同しないようにしている。
+const DATE_HUES = ["#5A5A4E", "#4E5A5A", "#5A4E5A", "#4E5A4E", "#5A4E4E", "#4E4E5A"];
 export function dateAccent(seed: string): Accent {
   const h = hashString(seed);
-  return { color: DATE_HUES[h % DATE_HUES.length], pattern: "check", bands: 3 + (h % 3) };
+  return { kind: "geo", color: DATE_HUES[h % DATE_HUES.length], layout: GEO_LAYOUTS[(h >> 6) % GEO_LAYOUTS.length], seed: h };
 }
 
 // ---- 表紙面・背表紙面・無地の側面・裏表紙 -----------------------------------
@@ -150,13 +232,8 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
       borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
     }}>
       {accent && (
-        <div style={{
-          flex: "0 0 32%", position: "relative", overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-          background: accent.pattern ? undefined : accentColor,
-          ...(accent.pattern === "stripe" ? { backgroundImage: stripeGradient(accent.color, accent.bands ?? 3) } : {}),
-          ...(accent.pattern === "check" ? checkStyle(accent.color, accent.bands ?? 4) : {}),
-        }}>
-          {accent.shape && <AccentGlyph shape={accent.shape} color={PAPER} size={30} />}
+        <div style={{ flex: "0 0 32%", position: "relative", overflow: "hidden", flexShrink: 0, background: accent.color }}>
+          <AccentMotif accent={accent} />
         </div>
       )}
       <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: "12px 14px 12px" }}>
@@ -175,17 +252,24 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
   );
 }
 
-// 背表紙面(リング側=バインダーの左端)。厚みがごく薄いため、リング穴や
-// タイトル文字は載せない。アクセントカラーの単色(または縞/市松)だけで、
-// 棚に並んだ時にそこだけが色の点として見える。
+// 背表紙面(リング側=バインダーの左端)。厚みがごく薄いため、タイトル
+// 文字は載せない。目標・メディア(target/media)は棚での色分けに徹する
+// ため単色のまま。場所・日付(geo)だけは、個体の見分けが最も重要になる
+// のが実はこの背表紙(棚ではほぼ背表紙しか見えない)であるため、表紙と
+// 同じ色相環から角度違いの斜め縞を出し、単色の目標/メディアとは一目で
+// 「扱いが違う」とわかるようにしている。
 function BinderSpineFace({ accent }: { accent: Accent }) {
+  if (accent.kind === "geo") {
+    const light = shade(accent.color, 30);
+    const angle = 20 + (accent.seed % 50);
+    return (
+      <div style={{ position: "absolute", inset: 0, background: `repeating-linear-gradient(${angle}deg, ${accent.color} 0, ${accent.color} 10px, ${light} 10px, ${light} 18px)` }}>
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(255,255,255,0.12), rgba(0,0,0,0.14))" }} />
+      </div>
+    );
+  }
   return (
-    <div style={{
-      position: "absolute", inset: 0,
-      background: accent.pattern ? undefined : accent.color,
-      ...(accent.pattern === "stripe" ? { backgroundImage: stripeGradient(accent.color, accent.bands ?? 3) } : {}),
-      ...(accent.pattern === "check" ? checkStyle(accent.color, accent.bands ?? 4) : {}),
-    }}>
+    <div style={{ position: "absolute", inset: 0, background: accent.color }}>
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(255,255,255,0.16), rgba(0,0,0,0.1))" }} />
     </div>
   );
@@ -259,7 +343,7 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
   onClick?: () => void;
 }) {
   const resolvedDepth = depth ?? Math.max(5, Math.min(14, 6 + (count ?? 0) * 0.5));
-  const spineAccent: Accent = accent ?? { color };
+  const spineAccent: Accent = accent ?? { kind: "target", color };
   return (
     <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 900, cursor: onClick ? "pointer" : "default" }}>
       <div style={{
@@ -360,12 +444,23 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const flapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const step = pitch;
 
+  // 初回描画の瞬間はまだ実測前でcontainerWidth=0のため、両端の余白
+  // (sidePad)も0として最初のレイアウトが組まれる。ResizeObserverが実際の
+  // 幅を報告した直後にsidePadが正しい値へ変わると、scrollLeft自体は0の
+  // ままでも「0の時に中央に来るはずの1冊目」の見た目上の位置が前後の
+  // 余白ぶんだけズレる。棚ごとにこの実測タイミングが微妙に前後するため、
+  // 記録タブを開いた瞬間、行によって1冊目の初期位置が揃わずバラバラに
+  // 見える不具合があった。実測直後に明示的にscrollLeftを0へ入れ直すことで、
+  // 正しいsidePadを反映した状態で必ず先頭が中央に来るよう強制する。
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width;
-      if (w) setContainerWidth(w);
+      if (w) {
+        setContainerWidth(w);
+        el.scrollLeft = 0;
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();

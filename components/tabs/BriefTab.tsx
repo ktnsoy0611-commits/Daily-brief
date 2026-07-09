@@ -1,7 +1,7 @@
 "use client";
 
 import { Flag, Sprout } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
 import { CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
@@ -158,32 +158,6 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const [milestoneRating, setMilestoneRating] = useState<1 | 2 | 3 | null>(null);
   const startRef = useRef({ x: 0, y: 0 });
 
-  // このタブはページ全体が縦スクロールできてしまうと、スワイプの縦成分
-  // に引っ張られてページ本体がバウンス/ズレしやすく、Safariのメニューバー
-  // の出入りも誘発してレイアウトが崩れる。スワイプで完結する1枚のカード
-  // という設計上、このタブにいる間だけ本文の縦スクロールを止める。
-  //
-  // 別タブを下にスクロールした状態でこのタブへ切り替えると、タブ切替の
-  // クリックハンドラ側でwindow.scrollTo(0,0)を呼んでいても、iOSの慣性
-  // スクロールがそのあとまで残っていて上の行の実行後にさらにスクロール
-  // 位置がズレてしまうことがあった(その状態でoverflow:hiddenを掛けると
-  // ズレた位置のまま固定されてしまい、ヘッダーが見切れて見える)。
-  // マウント時にも改めてscrollTo(0,0)するだけでなく、このタブにいる間は
-  // scrollイベントを監視して0以外にズレたら即座に0へ戻し続けることで、
-  // 慣性スクロールが後から効いてきても必ず先頭に固定されるようにする。
-  useEffect(() => {
-    window.scrollTo(0, 0);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const pinTop = () => {
-      if (window.scrollY !== 0 || document.documentElement.scrollTop !== 0) window.scrollTo(0, 0);
-    };
-    window.addEventListener("scroll", pinTop, { passive: true });
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("scroll", pinTop);
-    };
-  }, []);
 
   const dateKey = todayKey();
   // ブリーフは1日2回更新される: 正午を境に「朝刊」と「夕刊」。
@@ -342,8 +316,9 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
       </div>
 
       {!done ? (
-        // ページ本体はスクロールしない(useEffectでbodyをロック)ので、
-        // ここがそのまま「残りの高さいっぱい」になる。カードのサイズは
+        // ページ本体はスクロールしない(AppShell側でこのタブの間だけ
+        // overflow-yをhiddenにしている)ので、ここがそのまま「残りの
+        // 高さいっぱい」になる。カードのサイズは
         // 「幅(min(88vw,340px))を基準にaspect-ratioで高さを出しつつ、
         // maxHeightを100dvh基準(56dvh)で直接キャップする」方式にしている。
         // 以前はheight:100%を親のflexから継承させ、そこからaspect-ratioで

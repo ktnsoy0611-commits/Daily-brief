@@ -8,7 +8,7 @@ import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
-import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
+import { BG, BLUE, HEADER_CHIP_SIZE, INK, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers";
 import type { AppState, TabId, TabProps } from "@/lib/types";
@@ -65,14 +65,7 @@ export function AppShell() {
     setAppState(next);
     DataStore.save(next).then(setStorageMode);
   }, []);
-  // タブ切り替え時にページの縦スクロール位置をリセットする。以前は
-  // setTabだけを呼んでおり、アーカイブタブなどを下にスクロールした状態のまま
-  // 別タブ(特にブリーフタブ)へ切り替えると、その残ったスクロール位置の
-  // せいでヘッダーが画面上端からはみ出して見切れる不具合があった。
-  const goTab = useCallback((id: TabId) => {
-    window.scrollTo(0, 0);
-    setTab(id);
-  }, []);
+  const goTab = useCallback((id: TabId) => setTab(id), []);
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 1600); };
 
   useEffect(() => {
@@ -117,9 +110,30 @@ export function AppShell() {
   );
   const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton };
 
+  // 実行タブなどをスクロールした状態で別タブ(特にブリーフタブ)へ切り替えると
+  // ヘッダーが見切れる不具合が繰り返し再発していた。原因は「ウィンドウ/body
+  // 自体がスクロールする」設計にあった: タブ切替はDOMのkeyを変えて中身を
+  // 差し替えるだけなので、スクロール位置(window.scrollY)は前のタブのぶんが
+  // そのまま残り、次のタブがそれを引き継いでしまう。scrollTo(0,0)を都度
+  // 呼ぶ対症療法を重ねても、実機の慣性スクロールとのタイミング競合で
+  // すり抜けることがあった。
+  // 根本対応として、外側の器(この最外周div)は常にちょうど100dvhの高さで
+  // overflow:hiddenにしてウィンドウ自体は絶対にスクロールしないようにし、
+  // 代わりにタブの中身を包むこの内側のdivだけがoverflow-y:autoでスクロール
+  // する。key={tab}でタブ切替のたびにこの内側divごとDOMが作り直されるため、
+  // スクロール位置は毎回ブラウザネイティブに0から始まり、前のタブの位置が
+  // 引き継がれる余地がそもそも無くなる。ブリーフタブだけは元々スクロール
+  // させたくない(カード自体で完結する設計)ので、ここでoverflowを明示的に
+  // hiddenにする(以前はブリーフタブ側でdocument.body.style.overflowを
+  // 直接いじっていたが、bodyがそもそもスクロールしなくなったので不要になった)。
+  const scrollLocked = !showProfile && tab === "brief";
   return (
-    <div style={{ minHeight: "100dvh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
-      <div style={{ width: "100%", maxWidth: 420, flex: 1, display: "flex", flexDirection: "column", padding: `max(16px, env(safe-area-inset-top)) 16px ${showProfile ? "24px" : NAV_OFFSET}` }}>
+    <div style={{ height: "100dvh", overflow: "hidden", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
+      <div style={{
+        width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+        overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
+        padding: `max(16px, env(safe-area-inset-top)) 16px ${showProfile ? "24px" : "16px"}`,
+      }}>
         {storageMode === "memory" && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
 
         {showProfile ? (

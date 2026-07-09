@@ -239,20 +239,24 @@ interface ExecItem {
 // 傾ける)。カードよりひとまわり大きく、四隅からわずかにはみ出すことで
 // 「カードはこのバインダーに挟まっている」という関係性を伝える。
 // 登録アニメーションの後半でこの表紙が閉じる(closed=true)。
+// 以前はカードが大きかった頃の数値(はみ出し15%・回転36度)のまま
+// カードだけを小さくしたため、相対的にはみ出しと傾きが誇張されすぎて
+// 表紙がねじれて見える不具合になっていた。カードの縮小に合わせて
+// はみ出し量・回転角ともに大きく控えめにしている。
 function OpenBinderBackdrop({ closed }: { closed: boolean }) {
   return (
-    <div style={{ position: "absolute", left: "-15%", right: "-4%", top: "-6%", bottom: "-5%", perspective: 500, zIndex: 0, pointerEvents: "none" }}>
+    <div style={{ position: "absolute", left: "-7%", right: "-3%", top: "-4%", bottom: "-3%", perspective: 900, zIndex: 0, pointerEvents: "none" }}>
       <div style={{
-        position: "absolute", inset: 0, background: PAPER, borderRadius: 6, boxShadow: SOFT_SHADOW_LG,
-        transformOrigin: "6% 50%", transformStyle: "preserve-3d",
-        transform: closed ? "rotateY(0deg) rotateZ(0deg)" : "rotateY(-36deg) rotateZ(-3deg)",
+        position: "absolute", inset: 0, background: PAPER, borderRadius: 8, boxShadow: SOFT_SHADOW_LG,
+        transformOrigin: "4% 50%", transformStyle: "preserve-3d",
+        transform: closed ? "rotateY(0deg)" : "rotateY(-11deg)",
         transition: "transform 0.34s cubic-bezier(0.4,0,0.2,1)",
       }}>
         {/* 表紙の内側の面であることを示す、わずかな陰影 */}
-        <div style={{ position: "absolute", inset: 0, borderRadius: 6, background: "linear-gradient(100deg, rgba(28,28,30,0.06) 0%, rgba(28,28,30,0) 30%)" }} />
+        <div style={{ position: "absolute", inset: 0, borderRadius: 8, background: "linear-gradient(100deg, rgba(28,28,30,0.06) 0%, rgba(28,28,30,0) 30%)" }} />
         {/* リング穴のヒント(左端。実際のリングはカードの下に隠れる背表紙側にある) */}
         {["30%", "70%"].map((y) => (
-          <div key={y} style={{ position: "absolute", left: "6%", top: y, transform: "translate(-50%, -50%)", width: 7, height: 7, borderRadius: "50%", background: "rgba(28,28,30,0.1)", boxShadow: "inset 0 1px 2px rgba(28,28,30,0.25)" }} />
+          <div key={y} style={{ position: "absolute", left: "4%", top: y, transform: "translate(-50%, -50%)", width: 6, height: 6, borderRadius: "50%", background: "rgba(28,28,30,0.1)", boxShadow: "inset 0 1px 2px rgba(28,28,30,0.25)" }} />
         ))}
       </div>
     </div>
@@ -427,10 +431,18 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   const [registerPhase, setRegisterPhase] = useState<null | "stack" | "close" | "fall">(null);
   const [stackOffsets, setStackOffsets] = useState<Record<string, number>>({});
   const cardEls = useRef<Record<string, HTMLDivElement | null>>({});
+  const scrollRef = useRef<HTMLDivElement>(null);
 
+  // バインドボタンはどこからでも押せる固定位置にあるため、リストを
+  // 下の方までスクロールした状態で押すと、スタック先である先頭カードが
+  // 画面外(上)にあり、以降のスタック/閉じる/落ちるのアニメーションが
+  // すべて見えない場所で起きてしまっていた。押した瞬間にまずリストを
+  // 先頭へ戻し(「カメラ」を追従させ)、そのあとで各カードの位置を
+  // 測ってアニメーションを組み立てる。
   const handleRegister = () => {
     if (registerPhase || items.length === 0) return;
     haptic(16);
+    scrollRef.current?.scrollTo({ top: 0 });
     const topEl = items[0] ? cardEls.current[items[0].id] : null;
     const topY = topEl?.getBoundingClientRect().top ?? 0;
     const offsets: Record<string, number> = {};
@@ -452,13 +464,13 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   return (
     <>
       <div
-        className="no-scrollbar"
+        ref={scrollRef} className="no-scrollbar"
         style={{
           flex: 1, minHeight: 0, overflowY: falling ? "hidden" : "auto", WebkitOverflowScrolling: "touch",
           ...(falling ? { transform: "translateY(60%)", opacity: 0, transition: `transform ${FALL_MS}ms cubic-bezier(0.55,0,1,0.45), opacity ${FALL_MS - 40}ms ease-in` } : {}),
         }}
       >
-        <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, margin: "0 auto", padding: `6px 16px calc(${NAV_OFFSET} + 24px)` }}>
+        <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, margin: "0 auto", padding: `6px 16px calc(${NAV_OFFSET} + 92px)` }}>
           <div style={{ fontSize: 10, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "8px 2px 16px" }}>{dateLabel} ・ {items.length}件</div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
             {items.map((it, i) => (
@@ -475,20 +487,23 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
               </div>
             ))}
           </div>
-          {/* 以前はこのボタンを画面下部にposition:fixedで常時浮かせており、
-              リストの下の方を操作している最中も指の近くに居座って邪魔に
-              なっていた。リストの最後に普通に流れる要素として置くことで、
-              一番下までスクロールしてはじめて現れるようにした。 */}
-          {!stacking && (
+        </div>
+      </div>
+      {/* 以前はリスト末尾に普通に流れる要素として置いていたが、それだと
+          一番下までスクロールしないと押せず「どこでも押せるように」という
+          要望に反していた。画面下に常時浮かせる固定ボタンに戻す。 */}
+      {!stacking && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+          <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, padding: `0 16px calc(${NAV_OFFSET} + 8px)`, pointerEvents: "auto" }}>
             <button onClick={handleRegister} style={{
-              display: "block", width: CARD_WIDTH, margin: "26px auto 0", padding: "15px 0", background: INK, color: PAPER, border: "none", borderRadius: 999,
+              width: "100%", padding: "15px 0", background: INK, color: PAPER, border: "none", borderRadius: 999,
               cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: SOFT_SHADOW_LG,
             }}>
               バインド！
             </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }

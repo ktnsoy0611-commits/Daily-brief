@@ -27,28 +27,38 @@ import type { MediaKindId } from "@/lib/types";
 
 // ---- ワンポイントの図形+色(ジャンルなどの意味づけ) -------------------------
 //
-// バウハウスのポスターや北欧家具のような、少数の幾何学(円・三角・四角・
-// 十字)を大胆に配置する語彙で3つの「扱いの違い」を表現する。
+// バウハウスのポスターや北欧家具のような、少数の抽象幾何学を大胆な
+// スケールで置く語彙で3つの「扱いの違い」を表現する。十字のような
+// 具体的な連想(救急など)を持つ形は避け、円・半円・花弁(扇形)・
+// 放射線・弧・帯といった純粋に抽象的な図形と、その余白とのバランスの
+// 気持ちよさだけで構成する。ワンポイントは常に画面を大胆に使うサイズ
+// にし、「丸ひとつ・四角ひとつが寂しく浮いている」ことのないよう、
+// 単体の図形でも十分な面積を占めるか、複数の要素で構成する。
 //   - target: 目標専用の的(同心円)のエンブレム。種類が1つしかなく、
 //     個体を見分ける必要がないため、常に同じ静かなマークにしている。
-//   - media: 映画/展覧会/ライブ/読書/音楽の5ジャンル専用。大きな図形を
+//   - media: 映画/展覧会/ライブ/読書/音楽の5ジャンル専用。大きな構図を
 //     右下、小さな丸のサインを左上に置く、という「配置の型」を5ジャンル
-//     共通にすることで、色や図形が違っても「メディアの仲間」だと一目で
-//     わかるようにしている(色ではなく配置での家族的類似)。
+//     共通にすることで、図形自体は全く違っても「メディアの仲間」だと
+//     一目でわかるようにしている(色ではなく配置での家族的類似)。
 //   - geo: 行った場所・日付のように際限なく増えるもの専用。斜め分割・
-//     角丸コーナー・2x2グリッド・棒グラフ状、の4つの構図から名前の
-//     ハッシュで1つを選び、角度や本数などの細部もハッシュでランダムに
-//     振ることで、増えるたびに1冊1冊はっきり個性の違う見た目になる。
+//     角丸コーナー・2x2グリッド・棒グラフ状・縞と弧、の5つの構図から
+//     名前のハッシュで1つを選び、角度や本数などの細部もハッシュで
+//     ランダムに振ることで、増えるたびに1冊1冊はっきり個性の違う
+//     見た目になる。
 // 色は無彩色寄りのくすんだトーンに揃えている。BLUE/RUST/GREENなど他の
 // UIで使う「状態を表す彩度の高い色」とは別の語彙(=ジャンルを表す色)
 // だと感じさせるため。
 
-export type AccentShape = "square" | "triangle" | "circle" | "diamond" | "cross";
-type GeoLayout = "diagonal" | "corner" | "grid" | "bars";
+export type AccentShape = "square" | "triangle" | "circle" | "diamond" | "arch" | "petal";
+// メディアの5ジャンルだけが持つ、複数要素で構成した専用の大ぶりな構図。
+// 単純な1図形だと小さく寂しく見えるため、弧・放射線・積み重ね・重なる輪
+// など、面積とリズムを持つモチーフにしている。
+type MediaShape = "arch" | "petal" | "sunburst" | "stack" | "rings";
+type GeoLayout = "diagonal" | "corner" | "grid" | "bars" | "stripes";
 
 export type Accent =
   | { kind: "target"; color: string }
-  | { kind: "media"; color: string; shape: AccentShape }
+  | { kind: "media"; color: string; shape: MediaShape }
   | { kind: "geo"; color: string; layout: GeoLayout; seed: number };
 
 // 全バインダー共通の「目標」の下地色(表紙自体は常に白なので、これは
@@ -60,13 +70,16 @@ export const GOAL_ACCENT: Accent = { kind: "target", color: "#9C6242" };
 // ExecuteTabのデモデータ(写真の無いカードの下地色)もこれを基準にした
 // 色調で揃え、バインダーとカードの色が世界観として一致するようにしている。
 export const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
-  movie: { kind: "media", shape: "square", color: "#4B4C8C" },
-  exhibition: { kind: "media", shape: "triangle", color: "#3E7A82" },
-  live: { kind: "media", shape: "circle", color: "#8C4A72" },
-  book: { kind: "media", shape: "diamond", color: "#4C7A5C" },
-  album: { kind: "media", shape: "cross", color: "#8C8A3E" },
+  movie: { kind: "media", shape: "arch", color: "#4B4C8C" },
+  exhibition: { kind: "media", shape: "petal", color: "#3E7A82" },
+  live: { kind: "media", shape: "sunburst", color: "#8C4A72" },
+  book: { kind: "media", shape: "stack", color: "#4C7A5C" },
+  album: { kind: "media", shape: "rings", color: "#8C8A3E" },
 };
 
+// 場所・日付の幾何学構図の中に置く、シンプルな単図形。十字は救急などの
+// 具体的な連想を招くため使わない。円・四角・三角・菱形に加え、北欧家具の
+// アーチ(半円)・花弁(扇形の一角丸)を抽象図形の語彙として揃えている。
 function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string; size: number }) {
   switch (shape) {
     case "circle":
@@ -77,50 +90,92 @@ function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string
       return <div style={{ width: size * 0.72, height: size * 0.72, background: color, borderRadius: 2, transform: "rotate(45deg)" }} />;
     case "triangle":
       return <div style={{ width: 0, height: 0, borderLeft: `${size * 0.52}px solid transparent`, borderRight: `${size * 0.52}px solid transparent`, borderBottom: `${size * 0.92}px solid ${color}` }} />;
-    case "cross":
-      return (
-        <div style={{ position: "relative", width: size, height: size }}>
-          <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: size * 0.26, transform: "translateX(-50%)", background: color, borderRadius: 1 }} />
-          <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: size * 0.26, transform: "translateY(-50%)", background: color, borderRadius: 1 }} />
-        </div>
-      );
+    case "arch":
+      return <div style={{ width: size, height: size * 0.6, background: color, borderRadius: `${size}px ${size}px 0 0` }} />;
+    case "petal":
+      return <div style={{ width: size * 0.86, height: size * 0.86, background: color, borderRadius: "0 100% 0 0" }} />;
   }
 }
 
-// 的(同心円)のエンブレム。目標だけの専用マークで、メディアの「大きな
-// 図形+左上の丸サイン」とも、場所の幾何学構図とも似ないようにすることで、
-// 「目標のバインダーだけ扱いが違う」と一目でわかるようにしている。
+// 的(同心円)のエンブレム。目標だけの専用マークで、メディアの構図とも
+// 場所の幾何学構図とも似ないようにすることで、「目標のバインダーだけ
+// 扱いが違う」と一目でわかるようにしている。存在感を持たせるため、輪を
+// 太く・大きめに取っている。
 function TargetMotif() {
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "relative", width: 42, height: 42 }}>
-        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `4px solid ${PAPER}` }} />
-        <div style={{ position: "absolute", inset: 10, borderRadius: "50%", border: `4px solid ${PAPER}` }} />
-        <div style={{ position: "absolute", inset: 20, borderRadius: "50%", background: PAPER }} />
+      <div style={{ position: "relative", width: 54, height: 54 }}>
+        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `5px solid ${PAPER}` }} />
+        <div style={{ position: "absolute", inset: 13, borderRadius: "50%", border: `5px solid ${PAPER}` }} />
+        <div style={{ position: "absolute", inset: 26, borderRadius: "50%", background: PAPER }} />
       </div>
     </div>
   );
 }
 
-// メディア用: 右下に大きな図形(ジャンルごとに違う)、左上に小さな丸
+// メディア5ジャンル専用の、複数要素で組んだ大ぶりな構図。単純な1図形は
+// 小さく寂しく見えるため、弧・扇形・放射線・積み重ねた帯・重なる2つの輪、
+// といった面積とリズムを持つモチーフにしている。
+function MediaGlyph({ shape, color, size }: { shape: MediaShape; color: string; size: number }) {
+  switch (shape) {
+    case "arch":
+      return <div style={{ width: size, height: size * 0.62, background: color, borderRadius: `${size}px ${size}px 0 0` }} />;
+    case "petal":
+      return <div style={{ width: size, height: size, background: color, borderRadius: "0 100% 0 0" }} />;
+    case "stack":
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: size * 0.14, alignItems: "flex-end" }}>
+          {[1, 0.72, 0.88].map((w, i) => (
+            <div key={i} style={{ width: size * w, height: size * 0.2, background: color, borderRadius: 999 }} />
+          ))}
+        </div>
+      );
+    case "sunburst": {
+      const rays = 10;
+      return (
+        <div style={{ position: "relative", width: size, height: size }}>
+          {Array.from({ length: rays }).map((_, i) => (
+            <div key={i} style={{
+              position: "absolute", left: "50%", top: "50%", width: size * 0.09, height: size * 0.46,
+              background: color, borderRadius: 2, transformOrigin: "50% 100%",
+              transform: `translate(-50%, -100%) rotate(${(360 / rays) * i}deg)`,
+            }} />
+          ))}
+        </div>
+      );
+    }
+    case "rings": {
+      const r = size * 0.66;
+      return (
+        <div style={{ position: "relative", width: r * 1.7, height: r }}>
+          <div style={{ position: "absolute", left: 0, top: 0, width: r, height: r, borderRadius: "50%", border: `${size * 0.13}px solid ${color}` }} />
+          <div style={{ position: "absolute", right: 0, top: 0, width: r, height: r, borderRadius: "50%", border: `${size * 0.13}px solid ${color}` }} />
+        </div>
+      );
+    }
+  }
+}
+
+// メディア用: 右下に大ぶりな構図(ジャンルごとに違う)、左上に小さな丸
 // (5ジャンル共通)という「配置の型」を固定することで、図形自体は違って
 // も同じ家族だとわかるようにしている。
-function MediaMotif({ shape }: { shape: AccentShape }) {
+function MediaMotif({ shape }: { shape: MediaShape }) {
   return (
     <>
-      <div style={{ position: "absolute", right: "14%", bottom: "10%" }}>
-        <AccentGlyph shape={shape} color={PAPER} size={34} />
+      <div style={{ position: "absolute", right: "8%", bottom: "6%" }}>
+        <MediaGlyph shape={shape} color={PAPER} size={44} />
       </div>
-      <div style={{ position: "absolute", left: "16%", top: "18%", width: 7, height: 7, borderRadius: "50%", background: PAPER, opacity: 0.85 }} />
+      <div style={{ position: "absolute", left: "14%", top: "16%", width: 9, height: 9, borderRadius: "50%", background: PAPER, opacity: 0.85 }} />
     </>
   );
 }
 
-const GEO_SHAPES: AccentShape[] = ["circle", "square", "triangle", "diamond", "cross"];
+const GEO_SHAPES: AccentShape[] = ["circle", "square", "triangle", "diamond", "arch", "petal"];
 
-// 際限なく増える種類(場所・日付)専用。4つの構図から1つをハッシュで
+// 際限なく増える種類(場所・日付)専用。5つの構図から1つをハッシュで
 // 選び、角度・本数・図形などの細部もハッシュで振ることで、同じ色相が
-// 重なっても構図や細部の違いで個体を見分けられるようにしている。
+// 重なっても構図や細部の違いで個体を見分けられるようにしている。単体の
+// 図形が寂しく浮かないよう、常に色面や複数要素と組み合わせている。
 function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; seed: number }) {
   const light = shade(color, 30);
   const dark = shade(color, -16);
@@ -131,8 +186,8 @@ function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; s
     const angle = 18 + (seed % 45);
     return (
       <div style={{ position: "absolute", inset: 0, background: `linear-gradient(${angle}deg, ${color} 56%, ${light} 56%)` }}>
-        <div style={{ position: "absolute", right: "14%", top: "50%", transform: "translateY(-50%)" }}>
-          <AccentGlyph shape={shape} color={PAPER} size={28} />
+        <div style={{ position: "absolute", right: "12%", top: "50%", transform: "translateY(-50%)" }}>
+          <AccentGlyph shape={shape} color={PAPER} size={36} />
         </div>
       </div>
     );
@@ -146,23 +201,41 @@ function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; s
           position: "absolute", bottom: `-${size * 0.35}%`, [fromLeft ? "left" : "right"]: `-${size * 0.35}%`,
           width: `${size}%`, aspectRatio: "1 / 1", borderRadius: "50%", background: light,
         }} />
-        <div style={{ position: "absolute", left: "14%", top: "14%" }}>
-          <AccentGlyph shape={shape} color={PAPER} size={18} />
+        <div style={{ position: "absolute", [fromLeft ? "right" : "left"]: "12%", top: "16%" }}>
+          <AccentGlyph shape={shape} color={PAPER} size={30} />
         </div>
       </div>
     );
   }
   if (layout === "grid") {
     return (
-      <div style={{ position: "absolute", inset: 0, background: color, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", padding: "16%", gap: "10%" }}>
+      <div style={{ position: "absolute", inset: 0, background: color, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", padding: "14%", gap: "8%" }}>
         {[0, 1, 2, 3].map((i) => {
           const on = (seed >> i) & 1;
           return (
             <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {on ? <AccentGlyph shape={i % 2 ? shape : shape2} color={light} size={14} /> : null}
+              {on ? <AccentGlyph shape={i % 2 ? shape : shape2} color={light} size={18} /> : null}
             </div>
           );
         })}
+      </div>
+    );
+  }
+  if (layout === "stripes") {
+    // 縞の帯に大きな円弧が重なる、バウハウスの参考画像そのままの構図。
+    // 円は帯の左右どちらかの端からはみ出させ、overflow:hiddenで切ることで
+    // 半円状に見せている。
+    const stripeCount = 5 + (seed % 4);
+    const fromLeft = (seed >> 5) % 2 === 0;
+    return (
+      <div style={{ position: "absolute", inset: 0, background: color, overflow: "hidden", display: "flex" }}>
+        {Array.from({ length: stripeCount }).map((_, i) => (
+          <div key={i} style={{ flex: 1, background: i % 2 ? light : color }} />
+        ))}
+        <div style={{
+          position: "absolute", top: "50%", [fromLeft ? "left" : "right"]: "-14%", transform: "translateY(-50%)",
+          width: "58%", aspectRatio: "1 / 1", borderRadius: "50%", background: dark, opacity: 0.94,
+        }} />
       </div>
     );
   }
@@ -190,7 +263,7 @@ function hashString(s: string): number {
   return h;
 }
 
-const GEO_LAYOUTS: GeoLayout[] = ["diagonal", "corner", "grid", "bars"];
+const GEO_LAYOUTS: GeoLayout[] = ["diagonal", "corner", "grid", "bars", "stripes"];
 
 // 行った場所(エリア)は際限なく増えるため固定色を割り当てず、名前の
 // ハッシュから色相・構図・細部をすべて決める。同じ色相のエリアが

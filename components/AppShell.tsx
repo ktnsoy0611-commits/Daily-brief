@@ -129,7 +129,7 @@ export function AppShell() {
   const scrollLocked = !showProfile && tab === "brief";
   return (
     <div style={{ height: "100dvh", overflow: "hidden", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
-      <div style={{
+      <div data-tab-scroll-root style={{
         width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
         overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
         padding: `max(16px, env(safe-area-inset-top)) 16px ${showProfile ? "24px" : "16px"}`,
@@ -140,7 +140,18 @@ export function AppShell() {
           <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)} />
         ) : (
           <>
-            <div key={tab} style={{ display: "flex", flexDirection: "column", flex: 1, animation: "tab-in 0.22s cubic-bezier(0.32,0.72,0,1)" }}>
+            {/* minHeight:0が無いと、flexアイテムのデフォルトのmin-height:auto
+                (=中身の実サイズより縮められない)により、実行タブの確定
+                ビューのような「自分の内側だけがoverflow-y:autoでスクロール
+                する」子要素がいくら正しく組んであっても、この外側のdiv
+                自体が中身の全高までズルズル伸びてしまい、結局スクロール
+                の主体が想定と違う一番外側の(この上の)コンテナ側にすり
+                替わってしまっていた。実行タブの「バインドボタンを押すと
+                リスト先頭へ戻す」処理は内側のスクロール要素を対象に
+                scrollTopを操作していたため、実際にスクロールしていたのが
+                外側だったこの状態では効かず、「直したはずなのに直って
+                いない」という不具合の実際の原因になっていた。 */}
+            <div key={tab} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, animation: "tab-in 0.22s cubic-bezier(0.32,0.72,0,1)" }}>
               {tab === "brief" && <BriefTab {...tabProps} />}
               {tab === "stock" && <StockTab {...tabProps} />}
               {tab === "goals" && <GoalsTab {...tabProps} />}

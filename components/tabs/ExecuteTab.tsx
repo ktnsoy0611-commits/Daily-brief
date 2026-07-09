@@ -234,30 +234,30 @@ interface ExecItem {
 }
 
 // 開いた状態のバインダーを、一番上のカードの背後にだけ置く背景装飾。
-// 背表紙はカードの下に隠れて見えず、表表紙だけが左手前へ開いてきた
-// ような角度で覗く(perspective+rotateYで実際に奥行きのある紙として
-// 傾ける)。カードよりひとまわり大きく、四隅からわずかにはみ出すことで
-// 「カードはこのバインダーに挟まっている」という関係性を伝える。
-// 登録アニメーションの後半でこの表紙が閉じる(closed=true)。
-// 以前はカードが大きかった頃の数値(はみ出し15%・回転36度)のまま
-// カードだけを小さくしたため、相対的にはみ出しと傾きが誇張されすぎて
-// 表紙がねじれて見える不具合になっていた。カードの縮小に合わせて
-// はみ出し量・回転角ともに大きく控えめにしている。
+// 表表紙だけが左手前へ開いてきたような角度で覗く(perspective+rotateYで
+// 実際に奥行きのある紙として傾ける)。カードと全く同じ大きさ・同じ穴の
+// 位置を持つ「もう1枚のカード」を、そのまま左上へずらして回転させる
+// ことで表現している。以前は箱自体をカードよりひとまわり大きく(insetを
+// 負のパーセンテージで)取り、そこに専用の小さな点を穴のヒントとして
+// 別途描いていたが、その点の座標が実際のカードのPunchHolesの座標と
+// 何の関係もなかったため、「バインダーの穴の位置がカードと別にある」
+// という不自然さの原因になっていた。カードと同じ箱にPunchHolesその
+// ものを重ねてから箱ごと平行移動する今の形であれば、穴は常に「同じ
+// 位置に開いた、少し奥にずれたもう1枚のページ」として一貫して見える。
+// 登録アニメーションの後半でこの表紙が閉じる(closed=true, 平行移動と
+// 回転がどちらも0に戻り、カードの真後ろにぴったり重なって見えなくなる)。
 function OpenBinderBackdrop({ closed }: { closed: boolean }) {
   return (
-    <div style={{ position: "absolute", left: "-7%", right: "-3%", top: "-4%", bottom: "-3%", perspective: 900, zIndex: 0, pointerEvents: "none" }}>
+    <div style={{ position: "absolute", inset: 0, perspective: 900, zIndex: 0, pointerEvents: "none" }}>
       <div style={{
-        position: "absolute", inset: 0, background: PAPER, borderRadius: 8, boxShadow: SOFT_SHADOW_LG,
-        transformOrigin: "4% 50%", transformStyle: "preserve-3d",
-        transform: closed ? "rotateY(0deg)" : "rotateY(-11deg)",
+        position: "absolute", inset: 0, background: PAPER, borderRadius: 18, boxShadow: SOFT_SHADOW_LG,
+        transformOrigin: "0% 50%", transformStyle: "preserve-3d",
+        transform: closed ? "translate(0, 0) rotateY(0deg)" : "translate(-15%, -5%) rotateY(-14deg)",
         transition: "transform 0.34s cubic-bezier(0.4,0,0.2,1)",
       }}>
         {/* 表紙の内側の面であることを示す、わずかな陰影 */}
-        <div style={{ position: "absolute", inset: 0, borderRadius: 8, background: "linear-gradient(100deg, rgba(28,28,30,0.06) 0%, rgba(28,28,30,0) 30%)" }} />
-        {/* リング穴のヒント(左端。実際のリングはカードの下に隠れる背表紙側にある) */}
-        {["30%", "70%"].map((y) => (
-          <div key={y} style={{ position: "absolute", left: "4%", top: y, transform: "translate(-50%, -50%)", width: 6, height: 6, borderRadius: "50%", background: "rgba(28,28,30,0.1)", boxShadow: "inset 0 1px 2px rgba(28,28,30,0.25)" }} />
-        ))}
+        <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "linear-gradient(100deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
+        <PunchHoles />
       </div>
     </div>
   );
@@ -421,6 +421,30 @@ const STACK_MS = 420;
 const CLOSE_MS = 320;
 const FALL_MS = 420;
 
+// 慣性スクロール中でも確実にscrollTopを0へ戻すヘルパー。overflow-yを
+// 一瞬hiddenにしてから戻すことで、iOS Safariの慣性スクロール(momentum
+// scroll)の物理演算を打ち切ってからscrollTopを書き換える。ただ
+// scrollTo/scrollTopを呼ぶだけだと、指を離した直後の慣性が効いている
+// 最中はブラウザ側がその直後に上書きしてしまい、結局スクロールした
+// ままになる。
+// 対象の要素はoverflowYをReactのstyle propで管理しているため、ここでは
+// ショートハンドのstyle.overflowではなく、必ず同じロングハンドの
+// style.overflowYだけを操作する。ショートハンドで一度hiddenにしてから
+// 空文字で「戻した」つもりでも、ショートハンドの空文字代入はoverflow-x/
+// overflow-yのインライン指定を丸ごと消してしまい、Reactは直前の
+// レンダーと今回のstyleオブジェクトの値(例えば"auto")が変わっていない
+// ため再設定をスキップする。結果、DOM上はoverflow-y:visible(初期値)の
+// ままになり、以後そのコンテナが二度とスクロールできなくなる不具合に
+// なっていた。戻す先を「空」ではなく、実際に静止状態で使われている値
+// ("auto")へ明示的に戻すことで、Reactの差分検知に依存せず確実に
+// 元の状態へ復元する。
+function killMomentumScroll(el: HTMLElement | null) {
+  if (!el) return;
+  el.style.overflowY = "hidden";
+  el.scrollTop = 0;
+  el.style.overflowY = "auto";
+}
+
 function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   items: ExecItem[];
   dateLabel: string;
@@ -433,16 +457,33 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   const cardEls = useRef<Record<string, HTMLDivElement | null>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // この確定ビューは、自分自身の中(scrollRef)ではなく外側のAppShellの
+  // タブ用スクロールコンテナ([data-tab-scroll-root])が先にスクロール
+  // している状態から表示されることがある(地図でブックマークを探して
+  // 下の方までスクロールしてから「作る」を押した場合など)。地図の画面
+  // ではAppShell側のコンテナ自体がスクロールを担っているが、この確定
+  // ビューでは自分のリストが専用のスクロール領域を持つため、外側は本来
+  // スクロール不要になる。ただし前の画面で付いていたscrollTopが残った
+  // まま表示されてしまうことがあるため、この画面がマウントされた瞬間に
+  // 両方(外側・内側)をまとめて先頭へ戻しておく。
+  useEffect(() => {
+    killMomentumScroll(scrollRef.current);
+    killMomentumScroll(document.querySelector<HTMLElement>("[data-tab-scroll-root]"));
+  }, []);
+
   // バインドボタンはどこからでも押せる固定位置にあるため、リストを
   // 下の方までスクロールした状態で押すと、スタック先である先頭カードが
   // 画面外(上)にあり、以降のスタック/閉じる/落ちるのアニメーションが
   // すべて見えない場所で起きてしまっていた。押した瞬間にまずリストを
   // 先頭へ戻し(「カメラ」を追従させ)、そのあとで各カードの位置を
-  // 測ってアニメーションを組み立てる。
+  // 測ってアニメーションを組み立てる。内側(scrollRef)だけでなく、
+  // 上のuseEffectと同じ理由で外側のタブスクロールコンテナも念のため
+  // 一緒に戻す。
   const handleRegister = () => {
     if (registerPhase || items.length === 0) return;
     haptic(16);
-    scrollRef.current?.scrollTo({ top: 0 });
+    killMomentumScroll(scrollRef.current);
+    killMomentumScroll(document.querySelector<HTMLElement>("[data-tab-scroll-root]"));
     const topEl = items[0] ? cardEls.current[items[0].id] : null;
     const topY = topEl?.getBoundingClientRect().top ?? 0;
     const offsets: Record<string, number> = {};

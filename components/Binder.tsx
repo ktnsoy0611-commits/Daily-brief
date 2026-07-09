@@ -3,10 +3,13 @@
 // アプリ全体で「バインダー」という物体の見た目・動きを1つに揃えるための
 // 共通モデル。RecordsTabの棚(BinderCoverflowRow)とGoalsTabのグリッドは
 // どちらもここで定義するBinder3Dを組み合わせて作られている。
-//   - 表紙面(BinderCoverFace): 白い下地の上部にアクセントカラーの帯を1つ
-//     置き、そこに幾何学のワンポイント(AccentGlyph)を白抜きで載せる。
-//     ブリーフタブの育成カード(色帯+アイコン+ラベル)と同じ語彙に揃えて
-//     いる。下部はカテゴリのドット+ラベルとタイトルだけのミニマルな構成。
+//   - 表紙面(BinderCoverFace): geo(場所・日付)・media(作品)・
+//     target(目標)の3種で構造そのものを変えている。geo/mediaは白い
+//     下地の上部にアクセントカラーの帯を敷く「カードを集めて挟んだ
+//     バインダー」の語彙(ブリーフタブの育成カードと同じ帯+ラベルの
+//     構成)で、mediaだけ帯を広めに取り縦縞の下地にする。targetは帯を
+//     使わず、四辺を色の枠で縁取った中に白いラベルを1枚収めた構造にし、
+//     「自分で直接書いたバインダー」であることを一目で伝える。
 //   - 背表紙面(BinderSpineFace)・無地の側面(BinderEdgeFace): 厚みは
 //     ごく薄く、文字は一切載せない。背表紙はアクセントカラーの単色で、
 //     棚に並んだ時にそこだけが色の点になる。
@@ -36,10 +39,11 @@ import type { MediaKindId } from "@/lib/types";
 // 単体の図形でも十分な面積を占めるか、複数の要素で構成する。
 //   - target: 目標専用の的(同心円)のエンブレム。種類が1つしかなく、
 //     個体を見分ける必要がないため、常に同じ静かなマークにしている。
-//   - media: 映画/展覧会/ライブ/読書/音楽の5ジャンル専用。大きな構図を
-//     右下、小さな丸のサインを左上に置く、という「配置の型」を5ジャンル
-//     共通にすることで、図形自体は全く違っても「メディアの仲間」だと
-//     一目でわかるようにしている(色ではなく配置での家族的類似)。
+//   - media: 映画/展覧会/ライブ/読書/音楽の5ジャンル専用。縦縞の下地の
+//     上に大ぶりな構図をひとつだけ、ど真ん中を避けて右下寄りに置く、
+//     という「下地+配置の型」を5ジャンル共通にすることで、図形自体は
+//     全く違っても「メディアの仲間」だと一目でわかるようにしている
+//     (色ではなく下地の質感と配置での家族的類似)。
 //   - geo: 行った場所・日付のように際限なく増えるもの専用。斜め分割・
 //     角丸コーナー・2x2グリッド・棒グラフ状・縞と弧、の5つの構図から
 //     名前のハッシュで1つを選び、角度や本数などの細部もハッシュで
@@ -100,14 +104,15 @@ function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string
 // 的(同心円)のエンブレム。目標だけの専用マークで、メディアの構図とも
 // 場所の幾何学構図とも似ないようにすることで、「目標のバインダーだけ
 // 扱いが違う」と一目でわかるようにしている。存在感を持たせるため、輪を
-// 太く・大きめに取っている。
-function TargetMotif() {
+// 太く・大きめに取っている。表紙では白地の上に自分の色で描くため、色を
+// 差し替えられるようにしている。
+function TargetMotif({ color = PAPER }: { color?: string }) {
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ position: "relative", width: 54, height: 54 }}>
-        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `5px solid ${PAPER}` }} />
-        <div style={{ position: "absolute", inset: 13, borderRadius: "50%", border: `5px solid ${PAPER}` }} />
-        <div style={{ position: "absolute", inset: 26, borderRadius: "50%", background: PAPER }} />
+        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `5px solid ${color}` }} />
+        <div style={{ position: "absolute", inset: 13, borderRadius: "50%", border: `5px solid ${color}` }} />
+        <div style={{ position: "absolute", inset: 26, borderRadius: "50%", background: color }} />
       </div>
     </div>
   );
@@ -156,17 +161,18 @@ function MediaGlyph({ shape, color, size }: { shape: MediaShape; color: string; 
   }
 }
 
-// メディア用: 右下に大ぶりな構図(ジャンルごとに違う)、左上に小さな丸
-// (5ジャンル共通)という「配置の型」を固定することで、図形自体は違って
-// も同じ家族だとわかるようにしている。
+// メディア用: 縦縞の帯地(BinderCoverFace側で敷く)を共通の下地ルールに
+// し、その上に大ぶりな構図をひとつだけ、ど真ん中を避けて右下寄りに置く。
+// 以前は左上に小さな丸を添えて「共通点のサイン」にしていたが、それ自体が
+// 小さすぎてどっちつかずに見えるという指摘を受けて廃止した。「縦縞の
+// 下地+右下に大ぶりな図形」という配置のルールそのものを5ジャンル共通に
+// することで、色も図形も違ってよい代わりに家族らしさが伝わるようにして
+// いる。
 function MediaMotif({ shape }: { shape: MediaShape }) {
   return (
-    <>
-      <div style={{ position: "absolute", right: "8%", bottom: "6%" }}>
-        <MediaGlyph shape={shape} color={PAPER} size={44} />
-      </div>
-      <div style={{ position: "absolute", left: "14%", top: "16%", width: 9, height: 9, borderRadius: "50%", background: PAPER, opacity: 0.85 }} />
-    </>
+    <div style={{ position: "absolute", right: "10%", bottom: "10%" }}>
+      <MediaGlyph shape={shape} color={PAPER} size={50} />
+    </div>
   );
 }
 
@@ -294,49 +300,98 @@ interface CoverContent {
 
 const COVER_RADIUS = 12;
 
-// 表紙面。ブリーフタブの育成カード(色帯の中に白いアイコン+ラベル、
-// 下は白地にカテゴリ+タイトル)と同じ構成に揃えたミニマルなデザイン。
-// 色は下地(白)ではなく、上部の帯とドットに使うアクセント1色だけに絞る。
+// 表紙下部(エイボロウ+タイトル+フッター)。target/media/geoの3種で
+// 完全に共通の構成にすることで、フッターなど呼び出し側(GoalsTab等)が
+// 既に前提にしている文字色をそのまま使い回せるようにしている。
+function CoverBody({ eyebrowLabel, title, footer, accentColor }: { eyebrowLabel?: string; title: string; footer?: ReactNode; accentColor: string }) {
+  return (
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: "12px 14px 12px" }}>
+      {eyebrowLabel && (
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7, flexShrink: 0 }}>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: accentColor, flexShrink: 0 }} />
+          <span style={{ fontSize: 9, letterSpacing: "0.12em", color: accentColor, fontWeight: 700 }}>{eyebrowLabel}</span>
+        </div>
+      )}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end" }}>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: INK, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+      </div>
+      {footer && <div style={{ marginTop: 8, flexShrink: 0, color: "rgba(28,28,30,0.6)" }}>{footer}</div>}
+    </div>
+  );
+}
+
+// 表紙面。3つの「扱いの違い」を柄だけでなく構造そのものにも反映する。
+//   - geo(場所・日付): 上部32%だけに色の帯を敷き、下は白地。カードを
+//     選んで集めて挟んだ「収集物のバインダー」の見た目。
+//   - media: geoと同じ「上部に帯」という骨格は保ちつつ、帯を広め(46%)に
+//     取り、下地に縦縞を敷いた上へ大ぶりな図形をひとつだけ乗せる。5つの
+//     ジャンルが同じ括りだとわかるのは、色でも図形でもなくこの
+//     「縦縞+右下寄りにひとつ」という下地と配置のルールそのもの。
+//   - target(目標): 上の2つと違い、帯ではなく四辺を色の枠(フレーム)で
+//     縁取り、中は白いラベルのような1枚として構成する。「カードを
+//     集めたバインダー」ではなく「自分で直接書いたバインダー」なので、
+//     帯+白地というカードの語彙そのものを使わず、額装されたラベルの
+//     ような全く別の構造にすることで一目で扱いが違うとわかるようにする。
 export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverContent) {
   const accentColor = accent?.color ?? INK;
+
+  if (accent?.kind === "target") {
+    return (
+      <div style={{
+        position: "absolute", inset: 0, display: "flex", background: accent.color, overflow: "hidden", padding: 7,
+        borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
+      }}>
+        <div style={{
+          position: "relative", flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: PAPER, overflow: "hidden",
+          borderTopRightRadius: COVER_RADIUS - 4, borderBottomRightRadius: COVER_RADIUS - 4,
+        }}>
+          <div style={{ position: "relative", flex: "0 0 30%", flexShrink: 0 }}>
+            <TargetMotif color={accent.color} />
+          </div>
+          <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={accentColor} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: PAPER, overflow: "hidden",
       borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
     }}>
       {accent && (
-        <div style={{ flex: "0 0 32%", position: "relative", overflow: "hidden", flexShrink: 0, background: accent.color }}>
+        <div style={{
+          flex: accent.kind === "media" ? "0 0 46%" : "0 0 32%", position: "relative", overflow: "hidden", flexShrink: 0,
+          background: accent.kind === "media"
+            ? `repeating-linear-gradient(90deg, ${accent.color} 0, ${accent.color} 7px, ${shade(accent.color, 24)} 7px, ${shade(accent.color, 24)} 14px)`
+            : accent.color,
+        }}>
           <AccentMotif accent={accent} />
         </div>
       )}
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: "12px 14px 12px" }}>
-        {eyebrowLabel && (
-          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7, flexShrink: 0 }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: accentColor, flexShrink: 0 }} />
-            <span style={{ fontSize: 9, letterSpacing: "0.12em", color: accentColor, fontWeight: 700 }}>{eyebrowLabel}</span>
-          </div>
-        )}
-        <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end" }}>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: INK, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
-        </div>
-        {footer && <div style={{ marginTop: 8, flexShrink: 0, color: "rgba(28,28,30,0.6)" }}>{footer}</div>}
-      </div>
+      <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={accentColor} />
     </div>
   );
 }
 
 // 背表紙面(リング側=バインダーの左端)。厚みがごく薄いため、タイトル
-// 文字は載せない。目標・メディア(target/media)は棚での色分けに徹する
-// ため単色のまま。場所・日付(geo)だけは、個体の見分けが最も重要になる
-// のが実はこの背表紙(棚ではほぼ背表紙しか見えない)であるため、表紙と
-// 同じ色相環から角度違いの斜め縞を出し、単色の目標/メディアとは一目で
-// 「扱いが違う」とわかるようにしている。
+// 文字は載せない。表紙で使った3種類の構造ルール(geo=帯の斜め縞、
+// media=縦縞、target=単色の枠)を背表紙でもそのまま踏襲することで、
+// 棚に並んで背表紙しか見えない状態でも扱いの違いが伝わるようにしている。
 function BinderSpineFace({ accent }: { accent: Accent }) {
   if (accent.kind === "geo") {
     const light = shade(accent.color, 30);
     const angle = 20 + (accent.seed % 50);
     return (
       <div style={{ position: "absolute", inset: 0, background: `repeating-linear-gradient(${angle}deg, ${accent.color} 0, ${accent.color} 10px, ${light} 10px, ${light} 18px)` }}>
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(255,255,255,0.12), rgba(0,0,0,0.14))" }} />
+      </div>
+    );
+  }
+  if (accent.kind === "media") {
+    const light = shade(accent.color, 24);
+    return (
+      <div style={{ position: "absolute", inset: 0, background: `repeating-linear-gradient(90deg, ${accent.color} 0, ${accent.color} 4px, ${light} 4px, ${light} 8px)` }}>
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(255,255,255,0.12), rgba(0,0,0,0.14))" }} />
       </div>
     );

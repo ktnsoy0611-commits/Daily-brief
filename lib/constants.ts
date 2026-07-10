@@ -65,12 +65,21 @@ export const GOAL_CARD_ASPECT = ITEM_CARD_ASPECT;
 // ティール・深緑)の家族に揃えている。
 export const POSTER_PALETTE = ["#2C4E74", GOLD, RUST, GREEN];
 
+// navのピル自体を画面下端からどれだけ浮かせるか。ホーム画面に追加した
+// PWA(スタンドアロン)起動時、env(safe-area-inset-bottom)をそのまま
+// marginBottomに使うと、実機では表示領域が想定より狭く感じられるほど
+// 下に余白が残る指摘があったため、その値の一部だけを使うように絞って
+// いる。safe-area自体が無い機種ではmax(4px, 負の値)により最小の4pxへ
+// 収まる。
+export const NAV_BOTTOM_GAP = "max(4px, calc(env(safe-area-inset-bottom) - 26px))";
+
 // タブ本文やストック/目標/実行タブの下部固定バーが、フローティングの
 // タブバー(AppShellのnav)の直上に収まるためのオフセット。表示領域を
 // 少しでも広く取るため、navのピル自体の余白を切り詰めて画面下端ぎりぎり
 // まで下げた分、この値も縮めている。navのスタイルを変えたら実測して
-// 合わせ直すこと。
-export const NAV_OFFSET = "calc(82px + env(safe-area-inset-bottom))";
+// 合わせ直すこと。NAV_BOTTOM_GAPと同じ値を足しているのは、navが画面下端
+// から浮く量が変わればここに揃えるUIが下端に近づく量も連動させるため。
+export const NAV_OFFSET = `calc(82px + ${NAV_BOTTOM_GAP})`;
 
 export interface Category {
   id: CategoryId;

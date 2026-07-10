@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
+import { Bookmark, BookOpen, Check, Film, MapPin, Music, Music2, Palette, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
 import { BinderModal, HOLE_CLEAR, HOLE_YS, type IconType, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
@@ -58,42 +58,112 @@ function HorizontalShelf({ title, badge, children }: { title: string; badge?: st
   );
 }
 
-// 場所・作品を1つの時系列に混ぜ、直近に加わった5件だけを「今週の
-// おすすめ」として取り出す。以前は「さらっと/ゆったり/じっくり」という
-// 3段階の分量プリセット(まとめて複数件を一括追加するバンドル)だった
-// が、中身が件名の羅列だけで情報量が薄く、他の棚ともデザインが食い違って
-// いた。KEEP一覧・メディア棚と全く同じSelectablePosterCardを使うことで
-// デザインを統一しつつ、面積を一回り大きく取ることで「おすすめ」らしい
-// 見せ場にしている。
-interface RecommendedEntry {
+// 「今週のおすすめ」は1件1件のカードではなく、地図上で近い距離にある
+// Keep(場所)同士をGemini風にまとめた「モデルプラン」の提案。pinPosition
+// が返す地図座標(AREA_COORDSベース)同士の距離が近いものだけを束ねる
+// ことで、実際に徒歩圏内でまとめて回れる組み合わせになるようにしている。
+// メディア(作品)は地図上の位置を持たないため、この距離ベースの束ねには
+// 含めない。
+interface RecommendedPlan {
   key: string;
-  kind: "keep" | "media";
-  title: string;
-  image?: string;
-  color?: string;
-  sub: string;
-  icon: IconType;
-  kept: boolean;
-  at: number;
+  keepIds: string[];
+  label: string;
+  itemsText: string;
+  accent: string;
+  items: { id: string; title: string; image?: string; color?: string }[];
 }
 const RECOMMENDED_COUNT = 5;
-const RECOMMENDED_CARD_WIDTH = 168;
+// 地図座標(0〜100のパーセント単位)上でこの距離以内なら「近い」とみなす。
+const PLAN_CLUSTER_DIST = 16;
+const PLAN_MAX_ITEMS = 4;
 
-function buildRecommended(pool: Keep[], mediaPool: MediaRecord[]): RecommendedEntry[] {
-  const fromKeeps: RecommendedEntry[] = pool.map((k) => ({
-    key: k.id, kind: "keep", title: k.title, image: k.images?.[0], color: k.color,
-    sub: k.area && k.area !== "—" ? k.area : (k.category ?? ""), icon: MapPin, kept: k.origin !== "manual",
-    at: new Date(k.keptAt).getTime(),
-  }));
-  const fromMedia: RecommendedEntry[] = mediaPool.map((r) => ({
-    key: r.id, kind: "media", title: r.title, image: r.image, color: r.color,
-    sub: mediaKindOf(r.kind).label, icon: MEDIA_ICON[r.kind], kept: r.origin !== "manual",
-    at: new Date(r.addedAt).getTime(),
-  }));
-  return [...fromKeeps, ...fromMedia].sort((a, b) => b.at - a.at).slice(0, RECOMMENDED_COUNT);
+function buildRecommendedPlans(pool: Keep[]): RecommendedPlan[] {
+  const withPos = pool.map((k) => ({ keep: k, pos: pinPosition(k) }));
+  // 直近にKeepしたものを優先的にプランの起点(種)にする。
+  const sorted = withPos.slice().sort((a, b) => new Date(b.keep.keptAt).getTime() - new Date(a.keep.keptAt).getTime());
+  const used = new Set<string>();
+  const clusters: (typeof withPos)[] = [];
+  for (const seed of sorted) {
+    if (used.has(seed.keep.id) || clusters.length >= RECOMMENDED_COUNT) continue;
+    const group = [seed];
+    used.add(seed.keep.id);
+    for (const other of sorted) {
+      if (group.length >= PLAN_MAX_ITEMS) break;
+      if (used.has(other.keep.id)) continue;
+      const d = Math.hypot(seed.pos.x - other.pos.x, seed.pos.y - other.pos.y);
+      if (d <= PLAN_CLUSTER_DIST) { group.push(other); used.add(other.keep.id); }
+    }
+    // 単体では「組み合わせたプラン」にならないため、2件以上まとまった
+    // 種だけを採用する(近くに何も無い1件だけの候補は諦めて捨てる)。
+    if (group.length >= 2) clusters.push(group);
+  }
+  return clusters.slice(0, RECOMMENDED_COUNT).map((group) => {
+    const areaCounts = new Map<string, number>();
+    group.forEach((g) => {
+      const a = g.keep.area && g.keep.area !== "—" ? g.keep.area : null;
+      if (a) areaCounts.set(a, (areaCounts.get(a) ?? 0) + 1);
+    });
+    const areas = Array.from(areaCounts.entries()).sort((a, b) => b[1] - a[1]).map(([a]) => a);
+    const label = areas.length === 0 ? "近場でめぐるプラン" : areas.length === 1 ? `${areas[0]}で過ごす` : `${areas[0]}・${areas[1]}をめぐる`;
+    return {
+      key: group.map((g) => g.keep.id).join("-"),
+      keepIds: group.map((g) => g.keep.id),
+      label,
+      itemsText: group.map((g) => g.keep.title).join(" ・ "),
+      accent: group[0].keep.color ?? placeAccent(areas[0] ?? group[0].keep.id).color,
+      items: group.map((g) => ({ id: g.keep.id, title: g.keep.title, image: g.keep.images?.[0], color: g.keep.color })),
+    };
+  });
 }
 
-function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOpenPin, onToggleKeep, onToggleMedia, onInjectDemo, bundlesAreNew }: {
+// 複数のカードがまとめて中に入っている、封をしたエンベロープの見た目。
+// 三角のフラップ(下地より暗い色)の下端の隙間から、束ねた場所カードの
+// 小さな端が覗いているように重ねて見せ、「1件のカードではなく複数を
+// 組み合わせた提案」であることを一目で伝える。フラップの上にはモデル
+// プランの中身(件数・テーマ・行き先の名前)を直接印字する。選択トグルは
+// 他のカードのPlus/Checkと同じ語彙で右上に置く。
+const ENVELOPE_WIDTH = 208;
+const ENVELOPE_HEIGHT = 152;
+
+function PlanEnvelope({ plan, selected, onToggle }: { plan: RecommendedPlan; selected: boolean; onToggle: () => void }) {
+  const dark = shade(plan.accent, -24);
+  return (
+    <button onClick={onToggle} aria-label={plan.label} style={{
+      position: "relative", flexShrink: 0, width: ENVELOPE_WIDTH, height: ENVELOPE_HEIGHT, padding: 0, border: "none", cursor: "pointer",
+      borderRadius: COVER_RADIUS, overflow: "hidden", background: plan.accent, boxShadow: SOFT_SHADOW_LG,
+      outline: selected ? `2.5px solid ${BLUE}` : "none", outlineOffset: selected ? -2.5 : 0,
+    }}>
+      <div style={{ position: "absolute", top: "30%", left: "50%", transform: "translateX(-50%)", display: "flex", zIndex: 1 }}>
+        {plan.items.slice(0, 3).map((it, idx, arr) => (
+          <div key={it.id} style={{
+            width: 38, height: 52, marginLeft: idx === 0 ? 0 : -17, borderRadius: 5, overflow: "hidden", flexShrink: 0,
+            transform: `rotate(${(idx - (arr.length - 1) / 2) * 9}deg)`, boxShadow: "0 3px 6px rgba(23,23,21,0.32)",
+            border: `2px solid ${PAPER}`, background: it.color ?? dark,
+          }}>
+            {it.image && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={img(it.image, 80, 110)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "58%", background: dark, clipPath: "polygon(0 0, 100% 0, 50% 100%)", zIndex: 2 }} />
+      <div style={{ position: "absolute", left: 14, right: 40, bottom: 12, zIndex: 3 }}>
+        <div style={{ fontSize: 8, letterSpacing: "0.16em", color: "rgba(255,255,255,0.72)", fontWeight: 700, marginBottom: 4 }}>MODEL PLAN ・ {plan.items.length}件</div>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 13, color: PAPER, lineHeight: 1.3, marginBottom: 3, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.label}</div>
+        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.78)", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.itemsText}</div>
+      </div>
+      <div style={{
+        position: "absolute", right: 8, top: 8, width: 26, height: 26, borderRadius: "50%", zIndex: 4, pointerEvents: "none",
+        background: selected ? BLUE : "rgba(255,255,255,0.85)", display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {selected ? <Check size={13} strokeWidth={3} color={PAPER} /> : <Plus size={13} strokeWidth={3} color={INK} />}
+      </div>
+    </button>
+  );
+}
+
+function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOpenPin, onToggleKeep, onToggleMedia, onTogglePlan, onInjectDemo, bundlesAreNew }: {
   pool: Keep[];
   mediaPool: MediaRecord[];
   draftSelection: string[];
@@ -101,11 +171,12 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
   onOpenPin: (item: Keep) => void;
   onToggleKeep: (item: Keep) => void;
   onToggleMedia: (item: MediaRecord) => void;
+  onTogglePlan: (keepIds: string[]) => void;
   onInjectDemo: () => void;
   bundlesAreNew: boolean;
 }) {
   const sorted = pool.slice().sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
-  const recommended = buildRecommended(pool, mediaPool);
+  const plans = buildRecommendedPlans(pool);
 
   if (pool.length === 0 && mediaPool.length === 0) {
     return (
@@ -124,21 +195,12 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
       <MapCanvas items={pool} selectedIds={draftSelection} onOpenPin={onOpenPin} />
       <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 22px" }}>ピンやカードをタップして、今日の行き先を選ぶ。</p>
 
-      {recommended.length > 0 && (
+      {plans.length > 0 && (
         <HorizontalShelf title="今週のおすすめ" badge={bundlesAreNew ? "NEW" : undefined}>
-          {recommended.map((it) => (
-            <SelectablePosterCard key={`${it.kind}-${it.key}`} size={RECOMMENDED_CARD_WIDTH} title={it.title} image={it.image} color={it.color}
-              sub={it.sub} icon={it.icon} kept={it.kept}
-              selected={it.kind === "keep" ? draftSelection.includes(it.key) : draftMediaSelection.includes(it.key)}
-              onToggle={() => {
-                if (it.kind === "keep") {
-                  const k = pool.find((x) => x.id === it.key);
-                  if (k) onToggleKeep(k);
-                } else {
-                  const r = mediaPool.find((x) => x.id === it.key);
-                  if (r) onToggleMedia(r);
-                }
-              }} />
+          {plans.map((plan) => (
+            <PlanEnvelope key={plan.key} plan={plan}
+              selected={plan.keepIds.every((id) => draftSelection.includes(id))}
+              onToggle={() => onTogglePlan(plan.keepIds)} />
           ))}
         </HorizontalShelf>
       )}
@@ -181,51 +243,61 @@ interface ExecItem {
   done?: boolean;
 }
 
-// バインダー本体。常に一番上のカードの背後にだけ置く。表表紙は普段
-// (登録前の待受状態)は左手前へ開いてきたような角度で覗いている
-// (perspective+rotateYで実際に奥行きのある紙として傾ける)。カードと
-// 全く同じ大きさ・同じ穴の位置を持つ「もう1枚のカード」を、そのまま
-// 左上へずらして回転させることで表現している。カードと同じ箱に
-// PunchHolesそのものを重ねてから箱ごと平行移動する今の形であれば、穴は
-// 常に「同じ位置に開いた、少し奥にずれたもう1枚のページ」として一貫
-// して見える。
-// 登録アニメーションでは、カード自身は位置(スタック先の座標)を動かす
-// だけで回転はさせない(下記ConfirmedStack参照)。代わりにこの表紙が、
-// スタックし終えた束の手前へ回り込み(closed時にzIndexを引き上げる)ながら
-// 開いた角度から0度まで閉じることで、「向かって左に開いていた表紙が、
-// 積み上がったカードの上に閉じてくる」という動きを表現する。閉じ終わると
-// 平行移動・回転がどちらも0に戻り、束の真上にぴったり重なって完全に
-// 覆い隠す。
-function OpenBinderBackdrop({ closed }: { closed: boolean }) {
+// バインダー本体。見開きで開いて置いた状態を、2枚の平らなパネルとして
+// 組み立てる: 右側(裏表紙・リング側)はカードの束の真後ろに常に静止して
+// おり、左側(表表紙)は登録前は画面の左へフラットに開いたまま(=画面の
+// 外へ大きくはみ出して切れて見える)待機する。穴の装飾(PunchHoles)は
+// 使わず、リング(RingHardware、呼び出し側で別途描画)だけのシンプルな
+// 見開きにする。
+// バインド！を押すと、束の一番上に来た表表紙が、自分の右端(=裏表紙側
+// パネルに接する蝶番)を軸にrotateYで0度→180度まで回り込み、束の真上に
+// ぴったり重なって閉じる。蝶番を右端に固定したまま回すことで、中間角度
+// (90度前後)ではパネルの自由端(左端)がパースペクティブにより一瞬手前
+// (視聴者側)へせり出して見え、「表紙が画面手前に飛び出してから束の上に
+// パタンと閉じる」という動きになる。
+function BinderSpread({ closed, width, aspect }: { closed: boolean; width: number; aspect: string }) {
   return (
-    <div style={{ position: "absolute", inset: 0, perspective: 900, zIndex: closed ? 20 : 0, pointerEvents: "none" }}>
+    <div style={{ position: "absolute", inset: 0, perspective: 1400, pointerEvents: "none" }}>
+      {/* 裏表紙側(リングが付く方)。束の真後ろに固定し、開閉では一切動かない。 */}
       <div style={{
         position: "absolute", inset: 0, background: PAPER, boxShadow: SOFT_SHADOW_LG,
-        borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
-        transformOrigin: "0% 50%",
-        transform: closed ? "translate(0, 0) rotateY(0deg)" : "translate(-15%, -5%) rotateY(-14deg)",
-        transition: "transform 0.34s cubic-bezier(0.4,0,0.2,1)",
+        borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS, overflow: "hidden", zIndex: 0,
       }}>
-        {/* 表紙の内側の面であることを示す、わずかな陰影 */}
-        <div style={{ position: "absolute", inset: 0, borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS, background: "linear-gradient(100deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
-        <PunchHoles />
-        {/* リング金具自体はここには置かない。リングはバインダーの背に固定
-            された1つの部品であり、開閉する表紙と一緒に動いてはおかしいため、
-            表紙の回転/移動には追従させず、呼び出し側(ConfirmedStack)で
-            この表紙・カードどちらの変形も受けない位置に別途1つだけ描く。 */}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(100deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
+      </div>
+      {/* 表表紙側。閉じるまでは画面左へフラットに開いたまま、右端(蝶番)を
+          軸に回転して閉じる。backfaceVisibilityは意図的に指定しない
+          (裏返る後半でも消えず、束の上に居座って覆い隠し続けるため)。 */}
+      <div style={{
+        position: "absolute", top: 0, left: -width, width, aspectRatio: aspect,
+        transformOrigin: "100% 50%",
+        transform: `rotateY(${closed ? 180 : 0}deg)`,
+        transition: "transform 0.34s cubic-bezier(0.45,0,0.2,1)",
+        zIndex: closed ? 30 : 0,
+      }}>
+        <div style={{
+          position: "absolute", inset: 0, background: PAPER, boxShadow: SOFT_SHADOW_LG,
+          borderTopLeftRadius: COVER_RADIUS, borderBottomLeftRadius: COVER_RADIUS, overflow: "hidden",
+          // PAPERと下地のBGがどちらも近いクリーム色のため、影だけでは
+          // 画面へ大きくはみ出すこのパネルの輪郭が背景に溶けて見えなくなる。
+          // ヘアラインの縁取りを足して、実際に紙が1枚そこにあることを
+          // はっきり伝える。
+          border: `1px solid ${HAIRLINE}`,
+        }}>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(260deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
+        </div>
       </div>
     </div>
   );
 }
 
-// パンチ穴を「開いているだけ」にせず、実際にバインダーのリングが通って
-// いるように見せる金具。PunchHoles(common.tsx)と同じY位置(HOLE_YS)に、
-// カードの左端をまたぐ小さな輪を重ねる。リングはバインダーの背に固定
-// された部品であり、カード1枚1枚が持つものでも、開閉する表紙
-// (OpenBinderBackdrop)にくっついて動くものでもない。そのため呼び出し側
-// (ConfirmedStack)では、ドラッグで動くConfirmedCardの内側にも、開閉で
-// 動くOpenBinderBackdropの内側にも置かず、どちらの変形も受けない位置に
-// 一番上の1枚ぶんだけ描く。
+// バインダーのリングが実際にカードを通しているように見せる金具。
+// PunchHoles(common.tsx)と同じY位置(HOLE_YS)に、カードの左端をまたぐ
+// 小さな輪を重ねる。リングは裏表紙側パネルの左端(蝶番)に固定された
+// 部品であり、カード1枚1枚が持つものでも、開閉するBinderSpreadの表表紙
+// パネルにくっついて動くものでもない。そのため呼び出し側(ConfirmedStack)
+// では、ドラッグで動くConfirmedCardの内側にも、開閉するBinderSpreadの
+// 内側にも置かず、どちらの変形も受けない位置に一番上の1枚ぶんだけ描く。
 function RingHardware() {
   return (
     <>
@@ -400,8 +472,8 @@ const CONFIRMED_MAX_WIDTH = 380;
 // 確定カード自体の幅。以前はコンテナいっぱい(最大380px)に広げていたが、
 // 大きすぎるという指摘を受け、1枚1枚をぐっと小さくした。パンチ穴・リング・
 // KEEPバッジのサイズはこのCARD_WIDTHを基準に決めているため、ここを変えれば
-// バインダーの背景装飾(OpenBinderBackdrop、%指定なので自動追従)も含めて
-// 一括で比率が揃う。
+// バインダー(BinderSpread、widthをそのまま渡している)も含めて一括で
+// 比率が揃う。
 const CARD_WIDTH = 220;
 const STACK_MS = 420;
 const CLOSE_MS = 320;
@@ -493,7 +565,12 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
       <div
         ref={scrollRef} className="no-scrollbar"
         style={{
-          flex: 1, minHeight: 0, overflowY: falling ? "hidden" : "auto", WebkitOverflowScrolling: "touch",
+          flex: 1, minHeight: 0, overflowY: falling ? "hidden" : "auto",
+          // overflowXは明示していないとoverflowYがvisible以外の値を持つ
+          // せいで暗黙にautoへ計算され、画面の左へはみ出す表表紙パネル
+          // (BinderSpread)がスクロールで引っかかったり中途半端に見切れたり
+          // する。hiddenを明示し、画面の端できれいに切れるだけにする。
+          overflowX: "hidden", WebkitOverflowScrolling: "touch",
           ...(falling ? { transform: "translateY(60%)", opacity: 0, transition: `transform ${FALL_MS}ms cubic-bezier(0.55,0,1,0.45), opacity ${FALL_MS - 40}ms ease-in` } : {}),
         }}
       >
@@ -501,10 +578,10 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
           <div style={{ fontSize: 10, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "8px 2px 16px" }}>{dateLabel} ・ {items.length}件</div>
           {/* カード自身はスタック先の座標へ移動するだけで、回転はさせない。
               「閉じる」動きはカードではなく、常に先頭カードの背後にいる
-              OpenBinderBackdrop(=バインダーの表紙)が担う。スタックが
-              揃ったところへ表紙がclosed=trueで手前(zIndex高)へ回り込み
-              ながら閉じてくることで、「向かって左に開いていた表紙が、
-              積み上がったカードの上に閉じてくる」動きになる。 */}
+              BinderSpread(=見開きバインダー)の表表紙パネルが担う。
+              スタックが揃ったところへ表表紙がclosed=trueで束の真上へ
+              回り込みながら閉じてくることで、「画面左に開いていた表紙が、
+              積み上がったカードの上にパタンと閉じてくる」動きになる。 */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
             {items.map((it, i) => (
               // zIndexを明示するのは、スタック中に後ろのカードが先頭カード
@@ -512,7 +589,7 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
               // ため。指定しないとflexの子はDOM順で後勝ちになり、スタックで
               // 重なった瞬間に後方のカードが先頭カードを覆い隠してしまっていた。
               <div key={it.id} style={{ position: "relative", width: CARD_WIDTH, zIndex: items.length - i }}>
-                {i === 0 && <OpenBinderBackdrop closed={closed} />}
+                {i === 0 && <BinderSpread closed={closed} width={CARD_WIDTH} aspect={ITEM_CARD_ASPECT} />}
                 <ConfirmedCard
                   item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
                   stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px) scale(${i === 0 ? 1 : 0.92})` : undefined}
@@ -551,7 +628,7 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   );
 }
 
-export function ExecuteTab({ appState, persist, goTab, profileButton, selection, toggleKeepSelection, toggleMediaSelection, setSelection }: TabProps) {
+export function ExecuteTab({ appState, persist, goTab, profileButton, selection, toggleKeepSelection, toggleMediaSelection, addKeepIds, setSelection }: TabProps) {
   const magazine = appState.magazine;
   const [mapMode, setMapMode] = useState(false); // バインダー確定後でも地図に戻って選び直すときtrue
   const [pinItem, setPinItem] = useState<Keep | null>(null);
@@ -607,6 +684,17 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
 
   const toggleDraftKeep = (item: Keep) => toggleKeepSelection(item.id);
   const toggleDraftMedia = (item: MediaRecord) => toggleMediaSelection(item.id);
+  // モデルプラン(複数のKeepをまとめたエンベロープ)は、中の全件がすでに
+  // 選択済みなら丸ごと外し、そうでなければ丸ごと追加する。1件ずつの
+  // toggleKeepSelectionではなく「全部入り/全部無し」の2状態だけを扱う。
+  const toggleDraftPlan = (keepIds: string[]) => {
+    const allSelected = keepIds.every((id) => draftSelection.includes(id));
+    if (allSelected) {
+      setSelection({ keepIds: draftSelection.filter((id) => !keepIds.includes(id)), mediaIds: draftMediaSelection });
+    } else {
+      addKeepIds(keepIds);
+    }
+  };
 
   const removeFromMagazine = (id: string, type: MagazineItemRef["type"]) => {
     const next = structuredClone(appState);
@@ -788,7 +876,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
           )}
           <MapPlanner
             pool={pool} mediaPool={mediaPool} draftSelection={draftSelection} draftMediaSelection={draftMediaSelection}
-            onOpenPin={setPinItem} onToggleKeep={toggleDraftKeep} onToggleMedia={toggleDraftMedia}
+            onOpenPin={setPinItem} onToggleKeep={toggleDraftKeep} onToggleMedia={toggleDraftMedia} onTogglePlan={toggleDraftPlan}
             onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
           />
           {/* 選択中のカードを確定する操作は、タブを跨いで共有するAppShellの

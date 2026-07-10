@@ -49,21 +49,26 @@ import type { MediaKindId } from "@/lib/types";
 //   (MediaShape)。geo→placeAccent/dateAccentが名前のハッシュで
 //   色相・構図・細部をすべて振る。
 //
-// 個々の図形の語彙は、バウハウスのポスターや北欧家具のような抽象幾何学
-// (円・半円・花弁・放射線・帯)に統一し、十字のような具体的な連想
-// (救急など)を持つ形は避けている。図形は「大きく1つ、気持ちよく配置
-// する」か「小さいものを複数並べる」のどちらかに徹し、小さい図形が
-// ぽつんと1つだけ浮いている構成は作らない。
+// 個々の図形の語彙は、参考にしたバウハウスのポスター群に合わせて
+// 「円・半円・正方形・長方形・三角形・ストライプの面」の6種類だけに
+// 絞り、すべてベタ塗り(線・輪郭だけの図形は使わない)で構成する。
+// 以前は同心円のリングや二重の輪といった「線で描いた円」を使っていたが、
+// 参考画像はどれも面(塗り)の重なりだけで構成されており、線で縁取った
+// 図形は1つも使われていなかったため、全面的に塗りの図形へ描き直した。
+// ストライプは「下地が無地の時に、四角い面をストライプ地にする」という
+// 使い方に限定する(参考画像のジャケット下部の縞や、四角のストライプ地
+// と同じ語彙)。図形は常に大きく・気持ちよい配置で使い、小さい図形を
+// 複数散らす構成もやめた(小さすぎる図形は使わない、という指摘のため)。
 
-export type AccentShape = "square" | "triangle" | "diamond";
-// メディアの5ジャンルだけが持つ、複数要素で構成した専用の大ぶりな構図。
-// 単純な1図形だと小さく寂しく見えるため、弧・放射線・積み重ね・重なる輪
-// など、面積とリズムを持つモチーフにしている。
-type MediaShape = "arch" | "petal" | "sunburst" | "stack" | "rings";
-// geoは「大きく1つ」の構図(diagonal/corner)か「小さいものを複数」の
-// 構図(grid/bars)のどちらかにのみ徹する。縞はmedia専用の質感として
-// 予約するため、geoの構図からは廃止した。
-type GeoLayout = "diagonal" | "corner" | "grid" | "bars";
+export type PlaneShape = "circle" | "semicircle" | "square" | "rectangle" | "triangle";
+// メディアの5ジャンルは、上のPlaneShapeの語彙だけを使い、ジャンルごとに
+// 図形の種類・組み合わせを変えることで見分ける(色ではなく形の違い)。
+type MediaShape = "semicircle" | "triangle" | "circle" | "rectangleStack" | "circlePair";
+// geoは「大きな面をひとつ、気持ちよく配置する」構図に統一。縞は
+// media専用の質感として予約しているが、geoでは「下地は無地、その上に
+// 四角いストライプ地の面をひとつ添える」という使い方だけを許可する
+// (参考画像の「無地の下地+ストライプの四角」の語彙)。
+type GeoLayout = "diagonal" | "corner" | "bars" | "stripePatch";
 
 export type Accent =
   | { kind: "target"; color: string }
@@ -88,123 +93,117 @@ export function goalAccent(seed: string): Accent {
 // ExecuteTabのデモデータ(写真の無いカードの下地色)もこれを基準にした
 // 色調で揃え、バインダーとカードの色が世界観として一致するようにしている。
 export const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
-  movie: { kind: "media", shape: "arch", color: "#4B4C8C" },
-  exhibition: { kind: "media", shape: "petal", color: "#3E7A82" },
-  live: { kind: "media", shape: "sunburst", color: "#8C4A72" },
-  book: { kind: "media", shape: "stack", color: "#4C7A5C" },
-  album: { kind: "media", shape: "rings", color: "#8C8A3E" },
+  movie: { kind: "media", shape: "semicircle", color: "#4B4C8C" },
+  exhibition: { kind: "media", shape: "triangle", color: "#3E7A82" },
+  live: { kind: "media", shape: "circle", color: "#8C4A72" },
+  book: { kind: "media", shape: "rectangleStack", color: "#4C7A5C" },
+  album: { kind: "media", shape: "circlePair", color: "#8C8A3E" },
 };
 
-// 場所・日付の「小さいものを複数並べる」構図(grid)専用のシンプルな
-// 単図形。十字・円・半円・花弁はそれぞれtarget/media側の専用語彙として
-// 予約しているため、geoのgridでは残りの四角・三角・菱形だけを使う。
-function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string; size: number }) {
+// PlaneShapeのベタ塗り単図形。半円は「アーチ(丸みが上)」の向きに統一
+// している(参考画像の日の出/アーチのモチーフに合わせた)。
+function PlaneGlyph({ shape, color, size }: { shape: PlaneShape; color: string; size: number }) {
   switch (shape) {
+    case "circle":
+      return <div style={{ width: size, height: size, borderRadius: "50%", background: color }} />;
+    case "semicircle":
+      return <div style={{ width: size, height: size / 2, background: color, borderRadius: `${size}px ${size}px 0 0` }} />;
     case "square":
-      return <div style={{ width: size * 0.86, height: size * 0.86, background: color, borderRadius: 2 }} />;
-    case "diamond":
-      return <div style={{ width: size * 0.72, height: size * 0.72, background: color, borderRadius: 2, transform: "rotate(45deg)" }} />;
+      return <div style={{ width: size, height: size, background: color }} />;
+    case "rectangle":
+      return <div style={{ width: size * 1.5, height: size * 0.75, background: color }} />;
     case "triangle":
-      return <div style={{ width: 0, height: 0, borderLeft: `${size * 0.52}px solid transparent`, borderRight: `${size * 0.52}px solid transparent`, borderBottom: `${size * 0.92}px solid ${color}` }} />;
+      return <div style={{ width: size, height: size, background: color, clipPath: "polygon(50% 0, 100% 100%, 0 100%)" }} />;
   }
 }
 
-// 的(同心円)のエンブレム。目標だけの専用マークで、メディアの構図とも
-// 場所の幾何学構図とも似ないようにすることで、「目標のバインダーだけ
-// 扱いが違う」と一目でわかるようにしている。目標は表紙全面が自分の色に
-// なるため、常にPAPER(白)の輪だけで描く、というシンプルな1色の
-// エンブレムに徹している。
+// 的のエンブレムだった線描きの同心円は、参考画像がどれも線ではなく面の
+// 重なりだけで構成されていたことを踏まえてベタ塗りの大きな円へ描き直した。
+// 目標は表紙全面が自分の色になるため、その上に白(PAPER)の円をひとつ、
+// ど真ん中ではなく上端からわずかにはみ出す位置に大きく置くことで、
+// 参考画像(黄色い面の上に赤いテクスチャの円が縁を跨いで乗る構図)と
+// 同じ「面の重なり」の語彙にしている。
 function TargetMotif({ color = PAPER }: { color?: string }) {
+  // 表紙全体(inset:0のカード)を基準に配置する。上部の帯用スペーサーの
+  // 中に収めようとすると、円の直径がスペーサーの高さより大きくなる
+  // ケースで意図した「上端を跨いではみ出す」比率がスペーサー基準の
+  // 相対値に埋もれてしまい、ほぼ中央に収まった円にしか見えなかった。
+  // カード全体基準にすることで、直径・はみ出し量ともに狙った比率で
+  // 安定して表示される。
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "relative", width: 60, height: 60 }}>
-        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `6px solid ${color}` }} />
-        <div style={{ position: "absolute", inset: 15, borderRadius: "50%", border: `6px solid ${color}` }} />
-        <div style={{ position: "absolute", inset: 30, borderRadius: "50%", background: color }} />
-      </div>
-    </div>
+    <div style={{ position: "absolute", left: "50%", top: "-11%", transform: "translateX(-50%)", width: "56%", aspectRatio: "1 / 1", borderRadius: "50%", background: color }} />
   );
 }
 
-// メディア5ジャンル専用の、複数要素で組んだ大ぶりな構図。単純な1図形は
-// 小さく寂しく見えるため、弧・扇形・放射線・積み重ねた帯・重なる2つの輪、
-// といった面積とリズムを持つモチーフにしている。
+// メディア5ジャンル専用の、PlaneShapeの語彙だけで組んだ大ぶりな構図。
+// rectangleStack/circlePairは「同じ図形を複数重ねる/積む」ことで、
+// 単図形よりも面積とリズムを持たせている(参考画像の、同じ丸や半円を
+// 並べて構成するグリッドポスターと同じ考え方)。
 function MediaGlyph({ shape, color, size }: { shape: MediaShape; color: string; size: number }) {
-  switch (shape) {
-    case "arch":
-      return <div style={{ width: size, height: size * 0.62, background: color, borderRadius: `${size}px ${size}px 0 0` }} />;
-    case "petal":
-      return <div style={{ width: size, height: size, background: color, borderRadius: "0 100% 0 0" }} />;
-    case "stack":
-      return (
-        <div style={{ display: "flex", flexDirection: "column", gap: size * 0.14, alignItems: "flex-end" }}>
-          {[1, 0.72, 0.88].map((w, i) => (
-            <div key={i} style={{ width: size * w, height: size * 0.2, background: color, borderRadius: 999 }} />
-          ))}
-        </div>
-      );
-    case "sunburst": {
-      const rays = 10;
-      return (
-        <div style={{ position: "relative", width: size, height: size }}>
-          {Array.from({ length: rays }).map((_, i) => (
-            <div key={i} style={{
-              position: "absolute", left: "50%", top: "50%", width: size * 0.09, height: size * 0.46,
-              background: color, borderRadius: 2, transformOrigin: "50% 100%",
-              transform: `translate(-50%, -100%) rotate(${(360 / rays) * i}deg)`,
-            }} />
-          ))}
-        </div>
-      );
-    }
-    case "rings": {
-      const r = size * 0.66;
-      return (
-        <div style={{ position: "relative", width: r * 1.7, height: r }}>
-          <div style={{ position: "absolute", left: 0, top: 0, width: r, height: r, borderRadius: "50%", border: `${size * 0.13}px solid ${color}` }} />
-          <div style={{ position: "absolute", right: 0, top: 0, width: r, height: r, borderRadius: "50%", border: `${size * 0.13}px solid ${color}` }} />
-        </div>
-      );
-    }
+  if (shape === "rectangleStack") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: size * 0.12, alignItems: "flex-end" }}>
+        {[1, 0.66, 0.84].map((w, i) => (
+          <div key={i} style={{ width: size * w, height: size * 0.26, background: color }} />
+        ))}
+      </div>
+    );
   }
+  if (shape === "circlePair") {
+    const r = size * 0.72;
+    return (
+      <div style={{ position: "relative", width: r * 1.55, height: r }}>
+        <div style={{ position: "absolute", left: 0, top: 0, width: r, height: r, borderRadius: "50%", background: color }} />
+        <div style={{ position: "absolute", right: 0, top: 0, width: r, height: r, borderRadius: "50%", background: color, opacity: 0.62 }} />
+      </div>
+    );
+  }
+  return <PlaneGlyph shape={shape} color={color} size={size} />;
 }
 
 // メディア用: 縦縞の帯地(BinderCoverFace側で敷く)を共通の下地ルールに
 // し、その上に大ぶりな構図をひとつだけ、ど真ん中を避けて右下寄りに置く。
-// 以前は左上に小さな丸を添えて「共通点のサイン」にしていたが、それ自体が
-// 小さすぎてどっちつかずに見えるという指摘を受けて廃止した。「縦縞の
-// 下地+右下に大ぶりな図形」という配置のルールそのものを5ジャンル共通に
-// することで、色も図形も違ってよい代わりに家族らしさが伝わるようにして
-// いる。
+// 「縦縞の下地+右下に大ぶりな図形」という配置のルールそのものを5ジャンル
+// 共通にすることで、色も図形も違ってよい代わりに家族らしさが伝わるように
+// している。
 function MediaMotif({ shape }: { shape: MediaShape }) {
   return (
     <div style={{ position: "absolute", right: "9%", bottom: "8%" }}>
-      <MediaGlyph shape={shape} color={PAPER} size={58} />
+      <MediaGlyph shape={shape} color={PAPER} size={60} />
     </div>
   );
 }
 
-const GEO_SHAPES: AccentShape[] = ["square", "triangle", "diamond"];
-
 // 際限なく増える種類(場所・日付)専用。4つの構図から1つをハッシュで
 // 選び、角度・本数などの細部もハッシュで振ることで、同じ色相が重なって
-// も構図や細部の違いで個体を見分けられるようにしている。「大きく1つ」
-// (diagonal/corner、色面の分割そのものが図形になっているため単独の
-// 小図形を足さない)か「小さいものを複数」(grid/bars)かのどちらかに
-// 徹し、小さい図形がぽつんと1つだけ浮く構成は作らない。
+// も構図や細部の違いで個体を見分けられるようにしている。全レイアウトを
+// 「大きな面をひとつ、気持ちよく配置する」(diagonal/corner/stripePatch)
+// か「同じ形の帯を複数並べる」(bars)のどちらかに統一し、小さい図形が
+// ぽつんと1つだけ浮く構成は作らない。
 function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; seed: number }) {
   const light = shade(color, 30);
   const dark = shade(color, -16);
-  const shape = GEO_SHAPES[seed % GEO_SHAPES.length];
-  const shape2 = GEO_SHAPES[(seed >> 3) % GEO_SHAPES.length];
 
   if (layout === "diagonal") {
-    const angle = 18 + (seed % 45);
-    return <div style={{ position: "absolute", inset: 0, background: `linear-gradient(${angle}deg, ${color} 56%, ${light} 56%)` }} />;
+    // 大きな三角形の面を斜めに配置する。以前はlinear-gradientで斜めの
+    // 色境界を作っていたが、境界がぼやけた「にじみ」に見えがちだった
+    // ため、clip-pathで角がくっきりした本物の三角形の面にした。
+    const corner = (seed >> 2) % 4;
+    const clipPaths = [
+      "polygon(0 0, 100% 0, 0 100%)",
+      "polygon(100% 0, 100% 100%, 0 0)",
+      "polygon(100% 100%, 0 100%, 100% 0)",
+      "polygon(0 100%, 0 0, 100% 100%)",
+    ];
+    return (
+      <div style={{ position: "absolute", inset: 0, background: color }}>
+        <div style={{ position: "absolute", inset: 0, background: light, clipPath: clipPaths[corner] }} />
+      </div>
+    );
   }
   if (layout === "corner") {
     const fromLeft = (seed >> 2) % 2 === 0;
-    const size = 62 + (seed % 40);
+    const size = 68 + (seed % 40);
     return (
       <div style={{ position: "absolute", inset: 0, background: color, overflow: "hidden" }}>
         <div style={{
@@ -214,26 +213,27 @@ function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; s
       </div>
     );
   }
-  if (layout === "grid") {
+  if (layout === "stripePatch") {
+    // 下地は無地のまま、四角い面だけをストライプ地にして片側に添える。
+    // 「下地が無地の時は、四角の面をストライプにすると可愛い」という
+    // 語彙をそのまま採用した構図。
+    const fromRight = (seed >> 3) % 2 === 0;
+    const patchWidth = 42 + (seed % 22);
     return (
-      <div style={{ position: "absolute", inset: 0, background: color, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", padding: "12%", gap: "6%" }}>
-        {[0, 1, 2, 3].map((i) => {
-          const on = (seed >> i) & 1;
-          return (
-            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {on ? <AccentGlyph shape={i % 2 ? shape : shape2} color={light} size={16} /> : null}
-            </div>
-          );
-        })}
+      <div style={{ position: "absolute", inset: 0, background: color }}>
+        <div style={{
+          position: "absolute", top: 0, bottom: 0, [fromRight ? "right" : "left"]: 0, width: `${patchWidth}%`,
+          background: `repeating-linear-gradient(90deg, ${light} 0, ${light} 7px, ${color} 7px, ${color} 14px)`,
+        }} />
       </div>
     );
   }
-  // bars: 縦棒を並べた、北欧のテキスタイルのような構図。
+  // bars: 同じ幅の帯を並べた、北欧のテキスタイルのような構図。
   const barCount = 3 + (seed % 3);
   return (
     <div style={{ position: "absolute", inset: 0, background: color, display: "flex", alignItems: "flex-end", gap: "7%", padding: "18% 16%" }}>
       {Array.from({ length: barCount }).map((_, i) => (
-        <div key={i} style={{ flex: 1, height: `${28 + ((seed >> (i * 2)) % 4) * 16}%`, background: i % 2 ? light : dark, borderRadius: 2 }} />
+        <div key={i} style={{ flex: 1, height: `${28 + ((seed >> (i * 2)) % 4) * 16}%`, background: i % 2 ? light : dark }} />
       ))}
     </div>
   );
@@ -252,7 +252,7 @@ function hashString(s: string): number {
   return h;
 }
 
-const GEO_LAYOUTS: GeoLayout[] = ["diagonal", "corner", "grid", "bars"];
+const GEO_LAYOUTS: GeoLayout[] = ["diagonal", "corner", "bars", "stripePatch"];
 
 // 行った場所(エリア)は際限なく増えるため固定色を割り当てず、名前の
 // ハッシュから色相・構図・細部をすべて決める。同じ色相のエリアが
@@ -338,10 +338,9 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
         position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: accent.color, overflow: "hidden",
         borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
       }}>
-        <div style={{ position: "relative", flex: "0 0 38%", flexShrink: 0 }}>
-          <TargetMotif color={PAPER} />
-        </div>
+        <div style={{ flex: "0 0 34%", flexShrink: 0 }} />
         <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={light} titleColor={PAPER} />
+        <TargetMotif color={PAPER} />
       </div>
     );
   }

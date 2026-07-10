@@ -344,10 +344,10 @@ function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => 
         {(mapsHref || officialHref) && (
           <div style={{ display: "flex", gap: 6, marginTop: 8, flexShrink: 0 }}>
             {mapsHref && (
-              <a href={mapsHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: "#F0EEE6", color: "#3A3A36", textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>地図 ↗</a>
+              <a href={mapsHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: "#F3ECDD", color: "#3A2E22", textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>地図 ↗</a>
             )}
             {officialHref && (
-              <a href={officialHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: "#F0EEE6", color: "#3A3A36", textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>サイト ↗</a>
+              <a href={officialHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: "#F3ECDD", color: "#3A2E22", textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>サイト ↗</a>
             )}
           </div>
         )}
@@ -771,6 +771,23 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
       { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", meta: ["高円寺北口エリア"], done: true },
       { title: "高円寺の古着市、大型セール", category: "古着", area: "高円寺", images: ["vintage-c"], sourceUrl: mapsUrl("高円寺 古着 セール"), sourceLabel: "地図で見る", meta: ["高円寺北口一帯", "セールは3日間"], done: true },
       { title: "高円寺の小さなレコード店", category: "音楽", area: "高円寺", images: ["record-a"], sourceUrl: mapsUrl("高円寺 レコード店"), sourceLabel: "地図で見る", meta: ["高円寺"], done: false },
+      // アーカイブタブのバインダー柄(グリッド構図・色相)のバリエーションを
+      // 一覧で見比べられるよう、行った場所のエリア数を大きく増やしている
+      // (バインダー1冊=エリア1つのため、エリア数=バインダー数になる)。
+      { title: "中目黒の川沿いを散歩する", category: "身体", area: "中目黒", images: ["nakameguro-a"], sourceUrl: mapsUrl("中目黒 目黒川"), sourceLabel: "地図で見る", meta: ["中目黒"], done: true },
+      { title: "代官山の独立系書店を覗く", category: "近所の発見", area: "代官山", images: ["daikanyama-a"], sourceUrl: mapsUrl("代官山 書店"), sourceLabel: "地図で見る", meta: ["代官山"], done: true },
+      { title: "荻窪のラーメン店に並ぶ", category: "近所の発見", area: "荻窪", images: ["ogikubo-a"], sourceUrl: mapsUrl("荻窪 ラーメン"), sourceLabel: "地図で見る", meta: ["荻窪"], done: true },
+      { title: "吉祥寺の雑貨店めぐり", category: "雑貨", area: "吉祥寺", images: ["kichijoji-a"], sourceUrl: mapsUrl("吉祥寺 雑貨店"), sourceLabel: "地図で見る", meta: ["吉祥寺"], done: true },
+      { title: "三軒茶屋の小劇場で芝居を観る", category: "未知との遭遇", area: "三軒茶屋", images: ["sangenjaya-a"], sourceUrl: mapsUrl("三軒茶屋 小劇場"), sourceLabel: "地図で見る", meta: ["三軒茶屋"], done: true },
+      { title: "下北沢の古着屋めぐり", category: "古着", area: "下北沢", images: ["shimokita-a"], sourceUrl: mapsUrl("下北沢 古着屋"), sourceLabel: "地図で見る", meta: ["下北沢"], done: false },
+      { title: "自由が丘のスイーツ店めぐり", category: "近所の発見", area: "自由が丘", images: ["jiyugaoka-a"], sourceUrl: mapsUrl("自由が丘 スイーツ"), sourceLabel: "地図で見る", meta: ["自由が丘"], done: true },
+      { title: "経堂の商店街を歩く", category: "身体", area: "経堂", images: ["kyodo-a"], sourceUrl: mapsUrl("経堂 商店街"), sourceLabel: "地図で見る", meta: ["経堂"], done: true },
+      { title: "東小金井の古本市に寄る", category: "近所の発見", area: "東小金井", images: ["higashikoganei-a"], sourceUrl: mapsUrl("東小金井 古本市"), sourceLabel: "地図で見る", meta: ["東小金井"], done: false },
+      { title: "早稲田のカレー屋を開拓する", category: "近所の発見", area: "早稲田", images: ["waseda-a"], sourceUrl: mapsUrl("早稲田 カレー"), sourceLabel: "地図で見る", meta: ["早稲田"], done: true },
+      { title: "根津神社の参道を歩く", category: "身体", area: "根津", images: ["nezu-a"], sourceUrl: mapsUrl("根津神社"), sourceLabel: "地図で見る", meta: ["根津"], done: true },
+      { title: "千駄木の路地裏カフェへ", category: "近所の発見", area: "千駄木", images: ["sendagi-a"], sourceUrl: mapsUrl("千駄木 カフェ"), sourceLabel: "地図で見る", meta: ["千駄木"], done: true },
+      { title: "巣鴨の商店街で買い物", category: "雑貨", area: "巣鴨", images: ["sugamo-a"], sourceUrl: mapsUrl("巣鴨 商店街"), sourceLabel: "地図で見る", meta: ["巣鴨"], done: false },
+      { title: "十条の立ち飲み屋を覗く", category: "未知との遭遇", area: "十条", images: ["jujo-a"], sourceUrl: mapsUrl("十条 立ち飲み"), sourceLabel: "地図で見る", meta: ["十条"], done: true },
     ]).forEach((d, i) => {
       // 場所カードの色は、バインダー側の「行った場所」棚が同じエリア名から
       // 生成する色(placeAccent)と揃え、カードとバインダーが同一のエリアを
@@ -817,12 +834,24 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
       next.wishes.push({ id: `demo-wish-${now}-${i}`, title: d.title, category: catOf(d.categoryId).label, categoryId: d.categoryId, status: "stock", addedAt: new Date(now - i * 86400000).toISOString() });
     });
     if ((next.goals ?? []).length === 0) {
+      // 目標のバインダーはgoalAccentが名前のハッシュだけで色相を振る単色
+      // べた塗りのため、色のバリエーションを見比べられるよう数を増やしている。
       next.goals = [
         { id: `demo-goal-${now}`, title: "毎週どこか知らない街を歩く", addedAt: new Date(now - 20 * 86400000).toISOString(), checkIns: [
           { id: `demo-ci-${now}-1`, at: new Date(now - 2 * 86400000).toISOString(), text: "神保町の路地を歩いた。古本の匂いが良かった。", source: "manual" },
           { id: `demo-ci-${now}-2`, at: new Date(now - 9 * 86400000).toISOString(), text: "蔵前をぶらぶら。焙煎所で豆を買った。", source: "manual" },
         ] },
         { id: `demo-goal-${now}-2`, title: "月に一度は展覧会へ行く", addedAt: new Date(now - 40 * 86400000).toISOString(), checkIns: [] },
+        { id: `demo-goal-${now}-3`, title: "毎朝10分だけ日記を書く", addedAt: new Date(now - 55 * 86400000).toISOString(), checkIns: [
+          { id: `demo-ci-${now}-3`, at: new Date(now - 1 * 86400000).toISOString(), text: "3行だけ書いて終わり。それでいい。", source: "manual" },
+        ] },
+        { id: `demo-goal-${now}-4`, title: "行ったことのない銭湯を開拓する", addedAt: new Date(now - 30 * 86400000).toISOString(), checkIns: [] },
+        { id: `demo-goal-${now}-5`, title: "月に1冊は積読を崩す", addedAt: new Date(now - 70 * 86400000).toISOString(), checkIns: [
+          { id: `demo-ci-${now}-4`, at: new Date(now - 5 * 86400000).toISOString(), text: "エッセイ集を読み終えた。", source: "manual" },
+        ] },
+        { id: `demo-goal-${now}-6`, title: "自炊の日を週3日にする", addedAt: new Date(now - 12 * 86400000).toISOString(), checkIns: [] },
+        { id: `demo-goal-${now}-7`, title: "季節ごとに一人旅へ行く", addedAt: new Date(now - 90 * 86400000).toISOString(), checkIns: [] },
+        { id: `demo-goal-${now}-8`, title: "近所の商店街の店を1つずつ回る", addedAt: new Date(now - 8 * 86400000).toISOString(), checkIns: [] },
       ];
     }
     persist(next);

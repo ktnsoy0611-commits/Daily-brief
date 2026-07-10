@@ -50,35 +50,56 @@ import type { MediaKindId } from "@/lib/types";
 //   色相・構図・グリッドの中身をすべて振る。
 //
 // 個々の図形の語彙は、参考にしたバウハウスのポスター群に合わせて
-// 「円・半円(上向き/下向き)・三角形(上向き/下向き)・長方形・
-// ストライプの面」だけに絞り、すべてベタ塗り(線・輪郭だけの図形は
-// 使わない)で構成する。
+// 「円・半円(上向き/下向き)・四半円(4方向)・三角形(上向き/下向き)・
+// 長方形・ストライプの面」だけに絞り、すべてベタ塗り(線・輪郭だけの
+// 図形は使わない)で構成する。
 //
 // 図形が「グリッドに乗っていない」ことが統一感のなさの本質だった、
-// という指摘を受け、単なる「大きな図形をどこかに置く」設計から、
-// 「アクセント帯を等分のセルに区切り、各セルいっぱいに図形を敷き
-// つめる」設計に変えた。図形は必ず自分のセルの4辺いっぱいまで塗る
-// (中途半端な余白を残さない)ため、境界は常にセルの境界線=グリッド線
-// に一致する。角度も0度・45度・90度・180度だけを使う(円は例外)。
-// 「揃えるなら揃える、揃えないなら揃えない」を徹底し、図形のサイズや
-// 帯の幅を細部までハッシュで微妙に揺らすようなことはしない(揺らすのは
-// 「どのセルにどの図形/色が入るか」という離散的な組み合わせだけ)。
+// という指摘を受け、「アクセント帯の高さを1辺とする正方形」を最小の
+// グリッド単位(セル)とし、図形はこのセル(またはセルを束ねた正方形の
+// 領域)の中だけで完結させる設計にした。セルは必ず正方形になるよう
+// flexboxのaspect-ratioで強制しているため、帯がどんな横長比率でも
+// 円・半円・四半円が引き伸ばされて「丸でも四角でもない」歪んだ形に
+// なることがない(以前はセルの縦横比を無視して図形を敷き詰めていたため、
+// 特に帯が細いメディアで顕著に歪んでいた)。
+//
+// ただし「1セルに必ず1図形」というルールではない。無地のセル(色面
+// だけ)があってもよいし、帯全体を1つのセルとして大きな図形ひとつだけ
+// を置いてもよいし、何も置かずストライプの下地だけで終わってもよい。
+// 図形の端部や中心といった「意味のある部分」がセルの境界に乗っていれば
+// よい、というゆるやかな基準でグリッドを捉えている。
+// 角度は0度・45度・90度・180度だけを使う(円は例外)。「揃えるなら
+// 揃える、揃えないなら揃えない」を徹底し、図形のサイズや帯の幅を
+// ハッシュで連続的に微妙に揺らすことはしない(揺らすのは「どのセルに
+// 何を置くか」という離散的な組み合わせだけ)。
 
-export type PlaneShape = "circle" | "semicircleUp" | "semicircleDown" | "triangleUp" | "triangleDown" | "rectangle";
-// セルいっぱいに塗るベタ塗りの単図形。円だけは辺に接するよう内接させ、
-// それ以外は文字通りセルの4辺すべてに接するまで塗り広げる。
+export type PlaneShape =
+  | "circle" | "semicircleUp" | "semicircleDown"
+  | "quarterTL" | "quarterTR" | "quarterBL" | "quarterBR"
+  | "triangleUp" | "triangleDown" | "rectangle";
+
+// 正方形のセルの中だけで完結する、ベタ塗りの単図形。circle/semicircle/
+// quarterは必ずSquareCell(下記)の中で使うことで、常に真円ベースの
+// 正しい比率になる(border-radiusのパーセント指定は箱が正方形でないと
+// 楕円になってしまうため、半円・四半円は固定pxの大きな半径を指定して
+// 箱の短辺いっぱいでクランプさせることで、箱の縦横比によらず常に真円
+// ベースの弧になるようにしている)。
 function PlaneFill({ shape, color }: { shape: PlaneShape; color: string }) {
   switch (shape) {
     case "circle":
-      return (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ height: "100%", aspectRatio: "1 / 1", maxWidth: "100%", background: color, borderRadius: "50%" }} />
-        </div>
-      );
+      return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: "50%" }} />;
     case "semicircleUp":
-      return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: "50% 50% 0 0" }} />;
+      return <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "50%", background: color, borderRadius: "999px 999px 0 0" }} />;
     case "semicircleDown":
-      return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: "0 0 50% 50%" }} />;
+      return <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: "50%", background: color, borderRadius: "0 0 999px 999px" }} />;
+    case "quarterTL":
+      return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: "0 0 999px 0" }} />;
+    case "quarterTR":
+      return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: "0 0 0 999px" }} />;
+    case "quarterBL":
+      return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: "0 999px 0 0" }} />;
+    case "quarterBR":
+      return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: "999px 0 0 0" }} />;
     case "triangleUp":
       return <div style={{ position: "absolute", inset: 0, background: color, clipPath: "polygon(50% 0, 100% 100%, 0 100%)" }} />;
     case "triangleDown":
@@ -88,15 +109,29 @@ function PlaneFill({ shape, color }: { shape: PlaneShape; color: string }) {
   }
 }
 
-const PLANE_SHAPES: PlaneShape[] = ["circle", "semicircleUp", "semicircleDown", "triangleUp", "triangleDown", "rectangle"];
+// 円系の図形(circle/semicircle/quarter)専用。長方形はセルの正方形制約を
+// 受けなくてよいので別扱いにする。
+const ROUND_SHAPES: PlaneShape[] = ["circle", "semicircleUp", "semicircleDown", "quarterTL", "quarterTR", "quarterBL", "quarterBR"];
+const PLANE_SHAPES: PlaneShape[] = [...ROUND_SHAPES, "triangleUp", "triangleDown"];
 
-// メディアの5ジャンルは、上のPlaneShapeの語彙から1つずつ図形を割り当て、
-// 常に「帯の右半分いっぱい」というひとつのセルに敷きつめるだけの簡素な
-// 構成にする(メディアは種類が増えないので、扱いとして最も簡素にする)。
+// グリッドの最小単位。高さを常に100%(＝帯の高さ、または親の正方形
+// ブロックの1辺)にし、aspect-ratio:1/1で幅を追従させることで、帯や
+// ブロックが横長でも真の正方形になる。円系の図形はこの中でのみ使う。
+function SquareCell({ shape, color }: { shape: PlaneShape; color: string }) {
+  return (
+    <div style={{ position: "relative", height: "100%", aspectRatio: "1 / 1", flexShrink: 0, overflow: "hidden" }}>
+      <PlaneFill shape={shape} color={color} />
+    </div>
+  );
+}
+
+// メディアの5ジャンルは、円系の図形から1つずつ割り当て、帯の高さを
+// 1辺とする正方形のセルひとつだけに敷く簡素な構成にする(メディアは
+// 種類が増えないので、扱いとして最も簡素にする)。
 type MediaShape = PlaneShape;
-// geoは2x2グリッドの各セルに図形を割り当てる「賑やかな」構図に統一し、
-// 縞はmedia専用の質感として予約する。
-type GeoLayout = "grid4" | "halfShape" | "bars" | "stripePatch";
+// geoは正方形のブロックを軸にした4つの構図。縞はmedia専用の質感として
+// 予約する。
+type GeoLayout = "bigShape" | "grid2x2" | "units" | "stripePatch";
 
 export type Accent =
   | { kind: "target"; color: string }
@@ -105,13 +140,16 @@ export type Accent =
 
 // 全バインダー共通の「目標」の下地色(表紙自体は常に白なので、これは
 // 背表紙の単色フォールバック(accent未指定時)としてのみ使う)。
-export const GOAL_BASE = "#F7F6F2";
+export const GOAL_BASE = "#F5EAD3";
 
 // 目標は行った場所・日付と同じく際限なく増えるため、固定の1色ではなく
 // 名前のハッシュから色相を振る(増えるたびに色が変わる)。目標の的
 // (同心円)だけは種類を問わず常に同じ図形にすることで、「図形は
 // 目標という種別そのものの印」「色は個体差」という役割分担にしている。
-const GOAL_HUES = ["#9C6242", "#4E6B7A", "#6B5A3E", "#5A6B4E", "#7A4E6B", "#6B4A3E", "#4E5A6B"];
+// 参考画像(生成りのクリーム地+黒・マスタード・コーラル・ティール・
+// 深緑)に合わせ、寒色寄りの紫を含む配色からこの5色家族の暖色アース
+// カラーへ全面的に入れ替えた。
+const GOAL_HUES = ["#B8742E", "#2C6E8A", "#8A3C2A", "#3F6B45", "#6B4A2E", "#C1502E", "#4A5C3E"];
 export function goalAccent(seed: string): Accent {
   const h = hashString(seed);
   return { kind: "target", color: GOAL_HUES[h % GOAL_HUES.length] };
@@ -121,11 +159,11 @@ export function goalAccent(seed: string): Accent {
 // ExecuteTabのデモデータ(写真の無いカードの下地色)もこれを基準にした
 // 色調で揃え、バインダーとカードの色が世界観として一致するようにしている。
 export const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
-  movie: { kind: "media", shape: "semicircleUp", color: "#4B4C8C" },
-  exhibition: { kind: "media", shape: "triangleUp", color: "#3E7A82" },
-  live: { kind: "media", shape: "circle", color: "#8C4A72" },
-  book: { kind: "media", shape: "rectangle", color: "#4C7A5C" },
-  album: { kind: "media", shape: "semicircleDown", color: "#8C8A3E" },
+  movie: { kind: "media", shape: "semicircleUp", color: "#2C4E74" },
+  exhibition: { kind: "media", shape: "triangleUp", color: "#2C6E7A" },
+  live: { kind: "media", shape: "circle", color: "#B8442E" },
+  book: { kind: "media", shape: "rectangle", color: "#33633F" },
+  album: { kind: "media", shape: "semicircleDown", color: "#C1922E" },
 };
 
 // 的のエンブレムだった線描きの同心円は、参考画像がどれも線ではなく面の
@@ -140,89 +178,91 @@ function TargetMotif({ color = PAPER }: { color?: string }) {
   );
 }
 
-// メディア用: 縦縞の帯地(BinderCoverFace側で敷く)の上に、帯を左右
-// 半分に区切ったグリッドを重ね、右半分のセルいっぱいに図形をひとつだけ
-// 敷く。左半分は下地の縦縞がそのまま見える。「縦縞の下地+右半分に
-// 図形」という配置のルールを5ジャンル共通にすることで、図形自体は
-// ジャンルごとに違っても家族らしさが伝わるようにしている。メディアは
-// 種類が5つで増えないため、行った場所より意図して簡素にしている。
+// メディア用: 縦縞の帯地(BinderCoverFace側で敷く)の上に、帯の高さを
+// 1辺とする正方形のセルをひとつだけ端に寄せて置き、そのセルいっぱいに
+// 図形を敷く。セルの外側は下地の縦縞がそのまま見える。「縦縞の下地+
+// 端に正方形のセルひとつ」という配置のルールを5ジャンル共通にすることで、
+// 図形自体はジャンルごとに違っても家族らしさが伝わるようにしている。
+// メディアは種類が5つで増えないため、行った場所より意図して簡素にし、
+// セルもひとつだけに絞っている。
 function MediaMotif({ shape }: { shape: MediaShape }) {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex" }}>
-      <div style={{ flex: 1 }} />
-      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        <PlaneFill shape={shape} color={PAPER} />
-      </div>
+    <div style={{ position: "absolute", inset: 0, display: "flex", justifyContent: "flex-end" }}>
+      <SquareCell shape={shape} color={PAPER} />
     </div>
   );
 }
 
 // 際限なく増える種類(場所・日付)専用。「行った場所は柄の面積を増やして
-// 凝った、楽しい見た目にしてほしい」という指摘を受け、帯を2x2の均等な
-// グリッドに区切り、各セルにPlaneShapeの図形と色調(基準色からの明暗
-// 4段階)をハッシュで割り当てる構図(grid4)を主役にした。図形は必ず
-// セルいっぱいに塗るため、境界は常にグリッド線に一致する。ほかの3構図
-// (halfShape/bars/stripePatch)も、等分割・図形はセルいっぱいという
-// 同じ原則を守っている。
+// 凝った、楽しい見た目にしてほしい」という指摘を受けつつ、「1セルに
+// 必ず1図形とは限らない」という訂正も踏まえた4構図。どれも「帯の高さを
+// 1辺とする正方形ブロック」を土台にし、その中身の組み方だけを変える:
+// bigShape=ブロックまるごと1つのセルとして大きな図形をひとつだけ置く
+// (「4セル分を1つにまとめる」の実装)。grid2x2=同じブロックを2x2の
+// 真の正方形セルへ分割し、セルごとに図形と色調をハッシュで振る(以前の
+// grid4はブロックの外形自体が正方形である保証がなかったため、真の
+// 正方形ブロックを分割する形に作り直した)。units=正方形の単位セルを
+// 2〜3個横に並べつつ、各セルは「図形入り」か「無地の色面のまま」かを
+// ハッシュのビットで決める(全セルが図形で埋まっている必要はない)。
+// stripePatch=下地を無地のまま保ち、帯を半分だけストライプ地にする、
+// 図形をひとつも使わない構図。ブロック以外の余白は帯自体の無地の
+// アクセントカラーがそのまま見える。
 const TONE_STEPS = [-26, -9, 11, 30];
 
 function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; seed: number }) {
   const light = shade(color, 30);
   const dark = shade(color, -18);
+  const fromRight = (seed >> 7) % 2 === 0;
 
-  if (layout === "grid4") {
+  if (layout === "bigShape") {
+    const shape = ROUND_SHAPES[(seed >> 4) % ROUND_SHAPES.length];
     return (
-      <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
-        {[0, 1, 2, 3].map((i) => {
-          const bg = shade(color, TONE_STEPS[(seed >> (i * 5)) % TONE_STEPS.length]);
-          const fg = shade(color, TONE_STEPS[(seed >> (i * 5 + 2)) % TONE_STEPS.length]);
-          const shape = PLANE_SHAPES[(seed >> (i * 5 + 4)) % PLANE_SHAPES.length];
-          return (
-            <div key={i} style={{ position: "relative", background: bg, overflow: "hidden" }}>
-              <PlaneFill shape={shape} color={fg} />
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-  if (layout === "halfShape") {
-    // 帯を縦または横にちょうど半分に割り、片方は無地・もう片方のセルに
-    // 図形をひとつ敷きつめる。
-    const vertical = (seed >> 2) % 2 === 0;
-    const flip = (seed >> 3) % 2 === 0;
-    const shape = PLANE_SHAPES[(seed >> 4) % PLANE_SHAPES.length];
-    const direction = vertical ? (flip ? "row" : "row-reverse") : (flip ? "column" : "column-reverse");
-    return (
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: direction }}>
-        <div style={{ flex: 1, background: color }} />
-        <div style={{ flex: 1, position: "relative", background: dark }}>
+      <div style={{ position: "absolute", inset: 0, display: "flex", justifyContent: fromRight ? "flex-end" : "flex-start" }}>
+        <div style={{ position: "relative", height: "100%", aspectRatio: "1 / 1", flexShrink: 0, background: dark, overflow: "hidden" }}>
           <PlaneFill shape={shape} color={light} />
         </div>
       </div>
     );
   }
-  if (layout === "stripePatch") {
-    // 下地は無地のまま、帯をちょうど半分に割った片方だけをストライプ地
-    // にする。「下地が無地の時は、四角の面をストライプにすると可愛い」
-    // という語彙をそのまま採用した構図。
-    const fromRight = (seed >> 3) % 2 === 0;
+  if (layout === "grid2x2") {
     return (
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: fromRight ? "row-reverse" : "row" }}>
-        <div style={{ flex: 1, background: color }} />
-        <div style={{ flex: 1, background: `repeating-linear-gradient(90deg, ${light} 0, ${light} 8px, ${color} 8px, ${color} 16px)` }} />
+      <div style={{ position: "absolute", inset: 0, display: "flex", justifyContent: fromRight ? "flex-end" : "flex-start" }}>
+        <div style={{ position: "relative", height: "100%", aspectRatio: "1 / 1", flexShrink: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", overflow: "hidden" }}>
+          {[0, 1, 2, 3].map((i) => {
+            const bg = shade(color, TONE_STEPS[(seed >> (i * 5)) % TONE_STEPS.length]);
+            const fg = shade(color, TONE_STEPS[(seed >> (i * 5 + 2)) % TONE_STEPS.length]);
+            const shape = PLANE_SHAPES[(seed >> (i * 5 + 4)) % PLANE_SHAPES.length];
+            return (
+              <div key={i} style={{ position: "relative", background: bg, overflow: "hidden" }}>
+                <PlaneFill shape={shape} color={fg} />
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
-  // bars: 常に等幅4本、隙間なく並べた帯。高さは50%/100%の2段階だけに
-  // 固定し、なだらかな連続値では揺らさない(「揃えるか揃えないかを
-  // はっきりさせる」ため)。
+  if (layout === "units") {
+    const count = 2 + ((seed >> 8) % 2);
+    return (
+      <div style={{ position: "absolute", inset: 0, display: "flex", justifyContent: "flex-end" }}>
+        {Array.from({ length: count }, (_, i) => {
+          const filled = (seed >> (i * 3)) & 1;
+          const tone = shade(color, TONE_STEPS[(seed >> (i * 3 + 1)) % TONE_STEPS.length]);
+          if (!filled) return <div key={i} style={{ position: "relative", height: "100%", aspectRatio: "1 / 1", flexShrink: 0, background: tone }} />;
+          const shape = PLANE_SHAPES[(seed >> (i * 3 + 2)) % PLANE_SHAPES.length];
+          return <SquareCell key={i} shape={shape} color={shade(tone, 30)} />;
+        })}
+      </div>
+    );
+  }
+  // stripePatch: 下地は無地のまま、帯をちょうど半分に割った片方だけを
+  // ストライプ地にする。「下地が無地の時は、四角の面をストライプにすると
+  // 可愛い」という語彙をそのまま採用した、図形をひとつも使わない構図。
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", background: dark }}>
-      {[0, 1, 2, 3].map((i) => {
-        const tall = (seed >> i) & 1;
-        return <div key={i} style={{ flex: 1, height: tall ? "100%" : "50%", background: i % 2 ? color : light }} />;
-      })}
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: fromRight ? "row-reverse" : "row" }}>
+      <div style={{ flex: 1, background: color }} />
+      <div style={{ flex: 1, background: `repeating-linear-gradient(90deg, ${light} 0, ${light} 8px, ${color} 8px, ${color} 16px)` }} />
     </div>
   );
 }
@@ -240,12 +280,12 @@ function hashString(s: string): number {
   return h;
 }
 
-const GEO_LAYOUTS: GeoLayout[] = ["grid4", "halfShape", "bars", "stripePatch"];
+const GEO_LAYOUTS: GeoLayout[] = ["bigShape", "grid2x2", "units", "stripePatch"];
 
 // 行った場所(エリア)は際限なく増えるため固定色を割り当てず、名前の
 // ハッシュから色相・構図・細部をすべて決める。同じ色相のエリアが
 // 出てきても、構図や角度/本数が違うので1冊1冊に個性が出る。
-const PLACE_HUES = ["#3E6B7A", "#6B5A3E", "#4E6B4A", "#6B3E5A", "#3E5A6B", "#5A4A6B", "#4A6B5A", "#6B4A3E"];
+const PLACE_HUES = ["#2C6E8A", "#B8742E", "#8A3C2A", "#3F6B45", "#6B4A2E", "#4A5C3E", "#C1502E", "#5A6B7A"];
 export function placeAccent(seed: string): Accent {
   const h = hashString(seed);
   return { kind: "geo", color: PLACE_HUES[h % PLACE_HUES.length], layout: GEO_LAYOUTS[(h >> 4) % GEO_LAYOUTS.length], seed: h };
@@ -253,7 +293,7 @@ export function placeAccent(seed: string): Accent {
 
 // 日付ビューの各日も同様に無限に増える。場所とは別の色相セットにして、
 // 隣り合っても混同しないようにしている。
-const DATE_HUES = ["#5A5A4E", "#4E5A5A", "#5A4E5A", "#4E5A4E", "#5A4E4E", "#4E4E5A"];
+const DATE_HUES = ["#6B5A42", "#42586B", "#6B4238", "#42546B", "#5A4230", "#3E4A3A"];
 export function dateAccent(seed: string): Accent {
   const h = hashString(seed);
   return { kind: "geo", color: DATE_HUES[h % DATE_HUES.length], layout: GEO_LAYOUTS[(h >> 6) % GEO_LAYOUTS.length], seed: h };
@@ -557,25 +597,32 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
 
   // 初回描画の瞬間はまだ実測前でcontainerWidth=0のため、両端の余白
   // (sidePad)も0として最初のレイアウトが組まれる。ResizeObserverが実際の
-  // 幅を報告した直後にsidePadが正しい値へ変わると、scrollLeft自体は0の
-  // ままでも「0の時に中央に来るはずの1冊目」の見た目上の位置が前後の
-  // 余白ぶんだけズレる。棚ごとにこの実測タイミングが微妙に前後するため、
-  // 記録タブを開いた瞬間、行によって1冊目の初期位置が揃わずバラバラに
-  // 見える不具合があった。実測直後に明示的にscrollLeftを0へ入れ直すことで、
-  // 正しいsidePadを反映した状態で必ず先頭が中央に来るよう強制する。
+  // 幅を報告した直後にscrollLeftを0へ入れ直しても、その時点ではまだ
+  // Reactが新しいsidePadでDOMを更新していない(setState自体は非同期に
+  // コミットされる)。古いsidePad=0のままscrollLeft=0を入れても何も
+  // 変わらず、直後にReactが正しいsidePadでスペーサーを挿入すると、
+  // 表示中の内容の手前に幅が増えるという変化をブラウザのスクロール
+  // アンカリングが「よかれと思って」勝手に補正しようとし、その補正結果が
+  // タイミング次第でブレる、というのが「開くたびに先頭の位置が揃わない」
+  // 不具合の実体だった。containerWidth(=sidePadの元)がコミットされた
+  // 「後」のエフェクトでscrollLeftを入れ直すことで、正しい幅のスペーサーが
+  // 実際にDOMへ反映された状態を基準に必ず先頭が中央に来るよう強制し、
+  // overflowAnchorも切ってブラウザ側の自動補正そのものを無効化している。
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width;
-      if (w) {
-        setContainerWidth(w);
-        el.scrollLeft = 0;
-      }
+      if (w) setContainerWidth(w);
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = 0;
+  }, [containerWidth]);
 
   useEffect(() => () => {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
@@ -610,7 +657,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   return (
     <div
       ref={scrollRef} onScroll={onScroll} className="no-scrollbar"
-      style={{ display: "flex", alignItems: "flex-end", overflowX: "auto", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", padding: `${topPad}px 0 14px` }}
+      style={{ display: "flex", alignItems: "flex-end", overflowX: "auto", overflowAnchor: "none", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", padding: `${topPad}px 0 14px` }}
     >
       <div style={{ flex: "0 0 auto", width: sidePad }} />
       {items.map((it, i) => {

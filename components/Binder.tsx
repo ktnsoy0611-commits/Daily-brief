@@ -642,20 +642,26 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   // 判定していたため、実際にバインダーが静止するタイミングと表紙が
   // 閉じ始めるタイミングがズレ、静止後にワンテンポ置いて急に閉じる
   // ように見えていた。
-  // どちらも「scrollLeftが実際に今フレームで動いたかどうか」だけを
-  // 唯一の判定基準にすることで解消する: 動いていれば毎フレーム値を
-  // 更新し表紙も開いたまま、2フレーム連続で動きが止まった瞬間にその場で
-  // 表紙を閉じ始める(=静止と表紙の開閉が常に同期する)。静止後は
-  // ポーリング自体を止め、アイドル時に無駄なrAFを回し続けないようにする。
+  // 表紙の開閉(flap)判定にだけ「直前フレームからの移動量が0.5pxを
+  // 超えたか」という閾値を使い、静止と判定してから2フレーム連続で
+  // 閾値未満が続いたら表紙を閉じてポーリングを止める。回転角(centerRef)
+  // 自体はこの閾値でゲートせず、ポーリングが動いている間は毎フレーム
+  // 必ずscrollLeftの実測値へ同期させる。以前は角度の更新も同じ0.5px
+  // 閾値でゲートしていたため、減速の最終盤で1フレームあたりの移動量が
+  // 閾値を下回るとその区間は角度が更新されず止まったまま(=実際の
+  // scrollLeftとの間にズレが蓄積する)、数フレーム後にズレが閾値を
+  // 超えて初めて一気に追いつく、という「止まる→カクッと飛ぶ」を
+  // 繰り返す小刻みな震えになっていた。
   const pollFrame = () => {
     const el = scrollRef.current;
     if (!el) { rafRef.current = null; return; }
     const left = el.scrollLeft;
-    if (Math.abs(left - lastLeftRef.current) > 0.5) {
-      lastLeftRef.current = left;
+    const moved = Math.abs(left - lastLeftRef.current) > 0.5;
+    lastLeftRef.current = left;
+    centerRef.current = left / step;
+    setTick((t) => t + 1);
+    if (moved) {
       idleFramesRef.current = 0;
-      centerRef.current = left / step;
-      setTick((t) => t + 1);
       setFlap(true);
       rafRef.current = requestAnimationFrame(pollFrame);
     } else if (idleFramesRef.current < 2) {

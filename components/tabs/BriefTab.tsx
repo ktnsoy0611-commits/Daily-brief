@@ -334,7 +334,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         // overflow-yをhiddenにしている)ので、ここがそのまま「残りの
         // 高さいっぱい」になる。カードのサイズは
         // 「幅(min(88vw,340px))を基準にaspect-ratioで高さを出しつつ、
-        // maxHeightを100dvh基準(56dvh)で直接キャップする」方式にしている。
+        // maxHeightを100dvh基準で直接キャップする」方式にしている。
         // 以前はheight:100%を親のflexから継承させ、そこからaspect-ratioで
         // 幅を逆算する方式だったが、これは間に挟まる複数階層のflexすべてが
         // 正しくパーセント高さを解決して初めて成立する連鎖で、環境によっては
@@ -342,6 +342,10 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         // ヒント文字だけが残る)「カードが表示されない」不具合の疑いがあった。
         // widthとmaxHeightを祖先のflexに依存せず直接指定することで、
         // その連鎖を断ち切り、常に何らかの実寸を持つようにしている。
+        // 育成カード(checkin/milestone)だけは下に「あとで/記録する」の
+        // フッターが付く分、同じ56dvhの予算のままだとカードの実寸がフッターの
+        // 領域まで食い込み、ボタンにカードが重なって見えていた。フッターの
+        // 高さぶんだけ予算を削った専用の上限にする。
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           {/* overflowはvisibleのまま(以前はhiddenにしていた)。カードの
               SOFT_SHADOW_LGは要素の外側に描かれるため、hiddenだと左右・
@@ -351,7 +355,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               hiddenにロックしているため、ここをvisibleにしても実際に
               ページがスクロール/横に伸びることはない。 */}
           <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }}>
-            <main style={{ position: "relative", width: "min(88vw, 340px, calc(56dvh * 0.75))", aspectRatio: ITEM_CARD_ASPECT }}>
+            <main style={{ position: "relative", width: `min(88vw, 340px, calc(${isGrowth ? 46 : 56}dvh * 0.75))`, aspectRatio: ITEM_CARD_ASPECT }}>
               {visibleCards.map(({ card, isTop }) => (
                 <div
                   key={card.id}

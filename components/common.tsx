@@ -147,19 +147,24 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
           <Star size={14} fill={good ? "#fff" : "none"} color="#fff" strokeWidth={2} />
         </button>
       )}
+      {/* onTogglePlanSelectが右上(KEEPバッジの鏡合わせの位置)を使うため、
+          actionは元々の右上から下段(bottom:8)へ移して衝突を避けている。 */}
       {action && (
         <button onClick={(e) => { e.stopPropagation(); action.onClick(); }} style={{
-          position: "absolute", top: 8, right: 8, padding: "6px 11px", borderRadius: 999, border: "none", cursor: "pointer",
+          position: "absolute", bottom: 8, right: 8, padding: "6px 11px", borderRadius: 999, border: "none", cursor: "pointer",
           background: INK, color: PAPER, fontFamily: SANS, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em",
         }}>{action.label}</button>
       )}
+      {/* KEEPバッジ(左上、白いピル+アイコン)と対になるよう、同じ白backgroundの
+          丸バッジを右上に置く。以前は右下の独立した丸ボタンだったため、
+          カード上のバッジの語彙(左上=KEEP)と噛み合っていなかった。 */}
       {onTogglePlanSelect && (
         <button onClick={(e) => { e.stopPropagation(); onTogglePlanSelect(); }} aria-label={planSelected ? "プランの選択から外す" : "プランの候補に選ぶ"} style={{
-          position: "absolute", bottom: 8, right: 8, width: 26, height: 26, borderRadius: "50%", border: "none", cursor: "pointer",
-          background: planSelected ? BLUE : "rgba(255,255,255,0.92)", color: planSelected ? PAPER : INK,
+          position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%", border: "none", cursor: "pointer",
+          background: planSelected ? BLUE : "rgba(255,255,255,0.94)", color: planSelected ? PAPER : INK,
           display: "flex", alignItems: "center", justifyContent: "center", padding: 0, boxShadow: "0 2px 6px rgba(23,23,21,0.3)",
         }}>
-          {planSelected ? <Check size={13} strokeWidth={3} /> : <Plus size={14} strokeWidth={2.4} />}
+          {planSelected ? <Check size={12} strokeWidth={3} /> : <Plus size={13} strokeWidth={2.6} />}
         </button>
       )}
     </div>

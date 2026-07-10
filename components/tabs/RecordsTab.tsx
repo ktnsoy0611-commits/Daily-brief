@@ -3,7 +3,7 @@
 import { BookOpen, Film, MapPin, Music, Music2, Palette } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
-import { BinderCoverflowRow, dateAccent, GOAL_ACCENT, GOAL_BASE, MEDIA_ACCENT, placeAccent, type BinderShelfItem } from "@/components/Binder";
+import { BinderCoverflowRow, dateAccent, goalAccent, GOAL_BASE, MEDIA_ACCENT, placeAccent, type BinderShelfItem } from "@/components/Binder";
 import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
 import { GREEN, INK, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, inferMediaKind, shortDate } from "@/lib/helpers";
@@ -199,9 +199,9 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   // 小さな横並びを別枠で出していたが、他の完了バインダーと見た目・操作感を
   // 揃えるため同じ棚の1行として並べ、タップでゴールタブへ向かう。
   const goalRowItems: BinderShelfItem[] = goals.map((g) => ({
-    key: g.id, color: GOAL_BASE, eyebrowLabel: "GOAL", accent: GOAL_ACCENT,
+    key: g.id, color: GOAL_BASE, eyebrowLabel: "GOAL", accent: goalAccent(g.id),
     title: g.title, count: g.checkIns?.length ?? 0,
-    footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{g.checkIns?.length ? `記録${g.checkIns.length}件・タップで見る` : "タップで見る"}</div>,
+    footer: <div style={{ fontSize: 9, color: "rgba(253,251,245,0.7)", fontWeight: 700, textAlign: "center" }}>{g.checkIns?.length ? `記録${g.checkIns.length}件・タップで見る` : "タップで見る"}</div>,
     onOpen: () => goTab("goals"),
   }));
 

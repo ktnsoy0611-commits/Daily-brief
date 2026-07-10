@@ -2,8 +2,8 @@
 
 import { Bookmark, BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { MEDIA_ACCENT, placeAccent } from "@/components/Binder";
-import { BinderModal, HOLE_CLEAR, type IconType, Masthead, PosterCard, PunchHoles } from "@/components/common";
+import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
+import { BinderModal, HOLE_CLEAR, HOLE_YS, type IconType, Masthead, PosterCard, PunchHoles } from "@/components/common";
 import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
@@ -250,16 +250,43 @@ function OpenBinderBackdrop({ closed }: { closed: boolean }) {
   return (
     <div style={{ position: "absolute", inset: 0, perspective: 900, zIndex: 0, pointerEvents: "none" }}>
       <div style={{
-        position: "absolute", inset: 0, background: PAPER, borderRadius: 18, boxShadow: SOFT_SHADOW_LG,
+        position: "absolute", inset: 0, background: PAPER, boxShadow: SOFT_SHADOW_LG,
+        borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
         transformOrigin: "0% 50%", transformStyle: "preserve-3d",
         transform: closed ? "translate(0, 0) rotateY(0deg)" : "translate(-15%, -5%) rotateY(-14deg)",
         transition: "transform 0.34s cubic-bezier(0.4,0,0.2,1)",
       }}>
         {/* 表紙の内側の面であることを示す、わずかな陰影 */}
-        <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "linear-gradient(100deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
+        <div style={{ position: "absolute", inset: 0, borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS, background: "linear-gradient(100deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
         <PunchHoles />
+        <RingHardware />
       </div>
     </div>
+  );
+}
+
+// パンチ穴を「開いているだけ」にせず、実際にバインダーのリングが通って
+// いるように見せる金具。PunchHoles(common.tsx)と同じY位置(HOLE_YS)に、
+// カードの左端をまたぐ小さな輪を重ねる。ExecCardFace自体はoverflow:
+// hiddenで写真の角を丸めているため、この金具はExecCardFace本体の外側
+// (呼び出し側の、overflowを持たないラッパー)に置き、カードの縁から
+// はみ出す分がクリップされないようにしている。
+function RingHardware() {
+  return (
+    <>
+      {HOLE_YS.map((y) => (
+        <div key={y} style={{
+          position: "absolute", left: -6, top: y, transform: "translateY(-50%)",
+          width: 34, height: 12, zIndex: 4, pointerEvents: "none",
+        }}>
+          <div style={{
+            position: "absolute", inset: 0, borderRadius: "50%",
+            border: "3px solid #D3CFC4",
+            boxShadow: "0 1px 2px rgba(23,23,21,0.3), inset 0 1px 1px rgba(255,255,255,0.55)",
+          }} />
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -282,7 +309,10 @@ function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => 
   const officialHref = item.sourceUrl && !isMapsSource ? item.sourceUrl : undefined;
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", background: PAPER, borderRadius: 18, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG }}>
+    <div style={{
+      position: "relative", width: "100%", height: "100%", background: PAPER, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
+      borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
+    }}>
       <div style={{ position: "relative", flex: "0 0 52%", overflow: "hidden", background: fill }}>
         {hasPhoto ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -385,7 +415,8 @@ function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove
     <div ref={elRef} style={{ position: "relative", width: "100%", aspectRatio: ITEM_CARD_ASPECT }}>
       {/* 右にスワイプすると下から現れる「外す」の下地 */}
       <div style={{
-        position: "absolute", inset: 0, borderRadius: 20, background: RUST,
+        position: "absolute", inset: 0, background: RUST,
+        borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
         display: "flex", alignItems: "center", paddingLeft: 22,
         opacity: Math.min(dragX / CONFIRMED_REMOVE_THRESHOLD, 1),
       }}>
@@ -398,6 +429,9 @@ function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove
         style={{ position: "absolute", inset: 0, touchAction: "pan-y", zIndex: 1, transform, opacity, transition }}
       >
         <ExecCardFace item={item} onMarkDone={onMarkDone} />
+        {/* ExecCardFace自体はoverflow:hiddenなので、縁からはみ出すリング
+            金具はここ(overflowを持たないラッパー)に置く。 */}
+        <RingHardware />
       </div>
     </div>
   );
@@ -513,20 +547,35 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
       >
         <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, margin: "0 auto", padding: `6px 16px calc(${NAV_OFFSET} + 92px)` }}>
           <div style={{ fontSize: 10, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "8px 2px 16px" }}>{dateLabel} ・ {items.length}件</div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-            {items.map((it, i) => (
-              <div key={it.id} style={{ position: "relative", width: CARD_WIDTH }}>
-                {i === 0 && <OpenBinderBackdrop closed={closed} />}
-                <ConfirmedCard
-                  item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
-                  stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px) scale(${i === 0 ? 1 : 0.92})` : undefined}
-                  hide={closed}
-                  disabled={stacking}
-                  onMarkDone={() => onMarkDone(it)}
-                  onRemove={() => onDrop(it)}
-                />
-              </div>
-            ))}
+          {/* スタックし終えたカードの束を、表表紙が閉じるように左端(リング側)
+              を軸にrotateYで畳む。以前はカードのopacityを下げて消すだけ
+              だったため「閉じた」という動きそのものが見えず、バインダーの
+              背景装飾(OpenBinderBackdrop)だけが静かに0度へ戻る地味な
+              変化しか無かった。backfaceVisibility:hiddenにしておくことで、
+              90度を過ぎた時点で描画自体が消えるため、裏返った文字が一瞬
+              見えるような破綻もない。 */}
+          <div style={{ perspective: 1000 }}>
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 16,
+              transformStyle: "preserve-3d", transformOrigin: "0% 50%",
+              transform: closed ? "rotateY(-92deg)" : "rotateY(0deg)",
+              transition: `transform ${CLOSE_MS}ms cubic-bezier(0.4,0,0.2,1)`,
+              backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
+            }}>
+              {items.map((it, i) => (
+                <div key={it.id} style={{ position: "relative", width: CARD_WIDTH }}>
+                  {i === 0 && <OpenBinderBackdrop closed={closed} />}
+                  <ConfirmedCard
+                    item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
+                    stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px) scale(${i === 0 ? 1 : 0.92})` : undefined}
+                    hide={falling}
+                    disabled={stacking}
+                    onMarkDone={() => onMarkDone(it)}
+                    onRemove={() => onDrop(it)}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

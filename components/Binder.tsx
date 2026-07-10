@@ -28,37 +28,42 @@ import { INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants
 import { shade } from "@/lib/helpers";
 import type { MediaKindId } from "@/lib/types";
 
-// ---- ワンポイントの図形+色(ジャンルなどの意味づけ) -------------------------
+// ---- デザインコード ---------------------------------------------------------
 //
-// バウハウスのポスターや北欧家具のような、少数の抽象幾何学を大胆な
-// スケールで置く語彙で3つの「扱いの違い」を表現する。十字のような
-// 具体的な連想(救急など)を持つ形は避け、円・半円・花弁(扇形)・
-// 放射線・弧・帯といった純粋に抽象的な図形と、その余白とのバランスの
-// 気持ちよさだけで構成する。ワンポイントは常に画面を大胆に使うサイズ
-// にし、「丸ひとつ・四角ひとつが寂しく浮いている」ことのないよう、
-// 単体の図形でも十分な面積を占めるか、複数の要素で構成する。
-//   - target: 目標専用の的(同心円)のエンブレム。種類が1つしかなく、
-//     個体を見分ける必要がないため、常に同じ静かなマークにしている。
-//   - media: 映画/展覧会/ライブ/読書/音楽の5ジャンル専用。縦縞の下地の
-//     上に大ぶりな構図をひとつだけ、ど真ん中を避けて右下寄りに置く、
-//     という「下地+配置の型」を5ジャンル共通にすることで、図形自体は
-//     全く違っても「メディアの仲間」だと一目でわかるようにしている
-//     (色ではなく下地の質感と配置での家族的類似)。
-//   - geo: 行った場所・日付のように際限なく増えるもの専用。斜め分割・
-//     角丸コーナー・2x2グリッド・棒グラフ状・縞と弧、の5つの構図から
-//     名前のハッシュで1つを選び、角度や本数などの細部もハッシュで
-//     ランダムに振ることで、増えるたびに1冊1冊はっきり個性の違う
-//     見た目になる。
-// 色は無彩色寄りのくすんだトーンに揃えている。BLUE/RUST/GREENなど他の
-// UIで使う「状態を表す彩度の高い色」とは別の語彙(=ジャンルを表す色)
-// だと感じさせるため。
+// 「全体としての統一感」と「3種それぞれの個性」を同時に満たすため、
+// 明示的な階層でルールを分けている。
+//
+//   [Lv.0 共通コード] 3種すべてが同じ土台(白背景・角丸は開く側だけ・
+//   同じPunchHoles)の上に立ち、違いは「アクセント色がどれだけの面積を
+//   占めるか」という1本の軸だけで表現する。target(0%=帯なし、全面が
+//   自分の色)→media(58%、面積の過半)→geo(26%、細い帯)と、面積を
+//   極端に振ることで「似ているけど微妙に違う」ではなく「一目で扱いが
+//   違う」と伝わるようにしている(以前はmedia46%/geo32%と差が小さすぎて
+//   意図的な違いに見えなかった)。
+//   [Lv.1 種別コード] 面積の軸に加え、質感でも重ねて差をつける:
+//   target=単色の全面塗り、media=常に縦縞の下地、geo=常に無地(縞は
+//   mediaの専売にするため、geoの構図からは縞を廃止した)。
+//   [Lv.2 個体コード] 種別の中でさらに1冊1冊を見分けるための軸:
+//   target→goalAccentが名前のハッシュで色相を振る(目標が増えるたびに
+//   色が変わる)。media→ジャンルごとに固定の色+専用の大ぶりな構図
+//   (MediaShape)。geo→placeAccent/dateAccentが名前のハッシュで
+//   色相・構図・細部をすべて振る。
+//
+// 個々の図形の語彙は、バウハウスのポスターや北欧家具のような抽象幾何学
+// (円・半円・花弁・放射線・帯)に統一し、十字のような具体的な連想
+// (救急など)を持つ形は避けている。図形は「大きく1つ、気持ちよく配置
+// する」か「小さいものを複数並べる」のどちらかに徹し、小さい図形が
+// ぽつんと1つだけ浮いている構成は作らない。
 
-export type AccentShape = "square" | "triangle" | "circle" | "diamond" | "arch" | "petal";
+export type AccentShape = "square" | "triangle" | "diamond";
 // メディアの5ジャンルだけが持つ、複数要素で構成した専用の大ぶりな構図。
 // 単純な1図形だと小さく寂しく見えるため、弧・放射線・積み重ね・重なる輪
 // など、面積とリズムを持つモチーフにしている。
 type MediaShape = "arch" | "petal" | "sunburst" | "stack" | "rings";
-type GeoLayout = "diagonal" | "corner" | "grid" | "bars" | "stripes";
+// geoは「大きく1つ」の構図(diagonal/corner)か「小さいものを複数」の
+// 構図(grid/bars)のどちらかにのみ徹する。縞はmedia専用の質感として
+// 予約するため、geoの構図からは廃止した。
+type GeoLayout = "diagonal" | "corner" | "grid" | "bars";
 
 export type Accent =
   | { kind: "target"; color: string }
@@ -68,7 +73,16 @@ export type Accent =
 // 全バインダー共通の「目標」の下地色(表紙自体は常に白なので、これは
 // 背表紙の単色フォールバック(accent未指定時)としてのみ使う)。
 export const GOAL_BASE = "#F7F6F2";
-export const GOAL_ACCENT: Accent = { kind: "target", color: "#9C6242" };
+
+// 目標は行った場所・日付と同じく際限なく増えるため、固定の1色ではなく
+// 名前のハッシュから色相を振る(増えるたびに色が変わる)。目標の的
+// (同心円)だけは種類を問わず常に同じ図形にすることで、「図形は
+// 目標という種別そのものの印」「色は個体差」という役割分担にしている。
+const GOAL_HUES = ["#9C6242", "#4E6B7A", "#6B5A3E", "#5A6B4E", "#7A4E6B", "#6B4A3E", "#4E5A6B"];
+export function goalAccent(seed: string): Accent {
+  const h = hashString(seed);
+  return { kind: "target", color: GOAL_HUES[h % GOAL_HUES.length] };
+}
 
 // メディア5ジャンルのワンポイント(図形+色)。RecordsTabの棚だけでなく、
 // ExecuteTabのデモデータ(写真の無いカードの下地色)もこれを基準にした
@@ -81,38 +95,32 @@ export const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
   album: { kind: "media", shape: "rings", color: "#8C8A3E" },
 };
 
-// 場所・日付の幾何学構図の中に置く、シンプルな単図形。十字は救急などの
-// 具体的な連想を招くため使わない。円・四角・三角・菱形に加え、北欧家具の
-// アーチ(半円)・花弁(扇形の一角丸)を抽象図形の語彙として揃えている。
+// 場所・日付の「小さいものを複数並べる」構図(grid)専用のシンプルな
+// 単図形。十字・円・半円・花弁はそれぞれtarget/media側の専用語彙として
+// 予約しているため、geoのgridでは残りの四角・三角・菱形だけを使う。
 function AccentGlyph({ shape, color, size }: { shape: AccentShape; color: string; size: number }) {
   switch (shape) {
-    case "circle":
-      return <div style={{ width: size, height: size, borderRadius: "50%", background: color }} />;
     case "square":
       return <div style={{ width: size * 0.86, height: size * 0.86, background: color, borderRadius: 2 }} />;
     case "diamond":
       return <div style={{ width: size * 0.72, height: size * 0.72, background: color, borderRadius: 2, transform: "rotate(45deg)" }} />;
     case "triangle":
       return <div style={{ width: 0, height: 0, borderLeft: `${size * 0.52}px solid transparent`, borderRight: `${size * 0.52}px solid transparent`, borderBottom: `${size * 0.92}px solid ${color}` }} />;
-    case "arch":
-      return <div style={{ width: size, height: size * 0.6, background: color, borderRadius: `${size}px ${size}px 0 0` }} />;
-    case "petal":
-      return <div style={{ width: size * 0.86, height: size * 0.86, background: color, borderRadius: "0 100% 0 0" }} />;
   }
 }
 
 // 的(同心円)のエンブレム。目標だけの専用マークで、メディアの構図とも
 // 場所の幾何学構図とも似ないようにすることで、「目標のバインダーだけ
-// 扱いが違う」と一目でわかるようにしている。存在感を持たせるため、輪を
-// 太く・大きめに取っている。表紙では白地の上に自分の色で描くため、色を
-// 差し替えられるようにしている。
+// 扱いが違う」と一目でわかるようにしている。目標は表紙全面が自分の色に
+// なるため、常にPAPER(白)の輪だけで描く、というシンプルな1色の
+// エンブレムに徹している。
 function TargetMotif({ color = PAPER }: { color?: string }) {
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ position: "relative", width: 54, height: 54 }}>
-        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `5px solid ${color}` }} />
-        <div style={{ position: "absolute", inset: 13, borderRadius: "50%", border: `5px solid ${color}` }} />
-        <div style={{ position: "absolute", inset: 26, borderRadius: "50%", background: color }} />
+      <div style={{ position: "relative", width: 60, height: 60 }}>
+        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `6px solid ${color}` }} />
+        <div style={{ position: "absolute", inset: 15, borderRadius: "50%", border: `6px solid ${color}` }} />
+        <div style={{ position: "absolute", inset: 30, borderRadius: "50%", background: color }} />
       </div>
     </div>
   );
@@ -170,18 +178,20 @@ function MediaGlyph({ shape, color, size }: { shape: MediaShape; color: string; 
 // いる。
 function MediaMotif({ shape }: { shape: MediaShape }) {
   return (
-    <div style={{ position: "absolute", right: "10%", bottom: "10%" }}>
-      <MediaGlyph shape={shape} color={PAPER} size={50} />
+    <div style={{ position: "absolute", right: "9%", bottom: "8%" }}>
+      <MediaGlyph shape={shape} color={PAPER} size={58} />
     </div>
   );
 }
 
-const GEO_SHAPES: AccentShape[] = ["circle", "square", "triangle", "diamond", "arch", "petal"];
+const GEO_SHAPES: AccentShape[] = ["square", "triangle", "diamond"];
 
-// 際限なく増える種類(場所・日付)専用。5つの構図から1つをハッシュで
-// 選び、角度・本数・図形などの細部もハッシュで振ることで、同じ色相が
-// 重なっても構図や細部の違いで個体を見分けられるようにしている。単体の
-// 図形が寂しく浮かないよう、常に色面や複数要素と組み合わせている。
+// 際限なく増える種類(場所・日付)専用。4つの構図から1つをハッシュで
+// 選び、角度・本数などの細部もハッシュで振ることで、同じ色相が重なって
+// も構図や細部の違いで個体を見分けられるようにしている。「大きく1つ」
+// (diagonal/corner、色面の分割そのものが図形になっているため単独の
+// 小図形を足さない)か「小さいものを複数」(grid/bars)かのどちらかに
+// 徹し、小さい図形がぽつんと1つだけ浮く構成は作らない。
 function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; seed: number }) {
   const light = shade(color, 30);
   const dark = shade(color, -16);
@@ -190,58 +200,31 @@ function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; s
 
   if (layout === "diagonal") {
     const angle = 18 + (seed % 45);
-    return (
-      <div style={{ position: "absolute", inset: 0, background: `linear-gradient(${angle}deg, ${color} 56%, ${light} 56%)` }}>
-        <div style={{ position: "absolute", right: "12%", top: "50%", transform: "translateY(-50%)" }}>
-          <AccentGlyph shape={shape} color={PAPER} size={36} />
-        </div>
-      </div>
-    );
+    return <div style={{ position: "absolute", inset: 0, background: `linear-gradient(${angle}deg, ${color} 56%, ${light} 56%)` }} />;
   }
   if (layout === "corner") {
     const fromLeft = (seed >> 2) % 2 === 0;
-    const size = 55 + (seed % 35);
+    const size = 62 + (seed % 40);
     return (
       <div style={{ position: "absolute", inset: 0, background: color, overflow: "hidden" }}>
         <div style={{
           position: "absolute", bottom: `-${size * 0.35}%`, [fromLeft ? "left" : "right"]: `-${size * 0.35}%`,
           width: `${size}%`, aspectRatio: "1 / 1", borderRadius: "50%", background: light,
         }} />
-        <div style={{ position: "absolute", [fromLeft ? "right" : "left"]: "12%", top: "16%" }}>
-          <AccentGlyph shape={shape} color={PAPER} size={30} />
-        </div>
       </div>
     );
   }
   if (layout === "grid") {
     return (
-      <div style={{ position: "absolute", inset: 0, background: color, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", padding: "14%", gap: "8%" }}>
+      <div style={{ position: "absolute", inset: 0, background: color, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", padding: "12%", gap: "6%" }}>
         {[0, 1, 2, 3].map((i) => {
           const on = (seed >> i) & 1;
           return (
             <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {on ? <AccentGlyph shape={i % 2 ? shape : shape2} color={light} size={18} /> : null}
+              {on ? <AccentGlyph shape={i % 2 ? shape : shape2} color={light} size={16} /> : null}
             </div>
           );
         })}
-      </div>
-    );
-  }
-  if (layout === "stripes") {
-    // 縞の帯に大きな円弧が重なる、バウハウスの参考画像そのままの構図。
-    // 円は帯の左右どちらかの端からはみ出させ、overflow:hiddenで切ることで
-    // 半円状に見せている。
-    const stripeCount = 5 + (seed % 4);
-    const fromLeft = (seed >> 5) % 2 === 0;
-    return (
-      <div style={{ position: "absolute", inset: 0, background: color, overflow: "hidden", display: "flex" }}>
-        {Array.from({ length: stripeCount }).map((_, i) => (
-          <div key={i} style={{ flex: 1, background: i % 2 ? light : color }} />
-        ))}
-        <div style={{
-          position: "absolute", top: "50%", [fromLeft ? "left" : "right"]: "-14%", transform: "translateY(-50%)",
-          width: "58%", aspectRatio: "1 / 1", borderRadius: "50%", background: dark, opacity: 0.94,
-        }} />
       </div>
     );
   }
@@ -269,7 +252,7 @@ function hashString(s: string): number {
   return h;
 }
 
-const GEO_LAYOUTS: GeoLayout[] = ["diagonal", "corner", "grid", "bars", "stripes"];
+const GEO_LAYOUTS: GeoLayout[] = ["diagonal", "corner", "grid", "bars"];
 
 // 行った場所(エリア)は際限なく増えるため固定色を割り当てず、名前の
 // ハッシュから色相・構図・細部をすべて決める。同じ色相のエリアが
@@ -298,12 +281,23 @@ interface CoverContent {
   accent?: Accent;
 }
 
-const COVER_RADIUS = 12;
+export const COVER_RADIUS = 12;
+// geo(場所・日付)の帯の高さ。3種の中でもっとも細い帯にし、mediaの帯
+// (下記MEDIA_BAND)との差を極端にすることで「面積の違い」がひと目で
+// 意図的だとわかるようにしている(以前は32%/46%程度の差しかなく、
+// 微妙すぎて逆に不自然に見えていた)。
+const GEO_BAND = "26%";
+// mediaの帯の高さ。面積で過半を占めるくらい大きく取り、常に縦縞の
+// 下地にすることで、geoの細い無地の帯とは質感・面積の両方で対極になる
+// ようにしている。
+const MEDIA_BAND = "58%";
 
-// 表紙下部(エイボロウ+タイトル+フッター)。target/media/geoの3種で
-// 完全に共通の構成にすることで、フッターなど呼び出し側(GoalsTab等)が
-// 既に前提にしている文字色をそのまま使い回せるようにしている。
-function CoverBody({ eyebrowLabel, title, footer, accentColor }: { eyebrowLabel?: string; title: string; footer?: ReactNode; accentColor: string }) {
+// 表紙下部(エイボロウ+タイトル+フッター)。3種で構成そのものは完全に
+// 共通にし、文字色だけ呼び出し側で選べるようにしている(targetは表紙
+// 全面が自分の色になるため、白系の文字色を渡す)。
+function CoverBody({ eyebrowLabel, title, footer, accentColor, titleColor = INK }: {
+  eyebrowLabel?: string; title: string; footer?: ReactNode; accentColor: string; titleColor?: string;
+}) {
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: "12px 14px 12px" }}>
       {eyebrowLabel && (
@@ -313,43 +307,41 @@ function CoverBody({ eyebrowLabel, title, footer, accentColor }: { eyebrowLabel?
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end" }}>
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: INK, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: titleColor, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
       </div>
-      {footer && <div style={{ marginTop: 8, flexShrink: 0, color: "rgba(28,28,30,0.6)" }}>{footer}</div>}
+      {footer && <div style={{ marginTop: 8, flexShrink: 0 }}>{footer}</div>}
     </div>
   );
 }
 
-// 表紙面。3つの「扱いの違い」を柄だけでなく構造そのものにも反映する。
-//   - geo(場所・日付): 上部32%だけに色の帯を敷き、下は白地。カードを
-//     選んで集めて挟んだ「収集物のバインダー」の見た目。
-//   - media: geoと同じ「上部に帯」という骨格は保ちつつ、帯を広め(46%)に
-//     取り、下地に縦縞を敷いた上へ大ぶりな図形をひとつだけ乗せる。5つの
-//     ジャンルが同じ括りだとわかるのは、色でも図形でもなくこの
-//     「縦縞+右下寄りにひとつ」という下地と配置のルールそのもの。
-//   - target(目標): 上の2つと違い、帯ではなく四辺を色の枠(フレーム)で
-//     縁取り、中は白いラベルのような1枚として構成する。「カードを
-//     集めたバインダー」ではなく「自分で直接書いたバインダー」なので、
-//     帯+白地というカードの語彙そのものを使わず、額装されたラベルの
-//     ような全く別の構造にすることで一目で扱いが違うとわかるようにする。
+// 表紙面。デザインコードは3階層:
+//   [Lv.0 共通] 白背景・開く側だけ角丸・同じPunchHoles、という土台は
+//   3種とも共通。違いは「アクセント色がどれだけの面積を占めるか」の
+//   1本の軸: target(全面=100%)→media(58%の帯)→geo(26%の帯)と極端に
+//   振ることで、一目で扱いの違いがわかるようにしている。
+//   [Lv.1 種別] 面積に加え質感でも重ねる: media=常に縦縞の下地、
+//   geo=常に無地(縞はmedia専用として予約)、target=単色べた塗り。
+//   [Lv.2 個体] target=goalAccentが名前のハッシュで色相を振る、
+//   media=ジャンルごとの固定色+専用の大ぶりな図形、geo=名前のハッシュ
+//   で色相・構図・細部を振る。
 export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverContent) {
   const accentColor = accent?.color ?? INK;
 
   if (accent?.kind === "target") {
+    // 「自分で直接書いたバインダー」であることを、帯+白地というカードの
+    // 語彙を一切使わない全面べた塗りのシンプルな1枚として伝える。以前は
+    // 白い内側パネルを額装するように重ねていたが、二重の箱が「ダサい」
+    // という指摘につながっていたため撤廃し、最も単純な1枚の色面にした。
+    const light = "rgba(253,251,245,0.85)";
     return (
       <div style={{
-        position: "absolute", inset: 0, display: "flex", background: accent.color, overflow: "hidden", padding: 7,
+        position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: accent.color, overflow: "hidden",
         borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
       }}>
-        <div style={{
-          position: "relative", flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: PAPER, overflow: "hidden",
-          borderTopRightRadius: COVER_RADIUS - 4, borderBottomRightRadius: COVER_RADIUS - 4,
-        }}>
-          <div style={{ position: "relative", flex: "0 0 30%", flexShrink: 0 }}>
-            <TargetMotif color={accent.color} />
-          </div>
-          <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={accentColor} />
+        <div style={{ position: "relative", flex: "0 0 38%", flexShrink: 0 }}>
+          <TargetMotif color={PAPER} />
         </div>
+        <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={light} titleColor={PAPER} />
       </div>
     );
   }
@@ -361,7 +353,7 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
     }}>
       {accent && (
         <div style={{
-          flex: accent.kind === "media" ? "0 0 46%" : "0 0 32%", position: "relative", overflow: "hidden", flexShrink: 0,
+          flex: `0 0 ${accent.kind === "media" ? MEDIA_BAND : GEO_BAND}`, position: "relative", overflow: "hidden", flexShrink: 0,
           background: accent.kind === "media"
             ? `repeating-linear-gradient(90deg, ${accent.color} 0, ${accent.color} 7px, ${shade(accent.color, 24)} 7px, ${shade(accent.color, 24)} 14px)`
             : accent.color,

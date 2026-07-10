@@ -67,7 +67,7 @@ export function keepStatus(k: { status: string }) {
 // している。カード側は、キャプションやバッジをこの穴の右
 // (目安HOLE_CLEARpx)から置くことで、穴と文字が重ならないようにする。
 export const HOLE_CLEAR = 33;
-const HOLE_YS = ["24%", "76%"];
+export const HOLE_YS = ["24%", "76%"];
 
 export function PunchHoles() {
   return (

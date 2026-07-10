@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { Binder3D, GOAL_ACCENT, GOAL_BASE } from "@/components/Binder";
+import { Binder3D, goalAccent, GOAL_BASE } from "@/components/Binder";
 import { AddCardTile, Masthead, rowBtn } from "@/components/common";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
@@ -117,14 +117,14 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
             return (
               <Binder3D
                 key={g.id} width="100%" aspect={GOAL_CARD_ASPECT} rotateY={0} count={count}
-                color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={GOAL_ACCENT}
+                color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={goalAccent(g.id)}
                 onClick={() => setOpenGoalId(g.id)}
                 footer={
                   <div>
                     {latest && (
-                      <p style={{ margin: "0 0 5px", fontSize: 9.5, lineHeight: 1.4, color: "rgba(28,28,30,0.7)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
+                      <p style={{ margin: "0 0 5px", fontSize: 9.5, lineHeight: 1.4, color: "rgba(253,251,245,0.8)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
                     )}
-                    <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(28,28,30,0.6)", borderTop: "1px solid rgba(28,28,30,0.14)", paddingTop: 6 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(253,251,245,0.7)", borderTop: "1px solid rgba(253,251,245,0.3)", paddingTop: 6 }}>
                       {count > 0 ? `記録 ${count}件・タップで見る` : "まだ記録がありません"}
                     </div>
                   </div>

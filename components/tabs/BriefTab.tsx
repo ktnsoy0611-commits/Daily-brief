@@ -128,7 +128,13 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           </span>
         </div>
         <h2 style={{ margin: "0 0 7px", fontFamily: SERIF, fontWeight: 700, fontSize: 19, lineHeight: 1.35, color: INK }}>{card.title}</h2>
-        <p style={{ margin: 0, flex: 1, fontFamily: SANS, fontSize: 12.5, lineHeight: 1.7, color: "#4A4A44", display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: isTop && onFlag ? 26 : 0 }}>{card.body}</p>
+        {/* paddingRightはisTopに関わらず常に一定にしている。以前はisTop&&
+            onFlagの時だけ26pxを足していたため、peekだったカードがtopに
+            切り替わる瞬間にpaddingが0→26へ非連続にジャンプし、transform
+            のアニメーションと同時に本文の折り返し位置が一瞬ガクッとズレて
+            見える不具合になっていた(flag矢印ボタン自体はisTopの時だけ
+            描画されるが、そのための余白は常に確保しておく)。 */}
+        <p style={{ margin: 0, flex: 1, fontFamily: SANS, fontSize: 12.5, lineHeight: 1.7, color: "#4A4A44", display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: 26 }}>{card.body}</p>
         {isTop && onFlag && (
           <button
             onClick={(e) => { e.stopPropagation(); onFlag(); }}
@@ -289,11 +295,19 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   };
 
   const exitX = exit === "keep" ? window.innerWidth * 1.2 : exit === "skip" ? -window.innerWidth * 1.2 : 0;
+  // topTransformとpeekTransformは、常に同じ関数の並び
+  // (translate → scale → rotate)で組み立てている。決定直後にpeekだった
+  // カードがtop側へ切り替わる瞬間、DOM要素自体は使い回される(下のコメント
+  // 参照)ため、transformの値がscale()+translateY()の並びからtranslate()+
+  // rotate()の並びへ非連続に変わっていると、ブラウザは単純な成分ごとの
+  // 補間ができずマトリクス分解による補間にフォールバックし、意図しない
+  // 拡縮・回転が混ざった「変な挙動」に見えていた。同じ並びに揃えることで
+  // 各成分がそのまま滑らかに補間されるようにしている。
   const topTransform = exit
-    ? `translate(${exitX}px, ${drag.dy - 40}px) rotate(${exit === "keep" ? 22 : -22}deg)`
-    : `translate(${drag.dx}px, ${drag.dy}px) rotate(${drag.dx * 0.06}deg)`;
+    ? `translate(${exitX}px, ${drag.dy - 40}px) scale(1) rotate(${exit === "keep" ? 22 : -22}deg)`
+    : `translate(${drag.dx}px, ${drag.dy}px) scale(1) rotate(${drag.dx * 0.06}deg)`;
   const topTransition = exit ? "transform 0.32s cubic-bezier(0.32,0.72,0,1)" : drag.active ? "none" : "transform 0.28s cubic-bezier(0.32,0.72,0,1)";
-  const peekTransform = `scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) translateY(8px)`;
+  const peekTransform = `translate(0, 8px) scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) rotate(0deg)`;
   const peekTransition = drag.active ? "none" : "transform 0.28s cubic-bezier(0.32,0.72,0,1)";
   // top(手前)とpeek(次)を別々のDOM要素として固定していると、決定直後に
   // indexが進んだ瞬間、peekだったカードの要素が一旦消えてtop要素として

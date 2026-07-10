@@ -18,7 +18,7 @@ const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; str
   { id: "brief", label: "ブリーフ", Icon: Newspaper },
   { id: "stock", label: "ストック", Icon: Heart },
   { id: "goals", label: "ゴール", Icon: Sprout },
-  { id: "execute", label: "実行", Icon: MapIcon },
+  { id: "execute", label: "プラン", Icon: MapIcon },
 ];
 
 export function AppShell() {

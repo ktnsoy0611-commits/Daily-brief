@@ -38,7 +38,7 @@ export const DISPLAY = SANS;
 // 色味を寒色寄りの白黒基調から、この暖色のクリーム地+アースカラーへ寄せた。
 export const INK = "#1A1712";
 export const PAPER = "#FBF6E9";
-export const BG = "#F1E6CC";
+export const BG = "#F2EADA";
 export const BLUE = "#2C6E8A";
 export const RUST = "#C1502E";
 export const GREEN = "#33633F";

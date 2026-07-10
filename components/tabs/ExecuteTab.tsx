@@ -233,33 +233,38 @@ interface ExecItem {
   done?: boolean;
 }
 
-// 開いた状態のバインダーを、一番上のカードの背後にだけ置く背景装飾。
-// 表表紙だけが左手前へ開いてきたような角度で覗く(perspective+rotateYで
-// 実際に奥行きのある紙として傾ける)。カードと全く同じ大きさ・同じ穴の
-// 位置を持つ「もう1枚のカード」を、そのまま左上へずらして回転させる
-// ことで表現している。以前は箱自体をカードよりひとまわり大きく(insetを
-// 負のパーセンテージで)取り、そこに専用の小さな点を穴のヒントとして
-// 別途描いていたが、その点の座標が実際のカードのPunchHolesの座標と
-// 何の関係もなかったため、「バインダーの穴の位置がカードと別にある」
-// という不自然さの原因になっていた。カードと同じ箱にPunchHolesその
-// ものを重ねてから箱ごと平行移動する今の形であれば、穴は常に「同じ
-// 位置に開いた、少し奥にずれたもう1枚のページ」として一貫して見える。
-// 登録アニメーションの後半でこの表紙が閉じる(closed=true, 平行移動と
-// 回転がどちらも0に戻り、カードの真後ろにぴったり重なって見えなくなる)。
+// バインダー本体。常に一番上のカードの背後にだけ置く。表表紙は普段
+// (登録前の待受状態)は左手前へ開いてきたような角度で覗いている
+// (perspective+rotateYで実際に奥行きのある紙として傾ける)。カードと
+// 全く同じ大きさ・同じ穴の位置を持つ「もう1枚のカード」を、そのまま
+// 左上へずらして回転させることで表現している。カードと同じ箱に
+// PunchHolesそのものを重ねてから箱ごと平行移動する今の形であれば、穴は
+// 常に「同じ位置に開いた、少し奥にずれたもう1枚のページ」として一貫
+// して見える。
+// 登録アニメーションでは、カード自身は位置(スタック先の座標)を動かす
+// だけで回転はさせない(下記ConfirmedStack参照)。代わりにこの表紙が、
+// スタックし終えた束の手前へ回り込み(closed時にzIndexを引き上げる)ながら
+// 開いた角度から0度まで閉じることで、「向かって左に開いていた表紙が、
+// 積み上がったカードの上に閉じてくる」という動きを表現する。閉じ終わると
+// 平行移動・回転がどちらも0に戻り、束の真上にぴったり重なって完全に
+// 覆い隠す。
 function OpenBinderBackdrop({ closed }: { closed: boolean }) {
   return (
-    <div style={{ position: "absolute", inset: 0, perspective: 900, zIndex: 0, pointerEvents: "none" }}>
+    <div style={{ position: "absolute", inset: 0, perspective: 900, zIndex: closed ? 20 : 0, pointerEvents: "none" }}>
       <div style={{
         position: "absolute", inset: 0, background: PAPER, boxShadow: SOFT_SHADOW_LG,
         borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
-        transformOrigin: "0% 50%", transformStyle: "preserve-3d",
+        transformOrigin: "0% 50%",
         transform: closed ? "translate(0, 0) rotateY(0deg)" : "translate(-15%, -5%) rotateY(-14deg)",
         transition: "transform 0.34s cubic-bezier(0.4,0,0.2,1)",
       }}>
         {/* 表紙の内側の面であることを示す、わずかな陰影 */}
         <div style={{ position: "absolute", inset: 0, borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS, background: "linear-gradient(100deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
         <PunchHoles />
-        <RingHardware />
+        {/* リング金具自体はここには置かない。リングはバインダーの背に固定
+            された1つの部品であり、開閉する表紙と一緒に動いてはおかしいため、
+            表紙の回転/移動には追従させず、呼び出し側(ConfirmedStack)で
+            この表紙・カードどちらの変形も受けない位置に別途1つだけ描く。 */}
       </div>
     </div>
   );
@@ -267,10 +272,12 @@ function OpenBinderBackdrop({ closed }: { closed: boolean }) {
 
 // パンチ穴を「開いているだけ」にせず、実際にバインダーのリングが通って
 // いるように見せる金具。PunchHoles(common.tsx)と同じY位置(HOLE_YS)に、
-// カードの左端をまたぐ小さな輪を重ねる。ExecCardFace自体はoverflow:
-// hiddenで写真の角を丸めているため、この金具はExecCardFace本体の外側
-// (呼び出し側の、overflowを持たないラッパー)に置き、カードの縁から
-// はみ出す分がクリップされないようにしている。
+// カードの左端をまたぐ小さな輪を重ねる。リングはバインダーの背に固定
+// された部品であり、カード1枚1枚が持つものでも、開閉する表紙
+// (OpenBinderBackdrop)にくっついて動くものでもない。そのため呼び出し側
+// (ConfirmedStack)では、ドラッグで動くConfirmedCardの内側にも、開閉で
+// 動くOpenBinderBackdropの内側にも置かず、どちらの変形も受けない位置に
+// 一番上の1枚ぶんだけ描く。
 function RingHardware() {
   return (
     <>
@@ -429,9 +436,6 @@ function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove
         style={{ position: "absolute", inset: 0, touchAction: "pan-y", zIndex: 1, transform, opacity, transition }}
       >
         <ExecCardFace item={item} onMarkDone={onMarkDone} />
-        {/* ExecCardFace自体はoverflow:hiddenなので、縁からはみ出すリング
-            金具はここ(overflowを持たないラッパー)に置く。 */}
-        <RingHardware />
       </div>
     </div>
   );
@@ -547,35 +551,36 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
       >
         <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, margin: "0 auto", padding: `6px 16px calc(${NAV_OFFSET} + 92px)` }}>
           <div style={{ fontSize: 10, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "8px 2px 16px" }}>{dateLabel} ・ {items.length}件</div>
-          {/* スタックし終えたカードの束を、表表紙が閉じるように左端(リング側)
-              を軸にrotateYで畳む。以前はカードのopacityを下げて消すだけ
-              だったため「閉じた」という動きそのものが見えず、バインダーの
-              背景装飾(OpenBinderBackdrop)だけが静かに0度へ戻る地味な
-              変化しか無かった。backfaceVisibility:hiddenにしておくことで、
-              90度を過ぎた時点で描画自体が消えるため、裏返った文字が一瞬
-              見えるような破綻もない。 */}
-          <div style={{ perspective: 1000 }}>
-            <div style={{
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 16,
-              transformStyle: "preserve-3d", transformOrigin: "0% 50%",
-              transform: closed ? "rotateY(-92deg)" : "rotateY(0deg)",
-              transition: `transform ${CLOSE_MS}ms cubic-bezier(0.4,0,0.2,1)`,
-              backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
-            }}>
-              {items.map((it, i) => (
-                <div key={it.id} style={{ position: "relative", width: CARD_WIDTH }}>
-                  {i === 0 && <OpenBinderBackdrop closed={closed} />}
-                  <ConfirmedCard
-                    item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
-                    stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px) scale(${i === 0 ? 1 : 0.92})` : undefined}
-                    hide={falling}
-                    disabled={stacking}
-                    onMarkDone={() => onMarkDone(it)}
-                    onRemove={() => onDrop(it)}
-                  />
-                </div>
-              ))}
-            </div>
+          {/* カード自身はスタック先の座標へ移動するだけで、回転はさせない。
+              「閉じる」動きはカードではなく、常に先頭カードの背後にいる
+              OpenBinderBackdrop(=バインダーの表紙)が担う。スタックが
+              揃ったところへ表紙がclosed=trueで手前(zIndex高)へ回り込み
+              ながら閉じてくることで、「向かって左に開いていた表紙が、
+              積み上がったカードの上に閉じてくる」動きになる。 */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+            {items.map((it, i) => (
+              // zIndexを明示するのは、スタック中に後ろのカードが先頭カード
+              // (リング・表紙を持つi===0)の上に乗って見えてしまわないようにする
+              // ため。指定しないとflexの子はDOM順で後勝ちになり、スタックで
+              // 重なった瞬間に後方のカードが先頭カードを覆い隠してしまっていた。
+              <div key={it.id} style={{ position: "relative", width: CARD_WIDTH, zIndex: items.length - i }}>
+                {i === 0 && <OpenBinderBackdrop closed={closed} />}
+                <ConfirmedCard
+                  item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
+                  stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px) scale(${i === 0 ? 1 : 0.92})` : undefined}
+                  hide={falling}
+                  disabled={stacking}
+                  onMarkDone={() => onMarkDone(it)}
+                  onRemove={() => onDrop(it)}
+                />
+                {/* リング金具はバインダーの背に固定された1つの部品。
+                    ドラッグで動くConfirmedCardの内側にも、開閉するOpenBinder
+                    Backdropの内側にも置かず、常に先頭カードの穴の位置に
+                    静止したままここに1つだけ描く(=一番上のカードだけが
+                    今リングに通っているように見える)。 */}
+                {i === 0 && <div style={{ position: "absolute", inset: 0, zIndex: 25, pointerEvents: "none" }}><RingHardware /></div>}
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -870,7 +875,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
 
   return (
     <>
-      <Masthead title="実行" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
+      <Masthead title="プラン" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
 
       {showMap ? (
         <>

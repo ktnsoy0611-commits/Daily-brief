@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "趣味嗜好を貯蓄・トラッキングする個人用QOLアプリ",
     start_url: "/",
     display: "standalone",
-    background_color: "#F1E6CC",
+    background_color: "#F2EADA",
     theme_color: "#1A1712",
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },

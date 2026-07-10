@@ -288,7 +288,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
             {mediaRowItems.length === 0 && areaRowItems.length === 0 && goalRowItems.length === 0 && fulfilledWishes.length === 0 && pendingItems.length === 0 && (
               <div style={{ padding: "36px 4px", textAlign: "center" }}>
                 <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, marginBottom: 8 }}>まだ記録がありません。</div>
-                <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>実行タブで行動を記録すると、ここに積み上がります。</p>
+                <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>プランタブで行動を記録すると、ここに積み上がります。</p>
               </div>
             )}
           </>

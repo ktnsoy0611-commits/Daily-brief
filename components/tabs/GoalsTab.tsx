@@ -110,13 +110,13 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
             統一する。以前は専用のGoalCardを使っており、アーカイブタブの棚と
             見た目が食い違っていた。グリッドでは常に表紙が正面(rotateY:0)
             を向いた状態で並べ、タイトルを読み取りやすくしている。 */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, justifyItems: "center" }}>
           {goalItems.map((g) => {
             const latest = g.checkIns?.[0];
             const count = g.checkIns?.length ?? 0;
             return (
               <Binder3D
-                key={g.id} width="100%" aspect={GOAL_CARD_ASPECT} rotateY={0} count={count}
+                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT} rotateY={-14} depth={22} count={count}
                 color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={goalAccent(g.id)}
                 onClick={() => setOpenGoalId(g.id)}
                 footer={
@@ -132,7 +132,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
               />
             );
           })}
-          <AddCardTile aspect={GOAL_CARD_ASPECT} onClick={() => setAdding(true)} label="ゴールを追加" />
+          <AddCardTile aspect={GOAL_CARD_ASPECT} size="88%" onClick={() => setAdding(true)} label="ゴールを追加" />
         </div>
       </main>
 

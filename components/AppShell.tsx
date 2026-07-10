@@ -2,6 +2,7 @@
 
 import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Sprout, User } from "lucide-react";
 import { useCallback, useEffect, useState, type ComponentType, type CSSProperties } from "react";
+import { PlanSelectionBar } from "@/components/PlanSelectionBar";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { GoalsTab } from "@/components/tabs/GoalsTab";
@@ -10,14 +11,14 @@ import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
 import { BG, BLUE, HEADER_CHIP_SIZE, INK, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
-import { detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers";
-import type { AppState, TabId, TabProps } from "@/lib/types";
+import { buildMagazine, detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers";
+import type { AppState, PlanSelection, TabId, TabProps } from "@/lib/types";
 
 const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
   { id: "records", label: "アーカイブ", Icon: LayoutGrid },
   { id: "brief", label: "ブリーフ", Icon: Newspaper },
-  { id: "stock", label: "ストック", Icon: Heart },
   { id: "goals", label: "ゴール", Icon: Sprout },
+  { id: "stock", label: "ストック", Icon: Heart },
   { id: "execute", label: "プラン", Icon: MapIcon },
 ];
 
@@ -27,6 +28,11 @@ export function AppShell() {
   const [showProfile, setShowProfile] = useState(false);
   const [storageMode, setStorageMode] = useState(DataStore.mode);
   const [toast, setToast] = useState("");
+  // プランへバインドする候補の選択。タブを切り替えてもAppShell自体は
+  // 常にマウントされたままなので(key={tab}で差し替わるのは中身のタブ
+  // だけ)、ここに置くだけでストックタブ⇄プランタブを跨いで選択が
+  // 保持される。
+  const [selection, setSelection] = useState<PlanSelection>({ keepIds: [], mediaIds: [] });
 
   useEffect(() => {
     let alive = true;
@@ -66,6 +72,32 @@ export function AppShell() {
     DataStore.save(next).then(setStorageMode);
   }, []);
   const goTab = useCallback((id: TabId) => setTab(id), []);
+  const toggleKeepSelection = useCallback((id: string) => {
+    haptic(8);
+    setSelection((s) => ({ ...s, keepIds: s.keepIds.includes(id) ? s.keepIds.filter((x) => x !== id) : [...s.keepIds, id] }));
+  }, []);
+  const toggleMediaSelection = useCallback((id: string) => {
+    haptic(8);
+    setSelection((s) => ({ ...s, mediaIds: s.mediaIds.includes(id) ? s.mediaIds.filter((x) => x !== id) : [...s.mediaIds, id] }));
+  }, []);
+  const addKeepIds = useCallback((ids: string[]) => {
+    haptic(10);
+    setSelection((s) => ({ ...s, keepIds: Array.from(new Set([...s.keepIds, ...ids])) }));
+  }, []);
+  // フローティングUIの「バインド！」。ストックタブから押した場合でも、
+  // プランタブの地図の「作る」ボタンと全く同じ組み立てロジック
+  // (buildMagazine)で今日のマガジンを確定し、結果を確認できるよう
+  // プランタブへ連れて行く。useCallbackで包まずレンダーのたびに作り
+  // 直しているのは、appState/selectionを常に最新のクロージャで参照
+  // したいため(このボタンはクリックハンドラとして渡すだけで、深い
+  // メモ化の対象にはならない)。
+  const bindSelection = () => {
+    if (!appState || (selection.keepIds.length === 0 && selection.mediaIds.length === 0)) return;
+    haptic(16);
+    persist(buildMagazine(appState, selection.keepIds, selection.mediaIds));
+    setSelection({ keepIds: [], mediaIds: [] });
+    setTab("execute");
+  };
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 1600); };
 
   useEffect(() => {
@@ -108,7 +140,7 @@ export function AppShell() {
       )}
     </button>
   );
-  const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton };
+  const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton, selection, toggleKeepSelection, toggleMediaSelection, addKeepIds, setSelection };
 
   // 実行タブなどをスクロールした状態で別タブ(特にブリーフタブ)へ切り替えると
   // ヘッダーが見切れる不具合が繰り返し再発していた。原因は「ウィンドウ/body
@@ -170,6 +202,17 @@ export function AppShell() {
         }}>{toast}</div>
       )}
 
+      {/* タブを跨いで持ち回すバインド候補の確定UI。プロフィール画面を
+          開いている間だけは他の浮遊UIと同じく隠す。 */}
+      {!showProfile && (
+        <PlanSelectionBar
+          appState={appState} selection={selection}
+          toggleKeepSelection={toggleKeepSelection} toggleMediaSelection={toggleMediaSelection}
+          onClear={() => setSelection({ keepIds: [], mediaIds: [] })}
+          onBind={bindSelection}
+        />
+      )}
+
       {/* ヘッダーのプロフィール丸アイコン/件数ピルと同じ「PAPERの丸背景+
           SOFT_SHADOWで浮く」語彙に揃えたフローティングタブバー。position:
           fixedにすると、iOS SafariのURLバー(動的ツールバー)の表示/非表示
@@ -191,11 +234,11 @@ export function AppShell() {
             <div style={{ position: "absolute", left: 0, right: 0, top: -44, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 44px, ${BG} 100%)` }} />
           </div>
           <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
-            <div style={{ position: "relative", width: "100%", maxWidth: 420 - 32, display: "flex", background: PAPER, borderRadius: 999, boxShadow: SOFT_SHADOW_LG, padding: 7, marginBottom: "calc(2px + env(safe-area-inset-bottom))", pointerEvents: "auto" }}>
+            <div style={{ position: "relative", width: "100%", maxWidth: 420 - 32, display: "flex", background: PAPER, borderRadius: 999, boxShadow: SOFT_SHADOW_LG, padding: 6, marginBottom: "env(safe-area-inset-bottom)", pointerEvents: "auto" }}>
               {TABS.map((t) => {
                 const active = tab === t.id;
                 return (
-                  <button key={t.id} onClick={() => { haptic(5); goTab(t.id); }} style={{ flex: 1, padding: "8px 0 7px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                  <button key={t.id} onClick={() => { haptic(5); goTab(t.id); }} style={{ flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                     <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
                       <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
                     </div>

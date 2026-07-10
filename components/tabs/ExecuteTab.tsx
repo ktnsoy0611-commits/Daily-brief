@@ -3,9 +3,9 @@
 import { Bookmark, BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
-import { BinderModal, HOLE_CLEAR, HOLE_YS, type IconType, Masthead, PosterCard, PunchHoles } from "@/components/common";
-import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
-import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade, todayKey } from "@/lib/helpers";
+import { BinderModal, HOLE_CLEAR, HOLE_YS, type IconType, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
+import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
+import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
 
 const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
@@ -44,57 +44,6 @@ function MapCanvas({ items, selectedIds, onOpenPin }: {
   );
 }
 
-// 地図の下に横スクロールで並ぶ棚。場所のKeep一覧・メディア一覧で共用する、
-// アプリ全体で統一したPosterCardに選択状態のオーバーレイを乗せたもの。
-function SelectablePosterCard({ selected, onToggle, size = 132, ...cardProps }: {
-  selected: boolean; onToggle: () => void; size?: number;
-} & Omit<Parameters<typeof PosterCard>[0], "onClick" | "size">) {
-  const [pressed, setPressed] = useState(false);
-  const release = () => setPressed(false);
-  return (
-    <div
-      onPointerDown={() => setPressed(true)}
-      onPointerUp={release}
-      onPointerCancel={release}
-      onPointerLeave={release}
-      style={{
-        position: "relative", flexShrink: 0, width: size,
-        transition: pressed ? "transform 0.06s" : "transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
-        transform: pressed ? "scale(0.92)" : selected ? "scale(0.96)" : "scale(1)",
-      }}
-    >
-      <PosterCard {...cardProps} size={size} onClick={onToggle} />
-      {selected && (
-        <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "rgba(43,63,191,0.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-          <div style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(23,23,21,0.3)" }}>
-            <Check size={16} color={PAPER} strokeWidth={3} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// 「今週のおすすめ」専用カード。ShelfCardの正方形サムネイルだけでは中身が
-// 何もわからなくなるため、タグライン+件名リスト+明示的な選択ボタンを持つ、
-// 統合前(round4以前)の情報量を復元したカード。
-function BundleCard({ label, tagline, items, onPick }: {
-  label: string; tagline: string; items: { id: string; title: string }[]; onPick: () => void;
-}) {
-  return (
-    <div style={{ flexShrink: 0, width: 190, background: PAPER, border: "none", borderRadius: 18, padding: "16px 17px", boxShadow: SOFT_SHADOW }}>
-      <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17 }}>{label}</div>
-      <div style={{ fontSize: 10.5, color: "#9A988E", margin: "3px 0 12px" }}>{tagline}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14, minHeight: 60 }}>
-        {items.map((it) => (
-          <div key={it.id} style={{ fontSize: 11, color: "#5A5A54", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>・{it.title}</div>
-        ))}
-      </div>
-      <button onClick={onPick} style={{ width: "100%", padding: "10px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11.5, fontWeight: 700 }}>候補に追加</button>
-    </div>
-  );
-}
-
 function HorizontalShelf({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 22 }}>
@@ -109,49 +58,42 @@ function HorizontalShelf({ title, badge, children }: { title: string; badge?: st
   );
 }
 
-// タップで追加したものが積み上がっていく様子を見せる、確定ボタンまで
-// 一体化した1行のフローティングバー。以前はこの束(写真)と確定ボタンを
-// 縦に2段重ねていたため、地図/一覧の下側をかなりの高さで占有してしまい、
-// スクロールできる範囲や視認できる範囲を圧迫していた。1行に収めることで
-// 画面占有を大きく減らしている。
-function DraftBinder({ items, onRemove, onConfirm, confirmLabel }: {
-  items: { id: string; type: MagazineItemRef["type"]; title: string; image?: string; color?: string }[];
-  onRemove: (id: string, type: MagazineItemRef["type"]) => void;
-  onConfirm: () => void;
-  confirmLabel: string;
-}) {
-  const shown = items.slice(-3);
-  const rotations = [-8, 6, -4];
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px 8px 12px", background: PAPER, borderRadius: 22, boxShadow: SOFT_SHADOW_LG }}>
-      <div style={{ position: "relative", width: 38, height: 38, flexShrink: 0 }}>
-        {shown.map((it, i) => (
-          <button key={`${it.type}-${it.id}`} onClick={() => onRemove(it.id, it.type)} aria-label={`${it.title}を外す`} style={{
-            position: "absolute", top: 0, left: 0, width: 32, height: 32, borderRadius: 7, overflow: "hidden", padding: 0, cursor: "pointer",
-            border: "2px solid #fff", boxShadow: "0 2px 6px rgba(23,23,21,0.28)", background: "none",
-            transform: `rotate(${rotations[i % rotations.length]}deg) translate(${i * 3}px, ${i * -3}px)`, zIndex: i,
-            transition: "transform 0.2s",
-          }}>
-            {it.image ? (
-              <img src={img(it.image, 100, 100)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-            ) : (
-              <div style={{ width: "100%", height: "100%", background: it.color ?? "#5A5A54" }} />
-            )}
-          </button>
-        ))}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{items.length}件バインド中</div>
-        <div style={{ fontSize: 8.5, color: "#9A988E", marginTop: 1 }}>タップで外せます</div>
-      </div>
-      <button onClick={onConfirm} style={{ flexShrink: 0, padding: "11px 16px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
-        {confirmLabel}
-      </button>
-    </div>
-  );
+// 場所・作品を1つの時系列に混ぜ、直近に加わった5件だけを「今週の
+// おすすめ」として取り出す。以前は「さらっと/ゆったり/じっくり」という
+// 3段階の分量プリセット(まとめて複数件を一括追加するバンドル)だった
+// が、中身が件名の羅列だけで情報量が薄く、他の棚ともデザインが食い違って
+// いた。KEEP一覧・メディア棚と全く同じSelectablePosterCardを使うことで
+// デザインを統一しつつ、面積を一回り大きく取ることで「おすすめ」らしい
+// 見せ場にしている。
+interface RecommendedEntry {
+  key: string;
+  kind: "keep" | "media";
+  title: string;
+  image?: string;
+  color?: string;
+  sub: string;
+  icon: IconType;
+  kept: boolean;
+  at: number;
+}
+const RECOMMENDED_COUNT = 5;
+const RECOMMENDED_CARD_WIDTH = 168;
+
+function buildRecommended(pool: Keep[], mediaPool: MediaRecord[]): RecommendedEntry[] {
+  const fromKeeps: RecommendedEntry[] = pool.map((k) => ({
+    key: k.id, kind: "keep", title: k.title, image: k.images?.[0], color: k.color,
+    sub: k.area && k.area !== "—" ? k.area : (k.category ?? ""), icon: MapPin, kept: k.origin !== "manual",
+    at: new Date(k.keptAt).getTime(),
+  }));
+  const fromMedia: RecommendedEntry[] = mediaPool.map((r) => ({
+    key: r.id, kind: "media", title: r.title, image: r.image, color: r.color,
+    sub: mediaKindOf(r.kind).label, icon: MEDIA_ICON[r.kind], kept: r.origin !== "manual",
+    at: new Date(r.addedAt).getTime(),
+  }));
+  return [...fromKeeps, ...fromMedia].sort((a, b) => b.at - a.at).slice(0, RECOMMENDED_COUNT);
 }
 
-function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOpenPin, onToggleKeep, onToggleMedia, onPickBundle, onInjectDemo, bundlesAreNew }: {
+function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOpenPin, onToggleKeep, onToggleMedia, onInjectDemo, bundlesAreNew }: {
   pool: Keep[];
   mediaPool: MediaRecord[];
   draftSelection: string[];
@@ -159,16 +101,11 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
   onOpenPin: (item: Keep) => void;
   onToggleKeep: (item: Keep) => void;
   onToggleMedia: (item: MediaRecord) => void;
-  onPickBundle: (ids: string[]) => void;
   onInjectDemo: () => void;
   bundlesAreNew: boolean;
 }) {
   const sorted = pool.slice().sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
-  const bundles = [
-    { id: "light", label: "さらっと", tagline: "ひとつだけ、身軽に。", items: sorted.slice(0, 1) },
-    { id: "easy", label: "ゆったり", tagline: "2〜3件、無理のない範囲で。", items: sorted.slice(0, 3) },
-    { id: "full", label: "じっくり", tagline: "気になった分だけ、まとめて。", items: sorted.slice(0, 5) },
-  ].filter((b) => b.items.length > 0);
+  const recommended = buildRecommended(pool, mediaPool);
 
   if (pool.length === 0 && mediaPool.length === 0) {
     return (
@@ -187,6 +124,24 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
       <MapCanvas items={pool} selectedIds={draftSelection} onOpenPin={onOpenPin} />
       <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 22px" }}>ピンやカードをタップして、今日の行き先を選ぶ。</p>
 
+      {recommended.length > 0 && (
+        <HorizontalShelf title="今週のおすすめ" badge={bundlesAreNew ? "NEW" : undefined}>
+          {recommended.map((it) => (
+            <SelectablePosterCard key={`${it.kind}-${it.key}`} size={RECOMMENDED_CARD_WIDTH} title={it.title} image={it.image} color={it.color}
+              sub={it.sub} icon={it.icon} kept={it.kept}
+              selected={it.kind === "keep" ? draftSelection.includes(it.key) : draftMediaSelection.includes(it.key)}
+              onToggle={() => {
+                if (it.kind === "keep") {
+                  const k = pool.find((x) => x.id === it.key);
+                  if (k) onToggleKeep(k);
+                } else {
+                  const r = mediaPool.find((x) => x.id === it.key);
+                  if (r) onToggleMedia(r);
+                }
+              }} />
+          ))}
+        </HorizontalShelf>
+      )}
       {pool.length > 0 && (
         <HorizontalShelf title="KEEP一覧">
           {sorted.map((k) => (
@@ -202,13 +157,6 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
             <SelectablePosterCard key={r.id} title={r.title} image={r.image} color={r.color}
               sub={mediaKindOf(r.kind).label} icon={MEDIA_ICON[r.kind]} kept={r.origin !== "manual"}
               selected={draftMediaSelection.includes(r.id)} onToggle={() => onToggleMedia(r)} />
-          ))}
-        </HorizontalShelf>
-      )}
-      {bundles.length > 0 && (
-        <HorizontalShelf title="今週のおすすめ" badge={bundlesAreNew ? "NEW" : undefined}>
-          {bundles.map((b) => (
-            <BundleCard key={b.id} label={b.label} tagline={b.tagline} items={b.items} onPick={() => onPickBundle(b.items.map((it) => it.id))} />
           ))}
         </HorizontalShelf>
       )}
@@ -603,12 +551,16 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   );
 }
 
-export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps) {
+export function ExecuteTab({ appState, persist, goTab, profileButton, selection, toggleKeepSelection, toggleMediaSelection, setSelection }: TabProps) {
   const magazine = appState.magazine;
   const [mapMode, setMapMode] = useState(false); // バインダー確定後でも地図に戻って選び直すときtrue
   const [pinItem, setPinItem] = useState<Keep | null>(null);
-  const [draftSelection, setDraftSelection] = useState<string[]>([]);
-  const [draftMediaSelection, setDraftMediaSelection] = useState<string[]>([]);
+  // 選択状態はAppShellへ引き上げ、ストックタブと共有している(タブを
+  // 跨いでバインド候補を選べるようにするため)。draftSelection/
+  // draftMediaSelectionという名前はこのタブ内での既存コードとの差分を
+  // 最小にするため残しているが、実体はlib配下から渡される共有state。
+  const draftSelection = selection.keepIds;
+  const draftMediaSelection = selection.mediaIds;
 
   const showMap = !magazine || mapMode;
   // 地図には実行済み以外の全Keepをピンとして出す(マガジン掲載中plannedも、選び直しのため含める)
@@ -653,45 +605,9 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showMap, bundlesAreNew, currentBundleWeek, pool.length]);
 
-  const toggleDraftKeep = (item: Keep) => {
-    haptic(8);
-    setDraftSelection((prev) => prev.includes(item.id) ? prev.filter((x) => x !== item.id) : [...prev, item.id]);
-  };
-  // 「今週のおすすめ」の「これにする」は、以前はそのまま確定してバインダー
-  // 画面へ遷移していたが、他の選び方(ピン/カードのタップ)と同じく、
-  // まず下書きの選択に加えるだけにする(ユーザーがまだ他のKeepも
-  // 追加/除外してから自分のタイミングで確定できるようにするため)。
-  const pickBundle = (ids: string[]) => {
-    haptic(10);
-    setDraftSelection((prev) => Array.from(new Set([...prev, ...ids])));
-  };
-  const toggleDraftMedia = (item: MediaRecord) => {
-    haptic(8);
-    setDraftMediaSelection((prev) => prev.includes(item.id) ? prev.filter((x) => x !== item.id) : [...prev, item.id]);
-  };
-  const removeDraftItem = (id: string, type: MagazineItemRef["type"]) => {
-    if (type === "keep") setDraftSelection((prev) => prev.filter((x) => x !== id));
-    else setDraftMediaSelection((prev) => prev.filter((x) => x !== id));
-  };
+  const toggleDraftKeep = (item: Keep) => toggleKeepSelection(item.id);
+  const toggleDraftMedia = (item: MediaRecord) => toggleMediaSelection(item.id);
 
-  // 地図での確定。新規作成と選び直し(更新)の両方に対応:
-  // まず現在plannedのものを全て候補に戻し、選ばれたidだけをplannedにし直す。
-  const confirmMagazine = (keepIds: string[], mediaIds: string[] = []) => {
-    if (!keepIds.length && !mediaIds.length) return;
-    haptic(16);
-    const next = structuredClone(appState);
-    next.keeps.forEach((k) => { if (k.status === "planned") k.status = "candidate"; });
-    next.keeps.forEach((k) => { if (keepIds.includes(k.id)) k.status = "planned"; });
-    const itemIds: MagazineItemRef[] = [
-      ...keepIds.map((id) => ({ id, type: "keep" as const })),
-      ...mediaIds.map((id) => ({ id, type: "media" as const })),
-    ];
-    next.magazine = { dateKey: todayKey(), decidedAt: new Date().toISOString(), itemIds };
-    persist(next);
-    setDraftSelection([]);
-    setDraftMediaSelection([]);
-    setMapMode(false);
-  };
   const removeFromMagazine = (id: string, type: MagazineItemRef["type"]) => {
     const next = structuredClone(appState);
     next.magazine!.itemIds = next.magazine!.itemIds.filter((r) => !(r.id === id && r.type === type));
@@ -861,18 +777,6 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
     }
     persist(next);
   };
-  type DraftBinderEntry = { id: string; type: MagazineItemRef["type"]; title: string; image?: string; color?: string };
-  const draftBinderItems: DraftBinderEntry[] = [
-    ...draftSelection.map((id): DraftBinderEntry | null => {
-      const k = appState.keeps.find((x) => x.id === id);
-      return k ? { id, type: "keep", title: k.title, image: k.images?.[0], color: k.color } : null;
-    }),
-    ...draftMediaSelection.map((id): DraftBinderEntry | null => {
-      const r = appState.records.media.find((x) => x.id === id);
-      return r ? { id, type: "media", title: r.title, image: r.image, color: r.color } : null;
-    }),
-  ].filter((x): x is DraftBinderEntry => !!x);
-
   return (
     <>
       <Masthead title="プラン" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
@@ -880,41 +784,28 @@ export function ExecuteTab({ appState, persist, goTab, profileButton }: TabProps
       {showMap ? (
         <>
           {magazine && (
-            <button onClick={() => { setMapMode(false); setDraftSelection([]); setDraftMediaSelection([]); }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← バインダーに戻る</button>
+            <button onClick={() => { setMapMode(false); setSelection({ keepIds: [], mediaIds: [] }); }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← バインダーに戻る</button>
           )}
           <MapPlanner
             pool={pool} mediaPool={mediaPool} draftSelection={draftSelection} draftMediaSelection={draftMediaSelection}
             onOpenPin={setPinItem} onToggleKeep={toggleDraftKeep} onToggleMedia={toggleDraftMedia}
-            onPickBundle={pickBundle} onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
+            onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
           />
-          {/* このバーはposition:fixedでタブバー(AppShellのnav)の真上に浮かせる。
-              以前は写真の束と確定ボタンを縦2段+背景の下地グラデーションで
-              構成しており、画面下部をかなりの高さで占有するうえ、その
-              グラデーションがAppShellのnav側のグラデーション(zIndexが
-              本UIより高いnavの子要素)と重なって、本UIの下側が白っぽく
-              洗われて見えてしまっていた。1行の不透明なPAPERカードにした
-              ことで、占有面積を大きく減らしつつ、下地を必要としない
-              (カード自体が既に不透明なので、navのグラデーションと重なる
-              問題も併せて解消される)。 */}
-          {(draftSelection.length + draftMediaSelection.length) > 0 && (
-            <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-              <div style={{ position: "relative", width: "100%", maxWidth: 420, padding: `0 16px calc(${NAV_OFFSET} + 8px)`, pointerEvents: "auto" }}>
-                <DraftBinder
-                  items={draftBinderItems} onRemove={removeDraftItem}
-                  onConfirm={() => confirmMagazine(draftSelection, draftMediaSelection)}
-                  confirmLabel={magazine ? "更新する" : "作る"}
-                />
-              </div>
-            </div>
-          )}
+          {/* 選択中のカードを確定する操作は、タブを跨いで共有するAppShellの
+              フローティングUI(画面右下、スタックアイコン+取り消し+
+              バインド！)に一本化した。以前はここに地図専用の確定バーを
+              別途置いていたが、ストックタブからも同じ選択に追加できる
+              ようになったため、確定の入口も1つにまとめている。 */}
         </>
       ) : magazine && (
         // 確定後は選んだカードが縦一列に大きく並ぶリストになり、その上に
         // 開いたバインダーが覗く。「選び直す」で地図に戻れるのは以前と同じ。
         <>
           <button onClick={() => {
-            setDraftSelection(magazine.itemIds.filter((r) => r.type === "keep").map((r) => r.id));
-            setDraftMediaSelection(magazine.itemIds.filter((r) => r.type === "media").map((r) => r.id));
+            setSelection({
+              keepIds: magazine.itemIds.filter((r) => r.type === "keep").map((r) => r.id),
+              mediaIds: magazine.itemIds.filter((r) => r.type === "media").map((r) => r.id),
+            });
             setMapMode(true);
           }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← 選び直す</button>
           <ConfirmedStack

@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Plus, Star } from "lucide-react";
+import { Bookmark, Check, Plus, Star } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BLUE, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
@@ -90,7 +90,7 @@ export function PunchHoles() {
 // 写真ありのときと同じ下部キャプション(グラデーション+タイトル)を
 // 乗せることで、どちらも同じ見た目のリズムになるようにしている。
 // sizeを省略すると親グリッドに合わせて広がる。
-export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph, kept, good, onToggleGood, action, onClick, size }: {
+export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph, kept, good, onToggleGood, action, onClick, size, planSelected, onTogglePlanSelect }: {
   image?: string | null;
   color?: string;
   title: string;
@@ -104,10 +104,21 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
   action?: { label: string; onClick: () => void };
   onClick?: () => void;
   size?: number | string;
+  // プランへのバインド候補として選べる場合の、選択トグル。カード本体の
+  // タップ(onClick、詳細を開く)とは独立した操作にするため、専用の丸い
+  // ボタンを右下(左上=KEEP、右上=action/goodと被らない唯一の空き角)に
+  // 別途置く。選択中はカード全体にも薄い縁取りを足して、一覧をざっと
+  // 眺めただけでどれを選んでいるか分かるようにする。
+  planSelected?: boolean;
+  onTogglePlanSelect?: () => void;
 }) {
   const fill = color ?? "#5A5A54";
   return (
-    <div onClick={onClick} style={{ position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 18, overflow: "hidden", boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default", background: image ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)` }}>
+    <div onClick={onClick} style={{
+      position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 18, overflow: "hidden",
+      boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default", background: image ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)`,
+      outline: planSelected ? `2.5px solid ${BLUE}` : "none", outlineOffset: planSelected ? -2.5 : 0,
+    }}>
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={img(image, 340, 450)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -141,6 +152,49 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
           position: "absolute", top: 8, right: 8, padding: "6px 11px", borderRadius: 999, border: "none", cursor: "pointer",
           background: INK, color: PAPER, fontFamily: SANS, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em",
         }}>{action.label}</button>
+      )}
+      {onTogglePlanSelect && (
+        <button onClick={(e) => { e.stopPropagation(); onTogglePlanSelect(); }} aria-label={planSelected ? "プランの選択から外す" : "プランの候補に選ぶ"} style={{
+          position: "absolute", bottom: 8, right: 8, width: 26, height: 26, borderRadius: "50%", border: "none", cursor: "pointer",
+          background: planSelected ? BLUE : "rgba(255,255,255,0.92)", color: planSelected ? PAPER : INK,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 0, boxShadow: "0 2px 6px rgba(23,23,21,0.3)",
+        }}>
+          {planSelected ? <Check size={13} strokeWidth={3} /> : <Plus size={14} strokeWidth={2.4} />}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// PosterCardに選択状態のオーバーレイを乗せたもの。プランタブの地図/一覧
+// (KEEP一覧・メディア)と、ストックタブの「作品」「場所」オーバーレイの
+// どちらも、同じこのカードでプランへのバインド候補を選ぶ。タップは常に
+// 選択のトグルで、詳細を見る専用の導線はここには持たない(選ぶこと自体が
+// 目的の画面のため)。
+export function SelectablePosterCard({ selected, onToggle, size = 132, ...cardProps }: {
+  selected: boolean; onToggle: () => void; size?: number;
+} & Omit<Parameters<typeof PosterCard>[0], "onClick" | "size">) {
+  const [pressed, setPressed] = useState(false);
+  const release = () => setPressed(false);
+  return (
+    <div
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onPointerLeave={release}
+      style={{
+        position: "relative", flexShrink: 0, width: size,
+        transition: pressed ? "transform 0.06s" : "transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
+        transform: pressed ? "scale(0.92)" : selected ? "scale(0.96)" : "scale(1)",
+      }}
+    >
+      <PosterCard {...cardProps} size={size} onClick={onToggle} />
+      {selected && (
+        <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "rgba(43,63,191,0.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+          <div style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(23,23,21,0.3)" }}>
+            <Check size={16} color={PAPER} strokeWidth={3} />
+          </div>
+        </div>
       )}
     </div>
   );

@@ -110,7 +110,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
             統一する。以前は専用のGoalCardを使っており、アーカイブタブの棚と
             見た目が食い違っていた。グリッドでは常に表紙が正面(rotateY:0)
             を向いた状態で並べ、タイトルを読み取りやすくしている。 */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, justifyItems: "center" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 30, columnGap: 14, justifyItems: "center" }}>
           {goalItems.map((g) => {
             const latest = g.checkIns?.[0];
             const count = g.checkIns?.length ?? 0;

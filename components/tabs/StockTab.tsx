@@ -191,7 +191,7 @@ function StackSection({ title, count, children }: { title: string; count: number
 // どの束もタップすると中身が一覧できるシートが開き、束の一番手前(右)の
 // ＋タイルをタップすると新規追加シートが開く。KEEP由来のカードには
 // 左上に小さなKEEPバッジを表示し、手動追加したものと見分けられるようにする。
-export function StockTab({ appState, persist, showToast, profileButton }: TabProps) {
+export function StockTab({ appState, persist, showToast, profileButton, selection, toggleKeepSelection, toggleMediaSelection }: TabProps) {
   const [openStack, setOpenStack] = useState<"media" | "place" | "wish" | null>(null);
   const [addingUrl, setAddingUrl] = useState(false);
   const [addingMedia, setAddingMedia] = useState(false);
@@ -226,7 +226,9 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
     <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.addedAt)} label={MEDIA_LABEL[r.kind]}
       icon={MEDIA_ICON[r.kind]} kept={r.origin !== "manual"} size={size}
       action={size ? undefined : { label: mediaKindOf(r.kind).doneActionLabel, onClick: () => markMediaDone(r.id) }}
-      onClick={size ? undefined : (r.image ? () => setMediaDetail({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined)} />
+      onClick={size ? undefined : (r.image ? () => setMediaDetail({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined)}
+      planSelected={size ? undefined : selection.mediaIds.includes(r.id)}
+      onTogglePlanSelect={size ? undefined : () => toggleMediaSelection(r.id)} />
   );
 
   // ---- 場所 ----
@@ -252,7 +254,9 @@ export function StockTab({ appState, persist, showToast, profileButton }: TabPro
   const placeCard = (k: Keep, size?: number) => (
     <PosterCard key={k.id} image={k.images?.[0]} color={k.color} title={k.title} sub={k.area && k.area !== "—" ? k.area : k.category}
       icon={MapPin} kept={k.origin !== "manual"} size={size}
-      onClick={size ? undefined : () => setPlaceDetail(k)} />
+      onClick={size ? undefined : () => setPlaceDetail(k)}
+      planSelected={size ? undefined : selection.keepIds.includes(k.id)}
+      onTogglePlanSelect={size ? undefined : () => toggleKeepSelection(k.id)} />
   );
 
   // ---- ウィッシュリスト ----

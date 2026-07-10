@@ -1,5 +1,5 @@
 import { AREA_COORDS, AREA_FALLBACK, AUTO_THRESHOLD, INTEREST_RULES, KEEP_MAX_AGE_DAYS } from "./constants";
-import type { AppState, Interest, Keep, Wish } from "./types";
+import type { AppState, Interest, Keep, MagazineItemRef, Wish } from "./types";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -117,6 +117,23 @@ export function detectInterests(wishes: Wish[], keeps: Keep[]): Omit<Interest, "
 // KEEPしたが、まだ読んでいない/観ていない/聴いていないメディア記録
 export function keepMedia(state: AppState) {
   return (state.records?.media ?? []).filter((r) => r.status === "keep");
+}
+
+// 選んだ場所(keepIds)・作品(mediaIds)から、今日のマガジン(プランタブの
+// 確定リスト)を組み立てる。プランタブ自身の「作る/更新する」ボタンと、
+// ストックタブを含む他タブから使う共通のフローティング「バインド！」の
+// どちらからも同じ組み立てロジックを使うための純粋関数(状態の書き換えは
+// せず、次のAppStateを返すだけ)。
+export function buildMagazine(state: AppState, keepIds: string[], mediaIds: string[]): AppState {
+  const next = structuredClone(state);
+  next.keeps.forEach((k) => { if (k.status === "planned") k.status = "candidate"; });
+  next.keeps.forEach((k) => { if (keepIds.includes(k.id)) k.status = "planned"; });
+  const itemIds: MagazineItemRef[] = [
+    ...keepIds.map((id) => ({ id, type: "keep" as const })),
+    ...mediaIds.map((id) => ({ id, type: "media" as const })),
+  ];
+  next.magazine = { dateKey: todayKey(), decidedAt: new Date().toISOString(), itemIds };
+  return next;
 }
 
 // Keepのカテゴリ文字列から、メディア記録に該当する種類を推定する。

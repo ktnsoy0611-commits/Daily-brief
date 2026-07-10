@@ -66,10 +66,11 @@ export const GOAL_CARD_ASPECT = ITEM_CARD_ASPECT;
 export const POSTER_PALETTE = ["#2C4E74", GOLD, RUST, GREEN];
 
 // タブ本文やストック/目標/実行タブの下部固定バーが、フローティングの
-// タブバー(AppShellのnav)の直上に収まるためのオフセット。navは画面
-// 下端から6px浮いたピル(アイコン拡大後の高さ実測約78px)なので、
-// 78+6に少し余白を足した値。navのスタイルを変えたら実測して合わせ直すこと。
-export const NAV_OFFSET = "calc(92px + env(safe-area-inset-bottom))";
+// タブバー(AppShellのnav)の直上に収まるためのオフセット。表示領域を
+// 少しでも広く取るため、navのピル自体の余白を切り詰めて画面下端ぎりぎり
+// まで下げた分、この値も縮めている。navのスタイルを変えたら実測して
+// 合わせ直すこと。
+export const NAV_OFFSET = "calc(82px + env(safe-area-inset-bottom))";
 
 export interface Category {
   id: CategoryId;

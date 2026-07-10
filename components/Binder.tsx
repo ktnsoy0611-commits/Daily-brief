@@ -502,9 +502,13 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
         transform: `scale(${scale}) rotateY(${rotateY}deg)`,
         transition: transitionMs ? `transform ${transitionMs}ms cubic-bezier(0.22,0.9,0.32,1)` : "none",
       }}>
-        {/* 表紙面(正面) */}
+        {/* 表紙面(正面)。影を落とすこの箱自体にも中のBinderCoverFaceと
+            同じ角丸(開く側=右のみ)を付けておく。以前はここに角丸が無く、
+            中身だけが丸まっていたため、box-shadowが素の四角のまま角丸の
+            外にはみ出す「角に合わない影」になっていた。 */}
         <div style={{
           position: "absolute", inset: 0, overflow: "hidden", boxShadow: SOFT_SHADOW,
+          borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
           transformOrigin: "0% 50%",
           transform: `translateZ(${resolvedDepth / 2}px) rotateY(${-openDeg}deg)`,
@@ -592,7 +596,8 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const [flap, setFlap] = useState(false);
   const centerRef = useRef(0);
   const rafRef = useRef<number | null>(null);
-  const flapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLeftRef = useRef(0);
+  const idleFramesRef = useRef(0);
   const step = pitch;
 
   // 初回描画の瞬間はまだ実測前でcontainerWidth=0のため、両端の余白
@@ -626,22 +631,46 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
 
   useEffect(() => () => {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    if (flapTimeoutRef.current) clearTimeout(flapTimeoutRef.current);
   }, []);
 
+  // scroll位置を毎フレーム(rAF)ポーリングし続けることで解決した2つの不具合:
+  // (1) ネイティブのscroll-snapは減速の終盤、scrollイベント自体を疎にしか
+  // 発火しないことがあり(ブラウザが最終的なスナップ補正を数フレームぶん
+  // まとめて処理するため)、scrollイベント頼みで値を更新していると速度が
+  // 落ちるほど更新が飛び飛びになって「カクカク動く」ように見えていた。
+  // (2) 表紙の開き(flap)を「最後のscrollイベントからの経過時間」で
+  // 判定していたため、実際にバインダーが静止するタイミングと表紙が
+  // 閉じ始めるタイミングがズレ、静止後にワンテンポ置いて急に閉じる
+  // ように見えていた。
+  // どちらも「scrollLeftが実際に今フレームで動いたかどうか」だけを
+  // 唯一の判定基準にすることで解消する: 動いていれば毎フレーム値を
+  // 更新し表紙も開いたまま、2フレーム連続で動きが止まった瞬間にその場で
+  // 表紙を閉じ始める(=静止と表紙の開閉が常に同期する)。静止後は
+  // ポーリング自体を止め、アイドル時に無駄なrAFを回し続けないようにする。
+  const pollFrame = () => {
+    const el = scrollRef.current;
+    if (!el) { rafRef.current = null; return; }
+    const left = el.scrollLeft;
+    if (Math.abs(left - lastLeftRef.current) > 0.5) {
+      lastLeftRef.current = left;
+      idleFramesRef.current = 0;
+      centerRef.current = left / step;
+      setTick((t) => t + 1);
+      setFlap(true);
+      rafRef.current = requestAnimationFrame(pollFrame);
+    } else if (idleFramesRef.current < 2) {
+      idleFramesRef.current += 1;
+      rafRef.current = requestAnimationFrame(pollFrame);
+    } else {
+      rafRef.current = null;
+      setFlap(false);
+    }
+  };
   const onScroll = () => {
     if (rafRef.current == null) {
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        const el = scrollRef.current;
-        if (!el) return;
-        centerRef.current = el.scrollLeft / step;
-        setTick((t) => t + 1);
-      });
+      idleFramesRef.current = 0;
+      rafRef.current = requestAnimationFrame(pollFrame);
     }
-    setFlap(true);
-    if (flapTimeoutRef.current) clearTimeout(flapTimeoutRef.current);
-    flapTimeoutRef.current = setTimeout(() => setFlap(false), 180);
   };
 
   const sidePad = Math.max(0, (containerWidth - pitch) / 2);

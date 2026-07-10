@@ -171,10 +171,23 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
 
 export type TabId = "records" | "brief" | "stock" | "goals" | "execute";
 
+// プラン(実行タブ)へバインドする候補の選択。タブを跨いで持ち回せるよう
+// AppShellへ状態を引き上げ、ストックタブ・プランタブどちらからも同じ
+// 選択を読み書きする。
+export interface PlanSelection {
+  keepIds: string[];
+  mediaIds: string[];
+}
+
 export interface TabProps {
   appState: AppState;
   persist: (next: AppState) => void;
   showToast: (msg: string) => void;
   goTab: (tab: TabId) => void;
   profileButton?: ReactNode;
+  selection: PlanSelection;
+  toggleKeepSelection: (id: string) => void;
+  toggleMediaSelection: (id: string) => void;
+  addKeepIds: (ids: string[]) => void;
+  setSelection: (next: PlanSelection) => void;
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { Bookmark, BookOpen, Check, Film, MapPin, Music, Music2, Palette, Plus, X } from "lucide-react";
+import { Bookmark, BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
-import { BinderModal, HOLE_CLEAR, HOLE_YS, type IconType, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
+import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
+import { BinderModal, HOLE_CLEAR, type IconType, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
 import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
 import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade } from "@/lib/helpers";
 import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
@@ -116,52 +117,110 @@ function buildRecommendedPlans(pool: Keep[]): RecommendedPlan[] {
   });
 }
 
-// 複数のカードがまとめて中に入っている、封をしたエンベロープの見た目。
-// 三角のフラップ(下地より暗い色)の下端の隙間から、束ねた場所カードの
-// 小さな端が覗いているように重ねて見せ、「1件のカードではなく複数を
-// 組み合わせた提案」であることを一目で伝える。フラップの上にはモデル
-// プランの中身(件数・テーマ・行き先の名前)を直接印字する。一度この後
-// 「白い紙で包んだ」デザインへ作り直したが、改悪という指摘を受けて
-// この最初のエンベロープ版へ戻し、代わりに表示面積を一回り大きくした。
+// 封をしたエンベロープの見た目。以前は束ねた場所カードの小さな端を
+// フラップの下から覗かせていたが、「カードは中に入っている体なので
+// 表示しない、エンベロープだけを見せる」という指摘を受けて中身を透か
+// さない設計にやり直した。フラップは封をした三角のまま(下地より暗い
+// 色)残し、その上にモデルプランの中身(件数・テーマ・行き先の名前)を
+// 直接印字するのはこれまでと同じ。タップすると、フラップが少しだけ
+// 持ち上がって開く簡単なアニメーション(perspective+rotateX)を挟んで
+// から、詳細をオーバーレイ(PlanDetailSheet)で開く。選択のON/OFF自体は
+// このカード上ではなく、オーバーレイ内の「これにする」ボタンへ移した
+// (エンベロープの役目は「開いて中身を見る」ことだけにする)。選択済み
+// かどうかは枠線の色だけで示す。
 const ENVELOPE_WIDTH = 240;
 const ENVELOPE_HEIGHT = 176;
+// フラップが開くふりをしてからオーバーレイを開くまでの遅延。短すぎると
+// 「開いた」実感がなく、長すぎるとタップへの反応が鈍く感じる。
+const ENVELOPE_OPEN_MS = 200;
 
-function PlanEnvelope({ plan, selected, onToggle }: { plan: RecommendedPlan; selected: boolean; onToggle: () => void }) {
+function PlanEnvelope({ plan, selected, onOpen }: { plan: RecommendedPlan; selected: boolean; onOpen: () => void }) {
   const dark = shade(plan.accent, -24);
+  const [opening, setOpening] = useState(false);
+
+  const handleTap = () => {
+    if (opening) return;
+    haptic(6);
+    setOpening(true);
+    setTimeout(() => {
+      onOpen();
+      setOpening(false);
+    }, ENVELOPE_OPEN_MS);
+  };
+
   return (
-    <button onClick={onToggle} aria-label={plan.label} style={{
+    <button onClick={handleTap} aria-label={plan.label} style={{
       position: "relative", flexShrink: 0, width: ENVELOPE_WIDTH, height: ENVELOPE_HEIGHT, padding: 0, border: "none", cursor: "pointer",
-      borderRadius: COVER_RADIUS, overflow: "hidden", background: plan.accent, boxShadow: SOFT_SHADOW_LG,
+      borderRadius: COVER_RADIUS, overflow: "hidden", background: plan.accent, boxShadow: SOFT_SHADOW_LG, perspective: 500,
       outline: selected ? `2.5px solid ${BLUE}` : "none", outlineOffset: selected ? -2.5 : 0,
     }}>
-      <div style={{ position: "absolute", top: "32%", left: "50%", transform: "translateX(-50%)", display: "flex", zIndex: 1 }}>
-        {plan.items.slice(0, 4).map((it, idx, arr) => (
-          <div key={it.id} style={{
-            width: 44, height: 60, marginLeft: idx === 0 ? 0 : -19, borderRadius: 6, overflow: "hidden", flexShrink: 0,
-            transform: `rotate(${(idx - (arr.length - 1) / 2) * 9}deg)`, boxShadow: "0 3px 7px rgba(23,23,21,0.32)",
-            border: `2.5px solid ${PAPER}`, background: it.color ?? dark,
-          }}>
-            {it.image && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={img(it.image, 90, 130)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-            )}
-          </div>
-        ))}
-      </div>
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "58%", background: dark, clipPath: "polygon(0 0, 100% 0, 50% 100%)", zIndex: 2 }} />
-      <div style={{ position: "absolute", left: 16, right: 44, bottom: 14, zIndex: 3 }}>
+      {/* 封をした三角のフラップ。タップすると上端(蝶番)を軸にわずかに
+          持ち上がって奥へ開き、封を切ったことを一瞬だけ見せてから
+          オーバーレイに引き継ぐ。 */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0, height: "58%", background: dark,
+        clipPath: "polygon(0 0, 100% 0, 50% 100%)", zIndex: 2, transformOrigin: "50% 0%",
+        transform: opening ? "rotateX(-70deg)" : "rotateX(0deg)",
+        transition: `transform ${ENVELOPE_OPEN_MS}ms cubic-bezier(0.45,0,0.2,1)`,
+      }} />
+      <div style={{ position: "absolute", left: 16, right: 44, bottom: 14, zIndex: 1 }}>
         <div style={{ fontSize: 9, letterSpacing: "0.16em", color: "rgba(255,255,255,0.72)", fontWeight: 700, marginBottom: 5 }}>MODEL PLAN ・ {plan.items.length}件</div>
         <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 15, color: PAPER, lineHeight: 1.3, marginBottom: 4, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.label}</div>
         <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.8)", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.itemsText}</div>
       </div>
-      <div style={{
-        position: "absolute", right: 10, top: 10, width: 28, height: 28, borderRadius: "50%", zIndex: 4, pointerEvents: "none",
-        background: selected ? BLUE : "rgba(255,255,255,0.9)", display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "0 2px 6px rgba(23,23,21,0.25)",
-      }}>
-        {selected ? <Check size={14} strokeWidth={3} color={PAPER} /> : <Plus size={15} strokeWidth={2.6} color={INK} />}
-      </div>
+      {selected && (
+        <div style={{
+          position: "absolute", right: 10, top: 10, width: 26, height: 26, borderRadius: "50%", zIndex: 3, pointerEvents: "none",
+          background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(23,23,21,0.25)",
+        }}>
+          <Check size={13} strokeWidth={3} color={PAPER} />
+        </div>
+      )}
     </button>
+  );
+}
+
+// エンベロープをタップして開いたときに出す、プラン詳細のオーバーレイ。
+// 中身のカードは表示せず(封筒の中に入っている体のため)、行き先の名前
+// だけをサムネイル付きのリストとして見せる。qol-app-v19.jsx時代の
+// 「モデルプラン」バンドルカード(ラベル・小さな一言・件名の箇条書き・
+// 「これにする」ボタン)の構成を、封筒を開けた先の詳細としてそのまま
+// 踏襲している。
+function PlanDetailSheet({ plan, selected, onToggle, onClose }: {
+  plan: RecommendedPlan | null;
+  selected: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
+  if (!plan) return null;
+  return (
+    <BottomSheet onClose={onClose}>
+      {(requestClose) => (
+        <OverlayCard>
+          <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>MODEL PLAN ・ {plan.items.length}件</div>
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, marginBottom: 14 }}>{plan.label}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "0 0 18px" }}>
+            {plan.items.map((it) => (
+              <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 42, height: 42, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: it.color ?? "#5A5A54" }}>
+                  {it.image && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={img(it.image, 90, 90)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: INK, fontFamily: SANS, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
+              </div>
+            ))}
+          </div>
+          <button onClick={() => { onToggle(); requestClose(); }} style={{
+            width: "100%", padding: "13px 0", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
+            background: selected ? "transparent" : INK,
+            color: selected ? RUST : PAPER,
+            border: selected ? `1.5px solid ${RUST}` : "none",
+          }}>{selected ? "選択を外す" : "これにする"}</button>
+        </OverlayCard>
+      )}
+    </BottomSheet>
   );
 }
 
@@ -179,6 +238,8 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
 }) {
   const sorted = pool.slice().sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
   const plans = buildRecommendedPlans(pool);
+  const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
+  const openPlan = plans.find((p) => p.key === openPlanKey) ?? null;
 
   if (pool.length === 0 && mediaPool.length === 0) {
     return (
@@ -202,7 +263,7 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
           {plans.map((plan) => (
             <PlanEnvelope key={plan.key} plan={plan}
               selected={plan.keepIds.every((id) => draftSelection.includes(id))}
-              onToggle={() => onTogglePlan(plan.keepIds)} />
+              onOpen={() => setOpenPlanKey(plan.key)} />
           ))}
         </HorizontalShelf>
       )}
@@ -224,6 +285,12 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
           ))}
         </HorizontalShelf>
       )}
+      <PlanDetailSheet
+        plan={openPlan}
+        selected={openPlan ? openPlan.keepIds.every((id) => draftSelection.includes(id)) : false}
+        onToggle={() => openPlan && onTogglePlan(openPlan.keepIds)}
+        onClose={() => setOpenPlanKey(null)}
+      />
     </main>
   );
 }
@@ -246,67 +313,84 @@ interface ExecItem {
 }
 
 // バインダー本体。見開きで開いて置いた状態を、2枚の平らなパネルとして
-// 組み立てる: 右側(裏表紙・リング側)はカードの束の真後ろに常に静止して
-// おり、左側(表表紙)は登録前は画面の左へフラットに開いたまま(=画面の
-// 外へ大きくはみ出して切れて見える)待機する。穴の装飾(PunchHoles)は
-// 使わず、リング(RingHardware、呼び出し側で別途描画)だけのシンプルな
-// 見開きにする。
+// 組み立てる: 右側(裏表紙側)はカードの束の真後ろに常に静止しており、
+// 左側(表表紙)は登録前は画面の左へフラットに開いたまま(=画面の外へ
+// 大きくはみ出して切れて見える)待機する。リング金具は実装してみたが
+// 「無理そう」という判断で見送り、穴の装飾(PunchHoles)だけのシンプルな
+// 見開きに戻した。そのため左右の余白は再び対称(BINDER_MARGIN)に戻している。
 // バインド！を押すと、束の一番上に来た表表紙が、自分の右端(=裏表紙側
 // パネルに接する蝶番)を軸にrotateYで0度→180度まで回り込み、束の真上に
 // ぴったり重なって閉じる。蝶番を右端に固定したまま回すことで、中間角度
 // (90度前後)ではパネルの自由端(左端)がパースペクティブにより一瞬手前
 // (視聴者側)へせり出して見え、「表紙が画面手前に飛び出してから束の上に
 // パタンと閉じる」という動きになる。
-// バインダーは実物と同じく、カードの箱より一回り大きい紙面を持つ。
-// カードの左(蝶番=リング側)だけ大きめに余白を取り(BINDER_MARGIN_LEFT)、
-// そこに大きめのリング金具を置くスペースにする。上下・右はごく控えめな
-// 余白(BINDER_MARGIN_TB/RIGHT)に留める。
 // 「奥まって見える/浮いて見える」という指摘を受け、パネル自体の
 // box-shadowは廃止した(カード自身のSOFT_SHADOW_LGだけが束全体の
 // 立体感を担う)。縁取り(ヘアライン)は、蝶番でぴったり接している辺
 // (裏表紙側の左端・表表紙側の右端)には付けず、そこ以外の外周だけに
 // 付けることで、2枚が継ぎ目なく1冊に繋がって見えるようにしている。
+//
+// 裏表紙(BinderBackPanel)と表表紙(BinderFrontCover)は、以前は1つの
+// perspectiveラッパーの中の兄弟同士としてまとめ、表表紙側だけをzIndexで
+// 上に乗せる作りだった。しかしperspectiveを持つ要素はそれ自体が新しい
+// 重なりコンテキスト(stacking context)を作ってしまうため、その内側で
+// 付けたzIndex:30は「兄弟のConfirmedCard」とは比較されず、DOM順で後に
+// 来るConfirmedCardの方が常に手前に描かれてしまっていた
+// (表紙が閉じるアニメーションは動くのに、カードが最前面に表示され続けて
+// 「本が閉じた」ように見えない不具合の原因)。表表紙(BinderFrontCover)を
+// ConfirmedCardより後のDOM順で描画される独立した要素に分離することで、
+// 特別なzIndexの調整をしなくても自然に「開いている間はカードの外(左)に
+// あるので隠れず、回転してカードの真上に重なる頃には既にDOM順で手前」
+// という正しい重なりになる。
 const BINDER_MARGIN_TB = 9;
 const BINDER_MARGIN_RIGHT = 9;
-const BINDER_MARGIN_LEFT = 34;
+const BINDER_MARGIN_LEFT = 9;
 
-function BinderSpread({ closed, width, aspect }: { closed: boolean; width: number; aspect: string }) {
+// 裏表紙側。束の真後ろに固定し、開閉では一切動かない。ConfirmedCardより
+// 先にDOM上へ置くことで、常にカードの下に隠れる(余白の外周だけが覗く)。
+function BinderBackPanel() {
+  return (
+    <div style={{
+      position: "absolute", top: -BINDER_MARGIN_TB, right: -BINDER_MARGIN_RIGHT, bottom: -BINDER_MARGIN_TB, left: -BINDER_MARGIN_LEFT,
+      background: PAPER, overflow: "hidden", pointerEvents: "none",
+      borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
+      borderTop: `1px solid ${HAIRLINE}`, borderRight: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`,
+    }}>
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(100deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
+    </div>
+  );
+}
+
+// 表表紙側。閉じるまでは画面左へフラットに開いたまま、右端(蝶番)を軸に
+// 回転して閉じる。backfaceVisibilityは意図的に指定しない(裏返る後半でも
+// 消えず、束の上に居座って覆い隠し続けるため)。perspectiveを浅くしている
+// のは、閉じる途中(90度前後)で紙が画面手前へ迫り出す視差をはっきり感じ
+// させるため。ConfirmedCardより後のDOM順で描画することで、閉じ終わった
+// ときに自然にカードの手前へ重なる(詳細は上のコメント参照)。
+function BinderFrontCover({ closed, width, aspect }: { closed: boolean; width: number; aspect: string }) {
   const outerWidth = width + BINDER_MARGIN_LEFT + BINDER_MARGIN_RIGHT;
-  // 表表紙側はaspectRatioで高さを逆算せず、裏表紙側(wrapperの実高さ)と
-  // 必ず同じ高さになるよう明示的に計算する。以前はここもaspectRatioに
-  // 任せていたが、表表紙の幅(outerWidth、左右マージン込み)にaspect比を
-  // そのまま掛けると、上下マージン(BINDER_MARGIN_TB)ぶんだけ裏表紙側の
-  // 実際の高さとズレてしまい、閉じ終わったときに束の上端(または下端)が
-  // わずかに覆いきれず、カードが角にはみ出して見える不具合の原因になって
-  // いた。
+  // aspectRatioで高さを逆算せず、裏表紙側と必ず同じ高さになるよう明示的に
+  // 計算する。以前はここもaspectRatioに任せていたが、表表紙の幅
+  // (outerWidth、左右マージン込み)にaspect比をそのまま掛けると、上下
+  // マージン(BINDER_MARGIN_TB)ぶんだけ裏表紙側の実際の高さとズレてしまい、
+  // 閉じ終わったときに束の上端(または下端)がわずかに覆いきれず、カードが
+  // 角にはみ出して見える不具合の原因になっていた。
   const [aspNum, aspDen] = aspect.split("/").map((s) => parseFloat(s.trim()));
   const cardHeight = width * (aspDen / aspNum);
   const outerHeight = cardHeight + BINDER_MARGIN_TB * 2;
   return (
-    <div style={{ position: "absolute", top: -BINDER_MARGIN_TB, right: -BINDER_MARGIN_RIGHT, bottom: -BINDER_MARGIN_TB, left: -BINDER_MARGIN_LEFT, perspective: 900, pointerEvents: "none" }}>
-      {/* 裏表紙側(リングが付く方)。束の真後ろに固定し、開閉では一切動かない。 */}
+    <div style={{
+      position: "absolute", top: -BINDER_MARGIN_TB, left: -BINDER_MARGIN_LEFT - outerWidth, width: outerWidth, height: outerHeight,
+      perspective: 900, pointerEvents: "none", zIndex: closed ? 30 : 0,
+    }}>
       <div style={{
-        position: "absolute", inset: 0, background: PAPER,
-        borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS, overflow: "hidden", zIndex: 0,
-        borderTop: `1px solid ${HAIRLINE}`, borderRight: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`,
-      }}>
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(100deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
-      </div>
-      {/* 表表紙側。閉じるまでは画面左へフラットに開いたまま、右端(蝶番)を
-          軸に回転して閉じる。backfaceVisibilityは意図的に指定しない
-          (裏返る後半でも消えず、束の上に居座って覆い隠し続けるため)。
-          perspectiveを浅くしているのは、閉じる途中(90度前後)で紙が
-          画面手前へ迫り出す視差をはっきり感じさせるため。 */}
-      <div style={{
-        position: "absolute", top: 0, left: -outerWidth, width: outerWidth, height: outerHeight,
-        transformOrigin: "100% 50%",
+        position: "absolute", inset: 0, transformOrigin: "100% 50%",
         transform: `rotateY(${closed ? 180 : 0}deg)`,
         transition: "transform 0.34s cubic-bezier(0.45,0,0.2,1)",
-        zIndex: closed ? 30 : 0,
       }}>
         <div style={{
-          position: "absolute", inset: 0, background: PAPER,
-          borderTopLeftRadius: COVER_RADIUS, borderBottomLeftRadius: COVER_RADIUS, overflow: "hidden",
+          position: "absolute", inset: 0, background: PAPER, overflow: "hidden",
+          borderTopLeftRadius: COVER_RADIUS, borderBottomLeftRadius: COVER_RADIUS,
           borderTop: `1px solid ${HAIRLINE}`, borderLeft: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`,
         }}>
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(260deg, rgba(28,28,30,0.07) 0%, rgba(28,28,30,0) 34%)" }} />
@@ -316,65 +400,11 @@ function BinderSpread({ closed, width, aspect }: { closed: boolean; width: numbe
   );
 }
 
-// バインダーのリングが実際にカードの穴を通っているように見せる金具。
-// 参考にした実物のバインダー写真では、リングの大部分は紙の左に開いた
-// 余白(蝶番側)にそのまま見えていて、紙の穴を貫くのはリングの右側の
-// 弧だけだった。そのため、リングの中心はカードの左端よりだいぶ左
-// (BINDER_MARGIN_LEFTで確保した余白の中)に置き、右端だけが穴の位置
-// まで届く大きめの楕円にしている。
-//   - RingHardwareBack: リングの全形。カードより先にDOM上へ置く
-//     (zIndex指定なし=auto)ことで、カードの実寸に重なる右側だけが
-//     カードの下に隠れ、左側(余白の中)はそのまま見える。
-//   - RingHardwareFront: 穴のすぐ周りだけを切り取った小窓の中に、
-//     RingHardwareBackと寸分たがわぬ同じ楕円をもう一度重ねる。カードより
-//     手前(zIndex高)に置くことで、「穴から金具の弧が顔を出している」
-//     ように見せる。窓の外側(穴から離れた場所)には何も描かないため、
-//     カードの上に別のリングが浮いて見えることはない。
-// どちらもカード1枚1枚が持つものでも、開閉するBinderSpreadの表表紙
-// パネルにくっついて動くものでもないため、呼び出し側(ConfirmedStack)で
-// ドラッグで動くConfirmedCardの内側にも、開閉するBinderSpreadの内側にも
-// 置かず、常に先頭カードの穴の位置に静止したまま描く。
-const RING_WIDTH = 50;
-const RING_HEIGHT = 20;
-const RING_RIGHT_X = 22; // 穴(中心x≈17)へわずかに重なる位置まで届かせる
-const RING_LEFT_X = RING_RIGHT_X - RING_WIDTH;
-const RING_WINDOW_LEFT = 9;
-const RING_WINDOW_WIDTH = 17;
-const RING_STYLE: React.CSSProperties = {
-  position: "absolute", inset: 0, borderRadius: "50%",
-  border: "3.5px solid #D3CFC4",
-  boxShadow: "0 1px 2px rgba(23,23,21,0.3), inset 0 1px 1px rgba(255,255,255,0.55)",
-};
-
-function RingHardwareBack() {
-  return (
-    <>
-      {HOLE_YS.map((y) => (
-        <div key={y} style={{ position: "absolute", left: RING_LEFT_X, top: y, transform: "translateY(-50%)", width: RING_WIDTH, height: RING_HEIGHT, pointerEvents: "none" }}>
-          <div style={RING_STYLE} />
-        </div>
-      ))}
-    </>
-  );
-}
-
-function RingHardwareFront() {
-  return (
-    <>
-      {HOLE_YS.map((y) => (
-        <div key={y} style={{ position: "absolute", left: RING_WINDOW_LEFT, top: y, transform: "translateY(-50%)", width: RING_WINDOW_WIDTH, height: RING_HEIGHT, overflow: "hidden", zIndex: 4, pointerEvents: "none" }}>
-          <div style={{ ...RING_STYLE, inset: "auto", position: "absolute", left: RING_LEFT_X - RING_WINDOW_LEFT, top: 0, width: RING_WIDTH, height: RING_HEIGHT }} />
-        </div>
-      ))}
-    </>
-  );
-}
-
 // ブリーフタブのカード(上部が写真、下部が白背景の説明)と統一したデザイン。
 // 角丸も他のタブのカード(PosterCardなど)と同じく四隅とも丸める。以前は
 // バインダーの表紙面に合わせて開く側(右)だけを丸めていたが、「カードの
 // デザインは他のタブと共通にしてほしい、以前の方が良かった」という指摘を
-// 受けて元の四隅丸めに戻した。バインダー側の角丸は変えず(BinderSpread、
+// 受けて元の四隅丸めに戻した。バインダー側の角丸は変えず(BinderBackPanel/BinderFrontCover、
 // 開く側だけを丸めた表紙らしい形のまま)、あくまでカード自体だけを他の
 // アイテムカードと揃える。パンチ穴は他のタブと同じPunchHoles(common.tsx)
 // を使い、位置・見た目を揃えている。穴はカード全体の左端を通しで貫くため、
@@ -526,9 +556,9 @@ function ConfirmedCard({ item, elRef, stackTransform, hide, onMarkDone, onRemove
 // 3段階のアニメーションのあとに実際の登録処理を呼ぶ。
 const CONFIRMED_MAX_WIDTH = 380;
 // 確定カード自体の幅。以前はコンテナいっぱい(最大380px)に広げていたが、
-// 大きすぎるという指摘を受け、1枚1枚をぐっと小さくした。パンチ穴・リング・
+// 大きすぎるという指摘を受け、1枚1枚をぐっと小さくした。パンチ穴・
 // KEEPバッジのサイズはこのCARD_WIDTHを基準に決めているため、ここを変えれば
-// バインダー(BinderSpread、widthをそのまま渡している)も含めて一括で
+// バインダー(BinderFrontCover、widthをそのまま渡している)も含めて一括で
 // 比率が揃う。
 const CARD_WIDTH = 220;
 const STACK_MS = 420;
@@ -624,7 +654,7 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
           flex: 1, minHeight: 0, overflowY: falling ? "hidden" : "auto",
           // overflowXは明示していないとoverflowYがvisible以外の値を持つ
           // せいで暗黙にautoへ計算され、画面の左へはみ出す表表紙パネル
-          // (BinderSpread)がスクロールで引っかかったり中途半端に見切れたり
+          // (BinderFrontCover)がスクロールで引っかかったり中途半端に見切れたり
           // する。hiddenを明示し、画面の端できれいに切れるだけにする。
           overflowX: "hidden", WebkitOverflowScrolling: "touch",
           // このリストは外側(AppShellのdata-tab-scroll-root)のさらに内側で
@@ -640,23 +670,22 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
         <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, margin: "0 auto", padding: `6px 16px calc(${NAV_OFFSET} + 92px)` }}>
           <div style={{ fontSize: 10, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "8px 2px 16px" }}>{dateLabel} ・ {items.length}件</div>
           {/* カード自身はスタック先の座標へ移動するだけで、回転はさせない。
-              「閉じる」動きはカードではなく、常に先頭カードの背後にいる
-              BinderSpread(=見開きバインダー)の表表紙パネルが担う。
+              「閉じる」動きはカードではなく、常に先頭カードの背後・手前にいる
+              裏表紙(BinderBackPanel)・表表紙(BinderFrontCover)が担う。
               スタックが揃ったところへ表表紙がclosed=trueで束の真上へ
               回り込みながら閉じてくることで、「画面左に開いていた表紙が、
               積み上がったカードの上にパタンと閉じてくる」動きになる。 */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
             {items.map((it, i) => (
               // zIndexを明示するのは、スタック中に後ろのカードが先頭カード
-              // (リング・表紙を持つi===0)の上に乗って見えてしまわないようにする
-              // ため。指定しないとflexの子はDOM順で後勝ちになり、スタックで
-              // 重なった瞬間に後方のカードが先頭カードを覆い隠してしまっていた。
+              // (表紙を持つi===0)の上に乗って見えてしまわないようにするため。
+              // 指定しないとflexの子はDOM順で後勝ちになり、スタックで重なった
+              // 瞬間に後方のカードが先頭カードを覆い隠してしまっていた。この
+              // zIndexを持つdiv自身が新しい重なりコンテキストを作るため、内側の
+              // BinderFrontCoverとConfirmedCardの前後関係はこのコンテキストの
+              // 中だけで完結して正しく比較される。
               <div key={it.id} style={{ position: "relative", width: CARD_WIDTH, zIndex: items.length - i }}>
-                {i === 0 && <BinderSpread closed={closed} width={CARD_WIDTH} aspect={ITEM_CARD_ASPECT} />}
-                {/* リングの奥側(バインダーの背に固定、カードより先にDOM上へ
-                    置くことでカードの下に潜る)。カードの実寸に重なる部分は
-                    カードそのものに隠れ、左端からはみ出た部分だけが見える。 */}
-                {i === 0 && <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><RingHardwareBack /></div>}
+                {i === 0 && <BinderBackPanel />}
                 <ConfirmedCard
                   item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
                   stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px) scale(${i === 0 ? 1 : 0.92})` : undefined}
@@ -665,11 +694,7 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
                   onMarkDone={() => onMarkDone(it)}
                   onRemove={() => onDrop(it)}
                 />
-                {/* リングの手前側(カードより前面、穴の真上だけに小さく重ねて
-                    「穴から輪が顔を出している」ように見せる)。常に先頭カードの
-                    穴の位置に静止したままここに1つだけ描く(=一番上のカードだけが
-                    今リングに通っているように見える)。 */}
-                {i === 0 && <div style={{ position: "absolute", inset: 0, zIndex: 25, pointerEvents: "none" }}><RingHardwareFront /></div>}
+                {i === 0 && <BinderFrontCover closed={closed} width={CARD_WIDTH} aspect={ITEM_CARD_ASPECT} />}
               </div>
             ))}
           </div>

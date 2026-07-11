@@ -429,8 +429,15 @@ function BinderSpineFace({ accent }: { accent: Accent }) {
 // 無地の側面(リングの反対側=バインダーの右端=開く側)。表紙が背表紙を
 // 軸にわずかに開くため、ここは奥まった隙間の陰として見える程度でよく、
 // 特定の色を持たせず影のグラデーションだけにしている。
+// 表紙面(BinderCoverFace)側は開く側の角だけ丸めているが、この面は今まで
+// 角丸を持たない素の四角のままだった。表紙・背表紙・側面をそれぞれ独立
+// した平面として貼り合わせて立体に見せている都合上、正面からわずかでも
+// 角度が付く(GoalsTabのrotateY(-14度)など)と、表紙の丸まった角のすぐ
+// 脇からこの面の四角い角が覗いてしまい、「角丸のテクスチャを四角い箱に
+// 貼っただけ」という不自然な継ぎ目になっていた。この面自体にも同じ半径の
+// 角丸を与え、表紙の丸みと視覚的に馴染むようにする。
 function BinderEdgeFace() {
-  return <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,0.18), rgba(0,0,0,0.04))" }} />;
+  return <div style={{ position: "absolute", inset: 0, borderRadius: COVER_RADIUS, background: "linear-gradient(90deg, rgba(0,0,0,0.18), rgba(0,0,0,0.04))" }} />;
 }
 
 // 裏表紙(表紙面の真裏)。実物のバインダーと同じく無地。表紙側の角丸(右端)

@@ -7,7 +7,7 @@ import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
+import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
 import { dayInfo, domainOf, hasPlace, haptic, img, mapsUrl, mostRecentThursday, originBadge, pinPosition, shade } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
 
@@ -1051,34 +1051,33 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   };
   return (
     <>
-      {/* Masthead+戻るチップは、確定ビュー(ConfirmedStack)の独立スクロール
-          領域とは別枠のsticky headerにしておく。AppShell側のscrollLocked
-          (data-tab-scroll-rootのoverflow:hidden)が主な防御線だが、
-          以前実際に「外側がロックされ忘れてConfirmedStackと二重スクロール
-          する」regressionが一度発生している(HANDOFF-CURRENT.md §7.5)。
-          その種の再発に対する保険として、このヘッダー自身もtop:0の
-          stickyにしておけば、万一外側が意図せずスクロール可能な状態に
-          戻っても画面上部に留まり続ける。 */}
-      <div style={{ position: "sticky", top: 0, zIndex: 2, background: BG }}>
-        <Masthead title="プラン" statValue={magazine && !showMap ? magItems.length : stocked.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
-        {showMap && magazine && (
-          <button onClick={() => { setMapMode(false); setSelection({ itemIds: [] }); }} style={backChipStyle}>
-            <ArrowLeft size={13} strokeWidth={2.4} />
-            バインダーに戻る
-          </button>
-        )}
-        {!showMap && magazine && (
-          // 確定後は選んだカードが縦一列に大きく並ぶリストになり、その上に
-          // 開いたバインダーが覗く。「選び直す」で地図に戻れるのは以前と同じ。
-          <button onClick={() => {
-            setSelection({ itemIds: [...magazine.itemIds] });
-            setMapMode(true);
-          }} style={backChipStyle}>
-            <ArrowLeft size={13} strokeWidth={2.4} />
-            選び直す
-          </button>
-        )}
-      </div>
+      {/* Masthead+戻るチップは、確定ビュー(ConfirmedStack)が持つ独立スクロール
+          領域(scrollRef)の外側、普通のflowに置くだけでよい。ConfirmedStack
+          自身がoverflow-y:autoで自分の内容を自分の箱の中だけにクリップする
+          ため、この外側の要素とカードが視覚的に重なることは構造上あり得ない。
+          一時position:stickyを試したが、sticky化すると「スクロール中の
+          コンテンツがヘッダーの下に潜り込む」という仕様通りの挙動により、
+          カード上端がヘッダーの背景で不透明に切り取られて見える新しい不具合を
+          生んだため撤回した(元々ここはスクロールしない領域なので、
+          stickyにする理由がそもそも無かった)。 */}
+      <Masthead title="プラン" statValue={magazine && !showMap ? magItems.length : stocked.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
+      {showMap && magazine && (
+        <button onClick={() => { setMapMode(false); setSelection({ itemIds: [] }); }} style={backChipStyle}>
+          <ArrowLeft size={13} strokeWidth={2.4} />
+          バインダーに戻る
+        </button>
+      )}
+      {!showMap && magazine && (
+        // 確定後は選んだカードが縦一列に大きく並ぶリストになり、その上に
+        // 開いたバインダーが覗く。「選び直す」で地図に戻れるのは以前と同じ。
+        <button onClick={() => {
+          setSelection({ itemIds: [...magazine.itemIds] });
+          setMapMode(true);
+        }} style={backChipStyle}>
+          <ArrowLeft size={13} strokeWidth={2.4} />
+          選び直す
+        </button>
+      )}
 
       {showMap ? (
         <>

@@ -135,7 +135,7 @@ export function AppShell() {
   }, [appState?.wishes, appState?.items]);
 
   if (!appState) {
-    return <div style={{ minHeight: "100dvh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
+    return <div style={{ minHeight: "100svh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
   }
 
   const interestCount = (appState.profile?.interests ?? []).length;
@@ -163,7 +163,7 @@ export function AppShell() {
   // そのまま残り、次のタブがそれを引き継いでしまう。scrollTo(0,0)を都度
   // 呼ぶ対症療法を重ねても、実機の慣性スクロールとのタイミング競合で
   // すり抜けることがあった。
-  // 根本対応として、外側の器(この最外周div)は常にちょうど100dvhの高さで
+  // 根本対応として、外側の器(この最外周div)は常にちょうどビューポートの高さで
   // overflow:hiddenにしてウィンドウ自体は絶対にスクロールしないようにし、
   // 代わりにタブの中身を包むこの内側のdivだけがoverflow-y:autoでスクロール
   // する。key={tab}でタブ切替のたびにこの内側divごとDOMが作り直されるため、
@@ -172,9 +172,21 @@ export function AppShell() {
   // させたくない(カード自体で完結する設計)ので、ここでoverflowを明示的に
   // hiddenにする(以前はブリーフタブ側でdocument.body.style.overflowを
   // 直接いじっていたが、bodyがそもそもスクロールしなくなったので不要になった)。
+  // 高さの単位は100dvhではなく100svhにしている。dvh(動的ビューポート高)は
+  // SafariのURLバーの伸縮に追従して値がライブに変わる設計だが、この器は
+  // そもそも中身が一切スクロールしない(スクロールは内側のdivが担当し、
+  // ブリーフタブ滞在中はそれすらhidden)ため、ライブ追従できる利点を
+  // 一切使っていない。それでいて実機Safariのdvhはツールバーの動きと無関係な
+  // タイミング(DOM更新のたびなど)でも値が揺れることがあり、これが
+  // ブリーフタブでスワイプ確定・育成カード昇格の瞬間にカード全体がガクッと
+  // 動く不具合の一因と疑われる(HANDOFF-CURRENT.md §7参照)。svh(小さい方の
+  // ビューポート高=ツールバー表示時の高さ)は固定値でライブに変化しないため、
+  // この揺れが構造的に起こらなくなる。代わりにツールバーが後から隠れた場合は
+  // 器の下に数十pxの余白(背景色のみ)が残ることがあるが、スクロールを
+  // 目的とした値ではないためこのアプリでは実害がない。
   const scrollLocked = !showProfile && tab === "brief";
   return (
-    <div style={{ height: "100dvh", overflow: "hidden", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
+    <div style={{ height: "100svh", overflow: "hidden", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
       <div data-tab-scroll-root style={{
         width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
         overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",

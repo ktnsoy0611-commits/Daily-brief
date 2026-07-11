@@ -1,13 +1,13 @@
 "use client";
 
-import { Bookmark, Check, Plus, X } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { ArrowLeft, Bookmark, Check, Plus, X } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
+import { AREA_COORDS, BG, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
 import { dayInfo, domainOf, hasPlace, haptic, img, mapsUrl, mostRecentThursday, originBadge, pinPosition, shade } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
 
@@ -755,7 +755,7 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
         // zIndexはnav(25)より高くしておく。以前は20(グラデーションの15より
         // 上)にしていたが、nav自体のピルの影(box-shadow)がわずかに滲んで
         // ボタンの下端にnavの半透明なマスクがかかったように見える不具合が
-        // あった。バインド！はどこからでも押せる主要な操作なので、navより
+        // あった。この登録ボタンはどこからでも押せる主要な操作なので、navより
         // 常に手前に出すことで境目のにじみごと解消する。
         // zIndexの数字を上げるだけでは実機Safariで直らなかった。このボタンは
         // AppShellの`key={tab}`配下(タブ切替のたびに作り直される内側の
@@ -767,6 +767,14 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
         // zIndex比較にする。他のフローティングUI(PlanSelectionBarのバインド！等、
         // 元々AppShellの最上位に直接置かれているため今回の不具合が出ていない
         // もの)と同じ土俵に立たせる、というのがこの変更の意図。
+        // ラベルは以前ここも「バインド！」だった。選択を今日のプランへ
+        // 確定する操作(PlanSelectionBar側のバインド！)と、この確定ビューを
+        // 閉じて未実行のItemを候補へ戻しアーカイブへ向かう操作
+        // (registerBinder、実体は全くの別物)が同じ文言だったため、確定
+        // 直後にユーザーがこれも「同じバインド操作」だと思って続けて押し、
+        // せっかくplannedにしたItemがcandidateへ押し戻されてストックに
+        // 残り続けて見える不具合の直接原因になっていた。文言を分けて
+        // 操作の違いを明確にする。
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 26, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
           {/* navより上に浮かせる分の余白はpaddingではなくmarginで確保する。
               pointerEvents:"auto"の要素はpadding込みのボーダーボックス全体が
@@ -782,7 +790,7 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
               width: "100%", padding: "15px 0", background: INK, color: PAPER, border: "none", borderRadius: 999,
               cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: SOFT_SHADOW_LG,
             }}>
-              バインド！
+              今日を登録する
             </button>
           </div>
         </div>,
@@ -1037,15 +1045,51 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
     }
     persist(next);
   };
+  // 以前は素のテキストリンク(背景なし)だったため、ページ全体が想定外に
+  // スクロールした際に本文と見分けがつかず流れて消えて見えた
+  // (globals.cssのoverflow修正が根本対応だが、それとは別にヘッダーとして
+  // 視認・タップしやすい見た目に作り直す)。nav・statチップと同じ
+  // 「PAPER地+SOFT_SHADOWで浮く丸ボタン」語彙に揃え、単なるインライン
+  // リンクではなく明確な「戻る」チップとして独立させる。
+  const backChipStyle: CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 6, alignSelf: "flex-start",
+    background: PAPER, border: "none", borderRadius: 999, padding: "8px 16px 8px 12px",
+    cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: INK,
+    boxShadow: SOFT_SHADOW, marginBottom: 12,
+  };
   return (
     <>
-      <Masthead title="プラン" statValue={magazine && !showMap ? magItems.length : stocked.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
+      {/* Masthead+戻るチップは、確定ビュー(ConfirmedStack)の独立スクロール
+          領域とは別枠のsticky headerにしておく。AppShell側のscrollLocked
+          (data-tab-scroll-rootのoverflow:hidden)が主な防御線だが、
+          以前実際に「外側がロックされ忘れてConfirmedStackと二重スクロール
+          する」regressionが一度発生している(HANDOFF-CURRENT.md §7.5)。
+          その種の再発に対する保険として、このヘッダー自身もtop:0の
+          stickyにしておけば、万一外側が意図せずスクロール可能な状態に
+          戻っても画面上部に留まり続ける。 */}
+      <div style={{ position: "sticky", top: 0, zIndex: 2, background: BG }}>
+        <Masthead title="プラン" statValue={magazine && !showMap ? magItems.length : stocked.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
+        {showMap && magazine && (
+          <button onClick={() => { setMapMode(false); setSelection({ itemIds: [] }); }} style={backChipStyle}>
+            <ArrowLeft size={13} strokeWidth={2.4} />
+            バインダーに戻る
+          </button>
+        )}
+        {!showMap && magazine && (
+          // 確定後は選んだカードが縦一列に大きく並ぶリストになり、その上に
+          // 開いたバインダーが覗く。「選び直す」で地図に戻れるのは以前と同じ。
+          <button onClick={() => {
+            setSelection({ itemIds: [...magazine.itemIds] });
+            setMapMode(true);
+          }} style={backChipStyle}>
+            <ArrowLeft size={13} strokeWidth={2.4} />
+            選び直す
+          </button>
+        )}
+      </div>
 
       {showMap ? (
         <>
-          {magazine && (
-            <button onClick={() => { setMapMode(false); setSelection({ itemIds: [] }); }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← バインダーに戻る</button>
-          )}
           <MapPlanner
             stocked={stocked} draftSelection={draftSelection}
             onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onTogglePlan={toggleDraftPlan}
@@ -1058,21 +1102,13 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
               ようになったため、確定の入口も1つにまとめている。 */}
         </>
       ) : magazine && (
-        // 確定後は選んだカードが縦一列に大きく並ぶリストになり、その上に
-        // 開いたバインダーが覗く。「選び直す」で地図に戻れるのは以前と同じ。
-        <>
-          <button onClick={() => {
-            setSelection({ itemIds: [...magazine.itemIds] });
-            setMapMode(true);
-          }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← 選び直す</button>
-          <ConfirmedStack
-            items={magItems}
-            dateLabel={dayInfo(magazine.decidedAt).label}
-            onMarkDone={(item) => markDoneInMagazine(item.id)}
-            onDrop={(item) => removeFromMagazine(item.id)}
-            onRegister={registerBinder}
-          />
-        </>
+        <ConfirmedStack
+          items={magItems}
+          dateLabel={dayInfo(magazine.decidedAt).label}
+          onMarkDone={(item) => markDoneInMagazine(item.id)}
+          onDrop={(item) => removeFromMagazine(item.id)}
+          onRegister={registerBinder}
+        />
       )}
 
       <BinderModal

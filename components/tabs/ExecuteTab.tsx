@@ -648,34 +648,20 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   const [registerPhase, setRegisterPhase] = useState<null | "stack" | "close" | "fall">(null);
   const [stackOffsets, setStackOffsets] = useState<Record<string, number>>({});
   const cardEls = useRef<Record<string, HTMLDivElement | null>>({});
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  // この確定ビューが表示されている間、外側のAppShellのタブ用スクロール
-  // コンテナ([data-tab-scroll-root])はAppShell側のscrollLockedにより
-  // overflow-y:hiddenへロックされている(このビュー専用のscrollRefだけが
-  // スクロールを担う設計。詳細はAppShell.tsxのscrollLockedのコメント参照)。
-  // 以前はこの外側コンテナに対しても直接killMomentumScrollを呼んでいたが、
-  // killMomentumScrollは末尾で必ずoverflowYを"auto"に書き戻すため、
-  // AppShell側が設定したhiddenを問答無用で上書きしてロックを壊してしまい、
-  // 確定ビューをスクロールすると外側ごと動いてMasthead・「← 選び直す」
-  // ボタンが画面外へ流れる不具合の直接の原因になっていた。ロックはAppShell
-  // 側が一元管理するため、ここでは自分のリスト(scrollRef)だけを対象にする。
-  useEffect(() => {
-    killMomentumScroll(scrollRef.current);
-  }, []);
 
   // バインドボタンはどこからでも押せる固定位置にあるため、リストを
   // 下の方までスクロールした状態で押すと、スタック先である先頭カードが
   // 画面外(上)にあり、以降のスタック/閉じる/落ちるのアニメーションが
-  // すべて見えない場所で起きてしまっていた。押した瞬間にまずリストを
+  // すべて見えない場所で起きてしまっていた。押した瞬間にまずページを
   // 先頭へ戻し(「カメラ」を追従させ)、そのあとで各カードの位置を
-  // 測ってアニメーションを組み立てる。外側のタブスクロールコンテナは
-  // 対象にしない理由は上のuseEffectのコメント参照(AppShell側のロックを
-  // 壊してしまうため)。
+  // 測ってアニメーションを組み立てる。このリストは他のタブと同じ
+  // AppShellの共有スクロールコンテナ([data-tab-scroll-root])に乗って
+  // いる(専用のスクロール領域は持たない)ため、対象はそちらになる。
   const handleRegister = () => {
     if (registerPhase || items.length === 0) return;
     haptic(16);
-    killMomentumScroll(scrollRef.current);
+    const root = document.querySelector<HTMLElement>("[data-tab-scroll-root]");
+    killMomentumScroll(root);
     const topEl = items[0] ? cardEls.current[items[0].id] : null;
     const topY = topEl?.getBoundingClientRect().top ?? 0;
     const offsets: Record<string, number> = {};
@@ -696,22 +682,16 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
 
   return (
     <>
+      {/* 以前はこのリスト自身が専用のoverflow-y:autoスクロール領域を持ち、
+          外側(data-tab-scroll-root)をロックしてMasthead・「選び直す」を
+          常時固定表示させていた。ユーザーからの指摘により撤回: 他のタブは
+          すべてMasthead込みで外側の一枚のスクロールに乗っており、下まで
+          スクロールすればカードが画面の一番上まで届く。この入れ子スクロール
+          構成だけがその挙動と違い、ヘッダーの下で境目ができてカードが
+          見切れて見える原因になっていた。他タブと同じくAppShellの共有
+          スクロールに乗るだけの、ただのブロックにする。 */}
       <div
-        ref={scrollRef} className="no-scrollbar"
         style={{
-          flex: 1, minHeight: 0, overflowY: falling ? "hidden" : "auto",
-          // overflowXは明示していないとoverflowYがvisible以外の値を持つ
-          // せいで暗黙にautoへ計算され、画面の左へはみ出す表表紙パネル
-          // (BinderFrontCover)がスクロールで引っかかったり中途半端に見切れたり
-          // する。hiddenを明示し、画面の端できれいに切れるだけにする。
-          overflowX: "hidden", WebkitOverflowScrolling: "touch",
-          // このリストは外側(AppShellのdata-tab-scroll-root)のさらに内側で
-          // 独立してスクロールする入れ子構造になっている。overscrollBehavior
-          // を指定していないと、このリストの先頭/末尾を超えて指を動かした
-          // 瞬間にスクロールの主体が外側へ伝播(スクロールチェイニング)し、
-          // 外側の背景ごと一緒に動いて「選び直す」のあたりに割り込んで
-          // 見えることがあった。containで this リスト自身の中に閉じ込める。
-          overscrollBehaviorY: "contain", overscrollBehaviorX: "none",
           ...(falling ? { transform: "translateY(60%)", opacity: 0, transition: `transform ${FALL_MS}ms cubic-bezier(0.55,0,1,0.45), opacity ${FALL_MS - 40}ms ease-in` } : {}),
         }}
       >
@@ -1051,15 +1031,14 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   };
   return (
     <>
-      {/* Masthead+戻るチップは、確定ビュー(ConfirmedStack)が持つ独立スクロール
-          領域(scrollRef)の外側、普通のflowに置くだけでよい。ConfirmedStack
-          自身がoverflow-y:autoで自分の内容を自分の箱の中だけにクリップする
-          ため、この外側の要素とカードが視覚的に重なることは構造上あり得ない。
-          一時position:stickyを試したが、sticky化すると「スクロール中の
-          コンテンツがヘッダーの下に潜り込む」という仕様通りの挙動により、
-          カード上端がヘッダーの背景で不透明に切り取られて見える新しい不具合を
-          生んだため撤回した(元々ここはスクロールしない領域なので、
-          stickyにする理由がそもそも無かった)。 */}
+      {/* Masthead+戻るチップは、他のタブと同じくAppShellの共有スクロール
+          ([data-tab-scroll-root])に乗る普通のflow要素。以前はConfirmedStack
+          専用の入れ子スクロール領域を作り、外側をロックしてこのヘッダーを
+          常時固定表示させていたが、他タブと挙動が揃わず(スクロールしても
+          カードが画面上端まで届かない)、ユーザーの指摘で撤回した。
+          position:stickyも保険として試したが、「スクロール中のコンテンツが
+          ヘッダーの下に潜り込む」挙動によりカード上端が不透明な背景で
+          切り取られて見える不具合を生んだため、これも撤回済み。 */}
       <Masthead title="プラン" statValue={magazine && !showMap ? magItems.length : stocked.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
       {showMap && magazine && (
         <button onClick={() => { setMapMode(false); setSelection({ itemIds: [] }); }} style={backChipStyle}>

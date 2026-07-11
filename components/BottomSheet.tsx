@@ -82,6 +82,15 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
       backdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
       WebkitBackdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
       transition: "background 0.3s ease, backdrop-filter 0.3s ease, -webkit-backdrop-filter 0.3s ease",
+      // requestClose()はsetOpen(false)で背景のフェードアウトを開始した
+      // あと、実際にこの要素がアンマウントされるまで220ms待つ(トランジション
+      // を最後まで見せるため)。その間もこの要素は画面全体を覆うfixed+
+      // inset:0のままで、pointerEventsを閉じていなかったため、閉じている
+      // 最中の約220msだけ画面のどこをタップしても(たとえば直後に押した
+      // フローティングのバインド！ボタンも)このdivに奪われて何も起きない、
+      // という無反応に見える不具合があった。閉じ始めた瞬間(open===false)に
+      // pointerEventsをnoneにして、以後のタップを素通りさせる。
+      pointerEvents: open ? "auto" : "none",
     }}>
       <div style={{
         position: "fixed", top: vv ? `${vv.top}px` : 0, left: 0, right: 0, height: vv ? `${vv.height}px` : "100dvh",
@@ -90,7 +99,7 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
         pointerEvents: "none",
       }}>
         <div style={{
-          width: "calc(100% - 48px)", maxWidth: 380, maxHeight, pointerEvents: "auto",
+          width: "calc(100% - 48px)", maxWidth: 380, maxHeight, pointerEvents: open ? "auto" : "none",
           display: "flex", flexDirection: "column", overflow: "hidden",
           transform: open ? "translateY(0) scale(1)" : "translateY(14px) scale(0.94)",
           opacity: open ? 1 : 0,

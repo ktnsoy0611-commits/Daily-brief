@@ -189,15 +189,18 @@ export function AppShell() {
   // この揺れが構造的に起こらなくなる。代わりにツールバーが後から隠れた場合は
   // 器の下に数十pxの余白(背景色のみ)が残ることがあるが、スクロールを
   // 目的とした値ではないためこのアプリでは実害がない。
-  // プランタブの確定ビュー(バインダー)も、自分専用のスクロール領域
-  // (ExecuteTab内のscrollRef)を持つ点でブリーフタブと同じ構造。ここを
-  // ロックし忘れると、外側のこのコンテナも一緒にoverflow-y:autoでスクロール
-  // できてしまい(二重スクロール)、確定ビューのリストを下へスクロール
-  // した拍子に外側ごと動いてMasthead・「← 選び直す」ボタンが画面外へ
-  // 流れて隠れる不具合になる。地図(選択)画面の方はExecuteTab自身が専用の
-  // スクロール領域を持たず、この外側のスクロールに乗って地図・棚を見せる
-  // 設計なので、そちらではロックしない(execMapMode===trueの間は対象外)。
-  const scrollLocked = !showProfile && (tab === "brief" || (tab === "execute" && !!appState.magazine && !execMapMode));
+  // プランタブの確定ビュー(バインダー)は、以前ここに専用の入れ子スクロール
+  // 領域(ExecuteTab内のscrollRef、外側をロックしてMasthead・「選び直す」を
+  // 固定表示させる構成)を持たせていたが、ユーザーからの指摘により撤回した:
+  // 他のタブ(ストック・アーカイブ等)はすべてMasthead込みでこの外側の
+  // スクロールに乗る一枚の流れになっており、下までスクロールすればカードが
+  // 画面の一番上まで届く。実行タブだけMastheadを画面上部に固定表示させる
+  // 設計は他タブと挙動が異なり、「選び直すの下で境目ができてカードが
+  // 見切れる」という体感の原因になっていた。他タブと同じ一枚のスクロール
+  // に統一し、Mastheadも他タブ同様にスクロールで流れるようにする
+  // (execMapModeはロックの判定にはもう使わないが、選択編集の状態管理
+  // 自体はExecuteTab内で引き続き必要)。
+  const scrollLocked = !showProfile && tab === "brief";
   return (
     <div style={{ height: "100svh", overflow: "hidden", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
       <div data-tab-scroll-root style={{

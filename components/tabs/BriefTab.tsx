@@ -1,7 +1,7 @@
 "use client";
 
 import { Flag, Sprout } from "lucide-react";
-import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
 import { CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
@@ -134,7 +134,12 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             のアニメーションと同時に本文の折り返し位置が一瞬ガクッとズレて
             見える不具合になっていた(flag矢印ボタン自体はisTopの時だけ
             描画されるが、そのための余白は常に確保しておく)。 */}
-        <p style={{ margin: 0, flex: 1, fontFamily: SANS, fontSize: 12.5, lineHeight: 1.7, color: "#4A4A44", display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: 26 }}>{card.body}</p>
+        {/* flex:1でwebkit-line-clampと組み合わせると、SafariでB本文が
+            クランプされずカードの外(角丸の下)へそのまま溢れて見える
+            不具合があった(flex-basis:0からのflex-growとline-clampの
+            高さ計算がSafari上で噛み合わない)。flexに頼らず、行の高さから
+            算出した固定のmaxHeightで確実に頭打ちにする。 */}
+        <p style={{ margin: 0, maxHeight: "calc(1.7em * 5)", fontFamily: SANS, fontSize: 12.5, lineHeight: 1.7, color: "#4A4A44", display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: 26 }}>{card.body}</p>
         {isTop && onFlag && (
           <button
             onClick={(e) => { e.stopPropagation(); onFlag(); }}
@@ -155,6 +160,12 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
 
 type Decision = "keep" | "skip" | "answered" | "skipped";
 
+// 育成カード用フッター(あとで/記録する)の高さぶんの予約枠。isGrowthを
+// 問わず常にこの高さを確保しておくことで、フッターの有無によって
+// カードの実寸が変わる(=スワイプで昇格した瞬間にガクッと動く)ことが
+// 構造的に起こらないようにする。
+const GROWTH_FOOTER_SLOT = 58;
+
 export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) {
   const [drag, setDrag] = useState({ dx: 0, dy: 0, active: false });
   const [exit, setExit] = useState<"keep" | "skip" | null>(null);
@@ -163,6 +174,30 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const [milestoneText, setMilestoneText] = useState("");
   const [milestoneRating, setMilestoneRating] = useState<1 | 2 | 3 | null>(null);
   const startRef = useRef({ x: 0, y: 0 });
+  // カードの実寸は、dvhベースの割合による推測ではなく、実際にレイアウト
+  // された「カードを中央寄せする枠」のサイズを直接測って決める。以前は
+  // `calc(Xdvh * 0.75)`という推測値を使っていたが、実機(特にSafari)では
+  // 実際のビューポート/ヘッダー/フッターの実寸とズレることがあり、
+  // 本文がカードの外へそのままはみ出す不具合の一因になっていた。
+  const arenaRef = useRef<HTMLDivElement>(null);
+  const [cardBox, setCardBox] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = arenaRef.current;
+    if (!el) return;
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      // 枠自身の上下パディング(10px×2)は余白として残す。
+      const availH = rect.height - 20;
+      const availW = rect.width;
+      if (availW <= 0 || availH <= 0) return;
+      const w = Math.min(availW, 340, availH * 0.75);
+      setCardBox({ w, h: w * (4 / 3) });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
 
   const dateKey = todayKey();
@@ -334,24 +369,14 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
       {!done ? (
         // ページ本体はスクロールしない(AppShell側でこのタブの間だけ
         // overflow-yをhiddenにしている)ので、ここがそのまま「残りの
-        // 高さいっぱい」になる。カードのサイズは
-        // 「幅(min(88vw,340px))を基準にaspect-ratioで高さを出しつつ、
-        // maxHeightを100dvh基準で直接キャップする」方式にしている。
-        // 以前はheight:100%を親のflexから継承させ、そこからaspect-ratioで
-        // 幅を逆算する方式だったが、これは間に挟まる複数階層のflexすべてが
-        // 正しくパーセント高さを解決して初めて成立する連鎖で、環境によっては
-        // 途中の解決に失敗し、カード自体の実寸が0になって(下のSKIP/KEEPの
-        // ヒント文字だけが残る)「カードが表示されない」不具合の疑いがあった。
-        // widthとmaxHeightを祖先のflexに依存せず直接指定することで、
-        // その連鎖を断ち切り、常に何らかの実寸を持つようにしている。
-        // 育成カード(checkin/milestone)だけは下に「あとで/記録する」の
-        // フッターが付く。以前はこの分だけ予算(dvh)をisGrowthで出し分けて
-        // いたが、topカードがgrowthかどうかでpeek中のカードの実寸まで
-        // 変わってしまい、スワイプで昇格した瞬間にカード全体(と本文の
-        // 折り返し位置)がガクッと変わる不具合になっていた。フッターの
-        // 有無に関わらず同じ予算(フッター分を常に差し引いた値)を使う
-        // ことで、カードの実寸を常に一定にし、この手のジャンプを構造的に
-        // なくしている。
+        // 高さいっぱい」になる。カードの実寸はarenaRefで実測したこの枠の
+        // サイズから直接計算する(詳細はarenaRefの定義部のコメント参照)。
+        // 育成カード(checkin/milestone)の「あとで/記録する」フッターは
+        // isGrowthに関わらず常に同じ高さ(GROWTH_FOOTER_SLOT)の枠を確保して
+        // おく。これにより、枠(=arenaRefが測る対象)の実寸がフッターの
+        // 有無で変わらなくなり、スワイプで育成カードが先頭に昇格した瞬間に
+        // カード全体(と本文の折り返し位置)がガクッと動く不具合が構造的に
+        // 起こらなくなる。
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           {/* overflowはvisibleのまま(以前はhiddenにしていた)。カードの
               SOFT_SHADOW_LGは要素の外側に描かれるため、hiddenだと左右・
@@ -360,8 +385,8 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               このタブは滞在中ずっとdocument.body.style.overflowを
               hiddenにロックしているため、ここをvisibleにしても実際に
               ページがスクロール/横に伸びることはない。 */}
-          <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }}>
-            <main style={{ position: "relative", width: "min(88vw, 340px, calc(46dvh * 0.75))", aspectRatio: ITEM_CARD_ASPECT }}>
+          <div ref={arenaRef} style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }}>
+            <main style={{ position: "relative", width: cardBox ? cardBox.w : "min(88vw, 340px)", height: cardBox ? cardBox.h : undefined, aspectRatio: cardBox ? undefined : ITEM_CARD_ASPECT }}>
               {visibleCards.map(({ card, isTop }) => (
                 <div
                   key={card.id}
@@ -388,19 +413,21 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               完結するため、下部にボタンは置かない。以前はSKIP/KEEPの控えめな
               ヒント文字を置いていたが、カードのドロップシャドウがその文字と
               重なる位置で境目のように見えてしまっていたため撤廃した。 */}
-          {isGrowth && (
-            // position+zIndexを明示しないと、この非配置(static)要素は
-            // AppShell側のnav手前のグラデーション(zIndex:15、画面下端に
-            // 常駐)より低い描画レイヤーに置かれ、フッターがタブバーの
-            // 直前でうっすら覆われて見づらくなる。バインド！ボタンと同じ
-            // zIndex:26にして、常にグラデーション・navより手前に出す。
-            <footer style={{ position: "relative", zIndex: 26, paddingBottom: 8, flexShrink: 0 }}>
+          {/* isGrowthに関わらず常にこの高さの枠を確保する(理由は上の
+              コメント参照)。position+zIndexを明示しないと、この非配置
+              (static)要素はAppShell側のnav手前のグラデーション
+              (zIndex:15、画面下端に常駐)より低い描画レイヤーに置かれ、
+              フッターがタブバーの直前でうっすら覆われて見づらくなる。
+              バインド！ボタンと同じzIndex:26にして、常にグラデーション・
+              navより手前に出す。 */}
+          <footer style={{ position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, paddingBottom: isGrowth ? 8 : 0, flexShrink: 0 }}>
+            {isGrowth && (
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => commit("skip")} style={{ flex: 1, padding: "13px 0", background: "transparent", border: "1.5px solid rgba(23,23,21,0.3)", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: "#5A5A54", cursor: "pointer" }}>あとで</button>
                 <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: "13px 0", background: isMilestone ? RUST : GREEN, border: "none", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: PAPER, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
               </div>
-            </footer>
-          )}
+            )}
+          </footer>
         </div>
       ) : (
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>

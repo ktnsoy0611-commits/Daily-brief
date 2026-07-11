@@ -661,6 +661,19 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   useEffect(() => {
     killMomentumScroll(scrollRef.current);
     killMomentumScroll(document.querySelector<HTMLElement>("[data-tab-scroll-root]"));
+    // この確定ビューは自分のリスト(scrollRef)だけがスクロールする設計だが、
+    // 外側のタブスクロールコンテナ([data-tab-scroll-root])も地図モードでは
+    // 普通にoverflow-y:autoでスクロールできる状態のまま。中身(カード一覧)が
+    // 長いと、外側も一緒にスクロールできてしまい(いわゆる二重スクロール)、
+    // リストを下にスクロールした拍子に外側が動いて上部のMasthead・
+    // 「← 選び直す」ボタンごと画面外へ流れて隠れる不具合になっていた。この
+    // ビューを表示している間だけ外側をhiddenにロックし、必ず内側の
+    // scrollRefだけがスクロール主体になるようにする(ブリーフタブの
+    // scrollLockedと同じ考え方を、この画面が出ている間だけ局所的に適用する)。
+    const outer = document.querySelector<HTMLElement>("[data-tab-scroll-root]");
+    const prevOverflowY = outer?.style.overflowY ?? "";
+    if (outer) outer.style.overflowY = "hidden";
+    return () => { if (outer) outer.style.overflowY = prevOverflowY; };
   }, []);
 
   // バインドボタンはどこからでも押せる固定位置にあるため、リストを
@@ -758,7 +771,16 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
         // あった。バインド！はどこからでも押せる主要な操作なので、navより
         // 常に手前に出すことで境目のにじみごと解消する。
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 26, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-          <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, padding: `0 16px calc(${NAV_OFFSET} + 8px)`, pointerEvents: "auto" }}>
+          {/* navより上に浮かせる分の余白はpaddingではなくmarginで確保する。
+              pointerEvents:"auto"の要素はpadding込みのボーダーボックス全体が
+              クリック判定の対象になるため、以前のようにpadding-bottomで
+              navぶんの隙間を空けると、見た目には何も無いその余白部分が
+              実はnavの上に覆いかぶさってクリックを奪ってしまっていた
+              (zIndexの不具合修正でこのボタンが正しくnavより手前に出る
+              ようになったことで、隠れていたこの重なりが顕在化した)。
+              marginは判定対象に含まれないため、同じ見た目のままnavの
+              タップを奪わなくなる。 */}
+          <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, padding: "0 16px", marginBottom: `calc(${NAV_OFFSET} + 8px)`, pointerEvents: "auto" }}>
             <button onClick={handleRegister} style={{
               width: "100%", padding: "15px 0", background: INK, color: PAPER, border: "none", borderRadius: 999,
               cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: SOFT_SHADOW_LG,
@@ -781,6 +803,19 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   // このタブ内での既存コードとの差分を最小にするため残しているが、実体は
   // lib配下から渡される共有state。
   const draftSelection = selection.itemIds;
+
+  // 「選び直す」で地図に戻り、選択を編集してもう一度バインド！を押した
+  // ときの不具合対策。バインド！(AppShellのbindSelection)はappStateを
+  // 更新するだけで、既にexecuteタブにいる場合はsetTab("execute")が
+  // no-opになりこのコンポーネントは再マウントされない。そのためmapMode
+  // (このコンポーネント内のローカルstate)がtrueのまま残り、マガジンは
+  // 裏で正しく更新されているのに画面はずっと地図のまま=「変更したのに
+  // 何も起きていないように見える」不具合になっていた。マガジンが実際に
+  // (再)確定された(decidedAtが変わった)ら、地図モードを強制的に閉じて
+  // 更新後の確定ビューへ戻す。
+  useEffect(() => {
+    setMapMode(false);
+  }, [magazine?.decidedAt]);
 
   const showMap = !magazine || mapMode;
   // 実行済み以外のItem。マガジン掲載中(planned)も選び直しのため含める。

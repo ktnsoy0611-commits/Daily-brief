@@ -209,7 +209,16 @@ export function AppShell() {
                 scrollTopを操作していたため、実際にスクロールしていたのが
                 外側だったこの状態では効かず、「直したはずなのに直って
                 いない」という不具合の実際の原因になっていた。 */}
-            <div key={tab} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, animation: "tab-in 0.22s cubic-bezier(0.32,0.72,0,1)" }}>
+            {/* animation(tab-in)は廃止した。opacityを0→1でアニメーションする
+                要素はCSS仕様上その間(場合によってはアニメーション終了後も
+                実機Safariでは)新しい重なりコンテキストを作ってしまい、この
+                内側にあるzIndexを持つ要素(実行タブの確定バインド！ボタン、
+                ブリーフの育成カードのフッター等)が、外側にあるnav手前の
+                グラデーション(zIndex:15)より手前に出せなくなる不具合の
+                原因になっていた(zIndexは同じ重なりコンテキストの中でしか
+                比較されないため)。フェードインの見た目より、フローティング
+                ボタンが常に正しく最前面に出ることを優先する。 */}
+            <div key={tab} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
               {tab === "brief" && <BriefTab {...tabProps} />}
               {tab === "stock" && <StockTab {...tabProps} />}
               {tab === "goals" && <GoalsTab {...tabProps} />}

@@ -232,8 +232,11 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
   const [addingThing, setAddingThing] = useState(false);
   const [itemDetail, setItemDetail] = useState<Item | null>(null);
 
+  // plannedは既に今日のプラン(バインド済み)に入っているItem。ここでは
+  // 「これから選べる候補」だけを見せたいので、doneだけでなくplannedも除く
+  // (バインド済みのカードがストックにまだ残って見える不具合の修正)。
   const stocked = appState.items
-    .filter((i) => i.status !== "done")
+    .filter((i) => i.status === "candidate")
     .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
   const byDomain = (d: ItemDomain) => stocked.filter((i) => domainOf(i) === d);
   const domainItems: Record<ItemDomain, Item[]> = {

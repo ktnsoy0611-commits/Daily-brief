@@ -1,20 +1,24 @@
 "use client";
 
-import { BookOpen, Film, MapPin, Music, Music2, Palette } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
-import { BinderCoverflowRow, dateAccent, goalAccent, GOAL_BASE, MEDIA_ACCENT, placeAccent, type BinderShelfItem } from "@/components/Binder";
-import { BinderModal, type BinderItem, type IconType, Masthead, PosterCard } from "@/components/common";
-import { GREEN, INK, PAPER, RUST, SANS, SERIF, catOf, mediaKindOf } from "@/lib/constants";
-import { dayInfo, haptic, inferMediaKind, shortDate } from "@/lib/helpers";
-import type { Keep, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
-
-const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
+import { BinderCoverflowRow, dateAccent, goalAccent, GOAL_BASE, MEDIA_ACCENT, placeAccent, type Accent, type BinderShelfItem } from "@/components/Binder";
+import { BinderModal, type BinderItem, Masthead, PosterCard } from "@/components/common";
+import { KIND_ICON } from "@/components/tabs/StockTab";
+import { GOLD, GREEN, INK, PAPER, RUST, SANS, SERIF, itemKindOf } from "@/lib/constants";
+import { dayInfo, haptic, hasPlace, isWork, originBadge, shortDate } from "@/lib/helpers";
+import type { Item, ItemKind, TabProps } from "@/lib/types";
 
 // 表紙は常に白なので、この値は背表紙の単色フォールバック(accent未指定時)
 // としてのみ使う。
 const PLACE_BASE = "#CFCCC3";
 const MEDIA_BASE = "#8C897F";
+// ウィッシュのバインダー。願いが形になったカードを綴じる特別な1冊(以上)。
+const WISH_BASE = GOLD;
+const WISH_ACCENT: Accent = { kind: "target", color: GOLD };
+// 1冊のバインダーに綴じるカードの上限。超えたぶんは同じデザインの
+// 「続き」のバインダー(VOL.2, VOL.3, …)へ繰り越す。
+const BINDER_CAPACITY = 30;
 
 // タップしたバインダーの中身を見せる共通シート。カード自体が完結した
 // ビジュアルを持つので、白い台紙には包まずブラー背景の上に直接浮かせる。
@@ -34,170 +38,144 @@ function BinderContentsSheet({ title, onClose, children }: { title: string; onCl
   );
 }
 
-interface DayEntry {
-  key: string;
-  title: string;
-  image?: string;
-  color?: string;
-  label?: string;
-  sub?: string;
-  binderItem?: BinderItem;
-}
-
 interface OpenFolder {
   title: string;
   content: React.ReactNode;
 }
 
+// 配列をn件ずつの束に分ける(ウィッシュバインダーの「続き」用)。
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 // ==================================================================
 // アプリのホーム。「実際にやった/読んだ/叶えた」ことだけが積み上がる。
 // KEEPしただけの未実行のものはストックタブ・ゴールタブが担当する。
-// 完了したバインダーは種類ごとの行(メディアのジャンル別・行った場所の
-// エリア別・目標)に並び、components/Binder.tsxの共通モデルで背表紙から
-// 覗く棚として見せる。目標も他の種類と同じ棚の1行として扱い、以前のように
-// 別枠でGoalCardのミニ行を出す特別扱いはしていない。
+// 棚の区分はストックタブ・プランタブと共通の語彙: 作品(種類ごと)・
+// 行き先(エリアごと)・モノ・ゴール・ウィッシュ。1つのItemは複数の棚に
+// 立ちうる(場所で観た展覧会は「行き先」のエリアの1冊にも「作品」の
+// 展覧会の1冊にも綴じられる。同じ記録を「どこへ行ったか」と「何を観たか」
+// の両方の索引から引けるようにするための意図的な重複)。
 // ==================================================================
 export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps) {
   const [binderItem, setBinderItem] = useState<BinderItem | null>(null);
   const [openFolder, setOpenFolder] = useState<OpenFolder | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "date">("list");
 
-  const doneKeeps = appState.keeps.filter((k) => k.status === "done");
-  // メディアは「KEEPしただけ(keep)」と「実際にやった(done)」を分けて扱う。
-  // status省略は既存の3経路(マガジン✓/行きましたか通知/手動+)由来でdone扱い。
-  const doneMediaRecords = (appState.records?.media ?? [])
-    .filter((r) => (r.status ?? "done") === "done")
+  const doneItems = appState.items
+    .filter((i) => i.status === "done")
     .sort((a, b) => new Date(b.doneAt ?? b.addedAt).getTime() - new Date(a.doneAt ?? a.addedAt).getTime());
   const fulfilledWishes = appState.wishes.filter((w) => w.status === "fulfilled").sort((a, b) => new Date(b.fulfilledAt ?? b.addedAt).getTime() - new Date(a.fulfilledAt ?? a.addedAt).getTime());
-  const pendingItems = (appState.pendingReview ?? []).map((id) => appState.keeps.find((k) => k.id === id)).filter((k): k is Keep => !!k);
+  const pendingItems = (appState.pendingReview ?? []).map((id) => appState.items.find((i) => i.id === id)).filter((i): i is Item => !!i);
   const goals = (appState.goals ?? []).slice().sort((a, b) => new Date(b.checkIns?.[0]?.at ?? b.addedAt).getTime() - new Date(a.checkIns?.[0]?.at ?? a.addedAt).getTime());
 
-  // メディアは自動では増えない: マガジンで実行済みにしたもの／通知で「行った」を
-  // 選んだもの／自分で+から手動記録したもの、の3経路だけがrecords.mediaに入る。
-  const mediaLabel: Record<MediaKindId, string> = { movie: "CINEMA", exhibition: "EXHIBITION", live: "LIVE", book: "BOOK", album: "MUSIC" };
+  // ウィッシュから生まれたカード(origin:"wish")は、実行の有無を問わず
+  // すべて専用のバインダーに綴じる。「願いがどれだけ形になってきたか」の
+  // 軌跡そのものを1冊(超えたら続き)として見せるため。古いものから順に
+  // 綴じていき、あふれたぶんが新しい巻(VOL.2, …)になる。
+  const wishBornAsc = appState.items
+    .filter((i) => i.origin === "wish")
+    .sort((a, b) => new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime());
+  const wishVolumes = chunk(wishBornAsc, BINDER_CAPACITY);
 
-  // エリアを親、そのエリアで実行したKeepを子とするフォルダー構造
-  const areaGroups = new Map<string, Keep[]>();
-  doneKeeps.filter((k) => k.area && k.area !== "—").forEach((k) => {
-    const area = k.area!;
-    if (!areaGroups.has(area)) areaGroups.set(area, []);
-    areaGroups.get(area)!.push(k);
-  });
-  const areaSections = Array.from(areaGroups.entries()).map(([area, keeps]) => {
-    const sorted = keeps.slice().sort((a, b) => new Date(b.doneAt ?? b.keptAt).getTime() - new Date(a.doneAt ?? a.keptAt).getTime());
-    return { area, keeps: sorted, lastAt: sorted[0].doneAt ?? sorted[0].keptAt };
-  }).sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime());
+  const totalCount = doneItems.length + fulfilledWishes.length;
 
-  // メディアをジャンル(kind)ごとにまとめ、エリアフォルダーと同じバインダー
-  // タイルで統一して見せる。カードが大きすぎて画面を占有する問題への対応。
-  const mediaGroups = new Map<MediaKindId, MediaRecord[]>();
-  doneMediaRecords.forEach((r) => {
-    if (!mediaGroups.has(r.kind)) mediaGroups.set(r.kind, []);
-    mediaGroups.get(r.kind)!.push(r);
+  const itemDetail = (i: Item): BinderItem => ({
+    title: i.title, category: i.category ?? itemKindOf(i.kind).label, images: i.images,
+    meta: [...(i.meta ?? []), ...(i.creator ? [i.creator] : []), ...(i.price ? [i.price] : [])],
+    sourceUrl: i.sourceUrl, sourceLabel: i.sourceLabel,
   });
-  const mediaSections = Array.from(mediaGroups.entries()).map(([kind, records]) => {
-    const sorted = records.slice().sort((a, b) => new Date(b.doneAt ?? b.addedAt).getTime() - new Date(a.doneAt ?? a.addedAt).getTime());
-    return { kind, records: sorted, lastAt: sorted[0].doneAt ?? sorted[0].addedAt };
-  }).sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime());
-
-  const totalCount = doneKeeps.length + doneMediaRecords.length + fulfilledWishes.length;
-
-  // 日付別ビュー: 実際にやった(done)ものを、実行した日ごとにまとめ直す。
-  // 過去のマガジンを別途保存する仕組みは持たず、既存のdoneAt/fulfilledAtから
-  // その場で日付ごとのバインダーを組み立てる。
-  const dayGroups = new Map<string, { label: string; entries: DayEntry[]; lastAt: string }>();
-  const pushToDay = (iso: string, entry: DayEntry) => {
-    const { key, label } = dayInfo(iso);
-    if (!dayGroups.has(key)) dayGroups.set(key, { label, entries: [], lastAt: iso });
-    const g = dayGroups.get(key)!;
-    g.entries.push(entry);
-    if (new Date(iso).getTime() > new Date(g.lastAt).getTime()) g.lastAt = iso;
-  };
-  doneKeeps.forEach((k) => {
-    const at = k.doneAt ?? k.keptAt;
-    pushToDay(at, {
-      key: `keep-${k.id}`, title: k.title, image: k.images?.[0], color: k.color,
-      sub: k.area && k.area !== "—" ? k.area : k.category,
-      binderItem: k.images && k.images.length > 0 ? { title: k.title, category: k.category, images: k.images, meta: k.meta, sourceUrl: k.sourceUrl, sourceLabel: k.sourceLabel } : undefined,
-    });
-  });
-  doneMediaRecords.forEach((r) => {
-    const at = r.doneAt ?? r.addedAt;
-    pushToDay(at, {
-      key: `media-${r.id}`, title: r.title, image: r.image, color: r.color, label: mediaLabel[r.kind],
-      sub: r.creator || shortDate(at),
-      binderItem: r.image ? { title: r.title, category: mediaKindOf(r.kind).label, images: [r.image], meta: r.creator ? [r.creator] : [] } : undefined,
-    });
-  });
-  fulfilledWishes.forEach((w) => {
-    const at = w.fulfilledAt ?? w.addedAt;
-    pushToDay(at, { key: `wish-${w.id}`, title: w.title, color: catOf(w.categoryId).color, label: "WISH", sub: shortDate(at) });
-  });
-  const daySections = Array.from(dayGroups.values()).sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime());
+  const itemCard = (i: Item, opts?: { sub?: string; withGood?: boolean }) => (
+    <PosterCard key={i.id} image={i.images?.[0]} color={i.color} title={i.title}
+      sub={opts?.sub ?? (i.area && i.area !== "—" ? i.area : (i.creator || shortDate(i.doneAt ?? i.addedAt)))}
+      label={itemKindOf(i.kind).en} icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)}
+      good={opts?.withGood ? !!i.good : undefined}
+      onToggleGood={opts?.withGood ? () => toggleGood(i.id) : undefined}
+      onClick={i.images?.length || i.meta?.length ? () => setBinderItem(itemDetail(i)) : undefined} />
+  );
 
   const toggleGood = (id: string) => {
     haptic(6);
     const next = structuredClone(appState);
-    const r = next.records.media.find((x) => x.id === id);
-    if (r) r.good = !r.good;
+    const item = next.items.find((x) => x.id === id);
+    if (item) item.good = !item.good;
     persist(next);
   };
+  // 「行きましたか？」の解決。行った=doneへ進めるだけでよい(Itemの統一に
+  // より、以前あった「作品のコピーをrecords.mediaへ増やす」変換は不要)。
   const resolvePending = (id: string, went: boolean) => {
     haptic(10);
     const next = structuredClone(appState);
     next.pendingReview = (next.pendingReview ?? []).filter((x) => x !== id);
-    const k = next.keeps.find((x) => x.id === id);
-    if (k) {
+    const item = next.items.find((x) => x.id === id);
+    if (item) {
       if (went) {
-        k.status = "done";
-        k.doneAt = new Date().toISOString();
-        const mediaKind = inferMediaKind(k.category);
-        if (mediaKind) {
-          next.records = next.records ?? { media: [] };
-          next.records.media.unshift({ id: `media-${Date.now()}`, kind: mediaKind, title: k.title, creator: "", addedAt: k.doneAt, status: "done", doneAt: k.doneAt, image: k.images?.[0], color: k.color, sourceKeepId: k.id });
-        }
+        item.status = "done";
+        item.doneAt = new Date().toISOString();
       } else {
-        k.status = "candidate";
+        item.status = "candidate";
       }
     }
     persist(next);
   };
 
-  const mediaRowItems: BinderShelfItem[] = mediaSections.map((sec) => {
-    const kindLabel = mediaKindOf(sec.kind).label;
-    return {
-      key: sec.kind, color: MEDIA_BASE, eyebrowLabel: mediaLabel[sec.kind], accent: MEDIA_ACCENT[sec.kind],
-      title: kindLabel, count: sec.records.length,
-      footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.records.length}件・タップで見る</div>,
-      onOpen: () => setOpenFolder({
-        title: kindLabel,
-        content: sec.records.map((r) => (
-          <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.doneAt ?? r.addedAt)} label={mediaLabel[r.kind]}
-            icon={MEDIA_ICON[r.kind]} kept={r.origin !== "manual"}
-            good={!!r.good} onToggleGood={() => toggleGood(r.id)}
-            onClick={r.image ? () => setBinderItem({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined} />
-        )),
-      }),
-    };
+  // ---- 作品: 種類(映画・展覧会・…)ごとに1冊 ----
+  const workGroups = new Map<ItemKind, Item[]>();
+  doneItems.filter(isWork).forEach((i) => {
+    if (!workGroups.has(i.kind)) workGroups.set(i.kind, []);
+    workGroups.get(i.kind)!.push(i);
   });
+  const workRowItems: BinderShelfItem[] = Array.from(workGroups.entries())
+    .map(([kind, items]) => ({ kind, items, lastAt: items[0].doneAt ?? items[0].addedAt }))
+    .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
+    .map((sec) => {
+      const def = itemKindOf(sec.kind);
+      return {
+        key: sec.kind, color: MEDIA_BASE, eyebrowLabel: def.en, accent: MEDIA_ACCENT[sec.kind as keyof typeof MEDIA_ACCENT],
+        title: def.label, count: sec.items.length,
+        footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.items.length}件・タップで見る</div>,
+        onOpen: () => setOpenFolder({
+          title: def.label,
+          content: sec.items.map((i) => itemCard(i, { sub: i.creator || shortDate(i.doneAt ?? i.addedAt), withGood: true })),
+        }),
+      };
+    });
 
-  const areaRowItems: BinderShelfItem[] = areaSections.map((sec) => ({
-    key: sec.area, color: PLACE_BASE, eyebrowLabel: "PLACE", accent: placeAccent(sec.area),
-    title: sec.area, count: sec.keeps.length,
-    footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.keeps.length}件・タップで見る</div>,
+  // ---- 行き先: エリアごとに1冊 ----
+  const areaGroups = new Map<string, Item[]>();
+  doneItems.filter(hasPlace).forEach((i) => {
+    const area = i.area!;
+    if (!areaGroups.has(area)) areaGroups.set(area, []);
+    areaGroups.get(area)!.push(i);
+  });
+  const destRowItems: BinderShelfItem[] = Array.from(areaGroups.entries())
+    .map(([area, items]) => ({ area, items, lastAt: items[0].doneAt ?? items[0].addedAt }))
+    .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
+    .map((sec) => ({
+      key: sec.area, color: PLACE_BASE, eyebrowLabel: "PLACE", accent: placeAccent(sec.area),
+      title: sec.area, count: sec.items.length,
+      footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.items.length}件・タップで見る</div>,
+      onOpen: () => setOpenFolder({
+        title: sec.area,
+        content: sec.items.map((i) => itemCard(i, { sub: shortDate(i.doneAt ?? i.addedAt) })),
+      }),
+    }));
+
+  // ---- モノ: 買ったものをまとめた1冊 ----
+  const doneThings = doneItems.filter((i) => i.kind === "thing");
+  const thingRowItems: BinderShelfItem[] = doneThings.length === 0 ? [] : [{
+    key: "things", color: MEDIA_BASE, eyebrowLabel: "THING", accent: MEDIA_ACCENT.album,
+    title: "買ったモノ", count: doneThings.length,
+    footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{doneThings.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
-      title: sec.area,
-      content: sec.keeps.map((k) => (
-        <PosterCard key={k.id} image={k.images?.[0]} color={k.color} title={k.title} sub={shortDate(k.doneAt ?? k.keptAt)}
-          icon={MapPin} kept={k.origin !== "manual"}
-          onClick={k.images && k.images.length > 0 ? () => setBinderItem(k) : undefined} />
-      )),
+      title: "買ったモノ",
+      content: doneThings.map((i) => itemCard(i, { sub: i.price ?? shortDate(i.doneAt ?? i.addedAt) })),
     }),
-  }));
+  }];
 
-  // 目標も「種類ごとの1行」という同じ扱いにする。以前はここだけGoalCardの
-  // 小さな横並びを別枠で出していたが、他の完了バインダーと見た目・操作感を
-  // 揃えるため同じ棚の1行として並べ、タップでゴールタブへ向かう。
+  // ---- ゴール ----
   const goalRowItems: BinderShelfItem[] = goals.map((g) => ({
     key: g.id, color: GOAL_BASE, eyebrowLabel: "GOAL", accent: goalAccent(g.id),
     title: g.title, count: g.checkIns?.length ?? 0,
@@ -205,17 +183,61 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
     onOpen: () => goTab("goals"),
   }));
 
-  const dayRowItems: BinderShelfItem[] = daySections.map((sec) => ({
-    key: sec.label, color: PLACE_BASE, eyebrowLabel: "DATE", accent: dateAccent(sec.label), title: sec.label, count: sec.entries.length,
-    footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.entries.length}件・タップで見る</div>,
-    onOpen: () => setOpenFolder({
-      title: sec.label,
-      content: sec.entries.map((e) => (
-        <PosterCard key={e.key} image={e.image} color={e.color} title={e.title} sub={e.sub} label={e.label}
-          onClick={e.binderItem ? () => setBinderItem(e.binderItem!) : undefined} />
-      )),
-    }),
-  }));
+  // ---- ウィッシュ: 願いが形になったカードの巻(30枚ごとに続きの巻) ----
+  // 棚には新しい巻から順に並べる(最新の動きが一番手前に来るように)。
+  const wishRowItems: BinderShelfItem[] = wishVolumes
+    .map((vol, idx) => ({ vol, volNo: idx + 1 }))
+    .reverse()
+    .map(({ vol, volNo }) => ({
+      key: `wish-vol-${volNo}`, color: WISH_BASE, eyebrowLabel: "WISH", accent: WISH_ACCENT,
+      title: volNo === 1 ? "ウィッシュ" : `ウィッシュ VOL.${volNo}`, count: vol.length,
+      footer: <div style={{ fontSize: 9, color: "rgba(253,251,245,0.7)", fontWeight: 700, textAlign: "center" }}>{vol.length}件・タップで見る</div>,
+      onOpen: () => setOpenFolder({
+        title: volNo === 1 ? "ウィッシュ" : `ウィッシュ VOL.${volNo}`,
+        // 巻の中では新しいカードが先頭に来るよう降順で見せる。
+        content: vol.slice().reverse().map((i) => {
+          const wish = appState.wishes.find((w) => w.id === i.sourceWishId);
+          return itemCard(i, { sub: wish ? `「${wish.title}」より` : (i.status === "done" ? shortDate(i.doneAt ?? i.addedAt) : "まだこれから") });
+        }),
+      }),
+    }));
+
+  // ---- 日付ビュー: 実行した日ごとに1冊 ----
+  interface DayGroup { label: string; items: Item[]; wishes: typeof fulfilledWishes; lastAt: string }
+  const dayGroups = new Map<string, DayGroup>();
+  const dayOf = (iso: string) => {
+    const { key, label } = dayInfo(iso);
+    if (!dayGroups.has(key)) dayGroups.set(key, { label, items: [], wishes: [], lastAt: iso });
+    const g = dayGroups.get(key)!;
+    if (new Date(iso).getTime() > new Date(g.lastAt).getTime()) g.lastAt = iso;
+    return g;
+  };
+  doneItems.forEach((i) => { dayOf(i.doneAt ?? i.addedAt).items.push(i); });
+  fulfilledWishes.forEach((w) => { dayOf(w.fulfilledAt ?? w.addedAt).wishes.push(w); });
+  const dayRowItems: BinderShelfItem[] = Array.from(dayGroups.values())
+    .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
+    .map((sec) => ({
+      key: sec.label, color: PLACE_BASE, eyebrowLabel: "DATE", accent: dateAccent(sec.label),
+      title: sec.label, count: sec.items.length + sec.wishes.length,
+      footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.items.length + sec.wishes.length}件・タップで見る</div>,
+      onOpen: () => setOpenFolder({
+        title: sec.label,
+        content: [
+          ...sec.items.map((i) => itemCard(i)),
+          ...sec.wishes.map((w) => (
+            <PosterCard key={`wish-${w.id}`} image={null} color={GOLD} title={w.title} sub={shortDate(w.fulfilledAt ?? w.addedAt)} label="WISH" />
+          )),
+        ],
+      }),
+    }));
+
+  // 棚(行)のレイアウトは全行共通: 小さなラベル+BinderCoverflowRow。
+  const shelfRow = (title: string, items: BinderShelfItem[]) => items.length > 0 && (
+    <section style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>{title}</div>
+      <BinderCoverflowRow items={items} />
+    </section>
+  );
 
   return (
     <>
@@ -225,11 +247,11 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
         {pendingItems.length > 0 && (
           <section style={{ marginBottom: 26 }}>
             <div style={{ fontSize: 9, letterSpacing: "0.22em", color: RUST, marginBottom: 10 }}>行きましたか？</div>
-            {pendingItems.map((k) => (
-              <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#FBF3EC", border: "1px solid rgba(168,85,47,0.25)", borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
-                <div style={{ flex: 1, fontFamily: SERIF, fontWeight: 700, fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.title}</div>
-                <button onClick={() => resolvePending(k.id, true)} style={{ flexShrink: 0, padding: "8px 12px", background: GREEN, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>行った</button>
-                <button onClick={() => resolvePending(k.id, false)} style={{ flexShrink: 0, padding: "8px 12px", background: "transparent", color: "#5A5A54", border: "1px solid rgba(23,23,21,0.2)", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>行かなかった</button>
+            {pendingItems.map((i) => (
+              <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#FBF3EC", border: "1px solid rgba(168,85,47,0.25)", borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
+                <div style={{ flex: 1, fontFamily: SERIF, fontWeight: 700, fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.title}</div>
+                <button onClick={() => resolvePending(i.id, true)} style={{ flexShrink: 0, padding: "8px 12px", background: GREEN, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>行った</button>
+                <button onClick={() => resolvePending(i.id, false)} style={{ flexShrink: 0, padding: "8px 12px", background: "transparent", color: "#5A5A54", border: "1px solid rgba(23,23,21,0.2)", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 10.5, fontWeight: 700 }}>行かなかった</button>
               </div>
             ))}
           </section>
@@ -253,39 +275,24 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
         {viewMode === "list" ? (
           <>
-            {mediaRowItems.length > 0 && (
-              <section style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>メディア</div>
-                <BinderCoverflowRow items={mediaRowItems} />
-              </section>
-            )}
-
-            {areaRowItems.length > 0 && (
-              <section style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>行った場所</div>
-                <BinderCoverflowRow items={areaRowItems} />
-              </section>
-            )}
-
-            {goalRowItems.length > 0 && (
-              <section style={{ marginBottom: 24 }}>
-                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>ゴール</div>
-                <BinderCoverflowRow items={goalRowItems} />
-              </section>
-            )}
+            {shelfRow("行き先", destRowItems)}
+            {shelfRow("作品", workRowItems)}
+            {shelfRow("モノ", thingRowItems)}
+            {shelfRow("ゴール", goalRowItems)}
+            {shelfRow("ウィッシュ", wishRowItems)}
 
             {fulfilledWishes.length > 0 && (
               <section style={{ margin: "28px 0 0" }}>
-                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 12 }}>叶えた願望</div>
+                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 12 }}>叶えたウィッシュ</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   {fulfilledWishes.map((w) => (
-                    <PosterCard key={w.id} image={null} color={catOf(w.categoryId).color} title={w.title} sub={shortDate(w.fulfilledAt ?? w.addedAt)} label="WISH" />
+                    <PosterCard key={w.id} image={null} color={GOLD} title={w.title} sub={shortDate(w.fulfilledAt ?? w.addedAt)} label="WISH" />
                   ))}
                 </div>
               </section>
             )}
 
-            {mediaRowItems.length === 0 && areaRowItems.length === 0 && goalRowItems.length === 0 && fulfilledWishes.length === 0 && pendingItems.length === 0 && (
+            {destRowItems.length === 0 && workRowItems.length === 0 && thingRowItems.length === 0 && goalRowItems.length === 0 && wishRowItems.length === 0 && fulfilledWishes.length === 0 && pendingItems.length === 0 && (
               <div style={{ padding: "36px 4px", textAlign: "center" }}>
                 <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, marginBottom: 8 }}>まだ記録がありません。</div>
                 <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>プランタブで行動を記録すると、ここに積み上がります。</p>

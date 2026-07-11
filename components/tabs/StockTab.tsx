@@ -1,15 +1,18 @@
 "use client";
 
-import { BookOpen, Film, MapPin, Music, Music2, Palette, Sparkles, Trash2 } from "lucide-react";
+import { BookOpen, Film, MapPin, Music, Music2, Package, Palette, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
-import { BinderModal, type BinderItem, CardStack, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
-import { GREEN, HAIRLINE, INK, MEDIA_KINDS, PAPER, POSTER_PALETTE, RUST, SANS, mediaKindOf } from "@/lib/constants";
-import { hashStr, haptic, keepMedia, shortDate } from "@/lib/helpers";
-import type { Keep, MediaKindId, MediaRecord, TabProps, Wish } from "@/lib/types";
+import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
+import { GREEN, HAIRLINE, INK, ITEM_KINDS, PAPER, POSTER_PALETTE, RUST, SANS, itemKindOf } from "@/lib/constants";
+import { hashStr, haptic, originBadge, shelfOf, shortDate } from "@/lib/helpers";
+import type { Item, ItemKind, TabProps, Wish } from "@/lib/types";
+import { WORK_KINDS } from "@/lib/types";
 
-const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
-const MEDIA_LABEL: Record<MediaKindId, string> = { movie: "CINEMA", exhibition: "EXHIBITION", live: "LIVE", book: "BOOK", album: "MUSIC" };
+// 種類ごとのアイコン。place/thingも含めItemの全種類をここで引ける。
+export const KIND_ICON: Record<ItemKind, IconType> = {
+  place: MapPin, movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music, thing: Package,
+};
 // ルーズリーフの穴+切り取り線が小さすぎるカードだと窮屈に見えるため、
 // スタック表示時の1枚幅を広めに確保する。
 const STACK_CARD_WIDTH = 132;
@@ -73,7 +76,7 @@ function AddPlaceSheet({ onAdd, onClose }: { onAdd: (data: ParsedPlace) => void;
     <BottomSheet onClose={onClose}>
       {(requestClose) => (
         <OverlayCard>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>URLから場所を追加</div>
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 4 }}>URLから行き先を追加</div>
 
           {step === "input" && (
             <>
@@ -119,14 +122,14 @@ function AddPlaceSheet({ onAdd, onClose }: { onAdd: (data: ParsedPlace) => void;
   );
 }
 
-function AddStockMediaSheet({ onAdd, onClose }: {
-  onAdd: (data: { kind: MediaKindId; title: string; creator: string }) => void;
+function AddWorkSheet({ onAdd, onClose }: {
+  onAdd: (data: { kind: ItemKind; title: string; creator: string }) => void;
   onClose: () => void;
 }) {
-  const [kind, setKind] = useState<MediaKindId>("movie");
+  const [kind, setKind] = useState<ItemKind>("movie");
   const [title, setTitle] = useState("");
   const [creator, setCreator] = useState("");
-  const current = mediaKindOf(kind);
+  const current = itemKindOf(kind);
 
   return (
     <BottomSheet onClose={onClose}>
@@ -134,7 +137,7 @@ function AddStockMediaSheet({ onAdd, onClose }: {
         <OverlayCard>
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>作品をストックに追加</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-            {MEDIA_KINDS.map((k) => (
+            {ITEM_KINDS.filter((k) => WORK_KINDS.includes(k.id)).map((k) => (
               <button key={k.id} onClick={() => setKind(k.id)} style={{
                 flex: "1 1 40%", padding: "9px 0", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700,
                 background: kind === k.id ? INK : "transparent", color: kind === k.id ? PAPER : "#5A5A54",
@@ -144,9 +147,38 @@ function AddStockMediaSheet({ onAdd, onClose }: {
           </div>
           <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>タイトル</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 15, outline: "none", marginBottom: 14, background: "transparent" }} />
-          <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>{current.creatorPlaceholder}</label>
+          <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>{current.creatorPlaceholder ?? "作者（任意）"}</label>
           <input value={creator} onChange={(e) => setCreator(e.target.value)} style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1px solid ${HAIRLINE}`, padding: "8px 2px", fontFamily: SANS, fontSize: 13, outline: "none", marginBottom: 20, background: "transparent" }} />
           <button onClick={() => { if (!title.trim()) return; onAdd({ kind, title: title.trim(), creator: creator.trim() }); requestClose(); }} disabled={!title.trim()} style={{
+            width: "100%", padding: "13px 0", background: title.trim() ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none",
+            borderRadius: 999, cursor: title.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
+          }}>ストックする</button>
+        </OverlayCard>
+      )}
+    </BottomSheet>
+  );
+}
+
+// モノ(買いたいもの)の手動追加。名前+価格の目安+リンクだけの軽い入力。
+function AddThingSheet({ onAdd, onClose }: {
+  onAdd: (data: { title: string; price: string; sourceUrl: string }) => void;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [price, setPrice] = useState("");
+  const [url, setUrl] = useState("");
+  return (
+    <BottomSheet onClose={onClose}>
+      {(requestClose) => (
+        <OverlayCard>
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>モノをストックに追加</div>
+          <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>名前</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 15, outline: "none", marginBottom: 14, background: "transparent" }} />
+          <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>予算の目安（任意）</label>
+          <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="例: ¥12,000前後" style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1px solid ${HAIRLINE}`, padding: "8px 2px", fontFamily: SANS, fontSize: 13, outline: "none", marginBottom: 14, background: "transparent" }} />
+          <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>リンク（任意）</label>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1px solid ${HAIRLINE}`, padding: "8px 2px", fontFamily: SANS, fontSize: 13, outline: "none", marginBottom: 20, background: "transparent" }} />
+          <button onClick={() => { if (!title.trim()) return; onAdd({ title: title.trim(), price: price.trim(), sourceUrl: url.trim() }); requestClose(); }} disabled={!title.trim()} style={{
             width: "100%", padding: "13px 0", background: title.trim() ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none",
             borderRadius: 999, cursor: title.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
           }}>ストックする</button>
@@ -162,7 +194,7 @@ function AddWishSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onCl
     <BottomSheet onClose={onClose}>
       {(requestClose) => (
         <OverlayCard>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>ウィッシュリストに追加</div>
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 14 }}>ウィッシュを書く</div>
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="ふと思ったことを、なんでも"
             style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 15, outline: "none", marginBottom: 20, background: "transparent" }} />
           <button onClick={() => { if (!title.trim()) return; onAdd(title.trim()); requestClose(); }} disabled={!title.trim()} style={{
@@ -187,86 +219,78 @@ function StackSection({ title, count, children }: { title: string; count: number
   );
 }
 
-// ストックタブ: 作品・場所・ウィッシュリストの3つの「カードの束」を積む。
-// どの束もタップすると中身が一覧できるシートが開き、束の一番手前(右)の
-// ＋タイルをタップすると新規追加シートが開く。KEEP由来のカードには
-// 左上に小さなKEEPバッジを表示し、手動追加したものと見分けられるようにする。
-export function StockTab({ appState, persist, showToast, profileButton, selection, toggleKeepSelection, toggleMediaSelection }: TabProps) {
-  const [openStack, setOpenStack] = useState<"media" | "place" | "wish" | null>(null);
-  const [addingUrl, setAddingUrl] = useState(false);
-  const [addingMedia, setAddingMedia] = useState(false);
+type StackId = "wish" | "dest" | "work" | "thing";
+
+// ストックタブ: 未実行の収集物を「ウィッシュ・行き先・作品・モノ」の4つの
+// 「カードの束」として積む。ウィッシュは自由文の願い(最上流)、残る3つは
+// 統一されたItemをshelfOf(場所が絡む=行き先 / 場所なしの作品 / 場所なしの
+// モノ)で振り分けたもの。この4区分の名称はプランタブの棚・アーカイブの棚と
+// 共通の語彙にしている。どの束もタップすると中身が一覧できるシートが開き、
+// 束の一番手前(右)の＋タイルをタップすると新規追加シートが開く。ブリーフの
+// KEEP由来のカードにはKEEP、ウィッシュが形になったカードにはWISHのバッジが
+// 左上に付き、手動追加したものと見分けられる。
+export function StockTab({ appState, persist, showToast, profileButton, selection, toggleItemSelection }: TabProps) {
+  const [openStack, setOpenStack] = useState<StackId | null>(null);
+  const [addingPlace, setAddingPlace] = useState(false);
+  const [addingWork, setAddingWork] = useState(false);
+  const [addingThing, setAddingThing] = useState(false);
   const [addingWish, setAddingWish] = useState(false);
-  const [mediaDetail, setMediaDetail] = useState<BinderItem | null>(null);
-  const [placeDetail, setPlaceDetail] = useState<Keep | null>(null);
+  const [itemDetail, setItemDetail] = useState<Item | null>(null);
   const [wishDetail, setWishDetail] = useState<Wish | null>(null);
 
-  // ---- 作品 ----
-  const mediaItemsDesc = keepMedia(appState).slice().sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
-  const addMediaKeep = ({ kind, title, creator }: { kind: MediaKindId; title: string; creator: string }) => {
+  // ---- Item(行き先・作品・モノ) ----
+  const stocked = appState.items
+    .filter((i) => i.status !== "done")
+    .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
+  const destItems = stocked.filter((i) => shelfOf(i) === "dest");
+  const workItems = stocked.filter((i) => shelfOf(i) === "work");
+  const thingItems = stocked.filter((i) => shelfOf(i) === "thing");
+
+  const addItem = (item: Item, toast: string) => {
     haptic();
     const next = structuredClone(appState);
-    next.records = next.records ?? { media: [] };
-    next.records.media.unshift({ id: `media-${Date.now()}`, kind, title, creator, addedAt: new Date().toISOString(), status: "keep", color: POSTER_PALETTE[hashStr(title) % POSTER_PALETTE.length], origin: "manual" });
+    next.items.unshift(item);
     persist(next);
-    showToast("作品をストックしました");
+    showToast(toast);
   };
-  // 作品の唯一の出口: 観た/読んだ/聴いたを押すと実際にやったログ(done)へ進み、アーカイブタブへ移る
-  const markMediaDone = (id: string) => {
+  const removeItem = (id: string) => {
+    const next = structuredClone(appState);
+    next.items = next.items.filter((x) => x.id !== id);
+    persist(next);
+  };
+  // Itemの唯一の出口: 行った/観た/読んだ/聴いた/買ったを押すと実際にやった
+  // ログ(done)へ進み、アーカイブタブへ移る。
+  const markItemDone = (id: string) => {
     haptic(10);
     const next = structuredClone(appState);
-    const r = next.records.media.find((x) => x.id === id);
-    if (r) {
-      r.status = "done";
-      r.doneAt = new Date().toISOString();
+    const item = next.items.find((x) => x.id === id);
+    if (item) {
+      item.status = "done";
+      item.doneAt = new Date().toISOString();
     }
     persist(next);
     showToast("アーカイブに移しました");
   };
-  const mediaCard = (r: MediaRecord, size?: number) => (
-    <PosterCard key={r.id} image={r.image} color={r.color} title={r.title} sub={r.creator || shortDate(r.addedAt)} label={MEDIA_LABEL[r.kind]}
-      icon={MEDIA_ICON[r.kind]} kept={r.origin !== "manual"} size={size}
-      action={size ? undefined : { label: mediaKindOf(r.kind).doneActionLabel, onClick: () => markMediaDone(r.id) }}
-      onClick={size ? undefined : (r.image ? () => setMediaDetail({ title: r.title, category: mediaKindOf(r.kind).label, images: [r.image!], meta: r.creator ? [r.creator] : [] }) : undefined)}
-      planSelected={size ? undefined : selection.mediaIds.includes(r.id)}
-      onTogglePlanSelect={size ? undefined : () => toggleMediaSelection(r.id)} />
+
+  const itemCard = (i: Item, size?: number) => (
+    <PosterCard key={i.id} image={i.images?.[0]} color={i.color} title={i.title}
+      sub={i.area && i.area !== "—" ? i.area : (i.creator || i.category || (i.price ?? shortDate(i.addedAt)))}
+      label={itemKindOf(i.kind).en}
+      icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)} size={size}
+      action={size ? undefined : { label: itemKindOf(i.kind).doneActionLabel, onClick: () => markItemDone(i.id) }}
+      onClick={size ? undefined : () => setItemDetail(i)}
+      planSelected={size ? undefined : selection.itemIds.includes(i.id)}
+      onTogglePlanSelect={size ? undefined : () => toggleItemSelection(i.id)} />
   );
 
-  // ---- 場所 ----
-  const placeItemsDesc = appState.keeps.filter((k) => k.status !== "done").sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
-  const removeKeep = (id: string) => {
-    const next = structuredClone(appState);
-    next.keeps = next.keeps.filter((x) => x.id !== id);
-    persist(next);
-  };
-  const addPlaceFromUrl = (data: { title: string; category: string; area: string; sourceUrl: string; sourceLabel: string }) => {
-    haptic(14);
-    const next = structuredClone(appState);
-    const seed = `url-${Date.now()}`;
-    next.keeps.push({
-      id: `manual-${Date.now()}`, title: data.title, category: data.category, area: data.area || undefined,
-      status: "candidate", keptAt: new Date().toISOString(),
-      images: [seed], color: POSTER_PALETTE[hashStr(data.title) % POSTER_PALETTE.length],
-      sourceUrl: data.sourceUrl, sourceLabel: data.sourceLabel, origin: "manual",
-    });
-    persist(next);
-    showToast("場所をストックしました");
-  };
-  const placeCard = (k: Keep, size?: number) => (
-    <PosterCard key={k.id} image={k.images?.[0]} color={k.color} title={k.title} sub={k.area && k.area !== "—" ? k.area : k.category}
-      icon={MapPin} kept={k.origin !== "manual"} size={size}
-      onClick={size ? undefined : () => setPlaceDetail(k)}
-      planSelected={size ? undefined : selection.keepIds.includes(k.id)}
-      onTogglePlanSelect={size ? undefined : () => toggleKeepSelection(k.id)} />
-  );
-
-  // ---- ウィッシュリスト ----
+  // ---- ウィッシュ ----
   const wishItemsDesc = appState.wishes.filter((w) => w.status === "stock").sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
   const addWish = (title: string) => {
     haptic();
     const next = structuredClone(appState);
-    next.wishes.unshift({ id: `wish-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title, category: "やりたい", categoryId: "do", status: "stock", addedAt: new Date().toISOString() });
+    next.wishes.unshift({ id: `wish-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title, status: "stock", addedAt: new Date().toISOString() });
     persist(next);
-    showToast("ウィッシュリストに追加しました");
+    showToast("ウィッシュに追加しました");
   };
   const updateWish = (id: string, patch: Partial<Wish>) => {
     const next = structuredClone(appState);
@@ -279,7 +303,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
     next.wishes = next.wishes.filter((x) => x.id !== id);
     persist(next);
   };
-  // ウィッシュリストの項目をゴールに格上げする: goalsへ追加し、wishesからは消す
+  // ウィッシュの項目をゴールに格上げする: goalsへ追加し、wishesからは消す
   const makeGoal = (w: Wish) => {
     haptic(10);
     const next = structuredClone(appState);
@@ -294,82 +318,109 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
       icon={Sparkles} size={size} onClick={size ? undefined : () => setWishDetail(w)} />
   );
 
-  const totalCount = mediaItemsDesc.length + placeItemsDesc.length + wishItemsDesc.length;
+  const totalCount = stocked.length + wishItemsDesc.length;
+
+  // 束シートの共通レイアウト。中身のカード集合とタイトルだけ差し替える。
+  const stackSheets: { id: StackId; title: string; cards: React.ReactNode[] }[] = [
+    { id: "wish", title: "ウィッシュ", cards: wishItemsDesc.map((w) => wishCard(w)) },
+    { id: "dest", title: "行き先", cards: destItems.map((i) => itemCard(i)) },
+    { id: "work", title: "作品", cards: workItems.map((i) => itemCard(i)) },
+    { id: "thing", title: "モノ", cards: thingItems.map((i) => itemCard(i)) },
+  ];
+  const openSheet = stackSheets.find((s) => s.id === openStack);
+
+  // このウィッシュから生まれたカード(origin:"wish"+sourceWishId)。詳細シートで
+  // 「種と芽」の関係として見せる。
+  const wishChildren = wishDetail ? appState.items.filter((i) => i.sourceWishId === wishDetail.id) : [];
 
   return (
     <>
       <Masthead title="ストック" statValue={totalCount} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
-        <StackSection title="作品" count={mediaItemsDesc.length}>
-          <CardStack cardWidth={STACK_CARD_WIDTH}
-            items={mediaItemsDesc.slice().reverse().map((r) => ({ key: r.id, node: mediaCard(r, STACK_CARD_WIDTH) }))}
-            onOpen={() => setOpenStack("media")} onAdd={() => setAddingMedia(true)} addLabel="作品を追加" />
-        </StackSection>
-
-        <StackSection title="場所" count={placeItemsDesc.length}>
-          <CardStack cardWidth={STACK_CARD_WIDTH}
-            items={placeItemsDesc.slice().reverse().map((k) => ({ key: k.id, node: placeCard(k, STACK_CARD_WIDTH) }))}
-            onOpen={() => setOpenStack("place")} onAdd={() => setAddingUrl(true)} addLabel="場所を追加" />
-        </StackSection>
-
-        <StackSection title="ウィッシュリスト" count={wishItemsDesc.length}>
+        {/* ウィッシュは他の3つの束の最上流(ここから先のカードが生まれる種)
+            なので先頭に置く。 */}
+        <StackSection title="ウィッシュ" count={wishItemsDesc.length}>
           <CardStack cardWidth={STACK_CARD_WIDTH}
             items={wishItemsDesc.slice().reverse().map((w) => ({ key: w.id, node: wishCard(w, STACK_CARD_WIDTH) }))}
-            onOpen={() => setOpenStack("wish")} onAdd={() => setAddingWish(true)} addLabel="ウィッシュリストに追加" />
+            onOpen={() => setOpenStack("wish")} onAdd={() => setAddingWish(true)} addLabel="ウィッシュを書く" />
+        </StackSection>
+
+        <StackSection title="行き先" count={destItems.length}>
+          <CardStack cardWidth={STACK_CARD_WIDTH}
+            items={destItems.slice().reverse().map((i) => ({ key: i.id, node: itemCard(i, STACK_CARD_WIDTH) }))}
+            onOpen={() => setOpenStack("dest")} onAdd={() => setAddingPlace(true)} addLabel="行き先を追加" />
+        </StackSection>
+
+        <StackSection title="作品" count={workItems.length}>
+          <CardStack cardWidth={STACK_CARD_WIDTH}
+            items={workItems.slice().reverse().map((i) => ({ key: i.id, node: itemCard(i, STACK_CARD_WIDTH) }))}
+            onOpen={() => setOpenStack("work")} onAdd={() => setAddingWork(true)} addLabel="作品を追加" />
+        </StackSection>
+
+        <StackSection title="モノ" count={thingItems.length}>
+          <CardStack cardWidth={STACK_CARD_WIDTH}
+            items={thingItems.slice().reverse().map((i) => ({ key: i.id, node: itemCard(i, STACK_CARD_WIDTH) }))}
+            onOpen={() => setOpenStack("thing")} onAdd={() => setAddingThing(true)} addLabel="モノを追加" />
         </StackSection>
       </main>
 
-      {openStack === "media" && (
+      {openSheet && (
         <BottomSheet onClose={() => setOpenStack(null)} maxHeight="74vh">
           {(requestClose) => (
             <>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>作品</div>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{openSheet.title}</div>
               <div onPointerDown={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
-                {mediaItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : mediaItemsDesc.map((r) => mediaCard(r))}
-              </div>
-            </>
-          )}
-        </BottomSheet>
-      )}
-      {openStack === "place" && (
-        <BottomSheet onClose={() => setOpenStack(null)} maxHeight="74vh">
-          {(requestClose) => (
-            <>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>場所</div>
-              <div onPointerDown={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
-                {placeItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : placeItemsDesc.map((k) => placeCard(k))}
-              </div>
-            </>
-          )}
-        </BottomSheet>
-      )}
-      {openStack === "wish" && (
-        <BottomSheet onClose={() => setOpenStack(null)} maxHeight="74vh">
-          {(requestClose) => (
-            <>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>ウィッシュリスト</div>
-              <div onPointerDown={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
-                {wishItemsDesc.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : wishItemsDesc.map((w) => wishCard(w))}
+                {openSheet.cards.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : openSheet.cards}
               </div>
             </>
           )}
         </BottomSheet>
       )}
 
-      {addingUrl && <AddPlaceSheet onAdd={addPlaceFromUrl} onClose={() => setAddingUrl(false)} />}
-      {addingMedia && <AddStockMediaSheet onAdd={addMediaKeep} onClose={() => setAddingMedia(false)} />}
+      {addingPlace && <AddPlaceSheet onClose={() => setAddingPlace(false)} onAdd={(data) => {
+        addItem({
+          id: `manual-${Date.now()}`, kind: "place", title: data.title, category: data.category,
+          area: data.area || undefined, status: "candidate", addedAt: new Date().toISOString(),
+          images: [`url-${Date.now()}`], color: POSTER_PALETTE[hashStr(data.title) % POSTER_PALETTE.length],
+          sourceUrl: data.sourceUrl, sourceLabel: data.sourceLabel, origin: "manual",
+        }, "行き先をストックしました");
+      }} />}
+      {addingWork && <AddWorkSheet onClose={() => setAddingWork(false)} onAdd={({ kind, title, creator }) => {
+        addItem({
+          id: `manual-${Date.now()}`, kind, title, creator: creator || undefined,
+          status: "candidate", addedAt: new Date().toISOString(),
+          color: POSTER_PALETTE[hashStr(title) % POSTER_PALETTE.length], origin: "manual",
+        }, "作品をストックしました");
+      }} />}
+      {addingThing && <AddThingSheet onClose={() => setAddingThing(false)} onAdd={({ title, price, sourceUrl }) => {
+        addItem({
+          id: `manual-${Date.now()}`, kind: "thing", title, price: price || undefined,
+          status: "candidate", addedAt: new Date().toISOString(),
+          color: POSTER_PALETTE[hashStr(title) % POSTER_PALETTE.length],
+          sourceUrl: sourceUrl || undefined, sourceLabel: sourceUrl ? "リンクを見る" : undefined, origin: "manual",
+        }, "モノをストックしました");
+      }} />}
       {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}
 
-      <BinderModal item={mediaDetail} onClose={() => setMediaDetail(null)} />
       <BinderModal
-        item={placeDetail ? { title: placeDetail.title, category: placeDetail.category, images: placeDetail.images, meta: placeDetail.meta, sourceUrl: placeDetail.sourceUrl, sourceLabel: placeDetail.sourceLabel } : null}
-        onClose={() => setPlaceDetail(null)}
+        item={itemDetail ? {
+          title: itemDetail.title, category: itemDetail.category ?? itemKindOf(itemDetail.kind).label,
+          images: itemDetail.images,
+          meta: [...(itemDetail.meta ?? []), ...(itemDetail.creator ? [itemDetail.creator] : []), ...(itemDetail.price ? [itemDetail.price] : [])],
+          sourceUrl: itemDetail.sourceUrl, sourceLabel: itemDetail.sourceLabel,
+        } : null}
+        onClose={() => setItemDetail(null)}
         actionSlot={(close) => (
-          <button onClick={() => { removeKeep(placeDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+          <button onClick={() => { removeItem(itemDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
         )} />
       <BinderModal
-        item={wishDetail ? { title: wishDetail.title, category: "ウィッシュリスト" } : null}
+        item={wishDetail ? {
+          title: wishDetail.title, category: "ウィッシュ",
+          // このウィッシュから生まれたカードを添えて、願いがどう形になって
+          // いるかを1画面で辿れるようにする。
+          meta: wishChildren.length > 0 ? wishChildren.map((c) => `→ ${c.title}${c.status === "done" ? "（実行済み）" : ""}`) : undefined,
+        } : null}
         onClose={() => setWishDetail(null)}
         actionSlot={(close) => (
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>

@@ -1,20 +1,19 @@
 "use client";
 
-import { Bookmark, BookOpen, Check, Film, MapPin, Music, Music2, Palette, X } from "lucide-react";
+import { Bookmark, Check, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { BinderModal, HOLE_CLEAR, type IconType, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
-import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW_LG, catOf, mediaKindOf } from "@/lib/constants";
-import { dayInfo, haptic, img, inferMediaKind, keepMedia, mapsUrl, mostRecentThursday, pinPosition, shade } from "@/lib/helpers";
-import type { Keep, MagazineItemRef, MediaKindId, MediaRecord, TabProps } from "@/lib/types";
-
-const MEDIA_ICON: Record<MediaKindId, IconType> = { movie: Film, exhibition: Palette, live: Music2, book: BookOpen, album: Music };
+import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
+import { KIND_ICON } from "@/components/tabs/StockTab";
+import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
+import { dayInfo, haptic, img, mapsUrl, mostRecentThursday, originBadge, pinPosition, shade, shelfOf } from "@/lib/helpers";
+import type { Item, ItemKind, TabProps } from "@/lib/types";
 
 function MapCanvas({ items, selectedIds, onOpenPin }: {
-  items: Keep[];
+  items: Item[];
   selectedIds: string[];
-  onOpenPin: (item: Keep) => void;
+  onOpenPin: (item: Item) => void;
 }) {
   return (
     <div style={{
@@ -60,14 +59,14 @@ function HorizontalShelf({ title, badge, children }: { title: string; badge?: st
 }
 
 // 「今週のおすすめ」は1件1件のカードではなく、地図上で近い距離にある
-// Keep(場所)同士をGemini風にまとめた「モデルプラン」の提案。pinPosition
-// が返す地図座標(AREA_COORDSベース)同士の距離が近いものだけを束ねる
-// ことで、実際に徒歩圏内でまとめて回れる組み合わせになるようにしている。
-// メディア(作品)は地図上の位置を持たないため、この距離ベースの束ねには
-// 含めない。
+// 行き先(場所が絡むItem)同士をGemini風にまとめた「モデルプラン」の提案。
+// pinPositionが返す地図座標(AREA_COORDSベース)同士の距離が近いものだけを
+// 束ねることで、実際に徒歩圏内でまとめて回れる組み合わせになるようにして
+// いる。場所を持たない作品・モノは地図上の位置が無いため、この距離ベースの
+// 束ねには含めない。
 interface RecommendedPlan {
   key: string;
-  keepIds: string[];
+  itemIds: string[];
   label: string;
   itemsText: string;
   accent: string;
@@ -78,21 +77,21 @@ const RECOMMENDED_COUNT = 5;
 const PLAN_CLUSTER_DIST = 16;
 const PLAN_MAX_ITEMS = 4;
 
-function buildRecommendedPlans(pool: Keep[]): RecommendedPlan[] {
-  const withPos = pool.map((k) => ({ keep: k, pos: pinPosition(k) }));
-  // 直近にKeepしたものを優先的にプランの起点(種)にする。
-  const sorted = withPos.slice().sort((a, b) => new Date(b.keep.keptAt).getTime() - new Date(a.keep.keptAt).getTime());
+function buildRecommendedPlans(pool: Item[]): RecommendedPlan[] {
+  const withPos = pool.map((item) => ({ item, pos: pinPosition(item) }));
+  // 直近にストックしたものを優先的にプランの起点(種)にする。
+  const sorted = withPos.slice().sort((a, b) => new Date(b.item.addedAt).getTime() - new Date(a.item.addedAt).getTime());
   const used = new Set<string>();
   const clusters: (typeof withPos)[] = [];
   for (const seed of sorted) {
-    if (used.has(seed.keep.id) || clusters.length >= RECOMMENDED_COUNT) continue;
+    if (used.has(seed.item.id) || clusters.length >= RECOMMENDED_COUNT) continue;
     const group = [seed];
-    used.add(seed.keep.id);
+    used.add(seed.item.id);
     for (const other of sorted) {
       if (group.length >= PLAN_MAX_ITEMS) break;
-      if (used.has(other.keep.id)) continue;
+      if (used.has(other.item.id)) continue;
       const d = Math.hypot(seed.pos.x - other.pos.x, seed.pos.y - other.pos.y);
-      if (d <= PLAN_CLUSTER_DIST) { group.push(other); used.add(other.keep.id); }
+      if (d <= PLAN_CLUSTER_DIST) { group.push(other); used.add(other.item.id); }
     }
     // 単体では「組み合わせたプラン」にならないため、2件以上まとまった
     // 種だけを採用する(近くに何も無い1件だけの候補は諦めて捨てる)。
@@ -101,18 +100,18 @@ function buildRecommendedPlans(pool: Keep[]): RecommendedPlan[] {
   return clusters.slice(0, RECOMMENDED_COUNT).map((group) => {
     const areaCounts = new Map<string, number>();
     group.forEach((g) => {
-      const a = g.keep.area && g.keep.area !== "—" ? g.keep.area : null;
+      const a = g.item.area && g.item.area !== "—" ? g.item.area : null;
       if (a) areaCounts.set(a, (areaCounts.get(a) ?? 0) + 1);
     });
     const areas = Array.from(areaCounts.entries()).sort((a, b) => b[1] - a[1]).map(([a]) => a);
     const label = areas.length === 0 ? "近場でめぐるプラン" : areas.length === 1 ? `${areas[0]}で過ごす` : `${areas[0]}・${areas[1]}をめぐる`;
     return {
-      key: group.map((g) => g.keep.id).join("-"),
-      keepIds: group.map((g) => g.keep.id),
+      key: group.map((g) => g.item.id).join("-"),
+      itemIds: group.map((g) => g.item.id),
       label,
-      itemsText: group.map((g) => g.keep.title).join(" ・ "),
-      accent: group[0].keep.color ?? placeAccent(areas[0] ?? group[0].keep.id).color,
-      items: group.map((g) => ({ id: g.keep.id, title: g.keep.title, image: g.keep.images?.[0], color: g.keep.color })),
+      itemsText: group.map((g) => g.item.title).join(" ・ "),
+      accent: group[0].item.color ?? placeAccent(areas[0] ?? group[0].item.id).color,
+      items: group.map((g) => ({ id: g.item.id, title: g.item.title, image: g.item.images?.[0], color: g.item.color })),
     };
   });
 }
@@ -224,71 +223,79 @@ function PlanDetailSheet({ plan, selected, onToggle, onClose }: {
   );
 }
 
-function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOpenPin, onToggleKeep, onToggleMedia, onTogglePlan, onInjectDemo, bundlesAreNew }: {
-  pool: Keep[];
-  mediaPool: MediaRecord[];
+// プランタブの選択画面。地図(場所が絡むItemのピン)+「今週のおすすめ・
+// 行き先・作品・モノ」の棚。棚の区分と名称はストックタブ・アーカイブと
+// 共通の語彙(shelfOf)にしている。
+function MapPlanner({ destPool, workPool, thingPool, draftSelection, onOpenPin, onToggleItem, onTogglePlan, onInjectDemo, bundlesAreNew }: {
+  destPool: Item[];
+  workPool: Item[];
+  thingPool: Item[];
   draftSelection: string[];
-  draftMediaSelection: string[];
-  onOpenPin: (item: Keep) => void;
-  onToggleKeep: (item: Keep) => void;
-  onToggleMedia: (item: MediaRecord) => void;
-  onTogglePlan: (keepIds: string[]) => void;
+  onOpenPin: (item: Item) => void;
+  onToggleItem: (item: Item) => void;
+  onTogglePlan: (itemIds: string[]) => void;
   onInjectDemo: () => void;
   bundlesAreNew: boolean;
 }) {
-  const sorted = pool.slice().sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
-  const plans = buildRecommendedPlans(pool);
+  const byNewest = (a: Item, b: Item) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
+  const destSorted = destPool.slice().sort(byNewest);
+  const workSorted = workPool.slice().sort(byNewest);
+  const thingSorted = thingPool.slice().sort(byNewest);
+  const plans = buildRecommendedPlans(destPool);
   const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
   const openPlan = plans.find((p) => p.key === openPlanKey) ?? null;
 
-  if (pool.length === 0 && mediaPool.length === 0) {
+  if (destPool.length === 0 && workPool.length === 0 && thingPool.length === 0) {
     return (
       <main style={{ padding: "48px 4px", textAlign: "center" }}>
         <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 19, marginBottom: 10 }}>Keepが、まだありません。</div>
-        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepするか、ストックタブの「場所」「作品」から追加すると、ここに地図として集まります。</p>
+        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepするか、ストックタブの「行き先」「作品」「モノ」から追加すると、ここに地図として集まります。</p>
         <button onClick={onInjectDemo} style={{ padding: "13px 26px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.12em" }}>デモ用データを投入</button>
       </main>
     );
   }
 
-  const bottomPadding = draftSelection.length + draftMediaSelection.length > 0 ? 96 : 24;
+  const bottomPadding = draftSelection.length > 0 ? 96 : 24;
+  const selectableCard = (i: Item) => (
+    <SelectablePosterCard key={i.id} title={i.title} image={i.images?.[0]} color={i.color}
+      sub={i.area && i.area !== "—" ? i.area : (i.creator || i.category || itemKindOf(i.kind).label)}
+      icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)}
+      selected={draftSelection.includes(i.id)} onToggle={() => onToggleItem(i)} />
+  );
 
   return (
     <main style={{ paddingTop: 14, paddingBottom: bottomPadding }}>
-      <MapCanvas items={pool} selectedIds={draftSelection} onOpenPin={onOpenPin} />
-      <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 22px" }}>ピンやカードをタップして、今日の行き先を選ぶ。</p>
+      <MapCanvas items={destPool} selectedIds={draftSelection} onOpenPin={onOpenPin} />
+      <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 22px" }}>ピンやカードをタップして、今日のプランを選ぶ。</p>
 
       {plans.length > 0 && (
         <HorizontalShelf title="今週のおすすめ" badge={bundlesAreNew ? "NEW" : undefined}>
           {plans.map((plan) => (
             <PlanEnvelope key={plan.key} plan={plan}
-              selected={plan.keepIds.every((id) => draftSelection.includes(id))}
+              selected={plan.itemIds.every((id) => draftSelection.includes(id))}
               onOpen={() => setOpenPlanKey(plan.key)} />
           ))}
         </HorizontalShelf>
       )}
-      {pool.length > 0 && (
-        <HorizontalShelf title="KEEP一覧">
-          {sorted.map((k) => (
-            <SelectablePosterCard key={k.id} title={k.title} image={k.images?.[0]} color={k.color}
-              sub={k.area && k.area !== "—" ? k.area : k.category} icon={MapPin} kept={k.origin !== "manual"}
-              selected={draftSelection.includes(k.id)} onToggle={() => onToggleKeep(k)} />
-          ))}
+      {destSorted.length > 0 && (
+        <HorizontalShelf title="行き先">
+          {destSorted.map(selectableCard)}
         </HorizontalShelf>
       )}
-      {mediaPool.length > 0 && (
-        <HorizontalShelf title="メディア">
-          {mediaPool.map((r) => (
-            <SelectablePosterCard key={r.id} title={r.title} image={r.image} color={r.color}
-              sub={mediaKindOf(r.kind).label} icon={MEDIA_ICON[r.kind]} kept={r.origin !== "manual"}
-              selected={draftMediaSelection.includes(r.id)} onToggle={() => onToggleMedia(r)} />
-          ))}
+      {workSorted.length > 0 && (
+        <HorizontalShelf title="作品">
+          {workSorted.map(selectableCard)}
+        </HorizontalShelf>
+      )}
+      {thingSorted.length > 0 && (
+        <HorizontalShelf title="モノ">
+          {thingSorted.map(selectableCard)}
         </HorizontalShelf>
       )}
       <PlanDetailSheet
         plan={openPlan}
-        selected={openPlan ? openPlan.keepIds.every((id) => draftSelection.includes(id)) : false}
-        onToggle={() => openPlan && onTogglePlan(openPlan.keepIds)}
+        selected={openPlan ? openPlan.itemIds.every((id) => draftSelection.includes(id)) : false}
+        onToggle={() => openPlan && onTogglePlan(openPlan.itemIds)}
         onClose={() => setOpenPlanKey(null)}
       />
     </main>
@@ -297,7 +304,7 @@ function MapPlanner({ pool, mediaPool, draftSelection, draftMediaSelection, onOp
 
 interface ExecItem {
   id: string;
-  type: MagazineItemRef["type"];
+  kind: ItemKind;
   title: string;
   images?: string[];
   color?: string;
@@ -307,8 +314,7 @@ interface ExecItem {
   sourceUrl?: string;
   sourceLabel?: string;
   doneActionLabel: string;
-  kind?: MediaKindId;
-  kept?: boolean;
+  badge?: "keep" | "wish";
   done?: boolean;
 }
 
@@ -413,12 +419,14 @@ function BinderFrontCover({ closed, width, aspect }: { closed: boolean; width: n
 // 地図リンクは、情報ソースが既にGoogleマップへのURLならそれをそのまま
 // 使い、そうでなければ場所名からその場で生成する。
 function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => void }) {
-  const IconComp = item.type === "keep" ? MapPin : (item.kind ? MEDIA_ICON[item.kind] : undefined);
+  const IconComp = KIND_ICON[item.kind];
   const fill = item.color ?? "#5A5A54";
   const hasPhoto = (item.images?.length ?? 0) > 0;
   const isMapsSource = !!item.sourceUrl && item.sourceUrl.includes("google.com/maps");
-  const mapsHref = item.type === "keep"
-    ? (isMapsSource ? item.sourceUrl : mapsUrl(item.area && item.area !== "—" ? `${item.area} ${item.title}` : item.title))
+  // 地図リンクは「行く」が絡むもの(=エリアを持つもの)にだけ出す。場所を
+  // 持たない作品・モノに地図を出しても行き先がない。
+  const mapsHref = item.area && item.area !== "—"
+    ? (isMapsSource ? item.sourceUrl : mapsUrl(`${item.area} ${item.title}`))
     : undefined;
   const officialHref = item.sourceUrl && !isMapsSource ? item.sourceUrl : undefined;
 
@@ -437,9 +445,9 @@ function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => 
           </div>
         ) : null}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.12), rgba(0,0,0,0) 40%)", pointerEvents: "none" }} />
-        {item.kept && (
+        {item.badge && (
           <span style={{ position: "absolute", top: 10, left: HOLE_CLEAR, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3.5px 9px 3.5px 7px" }}>
-            <Bookmark size={10} fill={INK} strokeWidth={0} /> KEEP
+            <Bookmark size={10} fill={INK} strokeWidth={0} /> {item.badge === "wish" ? "WISH" : "KEEP"}
           </span>
         )}
         <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
@@ -719,42 +727,37 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   );
 }
 
-export function ExecuteTab({ appState, persist, goTab, profileButton, selection, toggleKeepSelection, toggleMediaSelection, addKeepIds, setSelection }: TabProps) {
+export function ExecuteTab({ appState, persist, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection }: TabProps) {
   const magazine = appState.magazine;
   const [mapMode, setMapMode] = useState(false); // バインダー確定後でも地図に戻って選び直すときtrue
-  const [pinItem, setPinItem] = useState<Keep | null>(null);
+  const [pinItem, setPinItem] = useState<Item | null>(null);
   // 選択状態はAppShellへ引き上げ、ストックタブと共有している(タブを
-  // 跨いでバインド候補を選べるようにするため)。draftSelection/
-  // draftMediaSelectionという名前はこのタブ内での既存コードとの差分を
-  // 最小にするため残しているが、実体はlib配下から渡される共有state。
-  const draftSelection = selection.keepIds;
-  const draftMediaSelection = selection.mediaIds;
+  // 跨いでバインド候補を選べるようにするため)。draftSelectionという名前は
+  // このタブ内での既存コードとの差分を最小にするため残しているが、実体は
+  // lib配下から渡される共有state。
+  const draftSelection = selection.itemIds;
 
   const showMap = !magazine || mapMode;
-  // 地図には実行済み以外の全Keepをピンとして出す(マガジン掲載中plannedも、選び直しのため含める)
-  const pool = appState.keeps.filter((k) => k.status !== "done");
-  // 実行タブのメディア棚はストックタブ「作品」と同じ records.media を見るだけの
-  // ビュー。ここでの「観た/読んだ/聴いた」もストック側と全く同じ状態遷移(status→done)
-  // を起こす、唯一の出口を複数の入口から呼べるようにしているだけ。
-  const mediaPool = keepMedia(appState);
+  // 実行済み以外のItemを、ストックタブと共通の区分(行き先・作品・モノ)へ
+  // 振り分ける。地図のピンになるのは行き先だけ(マガジン掲載中plannedも、
+  // 選び直しのため含める)。ここでの「行った/観た/読んだ/聴いた/買った」も
+  // ストック側と全く同じ状態遷移(status→done)を起こす、唯一の出口を複数の
+  // 入口から呼べるようにしているだけ。
+  const stocked = appState.items.filter((i) => i.status !== "done");
+  const destPool = stocked.filter((i) => shelfOf(i) === "dest");
+  const workPool = stocked.filter((i) => shelfOf(i) === "work");
+  const thingPool = stocked.filter((i) => shelfOf(i) === "thing");
   const magItems: ExecItem[] = magazine ? magazine.itemIds
-    .map((ref): ExecItem | null => {
-      if (ref.type === "keep") {
-        const k = appState.keeps.find((x) => x.id === ref.id);
-        if (!k) return null;
-        return {
-          id: k.id, type: "keep", title: k.title, images: k.images, color: k.color,
-          categoryLabel: k.category ?? "", area: k.area, meta: k.meta, sourceUrl: k.sourceUrl, sourceLabel: k.sourceLabel,
-          doneActionLabel: "行った", kept: k.origin !== "manual", done: k.status === "done",
-        };
-      }
-      const r = appState.records.media.find((x) => x.id === ref.id);
-      if (!r) return null;
+    .map((id): ExecItem | null => {
+      const item = appState.items.find((x) => x.id === id);
+      if (!item) return null;
       return {
-        id: r.id, type: "media", title: r.title, images: r.image ? [r.image] : undefined, color: r.color,
-        categoryLabel: mediaKindOf(r.kind).label, meta: r.creator ? [r.creator] : undefined,
-        sourceUrl: r.sourceUrl, sourceLabel: r.sourceLabel, doneActionLabel: mediaKindOf(r.kind).doneActionLabel,
-        kind: r.kind, kept: r.origin !== "manual", done: (r.status ?? "done") === "done",
+        id: item.id, kind: item.kind, title: item.title, images: item.images, color: item.color,
+        categoryLabel: item.category ?? itemKindOf(item.kind).label, area: item.area,
+        meta: [...(item.meta ?? []), ...(item.creator ? [item.creator] : [])],
+        sourceUrl: item.sourceUrl, sourceLabel: item.sourceLabel,
+        doneActionLabel: itemKindOf(item.kind).doneActionLabel,
+        badge: originBadge(item.origin), done: item.status === "done",
       };
     })
     .filter((x): x is ExecItem => !!x) : [];
@@ -763,7 +766,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   const bundlesAreNew = (appState.weekendMeta?.lastSeenBundleWeek ?? null) !== currentBundleWeek;
 
   useEffect(() => {
-    if (!showMap || !bundlesAreNew || pool.length === 0) return;
+    if (!showMap || !bundlesAreNew || destPool.length === 0) return;
     const t = setTimeout(() => {
       const next = structuredClone(appState);
       next.weekendMeta = { ...(next.weekendMeta ?? {}), lastSeenBundleWeek: currentBundleWeek };
@@ -771,67 +774,53 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
     }, 1200);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showMap, bundlesAreNew, currentBundleWeek, pool.length]);
+  }, [showMap, bundlesAreNew, currentBundleWeek, destPool.length]);
 
-  const toggleDraftKeep = (item: Keep) => toggleKeepSelection(item.id);
-  const toggleDraftMedia = (item: MediaRecord) => toggleMediaSelection(item.id);
-  // モデルプラン(複数のKeepをまとめたエンベロープ)は、中の全件がすでに
+  const toggleDraftItem = (item: Item) => toggleItemSelection(item.id);
+  // モデルプラン(複数の行き先をまとめたエンベロープ)は、中の全件がすでに
   // 選択済みなら丸ごと外し、そうでなければ丸ごと追加する。1件ずつの
-  // toggleKeepSelectionではなく「全部入り/全部無し」の2状態だけを扱う。
-  const toggleDraftPlan = (keepIds: string[]) => {
-    const allSelected = keepIds.every((id) => draftSelection.includes(id));
+  // toggleItemSelectionではなく「全部入り/全部無し」の2状態だけを扱う。
+  const toggleDraftPlan = (itemIds: string[]) => {
+    const allSelected = itemIds.every((id) => draftSelection.includes(id));
     if (allSelected) {
-      setSelection({ keepIds: draftSelection.filter((id) => !keepIds.includes(id)), mediaIds: draftMediaSelection });
+      setSelection({ itemIds: draftSelection.filter((id) => !itemIds.includes(id)) });
     } else {
-      addKeepIds(keepIds);
+      addItemIds(itemIds);
     }
   };
 
-  const removeFromMagazine = (id: string, type: MagazineItemRef["type"]) => {
+  const removeFromMagazine = (id: string) => {
     const next = structuredClone(appState);
-    next.magazine!.itemIds = next.magazine!.itemIds.filter((r) => !(r.id === id && r.type === type));
-    if (type === "keep") {
-      const k = next.keeps.find((x) => x.id === id);
-      if (k) k.status = "candidate";
-    }
+    next.magazine!.itemIds = next.magazine!.itemIds.filter((x) => x !== id);
+    const item = next.items.find((x) => x.id === id);
+    if (item && item.status === "planned") item.status = "candidate";
     if (next.magazine!.itemIds.length === 0) next.magazine = null;
     persist(next);
   };
   // 行った/観たにしても、ボードからはすぐには消さない。itemIdsはそのまま
-  // 残し、状態をdoneにするだけにして、ScrapCard側でグレーアウト表示にする
+  // 残し、状態をdoneにするだけにして、カード側でグレーアウト表示にする
   // ことで「今日やったこと」がその場に積み上がって見えるようにしている。
-  const markDoneInMagazine = (id: string, type: MagazineItemRef["type"]) => {
+  // Itemの統一により、以前あった「場所のKeepを実行すると作品のコピーを
+  // records.mediaへ複製する」変換は不要になった(1つのItemが種類と場所の
+  // 両方を持つので、doneにするだけでアーカイブの作品棚にも行き先棚にも立つ)。
+  const markDoneInMagazine = (id: string) => {
     haptic(14);
     const next = structuredClone(appState);
-    if (type === "keep") {
-      const k = next.keeps.find((x) => x.id === id);
-      if (k) {
-        k.status = "done";
-        k.doneAt = new Date().toISOString();
-        const mediaKind = inferMediaKind(k.category);
-        if (mediaKind) {
-          next.records = next.records ?? { media: [] };
-          next.records.media.unshift({ id: `media-${Date.now()}`, kind: mediaKind, title: k.title, creator: "", addedAt: k.doneAt, status: "done", doneAt: k.doneAt, image: k.images?.[0], color: k.color, sourceKeepId: k.id });
-        }
-      }
-    } else {
-      const r = next.records.media.find((x) => x.id === id);
-      if (r) {
-        r.status = "done";
-        r.doneAt = new Date().toISOString();
-      }
+    const item = next.items.find((x) => x.id === id);
+    if (item) {
+      item.status = "done";
+      item.doneAt = new Date().toISOString();
     }
     persist(next);
   };
   // 裏表紙の「登録」。バインダーを閉じて今日を締めくくる操作。「行きましたか？」
-  // のような追加の確認は挟まず、まだ行った/行ってないが付いていない場所の
-  // Keepはそのまま候補に戻し、そのままアーカイブタブへ向かう。
+  // のような追加の確認は挟まず、まだ実行が付いていないItemはそのまま候補に
+  // 戻し、そのままアーカイブタブへ向かう。
   const registerBinder = () => {
     const next = structuredClone(appState);
-    (next.magazine?.itemIds ?? []).forEach((r) => {
-      if (r.type !== "keep") return;
-      const k = next.keeps.find((x) => x.id === r.id);
-      if (k && k.status !== "done") k.status = "candidate";
+    (next.magazine?.itemIds ?? []).forEach((id) => {
+      const item = next.items.find((x) => x.id === id);
+      if (item && item.status !== "done") item.status = "candidate";
     });
     next.magazine = null;
     persist(next);
@@ -848,90 +837,99 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   const injectDemo = () => {
     const next = structuredClone(appState);
     const now = Date.now();
-    ([
-      { title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"], done: true },
-      { title: "竹橋のギャラリーで版画展を観る", category: "展覧会", area: "竹橋", images: ["print-a", "print-b"], sourceUrl: mapsUrl("竹橋 ギャラリー"), sourceLabel: "地図で見る", meta: ["竹橋"], done: true },
-      { title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", meta: ["神保町"], done: true },
-      { title: "神保町の器店、作家の個展", category: "雑貨", area: "神保町", images: ["books-c"], sourceUrl: mapsUrl("神保町 器 個展"), sourceLabel: "地図で見る", meta: ["神保町", "会期は今月いっぱい"], done: true },
-      { title: "喫茶店でゆっくり読書する", category: "近所の発見", area: "神保町", images: ["kissa-a"], sourceUrl: mapsUrl("神保町 純喫茶"), sourceLabel: "地図で見る", meta: ["神保町"], done: false },
-      { title: "日比谷公園を散歩する", category: "身体", area: "日比谷", images: ["hibiya-park-a"], sourceUrl: mapsUrl("日比谷公園"), sourceLabel: "地図で見る", meta: ["日比谷公園"], done: true },
-      { title: "日比谷のミッドセンチュリー家具店", category: "雑貨", area: "日比谷", images: ["furniture-a"], sourceUrl: mapsUrl("日比谷 家具店"), sourceLabel: "地図で見る", meta: ["日比谷"], done: false },
-      { title: "谷根千の坂道を散歩する", category: "身体", area: "谷根千", images: ["zakka-a", "zakka-b"], sourceUrl: mapsUrl("谷根千 散歩コース"), sourceLabel: "地図で見る", meta: ["谷根千エリア"], done: true },
-      { title: "谷中の陶器市を覗く", category: "雑貨", area: "谷根千", images: ["zakka-c"], sourceUrl: mapsUrl("谷中 陶器市"), sourceLabel: "地図で見る", meta: ["谷中エリア", "会期は今週末まで"], done: true },
-      { title: "谷根千の純喫茶でひと休み", category: "近所の発見", area: "谷根千", images: ["kissa-b"], sourceUrl: mapsUrl("谷根千 純喫茶"), sourceLabel: "地図で見る", meta: ["谷根千エリア"], done: true },
-      { title: "浅草橋のボルダリングジムへ", category: "身体", area: "浅草橋", images: ["climb-a", "climb-b"], sourceUrl: mapsUrl("浅草橋 ボルダリングジム"), sourceLabel: "地図で見る", meta: ["浅草橋駅から徒歩6分"], done: true },
-      { title: "浅草橋の手芸問屋街を歩く", category: "雑貨", area: "浅草橋", images: ["zakka-d"], sourceUrl: mapsUrl("浅草橋 問屋街"), sourceLabel: "地図で見る", meta: ["浅草橋"], done: false },
-      { title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", meta: ["COFFEE WRIGHTS", "9:00–18:00"], done: true },
-      { title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", meta: ["蔵前"], done: true },
-      { title: "蔵前のレザー工房を覗く", category: "雑貨", area: "蔵前", images: ["leather-a"], sourceUrl: mapsUrl("蔵前 レザー工房"), sourceLabel: "地図で見る", meta: ["蔵前"], done: true },
-      { title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", meta: ["江戸東京博物館"], done: true },
-      { title: "両国国技館のまわりを歩く", category: "身体", area: "両国", images: ["ryogoku-a"], sourceUrl: mapsUrl("両国国技館"), sourceLabel: "地図で見る", meta: ["両国"], done: false },
-      { title: "清澄白河で陶芸体験をする", category: "未知との遭遇", area: "清澄白河", images: ["pottery-a", "pottery-b"], sourceUrl: mapsUrl("清澄白河 陶芸体験"), sourceLabel: "地図で見る", meta: ["清澄白河・陶房"], done: true },
-      { title: "清澄白河のロースタリー巡り", category: "近所の発見", area: "清澄白河", images: ["kiyosumi-a"], sourceUrl: mapsUrl("清澄白河 ロースタリー"), sourceLabel: "地図で見る", meta: ["清澄白河"], done: true },
-      { title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", meta: ["高円寺北口エリア"], done: true },
-      { title: "高円寺の古着市、大型セール", category: "古着", area: "高円寺", images: ["vintage-c"], sourceUrl: mapsUrl("高円寺 古着 セール"), sourceLabel: "地図で見る", meta: ["高円寺北口一帯", "セールは3日間"], done: true },
-      { title: "高円寺の小さなレコード店", category: "音楽", area: "高円寺", images: ["record-a"], sourceUrl: mapsUrl("高円寺 レコード店"), sourceLabel: "地図で見る", meta: ["高円寺"], done: false },
+    // まずウィッシュ(自由文の願い)を投入する。ブリーフのダミーカードの
+    // sourceWishTitleと同じ文面を含めることで、ブリーフでKEEPした時に
+    // origin:"wish"のItemが実際に生まれる流れを試せる。
+    const demoWishes = [
+      "安藤忠雄の建築を観る", "浅煎りの豆を買う", "古着でジャケットを探す",
+      "サウナを開拓する", "もっと歩く", "フィルムカメラを買う", "陶芸をはじめる", "秋に一人旅へ行く",
+    ].map((title, i) => ({ id: `demo-wish-${now}-${i}`, title, status: "stock" as const, addedAt: new Date(now - i * 86400000).toISOString() }));
+    next.wishes.push(...demoWishes);
+
+    // Itemは1つの配列に統一。kindで種類(place/作品系/thing)、areaの有無で
+    // 「行くが絡むか」を表す(新作映画=movie+area、旧作映画=movieのみ、
+    // そこでしか買えないモノ=thing+area、など)。
+    const demo: { kind: ItemKind; title: string; category?: string; area?: string; creator?: string; price?: string; images?: string[]; sourceUrl?: string; sourceLabel?: string; meta?: string[]; done: boolean }[] = [
+      { kind: "exhibition", title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"], done: true },
+      { kind: "exhibition", title: "竹橋のギャラリーで版画展を観る", category: "展覧会", area: "竹橋", images: ["print-a", "print-b"], sourceUrl: mapsUrl("竹橋 ギャラリー"), sourceLabel: "地図で見る", meta: ["竹橋"], done: true },
+      { kind: "place", title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", meta: ["神保町"], done: true },
+      { kind: "exhibition", title: "神保町の器店、作家の個展", category: "雑貨", area: "神保町", images: ["books-c"], sourceUrl: mapsUrl("神保町 器 個展"), sourceLabel: "地図で見る", meta: ["神保町", "会期は今月いっぱい"], done: true },
+      { kind: "place", title: "喫茶店でゆっくり読書する", category: "近所の発見", area: "神保町", images: ["kissa-a"], sourceUrl: mapsUrl("神保町 純喫茶"), sourceLabel: "地図で見る", meta: ["神保町"], done: false },
+      { kind: "place", title: "日比谷公園を散歩する", category: "身体", area: "日比谷", images: ["hibiya-park-a"], sourceUrl: mapsUrl("日比谷公園"), sourceLabel: "地図で見る", meta: ["日比谷公園"], done: true },
+      { kind: "place", title: "日比谷のミッドセンチュリー家具店", category: "雑貨", area: "日比谷", images: ["furniture-a"], sourceUrl: mapsUrl("日比谷 家具店"), sourceLabel: "地図で見る", meta: ["日比谷"], done: false },
+      { kind: "place", title: "谷根千の坂道を散歩する", category: "身体", area: "谷根千", images: ["zakka-a", "zakka-b"], sourceUrl: mapsUrl("谷根千 散歩コース"), sourceLabel: "地図で見る", meta: ["谷根千エリア"], done: true },
+      { kind: "place", title: "谷中の陶器市を覗く", category: "雑貨", area: "谷根千", images: ["zakka-c"], sourceUrl: mapsUrl("谷中 陶器市"), sourceLabel: "地図で見る", meta: ["谷中エリア", "会期は今週末まで"], done: true },
+      { kind: "place", title: "谷根千の純喫茶でひと休み", category: "近所の発見", area: "谷根千", images: ["kissa-b"], sourceUrl: mapsUrl("谷根千 純喫茶"), sourceLabel: "地図で見る", meta: ["谷根千エリア"], done: true },
+      { kind: "place", title: "浅草橋のボルダリングジムへ", category: "身体", area: "浅草橋", images: ["climb-a", "climb-b"], sourceUrl: mapsUrl("浅草橋 ボルダリングジム"), sourceLabel: "地図で見る", meta: ["浅草橋駅から徒歩6分"], done: true },
+      { kind: "place", title: "浅草橋の手芸問屋街を歩く", category: "雑貨", area: "浅草橋", images: ["zakka-d"], sourceUrl: mapsUrl("浅草橋 問屋街"), sourceLabel: "地図で見る", meta: ["浅草橋"], done: false },
+      { kind: "place", title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", meta: ["COFFEE WRIGHTS", "9:00–18:00"], done: true },
+      { kind: "place", title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", meta: ["蔵前"], done: true },
+      { kind: "place", title: "蔵前のレザー工房を覗く", category: "雑貨", area: "蔵前", images: ["leather-a"], sourceUrl: mapsUrl("蔵前 レザー工房"), sourceLabel: "地図で見る", meta: ["蔵前"], done: true },
+      { kind: "exhibition", title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", meta: ["江戸東京博物館"], done: true },
+      { kind: "place", title: "両国国技館のまわりを歩く", category: "身体", area: "両国", images: ["ryogoku-a"], sourceUrl: mapsUrl("両国国技館"), sourceLabel: "地図で見る", meta: ["両国"], done: false },
+      { kind: "place", title: "清澄白河で陶芸体験をする", category: "未知との遭遇", area: "清澄白河", images: ["pottery-a", "pottery-b"], sourceUrl: mapsUrl("清澄白河 陶芸体験"), sourceLabel: "地図で見る", meta: ["清澄白河・陶房"], done: true },
+      { kind: "place", title: "清澄白河のロースタリー巡り", category: "近所の発見", area: "清澄白河", images: ["kiyosumi-a"], sourceUrl: mapsUrl("清澄白河 ロースタリー"), sourceLabel: "地図で見る", meta: ["清澄白河"], done: true },
+      { kind: "place", title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", meta: ["高円寺北口エリア"], done: true },
+      { kind: "place", title: "高円寺の古着市、大型セール", category: "古着", area: "高円寺", images: ["vintage-c"], sourceUrl: mapsUrl("高円寺 古着 セール"), sourceLabel: "地図で見る", meta: ["高円寺北口一帯", "セールは3日間"], done: true },
+      { kind: "place", title: "高円寺の小さなレコード店", category: "音楽", area: "高円寺", images: ["record-a"], sourceUrl: mapsUrl("高円寺 レコード店"), sourceLabel: "地図で見る", meta: ["高円寺"], done: false },
       // アーカイブタブのバインダー柄(グリッド構図・色相)のバリエーションを
       // 一覧で見比べられるよう、行った場所のエリア数を大きく増やしている
       // (バインダー1冊=エリア1つのため、エリア数=バインダー数になる)。
-      { title: "中目黒の川沿いを散歩する", category: "身体", area: "中目黒", images: ["nakameguro-a"], sourceUrl: mapsUrl("中目黒 目黒川"), sourceLabel: "地図で見る", meta: ["中目黒"], done: true },
-      { title: "代官山の独立系書店を覗く", category: "近所の発見", area: "代官山", images: ["daikanyama-a"], sourceUrl: mapsUrl("代官山 書店"), sourceLabel: "地図で見る", meta: ["代官山"], done: true },
-      { title: "荻窪のラーメン店に並ぶ", category: "近所の発見", area: "荻窪", images: ["ogikubo-a"], sourceUrl: mapsUrl("荻窪 ラーメン"), sourceLabel: "地図で見る", meta: ["荻窪"], done: true },
-      { title: "吉祥寺の雑貨店めぐり", category: "雑貨", area: "吉祥寺", images: ["kichijoji-a"], sourceUrl: mapsUrl("吉祥寺 雑貨店"), sourceLabel: "地図で見る", meta: ["吉祥寺"], done: true },
-      { title: "三軒茶屋の小劇場で芝居を観る", category: "未知との遭遇", area: "三軒茶屋", images: ["sangenjaya-a"], sourceUrl: mapsUrl("三軒茶屋 小劇場"), sourceLabel: "地図で見る", meta: ["三軒茶屋"], done: true },
-      { title: "下北沢の古着屋めぐり", category: "古着", area: "下北沢", images: ["shimokita-a"], sourceUrl: mapsUrl("下北沢 古着屋"), sourceLabel: "地図で見る", meta: ["下北沢"], done: false },
-      { title: "自由が丘のスイーツ店めぐり", category: "近所の発見", area: "自由が丘", images: ["jiyugaoka-a"], sourceUrl: mapsUrl("自由が丘 スイーツ"), sourceLabel: "地図で見る", meta: ["自由が丘"], done: true },
-      { title: "経堂の商店街を歩く", category: "身体", area: "経堂", images: ["kyodo-a"], sourceUrl: mapsUrl("経堂 商店街"), sourceLabel: "地図で見る", meta: ["経堂"], done: true },
-      { title: "東小金井の古本市に寄る", category: "近所の発見", area: "東小金井", images: ["higashikoganei-a"], sourceUrl: mapsUrl("東小金井 古本市"), sourceLabel: "地図で見る", meta: ["東小金井"], done: false },
-      { title: "早稲田のカレー屋を開拓する", category: "近所の発見", area: "早稲田", images: ["waseda-a"], sourceUrl: mapsUrl("早稲田 カレー"), sourceLabel: "地図で見る", meta: ["早稲田"], done: true },
-      { title: "根津神社の参道を歩く", category: "身体", area: "根津", images: ["nezu-a"], sourceUrl: mapsUrl("根津神社"), sourceLabel: "地図で見る", meta: ["根津"], done: true },
-      { title: "千駄木の路地裏カフェへ", category: "近所の発見", area: "千駄木", images: ["sendagi-a"], sourceUrl: mapsUrl("千駄木 カフェ"), sourceLabel: "地図で見る", meta: ["千駄木"], done: true },
-      { title: "巣鴨の商店街で買い物", category: "雑貨", area: "巣鴨", images: ["sugamo-a"], sourceUrl: mapsUrl("巣鴨 商店街"), sourceLabel: "地図で見る", meta: ["巣鴨"], done: false },
-      { title: "十条の立ち飲み屋を覗く", category: "未知との遭遇", area: "十条", images: ["jujo-a"], sourceUrl: mapsUrl("十条 立ち飲み"), sourceLabel: "地図で見る", meta: ["十条"], done: true },
-    ]).forEach((d, i) => {
-      // 場所カードの色は、バインダー側の「行った場所」棚が同じエリア名から
-      // 生成する色(placeAccent)と揃え、カードとバインダーが同一のエリアを
-      // 指していることが色でもわかるようにしている。
-      next.keeps.push({
-        id: `demo-${now}-${i}`, title: d.title, category: d.category, area: d.area,
+      { kind: "place", title: "中目黒の川沿いを散歩する", category: "身体", area: "中目黒", images: ["nakameguro-a"], sourceUrl: mapsUrl("中目黒 目黒川"), sourceLabel: "地図で見る", meta: ["中目黒"], done: true },
+      { kind: "place", title: "代官山の独立系書店を覗く", category: "近所の発見", area: "代官山", images: ["daikanyama-a"], sourceUrl: mapsUrl("代官山 書店"), sourceLabel: "地図で見る", meta: ["代官山"], done: true },
+      { kind: "place", title: "荻窪のラーメン店に並ぶ", category: "近所の発見", area: "荻窪", images: ["ogikubo-a"], sourceUrl: mapsUrl("荻窪 ラーメン"), sourceLabel: "地図で見る", meta: ["荻窪"], done: true },
+      { kind: "place", title: "吉祥寺の雑貨店めぐり", category: "雑貨", area: "吉祥寺", images: ["kichijoji-a"], sourceUrl: mapsUrl("吉祥寺 雑貨店"), sourceLabel: "地図で見る", meta: ["吉祥寺"], done: true },
+      { kind: "live", title: "三軒茶屋の小劇場で芝居を観る", category: "未知との遭遇", area: "三軒茶屋", images: ["sangenjaya-a"], sourceUrl: mapsUrl("三軒茶屋 小劇場"), sourceLabel: "地図で見る", meta: ["三軒茶屋"], done: true },
+      { kind: "place", title: "下北沢の古着屋めぐり", category: "古着", area: "下北沢", images: ["shimokita-a"], sourceUrl: mapsUrl("下北沢 古着屋"), sourceLabel: "地図で見る", meta: ["下北沢"], done: false },
+      { kind: "place", title: "自由が丘のスイーツ店めぐり", category: "近所の発見", area: "自由が丘", images: ["jiyugaoka-a"], sourceUrl: mapsUrl("自由が丘 スイーツ"), sourceLabel: "地図で見る", meta: ["自由が丘"], done: true },
+      { kind: "place", title: "経堂の商店街を歩く", category: "身体", area: "経堂", images: ["kyodo-a"], sourceUrl: mapsUrl("経堂 商店街"), sourceLabel: "地図で見る", meta: ["経堂"], done: true },
+      { kind: "place", title: "東小金井の古本市に寄る", category: "近所の発見", area: "東小金井", images: ["higashikoganei-a"], sourceUrl: mapsUrl("東小金井 古本市"), sourceLabel: "地図で見る", meta: ["東小金井"], done: false },
+      { kind: "place", title: "早稲田のカレー屋を開拓する", category: "近所の発見", area: "早稲田", images: ["waseda-a"], sourceUrl: mapsUrl("早稲田 カレー"), sourceLabel: "地図で見る", meta: ["早稲田"], done: true },
+      { kind: "place", title: "根津神社の参道を歩く", category: "身体", area: "根津", images: ["nezu-a"], sourceUrl: mapsUrl("根津神社"), sourceLabel: "地図で見る", meta: ["根津"], done: true },
+      { kind: "place", title: "千駄木の路地裏カフェへ", category: "近所の発見", area: "千駄木", images: ["sendagi-a"], sourceUrl: mapsUrl("千駄木 カフェ"), sourceLabel: "地図で見る", meta: ["千駄木"], done: true },
+      { kind: "place", title: "巣鴨の商店街で買い物", category: "雑貨", area: "巣鴨", images: ["sugamo-a"], sourceUrl: mapsUrl("巣鴨 商店街"), sourceLabel: "地図で見る", meta: ["巣鴨"], done: false },
+      { kind: "place", title: "十条の立ち飲み屋を覗く", category: "未知との遭遇", area: "十条", images: ["jujo-a"], sourceUrl: mapsUrl("十条 立ち飲み"), sourceLabel: "地図で見る", meta: ["十条"], done: true },
+      // 場所を持つ作品(新作の劇場公開)と、場所を持たない作品(旧作を家で観る・
+      // 本・アルバム)の両方を混ぜ、「作品か場所か」ではなく「種類×場所の有無」
+      // というモデルをデモデータでも示す。
+      { kind: "movie", title: "単館上映のドキュメンタリー", category: "映画", area: "両国", images: ["carpentry-a"], sourceUrl: mapsUrl("両国 ミニシアター"), sourceLabel: "地図で見る", meta: ["両国のミニシアター", "19:40の回"], done: true },
+      { kind: "movie", title: "Perfect Days 2", done: true },
+      { kind: "movie", title: "深夜のホラー特集上映", done: false },
+      { kind: "exhibition", title: "写真家の回顧展", creator: "損保ジャパン美術館", done: false },
+      { kind: "live", title: "下北沢の対バンライブ", done: true },
+      { kind: "live", title: "高円寺の弾き語りナイト", done: true },
+      { kind: "live", title: "野外音楽フェス", done: false },
+      { kind: "book", title: "建築家のエッセイ集", done: true },
+      { kind: "book", title: "書評サイトで話題の短編集", done: true },
+      { kind: "book", title: "積読中の長編小説", done: false },
+      { kind: "album", title: "通勤で聴き切る一枚", done: true },
+      { kind: "album", title: "学生時代によく聴いたアルバム", done: true },
+      { kind: "album", title: "評判の新譜", done: false },
+      // モノ: 場所なし(オンラインで買う)と、場所あり(そこでしか買えない)の両方。
+      { kind: "thing", title: "フィルムカメラ", price: "¥72,000", done: false },
+      { kind: "thing", title: "作家ものの器", area: "谷根千", price: "¥6,000前後", sourceUrl: mapsUrl("谷中 器"), sourceLabel: "地図で見る", done: true },
+      { kind: "thing", title: "浅煎りのコーヒー豆", area: "蔵前", price: "¥1,800", sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", done: true },
+    ];
+    demo.forEach((d, i) => {
+      // 2/3のItemをウィッシュ由来(origin:"wish")にする。アーカイブの
+      // ウィッシュバインダーが30枚を超えて2冊目(続き)に割れる様子まで
+      // デモデータだけで確認できる分量になる。
+      const wish = i % 3 !== 0 ? demoWishes[i % demoWishes.length] : undefined;
+      // 場所カードの色は、バインダー側の「行き先」棚が同じエリア名から生成
+      // する色(placeAccent)と揃え、作品はジャンルのバインダー色(MEDIA_ACCENT)
+      // を基準に明暗を振った近似色にする。
+      const color = d.area ? placeAccent(d.area).color
+        : d.kind !== "place" && d.kind !== "thing" ? shade(MEDIA_ACCENT[d.kind as Exclude<ItemKind, "place" | "thing">].color, ((i % 3) - 1) * 13)
+        : placeAccent(d.title).color;
+      next.items.push({
+        id: `demo-${now}-${i}`, kind: d.kind, title: d.title, category: d.category, area: d.area,
+        creator: d.creator, price: d.price,
         status: d.done ? "done" : "candidate",
-        keptAt: new Date(now - (i + 3) * 30 * 3600 * 1000).toISOString(),
+        addedAt: new Date(now - (i + 3) * 30 * 3600 * 1000).toISOString(),
         doneAt: d.done ? new Date(now - i * 22 * 3600 * 1000).toISOString() : undefined,
-        images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color: placeAccent(d.area).color,
+        images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color,
+        origin: wish ? "wish" : "brief", sourceWishId: wish?.id,
       });
-    });
-    ([
-      { kind: "movie" as const, title: "Perfect Days 2", creator: "", done: true },
-      { kind: "movie" as const, title: "単館上映のドキュメンタリー", creator: "", done: true },
-      { kind: "movie" as const, title: "深夜のホラー特集上映", creator: "", done: false },
-      { kind: "exhibition" as const, title: "「建築と自然」展", creator: "国立近代美術館", done: true },
-      { kind: "exhibition" as const, title: "谷根千の器作家、個展", creator: "個人ギャラリー", done: true },
-      { kind: "exhibition" as const, title: "写真家の回顧展", creator: "損保ジャパン美術館", done: false },
-      { kind: "live" as const, title: "下北沢の対バンライブ", creator: "", done: true },
-      { kind: "live" as const, title: "高円寺の弾き語りナイト", creator: "", done: true },
-      { kind: "live" as const, title: "野外音楽フェス", creator: "", done: false },
-      { kind: "book" as const, title: "建築家のエッセイ集", creator: "", done: true },
-      { kind: "book" as const, title: "書評サイトで話題の短編集", creator: "", done: true },
-      { kind: "book" as const, title: "積読中の長編小説", creator: "", done: false },
-      { kind: "album" as const, title: "通勤で聴き切る一枚", creator: "", done: true },
-      { kind: "album" as const, title: "学生時代によく聴いたアルバム", creator: "", done: true },
-      { kind: "album" as const, title: "評判の新譜", creator: "", done: false },
-    ]).forEach((d, i) => {
-      // メディアカードの色はジャンルのバインダー色(MEDIA_ACCENT)を基準に、
-      // 同じジャンル内でも一枚一枚が識別できるよう明暗を振った近似色にする。
-      next.records.media.unshift({
-        id: `demo-media-${now}-${i}`, kind: d.kind, title: d.title, creator: d.creator,
-        addedAt: new Date(now - (i + 2) * 20 * 3600 * 1000).toISOString(), color: shade(MEDIA_ACCENT[d.kind].color, ((i % 3) - 1) * 13),
-        status: d.done ? "done" : "keep",
-        doneAt: d.done ? new Date(now - i * 15 * 3600 * 1000).toISOString() : undefined,
-      });
-    });
-    ([
-      { title: "フィルムカメラを買う", categoryId: "buy" as const },
-      { title: "陶芸をはじめる", categoryId: "do" as const },
-      { title: "秋に一人旅へ行く", categoryId: "go" as const },
-    ]).forEach((d, i) => {
-      next.wishes.push({ id: `demo-wish-${now}-${i}`, title: d.title, category: catOf(d.categoryId).label, categoryId: d.categoryId, status: "stock", addedAt: new Date(now - i * 86400000).toISOString() });
     });
     if ((next.goals ?? []).length === 0) {
       // 目標のバインダーはgoalAccentが名前のハッシュだけで色相を振る単色
@@ -958,16 +956,16 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   };
   return (
     <>
-      <Masthead title="プラン" statValue={magazine && !showMap ? magItems.length : pool.length + mediaPool.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
+      <Masthead title="プラン" statValue={magazine && !showMap ? magItems.length : stocked.length} statLabel={magazine && !showMap ? "件の目的地" : "件の候補"} corner={profileButton} />
 
       {showMap ? (
         <>
           {magazine && (
-            <button onClick={() => { setMapMode(false); setSelection({ keepIds: [], mediaIds: [] }); }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← バインダーに戻る</button>
+            <button onClick={() => { setMapMode(false); setSelection({ itemIds: [] }); }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← バインダーに戻る</button>
           )}
           <MapPlanner
-            pool={pool} mediaPool={mediaPool} draftSelection={draftSelection} draftMediaSelection={draftMediaSelection}
-            onOpenPin={setPinItem} onToggleKeep={toggleDraftKeep} onToggleMedia={toggleDraftMedia} onTogglePlan={toggleDraftPlan}
+            destPool={destPool} workPool={workPool} thingPool={thingPool} draftSelection={draftSelection}
+            onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onTogglePlan={toggleDraftPlan}
             onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
           />
           {/* 選択中のカードを確定する操作は、タブを跨いで共有するAppShellの
@@ -981,17 +979,14 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
         // 開いたバインダーが覗く。「選び直す」で地図に戻れるのは以前と同じ。
         <>
           <button onClick={() => {
-            setSelection({
-              keepIds: magazine.itemIds.filter((r) => r.type === "keep").map((r) => r.id),
-              mediaIds: magazine.itemIds.filter((r) => r.type === "media").map((r) => r.id),
-            });
+            setSelection({ itemIds: [...magazine.itemIds] });
             setMapMode(true);
           }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← 選び直す</button>
           <ConfirmedStack
             items={magItems}
             dateLabel={dayInfo(magazine.decidedAt).label}
-            onMarkDone={(item) => markDoneInMagazine(item.id, item.type)}
-            onDrop={(item) => removeFromMagazine(item.id, item.type)}
+            onMarkDone={(item) => markDoneInMagazine(item.id)}
+            onDrop={(item) => removeFromMagazine(item.id)}
             onRegister={registerBinder}
           />
         </>
@@ -1001,7 +996,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
         item={pinItem}
         onClose={() => setPinItem(null)}
         actionSlot={pinItem ? ((closeSheet) => (
-          <button onClick={() => { toggleDraftKeep(pinItem); closeSheet(); }} style={{
+          <button onClick={() => { toggleDraftItem(pinItem); closeSheet(); }} style={{
             width: "100%", padding: "12px 0", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
             background: draftSelection.includes(pinItem.id) ? "transparent" : INK,
             color: draftSelection.includes(pinItem.id) ? RUST : PAPER,

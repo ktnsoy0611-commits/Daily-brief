@@ -249,20 +249,22 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
       } else {
         brief.decisions[card.id] = dir;
         if (dir === "keep") {
-          if (card.mediaKind) {
-            next.records = next.records ?? { media: [] };
-            next.records.media.unshift({
-              id: `media-${editionKey}-${card.id}`, kind: card.mediaKind, title: card.title, creator: "",
-              addedAt: new Date().toISOString(), color: card.color, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel,
-              status: "keep", origin: "keep",
-            });
-          } else {
-            next.keeps.push({
-              id: `brief-${editionKey}-${card.id}`, title: card.title, category: card.categoryJp, area: card.area,
-              images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
-              status: "candidate", keptAt: new Date().toISOString(), origin: "keep",
-            });
-          }
+          // KEEPは常にItemを1件作るだけ(以前は「作品なら直接records.media、
+          // それ以外はkeeps」という2経路の分岐があった)。種類はカード側の
+          // kind(省略時は"place")、場所の有無はareaの有無がそのまま決める。
+          // ウィッシュに応えたカード(sourceWishTitle)は、まだ叶えていない
+          // 同名のウィッシュが実在する場合だけorigin:"wish"として紐付ける。
+          const wish = card.sourceWishTitle
+            ? next.wishes.find((w) => w.title === card.sourceWishTitle && w.status === "stock")
+            : undefined;
+          next.items.push({
+            id: `brief-${editionKey}-${card.id}`, kind: card.kind ?? "place",
+            title: card.title, category: card.categoryJp,
+            area: card.area && card.area !== "—" ? card.area : undefined,
+            images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
+            status: "candidate", addedAt: new Date().toISOString(),
+            origin: wish ? "wish" : "brief", sourceWishId: wish?.id,
+          });
         }
       }
 

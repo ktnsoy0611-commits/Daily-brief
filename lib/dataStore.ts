@@ -1,5 +1,5 @@
 import { DEFAULT_STATE, STORAGE_KEY } from "./constants";
-import type { AppState } from "./types";
+import type { AppState, Item, ItemKind } from "./types";
 
 // v19プロトタイプの window.storage (サンドボックス専用API) を、実ブラウザで
 // 動く localStorage に差し替えたもの。load/save/clear のインターフェースは
@@ -7,69 +7,112 @@ import type { AppState } from "./types";
 let memoryStore: AppState | null = null;
 let memoryMode = typeof window === "undefined" || typeof window.localStorage === "undefined";
 
+// 旧「場所(Keep)」時代の自由文カテゴリからItemの種類を推定する。旧データの
+// 一度きりの移行にしか使わない(現行のコードはItem.kindを直接持つため、
+// この正規表現の推定に依存する箇所はもう無い)。
+function legacyKindOf(category: string | undefined): ItemKind {
+  if (!category) return "place";
+  if (/映画/.test(category)) return "movie";
+  if (/展覧会/.test(category)) return "exhibition";
+  if (/コンサート|ライブ/.test(category)) return "live";
+  return "place";
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function migrate(s: any): AppState {
-  if (s.wishes && s.keeps) {
-    const merged = { ...structuredClone(DEFAULT_STATE), ...s };
-    merged.magazine = merged.magazine ?? null;
-    merged.profile = merged.profile ?? structuredClone(DEFAULT_STATE.profile);
-    merged.records = merged.records ?? structuredClone(DEFAULT_STATE.records);
-    // 旧形式(records.books)からの移行: 本のレコードをmedia配列(kind:"book")に統合する
-    if (merged.records.books) {
-      merged.records.media = [
-        ...(merged.records.media ?? []),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ...merged.records.books.map((b: any) => ({ ...b, kind: "book", creator: b.author })),
-      ];
-      delete merged.records.books;
-    }
-    merged.records.media = merged.records.media ?? [];
-    merged.weekendMeta = merged.weekendMeta ?? structuredClone(DEFAULT_STATE.weekendMeta);
-    merged.goals = merged.goals ?? [];
-    merged.pendingReview = merged.pendingReview ?? [];
-    merged.sources = merged.sources ?? [];
-
-    // 情報設計の再編: メディアの「KEEPしただけ」状態を表す値をcandidate→keepに改名。
+  // 最古の形式(wishlist単一配列)はまず旧v2形式(wishes+keeps)へ持ち上げる。
+  if (!s.wishes) {
+    const lifted: { wishes: unknown[]; keeps: unknown[] } = { wishes: [], keeps: [] };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    merged.records.media.forEach((r: any) => {
-      if (r.status === "candidate") r.status = "keep";
-    });
-    // 旧「観たい」カテゴリの願望は、ストックタブの「作品」棚(メディア記録)に統合された。
-    // 種類が推定できない場合は「映画」として変換する。
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const legacyWatchWishes = (merged.wishes ?? []).filter((w: any) => w.categoryId === "watch");
-    if (legacyWatchWishes.length > 0) {
-      merged.wishes = merged.wishes.filter((w: { categoryId: string }) => w.categoryId !== "watch");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      legacyWatchWishes.forEach((w: any) => {
-        merged.records.media.push({
-          id: `media-migrated-${w.id}`, kind: "movie", title: w.title, creator: "",
-          addedAt: w.addedAt, status: w.status === "fulfilled" ? "done" : "keep",
-          doneAt: w.status === "fulfilled" ? (w.fulfilledAt ?? w.addedAt) : undefined,
+    (s.wishlist ?? []).forEach((w: any) => {
+      if (w.source === "daily-brief" || w.keptAt) {
+        lifted.keeps.push({
+          id: w.id, title: w.title, category: w.category, area: w.area,
+          status: w.status === "done" ? "done" : "candidate",
+          keptAt: w.keptAt ?? w.addedAt,
         });
-      });
-    }
-
-    return merged as AppState;
+      } else {
+        lifted.wishes.push({
+          id: w.id, title: w.title,
+          status: w.status === "done" ? "fulfilled" : "stock",
+          addedAt: w.addedAt, fulfilledAt: w.doneAt,
+        });
+      }
+    });
+    s = lifted;
   }
-  const v2: AppState = { ...structuredClone(DEFAULT_STATE) };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (s.wishlist ?? []).forEach((w: any) => {
-    if (w.source === "daily-brief" || w.keptAt) {
-      v2.keeps.push({
-        id: w.id, title: w.title, category: w.category, area: w.area,
-        status: w.status === "done" ? "done" : "candidate",
-        keptAt: w.keptAt ?? w.addedAt,
-      });
-    } else {
-      v2.wishes.push({
-        id: w.id, title: w.title, category: w.category, categoryId: w.categoryId,
-        status: w.status === "done" ? "fulfilled" : "stock",
-        addedAt: w.addedAt, fulfilledAt: w.doneAt,
-      });
+
+  const merged = { ...structuredClone(DEFAULT_STATE), ...s };
+  merged.magazine = merged.magazine ?? null;
+  merged.profile = merged.profile ?? structuredClone(DEFAULT_STATE.profile);
+  merged.weekendMeta = merged.weekendMeta ?? structuredClone(DEFAULT_STATE.weekendMeta);
+  merged.goals = merged.goals ?? [];
+  merged.pendingReview = merged.pendingReview ?? [];
+  merged.sources = merged.sources ?? [];
+  merged.items = merged.items ?? [];
+
+  // ---- 場所(keeps)+作品(records.media)の2コンテナ → Item統一への移行 ----
+  // 「場所か作品か」は排他ではなく「種類(kind)×場所の有無(area)」の直交と
+  // いう再設計に伴い、両コンテナを単一のitems配列へ畳み込む。
+  if (merged.keeps || merged.records) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const oldKeeps: any[] = merged.keeps ?? [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let oldMedia: any[] = merged.records?.media ?? [];
+    // さらに古い形式(records.books)もこの機会に吸収する。
+    if (merged.records?.books) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      oldMedia = [...oldMedia, ...merged.records.books.map((b: any) => ({ ...b, kind: "book", creator: b.author }))];
     }
+    const fromKeeps: Item[] = oldKeeps.map((k) => ({
+      id: k.id, kind: legacyKindOf(k.category), title: k.title, category: k.category,
+      area: k.area, status: k.status === "planned" ? "planned" : k.status === "done" ? "done" : "candidate",
+      addedAt: k.keptAt, doneAt: k.doneAt, expiresAt: k.expiresAt,
+      images: k.images, meta: k.meta, sourceUrl: k.sourceUrl, sourceLabel: k.sourceLabel, color: k.color,
+      origin: k.origin === "manual" ? "manual" : "brief",
+    }));
+    const fromMedia: Item[] = oldMedia.map((r) => ({
+      id: r.id, kind: (r.kind ?? "movie") as ItemKind, title: r.title, creator: r.creator || undefined,
+      status: (r.status ?? "done") === "done" ? "done" : "candidate",
+      addedAt: r.addedAt, doneAt: r.doneAt,
+      images: r.image ? [r.image] : undefined, sourceUrl: r.sourceUrl, sourceLabel: r.sourceLabel,
+      color: r.color, good: r.good,
+      origin: r.origin === "manual" ? "manual" : "brief",
+    }));
+    // 旧フローでは「場所のKeepを実行すると作品のコピーがrecords.mediaへ増える」
+    // 二重記録があった(sourceKeepIdで元のKeepを指す)。統一後は1つのItemが
+    // 両方の顔(種類+場所)を持てるため、コピー側は捨てる(元のKeep側は
+    // legacyKindOfにより既に作品の種類を得ている)。
+    merged.items = [
+      ...fromKeeps,
+      ...fromMedia.filter((_, idx) => !oldMedia[idx].sourceKeepId),
+    ];
+    delete merged.keeps;
+    delete merged.records;
+    // マガジンの参照は {id, type} → idの配列へ。
+    if (merged.magazine?.itemIds) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      merged.magazine.itemIds = merged.magazine.itemIds.map((r: any) => (typeof r === "string" ? r : r.id));
+    }
+  }
+
+  // Wishから使われていなかった分類(categoryId/category)を落とし、自由文+状態
+  // だけの最小構造に揃える。旧「観たい」カテゴリのウィッシュは作品のItemへ変換。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  merged.wishes = (merged.wishes ?? []).flatMap((w: any) => {
+    if (w.categoryId === "watch") {
+      merged.items.push({
+        id: `item-migrated-${w.id}`, kind: "movie", title: w.title,
+        status: w.status === "fulfilled" ? "done" : "candidate",
+        addedAt: w.addedAt, doneAt: w.status === "fulfilled" ? (w.fulfilledAt ?? w.addedAt) : undefined,
+        origin: "manual",
+      } satisfies Item);
+      return [];
+    }
+    return [{ id: w.id, title: w.title, status: w.status, addedAt: w.addedAt, fulfilledAt: w.fulfilledAt }];
   });
-  return v2;
+
+  return merged as AppState;
 }
 
 export const DataStore = {

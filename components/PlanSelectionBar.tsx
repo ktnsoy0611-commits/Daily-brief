@@ -7,18 +7,15 @@ import { INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW_LG } from "@/lib/consta
 import { img } from "@/lib/helpers";
 import type { AppState, PlanSelection } from "@/lib/types";
 
-interface SelectedEntry { id: string; type: "keep" | "media"; title: string; image?: string; color?: string; }
+interface SelectedEntry { id: string; title: string; image?: string; color?: string; }
 
 function resolveEntries(appState: AppState, selection: PlanSelection): SelectedEntry[] {
-  const keeps = selection.keepIds.map((id): SelectedEntry | null => {
-    const k = appState.keeps.find((x) => x.id === id);
-    return k ? { id, type: "keep", title: k.title, image: k.images?.[0], color: k.color } : null;
-  });
-  const media = selection.mediaIds.map((id): SelectedEntry | null => {
-    const r = appState.records.media.find((x) => x.id === id);
-    return r ? { id, type: "media", title: r.title, image: r.image, color: r.color } : null;
-  });
-  return [...keeps, ...media].filter((x): x is SelectedEntry => !!x);
+  return selection.itemIds
+    .map((id): SelectedEntry | null => {
+      const item = appState.items.find((x) => x.id === id);
+      return item ? { id, title: item.title, image: item.images?.[0], color: item.color } : null;
+    })
+    .filter((x): x is SelectedEntry => !!x);
 }
 
 // タブを跨いで持ち回すバインド候補(プラン選択)を、画面右下に常時浮かせた
@@ -27,11 +24,10 @@ function resolveEntries(appState: AppState, selection: PlanSelection): SelectedE
 // 確定操作の入口を「どのタブにいても同じ場所に浮いている」この1つに
 // 統一した。スタックしたカードのアイコンをタップすると内訳の一覧が開き、
 // そこで1件ずつ外せる。
-export function PlanSelectionBar({ appState, selection, toggleKeepSelection, toggleMediaSelection, onClear, onBind }: {
+export function PlanSelectionBar({ appState, selection, toggleItemSelection, onClear, onBind }: {
   appState: AppState;
   selection: PlanSelection;
-  toggleKeepSelection: (id: string) => void;
-  toggleMediaSelection: (id: string) => void;
+  toggleItemSelection: (id: string) => void;
   onClear: () => void;
   onBind: () => void;
 }) {
@@ -50,7 +46,7 @@ export function PlanSelectionBar({ appState, selection, toggleKeepSelection, tog
               「今バインドしようとしている束」であることを一目で伝える。 */}
           <button onClick={() => setListOpen(true)} aria-label="選択中のカードを見る" style={{ position: "relative", width: 42, height: 42, flexShrink: 0, border: "none", background: "none", cursor: "pointer", padding: 0 }}>
             {shown.map((it, i) => (
-              <div key={`${it.type}-${it.id}`} style={{
+              <div key={it.id} style={{
                 position: "absolute", top: 2, left: 2, width: 30, height: 30, borderRadius: 7, overflow: "hidden",
                 border: "2px solid #fff", boxShadow: "0 2px 6px rgba(23,23,21,0.28)",
                 transform: `rotate(${rotations[i % rotations.length]}deg) translate(${i * 3}px, ${i * -3}px)`, zIndex: i,
@@ -89,7 +85,7 @@ export function PlanSelectionBar({ appState, selection, toggleKeepSelection, tog
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {entries.map((it) => (
-                    <div key={`${it.type}-${it.id}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px" }}>
+                    <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px" }}>
                       <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", flexShrink: 0 }}>
                         {it.image ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -99,7 +95,7 @@ export function PlanSelectionBar({ appState, selection, toggleKeepSelection, tog
                         )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0, fontFamily: SANS, fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
-                      <button onClick={() => it.type === "keep" ? toggleKeepSelection(it.id) : toggleMediaSelection(it.id)} aria-label={`${it.title}を外す`} style={{ width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(168,85,47,0.12)", color: RUST, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}>
+                      <button onClick={() => toggleItemSelection(it.id)} aria-label={`${it.title}を外す`} style={{ width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(168,85,47,0.12)", color: RUST, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0 }}>
                         <X size={13} strokeWidth={2.4} />
                       </button>
                     </div>

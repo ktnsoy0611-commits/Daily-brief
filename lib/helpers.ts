@@ -1,5 +1,6 @@
 import { AREA_COORDS, AREA_FALLBACK, AUTO_THRESHOLD, INTEREST_RULES, KEEP_MAX_AGE_DAYS } from "./constants";
-import type { AppState, Interest, Keep, MagazineItemRef, Wish } from "./types";
+import type { AppState, Interest, Item, ItemOrigin, Wish } from "./types";
+import { WORK_KINDS } from "./types";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -71,13 +72,42 @@ export function shade(hex: string, percent: number) {
   return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 }
 
-// Keepの自動失効: 展覧会/ライブなどexpiresAt(会期末・予約締切)を持つものは
-// それを過ぎたら、持たないものも一律30日を過ぎたら削除する。実行済み(done)は
-// 記録として残すため対象外。
-export function isExpiredKeep(k: Keep) {
-  if (k.status === "done") return false;
-  if (k.expiresAt) return new Date() > new Date(k.expiresAt);
-  return daysBetween(k.keptAt) > KEEP_MAX_AGE_DAYS;
+// ---- Itemの分類セレクタ -------------------------------------------------
+// 場所プロパティを持つか(=「行く」が絡むか)。地図・行き先棚・モデルプランの
+// クラスタリングはすべてこの述語を基準にする。
+export function hasPlace(item: Item) {
+  return !!item.area && item.area !== "—";
+}
+// アーカイブ・ストックの「作品」棚に立つ種類か。
+export function isWork(item: Item) {
+  return WORK_KINDS.includes(item.kind);
+}
+// 統一された棚の振り分け: 行き先(場所が絡む) / 作品(場所なしの作品) /
+// モノ(場所なしのthingなど)。1つのItemはちょうど1つの棚にだけ立つ。
+// 展覧会+場所のように両方の性質を持つものは「行き先」を優先する
+// (プランに組み込む・地図で選ぶという行動の単位が場所だから)。
+export type ShelfId = "dest" | "work" | "thing";
+export function shelfOf(item: Item): ShelfId {
+  if (hasPlace(item) || item.kind === "place") return "dest";
+  if (isWork(item)) return "work";
+  return "thing";
+}
+// KEEP/WISHバッジ: ブリーフ由来はKEEP、ウィッシュ由来はWISH、手動はバッジ無し。
+export function originBadge(origin: ItemOrigin | undefined): "keep" | "wish" | undefined {
+  if (origin === "wish") return "wish";
+  if (origin === "manual") return undefined;
+  return "keep";
+}
+
+// Itemの自動失効: 展覧会/ライブなどexpiresAt(会期末・予約締切)を持つものは
+// それを過ぎたら、場所が絡むものは一律30日を過ぎたら削除する。場所を持たない
+// 作品・モノ(旧作映画・積読の本・買いたいモノ)は腐らないので自動失効しない。
+// 実行済み(done)は記録として残すため対象外。
+export function isExpiredItem(item: Item) {
+  if (item.status === "done") return false;
+  if (item.expiresAt) return new Date() > new Date(item.expiresAt);
+  if (!hasPlace(item)) return false;
+  return daysBetween(item.addedAt) > KEEP_MAX_AGE_DAYS;
 }
 
 // おすすめプランは木曜日に更新される、という仕様のための「週キー」。
@@ -102,8 +132,8 @@ export function pinPosition(item: { id: string; area?: string }) {
 }
 
 // ---- 興味の自動検出（プロトタイプ: キーワード頻度。本実装ではGeminiに置換） --
-export function detectInterests(wishes: Wish[], keeps: Keep[]): Omit<Interest, "id" | "addedAt">[] {
-  const titles = [...wishes.map((w) => w.title), ...keeps.map((k) => k.title)];
+export function detectInterests(wishes: Wish[], items: Item[]): Omit<Interest, "id" | "addedAt">[] {
+  const titles = [...wishes.map((w) => w.title), ...items.map((i) => i.title)];
   const results: Omit<Interest, "id" | "addedAt">[] = [];
   INTEREST_RULES.forEach((rule) => {
     const count = titles.filter((t) => rule.match.test(t)).length;
@@ -114,34 +144,16 @@ export function detectInterests(wishes: Wish[], keeps: Keep[]): Omit<Interest, "
   return results;
 }
 
-// KEEPしたが、まだ読んでいない/観ていない/聴いていないメディア記録
-export function keepMedia(state: AppState) {
-  return (state.records?.media ?? []).filter((r) => r.status === "keep");
-}
-
-// 選んだ場所(keepIds)・作品(mediaIds)から、今日のマガジン(プランタブの
-// 確定リスト)を組み立てる。プランタブ自身の「作る/更新する」ボタンと、
-// ストックタブを含む他タブから使う共通のフローティング「バインド！」の
-// どちらからも同じ組み立てロジックを使うための純粋関数(状態の書き換えは
-// せず、次のAppStateを返すだけ)。
-export function buildMagazine(state: AppState, keepIds: string[], mediaIds: string[]): AppState {
+// 選んだItemのidから、今日のマガジン(プランタブの確定リスト)を組み立てる。
+// プランタブ自身の操作と、ストックタブを含む他タブから使う共通のフローティング
+// 「バインド！」のどちらからも同じ組み立てロジックを使うための純粋関数
+// (状態の書き換えはせず、次のAppStateを返すだけ)。場所の有無を問わず、
+// 選ばれたItemはすべてplannedになる(以前は場所のKeepだけがplannedになり、
+// 作品側は状態が変わらないという非対称があった)。
+export function buildMagazine(state: AppState, itemIds: string[]): AppState {
   const next = structuredClone(state);
-  next.keeps.forEach((k) => { if (k.status === "planned") k.status = "candidate"; });
-  next.keeps.forEach((k) => { if (keepIds.includes(k.id)) k.status = "planned"; });
-  const itemIds: MagazineItemRef[] = [
-    ...keepIds.map((id) => ({ id, type: "keep" as const })),
-    ...mediaIds.map((id) => ({ id, type: "media" as const })),
-  ];
-  next.magazine = { dateKey: todayKey(), decidedAt: new Date().toISOString(), itemIds };
+  next.items.forEach((i) => { if (i.status === "planned") i.status = "candidate"; });
+  next.items.forEach((i) => { if (itemIds.includes(i.id)) i.status = "planned"; });
+  next.magazine = { dateKey: todayKey(), decidedAt: new Date().toISOString(), itemIds: [...itemIds] };
   return next;
-}
-
-// Keepのカテゴリ文字列から、メディア記録に該当する種類を推定する。
-// 該当しなければnull(=カフェや古着など、単なる「行った場所」として扱う)。
-export function inferMediaKind(category: string | undefined) {
-  if (!category) return null;
-  if (/映画/.test(category)) return "movie" as const;
-  if (/展覧会/.test(category)) return "exhibition" as const;
-  if (/コンサート|ライブ/.test(category)) return "live" as const;
-  return null;
 }

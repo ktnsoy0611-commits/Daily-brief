@@ -11,7 +11,7 @@ import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
 import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
-import { buildMagazine, detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers";
+import { buildMagazine, detectInterests, haptic, hasPlace, isExpiredItem, todayKey } from "@/lib/helpers";
 import type { AppState, PlanSelection, TabId, TabProps } from "@/lib/types";
 
 const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
@@ -32,7 +32,7 @@ export function AppShell() {
   // 常にマウントされたままなので(key={tab}で差し替わるのは中身のタブ
   // だけ)、ここに置くだけでストックタブ⇄プランタブを跨いで選択が
   // 保持される。
-  const [selection, setSelection] = useState<PlanSelection>({ keepIds: [], mediaIds: [] });
+  const [selection, setSelection] = useState<PlanSelection>({ itemIds: [] });
 
   useEffect(() => {
     let alive = true;
@@ -42,21 +42,24 @@ export function AppShell() {
       // ままの項目が残っていたら、ダッシュボードの通知キューに移してリセットする。
       let mutated = false;
       if (s.magazine && s.magazine.dateKey !== todayKey()) {
-        // メディアは候補プールに残り続けるだけなので通知は不要。場所のKeepだけ
-        // 「行きましたか？」の確認待ちに回す。
-        const staleKeepIds = (s.magazine.itemIds ?? []).filter((r) => r.type === "keep").map((r) => r.id);
+        // 場所を持たない作品・モノは候補プールに残り続けるだけなので通知は
+        // 不要。場所が絡むItemだけ「行きましたか？」の確認待ちに回す。
+        const staleIds = (s.magazine.itemIds ?? []).filter((id) => {
+          const item = s.items.find((i) => i.id === id);
+          return item && item.status !== "done" && hasPlace(item);
+        });
         const existing = new Set(s.pendingReview ?? []);
-        staleKeepIds.forEach((id) => existing.add(id));
+        staleIds.forEach((id) => existing.add(id));
         s.pendingReview = Array.from(existing);
         s.magazine = null;
         mutated = true;
       }
-      // 会期・予約期間が過ぎた(またはexpiresAtがなく30日経った)Keepを自動で削除。
+      // 会期・予約期間が過ぎた(または場所が絡むのに30日経った)Itemを自動で削除。
       // 終わったはずの展覧会やライブが候補に残り続けるのを防ぐ。
-      const expiredIds = s.keeps.filter(isExpiredKeep).map((k) => k.id);
+      const expiredIds = s.items.filter(isExpiredItem).map((i) => i.id);
       if (expiredIds.length > 0) {
-        s.keeps = s.keeps.filter((k) => !expiredIds.includes(k.id));
-        if (s.magazine) s.magazine.itemIds = s.magazine.itemIds.filter((r) => !(r.type === "keep" && expiredIds.includes(r.id)));
+        s.items = s.items.filter((i) => !expiredIds.includes(i.id));
+        if (s.magazine) s.magazine.itemIds = s.magazine.itemIds.filter((id) => !expiredIds.includes(id));
         s.pendingReview = (s.pendingReview ?? []).filter((id) => !expiredIds.includes(id));
         mutated = true;
       }
@@ -72,17 +75,13 @@ export function AppShell() {
     DataStore.save(next).then(setStorageMode);
   }, []);
   const goTab = useCallback((id: TabId) => setTab(id), []);
-  const toggleKeepSelection = useCallback((id: string) => {
+  const toggleItemSelection = useCallback((id: string) => {
     haptic(8);
-    setSelection((s) => ({ ...s, keepIds: s.keepIds.includes(id) ? s.keepIds.filter((x) => x !== id) : [...s.keepIds, id] }));
+    setSelection((s) => ({ itemIds: s.itemIds.includes(id) ? s.itemIds.filter((x) => x !== id) : [...s.itemIds, id] }));
   }, []);
-  const toggleMediaSelection = useCallback((id: string) => {
-    haptic(8);
-    setSelection((s) => ({ ...s, mediaIds: s.mediaIds.includes(id) ? s.mediaIds.filter((x) => x !== id) : [...s.mediaIds, id] }));
-  }, []);
-  const addKeepIds = useCallback((ids: string[]) => {
+  const addItemIds = useCallback((ids: string[]) => {
     haptic(10);
-    setSelection((s) => ({ ...s, keepIds: Array.from(new Set([...s.keepIds, ...ids])) }));
+    setSelection((s) => ({ itemIds: Array.from(new Set([...s.itemIds, ...ids])) }));
   }, []);
   // フローティングUIの「バインド！」。ストックタブから押した場合でも、
   // プランタブの地図の「作る」ボタンと全く同じ組み立てロジック
@@ -92,17 +91,17 @@ export function AppShell() {
   // したいため(このボタンはクリックハンドラとして渡すだけで、深い
   // メモ化の対象にはならない)。
   const bindSelection = () => {
-    if (!appState || (selection.keepIds.length === 0 && selection.mediaIds.length === 0)) return;
+    if (!appState || selection.itemIds.length === 0) return;
     haptic(16);
-    persist(buildMagazine(appState, selection.keepIds, selection.mediaIds));
-    setSelection({ keepIds: [], mediaIds: [] });
+    persist(buildMagazine(appState, selection.itemIds));
+    setSelection({ itemIds: [] });
     setTab("execute");
   };
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 1600); };
 
   useEffect(() => {
     if (!appState) return;
-    const detected = detectInterests(appState.wishes, appState.keeps);
+    const detected = detectInterests(appState.wishes, appState.items);
     const next = structuredClone(appState);
     next.profile = next.profile ?? { interests: [], currentFocus: "" };
     let changed = false;
@@ -118,7 +117,7 @@ export function AppShell() {
     });
     if (changed) persist(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appState?.wishes, appState?.keeps]);
+  }, [appState?.wishes, appState?.items]);
 
   if (!appState) {
     return <div style={{ minHeight: "100dvh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
@@ -140,7 +139,7 @@ export function AppShell() {
       )}
     </button>
   );
-  const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton, selection, toggleKeepSelection, toggleMediaSelection, addKeepIds, setSelection };
+  const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection };
 
   // 実行タブなどをスクロールした状態で別タブ(特にブリーフタブ)へ切り替えると
   // ヘッダーが見切れる不具合が繰り返し再発していた。原因は「ウィンドウ/body
@@ -207,8 +206,8 @@ export function AppShell() {
       {!showProfile && (
         <PlanSelectionBar
           appState={appState} selection={selection}
-          toggleKeepSelection={toggleKeepSelection} toggleMediaSelection={toggleMediaSelection}
-          onClear={() => setSelection({ keepIds: [], mediaIds: [] })}
+          toggleItemSelection={toggleItemSelection}
+          onClear={() => setSelection({ itemIds: [] })}
           onBind={bindSelection}
         />
       )}

@@ -26,7 +26,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { shade } from "@/lib/helpers";
-import type { MediaKindId } from "@/lib/types";
+import type { ItemKind } from "@/lib/types";
 
 // ---- デザインコード ---------------------------------------------------------
 //
@@ -158,7 +158,9 @@ export function goalAccent(seed: string): Accent {
 // メディア5ジャンルのワンポイント(図形+色)。RecordsTabの棚だけでなく、
 // ExecuteTabのデモデータ(写真の無いカードの下地色)もこれを基準にした
 // 色調で揃え、バインダーとカードの色が世界観として一致するようにしている。
-export const MEDIA_ACCENT: Record<MediaKindId, Accent> = {
+// 作品系のItemKindごとのワンポイント。place/thingは対象外(場所はエリア名
+// からplaceAccentで、モノは固定の1冊で扱う)。
+export const MEDIA_ACCENT: Partial<Record<ItemKind, Accent>> & Record<"movie" | "exhibition" | "live" | "book" | "album", Accent> = {
   movie: { kind: "media", shape: "semicircleUp", color: "#2C4E74" },
   exhibition: { kind: "media", shape: "triangleUp", color: "#2C6E7A" },
   live: { kind: "media", shape: "circle", color: "#B8442E" },

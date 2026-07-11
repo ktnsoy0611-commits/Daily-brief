@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Check, Plus, Star } from "lucide-react";
+import { Bookmark, Check, Plus, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BLUE, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
@@ -90,7 +90,7 @@ export function PunchHoles() {
 // 写真ありのときと同じ下部キャプション(グラデーション+タイトル)を
 // 乗せることで、どちらも同じ見た目のリズムになるようにしている。
 // sizeを省略すると親グリッドに合わせて広がる。
-export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph, kept, good, onToggleGood, action, onClick, size, planSelected, onTogglePlanSelect }: {
+export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph, badge, good, onToggleGood, action, onClick, size, planSelected, onTogglePlanSelect }: {
   image?: string | null;
   color?: string;
   title: string;
@@ -98,7 +98,9 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
   label?: string;
   icon?: IconType;
   glyph?: string;
-  kept?: boolean;
+  // 左上の出自バッジ。keep=ブリーフのKEEP由来 / wish=ウィッシュが形に
+  // なったもの。手動追加はバッジ無し(undefined)。
+  badge?: "keep" | "wish";
   good?: boolean;
   onToggleGood?: () => void;
   action?: { label: string; onClick: () => void };
@@ -129,9 +131,9 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
       )}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 42%, rgba(0,0,0,0.8) 100%)" }} />
       <PunchHoles />
-      {kept && (
+      {badge && (
         <span style={{ position: "absolute", top: 8, left: HOLE_CLEAR, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
-          <Bookmark size={9} fill={INK} strokeWidth={0} /> KEEP
+          {badge === "wish" ? <Sparkles size={9} color={INK} strokeWidth={2.4} /> : <Bookmark size={9} fill={INK} strokeWidth={0} />} {badge === "wish" ? "WISH" : "KEEP"}
         </span>
       )}
       <div style={{ position: "absolute", bottom: 10, left: HOLE_CLEAR, right: 10 }}>

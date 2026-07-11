@@ -455,9 +455,15 @@ export function binderTiltAngle(d: number, rest = 80, focused = 0) {
 // 迫り出し、面と面の間に隙間(背景が透けて見える穴)ができてしまう。
 // 厚みに対してつり合う程度のごく小さい値に留めている。
 const OPEN_DEG_REST = 2;
-// スワイプ中に一瞬だけ開きを強める角度(パカッとめくれる演出)。
+// スワイプ中、速度に応じて開きを強める角度(パカッとめくれる演出)。
 const OPEN_DEG_ACTIVE = 6;
-const HINGE_TRANSITION = "transform 260ms cubic-bezier(0.34,1.56,0.64,1)";
+// 表紙・裏表紙の開閉に使うCSSトランジションは意図的に持たない。呼び出し側
+// (BinderCoverflowRow)がopenDegを毎フレームJSで連続的に計算して渡すため、
+// ここでさらにCSSトランジションを重ねると「毎フレーム動き続ける目標値を
+// 固定時間で追いかける」形になり、目標が動き続ける限り常に少し遅れて
+// 追いつこうとし続ける(=減速が終わったあとも尾を引いて動く)不具合に
+// なる。他の呼び出し元(GoalsTabなど)はopenDegをマウント後に変更しない
+// ため、トランジションが無くても実害はない。
 
 // 角丸を持つ白い箱として、表紙・背表紙(リング側)・裏表紙・無地の側面
 // (開く側)の4面を組み立てる。rotateYが0度→90度→180度→270度(=-90度)と
@@ -512,7 +518,6 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
           transformOrigin: "0% 50%",
           transform: `translateZ(${resolvedDepth / 2}px) rotateY(${-openDeg}deg)`,
-          transition: HINGE_TRANSITION,
         }}>
           <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
         </div>
@@ -535,7 +540,6 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
           position: "absolute", inset: 0, transformStyle: "preserve-3d",
           transformOrigin: `0% 50% ${-resolvedDepth / 2}px`,
           transform: `rotateY(${openDeg}deg)`,
-          transition: HINGE_TRANSITION,
         }}>
           <div style={{
             position: "absolute", inset: 0, overflow: "hidden",
@@ -593,8 +597,9 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [, setTick] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
-  const [flap, setFlap] = useState(false);
   const centerRef = useRef(0);
+  const velocityRef = useRef(0);
+  const openDegRef = useRef(OPEN_DEG_REST);
   const rafRef = useRef<number | null>(null);
   const lastLeftRef = useRef(0);
   const idleFramesRef = useRef(0);
@@ -633,55 +638,66 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
   }, []);
 
-  // scroll位置を毎フレーム(rAF)ポーリングし続けることで解決した2つの不具合:
-  // (1) ネイティブのscroll-snapは減速の終盤、scrollイベント自体を疎にしか
-  // 発火しないことがあり(ブラウザが最終的なスナップ補正を数フレームぶん
-  // まとめて処理するため)、scrollイベント頼みで値を更新していると速度が
-  // 落ちるほど更新が飛び飛びになって「カクカク動く」ように見えていた。
-  // (2) 表紙の開き(flap)を「最後のscrollイベントからの経過時間」で
-  // 判定していたため、実際にバインダーが静止するタイミングと表紙が
-  // 閉じ始めるタイミングがズレ、静止後にワンテンポ置いて急に閉じる
-  // ように見えていた。
-  //
-  // (1)への対応として一度、回転角(centerRef)を毎フレーム必ず生の
-  // scrollLeftへ同期させる形にしたが、それでも「ゆっくりスワイプして
-  // 指を離した直後」だけガクガクと震える不具合が残っていた。原因は
-  // ブラウザ自身のscroll-snap補正にある: 勢いよくフリックした場合は
-  // 運動量スクロールがなめらかにscrollLeftを動かし続けるが、ゆっくり
-  // 離した場合は運動量がほとんど無いため、ブラウザは「最寄りのスナップ
-  // 位置へ補正する」動きをほぼ即座に(スワイプの速度とは無関係な、
-  // 補正専用の一定の間隔・粗さで)行う。生のscrollLeftをそのまま回転角に
-  // 反映していると、この「速度に関係なく一定ペースの粗い補正」が
-  // そのまま画面に出てしまい、指の動きが遅いほど「本来なら滑らかに
-  // 収束するはずの区間を、少ないコマ数の粗い動きで無理やり再生している」
-  // ように見えて震えて見えていた。
-  // 対策として、回転角に使うcenterRefは生のscrollLeft(rawCenter)を
-  // そのまま採用せず、毎フレーム指数関数的に追従させる(1フレームごとに
-  // 差分のSMOOTH倍だけ近づく)。これにより、生の値がどれだけ粗く飛んで
-  // 動いても、画面に出る角度は必ずなめらかな曲線を描いて追従する。
-  // 追従の速さはフレームレートに依存しない相対的な割合なので、スワイプが
-  // 速くても遅くても同じ「滑らかさ」になり、「速度によってアニメーションの
-  // 質が変わる」不自然さも解消する。表紙の開閉(flap)は、実測値が動いて
-  // いる間だけでなく、この追従が収束しきるまで(=stillCatchingUp)も
-  // 開いたままにし、静止後2フレーム連続で両方とも収まったら閉じて
-  // ポーリングを止める。停止時にcenterRefをrawCenterへ厳密に合わせ直す
-  // ことで、指数追従が持つ「理論上は永遠に収束し切らない」性質による
-  // 微小な誤差の残留も防いでいる。
+  // scroll位置を毎フレーム(rAF)ポーリングし続けることで解決した不具合の
+  // 経緯: (1)ネイティブのscroll-snapは減速の終盤、scrollイベント自体を
+  // 疎にしか発火しないことがあり、イベント頼みで値を更新すると速度が
+  // 落ちるほど更新が飛び飛びになって見えていた→毎フレームポーリングで解消。
+  // (2)回転角(centerRef)を生のscrollLeftへ即座に同期させる形にしたが、
+  // ゆっくりスワイプして指を離した直後だけガクガクと震える不具合が残った
+  // →centerRefを指数関数的に追従させる形にして一度緩和した。
+  // それでも次の2つが残っていた:
+  //   A. ゆっくり指を動かしている「最中」でも、ほんの少し動かしただけで
+  //      ガクッと挙動する。
+  //   B. 表紙の開き(flap)を「動いているか否か」の2値(boolean)で判定し、
+  //      trueからfalseへ切り替わった瞬間にBinder3D側のCSSトランジション
+  //      (260msのバウンドする曲線)へ切り替える設計だったため、実際の
+  //      速度がゼロへ滑らかに減っていくのに対し、表紙の開閉は「開いた
+  //      状態」から「閉じるアニメーションの開始」へ離散的にジャンプする
+  //      瞬間が必ず存在し、そこがガクッとした不安定な挙動に見えていた。
+  // Aの原因は、centerRefの指数追従だけでは「今フレーム実際にどれだけ
+  // 速く動いているか」という速度そのものを扱っていなかったこと。ほんの
+  // 少しの移動でも、その1フレームだけを見れば(絶対量は小さくても)
+  // 前フレームとの差分が閾値を超えれば即「動いた」と判定され、表紙が
+  // 全開(OPEN_DEG_ACTIVE)へ向けて動き出す一方、実際の指の動きはまだ
+  // ゆっくりなので数フレーム後にはまた止まって見える、という短い開閉の
+  // 繰り返しがガクッとした印象になっていた。
+  // Bの原因は上述の通り、boolean+CSSトランジションという「離散的な
+  // 切り替え+固定時間で追いかける」設計そのものが、速度が連続的にゼロへ
+  // 減っていく実際の動きと本質的に噛み合っていなかったこと。
+  // 対策として、表紙の開き具合(openDeg)もcenterRefと同じく「毎フレーム
+  // 連続的に計算する値」に作り替えた: このフレームで実際に動いたpx量を
+  // 「速度」の瞬間値とし、それ自体も指数平滑化(velocityRef)してから、
+  // OPEN_DEG_REST〜OPEN_DEG_ACTIVEの間へ連続的に写像する。booleanのflap
+  // 状態そのものを廃止し、Binder3D側のCSSトランジション(HINGE_TRANSITION)
+  // も外した(下記Binder3D参照)。これにより「動いている間はその速さに
+  // 応じてパタパタ開き、止まるにつれて連続的に閉じていく」という、離散的な
+  // 切り替わりの瞬間が存在しない挙動になり、A・Bどちらの症状も解消する。
   const SMOOTH = 0.32;
+  const VELOCITY_SMOOTH = 0.3;
+  // この速度(1フレームあたりの移動量、アイテム単位)以上で表紙が全開になる。
+  const VELOCITY_FOR_FULL_FLAP = 0.05;
   const pollFrame = () => {
     const el = scrollRef.current;
     if (!el) { rafRef.current = null; return; }
     const left = el.scrollLeft;
     const rawCenter = left / step;
-    const scrollMoved = Math.abs(left - lastLeftRef.current) > 0.5;
+    const rawDelta = left - lastLeftRef.current;
+    const scrollMoved = Math.abs(rawDelta) > 0.5;
     lastLeftRef.current = left;
+
     const diff = rawCenter - centerRef.current;
     const stillCatchingUp = Math.abs(diff) > 0.004;
     centerRef.current += diff * SMOOTH;
+
+    const instVelocity = Math.abs(rawDelta) / step;
+    velocityRef.current += (instVelocity - velocityRef.current) * VELOCITY_SMOOTH;
+    const flapAmount = Math.min(1, velocityRef.current / VELOCITY_FOR_FULL_FLAP);
+    openDegRef.current = OPEN_DEG_REST + (OPEN_DEG_ACTIVE - OPEN_DEG_REST) * flapAmount;
+
     setTick((t) => t + 1);
-    if (scrollMoved || stillCatchingUp) {
+    const settled = !scrollMoved && !stillCatchingUp && velocityRef.current < 0.001;
+    if (!settled) {
       idleFramesRef.current = 0;
-      setFlap(true);
       rafRef.current = requestAnimationFrame(pollFrame);
     } else if (idleFramesRef.current < 2) {
       idleFramesRef.current += 1;
@@ -689,8 +705,9 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     } else {
       rafRef.current = null;
       centerRef.current = rawCenter;
+      velocityRef.current = 0;
+      openDegRef.current = OPEN_DEG_REST;
       setTick((t) => t + 1);
-      setFlap(false);
     }
   };
   const onScroll = () => {
@@ -745,7 +762,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
             <div style={{ position: "absolute", left: "50%", bottom: 0, width: itemWidth, transform: `translateX(calc(-50% + ${spread}px))` }}>
               <Binder3D
                 width={itemWidth} aspect={aspect} rotateY={angle} scale={scale}
-                openDeg={flap ? OPEN_DEG_ACTIVE : OPEN_DEG_REST}
+                openDeg={openDegRef.current}
                 color={it.color} eyebrowLabel={it.eyebrowLabel} accent={it.accent}
                 title={it.title} count={it.count} onClick={it.onOpen}
               />

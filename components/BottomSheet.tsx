@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type PointerEvent, type ReactNode } from "react";
 import { PAPER, SOFT_SHADOW_LG } from "@/lib/constants";
 
 interface BottomSheetProps {
@@ -58,7 +58,13 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
   // なのに実はスクロール領域の余白だった、という場所でタップしても閉じない
   // 事故が起きやすい。代わりに「クリックされた要素がこの判定対象そのもの
   // かどうか」だけで見る、より確実な方式にしている。
-  const closeIfSelf = (e: MouseEvent<HTMLDivElement>) => {
+  // onClickではなくonPointerDownで判定しているのは、指がわずか(数px)でも
+  // 動くとタッチブラウザがそのジェスチャーをスクロールの開始とみなし、
+  // click自体が発火しないことがあるため。特に画面端に近いブラー部分は
+  // タップと同時にわずかな横ぶれが乗りやすく、closeがほとんど反応しない
+  // ように見えていた。pointerdownは指が触れた瞬間に確定するため、この
+  // 揺れの影響を受けない。
+  const closeIfSelf = (e: PointerEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) requestClose();
   };
 
@@ -70,7 +76,7 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
     // 素の背景」が帯状に見えてしまっていた。位置決め(キーボードの上に
     // パネルを置く)は内側の透明な箱だけに任せ、見た目のブラー/暗転は
     // 常に画面全体を覆うようにして、継ぎ目が絶対に出ないようにしている。
-    <div onClick={closeIfSelf} style={{
+    <div onPointerDown={closeIfSelf} style={{
       position: "fixed", inset: 0, zIndex: 45,
       background: open ? "rgba(16,16,20,0.4)" : "rgba(16,16,20,0)",
       backdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
@@ -90,7 +96,7 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
           opacity: open ? 1 : 0,
           transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease",
         }}>
-          <div onClick={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "6px 4px" }}>
+          <div onPointerDown={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "6px 4px" }}>
             {typeof children === "function" ? children(requestClose) : children}
           </div>
         </div>
@@ -101,10 +107,11 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
 
 // BottomSheetの中に置くグリッドなど、独自の入れ物(div)を挟む場合に、
 // その入れ物の余白(カードが無い空セルなど)をタップしても閉じられるように
-// するためのヘルパー。onClickに渡すだけで、そのdiv自身がクリックされた
-// 時だけhandlerを呼ぶ(子要素のカードをタップした時は呼ばれない)。
+// するためのヘルパー。onPointerDownに渡すだけで、そのdiv自身が押された
+// 時だけhandlerを呼ぶ(子要素のカードをタップした時は呼ばれない)。上の
+// closeIfSelfと同じ理由でonClickではなくonPointerDownにしている。
 export function closeOnSelfClick(handler: () => void) {
-  return (e: MouseEvent<HTMLDivElement>) => {
+  return (e: PointerEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) handler();
   };
 }

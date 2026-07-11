@@ -105,11 +105,15 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
     <>
       <Masthead title="ゴール" statValue={goalItems.length} statLabel="件" corner={profileButton} />
 
-      <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
+      <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32, paddingLeft: 8, paddingRight: 8 }}>
         {/* ゴールもアプリ共通のBinder3D(表紙+背表紙を持つリングバインダー)で
             統一する。以前は専用のGoalCardを使っており、アーカイブタブの棚と
             見た目が食い違っていた。グリッドでは常に表紙が正面(rotateY:0)
-            を向いた状態で並べ、タイトルを読み取りやすくしている。 */}
+            を向いた状態で並べ、タイトルを読み取りやすくしている。
+            rotateY(-14度)分だけ影が斜めに投影されるため、外側(AppShell側の
+            data-tab-scroll-root)が持つ16pxの余白だけでは、特に右列のタイルの
+            影がぎりぎり画面端で切れることがあった。ここに追加で左右8pxの
+            余白を足し、影がクリップされる前に収まる隙間を確保している。 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 30, columnGap: 14, justifyItems: "center" }}>
           {goalItems.map((g) => {
             const latest = g.checkIns?.[0];

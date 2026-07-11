@@ -9,7 +9,7 @@ import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
-import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
+import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { buildMagazine, detectInterests, haptic, isExpiredKeep, todayKey } from "@/lib/helpers";
 import type { AppState, PlanSelection, TabId, TabProps } from "@/lib/types";
@@ -234,7 +234,12 @@ export function AppShell() {
             <div style={{ position: "absolute", left: 0, right: 0, top: -44, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 44px, ${BG} 100%)` }} />
           </div>
           <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
-            <div style={{ position: "relative", width: "100%", maxWidth: 420 - 32, display: "flex", background: PAPER, borderRadius: 999, boxShadow: SOFT_SHADOW_LG, padding: 6, marginBottom: NAV_BOTTOM_GAP, pointerEvents: "auto" }}>
+            {/* SOFT_SHADOW_LG(ぼかし32px)をそのまま使うと、NAV_BOTTOM_GAPで
+                画面下端ぎりぎりまで詰めたこのピルの下側は、影が滲みきる前に
+                画面の外(=物理的な限界)へ突き当たり、途中でスパッと切れた
+                ような不自然な見た目になっていた。ピルだけは控えめな専用の
+                影に差し替え、余白が数pxしか無くても中で滲み切るようにする。 */}
+            <div style={{ position: "relative", width: "100%", maxWidth: 420 - 32, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(28,28,30,0.16)", padding: 6, marginBottom: NAV_BOTTOM_GAP, pointerEvents: "auto" }}>
               {TABS.map((t) => {
                 const active = tab === t.id;
                 return (

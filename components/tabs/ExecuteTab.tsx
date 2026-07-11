@@ -68,7 +68,6 @@ interface RecommendedPlan {
   key: string;
   itemIds: string[];
   label: string;
-  itemsText: string;
   accent: string;
   items: { id: string; title: string; image?: string; color?: string; kind: ItemKind; area?: string }[];
 }
@@ -109,7 +108,6 @@ function buildRecommendedPlans(pool: Item[]): RecommendedPlan[] {
       key: group.map((g) => g.item.id).join("-"),
       itemIds: group.map((g) => g.item.id),
       label,
-      itemsText: group.map((g) => g.item.title).join(" ・ "),
       accent: group[0].item.color ?? placeAccent(areas[0] ?? group[0].item.id).color,
       items: group.map((g) => ({ id: g.item.id, title: g.item.title, image: g.item.images?.[0], color: g.item.color, kind: g.item.kind, area: g.item.area })),
     };
@@ -177,13 +175,26 @@ function PlanEnvelope({ plan, selected, onOpen, onToggle }: { plan: RecommendedP
       }} />
       <div style={{ position: "absolute", left: 16, right: 16, bottom: 14, zIndex: 1 }}>
         <div style={{ fontSize: 9, letterSpacing: "0.16em", color: "rgba(255,255,255,0.72)", fontWeight: 700, marginBottom: 5 }}>MODEL PLAN ・ {plan.items.length}件</div>
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 15, color: PAPER, lineHeight: 1.3, marginBottom: 4, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.label}</div>
-        <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.8)", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.itemsText}</div>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 15, color: PAPER, lineHeight: 1.3, marginBottom: 8, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.label}</div>
+        {/* フラップの下からここまでの間が空きすぎないよう、要約文の代わりに
+            行き先を1件1行の箇条書きで並べて、増えた表示領域ぶんの情報量を
+            実際に埋める。 */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {plan.items.map((it) => (
+            <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(255,255,255,0.55)", flexShrink: 0 }} />
+              <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.85)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
+            </div>
+          ))}
+        </div>
       </div>
-      {/* 開かなくてもその場で選べるよう、タップ即トグルの丸ボタンを
-          右上に独立して置く(カード本体のタップ=開く、この丸だけ=選ぶ)。 */}
+      {/* 開かなくてもその場で選べるよう、タップ即トグルの丸ボタンを独立して
+          置く(カード本体のタップ=開く、この丸だけ=選ぶ)。フラップの三角の
+          斜辺がちょうどここを横切るため、フラップの内側(上)には置かず、
+          必ずフラップより下の一段(平らな背景の上)に置いて、半透明の背景
+          越しに斜辺の継ぎ目が透けて見えないようにしている。 */}
       <button onClick={(e) => { e.stopPropagation(); haptic(6); onToggle(); }} aria-label={selected ? "選択から外す" : "このプランを追加"} style={{
-        position: "absolute", right: 10, top: 10, width: 26, height: 26, borderRadius: "50%", zIndex: 3, border: "none", cursor: "pointer", padding: 0,
+        position: "absolute", right: 10, top: `calc(${ENVELOPE_FLAP_PCT}% + 8px)`, width: 26, height: 26, borderRadius: "50%", zIndex: 3, border: "none", cursor: "pointer", padding: 0,
         background: selected ? BLUE : "rgba(255,255,255,0.92)", color: selected ? PAPER : INK,
         display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(23,23,21,0.25)",
       }}>
@@ -213,10 +224,13 @@ function PlanDetailSheet({ plan, selected, onToggle, onClose }: {
           <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>MODEL PLAN ・ {plan.items.length}件</div>
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, marginBottom: 14 }}>{plan.label}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, margin: "0 0 18px" }}>
-            {plan.items.map((it) => {
+            {plan.items.map((it, idx) => {
               const IconComp = KIND_ICON[it.kind];
+              const hasArea = it.area && it.area !== "—";
               return (
                 <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {/* 徒歩でめぐる順番の目安として、束ねた順に番号を振る。 */}
+                  <div style={{ width: 16, flexShrink: 0, fontFamily: SANS, fontWeight: 700, fontSize: 11, color: "#B8B4A6", textAlign: "center" }}>{idx + 1}</div>
                   <div style={{ position: "relative", width: 46, height: 46, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: it.color ?? "#5A5A54" }}>
                     {it.image ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -229,8 +243,14 @@ function PlanDetailSheet({ plan, selected, onToggle, onClose }: {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12.5, color: INK, fontFamily: SANS, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
-                    <div style={{ fontSize: 10, color: "#9A988E", marginTop: 2 }}>{itemKindOf(it.kind).label}{it.area && it.area !== "—" ? ` ・ ${it.area}` : ""}</div>
+                    <div style={{ fontSize: 10, color: "#9A988E", marginTop: 2 }}>{itemKindOf(it.kind).label}{hasArea ? ` ・ ${it.area}` : ""}</div>
                   </div>
+                  {hasArea && (
+                    <a href={mapsUrl(`${it.area} ${it.title}`)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{
+                      flexShrink: 0, padding: "6px 10px", borderRadius: 999, background: INK, color: PAPER, textDecoration: "none",
+                      fontSize: 9.5, fontWeight: 700, fontFamily: SANS,
+                    }}>地図</a>
+                  )}
                 </div>
               );
             })}
@@ -467,11 +487,14 @@ function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => 
             <Bookmark size={10} fill={INK} strokeWidth={0} /> {item.badge === "wish" ? "WISH" : "KEEP"}
           </span>
         )}
+        {/* サイズは左上のKEEP/WISHバッジの高さ(フォント8.5+上下パディング3.5px
+            ずつ、目安22px)に揃えている。以前は32pxで、バッジより明らかに
+            大きく見えていた。 */}
         <button onClick={(e) => { e.stopPropagation(); if (!item.done) onMarkDone(); }} aria-label={item.done ? "完了ずみ" : item.doneActionLabel} style={{
-          position: "absolute", top: 10, right: 10, width: 32, height: 32, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
+          position: "absolute", top: 10, right: 10, width: 22, height: 22, borderRadius: "50%", border: "none", cursor: item.done ? "default" : "pointer", padding: 0,
           background: item.done ? GREEN : "rgba(255,255,255,0.92)", color: item.done ? "#fff" : "#3A3A36",
           display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 8px rgba(28,28,30,0.28)",
-        }}><Check size={15} strokeWidth={3} /></button>
+        }}><Check size={12} strokeWidth={3} /></button>
         {item.done && <div style={{ position: "absolute", inset: 0, background: "rgba(28,28,30,0.4)", pointerEvents: "none" }} />}
       </div>
       <div style={{ flex: 1, minHeight: 0, padding: "11px 14px 12px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>

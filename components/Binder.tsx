@@ -642,25 +642,44 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   // 判定していたため、実際にバインダーが静止するタイミングと表紙が
   // 閉じ始めるタイミングがズレ、静止後にワンテンポ置いて急に閉じる
   // ように見えていた。
-  // 表紙の開閉(flap)判定にだけ「直前フレームからの移動量が0.5pxを
-  // 超えたか」という閾値を使い、静止と判定してから2フレーム連続で
-  // 閾値未満が続いたら表紙を閉じてポーリングを止める。回転角(centerRef)
-  // 自体はこの閾値でゲートせず、ポーリングが動いている間は毎フレーム
-  // 必ずscrollLeftの実測値へ同期させる。以前は角度の更新も同じ0.5px
-  // 閾値でゲートしていたため、減速の最終盤で1フレームあたりの移動量が
-  // 閾値を下回るとその区間は角度が更新されず止まったまま(=実際の
-  // scrollLeftとの間にズレが蓄積する)、数フレーム後にズレが閾値を
-  // 超えて初めて一気に追いつく、という「止まる→カクッと飛ぶ」を
-  // 繰り返す小刻みな震えになっていた。
+  //
+  // (1)への対応として一度、回転角(centerRef)を毎フレーム必ず生の
+  // scrollLeftへ同期させる形にしたが、それでも「ゆっくりスワイプして
+  // 指を離した直後」だけガクガクと震える不具合が残っていた。原因は
+  // ブラウザ自身のscroll-snap補正にある: 勢いよくフリックした場合は
+  // 運動量スクロールがなめらかにscrollLeftを動かし続けるが、ゆっくり
+  // 離した場合は運動量がほとんど無いため、ブラウザは「最寄りのスナップ
+  // 位置へ補正する」動きをほぼ即座に(スワイプの速度とは無関係な、
+  // 補正専用の一定の間隔・粗さで)行う。生のscrollLeftをそのまま回転角に
+  // 反映していると、この「速度に関係なく一定ペースの粗い補正」が
+  // そのまま画面に出てしまい、指の動きが遅いほど「本来なら滑らかに
+  // 収束するはずの区間を、少ないコマ数の粗い動きで無理やり再生している」
+  // ように見えて震えて見えていた。
+  // 対策として、回転角に使うcenterRefは生のscrollLeft(rawCenter)を
+  // そのまま採用せず、毎フレーム指数関数的に追従させる(1フレームごとに
+  // 差分のSMOOTH倍だけ近づく)。これにより、生の値がどれだけ粗く飛んで
+  // 動いても、画面に出る角度は必ずなめらかな曲線を描いて追従する。
+  // 追従の速さはフレームレートに依存しない相対的な割合なので、スワイプが
+  // 速くても遅くても同じ「滑らかさ」になり、「速度によってアニメーションの
+  // 質が変わる」不自然さも解消する。表紙の開閉(flap)は、実測値が動いて
+  // いる間だけでなく、この追従が収束しきるまで(=stillCatchingUp)も
+  // 開いたままにし、静止後2フレーム連続で両方とも収まったら閉じて
+  // ポーリングを止める。停止時にcenterRefをrawCenterへ厳密に合わせ直す
+  // ことで、指数追従が持つ「理論上は永遠に収束し切らない」性質による
+  // 微小な誤差の残留も防いでいる。
+  const SMOOTH = 0.32;
   const pollFrame = () => {
     const el = scrollRef.current;
     if (!el) { rafRef.current = null; return; }
     const left = el.scrollLeft;
-    const moved = Math.abs(left - lastLeftRef.current) > 0.5;
+    const rawCenter = left / step;
+    const scrollMoved = Math.abs(left - lastLeftRef.current) > 0.5;
     lastLeftRef.current = left;
-    centerRef.current = left / step;
+    const diff = rawCenter - centerRef.current;
+    const stillCatchingUp = Math.abs(diff) > 0.004;
+    centerRef.current += diff * SMOOTH;
     setTick((t) => t + 1);
-    if (moved) {
+    if (scrollMoved || stillCatchingUp) {
       idleFramesRef.current = 0;
       setFlap(true);
       rafRef.current = requestAnimationFrame(pollFrame);
@@ -669,6 +688,8 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       rafRef.current = requestAnimationFrame(pollFrame);
     } else {
       rafRef.current = null;
+      centerRef.current = rawCenter;
+      setTick((t) => t + 1);
       setFlap(false);
     }
   };

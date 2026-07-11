@@ -755,7 +755,7 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
         // zIndexはnav(25)より高くしておく。以前は20(グラデーションの15より
         // 上)にしていたが、nav自体のピルの影(box-shadow)がわずかに滲んで
         // ボタンの下端にnavの半透明なマスクがかかったように見える不具合が
-        // あった。この登録ボタンはどこからでも押せる主要な操作なので、navより
+        // あった。バインド！はどこからでも押せる主要な操作なので、navより
         // 常に手前に出すことで境目のにじみごと解消する。
         // zIndexの数字を上げるだけでは実機Safariで直らなかった。このボタンは
         // AppShellの`key={tab}`配下(タブ切替のたびに作り直される内側の
@@ -767,14 +767,6 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
         // zIndex比較にする。他のフローティングUI(PlanSelectionBarのバインド！等、
         // 元々AppShellの最上位に直接置かれているため今回の不具合が出ていない
         // もの)と同じ土俵に立たせる、というのがこの変更の意図。
-        // ラベルは以前ここも「バインド！」だった。選択を今日のプランへ
-        // 確定する操作(PlanSelectionBar側のバインド！)と、この確定ビューを
-        // 閉じて未実行のItemを候補へ戻しアーカイブへ向かう操作
-        // (registerBinder、実体は全くの別物)が同じ文言だったため、確定
-        // 直後にユーザーがこれも「同じバインド操作」だと思って続けて押し、
-        // せっかくplannedにしたItemがcandidateへ押し戻されてストックに
-        // 残り続けて見える不具合の直接原因になっていた。文言を分けて
-        // 操作の違いを明確にする。
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 26, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
           {/* navより上に浮かせる分の余白はpaddingではなくmarginで確保する。
               pointerEvents:"auto"の要素はpadding込みのボーダーボックス全体が
@@ -790,7 +782,7 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
               width: "100%", padding: "15px 0", background: INK, color: PAPER, border: "none", borderRadius: 999,
               cursor: "pointer", fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", boxShadow: SOFT_SHADOW_LG,
             }}>
-              今日を登録する
+              バインド！
             </button>
           </div>
         </div>,

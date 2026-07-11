@@ -1,7 +1,8 @@
 "use client";
 
-import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Sprout, User } from "lucide-react";
+import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Sparkles, Sprout, User } from "lucide-react";
 import { useCallback, useEffect, useState, type ComponentType, type CSSProperties } from "react";
+import { AddWishSheet } from "@/components/AddWishSheet";
 import { PlanSelectionBar } from "@/components/PlanSelectionBar";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
@@ -12,7 +13,7 @@ import { StockTab } from "@/components/tabs/StockTab";
 import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { buildMagazine, detectInterests, haptic, hasPlace, isExpiredItem, todayKey } from "@/lib/helpers";
-import type { AppState, PlanSelection, TabId, TabProps } from "@/lib/types";
+import type { AppState, ItemDomain, PlanSelection, TabId, TabProps } from "@/lib/types";
 
 const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
   { id: "records", label: "アーカイブ", Icon: LayoutGrid },
@@ -28,6 +29,9 @@ export function AppShell() {
   const [showProfile, setShowProfile] = useState(false);
   const [storageMode, setStorageMode] = useState(DataStore.mode);
   const [toast, setToast] = useState("");
+  // ウィッシュはどのタブにいても書ける「受信箱」。タブバー横の独立した
+  // ボタンから開くため、タブ固有の状態ではなくここに置く。
+  const [addingWish, setAddingWish] = useState(false);
   // プランへバインドする候補の選択。タブを切り替えてもAppShell自体は
   // 常にマウントされたままなので(key={tab}で差し替わるのは中身のタブ
   // だけ)、ここに置くだけでストックタブ⇄プランタブを跨いで選択が
@@ -98,6 +102,17 @@ export function AppShell() {
     setTab("execute");
   };
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 1600); };
+  // ウィッシュの追加。ストックには入らず(ウィッシュはカテゴリーではない)、
+  // ブリーフの生成材料になるだけの自由文として保存する。ここで選んだ
+  // ドメインは、ブリーフがどんな種類の提案として返すかの手がかりになる。
+  const addWish = (title: string, category: ItemDomain) => {
+    if (!appState) return;
+    haptic();
+    const next = structuredClone(appState);
+    next.wishes.unshift({ id: `wish-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title, category, status: "stock", addedAt: new Date().toISOString() });
+    persist(next);
+    showToast("ウィッシュを書きました");
+  };
 
   useEffect(() => {
     if (!appState) return;
@@ -238,22 +253,35 @@ export function AppShell() {
                 画面の外(=物理的な限界)へ突き当たり、途中でスパッと切れた
                 ような不自然な見た目になっていた。ピルだけは控えめな専用の
                 影に差し替え、余白が数pxしか無くても中で滲み切るようにする。 */}
-            <div style={{ position: "relative", width: "100%", maxWidth: 420 - 32, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(28,28,30,0.16)", padding: 6, marginBottom: NAV_BOTTOM_GAP, pointerEvents: "auto" }}>
-              {TABS.map((t) => {
-                const active = tab === t.id;
-                return (
-                  <button key={t.id} onClick={() => { haptic(5); goTab(t.id); }} style={{ flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                    <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
-                      <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
-                    </div>
-                    <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(23,23,21,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
-                  </button>
-                );
-              })}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 - 32, pointerEvents: "auto" }}>
+              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(28,28,30,0.16)", padding: 6, marginBottom: NAV_BOTTOM_GAP }}>
+                {TABS.map((t) => {
+                  const active = tab === t.id;
+                  return (
+                    <button key={t.id} onClick={() => { haptic(5); goTab(t.id); }} style={{ flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                      <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
+                        <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
+                      </div>
+                      <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(23,23,21,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* ウィッシュは特定のタブの持ち物ではなく、どこにいても書ける
+                  「受信箱」への入り口であることを見た目でも伝えるため、
+                  タブのピルからは意図的に切り離した独立の丸ボタンにしている。 */}
+              <button onClick={() => { haptic(5); setAddingWish(true); }} aria-label="ウィッシュを書く" style={{
+                flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(28,28,30,0.16)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
+              }}>
+                <Sparkles size={19} strokeWidth={1.8} color={PAPER} />
+              </button>
             </div>
           </nav>
         </>
       )}
+
+      {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}
     </div>
   );
 }

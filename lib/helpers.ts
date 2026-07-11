@@ -1,6 +1,5 @@
-import { AREA_COORDS, AREA_FALLBACK, AUTO_THRESHOLD, INTEREST_RULES, KEEP_MAX_AGE_DAYS } from "./constants";
-import type { AppState, Interest, Item, ItemOrigin, Wish } from "./types";
-import { WORK_KINDS } from "./types";
+import { AREA_COORDS, AREA_FALLBACK, AUTO_THRESHOLD, INTEREST_RULES, KEEP_MAX_AGE_DAYS, KIND_DOMAIN } from "./constants";
+import type { AppState, Interest, Item, ItemDomain, ItemOrigin, Wish } from "./types";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -73,30 +72,29 @@ export function shade(hex: string, percent: number) {
 }
 
 // ---- Itemの分類セレクタ -------------------------------------------------
-// 場所プロパティを持つか(=「行く」が絡むか)。地図・行き先棚・モデルプランの
-// クラスタリングはすべてこの述語を基準にする。
+// 場所プロパティを持つか(=「行く」が絡むか)。地図・モデルプランの
+// クラスタリングはすべてこの述語を基準にする。ドメイン(何であるか)とは
+// 完全に独立した別軸: タイケン・ジョウホウ・モノのItemもareaを持ちうる。
 export function hasPlace(item: Item) {
   return !!item.area && item.area !== "—";
 }
-// アーカイブ・ストックの「作品」棚に立つ種類か。
-export function isWork(item: Item) {
-  return WORK_KINDS.includes(item.kind);
-}
-// 統一された棚の振り分け: 行き先(場所が絡む) / 作品(場所なしの作品) /
-// モノ(場所なしのthingなど)。1つのItemはちょうど1つの棚にだけ立つ。
-// 展覧会+場所のように両方の性質を持つものは「行き先」を優先する
-// (プランに組み込む・地図で選ぶという行動の単位が場所だから)。
-export type ShelfId = "dest" | "work" | "thing";
-export function shelfOf(item: Item): ShelfId {
-  if (hasPlace(item) || item.kind === "place") return "dest";
-  if (isWork(item)) return "work";
-  return "thing";
+// 願望の4ドメイン(モノ/バショ/タイケン/ジョウホウ)への規格化された振り分け。
+// ウィッシュ・ストック・プラン・アーカイブの棚は、すべてこのドメイン
+// 1本を共通の主軸にしている。
+export function domainOf(item: Item): ItemDomain {
+  return KIND_DOMAIN[item.kind];
 }
 // KEEP/WISHバッジ: ブリーフ由来はKEEP、ウィッシュ由来はWISH、手動はバッジ無し。
 export function originBadge(origin: ItemOrigin | undefined): "keep" | "wish" | undefined {
   if (origin === "wish") return "wish";
   if (origin === "manual") return undefined;
   return "keep";
+}
+// ウィッシュから生まれたカード(sourceWishId一致)のうち、少なくとも1件が
+// 「バインドされた」(現在プランに入っている、または既に実行済み=かつて
+// バインドされた)状態かどうか。アーカイブのウィッシュ一覧のチェックマークに使う。
+export function isWishBound(wish: { id: string }, items: Item[]): boolean {
+  return items.some((i) => i.sourceWishId === wish.id && i.status !== "candidate");
 }
 
 // Itemの自動失効: 展覧会/ライブなどexpiresAt(会期末・予約締切)を持つものは

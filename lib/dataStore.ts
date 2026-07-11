@@ -96,8 +96,12 @@ function migrate(s: any): AppState {
     }
   }
 
-  // Wishから使われていなかった分類(categoryId/category)を落とし、自由文+状態
-  // だけの最小構造に揃える。旧「観たい」カテゴリのウィッシュは作品のItemへ変換。
+  // Wishから使われていなかった分類(旧categoryId/category、do/buy/go)を落とし、
+  // 自由文+状態+新しい4ドメイン分類(category: ItemDomain)だけの構造に揃える。
+  // 旧「観たい」カテゴリのウィッシュは作品のItemへ変換。それ以外の既存
+  // ウィッシュはcategoryフィールドを持たないため、"experience"を暫定の
+  // 既定値として補う(以前の分類が無いので機械的な判定はできない。実害は
+  // 表示分類だけで、ユーザーが後から書き直せば直る)。
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   merged.wishes = (merged.wishes ?? []).flatMap((w: any) => {
     if (w.categoryId === "watch") {
@@ -109,7 +113,7 @@ function migrate(s: any): AppState {
       } satisfies Item);
       return [];
     }
-    return [{ id: w.id, title: w.title, status: w.status, addedAt: w.addedAt, fulfilledAt: w.fulfilledAt }];
+    return [{ id: w.id, title: w.title, category: w.category ?? "experience", status: w.status, addedAt: w.addedAt, fulfilledAt: w.fulfilledAt }];
   });
 
   return merged as AppState;

@@ -155,18 +155,24 @@ export function goalAccent(seed: string): Accent {
   return { kind: "target", color: GOAL_HUES[h % GOAL_HUES.length] };
 }
 
-// メディア5ジャンルのワンポイント(図形+色)。RecordsTabの棚だけでなく、
-// ExecuteTabのデモデータ(写真の無いカードの下地色)もこれを基準にした
-// 色調で揃え、バインダーとカードの色が世界観として一致するようにしている。
-// 作品系のItemKindごとのワンポイント。place/thingは対象外(場所はエリア名
-// からplaceAccentで、モノは固定の1冊で扱う)。
-export const MEDIA_ACCENT: Partial<Record<ItemKind, Accent>> & Record<"movie" | "exhibition" | "live" | "book" | "album", Accent> = {
+// タイケン・ジョウホウドメインのkindごとのワンポイント(図形+色)。
+// RecordsTabの棚だけでなく、ExecuteTabのデモデータ(写真の無いカードの
+// 下地色)もこれを基準にした色調で揃え、バインダーとカードの色が
+// 世界観として一致するようにしている。place/thingは対象外(バショは
+// エリア名からplaceAccentで、モノは固定の1冊で扱う=THING_ACCENT)。
+export const MEDIA_ACCENT: Partial<Record<ItemKind, Accent>> & Record<"movie" | "exhibition" | "live" | "book" | "album" | "activity" | "food" | "info", Accent> = {
   movie: { kind: "media", shape: "semicircleUp", color: "#2C4E74" },
   exhibition: { kind: "media", shape: "triangleUp", color: "#2C6E7A" },
   live: { kind: "media", shape: "circle", color: "#B8442E" },
   book: { kind: "media", shape: "rectangle", color: "#33633F" },
   album: { kind: "media", shape: "semicircleDown", color: "#C1922E" },
+  activity: { kind: "media", shape: "quarterTL", color: "#7A4432" },
+  food: { kind: "media", shape: "quarterBR", color: "#A8552F" },
+  info: { kind: "media", shape: "triangleDown", color: "#4A5C3E" },
 };
+// モノ(買いたいもの)は単一の棚(バインダー1冊)にまとめるため、種類ごとの
+// 図形分岐を持たず、単色の的(TargetMotif)で「1冊にまとまったモノ」を表す。
+export const THING_ACCENT: Accent = { kind: "target", color: "#8A6B2E" };
 
 // 的のエンブレムだった線描きの同心円は、参考画像がどれも線ではなく面の
 // 重なりだけで構成されていたことを踏まえてベタ塗りの大きな円へ描き直した。

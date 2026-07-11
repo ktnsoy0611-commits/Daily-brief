@@ -1,4 +1,4 @@
-import type { AppState, BriefCard, CategoryId, ItemKind } from "./types";
+import type { AppState, BriefCard, CategoryId, ItemDomain, ItemKind } from "./types";
 
 export const STORAGE_KEY = "qol-app-state-v1";
 
@@ -123,11 +123,30 @@ export const AREA_COORDS: Record<string, { x: number; y: number }> = {
 };
 export const AREA_FALLBACK = { x: 50, y: 80 };
 
+// ---- 願望の4ドメイン ----
+// 「究極の対象物は何か」で分ける、ウィッシュ・ストック・プラン・アーカイブ
+// 共通の最上位カテゴリ。位置情報(area)の有無とは完全に別軸(タイケンや
+// ジョウホウのItemもareaを持ちうる)。
+export interface ItemDomainDef {
+  id: ItemDomain;
+  label: string;
+  en: string;
+}
+export const ITEM_DOMAINS: ItemDomainDef[] = [
+  { id: "thing", label: "モノ", en: "THING" },
+  { id: "place", label: "バショ", en: "PLACE" },
+  { id: "experience", label: "タイケン", en: "EXPERIENCE" },
+  { id: "info", label: "ジョウホウ", en: "INFO" },
+];
+export const domainDefOf = (id: string) => ITEM_DOMAINS.find((d) => d.id === id) ?? ITEM_DOMAINS[0];
+
 // ---- Itemの種類 ----
 // 「何であるか」の規格化された語彙。アクション(行った/観た/読んだ/聴いた/
-// 買った)はここから導出し、Item自体には保存しない。
+// やった/買った)はここから導出し、Item自体には保存しない。各kindはちょうど
+// 1つのItemDomainに属する(KIND_DOMAIN)。
 export interface ItemKindDef {
   id: ItemKind;
+  domain: ItemDomain;
   label: string;
   en: string;
   creatorPlaceholder?: string;
@@ -135,15 +154,23 @@ export interface ItemKindDef {
   doneActionLabel: string;
 }
 export const ITEM_KINDS: ItemKindDef[] = [
-  { id: "place", label: "場所", en: "PLACE", doneActionLabel: "行った" },
-  { id: "movie", label: "映画", en: "CINEMA", creatorPlaceholder: "監督（任意）", doneActionLabel: "観た" },
-  { id: "exhibition", label: "展覧会", en: "EXHIBITION", creatorPlaceholder: "会場（任意）", doneActionLabel: "観た" },
-  { id: "live", label: "ライブ・コンサート", en: "LIVE", creatorPlaceholder: "アーティスト（任意）", doneActionLabel: "観た" },
-  { id: "book", label: "本", en: "BOOK", creatorPlaceholder: "著者（任意）", doneActionLabel: "読んだ" },
-  { id: "album", label: "音楽", en: "MUSIC", creatorPlaceholder: "アーティスト（任意）", doneActionLabel: "聴いた" },
-  { id: "thing", label: "モノ", en: "THING", doneActionLabel: "買った" },
+  { id: "place", domain: "place", label: "場所", en: "PLACE", doneActionLabel: "行った" },
+  { id: "exhibition", domain: "experience", label: "展覧会", en: "EXHIBITION", creatorPlaceholder: "会場（任意）", doneActionLabel: "観た" },
+  { id: "live", domain: "experience", label: "ライブ・コンサート", en: "LIVE", creatorPlaceholder: "アーティスト（任意）", doneActionLabel: "観た" },
+  { id: "activity", domain: "experience", label: "体験・習い事", en: "ACTIVITY", doneActionLabel: "やった" },
+  { id: "food", domain: "experience", label: "グルメ", en: "FOOD", doneActionLabel: "食べた" },
+  { id: "movie", domain: "info", label: "映画", en: "CINEMA", creatorPlaceholder: "監督（任意）", doneActionLabel: "観た" },
+  { id: "book", domain: "info", label: "本", en: "BOOK", creatorPlaceholder: "著者（任意）", doneActionLabel: "読んだ" },
+  { id: "album", domain: "info", label: "音楽", en: "MUSIC", creatorPlaceholder: "アーティスト（任意）", doneActionLabel: "聴いた" },
+  { id: "info", domain: "info", label: "知識・記事", en: "INFO", doneActionLabel: "知った" },
+  { id: "thing", domain: "thing", label: "モノ", en: "THING", doneActionLabel: "買った" },
 ];
 export const itemKindOf = (id: string) => ITEM_KINDS.find((k) => k.id === id) ?? ITEM_KINDS[0];
+// kind→domainの規格化ルックアップ本体。helpers.tsのdomainOf()から使う。
+export const KIND_DOMAIN: Record<ItemKind, ItemDomain> = Object.fromEntries(
+  ITEM_KINDS.map((k) => [k.id, k.domain]),
+) as Record<ItemKind, ItemDomain>;
+export const kindsOfDomain = (domain: ItemDomain) => ITEM_KINDS.filter((k) => k.domain === domain);
 
 // ---- ブリーフのダミーデータ（8件+本+音楽・画像/情報ソース/地図色付き） --------
 // フェーズ1はダミーデータのままデプロイする(実装引き継ぎドキュメント §8)。
@@ -166,7 +193,7 @@ export const CARDS: BriefCard[] = [
     meta: ["TOHOシネマズ 日比谷", "21:10 レイトショー", "¥1,500"], bg: "#1A1712", fg: "#F3ECDD", accent: "#C79433",
     images: ["hibiya-a", "hibiya-b"], sourceUrl: "https://www.tohotheater.jp/", sourceLabel: "上映情報・チケットを見る" },
   { id: 3, glyph: "珈", category: "NEIGHBORHOOD", categoryJp: "近所の発見", trigger: "ロケーション", area: "蔵前", color: "#33633F",
-    sourceWishTitle: "浅煎りの豆を買う",
+    kind: "thing", sourceWishTitle: "浅煎りの豆を買う",
     title: "明日の予定の途中に、あの焙煎所",
     body: "土曜の外出ルートから徒歩4分。願望リストの「浅煎りの豆を買う」が達成できます。土曜は焼き菓子の入荷日でもあります。",
     meta: ["蔵前・COFFEE WRIGHTS", "9:00 – 18:00", "徒歩4分の寄り道"], bg: "#33633F", fg: "#F3ECDD", accent: "#A7C7AE",
@@ -180,22 +207,25 @@ export const CARDS: BriefCard[] = [
     meta: ["目標 ¥72,000", "現在 ¥63,400", "達成率 88%"], bg: "#FAF3E4", fg: "#1A1712", accent: "#C1502E",
     images: ["camera-a", "camera-b"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("中古カメラ店 東京")}`, sourceLabel: "地図で見る" },
   { id: 5, glyph: "陶", category: "SERENDIPITY", categoryJp: "未知との遭遇", trigger: "セレンディピティ", area: "清澄白河", color: "#7A4432",
+    kind: "activity",
     title: "陶芸、はじめてみませんか",
     body: "あなたの「手を動かす趣味」への関心から一歩外へ。日曜午前の一日体験クラスに空きが2席。建築好きの参加者が多い教室です。",
     meta: ["清澄白河・陶房", "日曜 10:00 – 12:30", "体験 ¥4,500"], bg: "#7A4432", fg: "#F3ECDD", accent: "#D9BBA8", serendipity: true,
     images: ["pottery-a", "pottery-b", "pottery-c"], sourceUrl: `https://www.google.com/search?q=${encodeURIComponent("清澄白河 陶芸体験 一日")}`, sourceLabel: "詳しく調べる" },
   { id: 6, glyph: "古", category: "VINTAGE", categoryJp: "古着", trigger: "ロケーション", area: "高円寺", color: "#8A3C2A",
-    sourceWishTitle: "古着でジャケットを探す",
+    kind: "thing", sourceWishTitle: "古着でジャケットを探す",
     title: "高円寺の一点物古着屋、新しい入荷情報",
     body: "願望リストの「古着でジャケットを探す」に近いお店。個人経営で入荷が読めない分、タイミングが合う今週末が狙い目です。",
     meta: ["高円寺北口エリア", "12:00 – 20:00", "現金のみ"], bg: "#8A3C2A", fg: "#F3ECDD", accent: "#D9AE86",
     images: ["vintage-a", "vintage-b", "vintage-c"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("高円寺 古着屋")}`, sourceLabel: "地図で見る" },
   { id: 7, glyph: "雑", category: "ZAKKA", categoryJp: "雑貨", trigger: "タイムリー", area: "谷根千", color: "#2C6E7A",
+    kind: "thing",
     title: "谷根千の小さな雑貨店、一年に一度の陶器市",
     body: "普段は棚に並びきらない作家ものの器が、期間限定で店先に広がります。年に一度なので、今週を逃すと来年までお預けです。",
     meta: ["谷中エリア", "11:00 – 17:00", "会期は今週末まで"], bg: "#2C6E7A", fg: "#F3ECDD", accent: "#A8D2D6",
     images: ["zakka-a", "zakka-b"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("谷中 雑貨店")}`, sourceLabel: "地図で見る" },
   { id: 8, glyph: "登", category: "PHYSICAL", categoryJp: "身体", trigger: "ロケーション", area: "浅草橋", color: "#33506E",
+    kind: "activity",
     title: "近所にできたボルダリングジム、初回体験無料",
     body: "願望リストの「筋力向上」に直結。浅草橋なら他のKeepとも動線を組みやすいエリアです。初回体験は道具レンタル込み。",
     meta: ["浅草橋駅から徒歩6分", "初回体験 無料", "予約制"], bg: "#33506E", fg: "#F3ECDD", accent: "#AEC3D8",
@@ -220,7 +250,7 @@ export const CARDS: BriefCard[] = [
     meta: ["下北沢 CLUB", "開場19:00 / 開演19:30", "前売¥3,200"], bg: "#2A4A3A", fg: "#F3ECDD", accent: "#A7CBB8",
     images: ["live-a", "live-b"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("下北沢 ライブハウス")}`, sourceLabel: "地図で見る" },
   { id: 12, glyph: "銭", category: "SERENDIPITY", categoryJp: "未知との遭遇", trigger: "ロケーション", area: "蔵前", color: "#3E5468",
-    sourceWishTitle: "サウナを開拓する",
+    kind: "activity", sourceWishTitle: "サウナを開拓する",
     title: "蔵前に薪火の銭湯サウナ、今週末オープン",
     body: "リニューアルオープン記念で今週末は入浴料が半額。願望リストの「サウナを開拓する」に一歩近づきます。",
     meta: ["蔵前", "6:00 – 24:00", "半額 ¥400"], bg: "#3E5468", fg: "#F3ECDD", accent: "#AFC0D0", serendipity: true,
@@ -255,7 +285,7 @@ export const CARDS: BriefCard[] = [
     meta: ["文庫・288ページ", "セール価格 ¥720"], bg: "#2C5468", fg: "#F3ECDD", accent: "#A7C4D6",
     images: [], sourceUrl: `https://www.google.com/search?q=${encodeURIComponent("短編集 話題 書評 電子書籍")}`, sourceLabel: "書店で探す" },
   { id: 18, glyph: "陶", category: "VINTAGE", categoryJp: "古着", trigger: "タイムリー", area: "高円寺", color: "#8A3C34",
-    sourceWishTitle: "古着でジャケットを探す",
+    kind: "thing", sourceWishTitle: "古着でジャケットを探す",
     title: "高円寺の古着市、年に2回の大型セールが明日から",
     body: "願望リストの「古着でジャケットを探す」に関連。複数の店舗が合同で開く大型セールで、掘り出し物が出やすいタイミングです。",
     meta: ["高円寺北口一帯", "10:00 – 19:00", "セールは3日間"], bg: "#8A3C34", fg: "#F3ECDD", accent: "#D9AFA4",

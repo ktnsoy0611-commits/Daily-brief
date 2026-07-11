@@ -1,24 +1,19 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
-import { BinderCoverflowRow, dateAccent, goalAccent, GOAL_BASE, MEDIA_ACCENT, placeAccent, type Accent, type BinderShelfItem } from "@/components/Binder";
-import { BinderModal, type BinderItem, Masthead, PosterCard } from "@/components/common";
+import { BinderCoverflowRow, dateAccent, goalAccent, GOAL_BASE, MEDIA_ACCENT, placeAccent, THING_ACCENT, type BinderShelfItem } from "@/components/Binder";
+import { BinderModal, type BinderItem, Masthead, PosterCard, rowBtn } from "@/components/common";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { GOLD, GREEN, INK, PAPER, RUST, SANS, SERIF, itemKindOf } from "@/lib/constants";
-import { dayInfo, haptic, hasPlace, isWork, originBadge, shortDate } from "@/lib/helpers";
-import type { Item, ItemKind, TabProps } from "@/lib/types";
+import { GOLD, GREEN, HAIRLINE, INK, PAPER, RUST, SANS, SERIF, domainDefOf, itemKindOf } from "@/lib/constants";
+import { dayInfo, domainOf, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
+import type { Item, ItemKind, TabProps, Wish } from "@/lib/types";
 
 // 表紙は常に白なので、この値は背表紙の単色フォールバック(accent未指定時)
 // としてのみ使う。
 const PLACE_BASE = "#CFCCC3";
 const MEDIA_BASE = "#8C897F";
-// ウィッシュのバインダー。願いが形になったカードを綴じる特別な1冊(以上)。
-const WISH_BASE = GOLD;
-const WISH_ACCENT: Accent = { kind: "target", color: GOLD };
-// 1冊のバインダーに綴じるカードの上限。超えたぶんは同じデザインの
-// 「続き」のバインダー(VOL.2, VOL.3, …)へ繰り越す。
-const BINDER_CAPACITY = 30;
 
 // タップしたバインダーの中身を見せる共通シート。カード自体が完結した
 // ビジュアルを持つので、白い台紙には包まずブラー背景の上に直接浮かせる。
@@ -43,42 +38,26 @@ interface OpenFolder {
   content: React.ReactNode;
 }
 
-// 配列をn件ずつの束に分ける(ウィッシュバインダーの「続き」用)。
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-}
-
 // ==================================================================
 // アプリのホーム。「実際にやった/読んだ/叶えた」ことだけが積み上がる。
 // KEEPしただけの未実行のものはストックタブ・ゴールタブが担当する。
-// 棚の区分はストックタブ・プランタブと共通の語彙: 作品(種類ごと)・
-// 行き先(エリアごと)・モノ・ゴール・ウィッシュ。1つのItemは複数の棚に
-// 立ちうる(場所で観た展覧会は「行き先」のエリアの1冊にも「作品」の
-// 展覧会の1冊にも綴じられる。同じ記録を「どこへ行ったか」と「何を観たか」
-// の両方の索引から引けるようにするための意図的な重複)。
+// 棚の区分はストックタブ・プランタブと共通の語彙: バショ(エリアごと)・
+// タイケン(種類ごと)・ジョウホウ(種類ごと)・モノ・ゴール。ウィッシュだけは
+// バインダー棚ではなく、末尾に「まだ形になっていない願い」も含めた
+// 一覧(チェックリスト)として置く。
 // ==================================================================
 export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps) {
   const [binderItem, setBinderItem] = useState<BinderItem | null>(null);
   const [openFolder, setOpenFolder] = useState<OpenFolder | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "date">("list");
+  const [wishDetail, setWishDetail] = useState<Wish | null>(null);
 
   const doneItems = appState.items
     .filter((i) => i.status === "done")
     .sort((a, b) => new Date(b.doneAt ?? b.addedAt).getTime() - new Date(a.doneAt ?? a.addedAt).getTime());
-  const fulfilledWishes = appState.wishes.filter((w) => w.status === "fulfilled").sort((a, b) => new Date(b.fulfilledAt ?? b.addedAt).getTime() - new Date(a.fulfilledAt ?? a.addedAt).getTime());
+  const fulfilledWishes = appState.wishes.filter((w) => w.status === "fulfilled");
   const pendingItems = (appState.pendingReview ?? []).map((id) => appState.items.find((i) => i.id === id)).filter((i): i is Item => !!i);
   const goals = (appState.goals ?? []).slice().sort((a, b) => new Date(b.checkIns?.[0]?.at ?? b.addedAt).getTime() - new Date(a.checkIns?.[0]?.at ?? a.addedAt).getTime());
-
-  // ウィッシュから生まれたカード(origin:"wish")は、実行の有無を問わず
-  // すべて専用のバインダーに綴じる。「願いがどれだけ形になってきたか」の
-  // 軌跡そのものを1冊(超えたら続き)として見せるため。古いものから順に
-  // 綴じていき、あふれたぶんが新しい巻(VOL.2, …)になる。
-  const wishBornAsc = appState.items
-    .filter((i) => i.origin === "wish")
-    .sort((a, b) => new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime());
-  const wishVolumes = chunk(wishBornAsc, BINDER_CAPACITY);
 
   const totalCount = doneItems.length + fulfilledWishes.length;
 
@@ -103,8 +82,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
     if (item) item.good = !item.good;
     persist(next);
   };
-  // 「行きましたか？」の解決。行った=doneへ進めるだけでよい(Itemの統一に
-  // より、以前あった「作品のコピーをrecords.mediaへ増やす」変換は不要)。
+  // 「行きましたか？」の解決。行った=doneへ進めるだけでよい。
   const resolvePending = (id: string, went: boolean) => {
     haptic(10);
     const next = structuredClone(appState);
@@ -120,37 +98,35 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
     }
     persist(next);
   };
+  const updateWish = (id: string, patch: Partial<Wish>) => {
+    const next = structuredClone(appState);
+    const w = next.wishes.find((x) => x.id === id);
+    if (w) Object.assign(w, patch);
+    persist(next);
+  };
+  const removeWish = (id: string) => {
+    const next = structuredClone(appState);
+    next.wishes = next.wishes.filter((x) => x.id !== id);
+    persist(next);
+  };
+  const makeGoal = (w: Wish) => {
+    haptic(10);
+    const next = structuredClone(appState);
+    next.wishes = next.wishes.filter((x) => x.id !== w.id);
+    next.goals = next.goals ?? [];
+    next.goals.push({ id: `goal-${Date.now()}`, title: w.title, addedAt: new Date().toISOString(), checkIns: [] });
+    persist(next);
+  };
 
-  // ---- 作品: 種類(映画・展覧会・…)ごとに1冊 ----
-  const workGroups = new Map<ItemKind, Item[]>();
-  doneItems.filter(isWork).forEach((i) => {
-    if (!workGroups.has(i.kind)) workGroups.set(i.kind, []);
-    workGroups.get(i.kind)!.push(i);
-  });
-  const workRowItems: BinderShelfItem[] = Array.from(workGroups.entries())
-    .map(([kind, items]) => ({ kind, items, lastAt: items[0].doneAt ?? items[0].addedAt }))
-    .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
-    .map((sec) => {
-      const def = itemKindOf(sec.kind);
-      return {
-        key: sec.kind, color: MEDIA_BASE, eyebrowLabel: def.en, accent: MEDIA_ACCENT[sec.kind as keyof typeof MEDIA_ACCENT],
-        title: def.label, count: sec.items.length,
-        footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.items.length}件・タップで見る</div>,
-        onOpen: () => setOpenFolder({
-          title: def.label,
-          content: sec.items.map((i) => itemCard(i, { sub: i.creator || shortDate(i.doneAt ?? i.addedAt), withGood: true })),
-        }),
-      };
-    });
-
-  // ---- 行き先: エリアごとに1冊 ----
+  // ---- バショ: エリアごとに1冊(domain==="place"のみ。他ドメインが
+  // 持つareaはこの棚には出さず、あくまでドメインで分ける) ----
   const areaGroups = new Map<string, Item[]>();
-  doneItems.filter(hasPlace).forEach((i) => {
-    const area = i.area!;
+  doneItems.filter((i) => domainOf(i) === "place").forEach((i) => {
+    const area = i.area && i.area !== "—" ? i.area : "その他";
     if (!areaGroups.has(area)) areaGroups.set(area, []);
     areaGroups.get(area)!.push(i);
   });
-  const destRowItems: BinderShelfItem[] = Array.from(areaGroups.entries())
+  const placeRowItems: BinderShelfItem[] = Array.from(areaGroups.entries())
     .map(([area, items]) => ({ area, items, lastAt: items[0].doneAt ?? items[0].addedAt }))
     .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
     .map((sec) => ({
@@ -163,10 +139,36 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
       }),
     }));
 
+  // 種類(kind)ごとに1冊、というドメイン共通の組み立て(タイケン・ジョウホウ)。
+  const kindShelvesOf = (domain: "experience" | "info") => {
+    const groups = new Map<ItemKind, Item[]>();
+    doneItems.filter((i) => domainOf(i) === domain).forEach((i) => {
+      if (!groups.has(i.kind)) groups.set(i.kind, []);
+      groups.get(i.kind)!.push(i);
+    });
+    return Array.from(groups.entries())
+      .map(([kind, items]) => ({ kind, items, lastAt: items[0].doneAt ?? items[0].addedAt }))
+      .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
+      .map((sec): BinderShelfItem => {
+        const def = itemKindOf(sec.kind);
+        return {
+          key: sec.kind, color: MEDIA_BASE, eyebrowLabel: def.en, accent: MEDIA_ACCENT[sec.kind as keyof typeof MEDIA_ACCENT],
+          title: def.label, count: sec.items.length,
+          footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.items.length}件・タップで見る</div>,
+          onOpen: () => setOpenFolder({
+            title: def.label,
+            content: sec.items.map((i) => itemCard(i, { sub: i.area && i.area !== "—" ? i.area : (i.creator || shortDate(i.doneAt ?? i.addedAt)), withGood: true })),
+          }),
+        };
+      });
+  };
+  const experienceRowItems = kindShelvesOf("experience");
+  const infoRowItems = kindShelvesOf("info");
+
   // ---- モノ: 買ったものをまとめた1冊 ----
-  const doneThings = doneItems.filter((i) => i.kind === "thing");
+  const doneThings = doneItems.filter((i) => domainOf(i) === "thing");
   const thingRowItems: BinderShelfItem[] = doneThings.length === 0 ? [] : [{
-    key: "things", color: MEDIA_BASE, eyebrowLabel: "THING", accent: MEDIA_ACCENT.album,
+    key: "things", color: MEDIA_BASE, eyebrowLabel: "THING", accent: THING_ACCENT,
     title: "買ったモノ", count: doneThings.length,
     footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{doneThings.length}件・タップで見る</div>,
     onOpen: () => setOpenFolder({
@@ -182,25 +184,6 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
     footer: <div style={{ fontSize: 9, color: "rgba(253,251,245,0.7)", fontWeight: 700, textAlign: "center" }}>{g.checkIns?.length ? `記録${g.checkIns.length}件・タップで見る` : "タップで見る"}</div>,
     onOpen: () => goTab("goals"),
   }));
-
-  // ---- ウィッシュ: 願いが形になったカードの巻(30枚ごとに続きの巻) ----
-  // 棚には新しい巻から順に並べる(最新の動きが一番手前に来るように)。
-  const wishRowItems: BinderShelfItem[] = wishVolumes
-    .map((vol, idx) => ({ vol, volNo: idx + 1 }))
-    .reverse()
-    .map(({ vol, volNo }) => ({
-      key: `wish-vol-${volNo}`, color: WISH_BASE, eyebrowLabel: "WISH", accent: WISH_ACCENT,
-      title: volNo === 1 ? "ウィッシュ" : `ウィッシュ VOL.${volNo}`, count: vol.length,
-      footer: <div style={{ fontSize: 9, color: "rgba(253,251,245,0.7)", fontWeight: 700, textAlign: "center" }}>{vol.length}件・タップで見る</div>,
-      onOpen: () => setOpenFolder({
-        title: volNo === 1 ? "ウィッシュ" : `ウィッシュ VOL.${volNo}`,
-        // 巻の中では新しいカードが先頭に来るよう降順で見せる。
-        content: vol.slice().reverse().map((i) => {
-          const wish = appState.wishes.find((w) => w.id === i.sourceWishId);
-          return itemCard(i, { sub: wish ? `「${wish.title}」より` : (i.status === "done" ? shortDate(i.doneAt ?? i.addedAt) : "まだこれから") });
-        }),
-      }),
-    }));
 
   // ---- 日付ビュー: 実行した日ごとに1冊 ----
   interface DayGroup { label: string; items: Item[]; wishes: typeof fulfilledWishes; lastAt: string }
@@ -239,6 +222,13 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
     </section>
   );
 
+  // ---- ウィッシュ一覧: バインダーではなく末尾の平たいリスト ----
+  // 実行の有無・叶えたかどうかを問わず、書いたウィッシュすべてを新しい順に
+  // 並べる。左のチェックは「派生カードがバインドされたか」の自動判定
+  // (isWishBound)で、タップして手動でON/OFFする類のものではない。
+  const allWishesDesc = appState.wishes.slice().sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
+  const wishChildren = wishDetail ? appState.items.filter((i) => i.sourceWishId === wishDetail.id) : [];
+
   return (
     <>
       <Masthead title="アーカイブ" statValue={totalCount} statLabel="件の記録" corner={profileButton} />
@@ -275,28 +265,49 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
         {viewMode === "list" ? (
           <>
-            {shelfRow("行き先", destRowItems)}
-            {shelfRow("作品", workRowItems)}
+            {shelfRow("バショ", placeRowItems)}
+            {shelfRow("タイケン", experienceRowItems)}
+            {shelfRow("ジョウホウ", infoRowItems)}
             {shelfRow("モノ", thingRowItems)}
             {shelfRow("ゴール", goalRowItems)}
-            {shelfRow("ウィッシュ", wishRowItems)}
 
-            {fulfilledWishes.length > 0 && (
-              <section style={{ margin: "28px 0 0" }}>
-                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 12 }}>叶えたウィッシュ</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  {fulfilledWishes.map((w) => (
-                    <PosterCard key={w.id} image={null} color={GOLD} title={w.title} sub={shortDate(w.fulfilledAt ?? w.addedAt)} label="WISH" />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {destRowItems.length === 0 && workRowItems.length === 0 && thingRowItems.length === 0 && goalRowItems.length === 0 && wishRowItems.length === 0 && fulfilledWishes.length === 0 && pendingItems.length === 0 && (
+            {placeRowItems.length === 0 && experienceRowItems.length === 0 && infoRowItems.length === 0 && thingRowItems.length === 0 && goalRowItems.length === 0 && pendingItems.length === 0 && (
               <div style={{ padding: "36px 4px", textAlign: "center" }}>
                 <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 700, marginBottom: 8 }}>まだ記録がありません。</div>
                 <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>プランタブで行動を記録すると、ここに積み上がります。</p>
               </div>
+            )}
+
+            {/* ウィッシュは棚(バインダー)ではなく、書いたものすべてを追える
+                平たいリストとして一番下に置く。左のチェックは「派生カードが
+                実際にプランへバインドされたか」の自動判定で、タップでの
+                手動トグルは持たない(状態そのものが手がかりだから)。 */}
+            {allWishesDesc.length > 0 && (
+              <section style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>ウィッシュ</div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {allWishesDesc.map((w) => {
+                    const bound = isWishBound(w, appState.items);
+                    return (
+                      <button key={w.id} onClick={() => setWishDetail(w)} style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "10px 2px",
+                        background: "none", border: "none", borderTop: `1px solid ${HAIRLINE}`, cursor: "pointer", textAlign: "left", width: "100%",
+                      }}>
+                        <span style={{
+                          flexShrink: 0, width: 19, height: 19, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                          background: bound ? GOLD : "transparent", border: `1.5px solid ${bound ? GOLD : "rgba(23,23,21,0.25)"}`,
+                        }}>
+                          {bound && <Check size={11} strokeWidth={3} color={PAPER} />}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: SANS, fontSize: 12.5, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.title}</div>
+                          <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 1 }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
             )}
           </>
         ) : (
@@ -312,6 +323,21 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
       {openFolder && <BinderContentsSheet title={openFolder.title} onClose={() => setOpenFolder(null)}>{openFolder.content}</BinderContentsSheet>}
       <BinderModal item={binderItem} onClose={() => setBinderItem(null)} />
+      <BinderModal
+        item={wishDetail ? {
+          title: wishDetail.title, category: `ウィッシュ ・ ${domainDefOf(wishDetail.category).label}`,
+          meta: wishChildren.length > 0 ? wishChildren.map((c) => `→ ${c.title}${c.status === "done" ? "（実行済み）" : c.status === "planned" ? "（プラン中）" : ""}`) : undefined,
+        } : null}
+        onClose={() => setWishDetail(null)}
+        actionSlot={(close) => (
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            {wishDetail?.status !== "fulfilled" && (
+              <button onClick={() => { updateWish(wishDetail!.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() }); close(); }} style={rowBtn(INK, PAPER)}>叶えた！</button>
+            )}
+            <button onClick={() => { makeGoal(wishDetail!); close(); }} style={rowBtn("transparent", GREEN, GREEN)}>ゴールにする</button>
+            <button onClick={() => { removeWish(wishDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+          </div>
+        )} />
     </>
   );
 }

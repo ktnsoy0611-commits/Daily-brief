@@ -6,9 +6,9 @@ import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
-import { dayInfo, haptic, img, mapsUrl, mostRecentThursday, originBadge, pinPosition, shade, shelfOf } from "@/lib/helpers";
-import type { Item, ItemKind, TabProps } from "@/lib/types";
+import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
+import { dayInfo, domainOf, hasPlace, haptic, img, mapsUrl, mostRecentThursday, originBadge, pinPosition, shade } from "@/lib/helpers";
+import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
 
 function MapCanvas({ items, selectedIds, onOpenPin }: {
   items: Item[];
@@ -59,11 +59,11 @@ function HorizontalShelf({ title, badge, children }: { title: string; badge?: st
 }
 
 // 「今週のおすすめ」は1件1件のカードではなく、地図上で近い距離にある
-// 行き先(場所が絡むItem)同士をGemini風にまとめた「モデルプラン」の提案。
-// pinPositionが返す地図座標(AREA_COORDSベース)同士の距離が近いものだけを
-// 束ねることで、実際に徒歩圏内でまとめて回れる組み合わせになるようにして
-// いる。場所を持たない作品・モノは地図上の位置が無いため、この距離ベースの
-// 束ねには含めない。
+// 場所が絡むItem(ドメインを問わない。位置情報の有無はドメインとは別軸)
+// 同士をGemini風にまとめた「モデルプラン」の提案。pinPositionが返す地図
+// 座標(AREA_COORDSベース)同士の距離が近いものだけを束ねることで、実際に
+// 徒歩圏内でまとめて回れる組み合わせになるようにしている。場所を持たない
+// Itemは地図上の位置が無いため、この距離ベースの束ねには含めない。
 interface RecommendedPlan {
   key: string;
   itemIds: string[];
@@ -223,13 +223,11 @@ function PlanDetailSheet({ plan, selected, onToggle, onClose }: {
   );
 }
 
-// プランタブの選択画面。地図(場所が絡むItemのピン)+「今週のおすすめ・
-// 行き先・作品・モノ」の棚。棚の区分と名称はストックタブ・アーカイブと
-// 共通の語彙(shelfOf)にしている。
-function MapPlanner({ destPool, workPool, thingPool, draftSelection, onOpenPin, onToggleItem, onTogglePlan, onInjectDemo, bundlesAreNew }: {
-  destPool: Item[];
-  workPool: Item[];
-  thingPool: Item[];
+// プランタブの選択画面。地図(場所が絡むItemのピン。ドメインを問わない)+
+// 「今週のおすすめ・モノ・バショ・タイケン・ジョウホウ」の棚。棚の区分と
+// 名称はストックタブ・アーカイブと共通の語彙(domainOf)にしている。
+function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onTogglePlan, onInjectDemo, bundlesAreNew }: {
+  stocked: Item[];
   draftSelection: string[];
   onOpenPin: (item: Item) => void;
   onToggleItem: (item: Item) => void;
@@ -238,18 +236,19 @@ function MapPlanner({ destPool, workPool, thingPool, draftSelection, onOpenPin, 
   bundlesAreNew: boolean;
 }) {
   const byNewest = (a: Item, b: Item) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
-  const destSorted = destPool.slice().sort(byNewest);
-  const workSorted = workPool.slice().sort(byNewest);
-  const thingSorted = thingPool.slice().sort(byNewest);
-  const plans = buildRecommendedPlans(destPool);
+  // 地図に出るのは場所が絡むItemだけ(ドメインを問わない。位置情報の
+  // 有無はドメインとは別軸)。
+  const mapPool = stocked.filter(hasPlace);
+  const byDomain = (d: ItemDomain) => stocked.filter((i) => domainOf(i) === d).slice().sort(byNewest);
+  const plans = buildRecommendedPlans(mapPool);
   const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
   const openPlan = plans.find((p) => p.key === openPlanKey) ?? null;
 
-  if (destPool.length === 0 && workPool.length === 0 && thingPool.length === 0) {
+  if (stocked.length === 0) {
     return (
       <main style={{ padding: "48px 4px", textAlign: "center" }}>
         <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 19, marginBottom: 10 }}>Keepが、まだありません。</div>
-        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepするか、ストックタブの「行き先」「作品」「モノ」から追加すると、ここに地図として集まります。</p>
+        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepするか、ストックタブの「モノ」「バショ」「タイケン」「ジョウホウ」から追加すると、ここに集まります。</p>
         <button onClick={onInjectDemo} style={{ padding: "13px 26px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.12em" }}>デモ用データを投入</button>
       </main>
     );
@@ -265,7 +264,7 @@ function MapPlanner({ destPool, workPool, thingPool, draftSelection, onOpenPin, 
 
   return (
     <main style={{ paddingTop: 14, paddingBottom: bottomPadding }}>
-      <MapCanvas items={destPool} selectedIds={draftSelection} onOpenPin={onOpenPin} />
+      <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} />
       <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 22px" }}>ピンやカードをタップして、今日のプランを選ぶ。</p>
 
       {plans.length > 0 && (
@@ -277,21 +276,14 @@ function MapPlanner({ destPool, workPool, thingPool, draftSelection, onOpenPin, 
           ))}
         </HorizontalShelf>
       )}
-      {destSorted.length > 0 && (
-        <HorizontalShelf title="行き先">
-          {destSorted.map(selectableCard)}
-        </HorizontalShelf>
-      )}
-      {workSorted.length > 0 && (
-        <HorizontalShelf title="作品">
-          {workSorted.map(selectableCard)}
-        </HorizontalShelf>
-      )}
-      {thingSorted.length > 0 && (
-        <HorizontalShelf title="モノ">
-          {thingSorted.map(selectableCard)}
-        </HorizontalShelf>
-      )}
+      {ITEM_DOMAINS.map((d) => {
+        const items = byDomain(d.id);
+        return items.length > 0 && (
+          <HorizontalShelf key={d.id} title={d.label}>
+            {items.map(selectableCard)}
+          </HorizontalShelf>
+        );
+      })}
       <PlanDetailSheet
         plan={openPlan}
         selected={openPlan ? openPlan.itemIds.every((id) => draftSelection.includes(id)) : false}
@@ -738,15 +730,12 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   const draftSelection = selection.itemIds;
 
   const showMap = !magazine || mapMode;
-  // 実行済み以外のItemを、ストックタブと共通の区分(行き先・作品・モノ)へ
-  // 振り分ける。地図のピンになるのは行き先だけ(マガジン掲載中plannedも、
-  // 選び直しのため含める)。ここでの「行った/観た/読んだ/聴いた/買った」も
-  // ストック側と全く同じ状態遷移(status→done)を起こす、唯一の出口を複数の
-  // 入口から呼べるようにしているだけ。
+  // 実行済み以外のItem。マガジン掲載中(planned)も選び直しのため含める。
+  // ここでの「行った/観た/読んだ/聴いた/やった/買った」もストック側と
+  // 全く同じ状態遷移(status→done)を起こす、唯一の出口を複数の入口から
+  // 呼べるようにしているだけ。棚の区分(モノ・バショ・タイケン・
+  // ジョウホウ)はMapPlanner側でdomainOfを使って振り分ける。
   const stocked = appState.items.filter((i) => i.status !== "done");
-  const destPool = stocked.filter((i) => shelfOf(i) === "dest");
-  const workPool = stocked.filter((i) => shelfOf(i) === "work");
-  const thingPool = stocked.filter((i) => shelfOf(i) === "thing");
   const magItems: ExecItem[] = magazine ? magazine.itemIds
     .map((id): ExecItem | null => {
       const item = appState.items.find((x) => x.id === id);
@@ -766,7 +755,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   const bundlesAreNew = (appState.weekendMeta?.lastSeenBundleWeek ?? null) !== currentBundleWeek;
 
   useEffect(() => {
-    if (!showMap || !bundlesAreNew || destPool.length === 0) return;
+    if (!showMap || !bundlesAreNew || stocked.length === 0) return;
     const t = setTimeout(() => {
       const next = structuredClone(appState);
       next.weekendMeta = { ...(next.weekendMeta ?? {}), lastSeenBundleWeek: currentBundleWeek };
@@ -774,7 +763,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
     }, 1200);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showMap, bundlesAreNew, currentBundleWeek, destPool.length]);
+  }, [showMap, bundlesAreNew, currentBundleWeek, stocked.length]);
 
   const toggleDraftItem = (item: Item) => toggleItemSelection(item.id);
   // モデルプラン(複数の行き先をまとめたエンベロープ)は、中の全件がすでに
@@ -839,11 +828,15 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
     const now = Date.now();
     // まずウィッシュ(自由文の願い)を投入する。ブリーフのダミーカードの
     // sourceWishTitleと同じ文面を含めることで、ブリーフでKEEPした時に
-    // origin:"wish"のItemが実際に生まれる流れを試せる。
-    const demoWishes = [
-      "安藤忠雄の建築を観る", "浅煎りの豆を買う", "古着でジャケットを探す",
-      "サウナを開拓する", "もっと歩く", "フィルムカメラを買う", "陶芸をはじめる", "秋に一人旅へ行く",
-    ].map((title, i) => ({ id: `demo-wish-${now}-${i}`, title, status: "stock" as const, addedAt: new Date(now - i * 86400000).toISOString() }));
+    // origin:"wish"のItemが実際に生まれる流れを試せる。カテゴリーは
+    // 願いの究極の対象物(モノ/バショ/タイケン/ジョウホウ)で振り分ける。
+    const demoWishes = ([
+      ["安藤忠雄の建築を観る", "experience"], ["浅煎りの豆を買う", "thing"], ["古着でジャケットを探す", "thing"],
+      ["サウナを開拓する", "experience"], ["もっと歩く", "place"], ["フィルムカメラを買う", "thing"],
+      ["陶芸をはじめる", "experience"], ["秋に一人旅へ行く", "place"],
+    ] as [string, ItemDomain][]).map(([title, category], i) => ({
+      id: `demo-wish-${now}-${i}`, title, category, status: "stock" as const, addedAt: new Date(now - i * 86400000).toISOString(),
+    }));
     next.wishes.push(...demoWishes);
 
     // Itemは1つの配列に統一。kindで種類(place/作品系/thing)、areaの有無で
@@ -964,7 +957,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
             <button onClick={() => { setMapMode(false); setSelection({ itemIds: [] }); }} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: "12px 2px 0", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E" }}>← バインダーに戻る</button>
           )}
           <MapPlanner
-            destPool={destPool} workPool={workPool} thingPool={thingPool} draftSelection={draftSelection}
+            stocked={stocked} draftSelection={draftSelection}
             onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onTogglePlan={toggleDraftPlan}
             onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
           />

@@ -10,31 +10,33 @@ import type { ReactNode } from "react";
 // 削除した。現在はプロフィールの興味(Interest)の分類にだけ使っている。
 export type CategoryId = "do" | "buy" | "go";
 
-// ウィッシュ = まだ形のない自由文の願い。構造(種類・場所・期限)は持たない。
-// 役割は (1)興味検出・ブリーフ生成の種になること (2)ブリーフがItemという
-// 形にして返してくれること(そのItemはorigin:"wish"とsourceWishIdを持つ)。
-// 具体的な行き先・作品・モノの構造はすべて下流のItemが担う。
-export interface Wish {
-  id: string;
-  title: string;
-  status: "stock" | "fulfilled";
-  addedAt: string;
-  fulfilledAt?: string;
-}
-
 // ---- Item: 収集物の統一モデル ------------------------------------------------
 //
-// 以前は「場所(Keep)」と「作品(MediaRecord)」の2つのコンテナに完全分離して
-// いたが、現実は排他的ではない(新作映画=作品+映画館という場所 / 旧作映画=
-// 場所なしの作品 / そこでしか買えないモノ=モノ+店という場所)ため、
 // 「何であるか(kind)」と「どこかへ行くことが絡むか(area、場所プロパティ)」を
-// 直交させた1つのItemに統一した。アクション(観る/読む/聴く/買う/行く)は
-// 保存せず、kindと場所の有無から導出する(ITEM_KINDSのdoneActionLabel)。
-//   - 地図に出る = areaを持つItem
-//   - アーカイブの「作品」棚 = kindが作品系のItem(場所の有無を問わない)
+// 直交させた1つのItemに統一している(新作映画=作品+映画館という場所 /
+// 旧作映画=場所なしの作品 / そこでしか買えないモノ=モノ+店という場所)。
+// アクション(観る/読む/聴く/買う/行く)は保存せず、kindから導出する
+// (ITEM_KINDSのdoneActionLabel)。
+//   - 地図に出る = areaを持つItem(kindを問わない、位置情報の有無は別軸)
 //   - 失効 = expiresAt(会期・締切)を持つものはその日、場所を持つものは
 //     30日の既定、場所を持たない作品・モノは自動失効しない
-export type ItemKind = "place" | "movie" | "exhibition" | "live" | "book" | "album" | "thing";
+//
+// kindはさらに、願望の「究極の対象物」を表す4つのドメイン(ItemDomain)の
+// どれか1つに属する(KIND_DOMAINで規格化。constants.tsに定義)。
+//   - place（バショ）: 行きたい場所・エリア・建築そのもの
+//   - experience（タイケン）: そこでしか出来ない体験(展覧会・ライブ・
+//     習い事・グルメなど)
+//   - info（ジョウホウ）: 映画・本・音楽などのメディア・知識全般
+//   - thing（モノ）: 買いたいモノ
+// ドメインは場所の有無(area)とは独立した別軸: タイケン・ジョウホウ・
+// モノのItemも、必要ならareaを持てる(そこでしか受けられないレッスン、
+// 劇場公開の映画、そこでしか買えないモノ、など)。
+export type ItemKind =
+  | "place"
+  | "exhibition" | "live" | "activity" | "food"
+  | "movie" | "book" | "album" | "info"
+  | "thing";
+export type ItemDomain = "place" | "experience" | "info" | "thing";
 export type ItemStatus = "candidate" | "planned" | "done";
 // brief=ブリーフのKEEPから / manual=ストックで手動追加 / wish=ウィッシュが
 // ブリーフを経て形になったもの(sourceWishIdで元の願いへ辿れる)
@@ -47,7 +49,7 @@ export interface Item {
   creator?: string;
   // 表示用のジャンルラベル(自由文、「近所の発見」など)。分類には使わない。
   category?: string;
-  // 場所プロパティ。値があれば「行く」が絡むアイテムとして地図・行き先棚に出る。
+  // 場所プロパティ。値があれば「行く」が絡むアイテムとして地図に出る。
   area?: string;
   status: ItemStatus;
   addedAt: string;
@@ -66,8 +68,20 @@ export interface Item {
   sourceWishId?: string;
 }
 
-// 作品系のkind(アーカイブで「作品」棚に立つもの)
-export const WORK_KINDS: ItemKind[] = ["movie", "exhibition", "live", "book", "album"];
+// ウィッシュ = まだ形のない自由文の願い。タブバー横の＋から、アプリの
+// どこにいても書ける「受信箱」。構造(場所・期限)は持たないが、4つの
+// ドメイン(モノ/バショ/タイケン/ジョウホウ)のうちどれに向けた願いかだけは
+// 書く時に選ぶ(ブリーフがどんな種類の提案として返すかの手がかりになる)。
+// 役割は (1)興味検出・ブリーフ生成の種になること (2)ブリーフがItemという
+// 形にして返してくれること(そのItemはorigin:"wish"とsourceWishIdを持つ)。
+export interface Wish {
+  id: string;
+  title: string;
+  category: ItemDomain;
+  status: "stock" | "fulfilled";
+  addedAt: string;
+  fulfilledAt?: string;
+}
 
 export interface CheckIn {
   id: string;
@@ -108,7 +122,6 @@ export interface Source {
 }
 
 // マガジン(プランの確定リスト)はItemのidを参照するだけの薄い層。
-// Itemの統一により、以前の {id, type: "keep" | "media"} という判別は不要になった。
 export interface Magazine {
   dateKey: string;
   decidedAt: string;

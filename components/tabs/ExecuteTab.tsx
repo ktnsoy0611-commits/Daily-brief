@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Check, X } from "lucide-react";
+import { Bookmark, Check, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
@@ -70,7 +70,7 @@ interface RecommendedPlan {
   label: string;
   itemsText: string;
   accent: string;
-  items: { id: string; title: string; image?: string; color?: string }[];
+  items: { id: string; title: string; image?: string; color?: string; kind: ItemKind; area?: string }[];
 }
 const RECOMMENDED_COUNT = 5;
 // 地図座標(0〜100のパーセント単位)上でこの距離以内なら「近い」とみなす。
@@ -111,7 +111,7 @@ function buildRecommendedPlans(pool: Item[]): RecommendedPlan[] {
       label,
       itemsText: group.map((g) => g.item.title).join(" ・ "),
       accent: group[0].item.color ?? placeAccent(areas[0] ?? group[0].item.id).color,
-      items: group.map((g) => ({ id: g.item.id, title: g.item.title, image: g.item.images?.[0], color: g.item.color })),
+      items: group.map((g) => ({ id: g.item.id, title: g.item.title, image: g.item.images?.[0], color: g.item.color, kind: g.item.kind, area: g.item.area })),
     };
   });
 }
@@ -128,12 +128,16 @@ function buildRecommendedPlans(pool: Item[]): RecommendedPlan[] {
 // (エンベロープの役目は「開いて中身を見る」ことだけにする)。選択済み
 // かどうかは枠線の色だけで示す。
 const ENVELOPE_WIDTH = 240;
-const ENVELOPE_HEIGHT = 176;
+const ENVELOPE_HEIGHT = 212;
+// 三角のフラップは「封をした証」がわかる程度の控えめな高さにとどめる。
+// 以前は58%と大きく、下の文字(件数・テーマ・行き先名)と被ったり、
+// 表示領域そのものを圧迫していた。
+const ENVELOPE_FLAP_PCT = 34;
 // フラップが開くふりをしてからオーバーレイを開くまでの遅延。短すぎると
 // 「開いた」実感がなく、長すぎるとタップへの反応が鈍く感じる。
 const ENVELOPE_OPEN_MS = 200;
 
-function PlanEnvelope({ plan, selected, onOpen }: { plan: RecommendedPlan; selected: boolean; onOpen: () => void }) {
+function PlanEnvelope({ plan, selected, onOpen, onToggle }: { plan: RecommendedPlan; selected: boolean; onOpen: () => void; onToggle: () => void }) {
   const dark = shade(plan.accent, -24);
   const [opening, setOpening] = useState(false);
 
@@ -148,34 +152,44 @@ function PlanEnvelope({ plan, selected, onOpen }: { plan: RecommendedPlan; selec
   };
 
   return (
-    <button onClick={handleTap} aria-label={plan.label} style={{
-      position: "relative", flexShrink: 0, width: ENVELOPE_WIDTH, height: ENVELOPE_HEIGHT, padding: 0, border: "none", cursor: "pointer",
-      borderRadius: COVER_RADIUS, overflow: "hidden", background: plan.accent, boxShadow: SOFT_SHADOW_LG, perspective: 500,
-      outline: selected ? `2.5px solid ${BLUE}` : "none", outlineOffset: selected ? -2.5 : 0,
-    }}>
+    // ボタンの中にトグル用の丸ボタンをもう1つ入れ子にしたいため、外枠は
+    // <button>ではなくrole="button"のdivにする(HTML仕様上、button要素は
+    // インタラクティブな子要素を持てない)。キーボード操作もEnter/Spaceで
+    // 同じタップ扱いにして、実質的にボタンと同じ振る舞いにしている。
+    <div
+      role="button" tabIndex={0} aria-label={plan.label}
+      onClick={handleTap}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleTap(); } }}
+      style={{
+        position: "relative", flexShrink: 0, width: ENVELOPE_WIDTH, height: ENVELOPE_HEIGHT, padding: 0, border: "none", cursor: "pointer",
+        borderRadius: COVER_RADIUS, overflow: "hidden", background: plan.accent, boxShadow: SOFT_SHADOW_LG, perspective: 500,
+        outline: selected ? `2.5px solid ${BLUE}` : "none", outlineOffset: selected ? -2.5 : 0,
+      }}>
       {/* 封をした三角のフラップ。タップすると上端(蝶番)を軸にわずかに
           持ち上がって奥へ開き、封を切ったことを一瞬だけ見せてから
-          オーバーレイに引き継ぐ。 */}
+          オーバーレイに引き継ぐ。下の文字と被らないよう、フラップは
+          「封をした証」がわかる程度の控えめな高さにとどめる。 */}
       <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: "58%", background: dark,
+        position: "absolute", top: 0, left: 0, right: 0, height: `${ENVELOPE_FLAP_PCT}%`, background: dark,
         clipPath: "polygon(0 0, 100% 0, 50% 100%)", zIndex: 2, transformOrigin: "50% 0%",
         transform: opening ? "rotateX(-70deg)" : "rotateX(0deg)",
         transition: `transform ${ENVELOPE_OPEN_MS}ms cubic-bezier(0.45,0,0.2,1)`,
       }} />
-      <div style={{ position: "absolute", left: 16, right: 44, bottom: 14, zIndex: 1 }}>
+      <div style={{ position: "absolute", left: 16, right: 16, bottom: 14, zIndex: 1 }}>
         <div style={{ fontSize: 9, letterSpacing: "0.16em", color: "rgba(255,255,255,0.72)", fontWeight: 700, marginBottom: 5 }}>MODEL PLAN ・ {plan.items.length}件</div>
         <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 15, color: PAPER, lineHeight: 1.3, marginBottom: 4, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.label}</div>
         <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.8)", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.itemsText}</div>
       </div>
-      {selected && (
-        <div style={{
-          position: "absolute", right: 10, top: 10, width: 26, height: 26, borderRadius: "50%", zIndex: 3, pointerEvents: "none",
-          background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(23,23,21,0.25)",
-        }}>
-          <Check size={13} strokeWidth={3} color={PAPER} />
-        </div>
-      )}
-    </button>
+      {/* 開かなくてもその場で選べるよう、タップ即トグルの丸ボタンを
+          右上に独立して置く(カード本体のタップ=開く、この丸だけ=選ぶ)。 */}
+      <button onClick={(e) => { e.stopPropagation(); haptic(6); onToggle(); }} aria-label={selected ? "選択から外す" : "このプランを追加"} style={{
+        position: "absolute", right: 10, top: 10, width: 26, height: 26, borderRadius: "50%", zIndex: 3, border: "none", cursor: "pointer", padding: 0,
+        background: selected ? BLUE : "rgba(255,255,255,0.92)", color: selected ? PAPER : INK,
+        display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(23,23,21,0.25)",
+      }}>
+        {selected ? <Check size={13} strokeWidth={3} /> : <Plus size={14} strokeWidth={2.6} />}
+      </button>
+    </div>
   );
 }
 
@@ -198,18 +212,28 @@ function PlanDetailSheet({ plan, selected, onToggle, onClose }: {
         <OverlayCard>
           <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>MODEL PLAN ・ {plan.items.length}件</div>
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, marginBottom: 14 }}>{plan.label}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "0 0 18px" }}>
-            {plan.items.map((it) => (
-              <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 42, height: 42, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: it.color ?? "#5A5A54" }}>
-                  {it.image && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={img(it.image, 90, 90)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                  )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, margin: "0 0 18px" }}>
+            {plan.items.map((it) => {
+              const IconComp = KIND_ICON[it.kind];
+              return (
+                <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ position: "relative", width: 46, height: 46, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: it.color ?? "#5A5A54" }}>
+                    {it.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={img(it.image, 100, 100)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    ) : (
+                      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <IconComp size="46%" strokeWidth={1} color="rgba(255,255,255,0.85)" />
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, color: INK, fontFamily: SANS, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
+                    <div style={{ fontSize: 10, color: "#9A988E", marginTop: 2 }}>{itemKindOf(it.kind).label}{it.area && it.area !== "—" ? ` ・ ${it.area}` : ""}</div>
+                  </div>
                 </div>
-                <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: INK, fontFamily: SANS, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <button onClick={() => { onToggle(); requestClose(); }} style={{
             width: "100%", padding: "13px 0", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
@@ -272,7 +296,8 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
           {plans.map((plan) => (
             <PlanEnvelope key={plan.key} plan={plan}
               selected={plan.itemIds.every((id) => draftSelection.includes(id))}
-              onOpen={() => setOpenPlanKey(plan.key)} />
+              onOpen={() => setOpenPlanKey(plan.key)}
+              onToggle={() => onTogglePlan(plan.itemIds)} />
           ))}
         </HorizontalShelf>
       )}
@@ -458,10 +483,10 @@ function ExecCardFace({ item, onMarkDone }: { item: ExecItem; onMarkDone: () => 
         {(mapsHref || officialHref) && (
           <div style={{ display: "flex", gap: 6, marginTop: 8, flexShrink: 0 }}>
             {mapsHref && (
-              <a href={mapsHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: "#F3ECDD", color: "#3A2E22", textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>地図 ↗</a>
+              <a href={mapsHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: INK, color: PAPER, textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>地図</a>
             )}
             {officialHref && (
-              <a href={officialHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: "#F3ECDD", color: "#3A2E22", textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>サイト ↗</a>
+              <a href={officialHref} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} style={{ flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 999, background: INK, color: PAPER, textDecoration: "none", fontSize: 9.5, fontWeight: 700, fontFamily: SANS }}>サイト</a>
             )}
           </div>
         )}
@@ -704,7 +729,12 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
           一番下までスクロールしないと押せず「どこでも押せるように」という
           要望に反していた。画面下に常時浮かせる固定ボタンに戻す。 */}
       {!stacking && (
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 20, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+        // zIndexはnav(25)より高くしておく。以前は20(グラデーションの15より
+        // 上)にしていたが、nav自体のピルの影(box-shadow)がわずかに滲んで
+        // ボタンの下端にnavの半透明なマスクがかかったように見える不具合が
+        // あった。バインド！はどこからでも押せる主要な操作なので、navより
+        // 常に手前に出すことで境目のにじみごと解消する。
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 26, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
           <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, padding: `0 16px calc(${NAV_OFFSET} + 8px)`, pointerEvents: "auto" }}>
             <button onClick={handleRegister} style={{
               width: "100%", padding: "15px 0", background: INK, color: PAPER, border: "none", borderRadius: 999,

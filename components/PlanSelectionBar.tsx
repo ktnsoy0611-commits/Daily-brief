@@ -40,7 +40,10 @@ export function PlanSelectionBar({ appState, selection, toggleItemSelection, onC
 
   return (
     <>
-      <div style={{ position: "fixed", right: 16, bottom: `calc(${NAV_OFFSET} + 8px)`, zIndex: 22 }}>
+      {/* zIndexはnav(25)より高く。navのピルの影がわずかに滲んで、バインド！
+          ボタンの下端に半透明のマスクがかかったように見える不具合があった
+          ため、navより常に手前に出す。 */}
+      <div style={{ position: "fixed", right: 16, bottom: `calc(${NAV_OFFSET} + 8px)`, zIndex: 26 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, background: PAPER, borderRadius: 999, padding: "7px 8px 7px 7px", boxShadow: SOFT_SHADOW_LG }}>
           {/* スタックしたカードのアイコン。小さく重ねた縮小サムネイルで
               「今バインドしようとしている束」であることを一目で伝える。 */}

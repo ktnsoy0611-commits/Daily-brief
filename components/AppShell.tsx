@@ -236,12 +236,14 @@ export function AppShell() {
           この種のズレを避けられる。navの箱自体はbottom:0(実際の画面下端)
           まで届かせておき、ピルはその中でmarginBottomにより浮かせる。
           下地へ溶け込むグラデーションは、以前はnavの内側(nav自身のzIndex
-          =25)に敷いていたが、それだとExecuteTabの選択確定バー(zIndex=20)
-          のような「navより低いが、それ自体は不透明な独立UI」の上にまで
+          =25)に敷いていたが、それだとPlanSelectionBar/ExecuteTabの
+          バインド！ボタンのような「それ自体は不透明な独立UI」の上にまで
           このグラデーションが被さり、その下端が白っぽく洗われて見える
           事故があった。グラデーションは「素通しのスクロールコンテンツ」
           だけを対象にしたいので、nav本体(タップ対象のピル、zIndex=25)とは
-          別レイヤー(zIndex=15、ExecuteTabの確定バーより下)に分離した。 */}
+          別レイヤー(zIndex=15)に分離している。バインド！系のボタンは
+          さらにnavのピルの影の滲みでうっすら覆われて見える不具合もあった
+          ため、両方ともnavより高いzIndex=26にして常に手前に出している。 */}
       {!showProfile && (
         <>
           <div aria-hidden style={{ position: "sticky", bottom: 0, width: "100%", height: 0, zIndex: 15, pointerEvents: "none" }}>

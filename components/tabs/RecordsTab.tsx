@@ -69,7 +69,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const itemCard = (i: Item, opts?: { sub?: string; withGood?: boolean }) => (
     <PosterCard key={i.id} image={i.images?.[0]} color={i.color} title={i.title}
       sub={opts?.sub ?? (i.area && i.area !== "—" ? i.area : (i.creator || shortDate(i.doneAt ?? i.addedAt)))}
-      label={itemKindOf(i.kind).en} icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)}
+      label={domainDefOf(domainOf(i)).label} icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)}
       good={opts?.withGood ? !!i.good : undefined}
       onToggleGood={opts?.withGood ? () => toggleGood(i.id) : undefined}
       onClick={i.images?.length || i.meta?.length ? () => setBinderItem(itemDetail(i)) : undefined} />
@@ -228,6 +228,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   // (isWishBound)で、タップして手動でON/OFFする類のものではない。
   const allWishesDesc = appState.wishes.slice().sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
   const wishChildren = wishDetail ? appState.items.filter((i) => i.sourceWishId === wishDetail.id) : [];
+  const wishDetailBound = wishDetail ? isWishBound(wishDetail, appState.items) : false;
 
   return (
     <>
@@ -331,10 +332,12 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
         onClose={() => setWishDetail(null)}
         actionSlot={(close) => (
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-            {wishDetail?.status !== "fulfilled" && (
+            {!wishDetailBound && wishDetail?.status !== "fulfilled" && (
               <button onClick={() => { updateWish(wishDetail!.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() }); close(); }} style={rowBtn(INK, PAPER)}>叶えた！</button>
             )}
-            <button onClick={() => { makeGoal(wishDetail!); close(); }} style={rowBtn("transparent", GREEN, GREEN)}>ゴールにする</button>
+            {!wishDetailBound && (
+              <button onClick={() => { makeGoal(wishDetail!); close(); }} style={rowBtn("transparent", GREEN, GREEN)}>ゴールにする</button>
+            )}
             <button onClick={() => { removeWish(wishDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
           </div>
         )} />

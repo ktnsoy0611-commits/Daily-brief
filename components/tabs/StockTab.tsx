@@ -4,7 +4,7 @@ import { Activity, BookOpen, Film, MapPin, Music, Music2, Newspaper, Package, Pa
 import { useState } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
-import { HAIRLINE, INK, ITEM_DOMAINS, PAPER, POSTER_PALETTE, RUST, SANS, itemKindOf, kindsOfDomain } from "@/lib/constants";
+import { BLUE, HAIRLINE, INK, ITEM_DOMAINS, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
 import { domainOf, hashStr, haptic, originBadge, shortDate } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
 
@@ -269,7 +269,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
   const itemCard = (i: Item, size?: number) => (
     <PosterCard key={i.id} image={i.images?.[0]} color={i.color} title={i.title}
       sub={i.area && i.area !== "—" ? i.area : (i.creator || i.category || (i.price ?? shortDate(i.addedAt)))}
-      label={itemKindOf(i.kind).en}
+      label={domainDefOf(domainOf(i)).label}
       icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)} size={size}
       action={size ? undefined : { label: itemKindOf(i.kind).doneActionLabel, onClick: () => markItemDone(i.id) }}
       onClick={size ? undefined : () => setItemDetail(i)}
@@ -353,9 +353,18 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
           sourceUrl: itemDetail.sourceUrl, sourceLabel: itemDetail.sourceLabel,
         } : null}
         onClose={() => setItemDetail(null)}
-        actionSlot={(close) => (
-          <button onClick={() => { removeItem(itemDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
-        )} />
+        actionSlot={(close) => {
+          const selected = selection.itemIds.includes(itemDetail!.id);
+          return (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+              <button onClick={() => toggleItemSelection(itemDetail!.id)} style={selected ? rowBtn("transparent", BLUE, BLUE) : rowBtn(INK, PAPER)}>
+                {selected ? "＋ 追加済み" : "＋ プランに追加"}
+              </button>
+              <button onClick={() => { markItemDone(itemDetail!.id); close(); }} style={rowBtn("transparent", INK, "rgba(23,23,21,0.3)")}>{itemKindOf(itemDetail!.kind).doneActionLabel}</button>
+              <button onClick={() => { removeItem(itemDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+            </div>
+          );
+        }} />
     </>
   );
 }

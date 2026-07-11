@@ -60,6 +60,14 @@ export function AppShell() {
         const existing = new Set(s.pendingReview ?? []);
         staleIds.forEach((id) => existing.add(id));
         s.pendingReview = Array.from(existing);
+        // 綴じられないまま日付をまたいだバインダーは解散し、中のカードは
+        // 候補(candidate)へ戻す。プランの地図はもうplanned単体では表示
+        // しない(現在のmagazineに綴じられているものだけ表示する)ため、
+        // ここで戻さないと、どの画面からも見えず触れないゾンビItemになる。
+        (s.magazine.itemIds ?? []).forEach((id) => {
+          const item = s.items.find((i) => i.id === id);
+          if (item && item.status === "planned") item.status = "candidate";
+        });
         s.magazine = null;
         mutated = true;
       }

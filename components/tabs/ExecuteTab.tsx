@@ -800,12 +800,19 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   }, [magazine?.decidedAt, setMapMode]);
 
   const showMap = !magazine || mapMode;
-  // 実行済み以外のItem。マガジン掲載中(planned)も選び直しのため含める。
-  // ここでの「行った/観た/読んだ/聴いた/やった/買った」もストック側と
-  // 全く同じ状態遷移(status→done)を起こす、唯一の出口を複数の入口から
-  // 呼べるようにしているだけ。棚の区分(モノ・バショ・タイケン・
-  // ジョウホウ)はMapPlanner側でdomainOfを使って振り分ける。
-  const stocked = appState.items.filter((i) => i.status !== "done");
+  // 地図・棚に出すのはストックの候補(candidate)だけ。バインド！済み
+  // (planned)のカードは「今日のバインダーに綴じた」ものなので、ストック
+  // タブと同様ここにも出さない(以前はstatus !== "done"で絞っており、
+  // planned=バインド済みのカードが地図と棚に残り続けていた。これは
+  // 「実行済み＝バインドしたカードはプランからも消える」というユーザーの
+  // 意図に反する誤実装だった。HANDOFF-CURRENT.md §7.8参照)。
+  // 唯一の例外は「選び直す」で今日のバインダーを開き直している間:
+  // 綴じてあるカード自体を地図上で外したり入れ替えたりする必要がある
+  // ため、現在のmagazineに綴じられているものに限って表示する。
+  // 棚の区分(モノ・バショ・タイケン・ジョウホウ)はMapPlanner側で
+  // domainOfを使って振り分ける。
+  const stocked = appState.items.filter((i) =>
+    i.status === "candidate" || (i.status === "planned" && !!magazine && magazine.itemIds.includes(i.id)));
   const magItems: ExecItem[] = magazine ? magazine.itemIds
     .map((id): ExecItem | null => {
       const item = appState.items.find((x) => x.id === id);
@@ -872,14 +879,26 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
     }
     persist(next);
   };
-  // 裏表紙の「登録」。バインダーを閉じて今日を締めくくる操作。「行きましたか？」
-  // のような追加の確認は挟まず、まだ実行が付いていないItemはそのまま候補に
-  // 戻し、そのままアーカイブタブへ向かう。
+  // 確定ビューの「バインド！」= 今日のバインダーを綴じて実行済みとして
+  // 確定する操作。綴じられた全カードはdoneになり、アーカイブのバインダー
+  // 棚・日付ビューへまとめて移る。doneになるのでストック/プランの候補
+  // からは完全に消える。
+  // 以前は正反対の実装(「まだdoneでないItemはcandidateへ戻す」)だった。
+  // これは「バインダーに残った=行かなかった候補はストックへ差し戻す」
+  // という誤った仕様理解によるもので、ユーザーの意図(バインド！=実行
+  // 済みの確定。カードはアーカイブへ綴じられ、ストック/プランから消える)
+  // と真逆の挙動になっており、「バインドしたカードがストックに何度でも
+  // 復活する」という長引いた不具合の真の根本原因だった(HANDOFF-
+  // CURRENT.md §7.8参照)。
   const registerBinder = () => {
     const next = structuredClone(appState);
+    const boundAt = new Date().toISOString();
     (next.magazine?.itemIds ?? []).forEach((id) => {
       const item = next.items.find((x) => x.id === id);
-      if (item && item.status !== "done") item.status = "candidate";
+      if (item && item.status !== "done") {
+        item.status = "done";
+        item.doneAt = boundAt;
+      }
     });
     next.magazine = null;
     persist(next);

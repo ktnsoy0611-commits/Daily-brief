@@ -344,14 +344,33 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
     ? `translate(${exitX}px, ${drag.dy - 40}px) scale(1) rotate(${exit === "keep" ? 22 : -22}deg)`
     : `translate(${drag.dx}px, ${drag.dy}px) scale(1) rotate(${drag.dx * 0.06}deg)`;
   const topTransition = exit ? "transform 0.32s cubic-bezier(0.32,0.72,0,1)" : drag.active ? "none" : "transform 0.28s cubic-bezier(0.32,0.72,0,1)";
-  const peekTransform = `translate(0, 8px) scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) rotate(0deg)`;
-  const peekTransition = drag.active ? "none" : "transform 0.28s cubic-bezier(0.32,0.72,0,1)";
+  // peekの着地(translateY 8→0 / scale 0.95〜1→1)は、以前は「indexが進んで
+  // このカードがtop役に切り替わる瞬間」に合わせて起こしていた。しかし
+  // それだと『役割の切り替え』と『見た目の値が変わる』が同一のReact
+  // コミットで同時に起こることになり、CSSトランジションが正しく発火する
+  // 保証がない(スワイプ直後に一瞬で位置が飛ぶ=ガクつきの実体だった。
+  // Chromiumでは大抵ごまかせても機種依存で再現したりしなかったりする
+  // 不安定な挙動で、そもそもの設計として壊れていた)。
+  // 正しい直し方は「いつ着地させるか」をindexの切り替わりから切り離すこと。
+  // exitがセットされた瞬間(=手前のカードが飛び始める瞬間)に、peekの
+  // 着地アニメーションも同じ長さ(0.32s)で同時に開始する。320ms後に
+  // 実際にindexが進んでこのカードがtop役になる頃には、transformの値は
+  // 既に定位置(0,0)・scale(1)に収まっているため、役割切り替えの瞬間には
+  // 見た目上なにも変化しない=原理的にガクつきようがなくなる。
+  const peekTransform = exit
+    ? "translate(0, 0px) scale(1) rotate(0deg)"
+    : `translate(0, 8px) scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) rotate(0deg)`;
+  const peekTransition = exit
+    ? "transform 0.32s cubic-bezier(0.32,0.72,0,1)"
+    : drag.active ? "none" : "transform 0.28s cubic-bezier(0.32,0.72,0,1)";
   // top(手前)とpeek(次)を別々のDOM要素として固定していると、決定直後に
   // indexが進んだ瞬間、peekだったカードの要素が一旦消えてtop要素として
   // 新規マウントし直され、それまでのtransformが引き継がれずガクッと
   // スナップして見えていた。カードのidそのものをkeyにして同じ要素を
   // 使い回すことで、「peekの見た目→topの見た目」への変化を1枚の要素の
-  // transformアニメーションとして連続させる。
+  // transformアニメーションとして連続させる(上のpeekTransform/exit連動と
+  // 合わせて、役割が切り替わる瞬間には要素の位置もtransition設定も
+  // 何一つ変化しない状態を作る)。
   const visibleCards: { card: DeckCard; isTop: boolean }[] = [
     ...(deck[index] ? [{ card: deck[index], isTop: true }] : []),
     ...(deck[index + 1] ? [{ card: deck[index + 1], isTop: false }] : []),

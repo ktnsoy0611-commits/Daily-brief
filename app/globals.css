@@ -1,0 +1,74 @@
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  height: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  /* iOSのオーバースクロール(バウンス)時や、下部セーフエリアの帯に、
+     この背景色より外側の地が一瞬見えて継ぎ目のようになるのを防ぐため、
+     アプリの背景色をhtml/bodyそのものにも敷いておく。lib/constants.tsの
+     BGと必ず同じ値にすること(以前ここだけ更新し忘れて色が合わず、
+     画面下端に別色の帯が見える不具合があった)。 */
+  background-color: #F2EADA;
+  /* ブリーフのカードを横スワイプする時、指の動きにわずかな縦成分が
+     混ざるだけでページ本体が引っ張られてバウンス/スクロールしてしまう
+     のを防ぐ。 */
+  overscroll-behavior-y: none;
+}
+
+/* オーバーレイのスクロール領域でOS標準のスクロールバーを隠すための
+   ユーティリティ。スクロール自体は無効化しない。 */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* タップした瞬間の押し込みフィードバック。
+   独自のtransform(地図ピン・選択カードの拡縮・バインダーの回転等)を
+   インラインstyleで持つ要素は、インラインが常に優先されるためここでは
+   影響を受けない。 */
+button {
+  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
+}
+button:active {
+  transform: scale(0.95);
+  opacity: 0.85;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* opacityのみ: transformをここに乗せると、願望・実行タブ内の
+   position:fixed な下部バーがこの祖先要素を新しい containing block と
+   見なしてしまい(CSS仕様上、transformを持つ要素は fixed 子要素の基準に
+   なる)、アニメーション中だけ画面外の位置に基準が移ってガクつく。 */
+@keyframes tab-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* RecordsTabの棚(BinderCoverflowRow)の各バインダーが、下から順に
+   立ち上がってくる入場アニメーション用。ストックタブのカードの束が
+   幅を検知した瞬間に広がって見える動きに近い賑やかさを、記録タブにも
+   持たせるために使う。 */
+@keyframes binder-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}

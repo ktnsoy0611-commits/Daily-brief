@@ -209,4 +209,10 @@ export interface TabProps {
   toggleItemSelection: (id: string) => void;
   addItemIds: (ids: string[]) => void;
   setSelection: (next: PlanSelection) => void;
+  // プラン(実行)タブが地図(選択)画面と確定ビューのどちらを表示しているか。
+  // AppShellが「確定ビュー表示中は外側のタブスクロールを止める」判断に
+  // 使うため、selectionと同じ理由でここへ引き上げている(詳細はAppShell.tsxの
+  // scrollLocked定義のコメント参照)。
+  execMapMode: boolean;
+  setExecMapMode: (v: boolean) => void;
 }

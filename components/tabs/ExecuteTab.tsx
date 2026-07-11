@@ -2,6 +2,7 @@
 
 import { Bookmark, Check, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
@@ -649,31 +650,18 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   const cardEls = useRef<Record<string, HTMLDivElement | null>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // この確定ビューは、自分自身の中(scrollRef)ではなく外側のAppShellの
-  // タブ用スクロールコンテナ([data-tab-scroll-root])が先にスクロール
-  // している状態から表示されることがある(地図でブックマークを探して
-  // 下の方までスクロールしてから「作る」を押した場合など)。地図の画面
-  // ではAppShell側のコンテナ自体がスクロールを担っているが、この確定
-  // ビューでは自分のリストが専用のスクロール領域を持つため、外側は本来
-  // スクロール不要になる。ただし前の画面で付いていたscrollTopが残った
-  // まま表示されてしまうことがあるため、この画面がマウントされた瞬間に
-  // 両方(外側・内側)をまとめて先頭へ戻しておく。
+  // この確定ビューが表示されている間、外側のAppShellのタブ用スクロール
+  // コンテナ([data-tab-scroll-root])はAppShell側のscrollLockedにより
+  // overflow-y:hiddenへロックされている(このビュー専用のscrollRefだけが
+  // スクロールを担う設計。詳細はAppShell.tsxのscrollLockedのコメント参照)。
+  // 以前はこの外側コンテナに対しても直接killMomentumScrollを呼んでいたが、
+  // killMomentumScrollは末尾で必ずoverflowYを"auto"に書き戻すため、
+  // AppShell側が設定したhiddenを問答無用で上書きしてロックを壊してしまい、
+  // 確定ビューをスクロールすると外側ごと動いてMasthead・「← 選び直す」
+  // ボタンが画面外へ流れる不具合の直接の原因になっていた。ロックはAppShell
+  // 側が一元管理するため、ここでは自分のリスト(scrollRef)だけを対象にする。
   useEffect(() => {
     killMomentumScroll(scrollRef.current);
-    killMomentumScroll(document.querySelector<HTMLElement>("[data-tab-scroll-root]"));
-    // この確定ビューは自分のリスト(scrollRef)だけがスクロールする設計だが、
-    // 外側のタブスクロールコンテナ([data-tab-scroll-root])も地図モードでは
-    // 普通にoverflow-y:autoでスクロールできる状態のまま。中身(カード一覧)が
-    // 長いと、外側も一緒にスクロールできてしまい(いわゆる二重スクロール)、
-    // リストを下にスクロールした拍子に外側が動いて上部のMasthead・
-    // 「← 選び直す」ボタンごと画面外へ流れて隠れる不具合になっていた。この
-    // ビューを表示している間だけ外側をhiddenにロックし、必ず内側の
-    // scrollRefだけがスクロール主体になるようにする(ブリーフタブの
-    // scrollLockedと同じ考え方を、この画面が出ている間だけ局所的に適用する)。
-    const outer = document.querySelector<HTMLElement>("[data-tab-scroll-root]");
-    const prevOverflowY = outer?.style.overflowY ?? "";
-    if (outer) outer.style.overflowY = "hidden";
-    return () => { if (outer) outer.style.overflowY = prevOverflowY; };
   }, []);
 
   // バインドボタンはどこからでも押せる固定位置にあるため、リストを
@@ -681,14 +669,13 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
   // 画面外(上)にあり、以降のスタック/閉じる/落ちるのアニメーションが
   // すべて見えない場所で起きてしまっていた。押した瞬間にまずリストを
   // 先頭へ戻し(「カメラ」を追従させ)、そのあとで各カードの位置を
-  // 測ってアニメーションを組み立てる。内側(scrollRef)だけでなく、
-  // 上のuseEffectと同じ理由で外側のタブスクロールコンテナも念のため
-  // 一緒に戻す。
+  // 測ってアニメーションを組み立てる。外側のタブスクロールコンテナは
+  // 対象にしない理由は上のuseEffectのコメント参照(AppShell側のロックを
+  // 壊してしまうため)。
   const handleRegister = () => {
     if (registerPhase || items.length === 0) return;
     haptic(16);
     killMomentumScroll(scrollRef.current);
-    killMomentumScroll(document.querySelector<HTMLElement>("[data-tab-scroll-root]"));
     const topEl = items[0] ? cardEls.current[items[0].id] : null;
     const topY = topEl?.getBoundingClientRect().top ?? 0;
     const offsets: Record<string, number> = {};
@@ -764,12 +751,22 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
       {/* 以前はリスト末尾に普通に流れる要素として置いていたが、それだと
           一番下までスクロールしないと押せず「どこでも押せるように」という
           要望に反していた。画面下に常時浮かせる固定ボタンに戻す。 */}
-      {!stacking && (
+      {!stacking && typeof document !== "undefined" && createPortal(
         // zIndexはnav(25)より高くしておく。以前は20(グラデーションの15より
         // 上)にしていたが、nav自体のピルの影(box-shadow)がわずかに滲んで
         // ボタンの下端にnavの半透明なマスクがかかったように見える不具合が
         // あった。バインド！はどこからでも押せる主要な操作なので、navより
         // 常に手前に出すことで境目のにじみごと解消する。
+        // zIndexの数字を上げるだけでは実機Safariで直らなかった。このボタンは
+        // AppShellの`key={tab}`配下(タブ切替のたびに作り直される内側の
+        // コンテナ)に生えているため、その祖先のどこかが(想定していない
+        // 形で)新しい重なりコンテキストを作ってしまうと、内側でzIndexを
+        // どれだけ上げてもnav手前のグラデーションより手前に出せなくなる。
+        // createPortalでdocument.body直下(=AppShellの外)へ描画先を移すことで、
+        // 祖先の重なりコンテキストの影響を一切受けない、素のbodyレベルでの
+        // zIndex比較にする。他のフローティングUI(PlanSelectionBarのバインド！等、
+        // 元々AppShellの最上位に直接置かれているため今回の不具合が出ていない
+        // もの)と同じ土俵に立たせる、というのがこの変更の意図。
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 26, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
           {/* navより上に浮かせる分の余白はpaddingではなくmarginで確保する。
               pointerEvents:"auto"の要素はpadding込みのボーダーボックス全体が
@@ -788,15 +785,20 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
               バインド！
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
 }
 
-export function ExecuteTab({ appState, persist, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection }: TabProps) {
+export function ExecuteTab({ appState, persist, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection, execMapMode: mapMode, setExecMapMode: setMapMode }: TabProps) {
   const magazine = appState.magazine;
-  const [mapMode, setMapMode] = useState(false); // バインダー確定後でも地図に戻って選び直すときtrue
+  // mapMode(バインダー確定後でも地図に戻って選び直すときtrue)はAppShellへ
+  // 引き上げた(execMapMode)。外側のタブスクロールコンテナをロックすべきか
+  // どうかの判断にAppShell側でも必要になったため(AppShell.tsxの
+  // scrollLockedのコメント参照)。このタブ内では従来どおりmapMode/
+  // setMapModeという名前のまま使い、既存コードとの差分を最小にしている。
   const [pinItem, setPinItem] = useState<Item | null>(null);
   // 選択状態はAppShellへ引き上げ、ストックタブと共有している(タブを
   // 跨いでバインド候補を選べるようにするため)。draftSelectionという名前は
@@ -815,7 +817,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   // 更新後の確定ビューへ戻す。
   useEffect(() => {
     setMapMode(false);
-  }, [magazine?.decidedAt]);
+  }, [magazine?.decidedAt, setMapMode]);
 
   const showMap = !magazine || mapMode;
   // 実行済み以外のItem。マガジン掲載中(planned)も選び直しのため含める。

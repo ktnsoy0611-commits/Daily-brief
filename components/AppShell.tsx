@@ -37,6 +37,11 @@ export function AppShell() {
   // だけ)、ここに置くだけでストックタブ⇄プランタブを跨いで選択が
   // 保持される。
   const [selection, setSelection] = useState<PlanSelection>({ itemIds: [] });
+  // プランタブが地図(選択)画面と確定ビュー(バインダー)のどちらを見せて
+  // いるか。以前はExecuteTabのローカルstateだったが、外側のタブスクロール
+  // コンテナ(scrollLocked)をロックすべきかどうかの判断にAppShell側でも
+  // 必要になったため、selectionと同じ理由でここへ引き上げた。
+  const [execMapMode, setExecMapMode] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -154,7 +159,7 @@ export function AppShell() {
       )}
     </button>
   );
-  const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection };
+  const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection, execMapMode, setExecMapMode };
 
   // 実行タブなどをスクロールした状態で別タブ(特にブリーフタブ)へ切り替えると
   // ヘッダーが見切れる不具合が繰り返し再発していた。原因は「ウィンドウ/body
@@ -184,7 +189,15 @@ export function AppShell() {
   // この揺れが構造的に起こらなくなる。代わりにツールバーが後から隠れた場合は
   // 器の下に数十pxの余白(背景色のみ)が残ることがあるが、スクロールを
   // 目的とした値ではないためこのアプリでは実害がない。
-  const scrollLocked = !showProfile && tab === "brief";
+  // プランタブの確定ビュー(バインダー)も、自分専用のスクロール領域
+  // (ExecuteTab内のscrollRef)を持つ点でブリーフタブと同じ構造。ここを
+  // ロックし忘れると、外側のこのコンテナも一緒にoverflow-y:autoでスクロール
+  // できてしまい(二重スクロール)、確定ビューのリストを下へスクロール
+  // した拍子に外側ごと動いてMasthead・「← 選び直す」ボタンが画面外へ
+  // 流れて隠れる不具合になる。地図(選択)画面の方はExecuteTab自身が専用の
+  // スクロール領域を持たず、この外側のスクロールに乗って地図・棚を見せる
+  // 設計なので、そちらではロックしない(execMapMode===trueの間は対象外)。
+  const scrollLocked = !showProfile && (tab === "brief" || (tab === "execute" && !!appState.magazine && !execMapMode));
   return (
     <div style={{ height: "100svh", overflow: "hidden", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
       <div data-tab-scroll-root style={{

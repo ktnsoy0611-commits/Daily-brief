@@ -650,16 +650,24 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
 // ための別パーツは一切使わない。§7.13・§7.14で繰り返し起きていた「表紙の
 // 角丸と別要素の直角の角が衝突する」問題は、そもそも角のある別要素を
 // 作らないことで構造的に起こり得ない。
+// 裏表紙は「表紙よりわずかに暗い色」程度に留める(以前の-26は表紙と
+// 別物の色に見えるほど暗すぎた、という指摘)。また、パースによる後退
+// だけに任せず、裏表紙自体を右へ少しシフトすることで覗く帯を安定して
+// 太くしている(見えている帯 = 裏表紙の右端 - 表紙の後退した右端、の
+// 差分なので、裏表紙を右にずらすほど帯が太くなる)。左端(蝶番側)は
+// 表紙の左端と同じ位置のまま動かさないよう、insetではなくtranslateXで
+// 平行移動させる(左右の見え方を変えず、全体を右へずらすだけにするため)。
+const BACK_COVER_SHIFT = 8;
 function GoalBackCover({ color }: { color: string }) {
   return (
     <div style={{
-      position: "absolute", inset: 0, background: color,
+      position: "absolute", inset: 0, transform: `translateX(${BACK_COVER_SHIFT}px)`, background: color,
       borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
     }} />
   );
 }
 
-export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebrowLabel, title, footer, accent, onClick, tiltDeg = -24 }: CoverContent & {
+export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebrowLabel, title, footer, accent, onClick, tiltDeg = -16 }: CoverContent & {
   width: number | string;
   aspect?: string;
   onClick?: () => void;
@@ -668,7 +676,7 @@ export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebro
   const fill = accent?.color ?? color;
   return (
     <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 500, position: "relative", cursor: onClick ? "pointer" : "default" }}>
-      <GoalBackCover color={shade(fill, -26)} />
+      <GoalBackCover color={shade(fill, -13)} />
       <div style={{ position: "absolute", inset: 0, transformOrigin: "0% 50%", transform: `rotateY(${tiltDeg}deg)` }}>
         <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
       </div>

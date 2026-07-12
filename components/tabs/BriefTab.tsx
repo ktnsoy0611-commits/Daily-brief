@@ -447,8 +447,25 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               育成カードでボタンが出ている間だけ、枠自体にページ背景色(BG)を
               敷き、矩形の範囲を丸ごと不透明にすることで、隙間からの透過を
               構造的に無くした(通常カードの時はこの枠は中身が無く見えない
-              ため、透明のままにしてカードの影の抜けに影響しないようにする)。 */}
-          <footer style={{ position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, paddingBottom: isGrowth ? 8 : 0, flexShrink: 0, background: isGrowth ? BG : "transparent" }}>
+              ため、透明のままにしてカードの影の抜けに影響しないようにする)。
+              ★上記だけでは別の境目が生まれた: このフッターのすぐ上にある
+              カード自体のSOFT_SHADOW_LG(ぼかしの効いたドロップシャドウ)は
+              枠(arenaRef)の外まで滲み出て、本来は徐々にページ背景色へ
+              溶け込んでいくはずだった。ところがフッターは矩形のまま一枚岩の
+              不透明なBGで、かつzIndexがカードより高いため、影がまだ薄く
+              残っている途中の位置でスパッと不透明な壁に切り取られてしまい、
+              「影がここで終わっている」という直線的な境目に見えていた。
+              フッターの上端を単色の壁ではなく、影の減衰と同じ向きに
+              透明→不透明へ滲むグラデーションにすることで、影の自然な
+              フェードアウトと視覚的に連続するようにした(境目そのものを
+              無くすのではなく、境目が見えなくなるまで滑らかにする)。
+              フェードは20pxで完了させ、下側の大部分(タブバー直前の
+              もやが出る領域=26px分)は引き続き完全に不透明なままにして
+              いるため、もやを隙間から通す構造的な穴は生まれない。 */}
+          <footer style={{
+            position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, paddingBottom: isGrowth ? 8 : 0, flexShrink: 0,
+            background: isGrowth ? `linear-gradient(to bottom, ${BG}00 0, ${BG} 20px, ${BG} 100%)` : "transparent",
+          }}>
             {isGrowth && (
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => commit("skip")} style={{ flex: 1, padding: "13px 0", background: "transparent", border: "1.5px solid rgba(23,23,21,0.3)", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: "#5A5A54", cursor: "pointer" }}>あとで</button>

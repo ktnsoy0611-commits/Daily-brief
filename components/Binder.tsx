@@ -435,8 +435,9 @@ function BinderSpineFace({ accent }: { accent: Accent }) {
 }
 
 // 無地の側面(リングの反対側=バインダーの右端=開く側)。表紙が背表紙を
-// 軸にわずかに開くため、ここは奥まった隙間の陰として見える程度でよく、
-// 特定の色を持たせず影のグラデーションだけにしている。
+// 軸にわずかに開くため、ここは奥まった隙間の陰として見える程度でよい、
+// という想定で以前は特定の色を持たせず「rgba(0,0,0,0.18〜0.04)を背景に
+// 重ねるだけ」の実装にしていた。
 // 以前はこの面にも表紙と同じ半径の角丸(COVER_RADIUS)を与えていたが、
 // この面の幅は本の厚み(depth、細いものは5px、GoalsTabでは22px)しかない
 // うえ、rotateY(90deg)でほぼ真横を向いた状態でrotateY(-14deg)の外側の
@@ -444,12 +445,28 @@ function BinderSpineFace({ accent }: { accent: Accent }) {
 // 表紙の丸い角のすぐ外側から槍のように尖った影が突き出て見える描画上の
 // 崩れが起きていた(半径をdepthの半分まで下げても改善しなかったため、
 // 単純な「半径が幅を超えてレンズ化する」問題ではなく、この深い3D回転
-// 自体と角丸の組み合わせが原因と判断した)。この面はもともと「奥まった
-// 隙間の陰」程度にしか見えない前提の面なので、角丸を諦めて素の四角に
-// 戻すことで解決する。表紙面(BinderCoverFace)側は引き続き角丸を持つため、
-// 表紙の丸い角自体が欠けて見えることはない。
-function BinderEdgeFace() {
-  return <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,0.18), rgba(0,0,0,0.04))" }} />;
+// 自体と角丸の組み合わせが原因と判断した)ため、角丸を諦めて素の四角に
+// 戻す対応を取った。
+//
+// ★しかし実機スクショ(2026-07-12)で判明: 「rgba(0,0,0,0.18)背景に重ねる
+// だけ」の実装は、この面の裏に何も無い(3D空間上ページの背景色がそのまま
+// 透けて見える)ため、想定していた「暗い陰」ではなく、生成り地を薄く
+// 灰色がからせただけの明るいグレーの帯として描画されていた。角丸の表紙
+// (濃い色)のすぐ隣に、色味の違う無関係な灰色の板が四角いまま突き出て
+// 見えるため、「四角い箱に丸いテクスチャを貼り付けただけ」に見える、と
+// いうユーザー指摘の実体はこれだった。対応として、この面を透明な影では
+// なく、表紙・背表紙と同じアクセントカラーを土台にした不透明な面にした
+// (BinderSpineFaceは元々アクセントカラーで塗っており、無地の側面だけが
+// 「色を持たない」例外だった)。これにより表紙・背表紙・側面が同じ色
+// ファミリーで繋がり、側面は独立した灰色の板ではなく「この色のバインダー
+// の厚み」として読めるようになる。形状(素の四角、角丸なし)は変更して
+// いないため、§5で対応した槍状の影の不具合を再発させる要素はない。
+function BinderEdgeFace({ color }: { color: string }) {
+  return (
+    <div style={{ position: "absolute", inset: 0, background: color }}>
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,0.34), rgba(0,0,0,0.08))" }} />
+    </div>
+  );
 }
 
 // 裏表紙(表紙面の真裏)。実物のバインダーと同じく無地。表紙側の角丸(右端)
@@ -572,7 +589,7 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
           position: "absolute", right: 0, top: 0, bottom: 0, width: resolvedDepth, overflow: "hidden",
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: `rotateY(90deg) translateZ(${resolvedDepth / 2}px)`,
         }}>
-          <BinderEdgeFace />
+          <BinderEdgeFace color={shade(spineAccent.color, -10)} />
         </div>
         {/* 裏表紙(表紙の真裏)。蝶番位置に合わせたラッパーで開き角を加える。 */}
         <div style={{

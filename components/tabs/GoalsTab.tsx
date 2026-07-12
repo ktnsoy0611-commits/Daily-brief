@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { Binder3D, goalAccent, GOAL_BASE } from "@/components/Binder";
+import { GoalBinderCard, goalAccent, GOAL_BASE } from "@/components/Binder";
 import { AddCardTile, Masthead, rowBtn } from "@/components/common";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
@@ -106,21 +106,30 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
       <Masthead title="ゴール" statValue={goalItems.length} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32, paddingLeft: 8, paddingRight: 8 }}>
-        {/* ゴールもアプリ共通のBinder3D(表紙+背表紙を持つリングバインダー)で
-            統一する。以前は専用のGoalCardを使っており、アーカイブタブの棚と
-            見た目が食い違っていた。グリッドでは常に表紙が正面(rotateY:0)
-            を向いた状態で並べ、タイトルを読み取りやすくしている。
-            rotateY(-14度)分だけ影が斜めに投影されるため、外側(AppShell側の
-            data-tab-scroll-root)が持つ16pxの余白だけでは、特に右列のタイルの
-            影がぎりぎり画面端で切れることがあった。ここに追加で左右8pxの
-            余白を足し、影がクリップされる前に収まる隙間を確保している。 */}
+        {/* ゴールはGoalBinderCard(Binder.tsx参照)で表示する。以前は
+            アーカイブの棚と同じBinder3D(表紙・背表紙・側面・裏表紙の4面を
+            組む箱)を流用していたが、ゴールタブは静止したグリッドで
+            表紙以外の3面を一度も見せる必要が無く、その3面(特に無地の
+            側面)が表紙の角丸と衝突して直角の角が飛び出て見える描画上の
+            矛盾を繰り返し起こしていた(§7.13・§7.14)。GoalBinderCardは
+            表紙面だけを角度(rotateY:-14、以前と同じ見た目)を付けて
+            台形に傾け、箱としての残り3面を最初から作らない。表紙自体は
+            自分のoverflow:hidden+border-radiusで正しく丸くクリップ
+            されており(この面は3D変形を受けていないので崩れない)、
+            それをdrop-shadow付きの非クリップなラッパーで傾けるだけなので、
+            角丸と衝突する別要素が構造的に存在しない。
+            台形の影が斜めに投影されるため、外側(AppShell側の
+            data-tab-scroll-root)が持つ16pxの余白だけでは、特に右列の
+            タイルの影がぎりぎり画面端で切れることがあった。ここに追加で
+            左右8pxの余白を足し、影がクリップされる前に収まる隙間を
+            確保している。 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 30, columnGap: 14, justifyItems: "center" }}>
           {goalItems.map((g) => {
             const latest = g.checkIns?.[0];
             const count = g.checkIns?.length ?? 0;
             return (
-              <Binder3D
-                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT} rotateY={-14} depth={22} count={count}
+              <GoalBinderCard
+                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT}
                 color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={goalAccent(g.id)}
                 onClick={() => setOpenGoalId(g.id)}
                 footer={

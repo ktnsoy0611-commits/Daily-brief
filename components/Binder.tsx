@@ -626,6 +626,50 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
   );
 }
 
+// ---- ゴールタブ専用: 台形に傾いた平面のバインダーカード ---------------------
+//
+// §7.13・§7.14で対応したのは「本の厚みを表す側面(BinderEdgeFace)の
+// 直角の角が、表紙の角丸の外側に飛び出て見える」問題だったが、そもそも
+// ユーザーの意図は「箱として3D構築する必要はない。角丸さえ正しく
+// マスクされていれば、平面のテクスチャ(表紙)をパースの効いた台形に
+// 変形するだけで十分」というものだった。ゴールタブは静止したグリッド
+// 表示で、Binder3Dが本来持つ「表紙⇄背表紙を連続的に回転で行き来する」
+// 機能(棚のコンベア用)を使っていないため、背表紙(BinderSpineFace)・
+// 無地の側面(BinderEdgeFace)・裏表紙(BinderBackCoverFace)という
+// 「箱」を構成する残り3面は最初から不要だった。この3面(特に
+// BinderEdgeFace)を無くせば、表紙の角丸とぶつかる「別要素の直角の角」
+// はそもそも存在し得なくなる。
+//
+// 表紙(BinderCoverFace)は元々、自分自身のoverflow:hidden+border-radiusで
+// 正しく丸くクリップされた平面(このクリップは3D変形を受けていないので
+// 崩れない)。この既に正しく丸い平面を、Binder3Dの表紙面と全く同じ手法
+// (variable: 変形されるラッパー自身にはoverflow:hidden/border-radiusを
+// 持たせず、visibleのままdrop-shadowだけを乗せる。実際の丸みは中の
+// BinderCoverFaceだけが担う)でrotateY(台形変形)する。表紙以外の面を
+// 一切作らないため、§7.13以前に起きていた「角丸と直角の側面が衝突する」
+// 描画上の矛盾が構造的に起こり得ない。
+export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebrowLabel, title, footer, accent, onClick, tiltDeg = -14 }: CoverContent & {
+  width: number | string;
+  aspect?: string;
+  onClick?: () => void;
+  // Binder3Dの箱をGoalsTabのグリッドで使っていた時と同じ見た目の角度
+  // (rotateY:-14)をデフォルトにし、印象を変えない。
+  tiltDeg?: number;
+}) {
+  return (
+    <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 900, cursor: onClick ? "pointer" : "default" }}>
+      <div style={{
+        position: "relative", width: "100%", height: "100%", transformOrigin: "50% 100%",
+        transform: `rotateY(${tiltDeg}deg)`,
+      }}>
+        <div style={{ position: "absolute", inset: 0, filter: `drop-shadow(${SOFT_SHADOW})` }}>
+          <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- コンベア状の棚(RecordsTab) -------------------------------------------
 
 export interface BinderShelfItem extends CoverContent {

@@ -235,53 +235,57 @@ function PlanEnvelope({ plan, selected, onOpen, onToggle }: { plan: RecommendedP
   };
 
   return (
-    // ボタンの中にトグル用の丸ボタンをもう1つ入れ子にしたいため、外枠は
-    // <button>ではなくrole="button"のdivにする(HTML仕様上、button要素は
-    // インタラクティブな子要素を持てない)。キーボード操作もEnter/Spaceで
-    // 同じタップ扱いにして、実質的にボタンと同じ振る舞いにしている。
-    <div
-      role="button" tabIndex={0} aria-label={plan.label}
-      onClick={handleTap}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleTap(); } }}
-      style={{
-        position: "relative", flexShrink: 0, width: ENVELOPE_WIDTH, height: ENVELOPE_HEIGHT, padding: 0, border: "none", cursor: "pointer",
-        borderRadius: COVER_RADIUS, overflow: "hidden", background: plan.accent, boxShadow: SOFT_SHADOW_LG, perspective: 500,
-        outline: selected ? `2.5px solid ${BLUE}` : "none", outlineOffset: selected ? -2.5 : 0,
-      }}>
-      {/* 封をした三角のフラップ。タップすると上端(蝶番)を軸にわずかに
-          持ち上がって奥へ開き、封を切ったことを一瞬だけ見せてから
-          オーバーレイに引き継ぐ。下の文字と被らないよう、フラップは
-          「封をした証」がわかる程度の控えめな高さにとどめる。 */}
-      <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: `${ENVELOPE_FLAP_PCT}%`, background: dark,
-        clipPath: "polygon(0 0, 100% 0, 50% 100%)", zIndex: 2, transformOrigin: "50% 0%",
-        transform: opening ? "rotateX(-70deg)" : "rotateX(0deg)",
-        transition: `transform ${ENVELOPE_OPEN_MS}ms cubic-bezier(0.45,0,0.2,1)`,
-      }} />
-      <div style={{ position: "absolute", left: 16, right: 16, bottom: 14, zIndex: 1 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.16em", color: "rgba(255,255,255,0.72)", fontWeight: 700, marginBottom: 5 }}>MODEL PLAN ・ {plan.items.length}件</div>
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 15, color: PAPER, lineHeight: 1.3, marginBottom: 8, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.label}</div>
-        {/* フラップの下からここまでの間が空きすぎないよう、要約文の代わりに
-            行き先を1件1行の箇条書きで並べて、増えた表示領域ぶんの情報量を
-            実際に埋める。 */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          {plan.items.map((it) => (
-            <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(255,255,255,0.55)", flexShrink: 0 }} />
-              <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.85)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
-            </div>
-          ))}
+    // ★+ボタンは、エンベロープ本体(perspective+フラップの3D transformを持つ
+    // 3Dコンテキスト)の「外側」の素のラッパーに置く。以前は本体の中にzIndex:4で
+    // 入れていたが、フラップがrotateXで3D変形されると実機Safariでは合成レイヤーが
+    // z-indexを無視してフラップを+ボタンより手前に描画してしまい、ボタンが
+    // フラップの下に隠れていた(Chromiumでは再現しない)。3Dコンテキストの外の
+    // 兄弟要素にすることで、この合成順の影響を受けず確実に最前面に出る。
+    <div style={{ position: "relative", flexShrink: 0, width: ENVELOPE_WIDTH, height: ENVELOPE_HEIGHT }}>
+      {/* ボタンの中にトグル用の丸ボタンをもう1つ入れ子にしたいため、外枠は
+          <button>ではなくrole="button"のdivにする(HTML仕様上、button要素は
+          インタラクティブな子要素を持てない)。キーボード操作もEnter/Spaceで
+          同じタップ扱いにして、実質的にボタンと同じ振る舞いにしている。 */}
+      <div
+        role="button" tabIndex={0} aria-label={plan.label}
+        onClick={handleTap}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleTap(); } }}
+        style={{
+          position: "absolute", inset: 0, padding: 0, border: "none", cursor: "pointer",
+          borderRadius: COVER_RADIUS, overflow: "hidden", background: plan.accent, boxShadow: SOFT_SHADOW_LG, perspective: 500,
+          outline: selected ? `2.5px solid ${BLUE}` : "none", outlineOffset: selected ? -2.5 : 0,
+        }}>
+        {/* 封をした三角のフラップ。タップすると上端(蝶番)を軸にわずかに
+            持ち上がって奥へ開き、封を切ったことを一瞬だけ見せてから
+            オーバーレイに引き継ぐ。下の文字と被らないよう、フラップは
+            「封をした証」がわかる程度の控えめな高さにとどめる。 */}
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, height: `${ENVELOPE_FLAP_PCT}%`, background: dark,
+          clipPath: "polygon(0 0, 100% 0, 50% 100%)", zIndex: 2, transformOrigin: "50% 0%",
+          transform: opening ? "rotateX(-70deg)" : "rotateX(0deg)",
+          transition: `transform ${ENVELOPE_OPEN_MS}ms cubic-bezier(0.45,0,0.2,1)`,
+        }} />
+        <div style={{ position: "absolute", left: 16, right: 16, bottom: 14, zIndex: 1 }}>
+          <div style={{ fontSize: 9, letterSpacing: "0.16em", color: "rgba(255,255,255,0.72)", fontWeight: 700, marginBottom: 5 }}>MODEL PLAN ・ {plan.items.length}件</div>
+          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 15, color: PAPER, lineHeight: 1.3, marginBottom: 8, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.label}</div>
+          {/* フラップの下からここまでの間が空きすぎないよう、要約文の代わりに
+              行き先を1件1行の箇条書きで並べて、増えた表示領域ぶんの情報量を
+              実際に埋める。 */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {plan.items.map((it) => (
+              <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(255,255,255,0.55)", flexShrink: 0 }} />
+                <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.85)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-      {/* 開かなくてもその場で選べるよう、タップ即トグルの丸ボタンを独立して
-          置く(カード本体のタップ=開く、この丸だけ=選ぶ)。以前はフラップの
-          斜辺と重ならないようフラップより下の段に小さく置いていたが、
-          「大きくして右上へ、フラップより手前(上)に重ねて隠れないように」
-          という指定を受け、右上へ移動し一回り大きくした。zIndexはフラップ
-          (2)より高い4にして、フラップの三角の上に前面で乗る(=フラップに
-          隠れない)。 */}
+      {/* 開かなくてもその場で選べるよう、タップ即トグルの丸ボタン(右上・大きめ)。
+          カード本体のタップ=開く、この丸だけ=選ぶ。エンベロープ本体の3D
+          コンテキストの外にあるので、フラップに隠れず常に最前面。 */}
       <button onClick={(e) => { e.stopPropagation(); haptic(6); onToggle(); }} aria-label={selected ? "選択から外す" : "このプランを追加"} style={{
-        position: "absolute", right: 10, top: 10, width: 34, height: 34, borderRadius: "50%", zIndex: 4, border: "none", cursor: "pointer", padding: 0,
+        position: "absolute", right: 10, top: 10, width: 34, height: 34, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
         background: selected ? BLUE : "rgba(255,255,255,0.95)", color: selected ? PAPER : INK,
         display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(23,23,21,0.28)",
       }}>

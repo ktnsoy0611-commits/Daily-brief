@@ -419,6 +419,29 @@ const MEDIA_BAND = "26%";
 // (帯そのものが縦向きのため)。
 const SIDE_BAND = "34%";
 
+// モノ(stamp)の帯。無地ではなく、帯の高さを1辺とする正方形のセルを横一列に
+// 並べ、各セルを対角線で斜めに分割して片方だけ明るい色にする、チェック(市松/
+// アーガイル)状のデザイン(ユーザー指定)。セルごとに対角の向きを左右反転させ
+// (偶数=左上が明るい、奇数=右上が明るい)、明るい三角が交互に噛み合って
+// ジグザグの市松に見えるようにしている。帯の幅ぴったりに整数個収まるとは
+// 限らないため、余るぶんは器のoverflow:hiddenで切り、タイル状に敷き詰める。
+const STAMP_CHECK_COUNT = 6;
+function StampCheckBand({ color }: { color: string }) {
+  const light = shade(color, 34);
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", overflow: "hidden" }}>
+      {Array.from({ length: STAMP_CHECK_COUNT }, (_, i) => (
+        <div key={i} style={{ position: "relative", height: "100%", aspectRatio: "1 / 1", flexShrink: 0, background: color }}>
+          <div style={{
+            position: "absolute", inset: 0, background: light,
+            clipPath: i % 2 === 0 ? "polygon(0 0, 100% 0, 0 100%)" : "polygon(0 0, 100% 0, 100% 100%)",
+          }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // 表紙下部(エイボロウ+タイトル+フッター)。3種で構成そのものは完全に
 // 共通にし、文字色だけ呼び出し側で選べるようにしている(targetは表紙
 // 全面が自分の色になるため、白系の文字色を渡す)。
@@ -472,21 +495,25 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
     );
   }
 
-  // モノ専用(stamp)。他4種と同じく「専用の帯」を持たせた構成。geo/media
-  // モノは無地の単色帯を上端と下端の両方に置く(ユーザー指定で上にも同じ
-  // 帯を追加)。帯の太さはどちらもジョウホウ(media)と揃えてMEDIA_BAND(26%)。
-  // 図形は持たず、色(巻数だけで決まるthingVolumeAccent)と上下対称の帯構成
-  // そのものがモノという種別の印になる。タイトル側は白地なので、文字色は
-  // geo/mediaと同じINK(デフォルト)のまま。
+  // モノ専用(stamp)。上端と下端の両方に帯を置く。帯の太さはどちらも
+  // ジョウホウ(media)と揃えてMEDIA_BAND(26%)。帯は無地ではなく、正方形の
+  // セルを斜めに分割して片方を明るくしたチェック(市松)状のデザイン
+  // (StampCheckBand、ユーザー指定)。色(巻数だけで決まるthingVolumeAccent)と
+  // 上下対称の帯構成そのものがモノという種別の印になる。タイトル側は白地
+  // なので、文字色はgeo/mediaと同じINK(デフォルト)のまま。
   if (accent?.kind === "stamp") {
     return (
       <div style={{
         position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: PAPER, overflow: "hidden",
         borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
       }}>
-        <div style={{ flex: `0 0 ${MEDIA_BAND}`, flexShrink: 0, background: accent.color }} />
+        <div style={{ flex: `0 0 ${MEDIA_BAND}`, position: "relative", flexShrink: 0, background: accent.color }}>
+          <StampCheckBand color={accent.color} />
+        </div>
         <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={accent.color} />
-        <div style={{ flex: `0 0 ${MEDIA_BAND}`, flexShrink: 0, background: accent.color }} />
+        <div style={{ flex: `0 0 ${MEDIA_BAND}`, position: "relative", flexShrink: 0, background: accent.color }}>
+          <StampCheckBand color={accent.color} />
+        </div>
       </div>
     );
   }
@@ -901,7 +928,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const LONG_PRESS_MS = 450;
   const MOVE_CANCEL_PX = 10;
   const pressRef = useRef<{ key: string; index: number; pointerId: number; clientX: number; clientY: number; timer: number } | null>(null);
-  const dragRef = useRef<{ key: string; pointerId: number; startIndex: number; currentIndex: number; rowLeft: number; grabAdjust: number } | null>(null);
+  const dragRef = useRef<{ key: string; pointerId: number; startIndex: number; currentIndex: number; rowLeft: number } | null>(null);
   // ドラッグ中の指のスクリーンX(生値、onMoveで毎回更新)と、そこから
   // 算出した「掴んだバインダーが今いるべき連続位置(virtualIndex)」。
   // 描画側はこのvirtualIndexだけを見て掴んだカードの位置を決める。
@@ -961,12 +988,14 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     el.scrollLeft = Math.max(0, Math.min(maxScroll, el.scrollLeft + v));
     centerRef.current = el.scrollLeft / step;
 
-    // 掴んだバインダーは指のスクリーン位置に貼り付いたまま、下のコンベアが
-    // スクロールしていく。指の下にあたる連続スロット位置(virtualIndex)を、
-    // スクロール込みの実座標(contentX)から算出する。grabAdjustは掴んだ瞬間に
-    // 位置が飛ばないための補正(beginDrag参照)。
+    // 掴んだバインダーは指の真下に持ち上げて追従させる。指の下にあたる連続
+    // スロット位置(virtualIndex)を、スクロール込みの実座標(contentX)から
+    // 算出する。以前はgrabAdjust(掴んだ点のズレ補正)を足していたが、これが
+    // 「バインダーの端を掴むと指と本体がずれてバグる」原因だったため撤去し、
+    // どこを掴んでも本体の中心が指の真下に来る(=掴んだ瞬間に指へ吸い付く)
+    // ようにした。
     const contentX = pointerClientXRef.current - drag.rowLeft + el.scrollLeft;
-    const virtualIndex = (contentX - sidePad) / step - 0.5 + drag.grabAdjust;
+    const virtualIndex = (contentX - sidePad) / step - 0.5;
     dragVirtualIndexRef.current = virtualIndex;
 
     // swapは同期的なdragOrderRefを土台に、その場で書き換える。1フレームで
@@ -1020,20 +1049,21 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     // onMove/onUpはpressRefが空であることを見てdragRef側の分岐に入る。
     pressRef.current = null;
     const rowLeft = el ? el.getBoundingClientRect().left : 0;
-    const startScrollLeft = el?.scrollLeft ?? 0;
-    // 掴んだ瞬間、指がバインダーの中心/端どこを掴んだかに関わらず位置が
-    // 飛ばないよう、この瞬間のvirtualIndexがちょうどindexになる補正値を持つ。
-    const startContentX = clientX - rowLeft + startScrollLeft;
-    const grabAdjust = index - ((startContentX - sidePad) / step - 0.5);
     pointerClientXRef.current = clientX;
     dragVirtualIndexRef.current = index;
     dragOrderRef.current = orderRef.current.slice();
-    dragRef.current = { key, pointerId, startIndex: index, currentIndex: index, rowLeft, grabAdjust };
+    dragRef.current = { key, pointerId, startIndex: index, currentIndex: index, rowLeft };
     setDraggingKey(key);
     if (dragRafRef.current == null) dragRafRef.current = requestAnimationFrame(dragPollFrame);
   };
 
   const endDrag = () => {
+    // 離した瞬間、掴んでいたバインダーが今いるスロット(currentIndex)が画面
+    // 中央に来るようscrollLeftを合わせてから離す。ドラッグ中は掴んだバインダー
+    // だけ正面(回転なし)で指の真下に浮いていたが、離すとコンベアの通常描画に
+    // 戻る。その着地先を中央に固定することで、指を離すと掴んでいたバインダーが
+    // 正面のまま中央にすっと収まる(「止めると中央へ戻る」挙動)。
+    const droppedIndex = dragRef.current?.currentIndex ?? null;
     dragRef.current = null;
     if (dragRafRef.current != null) { cancelAnimationFrame(dragRafRef.current); dragRafRef.current = null; }
     const el = scrollRef.current;
@@ -1044,6 +1074,11 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     // orderRef(Reactのstate)は再描画が追いつかず古い可能性があるため。
     setOrder(dragOrderRef.current.slice());
     onReorder?.(dragOrderRef.current);
+    if (el && droppedIndex != null) {
+      const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+      el.scrollLeft = Math.max(0, Math.min(maxScroll, droppedIndex * step));
+      centerRef.current = el.scrollLeft / step;
+    }
   };
 
   // ★以前はsetPointerCaptureで「指がどこへ動いても最初の要素がイベントを
@@ -1301,20 +1336,25 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
         // 少し超えて裏表紙がわずかに覗き、左側は90度に届く前で止めて
         // 表紙がわずかに多めに覗く。実際に棚を正面から見た時の収束する
         // パースを再現している。
-        const angle = d >= 0 ? binderTiltAngle(d, REST_RIGHT) : binderTiltAngle(-d, REST_LEFT);
-        const focus = Math.max(0, 1 - Math.min(1, Math.abs(d)));
-        const scale = 1 + focus * ROW_FOCUS_SCALE;
-        // フォーカス中(d=0)は0、|d|>=1では固定のgapだけシフトし、その間は
-        // 滑らかに補間する。
-        const spread = gap * Math.max(-1, Math.min(1, d));
-        // 長押しドラッグでつまみ上げている本人だけ、dragPollFrameが毎フレーム
-        // 算出した「本来あるべき連続位置(virtualIndex)」と現在のスロット
-        // index(i、並べ替えのswapで離散的に飛ぶ)との差分をpx単位の追加
-        // オフセットとして上乗せする。swapの瞬間にiが±1ジャンプしても、
-        // 同時に(virtualIndex - i)も逆向きに±1動くため、合計の画面位置
-        // (i*step + dragExtraPx)は連続に保たれ、掴んだカードが指のスクリーン
-        // 位置に貼り付いたまま滑らかに見える。
         const isDragged = it.key === draggingKey && !!dragRef.current;
+        // ★掴んだバインダーだけは、コンベアの回転(棚の中央から離れるほど横を
+        // 向く)を一切かけず、常に正面(rotateY=0)・平ら(openDeg=rest)で、指の
+        // 真下に持ち上げる。以前はこの本人にもd(中央からの距離)に応じた回転が
+        // かかっていたため、指を端へ動かす=中央から離れると横向きになり、
+        // そのままどんどんずれて画面外へ消えて見える不具合になっていた。
+        const angle = isDragged ? 0 : (d >= 0 ? binderTiltAngle(d, REST_RIGHT) : binderTiltAngle(-d, REST_LEFT));
+        const focus = Math.max(0, 1 - Math.min(1, Math.abs(d)));
+        // 掴んだ本人は持ち上げた感を出すため一定の拡大。それ以外は中央ほど拡大。
+        const scale = isDragged ? 1.12 : 1 + focus * ROW_FOCUS_SCALE;
+        // フォーカス中(d=0)は0、|d|>=1では固定のgapだけシフトし、その間は
+        // 滑らかに補間する。掴んだ本人はコンベアのgapシフトは効かせず、
+        // dragExtraPxだけで指の真下へ持っていく。
+        const spread = isDragged ? 0 : gap * Math.max(-1, Math.min(1, d));
+        // 掴んだ本人だけ、dragPollFrameが毎フレーム算出した「指の真下にあたる
+        // 連続位置(virtualIndex)」と現在のスロットindex(i、swapで離散的に飛ぶ)
+        // との差分をpx単位で上乗せし、本体の中心を指の真下へ持っていく。swapの
+        // 瞬間にiが±1ジャンプしても同時に(virtualIndex - i)も逆向きに±1動くため、
+        // 合計位置は連続に保たれ、指にぴったり吸い付いたまま滑らかに見える。
         const dragExtraPx = isDragged
           ? (dragVirtualIndexRef.current - i) * step
           : 0;
@@ -1346,8 +1386,8 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
               transition: wrapperTransition,
             }}>
               <Binder3D
-                width={itemWidth} aspect={aspect} rotateY={angle} scale={isDragged ? scale * 1.06 : scale}
-                openDeg={openDegRef.current}
+                width={itemWidth} aspect={aspect} rotateY={angle} scale={scale}
+                openDeg={isDragged ? OPEN_DEG_REST : openDegRef.current}
                 color={it.color} eyebrowLabel={it.eyebrowLabel} accent={it.accent}
                 title={it.title} count={it.count} onClick={isDragged ? undefined : it.onOpen}
               />

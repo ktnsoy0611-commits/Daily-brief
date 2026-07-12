@@ -1,10 +1,48 @@
 "use client";
 
+import { RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import { rowBtn } from "@/components/common";
-import { HAIRLINE, INK, PAPER, SANS, SERIF } from "@/lib/constants";
+import { HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
 import { haptic, shortDate } from "@/lib/helpers";
 import type { AppState } from "@/lib/types";
+
+// セクション見出し。ラベル語彙(letter-spacingを効かせた小さいラベル)を
+// 画面内で1つに統一する。以前はセクションごとに説明文の有無・長さが
+// バラバラで、UIとしての一貫性を欠いていた。
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10, fontWeight: 700 }}>{children}</div>;
+}
+
+// 削除・取り消しの丸いアイコンボタン。PlanSelectionBarの「選択を外す」と
+// 同じ語彙(rgba(168,85,47,0.12)地+RUST)に揃え、テキストの「削除」
+// 「元に戻す」のような素のテキストボタンをやめて画面内のボタンをすべて
+// 同じ形式にする。
+function IconButton({ onClick, label, children }: { onClick: () => void; label: string; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} aria-label={label} style={{
+      width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(168,85,47,0.12)", color: RUST,
+      display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0,
+    }}>
+      {children}
+    </button>
+  );
+}
+
+// 情報源・バインドの記録で共通に使う1行リスト(タイトル+補足+右端の
+// アイコンボタン)。見た目(パディング・区切り線・文字サイズ)を1箇所に
+// まとめることで、セクションごとに微妙に違う実装になるのを防ぐ。
+function SettingsRow({ title, sub, faded, action }: { title: string; sub: string; faded?: boolean; action?: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 2px", borderTop: `1px solid ${HAIRLINE}`, opacity: faded ? 0.5 : 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
+      </div>
+      {action}
+    </div>
+  );
+}
 
 export function ProfileTab({ appState, persist, onClose }: {
   appState: AppState;
@@ -73,13 +111,13 @@ export function ProfileTab({ appState, persist, onClose }: {
       <header style={{ padding: "16px 4px 12px", borderBottom: `2px solid ${INK}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: INK, padding: 0, lineHeight: 1 }} aria-label="閉じる">←</button>
         <div>
-          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 20, letterSpacing: "0.02em", lineHeight: 1 }}>プロフィール</div>
-          <div style={{ fontSize: 9, letterSpacing: "0.26em", color: "#9A988E", marginTop: 4 }}>ABOUT YOU</div>
+          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 20, letterSpacing: "0.02em", lineHeight: 1 }}>設定</div>
+          <div style={{ fontSize: 9, letterSpacing: "0.26em", color: "#9A988E", marginTop: 4 }}>SETTINGS</div>
         </div>
       </header>
 
       <section style={{ paddingTop: 20 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 8 }}>今、気になっていること</div>
+        <SectionLabel>今、気になっていること</SectionLabel>
         {editingFocus ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input autoFocus value={focusDraft} onChange={(e) => setFocusDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveFocus()}
@@ -97,7 +135,7 @@ export function ProfileTab({ appState, persist, onClose }: {
       </section>
 
       <section style={{ paddingTop: 26, paddingBottom: 24 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>興味・好み</div>
+        <SectionLabel>興味・好み</SectionLabel>
         {/* 以前はカテゴリごとの色分け+重み(weight)に応じた文字サイズの
             変化を両方使っており、色もサイズもバラバラな「ワードクラウド」
             のようになって見づらかった。1色・1サイズの地味なチップへ揃え、
@@ -105,7 +143,7 @@ export function ProfileTab({ appState, persist, onClose }: {
             読みやすい。 */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {interests.length === 0 ? (
-            <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>まだ何もありません。願望やKeepが増えると、自動でここに見つかっていきます。</p>
+            <p style={{ fontSize: 12, color: "#9A988E" }}>まだありません。</p>
           ) : interests.map((item) => (
             <span key={item.id} style={{
               display: "inline-flex", alignItems: "center", padding: "6px 12px", borderRadius: 999,
@@ -115,24 +153,15 @@ export function ProfileTab({ appState, persist, onClose }: {
             </span>
           ))}
         </div>
-        <p style={{ fontSize: 10, color: "#9A988E", marginTop: 12, lineHeight: 1.7 }}>
-          願望やKeepの傾向から、意識しなくても自動で見つかっていきます。
-        </p>
       </section>
 
       <section style={{ paddingTop: 6, paddingBottom: 28 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>お気に入りの情報源</div>
-        <p style={{ fontSize: 10, color: "#9A988E", lineHeight: 1.7, margin: "0 0 12px" }}>
-          信頼しているサイト(例: rateyourmusic.com)を登録すると、ブリーフの情報源として優先的に巡回され、そこからカードが届くようになります。
-        </p>
-        {sources.map((s, i) => (
-          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px", borderTop: i === 0 ? `1px solid ${HAIRLINE}` : `1px solid ${HAIRLINE}` }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</div>
-              <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.url}</div>
-            </div>
-            <button onClick={() => removeSource(s.id)} style={{ background: "none", border: "none", color: "#9A988E", fontSize: 11, cursor: "pointer", flexShrink: 0 }}>削除</button>
-          </div>
+        <SectionLabel>お気に入りの情報源</SectionLabel>
+        {sources.length === 0 ? (
+          <p style={{ fontSize: 12, color: "#9A988E", margin: "0 0 12px" }}>まだありません。</p>
+        ) : sources.map((s) => (
+          <SettingsRow key={s.id} title={s.label} sub={s.url}
+            action={<IconButton onClick={() => removeSource(s.id)} label={`${s.label}を削除`}><X size={13} strokeWidth={2.4} /></IconButton>} />
         ))}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <input value={srcInput} onChange={(e) => setSrcInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSource()}
@@ -145,31 +174,15 @@ export function ProfileTab({ appState, persist, onClose }: {
           ストック/プランからカードが消えてしまった時に、この画面から
           元に戻せるようにする(HANDOFF-CURRENT.md §7.8参照)。 */}
       <section style={{ paddingTop: 6, paddingBottom: 28 }}>
-        <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>バインドの記録</div>
+        <SectionLabel>バインドの記録</SectionLabel>
         {bindLog.length === 0 ? (
-          <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>まだバインドしていません。プランタブの確定ビューでバインド！すると、ここに記録されます。</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {bindLog.map((entry) => {
-              const names = entry.items.map((it) => it.title).join("、");
-              return (
-                <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px", borderTop: `1px solid ${HAIRLINE}`, opacity: entry.undone ? 0.5 : 1 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {entry.items.length}件・{names}
-                    </div>
-                    <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2 }}>
-                      {shortDate(entry.boundAt)}にバインド{entry.undone ? "・取り消し済み" : ""}
-                    </div>
-                  </div>
-                  {!entry.undone && (
-                    <button onClick={() => undoBind(entry.id)} style={{ background: "none", border: "none", color: "#9A988E", fontSize: 11, cursor: "pointer", flexShrink: 0 }}>元に戻す</button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+          <p style={{ fontSize: 12, color: "#9A988E" }}>まだありません。</p>
+        ) : bindLog.map((entry) => (
+          <SettingsRow key={entry.id} faded={entry.undone}
+            title={`${entry.items.length}件・${entry.items.map((it) => it.title).join("、")}`}
+            sub={`${shortDate(entry.boundAt)}にバインド${entry.undone ? "・取り消し済み" : ""}`}
+            action={!entry.undone && <IconButton onClick={() => undoBind(entry.id)} label="バインドを元に戻す"><RotateCcw size={13} strokeWidth={2.4} /></IconButton>} />
+        ))}
       </section>
     </>
   );

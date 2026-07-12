@@ -153,7 +153,7 @@ export function AppShell() {
 
   const interestCount = (appState.profile?.interests ?? []).length;
   const profileButton = (
-    <button onClick={() => { haptic(5); setShowProfile(true); }} aria-label="プロフィール" style={{
+    <button onClick={() => { haptic(5); setShowProfile(true); }} aria-label="設定" style={{
       position: "relative", width: HEADER_CHIP_SIZE, height: HEADER_CHIP_SIZE, borderRadius: "50%",
       background: PAPER, border: "none", display: "flex", alignItems: "center", justifyContent: "center",
       cursor: "pointer", color: INK, boxShadow: SOFT_SHADOW, padding: 0, flexShrink: 0,

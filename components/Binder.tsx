@@ -530,9 +530,23 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
         {/* 表紙面(正面)。影を落とすこの箱自体にも中のBinderCoverFaceと
             同じ角丸(開く側=右のみ)を付けておく。以前はここに角丸が無く、
             中身だけが丸まっていたため、box-shadowが素の四角のまま角丸の
-            外にはみ出す「角に合わない影」になっていた。 */}
+            外にはみ出す「角に合わない影」になっていた(角丸自体を追加して解決済み)。
+            overflowはhiddenにせずvisibleにする。理由: このdiv自体が
+            translateZ/rotateYで3D変形されており(=GPUの合成レイヤーに
+            昇格する)、overflow:hidden+border-radiusのクリップを3D変形された
+            要素自身に適用すると、Chromiumで角丸のマスクが正しく合成されず、
+            geo/media系のアクセント帯(不透明な塗りが表紙の真上端まで届く
+            構成)の右上角だけテクスチャが直角のまま透過せずにはみ出す
+            描画崩れが起きていた(target系は角に不透明な塗りが来ないため
+            気づかれていなかっただけで、同じ崩れは起きていたと思われる)。
+            中身のBinderCoverFace自身(3D変形を受けていない、このdivの
+            子として存在するだけ)がすでに同じ角丸+overflow:hiddenで
+            自分の内容を正しくクリップしているため、この外側のdivで
+            重ねてクリップする必要はそもそも無かった。box-shadowは
+            要素自身のoverflowに影響されないため、visibleにしても
+            影の見た目(角丸に沿う)は変わらない。 */}
         <div style={{
-          position: "absolute", inset: 0, overflow: "hidden", boxShadow: SOFT_SHADOW,
+          position: "absolute", inset: 0, overflow: "visible", boxShadow: SOFT_SHADOW,
           borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
           transformOrigin: "0% 50%",

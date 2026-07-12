@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeft, Bookmark, Check, Maximize2, Minimize2, Plus, X } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
@@ -11,25 +11,20 @@ import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS
 import { dayInfo, domainOf, hasPlace, haptic, img, mapsUrl, mostRecentThursday, originBadge, pinPosition, shade } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
 
-function MapCanvas({ items, selectedIds, onOpenPin, fullscreen, onToggleFullscreen }: {
+const MAP_BG_STYLE = {
+  background: "#F1EEE5",
+  backgroundImage: "repeating-linear-gradient(0deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px), repeating-linear-gradient(90deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px)",
+} as const;
+
+// 地図の中身(方眼背景・エリアラベル・ピン)。ドック表示(MapCanvas)と
+// 全画面表示(MapFullscreenOverlay)の両方から共有する。
+function MapPins({ items, selectedIds, onOpenPin }: {
   items: Item[];
   selectedIds: string[];
   onOpenPin: (item: Item) => void;
-  fullscreen: boolean;
-  onToggleFullscreen: () => void;
 }) {
   return (
-    <div style={fullscreen ? {
-      position: "fixed", inset: 0, zIndex: 50, overflow: "hidden",
-      background: "#F1EEE5",
-      backgroundImage: "repeating-linear-gradient(0deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px), repeating-linear-gradient(90deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px)",
-      paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)",
-    } : {
-      position: "relative", width: "100%", aspectRatio: "4 / 3", borderRadius: 16, overflow: "hidden",
-      background: "#F1EEE5",
-      backgroundImage: "repeating-linear-gradient(0deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px), repeating-linear-gradient(90deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px)",
-      border: `1px solid ${HAIRLINE}`,
-    }}>
+    <>
       {Object.entries(AREA_COORDS).map(([name, pos]) => (
         <span key={name} style={{ position: "absolute", left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)", fontSize: 8.5, letterSpacing: "0.06em", color: "rgba(23,23,21,0.28)", fontFamily: SANS, whiteSpace: "nowrap", pointerEvents: "none" }}>{name}</span>
       ))}
@@ -48,17 +43,80 @@ function MapCanvas({ items, selectedIds, onOpenPin, fullscreen, onToggleFullscre
           </button>
         );
       })}
+    </>
+  );
+}
+
+// ドック表示の地図。stuck(=下の棚のスクロールでsticky状態に入った)の
+// 間は幅を縮めるアニメーションを付ける。widthはレイアウトに実際に効く
+// プロパティなので、縮んだ分だけ周りの余白も一緒に詰まり、
+// transform:scaleでは起きる「縮んだ絵の周りに元のサイズ分の空白が
+// 残る」不自然な空きができない。
+function MapCanvas({ items, selectedIds, onOpenPin, stuck, onOpenFullscreen }: {
+  items: Item[];
+  selectedIds: string[];
+  onOpenPin: (item: Item) => void;
+  stuck: boolean;
+  onOpenFullscreen: () => void;
+}) {
+  return (
+    <div style={{
+      position: "relative", width: stuck ? "62%" : "100%", aspectRatio: "4 / 3", borderRadius: 16, overflow: "hidden",
+      margin: "0 auto", border: `1px solid ${HAIRLINE}`,
+      transition: "width 0.32s cubic-bezier(0.32,0.72,0,1)",
+      ...MAP_BG_STYLE,
+    }}>
+      <MapPins items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
       {/* 地図右下の全画面トグル。地図単体をタブの他の内容(棚・帯)から
-          切り離して大きく見たいという要望に応える。全画面中は地図の
-          zIndexをnav(25)より高くする必要があるため50にし、position:fixed
-          でスクロールコンテナの外へ実質はみ出させる(サイズ・位置とも
-          スクロール位置に左右されない)。 */}
-      <button onClick={onToggleFullscreen} aria-label={fullscreen ? "地図の全画面表示を閉じる" : "地図を全画面表示"} style={{
+          切り離して大きく見たいという要望に応える。 */}
+      <button onClick={onOpenFullscreen} aria-label="地図を全画面表示" style={{
         position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: "50%",
         background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 8,
       }}>
-        {fullscreen ? <Minimize2 size={15} strokeWidth={2} /> : <Maximize2 size={15} strokeWidth={2} />}
+        <Maximize2 size={15} strokeWidth={2} />
+      </button>
+    </div>
+  );
+}
+
+// 全画面表示。BottomSheetと同じ「mountした直後にrAFでenteredをtrueにし、
+// 閉じる時はまずenteredをfalseへ戻してトランジションを最後まで見せてから
+// 実際にアンマウントする」パターンに揃えている(コード全体で開閉アニメーションの
+// 作法を統一するため)。トグルボタンを押した瞬間ではなくズームしながら
+// 開閉させたい、という要望に応える。
+const MAP_FULLSCREEN_MS = 320;
+function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }: {
+  items: Item[];
+  selectedIds: string[];
+  onOpenPin: (item: Item) => void;
+  onRequestClose: () => void;
+}) {
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const requestClose = () => {
+    setEntered(false);
+    setTimeout(onRequestClose, MAP_FULLSCREEN_MS);
+  };
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 50, overflow: "hidden",
+      paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)",
+      transform: entered ? "scale(1)" : "scale(0.4)", transformOrigin: "top center",
+      opacity: entered ? 1 : 0,
+      transition: `transform ${MAP_FULLSCREEN_MS}ms cubic-bezier(0.32,0.72,0,1), opacity ${MAP_FULLSCREEN_MS - 60}ms ease`,
+      ...MAP_BG_STYLE,
+    }}>
+      <MapPins items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
+      <button onClick={requestClose} aria-label="地図の全画面表示を閉じる" style={{
+        position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: "50%",
+        background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+        boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 8,
+      }}>
+        <Minimize2 size={15} strokeWidth={2} />
       </button>
     </div>
   );
@@ -308,6 +366,32 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
   const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
   const openPlan = plans.find((p) => p.key === openPlanKey) ?? null;
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  // 地図がsticky状態(=上端に張り付いて止まっている)かどうかを、地図の
+  // 直前に置いた高さ0のセンチネル要素で判定する。センチネルが
+  // スクロールコンテナの上端から外へ出た瞬間=地図がまさにsticky top:0で
+  // 張り付き始めた瞬間なので、そこで縮小アニメーションのトリガーにする
+  // (センチネルとstickyの地図は隙間なく連続しているため、センチネルが
+  // 見えなくなるタイミングと地図が止まるタイミングは一致する)。
+  // useEffect+useRefではなくcallback refにしているのは、「Keepがまだ
+  // ない」ときの早期returnがこのセンチネル自体をまだ描画しない(下の
+  // stocked.length===0分岐)ため。useEffectを空配列依存にすると、
+  // 最初のマウント時(センチネルがまだ存在しない=refがnull)の一度きりで
+  // 観測を諦めてしまい、その後デモデータ投入等でセンチネルが実際に
+  // 現れても二度と観測が始まらない不具合になっていた。callback refは
+  // 依存配列を問わずDOMノードが実際にアタッチされた瞬間に呼ばれるため、
+  // この早期returnの有無に関わらず確実に動く。
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const [mapStuck, setMapStuck] = useState(false);
+  const sentinelRef = useCallback((el: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!el) return;
+    const root = document.querySelector<HTMLElement>("[data-tab-scroll-root]");
+    if (!root) return;
+    const observer = new IntersectionObserver(([entry]) => setMapStuck(!entry.isIntersecting), { root, threshold: 0 });
+    observer.observe(el);
+    observerRef.current = observer;
+  }, []);
 
   if (stocked.length === 0) {
     return (
@@ -340,14 +424,16 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
           非表示にする(sticky自身が新しい重なりコンテキストを作るため、
           中でposition:fixedにしてもnav(25)より手前に出せず、閉じる
           ボタンがnavに押されてクリックできなくなる不具合になっていた)。 */}
+      <div ref={sentinelRef} style={{ height: 0 }} aria-hidden />
       <div style={{ position: "sticky", top: 0, zIndex: 4, visibility: mapFullscreen ? "hidden" : "visible" }}>
-        <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} fullscreen={false} onToggleFullscreen={() => setMapFullscreen((v) => !v)} />
+        <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} stuck={mapStuck} onOpenFullscreen={() => setMapFullscreen(true)} />
       </div>
       {/* 全画面表示はAppShellの外(document.body直下)へPortalで描画し、
           祖先(sticky wrapper)の重なりコンテキストの影響を受けない、
-          素のbodyレベルでのzIndex比較にする。 */}
+          素のbodyレベルでのzIndex比較にする。開閉ともズームしながらの
+          アニメーション付き(MapFullscreenOverlay内部)。 */}
       {mapFullscreen && typeof document !== "undefined" && createPortal(
-        <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} fullscreen onToggleFullscreen={() => setMapFullscreen((v) => !v)} />,
+        <MapFullscreenOverlay items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} onRequestClose={() => setMapFullscreen(false)} />,
         document.body
       )}
       <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 22px" }}>ピンやカードをタップして、今日のプランを選ぶ。</p>

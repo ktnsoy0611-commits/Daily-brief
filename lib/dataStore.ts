@@ -50,6 +50,7 @@ function migrate(s: any): AppState {
   merged.pendingReview = merged.pendingReview ?? [];
   merged.sources = merged.sources ?? [];
   merged.items = merged.items ?? [];
+  merged.bindLog = merged.bindLog ?? [];
 
   // ---- 場所(keeps)+作品(records.media)の2コンテナ → Item統一への移行 ----
   // 「場所か作品か」は排他ではなく「種類(kind)×場所の有無(area)」の直交と

@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Sparkles, Sprout, User } from "lucide-react";
+import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Settings, Sparkles, Sprout } from "lucide-react";
 import { useCallback, useEffect, useState, type ComponentType, type CSSProperties } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { PlanSelectionBar } from "@/components/PlanSelectionBar";
@@ -158,7 +158,7 @@ export function AppShell() {
       background: PAPER, border: "none", display: "flex", alignItems: "center", justifyContent: "center",
       cursor: "pointer", color: INK, boxShadow: SOFT_SHADOW, padding: 0, flexShrink: 0,
     }}>
-      <User size={17} strokeWidth={1.75} />
+      <Settings size={17} strokeWidth={1.75} />
       {interestCount > 0 && (
         <span style={{
           position: "absolute", top: -3, right: -3, minWidth: 15, height: 15, borderRadius: 999, background: BLUE,

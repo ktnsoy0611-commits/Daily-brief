@@ -12,6 +12,7 @@ export const DEFAULT_STATE: AppState = {
   goals: [],
   pendingReview: [],
   sources: [],
+  bindLog: [],
 };
 
 // 目標への「最近どうですか？」を投げかける間隔

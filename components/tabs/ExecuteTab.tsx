@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Bookmark, Check, Plus, X } from "lucide-react";
+import { ArrowLeft, Bookmark, Check, Maximize2, Minimize2, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
@@ -11,13 +11,20 @@ import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS
 import { dayInfo, domainOf, hasPlace, haptic, img, mapsUrl, mostRecentThursday, originBadge, pinPosition, shade } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
 
-function MapCanvas({ items, selectedIds, onOpenPin }: {
+function MapCanvas({ items, selectedIds, onOpenPin, fullscreen, onToggleFullscreen }: {
   items: Item[];
   selectedIds: string[];
   onOpenPin: (item: Item) => void;
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
 }) {
   return (
-    <div style={{
+    <div style={fullscreen ? {
+      position: "fixed", inset: 0, zIndex: 50, overflow: "hidden",
+      background: "#F1EEE5",
+      backgroundImage: "repeating-linear-gradient(0deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px), repeating-linear-gradient(90deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px)",
+      paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)",
+    } : {
       position: "relative", width: "100%", aspectRatio: "4 / 3", borderRadius: 16, overflow: "hidden",
       background: "#F1EEE5",
       backgroundImage: "repeating-linear-gradient(0deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px), repeating-linear-gradient(90deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px)",
@@ -41,6 +48,18 @@ function MapCanvas({ items, selectedIds, onOpenPin }: {
           </button>
         );
       })}
+      {/* 地図右下の全画面トグル。地図単体をタブの他の内容(棚・帯)から
+          切り離して大きく見たいという要望に応える。全画面中は地図の
+          zIndexをnav(25)より高くする必要があるため50にし、position:fixed
+          でスクロールコンテナの外へ実質はみ出させる(サイズ・位置とも
+          スクロール位置に左右されない)。 */}
+      <button onClick={onToggleFullscreen} aria-label={fullscreen ? "地図の全画面表示を閉じる" : "地図を全画面表示"} style={{
+        position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: "50%",
+        background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+        boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 8,
+      }}>
+        {fullscreen ? <Minimize2 size={15} strokeWidth={2} /> : <Maximize2 size={15} strokeWidth={2} />}
+      </button>
     </div>
   );
 }
@@ -288,6 +307,7 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
   const plans = buildRecommendedPlans(mapPool);
   const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
   const openPlan = plans.find((p) => p.key === openPlanKey) ?? null;
+  const [mapFullscreen, setMapFullscreen] = useState(false);
 
   if (stocked.length === 0) {
     return (
@@ -309,7 +329,27 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
 
   return (
     <main style={{ paddingTop: 14, paddingBottom: bottomPadding }}>
-      <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} />
+      {/* マップだけ画面上部に追従(sticky)させる。下の棚(今週のおすすめ・
+          4ドメイン)をスクロールしても、地図は常に見える位置に留まり
+          続けてほしいという要望に対応。topは0(=data-tab-scroll-rootの
+          パディング内側の上端)でよい: スクロールコンテナ自体が既に
+          安全域ぶんの上パディングを持っているため、地図はそこに正しく
+          張り付く。zIndexは棚のカード(通常の書式優先度)より確実に手前に
+          出るよう与えるが、nav(25)より低くして被らないようにする。
+          全画面表示中は下のcreatePortalで別枠に描画するため、ここは
+          非表示にする(sticky自身が新しい重なりコンテキストを作るため、
+          中でposition:fixedにしてもnav(25)より手前に出せず、閉じる
+          ボタンがnavに押されてクリックできなくなる不具合になっていた)。 */}
+      <div style={{ position: "sticky", top: 0, zIndex: 4, visibility: mapFullscreen ? "hidden" : "visible" }}>
+        <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} fullscreen={false} onToggleFullscreen={() => setMapFullscreen((v) => !v)} />
+      </div>
+      {/* 全画面表示はAppShellの外(document.body直下)へPortalで描画し、
+          祖先(sticky wrapper)の重なりコンテキストの影響を受けない、
+          素のbodyレベルでのzIndex比較にする。 */}
+      {mapFullscreen && typeof document !== "undefined" && createPortal(
+        <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} fullscreen onToggleFullscreen={() => setMapFullscreen((v) => !v)} />,
+        document.body
+      )}
       <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 22px" }}>ピンやカードをタップして、今日のプランを選ぶ。</p>
 
       {plans.length > 0 && (
@@ -893,13 +933,23 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   const registerBinder = () => {
     const next = structuredClone(appState);
     const boundAt = new Date().toISOString();
+    // このバインドで実際にdoneへ変わったItemだけをログへ記録する
+    // (プロフィール(設定)画面から確認・元に戻せるようにするため)。
+    // タイトル等もスナップショットしておくので、後でItem自体が削除
+    // されてもログの表示は壊れない。
+    const boundItems: typeof next.bindLog[number]["items"] = [];
     (next.magazine?.itemIds ?? []).forEach((id) => {
       const item = next.items.find((x) => x.id === id);
       if (item && item.status !== "done") {
         item.status = "done";
         item.doneAt = boundAt;
+        boundItems.push({ id: item.id, title: item.title, kind: item.kind, color: item.color, images: item.images });
       }
     });
+    if (boundItems.length > 0) {
+      next.bindLog = next.bindLog ?? [];
+      next.bindLog.unshift({ id: `bindlog-${Date.now()}`, boundAt, items: boundItems, undone: false });
+    }
     next.magazine = null;
     persist(next);
     setMapMode(false);

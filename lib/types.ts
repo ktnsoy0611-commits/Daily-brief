@@ -128,6 +128,19 @@ export interface Magazine {
   itemIds: string[];
 }
 
+// バインド！(確定ビューの下部、registerBinder)を押してItemをdoneに
+// 確定するたびに1件記録するログ。プロフィール(設定)画面から確認でき、
+// 誤操作時に元に戻す(doneをcandidateへ戻す)ための材料になる。
+// items配列にはid以外にタイトル・種類等のスナップショットも持たせておき、
+// 元のItemが後から削除されていてもログの表示自体は壊れないようにする。
+export interface BindLogEntry {
+  id: string;
+  boundAt: string;
+  items: { id: string; title: string; kind: ItemKind; color?: string; images?: string[] }[];
+  undone: boolean;
+  undoneAt?: string;
+}
+
 export interface BriefState {
   decisions: Record<string, string>;
   feedback?: Record<string, boolean>;
@@ -148,6 +161,7 @@ export interface AppState {
   goals: Goal[];
   pendingReview: string[];
   sources: Source[];
+  bindLog: BindLogEntry[];
 }
 
 export interface BriefCard {

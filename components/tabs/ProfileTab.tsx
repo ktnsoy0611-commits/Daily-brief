@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { rowBtn } from "@/components/common";
-import { HAIRLINE, INK, PAPER, SANS, SERIF, catOf } from "@/lib/constants";
-import { haptic } from "@/lib/helpers";
+import { HAIRLINE, INK, PAPER, SANS, SERIF } from "@/lib/constants";
+import { haptic, shortDate } from "@/lib/helpers";
 import type { AppState } from "@/lib/types";
 
 export function ProfileTab({ appState, persist, onClose }: {
@@ -15,9 +15,9 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [focusDraft, setFocusDraft] = useState(appState.profile?.currentFocus ?? "");
   const [srcInput, setSrcInput] = useState("");
 
-  const interests = appState.profile?.interests ?? [];
+  const interests = (appState.profile?.interests ?? []).slice().sort((a, b) => b.weight - a.weight);
   const sources = appState.sources ?? [];
-  const weightSize = (w: number) => Math.min(11 + w * 1.4, 16);
+  const bindLog = appState.bindLog ?? [];
 
   const saveFocus = () => {
     const next = structuredClone(appState);
@@ -45,6 +45,26 @@ export function ProfileTab({ appState, persist, onClose }: {
   const removeSource = (id: string) => {
     const next = structuredClone(appState);
     next.sources = next.sources.filter((s) => s.id !== id);
+    persist(next);
+  };
+  // バインド！(確定ビューでの綴じ操作)を元に戻す。ログの対象Itemを
+  // done→candidateへ戻すだけの単純な取り消しで、マガジンの再構築は
+  // しない(「消してしまったカードをストックへ戻す」という最小限の
+  // 復旧が目的のため)。
+  const undoBind = (entryId: string) => {
+    haptic(10);
+    const next = structuredClone(appState);
+    const entry = next.bindLog.find((e) => e.id === entryId);
+    if (!entry || entry.undone) return;
+    entry.items.forEach((snap) => {
+      const item = next.items.find((x) => x.id === snap.id);
+      if (item && item.status === "done") {
+        item.status = "candidate";
+        item.doneAt = undefined;
+      }
+    });
+    entry.undone = true;
+    entry.undoneAt = new Date().toISOString();
     persist(next);
   };
 
@@ -78,17 +98,22 @@ export function ProfileTab({ appState, persist, onClose }: {
 
       <section style={{ paddingTop: 26, paddingBottom: 24 }}>
         <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>興味・好み</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {/* 以前はカテゴリごとの色分け+重み(weight)に応じた文字サイズの
+            変化を両方使っており、色もサイズもバラバラな「ワードクラウド」
+            のようになって見づらかった。1色・1サイズの地味なチップへ揃え、
+            重みは並び順(降順)だけで表す方が、興味の一覧としてずっと
+            読みやすい。 */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {interests.length === 0 ? (
             <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>まだ何もありません。願望やKeepが増えると、自動でここに見つかっていきます。</p>
-          ) : interests.map((item) => {
-            const cat = catOf(item.categoryId);
-            return (
-              <span key={item.id} style={{ display: "inline-flex", alignItems: "center", padding: "7px 12px", borderRadius: 999, background: cat.color, color: PAPER, fontFamily: SANS, fontWeight: 700, fontSize: weightSize(item.weight) }}>
-                {item.label}
-              </span>
-            );
-          })}
+          ) : interests.map((item) => (
+            <span key={item.id} style={{
+              display: "inline-flex", alignItems: "center", padding: "6px 12px", borderRadius: 999,
+              background: "rgba(23,23,21,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: 12,
+            }}>
+              {item.label}
+            </span>
+          ))}
         </div>
         <p style={{ fontSize: 10, color: "#9A988E", marginTop: 12, lineHeight: 1.7 }}>
           願望やKeepの傾向から、意識しなくても自動で見つかっていきます。
@@ -114,6 +139,37 @@ export function ProfileTab({ appState, persist, onClose }: {
             placeholder="https:// から始まるURLを貼り付け" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: 12.5, padding: "6px 2px", outline: "none", minWidth: 0 }} />
           <button onClick={addSource} style={rowBtn(INK, PAPER)}>登録</button>
         </div>
+      </section>
+
+      {/* バインド！(確定ビューでの綴じ操作)のログ。誤ってバインドして
+          ストック/プランからカードが消えてしまった時に、この画面から
+          元に戻せるようにする(HANDOFF-CURRENT.md §7.8参照)。 */}
+      <section style={{ paddingTop: 6, paddingBottom: 28 }}>
+        <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>バインドの記録</div>
+        {bindLog.length === 0 ? (
+          <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.8 }}>まだバインドしていません。プランタブの確定ビューでバインド！すると、ここに記録されます。</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {bindLog.map((entry) => {
+              const names = entry.items.map((it) => it.title).join("、");
+              return (
+                <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 2px", borderTop: `1px solid ${HAIRLINE}`, opacity: entry.undone ? 0.5 : 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {entry.items.length}件・{names}
+                    </div>
+                    <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 2 }}>
+                      {shortDate(entry.boundAt)}にバインド{entry.undone ? "・取り消し済み" : ""}
+                    </div>
+                  </div>
+                  {!entry.undone && (
+                    <button onClick={() => undoBind(entry.id)} style={{ background: "none", border: "none", color: "#9A988E", fontSize: 11, cursor: "pointer", flexShrink: 0 }}>元に戻す</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
     </>
   );

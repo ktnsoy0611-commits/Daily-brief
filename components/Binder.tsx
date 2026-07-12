@@ -420,21 +420,23 @@ const MEDIA_BAND = "26%";
 const SIDE_BAND = "34%";
 
 // モノ(stamp)の帯。無地ではなく、帯の高さを1辺とする正方形のセルを横一列に
-// 並べ、各セルを対角線で斜めに分割して片方だけ明るい色にする、チェック(市松/
-// アーガイル)状のデザイン(ユーザー指定)。セルごとに対角の向きを左右反転させ
-// (偶数=左上が明るい、奇数=右上が明るい)、明るい三角が交互に噛み合って
-// ジグザグの市松に見えるようにしている。帯の幅ぴったりに整数個収まるとは
-// 限らないため、余るぶんは器のoverflow:hiddenで切り、タイル状に敷き詰める。
+// 並べ、各セルを対角線(左下→右上の反対角)で斜めに分割し、**濃い方(accent色)を
+// 必ず左上の三角、薄い方(shade(color,34))を右下の三角**にする(ユーザー指定で
+// 向きを全セル統一)。帯全体はまず薄い色で塗り、その上に左上三角を濃い色で
+// 重ねることで実現している。帯の幅ぴったりに整数個収まるとは限らないため、
+// 余るぶんは器のoverflow:hiddenで切り、タイル状に敷き詰める。
 const STAMP_CHECK_COUNT = 6;
 function StampCheckBand({ color }: { color: string }) {
   const light = shade(color, 34);
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", overflow: "hidden" }}>
       {Array.from({ length: STAMP_CHECK_COUNT }, (_, i) => (
-        <div key={i} style={{ position: "relative", height: "100%", aspectRatio: "1 / 1", flexShrink: 0, background: color }}>
+        <div key={i} style={{ position: "relative", height: "100%", aspectRatio: "1 / 1", flexShrink: 0, background: light }}>
+          {/* 左上の三角(頂点: 左上・右上・左下)を濃い色で塗る。残り(右下三角)は
+              下地の薄い色のまま。 */}
           <div style={{
-            position: "absolute", inset: 0, background: light,
-            clipPath: i % 2 === 0 ? "polygon(0 0, 100% 0, 0 100%)" : "polygon(0 0, 100% 0, 100% 100%)",
+            position: "absolute", inset: 0, background: color,
+            clipPath: "polygon(0 0, 100% 0, 0 100%)",
           }} />
         </div>
       ))}
@@ -1042,6 +1044,9 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     // ブラウザが勝手にスクロール/ジェスチャーを開始できないようにする。
     // これでポインタが奪われず、指を離す(pointerup)まで確実に継続する。
     setRootTouchAction("none");
+    // touch-action:noneはtouchstart後には効きにくいiOSの穴を埋めるため、
+    // touchmove自体を抑止するガードも張る(上のtouchMoveHandlerRef参照)。
+    attachTouchGuard();
     // 通常スクロール用のpollFrameループが(直前の慣性スクロールなどで)
     // まだ動いていた場合、ドラッグ用のループと衝突しないよう先に止める。
     if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -1069,6 +1074,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     const el = scrollRef.current;
     if (el) { el.style.overflowX = "auto"; el.style.touchAction = ""; el.style.scrollSnapType = "x mandatory"; }
     setRootTouchAction("");
+    detachTouchGuard();
     setDraggingKey(null);
     // 永続化の土台も同期的なdragOrderRef(=画面に見えている最新の並び)にする。
     // orderRef(Reactのstate)は再描画が追いつかず古い可能性があるため。
@@ -1100,6 +1106,29 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   // 影響を受けないため、確実に最後まで追従できる。
   const pointerMoveHandlerRef = useRef<((e: PointerEvent) => void) | null>(null);
   const pointerUpHandlerRef = useRef<((e: PointerEvent) => void) | null>(null);
+  // ★ドラッグ中だけwindowに貼るtouchmoveの抑止リスナー。iOS Safariは
+  // touch-actionを「touchstartの瞬間」に確定するため、長押し(450ms後)に
+  // touch-action:noneへ変えても、掴む前(スロットはtouch-action:auto)に
+  // 始まったこのジェスチャーには縦スクロールが許可されたまま残っている。
+  // その結果、掴んだ後に指が少しでも上下にズレると、ブラウザが縦スクロールを
+  // 開始してこちらのポインタをpointercancelで奪い、ドラッグが指を離す前に
+  // 途中終了していた(ユーザー報告「少しでも上下にズレるとキャンセルされる」)。
+  // pointer eventsのpreventDefaultはiOSではスクロールを止められないが、
+  // touchmoveのpreventDefaultは止められるため、ドラッグ中はtouchmoveを
+  // 明示的に抑止して縦スクロール自体を発生させない=ポインタを奪われない。
+  const touchMoveHandlerRef = useRef<((e: TouchEvent) => void) | null>(null);
+  const attachTouchGuard = () => {
+    if (touchMoveHandlerRef.current) return;
+    const tm = (e: TouchEvent) => { if (e.cancelable) e.preventDefault(); };
+    touchMoveHandlerRef.current = tm;
+    window.addEventListener("touchmove", tm, { passive: false });
+  };
+  const detachTouchGuard = () => {
+    if (touchMoveHandlerRef.current) {
+      window.removeEventListener("touchmove", touchMoveHandlerRef.current);
+      touchMoveHandlerRef.current = null;
+    }
+  };
   const detachGlobalPointerListeners = () => {
     if (pointerMoveHandlerRef.current) {
       window.removeEventListener("pointermove", pointerMoveHandlerRef.current);
@@ -1110,6 +1139,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       window.removeEventListener("pointercancel", pointerUpHandlerRef.current);
       pointerUpHandlerRef.current = null;
     }
+    detachTouchGuard();
   };
 
   const handleSlotPointerDown = (e: ReactPointerEvent<HTMLDivElement>, key: string, index: number) => {

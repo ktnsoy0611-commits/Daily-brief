@@ -592,69 +592,6 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
   );
 }
 
-// ---- ゴールタブ専用: 平面2Dのバインダーカード -------------------------------
-//
-// 以前はアーカイブの棚と同じBinder3D(perspective+3D回転)を流用していたが、
-// ゴールタブはスワイプもコンベアも無い静止した2列グリッドで、3D的な
-// 見え方を必要としていなかった。それにもかかわらず「box-shadow/
-// overflow:hidden+border-radiusを3D変形されたレイヤーに適用すると
-// 崩れる」という一連の描画バグ(§5・§7.9)だけを繰り返し引き受けており、
-// パッチを重ねるたびに別の箇所が壊れていた。ここでは3D変形を一切使わず、
-// 他のカード(PosterCard)と同じ「平面の表紙」を土台に、(1)左端の背表紙帯
-// (リングの穴を模した2つの丸)と(2)表紙の下からのぞく紙の層、という
-// 2つの平面的な要素だけで「カードではなくバインダーである」ことを伝える。
-// どちらも通常のCSS(static寸法のposition:absolute)だけで組めるため、
-// 3D変形由来の描画崩れが原理的に起こり得ない。
-const GOAL_SPINE_WIDTH = "10%";
-const GOAL_PAGE_PEEK = [
-  { inset: "11%", height: 7, bottom: -13 },
-  { inset: "5.5%", height: 9, bottom: -6 },
-];
-
-export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebrowLabel, title, footer, accent, onClick }: CoverContent & {
-  width: number | string;
-  aspect?: string;
-  onClick?: () => void;
-}) {
-  const fill = accent?.color ?? color;
-  const dark = shade(fill, -24);
-  const light = shade(fill, 28);
-  return (
-    <div onClick={onClick} style={{ width, position: "relative", cursor: onClick ? "pointer" : "default" }}>
-      {/* 表紙の下からのぞく紙の層。奥のものほど暗く・幅を絞り、手前の
-          表紙の下端からわずかに顔を出すことで「何枚か綴じられている」
-          厚みを平面のまま示す。 */}
-      {GOAL_PAGE_PEEK.map((p, i) => (
-        <div key={i} aria-hidden style={{
-          position: "absolute", left: p.inset, right: p.inset, bottom: p.bottom, height: p.height,
-          background: i === 0 ? dark : shade(fill, -12),
-          borderRadius: `0 0 ${7 - i}px ${7 - i}px`,
-        }} />
-      ))}
-      <div style={{
-        position: "relative", aspectRatio: aspect, borderRadius: 16, overflow: "hidden", boxShadow: SOFT_SHADOW,
-        background: fill, display: "flex",
-      }}>
-        {/* 背表紙帯(左端)。リングの穴を模した2つの丸で「綴じられている」
-            ことを表紙面だけで示す。 */}
-        <div aria-hidden style={{ position: "relative", flex: `0 0 ${GOAL_SPINE_WIDTH}`, background: dark }}>
-          {["30%", "70%"].map((y) => (
-            <span key={y} style={{ position: "absolute", left: "50%", top: y, transform: "translate(-50%, -50%)", width: 6, height: 6, borderRadius: "50%", background: light, opacity: 0.5 }} />
-          ))}
-        </div>
-        <div style={{ position: "relative", flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-          {/* TargetMotif(上端からはみ出す円)の分だけ、本文が上に来ないよう
-              空きを確保する(target系の表紙で共通の構図、BinderCoverFace参照)。
-              これが無いと円がGOALラベルに被さって読めなくなる。 */}
-          <div style={{ flex: "0 0 34%", flexShrink: 0 }} />
-          <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={light} titleColor={PAPER} />
-          <TargetMotif color={light} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ---- コンベア状の棚(RecordsTab) -------------------------------------------
 
 export interface BinderShelfItem extends CoverContent {

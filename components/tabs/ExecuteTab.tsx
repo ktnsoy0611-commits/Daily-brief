@@ -736,6 +736,10 @@ const CONFIRMED_MAX_WIDTH = 380;
 // バインダー(BinderFrontCover、widthをそのまま渡している)も含めて一括で
 // 比率が揃う。
 const CARD_WIDTH = 220;
+// BinderBackPanel/BinderFrontCoverをカードの重なり順から切り離して
+// 独立に絶対配置するための、item[0]と同じ高さ(下記参照)。
+const [CONFIRMED_ASP_NUM, CONFIRMED_ASP_DEN] = ITEM_CARD_ASPECT.split("/").map((s) => parseFloat(s.trim()));
+const CARD_HEIGHT = CARD_WIDTH * (CONFIRMED_ASP_DEN / CONFIRMED_ASP_NUM);
 const STACK_MS = 420;
 const CLOSE_MS = 320;
 const FALL_MS = 420;
@@ -828,21 +832,29 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
               裏表紙(BinderBackPanel)・表表紙(BinderFrontCover)が担う。
               スタックが揃ったところへ表表紙がclosed=trueで束の真上へ
               回り込みながら閉じてくることで、「画面左に開いていた表紙が、
-              積み上がったカードの上にパタンと閉じてくる」動きになる。 */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+              積み上がったカードの上にパタンと閉じてくる」動きになる。
+              裏表紙・表表紙は、下記カードの重なり順(iに応じてスタック中
+              どんどん手前に重なっていく)とは完全に独立させ、mapの外に
+              絶対配置している。以前はi===0のカードと同じラッパーに同居
+              させていたため、「表表紙は常に最前面でなければならない」
+              という制約と「カードの重なり順はiに応じて決まる(かつては
+              i===0を特別扱いしていた)」という制約が同じzIndexの値を
+              取り合ってしまい、どちらか一方を満たすと他方が崩れる状態に
+              なっていた。position:relativeにしたこの外側の入れ物を
+              基準に、item[0](常に動かない=offset0の位置)と同じ大きさの
+              箱をtop:0に絶対配置することで、カードの重なり順に一切
+              左右されない専用のレイヤーにした。 */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, position: "relative" }}>
+            <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: CARD_WIDTH, height: CARD_HEIGHT, zIndex: 0, pointerEvents: "none" }}>
+              <BinderBackPanel />
+            </div>
             {items.map((it, i) => (
-              // zIndexは「下から上へスライドしてくる時、元々一番下(リストの
-              // 末尾)にあったカードが一番手前に重なる」ように、iが大きい
-              // ほど手前(高いzIndex)にする。指定しないとflexの子はDOM順で
-              // 後勝ちになり、意図と違う重なりになる。i===0(表紙を持つ先頭
-              // カード、スタック先の目的地でもある)だけは常に最前面に
-              // しておく必要がある(BinderFrontCoverが閉じる時にこの束の
-              // 一番手前へ回り込むため、他のどのカードよりゆずれない)。この
-              // zIndexを持つdiv自身が新しい重なりコンテキストを作るため、
-              // 内側のBinderFrontCoverとConfirmedCardの前後関係はこの
-              // コンテキストの中だけで完結して正しく比較される。
-              <div key={it.id} style={{ position: "relative", width: CARD_WIDTH, zIndex: i === 0 ? items.length : i }}>
-                {i === 0 && <BinderBackPanel />}
+              // 下からスライドしてくるカードが、既にスタックされている
+              // カード(先頭カードも含む)の上へどんどん重なっていくように、
+              // iが大きい(元々リストの下の方にあった)ほど手前(高いzIndex)
+              // にする。指定しないとflexの子はDOM順で後勝ちになり、意図と
+              // 違う重なりになる。
+              <div key={it.id} style={{ position: "relative", width: CARD_WIDTH, zIndex: i + 1 }}>
                 <ConfirmedCard
                   item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
                   stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px) scale(${i === 0 ? 1 : 0.92})` : undefined}
@@ -851,9 +863,11 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
                   onMarkDone={() => onMarkDone(it)}
                   onRemove={() => onDrop(it)}
                 />
-                {i === 0 && <BinderFrontCover closed={closed} width={CARD_WIDTH} aspect={ITEM_CARD_ASPECT} />}
               </div>
             ))}
+            <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: CARD_WIDTH, height: CARD_HEIGHT, zIndex: items.length + 2, pointerEvents: "none" }}>
+              <BinderFrontCover closed={closed} width={CARD_WIDTH} aspect={ITEM_CARD_ASPECT} />
+            </div>
           </div>
         </div>
       </div>

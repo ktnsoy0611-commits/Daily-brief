@@ -73,7 +73,7 @@ export function PlanSelectionBar({ appState, selection, toggleItemSelection, onC
             flexShrink: 0, padding: "11px 16px", background: count === 0 ? "rgba(23,23,21,0.2)" : INK, color: PAPER, border: "none", borderRadius: 999,
             cursor: count === 0 ? "default" : "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", whiteSpace: "nowrap",
           }}>
-            バインド！
+            バインダーへ
           </button>
         </div>
       </div>

@@ -14,6 +14,16 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10, fontWeight: 700 }}>{children}</div>;
 }
 
+// 「入力+右にボタン」の1行入力欄。以前は「今、気になっていること」が
+// SERIF/16px/1.5px border、「お気に入りの情報源」がSANS/12.5px/1px border
+// と、同じ構造(入力欄+確定ボタン)なのにフォント・サイズ・線の太さが
+// バラバラで、この画面全体の「統一感がない」という指摘の中心だった。
+// この画面内の入力欄はすべてこの1つのスタイルに揃える。
+const settingsInputStyle: React.CSSProperties = {
+  flex: 1, border: "none", borderBottom: `1.5px solid ${INK}`, background: "transparent",
+  fontFamily: SANS, fontSize: 13, padding: "7px 2px", outline: "none", minWidth: 0,
+};
+
 // 削除・取り消しの丸いアイコンボタン。PlanSelectionBarの「選択を外す」と
 // 同じ語彙(rgba(168,85,47,0.12)地+RUST)に揃え、テキストの「削除」
 // 「元に戻す」のような素のテキストボタンをやめて画面内のボタンをすべて
@@ -121,7 +131,7 @@ export function ProfileTab({ appState, persist, onClose }: {
         {editingFocus ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input autoFocus value={focusDraft} onChange={(e) => setFocusDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveFocus()}
-              style={{ flex: 1, border: "none", borderBottom: `1.5px solid ${INK}`, background: "transparent", fontFamily: SERIF, fontSize: 16, padding: "4px 2px", outline: "none" }} />
+              style={settingsInputStyle} />
             <button onClick={saveFocus} style={rowBtn(INK, PAPER)}>保存</button>
           </div>
         ) : (
@@ -165,7 +175,7 @@ export function ProfileTab({ appState, persist, onClose }: {
         ))}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <input value={srcInput} onChange={(e) => setSrcInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSource()}
-            placeholder="https:// から始まるURLを貼り付け" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: 12.5, padding: "6px 2px", outline: "none", minWidth: 0 }} />
+            placeholder="https:// から始まるURLを貼り付け" style={settingsInputStyle} />
           <button onClick={addSource} style={rowBtn(INK, PAPER)}>登録</button>
         </div>
       </section>

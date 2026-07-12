@@ -51,7 +51,8 @@ function MapPins({ items, selectedIds, onOpenPin }: {
 // 間は幅を縮めるアニメーションを付ける。widthはレイアウトに実際に効く
 // プロパティなので、縮んだ分だけ周りの余白も一緒に詰まり、
 // transform:scaleでは起きる「縮んだ絵の周りに元のサイズ分の空白が
-// 残る」不自然な空きができない。
+// 残る」不自然な空きができない。縮小時は中央寄せではなく右寄せ
+// (margin-leftだけauto)にする。
 function MapCanvas({ items, selectedIds, onOpenPin, stuck, onOpenFullscreen }: {
   items: Item[];
   selectedIds: string[];
@@ -61,8 +62,8 @@ function MapCanvas({ items, selectedIds, onOpenPin, stuck, onOpenFullscreen }: {
 }) {
   return (
     <div style={{
-      position: "relative", width: stuck ? "62%" : "100%", aspectRatio: "4 / 3", borderRadius: 16, overflow: "hidden",
-      margin: "0 auto", border: `1px solid ${HAIRLINE}`,
+      position: "relative", width: stuck ? "72%" : "100%", aspectRatio: "4 / 3", borderRadius: 16, overflow: "hidden",
+      margin: stuck ? "0 0 0 auto" : "0 auto", border: `1px solid ${HAIRLINE}`,
       transition: "width 0.32s cubic-bezier(0.32,0.72,0,1)",
       ...MAP_BG_STYLE,
     }}>

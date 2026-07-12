@@ -528,25 +528,31 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
         transition: transitionMs ? `transform ${transitionMs}ms cubic-bezier(0.22,0.9,0.32,1)` : "none",
       }}>
         {/* 表紙面(正面)。影を落とすこの箱自体にも中のBinderCoverFaceと
-            同じ角丸(開く側=右のみ)を付けておく。以前はここに角丸が無く、
-            中身だけが丸まっていたため、box-shadowが素の四角のまま角丸の
-            外にはみ出す「角に合わない影」になっていた(角丸自体を追加して解決済み)。
-            overflowはhiddenにせずvisibleにする。理由: このdiv自体が
-            translateZ/rotateYで3D変形されており(=GPUの合成レイヤーに
-            昇格する)、overflow:hidden+border-radiusのクリップを3D変形された
-            要素自身に適用すると、Chromiumで角丸のマスクが正しく合成されず、
-            geo/media系のアクセント帯(不透明な塗りが表紙の真上端まで届く
-            構成)の右上角だけテクスチャが直角のまま透過せずにはみ出す
-            描画崩れが起きていた(target系は角に不透明な塗りが来ないため
-            気づかれていなかっただけで、同じ崩れは起きていたと思われる)。
-            中身のBinderCoverFace自身(3D変形を受けていない、このdivの
-            子として存在するだけ)がすでに同じ角丸+overflow:hiddenで
-            自分の内容を正しくクリップしているため、この外側のdivで
-            重ねてクリップする必要はそもそも無かった。box-shadowは
-            要素自身のoverflowに影響されないため、visibleにしても
-            影の見た目(角丸に沿う)は変わらない。 */}
+            同じ角丸(開く側=右のみ)を付けておく。overflowはhiddenにせず
+            visibleにする(3D変形されたレイヤーにoverflow:hidden+
+            border-radiusを適用するとアクセント帯テクスチャの角丸が
+            透過しない描画崩れがあったため。中身のBinderCoverFace自身が
+            既に同じ角丸+overflow:hiddenで自分の内容を正しくクリップ
+            している)。
+            ★影はbox-shadowではなくfilter:drop-shadowで落とす。
+            この箱はtranslateZ/rotateYで3D変形されており(=GPUの合成
+            レイヤーに昇格する)、box-shadowは要素のborder-radiusから
+            「幾何学的に」矩形+丸角の影を計算する実装になっているため、
+            3D変形されたレイヤーに対してChromium/WebKitがこの影を正しく
+            合成できず、回転や角丸を無視した素の直線的な影がそのまま
+            (2D平面の位置に)描画されてしまう不具合があった(ユーザー
+            報告: 「角は丸いのに影が直線でバインダーと合っていない」)。
+            これはBinderEdgeFaceの槍状の影・アクセント帯テクスチャの
+            角丸未透過と同じ「box-shadow/overflow:hidden+border-radiusを
+            3D変形されたレイヤーに適用すると壊れる」という一貫したバグの
+            3つ目の現れだった。drop-shadowは要素が実際に描画したピクセル
+            (アルファ値のシルエット)を元に影を生成するため、角丸で
+            クリップされた実際の輪郭に正しく沿い、かつ3D変形後の
+            レイヤーそのものに対して合成されるため、回転にも追従する。
+            SOFT_SHADOWの値("0 4px 16px rgba(...)")はbox-shadowと
+            drop-shadowで引数の並びが同じなのでそのまま流用できる。 */}
         <div style={{
-          position: "absolute", inset: 0, overflow: "visible", boxShadow: SOFT_SHADOW,
+          position: "absolute", inset: 0, overflow: "visible", filter: `drop-shadow(${SOFT_SHADOW})`,
           borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
           transformOrigin: "0% 50%",

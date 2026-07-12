@@ -135,10 +135,44 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
       )}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 42%, rgba(0,0,0,0.8) 100%)" }} />
       <PunchHoles />
-      {badge && (
-        <span style={{ position: "absolute", top: 8, left: HOLE_CLEAR, display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.04em", borderRadius: 999, padding: "3px 8px 3px 6px" }}>
-          {badge === "wish" ? <Sparkles size={9} color={INK} strokeWidth={2.4} /> : <Bookmark size={9} fill={INK} strokeWidth={0} />} {badge === "wish" ? "WISH" : "KEEP"}
-        </span>
+      {/* KEEPバッジ(左)・「行った」等のaction(中央)・プラン選択トグル(右)を
+          1本の横並びflexにまとめている。以前はこの3つをそれぞれ独立して
+          absolute配置しており、actionは右上のトグルと場所を取り合うため
+          右下(bottom:8)へ追いやられていた。flexでまとめてjustifyContent:
+          space-betweenにすることで、actionはバッジとトグルの間の余白へ
+          常に収まり(バッジが無ければ自動的に中央寄りになる)、どちらとも
+          重ならない。actionは内容が短い前提だが、念のためoverflow/ellipsis
+          で万一はみ出しそうな時も重なりではなく省略で逃がす。 */}
+      {(badge || action || onTogglePlanSelect) && (
+        <div style={{ position: "absolute", top: 8, left: HOLE_CLEAR, right: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+          {badge ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 7.5, fontWeight: 800, letterSpacing: "0.02em", borderRadius: 999, padding: "3px 7px 3px 5px", flexShrink: 0 }}>
+              {badge === "wish" ? <Sparkles size={8} color={INK} strokeWidth={2.4} /> : <Bookmark size={8} fill={INK} strokeWidth={0} />} {badge === "wish" ? "WISH" : "KEEP"}
+            </span>
+          ) : <span />}
+          {/* actionはflexShrink:0にして、狭い時にバッジ/トグルに押されて
+              文字が省略される(ellipsis)ことがないようにする。代わりに
+              3要素の合計が万一収まりきらない場合は行の外へわずかに
+              はみ出すが、文字が読めなくなるよりそちらの方がまだよい。
+              実際にはbadge/action/toggleとも十分小さくしてあるため、
+              通常のカード幅で3点セットが収まりきらないことは無い。 */}
+          {action && (
+            <button onClick={(e) => { e.stopPropagation(); action.onClick(); }} style={{
+              flexShrink: 0, padding: "4px 7px", borderRadius: 999, border: "none", cursor: "pointer",
+              background: INK, color: PAPER, fontFamily: SANS, fontSize: 8, fontWeight: 700, letterSpacing: "0.01em",
+              whiteSpace: "nowrap",
+            }}>{action.label}</button>
+          )}
+          {onTogglePlanSelect ? (
+            <button onClick={(e) => { e.stopPropagation(); onTogglePlanSelect(); }} aria-label={planSelected ? "プランの選択から外す" : "プランの候補に選ぶ"} style={{
+              width: 20, height: 20, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0,
+              background: planSelected ? BLUE : "rgba(255,255,255,0.94)", color: planSelected ? PAPER : INK,
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 0, boxShadow: "0 2px 6px rgba(23,23,21,0.3)",
+            }}>
+              {planSelected ? <Check size={11} strokeWidth={3} /> : <Plus size={12} strokeWidth={2.6} />}
+            </button>
+          ) : <span />}
+        </div>
       )}
       <div style={{ position: "absolute", bottom: 10, left: HOLE_CLEAR, right: 10 }}>
         {label && <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(255,255,255,0.7)", marginBottom: 3 }}>{label}</div>}
@@ -151,26 +185,6 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
           background: good ? "#D9A441" : "rgba(23,23,21,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
         }}>
           <Star size={14} fill={good ? "#fff" : "none"} color="#fff" strokeWidth={2} />
-        </button>
-      )}
-      {/* onTogglePlanSelectが右上(KEEPバッジの鏡合わせの位置)を使うため、
-          actionは元々の右上から下段(bottom:8)へ移して衝突を避けている。 */}
-      {action && (
-        <button onClick={(e) => { e.stopPropagation(); action.onClick(); }} style={{
-          position: "absolute", bottom: 8, right: 8, padding: "6px 11px", borderRadius: 999, border: "none", cursor: "pointer",
-          background: INK, color: PAPER, fontFamily: SANS, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em",
-        }}>{action.label}</button>
-      )}
-      {/* KEEPバッジ(左上、白いピル+アイコン)と対になるよう、同じ白backgroundの
-          丸バッジを右上に置く。以前は右下の独立した丸ボタンだったため、
-          カード上のバッジの語彙(左上=KEEP)と噛み合っていなかった。 */}
-      {onTogglePlanSelect && (
-        <button onClick={(e) => { e.stopPropagation(); onTogglePlanSelect(); }} aria-label={planSelected ? "プランの選択から外す" : "プランの候補に選ぶ"} style={{
-          position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%", border: "none", cursor: "pointer",
-          background: planSelected ? BLUE : "rgba(255,255,255,0.94)", color: planSelected ? PAPER : INK,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: 0, boxShadow: "0 2px 6px rgba(23,23,21,0.3)",
-        }}>
-          {planSelected ? <Check size={12} strokeWidth={3} /> : <Plus size={13} strokeWidth={2.6} />}
         </button>
       )}
     </div>

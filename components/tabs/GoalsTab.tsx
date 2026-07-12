@@ -125,21 +125,19 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
             確保している。 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 30, columnGap: 14, justifyItems: "center" }}>
           {goalItems.map((g) => {
-            const latest = g.checkIns?.[0];
             const count = g.checkIns?.length ?? 0;
             return (
               <GoalBinderCard
                 key={g.id} width="88%" aspect={GOAL_CARD_ASPECT}
                 color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={goalAccent(g.id)}
                 onClick={() => setOpenGoalId(g.id)}
+                // 表紙にはGOAL・タイトル・記録の件数だけを表示する。以前は
+                // 最新の記録内容のプレビュー文+「タップで見る」も出しており、
+                // タイトルが長いカードでは表紙の限られた高さの中でGOALラベル
+                // と文字が被る原因になっていた。件数だけのシンプルな1行に絞る。
                 footer={
-                  <div>
-                    {latest && (
-                      <p style={{ margin: "0 0 5px", fontSize: 9.5, lineHeight: 1.4, color: "rgba(253,251,245,0.8)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
-                    )}
-                    <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(253,251,245,0.7)", borderTop: "1px solid rgba(253,251,245,0.3)", paddingTop: 6 }}>
-                      {count > 0 ? `記録 ${count}件・タップで見る` : "まだ記録がありません"}
-                    </div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(253,251,245,0.7)", borderTop: "1px solid rgba(253,251,245,0.3)", paddingTop: 6 }}>
+                    {count > 0 ? `記録 ${count}件` : "まだ記録がありません"}
                   </div>
                 }
               />

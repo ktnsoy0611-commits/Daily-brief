@@ -831,14 +831,17 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
               積み上がったカードの上にパタンと閉じてくる」動きになる。 */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
             {items.map((it, i) => (
-              // zIndexを明示するのは、スタック中に後ろのカードが先頭カード
-              // (表紙を持つi===0)の上に乗って見えてしまわないようにするため。
-              // 指定しないとflexの子はDOM順で後勝ちになり、スタックで重なった
-              // 瞬間に後方のカードが先頭カードを覆い隠してしまっていた。この
-              // zIndexを持つdiv自身が新しい重なりコンテキストを作るため、内側の
-              // BinderFrontCoverとConfirmedCardの前後関係はこのコンテキストの
-              // 中だけで完結して正しく比較される。
-              <div key={it.id} style={{ position: "relative", width: CARD_WIDTH, zIndex: items.length - i }}>
+              // zIndexは「下から上へスライドしてくる時、元々一番下(リストの
+              // 末尾)にあったカードが一番手前に重なる」ように、iが大きい
+              // ほど手前(高いzIndex)にする。指定しないとflexの子はDOM順で
+              // 後勝ちになり、意図と違う重なりになる。i===0(表紙を持つ先頭
+              // カード、スタック先の目的地でもある)だけは常に最前面に
+              // しておく必要がある(BinderFrontCoverが閉じる時にこの束の
+              // 一番手前へ回り込むため、他のどのカードよりゆずれない)。この
+              // zIndexを持つdiv自身が新しい重なりコンテキストを作るため、
+              // 内側のBinderFrontCoverとConfirmedCardの前後関係はこの
+              // コンテキストの中だけで完結して正しく比較される。
+              <div key={it.id} style={{ position: "relative", width: CARD_WIDTH, zIndex: i === 0 ? items.length : i }}>
                 {i === 0 && <BinderBackPanel />}
                 <ConfirmedCard
                   item={it} elRef={(el) => { cardEls.current[it.id] = el; }}

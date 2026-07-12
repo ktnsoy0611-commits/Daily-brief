@@ -11,9 +11,16 @@ import type { AppState } from "@/lib/types";
 // 「入力+右にボタン」の1行入力欄。この画面内の入力欄はすべてこの1つの
 // スタイルに揃える(以前はセクションごとにフォント・サイズ・線の太さが
 // バラバラだった)。
+// ★fontSizeは16px未満にしないこと。iOS Safariはfont-sizeが16px未満の
+// input要素にフォーカスすると、ページ全体を自動でズームインする仕様が
+// あり、ズーム変化の最中はレイアウトが一時的に乱れる(このinputの右にある
+// 「保存」ボタンが画面外へ押し出されて見えなくなる、という報告があった)。
+// 入力欄をもう一度タップすると直る、というのはズームが収まって再計算
+// されるタイミングと一致しており、この閾値未満のfont-sizeが原因だったと
+// 判断した。13pxから16pxへ上げることでズーム自体を発生させない。
 const settingsInputStyle: React.CSSProperties = {
   flex: 1, border: "none", borderBottom: `1.5px solid ${INK}`, background: "transparent",
-  fontFamily: SANS, fontSize: 13, padding: "7px 2px", outline: "none", minWidth: 0,
+  fontFamily: SANS, fontSize: 16, padding: "7px 2px", outline: "none", minWidth: 0,
 };
 
 // 各セクションを1枚の淡いカードにまとめる。以前はラベル+素のテキスト/
@@ -135,13 +142,17 @@ export function ProfileTab({ appState, persist, onClose }: {
       </header>
 
       <main style={{ paddingTop: 18 }}>
-        {/* 「今、気になっていること」: 以前は非編集時(SERIF/17px/破線下線)と
-            編集時(入力欄、SANS/13px)でフォント・サイズがまったく別物で、
+        {/* 「今、気になっていること」と「興味・好み」は、どちらも
+            「今の関心」を表す情報として1枚のカードにまとめる(以前は
+            別々のカードだったが、近い内容として1つの括りにしてほしい
+            という指摘を受けた)。
+            気になっていることの表示: 以前は非編集時(SERIF/17px/破線下線)と
+            編集時(入力欄、SANS)でフォント・サイズがまったく別物で、
             タップして初めて「統一されたデザイン」になる、という見た目の
             バグになっていた。両状態を同じフォント/サイズ/下線に揃え、
             非編集時は右端に鉛筆アイコンを添えることで「ここは編集できる」
             という手がかりを、テキストの見た目を変えずに示す。 */}
-        <SettingsCard label="今、気になっていること" icon={Pencil}>
+        <SettingsCard label="気になっていること・好み" icon={Heart}>
           {editingFocus ? (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input autoFocus value={focusDraft} onChange={(e) => setFocusDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveFocus()}
@@ -162,15 +173,12 @@ export function ProfileTab({ appState, persist, onClose }: {
               <Pencil size={12} strokeWidth={2} color="#9A988E" style={{ flexShrink: 0 }} />
             </button>
           )}
-        </SettingsCard>
-
-        <SettingsCard label="興味・好み" icon={Heart}>
           {/* 以前はカテゴリごとの色分け+重み(weight)に応じた文字サイズの
               変化を両方使っており、色もサイズもバラバラな「ワードクラウド」
               のようになって見づらかった。1色・1サイズの地味なチップへ揃え、
               重みは並び順(降順)だけで表す方が、興味の一覧としてずっと
               読みやすい。 */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
             {interests.length === 0 ? (
               <p style={{ fontSize: 12, color: "#9A988E", margin: 0 }}>まだありません。</p>
             ) : interests.map((item) => (

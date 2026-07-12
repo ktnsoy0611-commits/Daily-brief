@@ -3,7 +3,7 @@
 import { ArrowLeft, Bookmark, Check, Maximize2, Minimize2, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { COVER_RADIUS, MEDIA_ACCENT, placeAccent } from "@/components/Binder";
+import { COVER_RADIUS, KIND_ACCENT, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
 import { KIND_ICON } from "@/components/tabs/StockTab";
@@ -1154,10 +1154,11 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
       // デモデータだけで確認できる分量になる。
       const wish = i % 3 !== 0 ? demoWishes[i % demoWishes.length] : undefined;
       // 場所カードの色は、バインダー側の「行き先」棚が同じエリア名から生成
-      // する色(placeAccent)と揃え、作品はジャンルのバインダー色(MEDIA_ACCENT)
-      // を基準に明暗を振った近似色にする。
+      // する色(placeAccent)と揃え、作品はジャンルのバインダー色(KIND_ACCENT、
+      // タイケン/ジョウホウ双方のマップを結合したもの)を基準に明暗を
+      // 振った近似色にする。
       const color = d.area ? placeAccent(d.area).color
-        : d.kind !== "place" && d.kind !== "thing" ? shade(MEDIA_ACCENT[d.kind as Exclude<ItemKind, "place" | "thing">].color, ((i % 3) - 1) * 13)
+        : d.kind !== "place" && d.kind !== "thing" ? shade(KIND_ACCENT[d.kind as Exclude<ItemKind, "place" | "thing">].color, ((i % 3) - 1) * 13)
         : placeAccent(d.title).color;
       next.items.push({
         id: `demo-${now}-${i}`, kind: d.kind, title: d.title, category: d.category, area: d.area,

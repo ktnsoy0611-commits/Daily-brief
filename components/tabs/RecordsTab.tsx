@@ -3,7 +3,7 @@
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, closeOnSelfClick } from "@/components/BottomSheet";
-import { BinderCoverflowRow, dateAccent, goalAccent, GOAL_BASE, MEDIA_ACCENT, placeAccent, THING_ACCENT, type BinderShelfItem } from "@/components/Binder";
+import { BinderCoverflowRow, dateAccent, EXPERIENCE_ACCENT, goalAccent, GOAL_BASE, MEDIA_ACCENT, placeAccent, thingVolumeAccent, THING_ITEMS_PER_VOLUME, type BinderShelfItem } from "@/components/Binder";
 import { BinderModal, type BinderItem, Masthead, PosterCard, rowBtn } from "@/components/common";
 import { KIND_ICON } from "@/components/tabs/StockTab";
 import { GOLD, GREEN, HAIRLINE, INK, PAPER, RUST, SANS, SERIF, domainDefOf, itemKindOf } from "@/lib/constants";
@@ -140,7 +140,10 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
     }));
 
   // 種類(kind)ごとに1冊、というドメイン共通の組み立て(タイケン・ジョウホウ)。
+  // アクセントのデザインコードはドメインごとに別物(タイケン=side、
+  // ジョウホウ=media)なので、参照するマップをドメインで切り替える。
   const kindShelvesOf = (domain: "experience" | "info") => {
+    const accentMap = domain === "experience" ? EXPERIENCE_ACCENT : MEDIA_ACCENT;
     const groups = new Map<ItemKind, Item[]>();
     doneItems.filter((i) => domainOf(i) === domain).forEach((i) => {
       if (!groups.has(i.kind)) groups.set(i.kind, []);
@@ -152,7 +155,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
       .map((sec): BinderShelfItem => {
         const def = itemKindOf(sec.kind);
         return {
-          key: sec.kind, color: MEDIA_BASE, eyebrowLabel: def.en, accent: MEDIA_ACCENT[sec.kind as keyof typeof MEDIA_ACCENT],
+          key: sec.kind, color: MEDIA_BASE, eyebrowLabel: def.en, accent: accentMap[sec.kind as keyof typeof accentMap],
           title: def.label, count: sec.items.length,
           footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.items.length}件・タップで見る</div>,
           onOpen: () => setOpenFolder({
@@ -165,17 +168,35 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const experienceRowItems = kindShelvesOf("experience");
   const infoRowItems = kindShelvesOf("info");
 
-  // ---- モノ: 買ったものをまとめた1冊 ----
-  const doneThings = doneItems.filter((i) => domainOf(i) === "thing");
-  const thingRowItems: BinderShelfItem[] = doneThings.length === 0 ? [] : [{
-    key: "things", color: MEDIA_BASE, eyebrowLabel: "THING", accent: THING_ACCENT,
-    title: "買ったモノ", count: doneThings.length,
-    footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{doneThings.length}件・タップで見る</div>,
-    onOpen: () => setOpenFolder({
-      title: "買ったモノ",
-      content: doneThings.map((i) => itemCard(i, { sub: i.price ?? shortDate(i.doneAt ?? i.addedAt) })),
-    }),
-  }];
+  // ---- モノ: 買ったものをまとめた1冊。件数がTHING_ITEMS_PER_VOLUMEを
+  // 超えたら、同じ意匠のまま色だけ変えて次の巻(Vol.2…)へ分かれる
+  // (ユーザー指定:「vol2とかになっていったときに色だけ変更して別冊に
+  // 行く感じ」)。バショ/タイケン/ジョウホウは個体(エリア名・kind)ごとに
+  // ハッシュ/固定で色を振るが、モノだけは逆に「何巻目か」という連番だけ
+  // から色を引く(thingVolumeAccent)。時系列に沿って古い方から巻が
+  // 埋まっていくよう昇順に並べ替えてから等分し、表示は他の棚と同じく
+  // 新しい巻(直近増えた分)を手前に出すため配列を反転する。 ----
+  const doneThingsAsc = doneItems
+    .filter((i) => domainOf(i) === "thing")
+    .slice()
+    .sort((a, b) => new Date(a.doneAt ?? a.addedAt).getTime() - new Date(b.doneAt ?? b.addedAt).getTime());
+  const thingVolumeCount = Math.ceil(doneThingsAsc.length / THING_ITEMS_PER_VOLUME);
+  const thingRowItems: BinderShelfItem[] = Array.from({ length: thingVolumeCount }, (_, vol) => ({
+    vol, items: doneThingsAsc.slice(vol * THING_ITEMS_PER_VOLUME, (vol + 1) * THING_ITEMS_PER_VOLUME),
+  }))
+    .reverse()
+    .map(({ vol, items }) => {
+      const title = thingVolumeCount > 1 ? `買ったモノ Vol.${vol + 1}` : "買ったモノ";
+      return {
+        key: `things-${vol}`, color: MEDIA_BASE, eyebrowLabel: "THING", accent: thingVolumeAccent(vol),
+        title, count: items.length,
+        footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{items.length}件・タップで見る</div>,
+        onOpen: () => setOpenFolder({
+          title,
+          content: items.map((i) => itemCard(i, { sub: i.price ?? shortDate(i.doneAt ?? i.addedAt) })),
+        }),
+      };
+    });
 
   // ---- ゴール ----
   const goalRowItems: BinderShelfItem[] = goals.map((g) => ({

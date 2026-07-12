@@ -26,7 +26,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { BG, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { shade } from "@/lib/helpers";
-import type { ItemKind } from "@/lib/types";
 
 // ---- デザインコード ---------------------------------------------------------
 //
@@ -136,7 +135,9 @@ type GeoLayout = "bigShape" | "grid2x2" | "units" | "stripePatch";
 export type Accent =
   | { kind: "target"; color: string }
   | { kind: "media"; color: string; shape: MediaShape }
-  | { kind: "geo"; color: string; layout: GeoLayout; seed: number };
+  | { kind: "geo"; color: string; layout: GeoLayout; seed: number }
+  | { kind: "side"; color: string; shape: PlaneShape }
+  | { kind: "stamp"; color: string };
 
 // 全バインダー共通の「目標」の下地色(表紙自体は常に白なので、これは
 // 背表紙の単色フォールバック(accent未指定時)としてのみ使う)。
@@ -155,24 +156,49 @@ export function goalAccent(seed: string): Accent {
   return { kind: "target", color: GOAL_HUES[h % GOAL_HUES.length] };
 }
 
-// タイケン・ジョウホウドメインのkindごとのワンポイント(図形+色)。
-// RecordsTabの棚だけでなく、ExecuteTabのデモデータ(写真の無いカードの
-// 下地色)もこれを基準にした色調で揃え、バインダーとカードの色が
-// 世界観として一致するようにしている。place/thingは対象外(バショは
-// エリア名からplaceAccentで、モノは固定の1冊で扱う=THING_ACCENT)。
-export const MEDIA_ACCENT: Partial<Record<ItemKind, Accent>> & Record<"movie" | "exhibition" | "live" | "book" | "album" | "activity" | "food" | "info", Accent> = {
+// ジョウホウドメインのkindごとのワンポイント(図形+色)。RecordsTabの棚
+// だけでなく、ExecuteTabのデモデータ(写真の無いカードの下地色)もこれを
+// 基準にした色調で揃え、バインダーとカードの色が世界観として一致する
+// ようにしている。以前はタイケンもこのマップ(media型)を間借りしていたが、
+// タイケンには下記EXPERIENCE_ACCENT(side型)という専用のデザインコードを
+// 新設したため、ここはジョウホウ専用に絞った。
+export const MEDIA_ACCENT: Record<"movie" | "book" | "album" | "info", Accent> = {
   movie: { kind: "media", shape: "semicircleUp", color: "#2C4E74" },
-  exhibition: { kind: "media", shape: "triangleUp", color: "#2C6E7A" },
-  live: { kind: "media", shape: "circle", color: "#B8442E" },
   book: { kind: "media", shape: "rectangle", color: "#33633F" },
   album: { kind: "media", shape: "semicircleDown", color: "#C1922E" },
-  activity: { kind: "media", shape: "quarterTL", color: "#7A4432" },
-  food: { kind: "media", shape: "quarterBR", color: "#A8552F" },
   info: { kind: "media", shape: "triangleDown", color: "#4A5C3E" },
 };
-// モノ(買いたいもの)は単一の棚(バインダー1冊)にまとめるため、種類ごとの
-// 図形分岐を持たず、単色の的(TargetMotif)で「1冊にまとまったモノ」を表す。
-export const THING_ACCENT: Accent = { kind: "target", color: "#8A6B2E" };
+
+// タイケン専用のデザインコード。ジョウホウ(media型: 上端の細い帯+縦縞+
+// 隅寄せの図形)と全く同じ「色+図形」の割り当て方式を踏襲しつつ、器そのもの
+// を「side」という新しいkindにして構造を変えている(詳細はBinderCoverFaceの
+// side分岐・SideMotifのコメント参照)。「上端の細い帯」という軸を変えず
+// 色や図形だけ変えると結局ジョウホウと同じ見た目になってしまうため、
+// 帯の向き自体(横→縦)を変えることで一目で見分けられるようにした。
+export const EXPERIENCE_ACCENT: Record<"exhibition" | "live" | "activity" | "food", Accent> = {
+  exhibition: { kind: "side", shape: "triangleUp", color: "#2C6E7A" },
+  live: { kind: "side", shape: "circle", color: "#B8442E" },
+  activity: { kind: "side", shape: "quarterTL", color: "#7A4432" },
+  food: { kind: "side", shape: "quarterBR", color: "#A8552F" },
+};
+
+// ExecuteTabのデモデータ生成など、ジョウホウ・タイケンを問わず種類から
+// 色だけ引きたい箇所向けの結合マップ。
+export const KIND_ACCENT: Record<"movie" | "exhibition" | "live" | "book" | "album" | "activity" | "food" | "info", Accent> = {
+  ...MEDIA_ACCENT, ...EXPERIENCE_ACCENT,
+};
+
+// モノ専用のデザインコード。バショ・ジョウホウ・タイケンはどれも「個体
+// (エリア名・kind)ごとにハッシュ/固定で色や図形が決まる」設計だが、モノは
+// ユーザー指定により逆の発想にしている: 図形は固定(StampMotif参照)で
+// 個性を出さず、「何巻目か」だけを軸に色を変える。買った物が積み上がって
+// THING_ITEMS_PER_VOLUMEを超えると、同じ意匠のまま色だけ変わる次の巻へ
+// 自動的に分かれる(RecordsTab.tsx参照)。
+const THING_VOLUME_HUES = ["#8A6B2E", "#4A5C3E", "#6B4A2E", "#2C6E8A", "#8A3C2A", "#5A6B7A"];
+export function thingVolumeAccent(volumeIndex: number): Accent {
+  return { kind: "stamp", color: THING_VOLUME_HUES[volumeIndex % THING_VOLUME_HUES.length] };
+}
+export const THING_ITEMS_PER_VOLUME = 20;
 
 // 的のエンブレムだった線描きの同心円は、参考画像がどれも線ではなく面の
 // 重なりだけで構成されていたことを踏まえてベタ塗りの大きな円へ描き直した。
@@ -183,6 +209,46 @@ export const THING_ACCENT: Accent = { kind: "target", color: "#8A6B2E" };
 function TargetMotif({ color = PAPER }: { color?: string }) {
   return (
     <div style={{ position: "absolute", left: "50%", top: "-24%", transform: "translateX(-50%)", width: "64%", aspectRatio: "1 / 1", borderRadius: "50%", background: color }} />
+  );
+}
+
+// モノ専用: 全面べた塗り+開く側の角に沿って収まる四半円、というミニマル
+// な構図。target(ゴール)と同じ「全面色+単一図形」という骨格は踏襲しつつ、
+// 図形を「上端中央からはみ出す円」ではなく「開く側の角(角丸)にぴったり
+// 収まる四半円」にすることで、ゴールとは違うシルエットになる。開く側の
+// 角(右下)はBinderCoverFace自体が角丸でクリップしているため、四半円の
+// カーブがちょうどその角丸に沿って続いて見える。「巻が増えても色だけ
+// 変える」という運用(thingVolumeAccent参照)に合わせ、図形自体は個体差を
+// 持たない固定形にしている。
+function StampMotif({ color = PAPER }: { color?: string }) {
+  return (
+    <div style={{ position: "absolute", right: 0, bottom: 0, width: "46%", aspectRatio: "1 / 1" }}>
+      <PlaneFill shape="quarterBR" color={color} />
+    </div>
+  );
+}
+
+// タイケン専用: 帯を上端ではなく左端(蝶番側)に、横向きではなく縦向きに
+// 配置する。target(全面)・media(上端の細い横帯)・geo(上端の広い横帯)は
+// いずれも「上端の帯、または全面」という水平の構図を軸にしているため、
+// タイケンだけ帯の向きそのもの(縦)を変えることで、同じセル+図形の
+// ボキャブラリーを使いながら一目で見分けがつくようにしている。図形は
+// mediaと同じ「帯の端に寄せて1つだけ置く」考え方を踏襲しつつ、縦帯なので
+// 「端」は上下方向になる(下端に寄せている)。SquareCellは高さを基準に
+// 正方形を作る実装のため、幅を基準にする縦帯用にSideSquareCellを別途
+// 用意した。
+function SideSquareCell({ shape, color }: { shape: PlaneShape; color: string }) {
+  return (
+    <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", flexShrink: 0, overflow: "hidden" }}>
+      <PlaneFill shape={shape} color={color} />
+    </div>
+  );
+}
+function SideMotif({ shape }: { shape: PlaneShape }) {
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+      <SideSquareCell shape={shape} color={PAPER} />
+    </div>
   );
 }
 
@@ -278,7 +344,10 @@ function GeoMotif({ color, layout, seed }: { color: string; layout: GeoLayout; s
 function AccentMotif({ accent }: { accent: Accent }) {
   if (accent.kind === "target") return <TargetMotif />;
   if (accent.kind === "media") return <MediaMotif shape={accent.shape} />;
-  return <GeoMotif color={accent.color} layout={accent.layout} seed={accent.seed} />;
+  if (accent.kind === "geo") return <GeoMotif color={accent.color} layout={accent.layout} seed={accent.seed} />;
+  // stamp/sideはBinderCoverFace側の専用分岐が自前でモチーフを描画する
+  // ため、共通の帯コンテナ(このAccentMotifの呼び出し元)は経由しない。
+  return null;
 }
 
 // 文字列から安定したハッシュ値を作る(同じ名前なら常に同じ柄になる)。
@@ -327,6 +396,9 @@ const GEO_BAND = "58%";
 // 細い帯だったが、「メディアは簡素、行った場所は賑やかに」という指摘で
 // 逆転させた。
 const MEDIA_BAND = "26%";
+// side(タイケン)の帯の幅。高さではなく横幅の比率であることに注意
+// (帯そのものが縦向きのため)。
+const SIDE_BAND = "34%";
 
 // 表紙下部(エイボロウ+タイトル+フッター)。3種で構成そのものは完全に
 // 共通にし、文字色だけ呼び出し側で選べるようにしている(targetは表紙
@@ -377,6 +449,39 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
         <div style={{ flex: "0 0 34%", flexShrink: 0 }} />
         <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={light} titleColor={PAPER} />
         <TargetMotif color={PAPER} />
+      </div>
+    );
+  }
+
+  // モノ専用(stamp)。target(ゴール)と同じ「全面べた塗り+単一図形」の
+  // 骨格だが、図形をStampMotif(開く側の角に収まる四半円)に差し替えて
+  // いるため、両者を並べても見分けがつく。
+  if (accent?.kind === "stamp") {
+    const light = "rgba(253,251,245,0.85)";
+    return (
+      <div style={{
+        position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: accent.color, overflow: "hidden",
+        borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
+      }}>
+        <div style={{ flex: "0 0 34%", flexShrink: 0 }} />
+        <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={light} titleColor={PAPER} />
+        <StampMotif color={PAPER} />
+      </div>
+    );
+  }
+
+  // タイケン専用(side)。帯を上端ではなく左端(蝶番側)に縦向きで配置する、
+  // 唯一flexDirection: rowになる構成。詳細はSideMotifのコメント参照。
+  if (accent?.kind === "side") {
+    return (
+      <div style={{
+        position: "absolute", inset: 0, display: "flex", flexDirection: "row", background: PAPER, overflow: "hidden",
+        borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
+      }}>
+        <div style={{ flex: `0 0 ${SIDE_BAND}`, position: "relative", flexShrink: 0, background: accent.color }}>
+          <SideMotif shape={accent.shape} />
+        </div>
+        <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={accent.color} />
       </div>
     );
   }

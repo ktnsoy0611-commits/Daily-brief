@@ -657,15 +657,27 @@ export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebro
   tiltDeg?: number;
 }) {
   return (
-    <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 900, cursor: onClick ? "pointer" : "default" }}>
-      {/* filter(drop-shadow)は、transformを持つ要素自身に与えないと
-          (=別の非変形の子要素に付けると)このperspectiveの入れ子の中では
-          描画されない(実測: 子要素に付けた版はピクセルを直接サンプリング
-          しても影の勾配が一切無かった)。Binder3D側で影が効いているのは
-          filterとtransformが同じ要素に乗っているためで、それに揃えた。 */}
+    // ★影はfilter:drop-shadowではなく、この一番外側の(3D変形を一切受けない)
+    // 箱に素のbox-shadowとして持たせる。§7.16でfilterをtransformと同じ
+    // 要素に乗せる形にしてChromiumでは影が出ることを確認したが、実機
+    // Safariでは依然として影が出ないという報告があった。filter+
+    // perspective(祖先)+3D transformの組み合わせは、このコードベースで
+    // 何度もブラウザ間の差異(Chromiumでは平気でもSafariでは崩れる/
+    // 出ない)を起こしてきた前例が多い(§5・§7.9も参照)。perspectiveは
+    // それを持つ要素自身を3D変形するわけではない(子の3D変形の basisに
+    // なるだけ)ため、この一番外側の箱自体は普通の(3D変形を受けない)2D要素
+    // であり、素のbox-shadowを使う限り描画エンジンの違いに左右される
+    // 余地がない。表紙の開く側(右)に合わせて角丸も外側の箱に与えておく
+    // (影の形をおおよそ表紙の輪郭に合わせるためで、厳密なクリップ目的
+    // ではない。中身の実際のクリップは相変わらずBinderCoverFace自身が
+    // 3D変形を受けない状態で正しく行っている)。
+    <div onClick={onClick} style={{
+      width, aspectRatio: aspect, perspective: 900, cursor: onClick ? "pointer" : "default",
+      borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS, boxShadow: SOFT_SHADOW,
+    }}>
       <div style={{
         position: "relative", width: "100%", height: "100%", transformOrigin: "50% 100%",
-        transform: `rotateY(${tiltDeg}deg)`, filter: `drop-shadow(${SOFT_SHADOW})`,
+        transform: `rotateY(${tiltDeg}deg)`,
       }}>
         <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
       </div>

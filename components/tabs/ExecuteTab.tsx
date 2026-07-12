@@ -53,18 +53,24 @@ function MapPins({ items, selectedIds, onOpenPin }: {
 // transform:scaleでは起きる「縮んだ絵の周りに元のサイズ分の空白が
 // 残る」不自然な空きができない。縮小時は中央寄せではなく右寄せ
 // (margin-leftだけauto)にする。
-function MapCanvas({ items, selectedIds, onOpenPin, stuck, onOpenFullscreen }: {
+// 地図の縮小率(0=フルサイズ100%、1=完全に縮んだ72%)。以前はIntersectionObserverの
+// 二値(stuck/not stuck)にCSSトランジションを付けて「パッと切り替わる」演出
+// だったが、「アニメーションではなく、スクロールするほどだんだん小さく
+// なる感じにしてほしい」という指定を受け、CSSトランジションを撤去して
+// スクロール位置に直接連動する連続値にした(下のsentinelRef参照)。
+const MAP_MIN_WIDTH_RATIO = 0.72;
+function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen }: {
   items: Item[];
   selectedIds: string[];
   onOpenPin: (item: Item) => void;
-  stuck: boolean;
+  shrink: number;
   onOpenFullscreen: () => void;
 }) {
+  const widthPct = 100 - shrink * (100 - MAP_MIN_WIDTH_RATIO * 100);
   return (
     <div style={{
-      position: "relative", width: stuck ? "72%" : "100%", aspectRatio: "4 / 3", borderRadius: 16, overflow: "hidden",
-      margin: stuck ? "0 0 0 auto" : "0 auto", border: `1px solid ${HAIRLINE}`,
-      transition: "width 0.32s cubic-bezier(0.32,0.72,0,1)",
+      position: "relative", width: `${widthPct}%`, aspectRatio: "4 / 3", borderRadius: 16, overflow: "hidden",
+      flexShrink: 0, border: `1px solid ${HAIRLINE}`,
       ...MAP_BG_STYLE,
     }}>
       <MapPins items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
@@ -367,12 +373,15 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
   const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
   const openPlan = plans.find((p) => p.key === openPlanKey) ?? null;
   const [mapFullscreen, setMapFullscreen] = useState(false);
-  // 地図がsticky状態(=上端に張り付いて止まっている)かどうかを、地図の
-  // 直前に置いた高さ0のセンチネル要素で判定する。センチネルが
-  // スクロールコンテナの上端から外へ出た瞬間=地図がまさにsticky top:0で
-  // 張り付き始めた瞬間なので、そこで縮小アニメーションのトリガーにする
-  // (センチネルとstickyの地図は隙間なく連続しているため、センチネルが
-  // 見えなくなるタイミングと地図が止まるタイミングは一致する)。
+  // 地図の縮小度合いを、地図の直前に置いた高さ0のセンチネル要素の
+  // スクロール位置から連続値(0〜1)で求める。以前はIntersectionObserverで
+  // 「センチネルが見えているか否か」の二値だけを見てCSSトランジションで
+  // パッと切り替えていたが、「アニメーションではなく、スクロールする
+  // ほどだんだん小さくなる感じにしてほしい」という指定を受け、スクロール
+  // イベントを直接ポーリングしてセンチネルが上端をどれだけ通り過ぎたかを
+  // 毎フレーム測る方式に作り替えた(センチネルとstickyの地図は隙間なく
+  // 連続しているため、センチネルが上端を通り過ぎた量=地図が縮み始めて
+  // からの距離として使える)。
   // useEffect+useRefではなくcallback refにしているのは、「Keepがまだ
   // ない」ときの早期returnがこのセンチネル自体をまだ描画しない(下の
   // stocked.length===0分岐)ため。useEffectを空配列依存にすると、
@@ -381,17 +390,30 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
   // 現れても二度と観測が始まらない不具合になっていた。callback refは
   // 依存配列を問わずDOMノードが実際にアタッチされた瞬間に呼ばれるため、
   // この早期returnの有無に関わらず確実に動く。
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const [mapStuck, setMapStuck] = useState(false);
+  const MAP_SHRINK_RANGE_PX = 120;
+  const mapShrinkCleanupRef = useRef<(() => void) | null>(null);
+  const mapShrinkRafRef = useRef<number | null>(null);
+  const [mapShrink, setMapShrink] = useState(0);
   const sentinelRef = useCallback((el: HTMLDivElement | null) => {
-    observerRef.current?.disconnect();
-    observerRef.current = null;
+    mapShrinkCleanupRef.current?.();
+    mapShrinkCleanupRef.current = null;
     if (!el) return;
     const root = document.querySelector<HTMLElement>("[data-tab-scroll-root]");
     if (!root) return;
-    const observer = new IntersectionObserver(([entry]) => setMapStuck(!entry.isIntersecting), { root, threshold: 0 });
-    observer.observe(el);
-    observerRef.current = observer;
+    const measure = () => {
+      mapShrinkRafRef.current = null;
+      const scrolledPast = root.getBoundingClientRect().top - el.getBoundingClientRect().top;
+      setMapShrink(Math.max(0, Math.min(1, scrolledPast / MAP_SHRINK_RANGE_PX)));
+    };
+    const onScroll = () => {
+      if (mapShrinkRafRef.current == null) mapShrinkRafRef.current = requestAnimationFrame(measure);
+    };
+    measure();
+    root.addEventListener("scroll", onScroll, { passive: true });
+    mapShrinkCleanupRef.current = () => {
+      root.removeEventListener("scroll", onScroll);
+      if (mapShrinkRafRef.current != null) { cancelAnimationFrame(mapShrinkRafRef.current); mapShrinkRafRef.current = null; }
+    };
   }, []);
 
   if (stocked.length === 0) {
@@ -426,8 +448,12 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
           中でposition:fixedにしてもnav(25)より手前に出せず、閉じる
           ボタンがnavに押されてクリックできなくなる不具合になっていた)。 */}
       <div ref={sentinelRef} style={{ height: 0 }} aria-hidden />
-      <div style={{ position: "sticky", top: 0, zIndex: 4, visibility: mapFullscreen ? "hidden" : "visible" }}>
-        <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} stuck={mapStuck} onOpenFullscreen={() => setMapFullscreen(true)} />
+      {/* 幅が縮んだ時に右へ寄せる処理は、以前はmargin(0 auto ⇄ 0 0 0 auto)を
+          縮小の二値と一緒に切り替えていたが、連続値になったことで
+          この親をdisplay:flex+justifyContent:flex-endにするだけで済む
+          ようになった(幅が縮むほど、余った分だけ自動的に右へ寄る)。 */}
+      <div style={{ position: "sticky", top: 0, zIndex: 4, visibility: mapFullscreen ? "hidden" : "visible", display: "flex", justifyContent: "flex-end" }}>
+        <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} shrink={mapShrink} onOpenFullscreen={() => setMapFullscreen(true)} />
       </div>
       {/* 全画面表示はAppShellの外(document.body直下)へPortalで描画し、
           祖先(sticky wrapper)の重なりコンテキストの影響を受けない、

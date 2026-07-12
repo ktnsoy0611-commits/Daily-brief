@@ -72,6 +72,24 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
   const [adding, setAdding] = useState(false);
   const [manualDraft, setManualDraft] = useState<Record<string, string>>({});
 
+  // ★バインダーを閉じた直後(BottomSheetの220msのフェードアウト中)に
+  // 同じバインダーを再タップすると、openGoalIdは既にそのidのまま(実際に
+  // nullになるのは閉じるアニメーション終了後)なので、同じ値をsetState
+  // してもReactは「変化なし」とみなして無視し、シートが開き直らない
+  // まま数百ms後に元の閉じる処理だけが完了して終わる、という不具合が
+  // あった。既に同じidが指定されている場合は一度nullを経由させてから
+  // 次のフレームで入れ直すことで、値としては異なる更新を強制し、
+  // 確実に(古いシートを破棄して)新しいシートを開き直す。
+  const openGoalCard = (id: string) => {
+    setOpenGoalId((prev) => {
+      if (prev === id) {
+        requestAnimationFrame(() => setOpenGoalId(id));
+        return null;
+      }
+      return id;
+    });
+  };
+
   const addGoal = (title: string) => {
     haptic();
     const next = structuredClone(appState);
@@ -117,7 +135,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
               <GoalBinderCard
                 key={g.id} width="88%" aspect={GOAL_CARD_ASPECT}
                 color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={goalAccent(g.id)}
-                onClick={() => setOpenGoalId(g.id)}
+                onClick={() => openGoalCard(g.id)}
                 // 表紙にはGOAL・タイトル・記録の件数だけを表示する。以前は
                 // 最新の記録内容のプレビュー文+「タップで見る」も出しており、
                 // タイトルが長いカードでは表紙の限られた高さの中でGOALラベル

@@ -179,7 +179,12 @@ export const EXPERIENCE_ACCENT: Record<"exhibition" | "live" | "activity" | "foo
   exhibition: { kind: "side", shape: "triangleUp", color: "#2C6E7A" },
   live: { kind: "side", shape: "circle", color: "#B8442E" },
   activity: { kind: "side", shape: "quarterTL", color: "#7A4432" },
-  food: { kind: "side", shape: "quarterBR", color: "#A8552F" },
+  // グルメは以前quarterBR(隅の四半円)だったが、同じ「隅の四半円」系統の
+  // activity(quarterTL)と小さいグリッドの中では見分けにくいという指摘を
+  // 受け、系統ごと変えた: 半円(semicircleUp)を隙間なく積むと、連続した
+  // 半円が並ぶ構図になる(下記SideSquareCellの高さ基準サイジングにより
+  // セル同士が接するため、この形が自然に連なって見える)。
+  food: { kind: "side", shape: "semicircleUp", color: "#A8552F" },
 };
 
 // ExecuteTabのデモデータ生成など、ジョウホウ・タイケンを問わず種類から
@@ -212,25 +217,23 @@ function TargetMotif({ color = PAPER }: { color?: string }) {
   );
 }
 
-// モノ専用: 白地(PAPER)の上に、色調をずらした円を3つ重ねて組み合わせる
-// 構図。以前は「全面べた塗り+単一図形」という他ドメインと同じ骨格を
-// 使い回していた(初版はゴールと同じ円、次版はゴールと違う三角)が、
-// 「白地に、色のついた円を組み合わせてほしい」という明確な指定を受け、
-// 骨格自体を作り直した: 下地は白(target/geo/side/mediaのような色地では
-// ない)、図形は円のみ・複数(1つではない)。3つの円は同じ基準色から
-// shade()で明度違いの3段階(明・中間・暗)を作って使う。位置はタイトルが
-// 絶対に伸びてこない上部の余白帯(spacer、上から34%)の中に収めている。
-// 「巻が増えても色だけ変える」という運用(thingVolumeAccent参照)に合わせ、
-// 図形の配置・個数は個体差を持たない固定形。
+// モノ専用: 白地(PAPER)の上に、太めのチェックマーク1つ、というシンプルな
+// 構図。円3つの組み合わせ(前版)から「シンプルで太めのチェックのような
+// デザイン」という指定を受けて作り直した。図形ボキャブラリー(円・半円・
+// 四半円・三角・長方形)には「チェック」そのものは無いため、長方形の
+// 縁(border-left+border-bottom)だけを描き、45度回転させるという古典的な
+// CSSチェックマーク技法で組む(L字の縁だけが見え、面としては何も塗ら
+// ない)。回転角は45度なので「0/45/90/180度のみ」という角度ルールの
+// 範囲内。位置はタイトルが絶対に伸びてこない上部の余白帯(spacer、上から
+// 34%)の中に収めている。「巻が増えても色だけ変える」という運用
+// (thingVolumeAccent参照)に合わせ、図形自体は個体差を持たない固定形。
 function StampMotif({ color }: { color: string }) {
-  const light = shade(color, 30);
-  const dark = shade(color, -14);
   return (
-    <>
-      <div style={{ position: "absolute", left: "14%", top: "8%", width: "30%", aspectRatio: "1 / 1", borderRadius: "50%", background: light }} />
-      <div style={{ position: "absolute", left: "38%", top: "16%", width: "22%", aspectRatio: "1 / 1", borderRadius: "50%", background: color }} />
-      <div style={{ position: "absolute", left: "56%", top: "5%", width: "16%", aspectRatio: "1 / 1", borderRadius: "50%", background: dark }} />
-    </>
+    <div style={{
+      position: "absolute", left: "28%", top: "10%", width: "30%", height: "16%",
+      borderLeft: `7px solid ${color}`, borderBottom: `7px solid ${color}`,
+      transform: "rotate(-45deg)", transformOrigin: "0% 100%",
+    }} />
   );
 }
 
@@ -238,23 +241,32 @@ function StampMotif({ color }: { color: string }) {
 // 配置する。target(全面)・media(上端の細い横帯)・geo(上端の広い横帯)は
 // いずれも「上端の帯、または全面」という水平の構図を軸にしているため、
 // タイケンだけ帯の向きそのもの(縦)を変えることで、同じセル+図形の
-// ボキャブラリーを使いながら一目で見分けがつくようにしている。SquareCell
-// は高さを基準に正方形を作る実装のため、幅を基準にする縦帯用に
-// SideSquareCellを別途用意した。図形は当初「端に1つだけ」だったが、
-// 「正方形のグリッドで4〜5個縦に並べてほしい」という指定を受け、同じ
-// 図形(kindごとに固定)をSIDE_MOTIF_COUNT回、帯の全高に均等配置する
-// 総柄(トーテムポール状)に作り直した。下地(帯の色)自体は変えていない。
+// ボキャブラリーを使いながら一目で見分けがつくようにしている。図形は
+// 当初「端に1つだけ」だったが、「正方形のグリッドで4〜5個縦に並べて
+// ほしい」という指定を受け、同じ図形(kindごとに固定)をSIDE_MOTIF_COUNT回、
+// 帯の全高に均等配置する総柄(トーテムポール状)に作り直した(下地=帯の色
+// 自体は変えていない)。
+// ★セルの大きさは「帯の幅」ではなく「帯の高さ ÷ 個数」を基準にしている。
+// 初版は帯の幅を1辺とする正方形(width:100%+aspectRatio:1/1)をそのまま
+// 4個並べていたが、帯の幅(カード幅の34%)と帯の高さ(カードの全高)の
+// 比率次第では「幅基準の正方形×4個分の高さ」が実際の帯の高さをわずかに
+// 超えてしまい、一番下のセルだけがバインダーの角丸(overflow:hidden)で
+// 切れて見える不具合があった(実機スクショで確認: ライブの円だけ下端が
+// 欠けていた)。高さを`100/個数 %`で先に確定させ、幅はそこから
+// aspectRatio:1/1で導く(=高さ基準)ことで、個数×セル高さが必ずぴったり
+// 帯の高さに収まることを構造的に保証する。幅が帯自体よりわずかに
+// 狭くなる分は、alignItems:centerで帯の中央に揃えている。
 const SIDE_MOTIF_COUNT = 4;
 function SideSquareCell({ shape, color }: { shape: PlaneShape; color: string }) {
   return (
-    <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", flexShrink: 0, overflow: "hidden" }}>
+    <div style={{ position: "relative", height: `${100 / SIDE_MOTIF_COUNT}%`, aspectRatio: "1 / 1", flexShrink: 0, overflow: "hidden" }}>
       <PlaneFill shape={shape} color={color} />
     </div>
   );
 }
 function SideMotif({ shape }: { shape: PlaneShape }) {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
       {Array.from({ length: SIDE_MOTIF_COUNT }, (_, i) => (
         <SideSquareCell key={i} shape={shape} color={PAPER} />
       ))}
@@ -874,21 +886,10 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const LONG_PRESS_MS = 450;
   const MOVE_CANCEL_PX = 10;
   const pressRef = useRef<{ key: string; index: number; pointerId: number; clientX: number; clientY: number; timer: number } | null>(null);
-  const dragRef = useRef<{ key: string; pointerId: number; startClientX: number; startIndex: number; currentIndex: number } | null>(null);
+  const dragRef = useRef<{ key: string; pointerId: number; startClientX: number; startIndex: number; currentIndex: number; startScrollLeft: number } | null>(null);
   const dragOffsetPxRef = useRef(0);
-  // 指(ポインタ)の生のscreen X座標。オートスクロールの要否は、この値と
-  // スクロールコンテナ自身のgetBoundingClientRect()を直接比較して決める
-  // (後述、以前はvirtualIndexベースの間接的な計算をしていたが不十分だった)。
-  const pointerClientXRef = useRef(0);
   const dragRafRef = useRef<number | null>(null);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
-
-  // 端からこの距離(px)以内でオートスクロールを発動する。
-  const AUTOSCROLL_EDGE_PX = 72;
-  // オートスクロール速度(px/フレーム)。端にちょうど入った瞬間は控えめに、
-  // 端を大きく超えて(画面外まで)指を動かすほど最大速度まで加速する。
-  const AUTOSCROLL_MIN_SPEED = 6;
-  const AUTOSCROLL_MAX_SPEED = 30;
 
   const dragPollFrame = () => {
     const drag = dragRef.current;
@@ -896,32 +897,22 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     if (!drag || !el) { dragRafRef.current = null; return; }
     const virtualIndex = drag.startIndex + dragOffsetPxRef.current / step;
 
-    // オートスクロール: ドラッグ中はスクロールコンテナのoverflowXを
-    // hiddenに凍結している(並べ替えの物理演算=centerRef基準の回転角を
-    // 安定させるため)が、これはユーザーのスワイプ操作を止めるだけで、
-    // programmaticなscrollLeftの変更は引き続き効く。
-    // ★以前はカードの「あるべき位置」をvirtualIndex/centerRef/gapの
-    // クランプ込みで逆算してから端との距離を判定していたが、この間接的な
-    // 計算はgapのクランプ処理と噛み合わず実際の指の位置とズレることが
-    // あり、加えて速度が固定7px/フレーム(≒420px/秒)だったため、指を
-    // 素早く動かす現実的なドラッグ速度に追いつけず、結局カードが
-    // overflow:hiddenの外へ出て見失われていた。指のスクリーン座標を
-    // そのままコンテナのgetBoundingClientRect()と比較する直接的な判定に
-    // 変え、端を深く超えるほど速度も加速するようにした。
-    const rect = el.getBoundingClientRect();
-    const distFromLeft = pointerClientXRef.current - rect.left;
-    const distFromRight = rect.right - pointerClientXRef.current;
-    if (distFromLeft < AUTOSCROLL_EDGE_PX) {
-      const depth = Math.min(1, Math.max(0, (AUTOSCROLL_EDGE_PX - distFromLeft) / AUTOSCROLL_EDGE_PX));
-      const speed = AUTOSCROLL_MIN_SPEED + depth * (AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED);
-      el.scrollLeft = Math.max(0, el.scrollLeft - speed);
-      centerRef.current = el.scrollLeft / step;
-    } else if (distFromRight < AUTOSCROLL_EDGE_PX) {
-      const depth = Math.min(1, Math.max(0, (AUTOSCROLL_EDGE_PX - distFromRight) / AUTOSCROLL_EDGE_PX));
-      const speed = AUTOSCROLL_MIN_SPEED + depth * (AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED);
-      el.scrollLeft = Math.min(el.scrollWidth - el.clientWidth, el.scrollLeft + speed);
-      centerRef.current = el.scrollLeft / step;
-    }
+    // ★以前は「端に近づいたら少しずつオートスクロールする」設計だった
+    // (virtualIndexの間接計算→端との距離判定→固定/加速速度でscrollLeftを
+    // 動かす)。この間接的な判定はgapのクランプ処理と噛み合わずズレがあり、
+    // 速度が指の実際の動きに追いつけないこともあって、「掴んだバインダー
+    // が画面外へ行って見失われる」「他のバインダーが追従して動いて
+    // 見えない」という報告が繰り返しあった。指の動きに完全に1:1で追従
+    // させる方式に作り替えた: ドラッグ開始時のscrollLeftを基準に、
+    // 指が動いた量(dragOffsetPxRef、右へ動くほど正)をそのまま
+    // scrollLeftへ加算する。これによりコンベア全体(=つまんでいない
+        // 他のバインダーも含めて)が指の動きにぴったり同期して連続的に
+    // スクロールするため、「指を右へ動かすと他のバインダーもスワイプ
+    // しているように動く」という見た目が自然に実現される(エッジ検出の
+    // ような特殊なしきい値処理が一切不要になった)。
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+    el.scrollLeft = Math.max(0, Math.min(maxScroll, drag.startScrollLeft + dragOffsetPxRef.current));
+    centerRef.current = el.scrollLeft / step;
 
     if (virtualIndex > drag.currentIndex + 0.5 && drag.currentIndex < orderRef.current.length - 1) {
       const next = orderRef.current.slice();
@@ -943,16 +934,24 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const beginDrag = (key: string, index: number, pointerId: number, clientX: number) => {
     haptic(10);
     const el = scrollRef.current;
-    if (el) { el.style.overflowX = "hidden"; el.style.touchAction = "none"; }
+    // ★scrollSnapType:"x mandatory"(下のJSXで常時指定)がドラッグ中も
+    // 有効なままだと、el.scrollLeftへ生のpx値を直接代入しても、ブラウザの
+    // スナップ機構が毎フレームそれを最寄りのアイテム境界へ勝手に
+    // 引き戻してしまう。1:1追従のはずが46px刻みでガクガク量子化され、
+    // 指を右へ動かしているのにscrollLeftの実測値が前フレームより
+    // 減ることさえあった(デバッグログで実測、境界の中間点をまたぐたびに
+    // 上下の境界の間で行ったり来たりしていた)。これが「他のバインダーが
+    // スワイプのように追従して見えない」報告の実体だった。ドラッグ中だけ
+    // スナップを無効化し、指を離した時に元へ戻す。
+    if (el) { el.style.overflowX = "hidden"; el.style.touchAction = "none"; el.style.scrollSnapType = "none"; }
     // 通常スクロール用のpollFrameループが(直前の慣性スクロールなどで)
     // まだ動いていた場合、ドラッグ用のループと衝突しないよう先に止める。
     if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     // press(押下中)からdrag(確定)への切り替えを明示する。以後の
     // onMove/onUpはpressRefが空であることを見てdragRef側の分岐に入る。
     pressRef.current = null;
-    dragRef.current = { key, pointerId, startClientX: clientX, startIndex: index, currentIndex: index };
+    dragRef.current = { key, pointerId, startClientX: clientX, startIndex: index, currentIndex: index, startScrollLeft: el?.scrollLeft ?? 0 };
     dragOffsetPxRef.current = 0;
-    pointerClientXRef.current = clientX;
     setDraggingKey(key);
     if (dragRafRef.current == null) dragRafRef.current = requestAnimationFrame(dragPollFrame);
   };
@@ -961,7 +960,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     dragRef.current = null;
     if (dragRafRef.current != null) { cancelAnimationFrame(dragRafRef.current); dragRafRef.current = null; }
     const el = scrollRef.current;
-    if (el) { el.style.overflowX = "auto"; el.style.touchAction = ""; }
+    if (el) { el.style.overflowX = "auto"; el.style.touchAction = ""; el.style.scrollSnapType = "x mandatory"; }
     setDraggingKey(null);
     onReorder?.(orderRef.current);
   };
@@ -1025,7 +1024,6 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       if (drag && drag.pointerId === pointerId) {
         ev.preventDefault();
         dragOffsetPxRef.current = ev.clientX - drag.startClientX;
-        pointerClientXRef.current = ev.clientX;
       }
     };
     const onUp = (ev: PointerEvent) => {
@@ -1070,6 +1068,30 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollLeft = 0;
+  }, [containerWidth]);
+
+  // ★上のエフェクトはcontainerWidthが確定した直後の1回だけscrollLeftを
+  // 0へ揃えるが、それでも入場アニメーション完了後にバインダーの位置が
+  // ずれるという報告があった。実機のみで起きるタイミング差(フォントの
+  // 読み込み完了に伴う再レイアウトなど、この環境のChromiumでは再現できない
+  // 要因を含む)が原因の可能性があるため、原因を1箇所に絞れないまま
+  // 対症療法にはなるが、入場アニメーションが確実に終わり切ったタイミング
+  // (最後のカードの遅延+持続時間より少し長め)でもう一度scrollLeftと
+  // centerRefを0へ強制的に揃え直す安全網を追加する。ユーザーがその間に
+  // 実際にスワイプを始めていた場合は上書きしないよう、dragRef/直近の
+  // スクロール量を見て「まだ何も操作していない」ときだけ適用する。
+  useEffect(() => {
+    if (containerWidth <= 0) return;
+    const timer = window.setTimeout(() => {
+      const el = scrollRef.current;
+      if (!el || dragRef.current) return;
+      if (Math.abs(el.scrollLeft) > 0.5) {
+        el.scrollLeft = 0;
+        centerRef.current = 0;
+        setTick((t) => t + 1);
+      }
+    }, 600);
+    return () => window.clearTimeout(timer);
   }, [containerWidth]);
 
   useEffect(() => () => {
@@ -1177,7 +1199,10 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   return (
     <div
       ref={scrollRef} onScroll={onScroll} className="no-scrollbar"
-      style={{ display: "flex", alignItems: "flex-end", overflowX: "auto", overflowAnchor: "none", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", padding: `${topPad}px 0 14px` }}
+      style={{
+        display: "flex", alignItems: "flex-end", overflowX: "auto", overflowAnchor: "none", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch",
+        padding: `${topPad}px 0 14px`, margin: "0 -16px",
+      }}
     >
       {/* containerWidth(=sidePadの元)が実測される前(0の間)はカードを
           一切描画しない。以前はcontainerWidth=0のままsidePad=0で最初の

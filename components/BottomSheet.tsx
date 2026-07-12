@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { PAPER, SOFT_SHADOW_LG } from "@/lib/constants";
 
 interface BottomSheetProps {
@@ -42,15 +42,30 @@ function useVisualViewport() {
 export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomSheetProps) {
   const [open, setOpen] = useState(false);
   const vv = useVisualViewport();
+  const closeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setOpen(true));
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // ★このコンポーネントが(呼び出し側の状態変化などで)閉じるアニメーション
+  // の途中で不意にアンマウントされた場合、下のsetTimeoutが生き残ったまま
+  // 後から古いonClose()を呼んでしまうことがあった。例: ゴールタブで
+  // バインダーを閉じた直後(220msのフェードアウト中)に同じバインダーを
+  // 再タップすると、呼び出し側のstateが「既に同じ値」のため変化なしと
+  // 判定されてしまい何も起きない(Reactは値が変わらないsetStateを無視する)
+  // まま、この生き残ったタイマーが後からonClose()を呼び、開き直したはずの
+  // シートを閉じてしまっていた。アンマウント時にタイマーを確実に破棄する。
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
   const requestClose = () => {
     setOpen(false);
-    setTimeout(onClose, 220);
+    closeTimerRef.current = window.setTimeout(onClose, 220);
   };
 
   // 中身は呼び出し側ごとに構造がバラバラ(フォームや複数カードのグリッドなど)

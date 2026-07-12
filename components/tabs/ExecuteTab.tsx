@@ -133,7 +133,7 @@ function HorizontalShelf({ title, badge, children }: { title: string; badge?: st
   return (
     <section style={{ marginBottom: 22 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>{title}</span>
+        <span style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E" }}>{title}</span>
         {badge && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: BLUE, borderRadius: 999, padding: "2px 7px" }}>{badge}</span>}
       </div>
       <div className="no-scrollbar" style={{ display: "flex", gap: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
@@ -274,16 +274,18 @@ function PlanEnvelope({ plan, selected, onOpen, onToggle }: { plan: RecommendedP
         </div>
       </div>
       {/* 開かなくてもその場で選べるよう、タップ即トグルの丸ボタンを独立して
-          置く(カード本体のタップ=開く、この丸だけ=選ぶ)。フラップの三角の
-          斜辺がちょうどここを横切るため、フラップの内側(上)には置かず、
-          必ずフラップより下の一段(平らな背景の上)に置いて、半透明の背景
-          越しに斜辺の継ぎ目が透けて見えないようにしている。 */}
+          置く(カード本体のタップ=開く、この丸だけ=選ぶ)。以前はフラップの
+          斜辺と重ならないようフラップより下の段に小さく置いていたが、
+          「大きくして右上へ、フラップより手前(上)に重ねて隠れないように」
+          という指定を受け、右上へ移動し一回り大きくした。zIndexはフラップ
+          (2)より高い4にして、フラップの三角の上に前面で乗る(=フラップに
+          隠れない)。 */}
       <button onClick={(e) => { e.stopPropagation(); haptic(6); onToggle(); }} aria-label={selected ? "選択から外す" : "このプランを追加"} style={{
-        position: "absolute", right: 10, top: `calc(${ENVELOPE_FLAP_PCT}% + 8px)`, width: 26, height: 26, borderRadius: "50%", zIndex: 3, border: "none", cursor: "pointer", padding: 0,
-        background: selected ? BLUE : "rgba(255,255,255,0.92)", color: selected ? PAPER : INK,
-        display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(23,23,21,0.25)",
+        position: "absolute", right: 10, top: 10, width: 34, height: 34, borderRadius: "50%", zIndex: 4, border: "none", cursor: "pointer", padding: 0,
+        background: selected ? BLUE : "rgba(255,255,255,0.95)", color: selected ? PAPER : INK,
+        display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(23,23,21,0.28)",
       }}>
-        {selected ? <Check size={13} strokeWidth={3} /> : <Plus size={14} strokeWidth={2.6} />}
+        {selected ? <Check size={18} strokeWidth={3} /> : <Plus size={19} strokeWidth={2.6} />}
       </button>
     </div>
   );
@@ -794,9 +796,8 @@ function killMomentumScroll(el: HTMLElement | null) {
   el.style.overflowY = "auto";
 }
 
-function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
+function ConfirmedStack({ items, onMarkDone, onDrop, onRegister }: {
   items: ExecItem[];
-  dateLabel: string;
   onMarkDone: (item: ExecItem) => void;
   onDrop: (item: ExecItem) => void;
   onRegister: () => void;
@@ -852,7 +853,8 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
         }}
       >
         <div style={{ width: "100%", maxWidth: CONFIRMED_MAX_WIDTH, margin: "0 auto", padding: `6px 16px calc(${NAV_OFFSET} + 92px)` }}>
-          <div style={{ fontSize: 10, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "8px 2px 16px" }}>{dateLabel} ・ {items.length}件</div>
+          {/* 日付ラベルはここ(バインダー左上)から撤去し、「選び直す」と同じ
+              行の右端へ移した(ExecuteTab本体側)。 */}
           {/* カード自身はスタック先の座標へ移動するだけで、回転はさせない。
               「閉じる」動きはカードではなく、常に先頭カードの背後・手前にいる
               裏表紙(BinderBackPanel)・表表紙(BinderFrontCover)が担う。
@@ -1251,13 +1253,20 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
       {!showMap && magazine && (
         // 確定後は選んだカードが縦一列に大きく並ぶリストになり、その上に
         // 開いたバインダーが覗く。「選び直す」で地図に戻れるのは以前と同じ。
-        <button onClick={() => {
-          setSelection({ itemIds: [...magazine.itemIds] });
-          setMapMode(true);
-        }} style={backChipStyle}>
-          <ArrowLeft size={13} strokeWidth={2.4} />
-          選び直す
-        </button>
+        // 日付はバインダー左上ではなく、この「選び直す」と同じ行の右端に置く
+        // (ユーザー指定、ピルにはしない素のテキスト)。
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <button onClick={() => {
+            setSelection({ itemIds: [...magazine.itemIds] });
+            setMapMode(true);
+          }} style={backChipStyle}>
+            <ArrowLeft size={13} strokeWidth={2.4} />
+            選び直す
+          </button>
+          <span style={{ fontSize: 11, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700 }}>
+            {dayInfo(magazine.decidedAt).label} ・ {magItems.length}件
+          </span>
+        </div>
       )}
 
       {showMap ? (
@@ -1276,7 +1285,6 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
       ) : magazine && (
         <ConfirmedStack
           items={magItems}
-          dateLabel={dayInfo(magazine.decidedAt).label}
           onMarkDone={(item) => markDoneInMagazine(item.id)}
           onDrop={(item) => removeFromMagazine(item.id)}
           onRegister={registerBinder}

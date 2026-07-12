@@ -263,7 +263,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   // 棚(行)のレイアウトは全行共通: 小さなラベル+BinderCoverflowRow。
   const shelfRow = (title: string, shelfKey: string, items: BinderShelfItem[]) => items.length > 0 && (
     <section style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>{title}</div>
+      <div style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>{title}</div>
       <BinderCoverflowRow items={items} initialOrder={appState.shelfOrder?.[shelfKey]} onReorder={(order) => reorderShelf(shelfKey, order)} />
     </section>
   );
@@ -283,7 +283,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
         {pendingItems.length > 0 && (
           <section style={{ marginBottom: 26 }}>
-            <div style={{ fontSize: 9, letterSpacing: "0.22em", color: RUST, marginBottom: 10 }}>行きましたか？</div>
+            <div style={{ fontSize: 11, letterSpacing: "0.22em", color: RUST, marginBottom: 10 }}>行きましたか？</div>
             {pendingItems.map((i) => (
               <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#FBF3EC", border: "1px solid rgba(168,85,47,0.25)", borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
                 <div style={{ flex: 1, fontFamily: SERIF, fontWeight: 700, fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.title}</div>
@@ -294,11 +294,10 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
           </section>
         )}
 
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", margin: "8px 2px 18px", paddingTop: pendingItems.length > 0 ? 20 : 0, borderTop: pendingItems.length > 0 ? `2px solid ${INK}` : "none" }}>
-          <div>
-            <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 17 }}>実行済み</div>
-            <div style={{ fontSize: 9, letterSpacing: "0.24em", color: "#9A988E", marginTop: 3 }}>DONE</div>
-          </div>
+        {/* 「実行済み/DONE」の見出しは削除(Masthead の「アーカイブ」だけで
+            十分というユーザー指定でシンプルにした)。リスト/日付の切替だけを
+            右寄せで残す。 */}
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", margin: "8px 2px 18px", paddingTop: pendingItems.length > 0 ? 20 : 0, borderTop: pendingItems.length > 0 ? `2px solid ${INK}` : "none" }}>
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
             {([{ id: "list" as const, label: "リスト" }, { id: "date" as const, label: "日付" }]).map((m) => (
               <button key={m.id} onClick={() => setViewMode(m.id)} style={{
@@ -331,7 +330,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
                 手動トグルは持たない(状態そのものが手がかりだから)。 */}
             {allWishesDesc.length > 0 && (
               <section style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>ウィッシュ</div>
+                <div style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>ウィッシュ</div>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {allWishesDesc.map((w) => {
                     const bound = isWishBound(w, appState.items);
@@ -364,7 +363,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
             ) : (
               monthRows.map((mg) => (
                 <section key={mg.label} style={{ marginBottom: 24 }}>
-                  <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>{mg.label}</div>
+                  <div style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>{mg.label}</div>
                   <BinderCoverflowRow items={mg.items} />
                 </section>
               ))

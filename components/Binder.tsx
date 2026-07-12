@@ -27,6 +27,14 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { BG, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { haptic, shade } from "@/lib/helpers";
 
+// ドラッグ中だけ、html全体のtouch-actionを切り替えるためのヘルパー。
+// 指が棚の外へずれても、ブラウザが縦スクロール等でポインタを奪って
+// ドラッグを中断(pointercancel)しないようにする(コンポーネント本体から
+// document直下のグローバルを直接いじるとlintに弾かれるため関数に切り出す)。
+function setRootTouchAction(value: string) {
+  if (typeof document !== "undefined") document.documentElement.style.touchAction = value;
+}
+
 // ---- デザインコード ---------------------------------------------------------
 //
 // 「全体としての統一感」と「3種それぞれの個性」を同時に満たすため、
@@ -465,17 +473,18 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
   }
 
   // モノ専用(stamp)。他4種と同じく「専用の帯」を持たせた構成。geo/media
-  // が帯を上端に置くのに対し、モノは下端に置く(既に上端(geo/media)・
-  // 左端(side)・全面(target)が埋まっているため、残る素直な軸として下端を
-  // 割り当てた)。帯の中身(図形)は持たず、無地の単色帯だけにする
-  // (ユーザー指定)。帯の太さはジョウホウ(media)と揃えてMEDIA_BAND(26%)。
-  // タイトル側は白地なので、文字色はgeo/mediaと同じINK(デフォルト)のまま。
+  // モノは無地の単色帯を上端と下端の両方に置く(ユーザー指定で上にも同じ
+  // 帯を追加)。帯の太さはどちらもジョウホウ(media)と揃えてMEDIA_BAND(26%)。
+  // 図形は持たず、色(巻数だけで決まるthingVolumeAccent)と上下対称の帯構成
+  // そのものがモノという種別の印になる。タイトル側は白地なので、文字色は
+  // geo/mediaと同じINK(デフォルト)のまま。
   if (accent?.kind === "stamp") {
     return (
       <div style={{
         position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: PAPER, overflow: "hidden",
         borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
       }}>
+        <div style={{ flex: `0 0 ${MEDIA_BAND}`, flexShrink: 0, background: accent.color }} />
         <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={accent.color} />
         <div style={{ flex: `0 0 ${MEDIA_BAND}`, flexShrink: 0, background: accent.color }} />
       </div>
@@ -892,7 +901,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const LONG_PRESS_MS = 450;
   const MOVE_CANCEL_PX = 10;
   const pressRef = useRef<{ key: string; index: number; pointerId: number; clientX: number; clientY: number; timer: number } | null>(null);
-  const dragRef = useRef<{ key: string; pointerId: number; startClientX: number; startIndex: number; currentIndex: number; rowLeft: number; grabAdjust: number } | null>(null);
+  const dragRef = useRef<{ key: string; pointerId: number; startIndex: number; currentIndex: number; rowLeft: number; grabAdjust: number } | null>(null);
   // ドラッグ中の指のスクリーンX(生値、onMoveで毎回更新)と、そこから
   // 算出した「掴んだバインダーが今いるべき連続位置(virtualIndex)」。
   // 描画側はこのvirtualIndexだけを見て掴んだカードの位置を決める。
@@ -914,28 +923,39 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   // 画面端まで指を持っていくとそれ以上スクロールできず、遠くの候補まで
   // 手繰り寄せられないという問題があった。掴んで動かした「方向」へ一定速度で
   // 連続的にスクロールする方式にする: 掴んだ位置からの変位がデッドゾーンを
-  // 超えたら、短い助走(RAMP)を経て最大速度(MAX)に達し、以後は指を止めても
+  // 超えたら、助走(RAMP)を経て最大速度(MAX)に達し、以後は指を止めても
   // その方向へ流れ続ける。指を中央側へ戻せば止まる。
-  const AUTOSCROLL_DEADZONE = 22;
-  const AUTOSCROLL_RAMP = 90;
-  const AUTOSCROLL_MAX = 16;
+  // ★感度調整: 「少し動かしただけでかなり速く動いて制御できない」という
+  // 指摘を受け、デッドゾーンを広げ(小さな移動では動かない)、助走を大幅に
+  // 延ばし(指の変位が大きいほど徐々に速くなる)、最大速度も下げた。これで
+  // 小さな移動ではゆっくり、意図的に大きく動かした時だけ速く動く。
+  const AUTOSCROLL_DEADZONE = 42;
+  const AUTOSCROLL_RAMP = 120;
+  const AUTOSCROLL_MAX = 9;
 
   const dragPollFrame = () => {
     const drag = dragRef.current;
     const el = scrollRef.current;
     if (!drag || !el) { dragRafRef.current = null; return; }
 
-    // 掴んで動かした「方向」へ一定速度でスクロールする。指の位置に比例
-    // (1:1)させると画面端で頭打ちになるため、変位の符号(方向)から速度を
-    // 決め、その方向へ連続的に流し続ける(指を止めても流れ続け、中央側へ
-    // 戻すと止まる)。これにより指を画面端まで持っていっても、そこから
-    // 先の候補までスクロールで手繰り寄せられる。
-    const off = pointerClientXRef.current - drag.startClientX;
-    const mag = Math.abs(off);
+    // スクロール速度は「指が行の中央からどれだけ右/左に寄っているか」で
+    // 決める。以前は掴んだ位置(startClientX)からの変位で決めていたが、
+    // それだと一度右へ大きく動かした後に左へ戻そうとしても、指が掴んだ点
+    // より右側にいる限りずっと右へ流れ続け、「右に動かしてから左に行こうと
+    // しても左にスライドしない」という不具合になっていた。行の中央を基準に
+    // すると、指を右半分に置けば右へ、左半分に置けば左へ、と即座に反転できる
+    // (ユーザーの「右側にスライドさせたら右へ流れる」という表現とも一致)。
+    // 中央付近のデッドゾーンでは止まる(細かい位置合わせ用)。速度は中央から
+    // 離れるほど助走(RAMP)で徐々に上がり最大(MAX)で頭打ち。感度が高すぎる
+    // という指摘を受け、デッドゾーンを広く・助走を長く・最大速度を低くして、
+    // 端に寄せた時だけ速く動くようにしてある。
+    const centerX = drag.rowLeft + el.clientWidth / 2;
+    const fromCenter = pointerClientXRef.current - centerX;
+    const mag = Math.abs(fromCenter);
     let v = 0;
     if (mag > AUTOSCROLL_DEADZONE) {
       const ramp = Math.min(1, (mag - AUTOSCROLL_DEADZONE) / AUTOSCROLL_RAMP);
-      v = Math.sign(off) * AUTOSCROLL_MAX * ramp;
+      v = Math.sign(fromCenter) * AUTOSCROLL_MAX * ramp;
     }
     const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
     el.scrollLeft = Math.max(0, Math.min(maxScroll, el.scrollLeft + v));
@@ -985,6 +1005,14 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     // スワイプのように追従して見えない」報告の実体だった。ドラッグ中だけ
     // スナップを無効化し、指を離した時に元へ戻す。
     if (el) { el.style.overflowX = "hidden"; el.style.touchAction = "none"; el.style.scrollSnapType = "none"; }
+    // ★ドラッグ中に指が棚(この行)の外へずれたり画面端へ寄ったりすると、
+    // その位置の要素(外側のタブスクロール等)が縦スクロールを引き取ろうとし、
+    // ブラウザがこちらのポインタをpointercancelで奪ってしまう→ドラッグが
+    // 指を離す前に途中で終わる、という不具合があった(ユーザー指摘)。
+    // ドラッグ中はhtml全体のtouch-actionをnoneにして、指がどこにあっても
+    // ブラウザが勝手にスクロール/ジェスチャーを開始できないようにする。
+    // これでポインタが奪われず、指を離す(pointerup)まで確実に継続する。
+    setRootTouchAction("none");
     // 通常スクロール用のpollFrameループが(直前の慣性スクロールなどで)
     // まだ動いていた場合、ドラッグ用のループと衝突しないよう先に止める。
     if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -1000,7 +1028,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     pointerClientXRef.current = clientX;
     dragVirtualIndexRef.current = index;
     dragOrderRef.current = orderRef.current.slice();
-    dragRef.current = { key, pointerId, startClientX: clientX, startIndex: index, currentIndex: index, rowLeft, grabAdjust };
+    dragRef.current = { key, pointerId, startIndex: index, currentIndex: index, rowLeft, grabAdjust };
     setDraggingKey(key);
     if (dragRafRef.current == null) dragRafRef.current = requestAnimationFrame(dragPollFrame);
   };
@@ -1010,6 +1038,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     if (dragRafRef.current != null) { cancelAnimationFrame(dragRafRef.current); dragRafRef.current = null; }
     const el = scrollRef.current;
     if (el) { el.style.overflowX = "auto"; el.style.touchAction = ""; el.style.scrollSnapType = "x mandatory"; }
+    setRootTouchAction("");
     setDraggingKey(null);
     // 永続化の土台も同期的なdragOrderRef(=画面に見えている最新の並び)にする。
     // orderRef(Reactのstate)は再描画が追いつかず古い可能性があるため。

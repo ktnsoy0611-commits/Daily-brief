@@ -208,7 +208,7 @@ function StackSection({ title, count, children }: { title: string; count: number
   return (
     <section style={{ marginBottom: 34 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
-        <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E" }}>{title}</span>
+        <span style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E" }}>{title}</span>
         <span style={{ fontSize: 10, color: "#9A988E" }}>{count}件</span>
       </div>
       {children}

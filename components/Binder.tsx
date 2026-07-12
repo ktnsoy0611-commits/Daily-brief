@@ -24,7 +24,7 @@
 //     スワイプ中は棚全体がわずかにパカッと開く一瞬のアニメーションが付く。
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BG, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { shade } from "@/lib/helpers";
 import type { ItemKind } from "@/lib/types";
 
@@ -448,23 +448,40 @@ function BinderSpineFace({ accent }: { accent: Accent }) {
 // 自体と角丸の組み合わせが原因と判断した)ため、角丸を諦めて素の四角に
 // 戻す対応を取った。
 //
-// ★しかし実機スクショ(2026-07-12)で判明: 「rgba(0,0,0,0.18)背景に重ねる
+// ★実機スクショ(2026-07-12)で判明: 「rgba(0,0,0,0.18)を背景に重ねる
 // だけ」の実装は、この面の裏に何も無い(3D空間上ページの背景色がそのまま
 // 透けて見える)ため、想定していた「暗い陰」ではなく、生成り地を薄く
 // 灰色がからせただけの明るいグレーの帯として描画されていた。角丸の表紙
 // (濃い色)のすぐ隣に、色味の違う無関係な灰色の板が四角いまま突き出て
 // 見えるため、「四角い箱に丸いテクスチャを貼り付けただけ」に見える、と
-// いうユーザー指摘の実体はこれだった。対応として、この面を透明な影では
-// なく、表紙・背表紙と同じアクセントカラーを土台にした不透明な面にした
-// (BinderSpineFaceは元々アクセントカラーで塗っており、無地の側面だけが
-// 「色を持たない」例外だった)。これにより表紙・背表紙・側面が同じ色
-// ファミリーで繋がり、側面は独立した灰色の板ではなく「この色のバインダー
-// の厚み」として読めるようになる。形状(素の四角、角丸なし)は変更して
-// いないため、§5で対応した槍状の影の不具合を再発させる要素はない。
+// いうユーザー指摘につながっていた。まず表紙・背表紙と同じアクセント
+// カラーを土台にした不透明な面にし(色が独立して見える問題は解決)、
+// さらにユーザーとの認識合わせにより次の1点が残っていることが判明した:
+// この面は表紙の角丸が始まる位置(上下端からCOVER_RADIUS分)でも高さ
+// いっぱいの四角のままなので、表紙の輪郭が丸くカーブして後退した所でも
+// この面だけが直角のまま飛び出て見える。
+//
+// 「角丸に合わせてこの面をマスクし、はみ出す部分は背景を透過させる」の
+// 実現方法として、border-radius(または同系のclip-path)をこの3D回転
+// (rotateY 90度)された面に適用するのは避ける: §5で全く同じ面に
+// border-radiusを与えたところ、この深い3D回転との組み合わせで「槍のように
+// 尖った影」に描画が崩れるChromium側の不具合が起きており、境界のクリップ
+// 系プロパティ(border-radius/overflow/clip-pathはいずれもクリップ実装)を
+// 3D変形されたレイヤーに使うこと自体がこのバグの引き金だったため。
+// 代わりに、クリップではなく単純なアルファ合成のグラデーションだけで
+// 同じ見た目を作る: 上下端をページ背景色(BG)で不透明に塗り、
+// COVER_RADIUS分だけ內側で透明へフェードさせる。これにより上下の角の
+// 領域だけこの面が「消えて」背景が見えるようになり、border-radius系の
+// プロパティを一切使わずに角丸をマスクしたのと同じ結果が得られる。
+const EDGE_FADE = COVER_RADIUS + 4;
 function BinderEdgeFace({ color }: { color: string }) {
   return (
     <div style={{ position: "absolute", inset: 0, background: color }}>
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,0.34), rgba(0,0,0,0.08))" }} />
+      <div style={{
+        position: "absolute", inset: 0,
+        background: `linear-gradient(180deg, ${BG} 0, transparent ${EDGE_FADE}px, transparent calc(100% - ${EDGE_FADE}px), ${BG} 100%)`,
+      }} />
     </div>
   );
 }

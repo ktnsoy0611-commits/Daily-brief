@@ -195,7 +195,7 @@ export const KIND_ACCENT: Record<"movie" | "exhibition" | "live" | "book" | "alb
 
 // モノ専用のデザインコード。バショ・ジョウホウ・タイケンはどれも「個体
 // (エリア名・kind)ごとにハッシュ/固定で色や図形が決まる」設計だが、モノは
-// ユーザー指定により逆の発想にしている: 図形は固定(StampMotif参照)で
+// ユーザー指定により逆の発想にしている: 意匠は固定(下端の無地の帯だけ)で
 // 個性を出さず、「何巻目か」だけを軸に色を変える。買った物が積み上がって
 // THING_ITEMS_PER_VOLUMEを超えると、同じ意匠のまま色だけ変わる次の巻へ
 // 自動的に分かれる(RecordsTab.tsx参照)。
@@ -217,41 +217,14 @@ function TargetMotif({ color = PAPER }: { color?: string }) {
   );
 }
 
-// モノ専用。旧版(チェックマーク・円3つの組み合わせ)はどちらも「白い
-// 余白の中に図形が浮いているだけ」で、target=全面/geo=上端の広い帯/
-// media=上端の細い帯/side=左端の帯、という他4種が必ず持っている
-// 「専用の帯(ゾーン)」をモノだけが持たない、という体系そのものの
-// 欠落が破綻の一因だった(帯の位置を使い切ると: 上端(geo/media)・
-// 左端(side)・全面(target)の3通りが埋まっており、残る素直な軸は
-// 下端だけ)。モノには下端の帯(STAMP_BAND)を新設し、そこにPAPER色の
-// 図形を並べる。図形の並べ方も「2x2グリッド(geo)」「ひとつだけ(media)」
-// 「縦の総柄(side)」に続く4つ目のバリエーションとして「横一列」を
-// 割り当てている。個体ごとの違いは持たせず(THING_VOLUME_HUESの通り
-// 色は巻数だけで決まる)、図形の並びそのものが「モノ」という種別の
-// 印になるようにしている。
-const STAMP_BAND = "30%";
-// ★SideSquareCell(帯の高さ÷個数、で縦の総柄が帯からはみ出さないよう
-// 保証した)と同じ考え方だが、こちらは横一列に並ぶため制約する軸が逆
-// (縦に積むなら高さの合計、横に並べるなら幅の合計が器を超えないことが
-// 重要)。flex:1でセル同士が幅を均等に分け合い、aspectRatio:1/1でその
-// 幅から高さを導く。3個分の幅の合計は必ず帯の幅(=カード幅)ぴったりに
-// 収まるため、高さも自動的に帯の高さ以下になる(帯の方が幅より高い
-// 比率のため)。maxHeightは万一の保険。
-function StampSquareCell({ shape }: { shape: PlaneShape }) {
-  return (
-    <div style={{ position: "relative", flex: "1 1 0", aspectRatio: "1 / 1", maxHeight: "100%", overflow: "hidden" }}>
-      <PlaneFill shape={shape} color={PAPER} />
-    </div>
-  );
-}
-function StampMotif() {
-  const shapes: PlaneShape[] = ["quarterBL", "circle", "quarterBR"];
-  return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "10%", padding: "0 14%" }}>
-      {shapes.map((shape, i) => <StampSquareCell key={i} shape={shape} />)}
-    </div>
-  );
-}
+// モノ専用。旧版(チェックマーク・円3つの組み合わせ・横一列の図形)は
+// いずれも図形を載せていたが、ユーザー指定により「下端の帯だけ、図形は
+// 無し」というもっとも簡素な構成に決着した。target=全面/geo=上端の
+// 広い帯/media=上端の細い帯/side=左端の帯、という他4種が必ず持つ
+// 「専用の帯(ゾーン)」を、モノは「下端の帯」として持つ。帯の太さは
+// ジョウホウ(media)と揃えて同じ26%(=MEDIA_BAND)にする。図形を持たない
+// 分、色(巻数だけで決まるthingVolumeAccent)と帯の位置(下端)そのものが
+// モノという種別の印になる。
 
 // タイケン専用: 帯を上端ではなく左端(蝶番側)に、横向きではなく縦向きに
 // 配置する。target(全面)・media(上端の細い横帯)・geo(上端の広い横帯)は
@@ -491,12 +464,12 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
     );
   }
 
-  // モノ専用(stamp)。他4種と同じく「専用の帯」を持たせた構成に作り
-  // 直した(StampMotifのコメント参照)。geo/mediaが帯を上端に置くのに
-  // 対し、モノは下端に置く(既に上端(geo/media)・左端(side)・全面
-  // (target)が埋まっているため、残る素直な軸として下端を割り当てた)。
-  // 帯の中はPAPER色の図形+accent色の地、それ以外(タイトル側)は白地
-  // なので、文字色はgeo/mediaと同じINK(デフォルト)のまま使う。
+  // モノ専用(stamp)。他4種と同じく「専用の帯」を持たせた構成。geo/media
+  // が帯を上端に置くのに対し、モノは下端に置く(既に上端(geo/media)・
+  // 左端(side)・全面(target)が埋まっているため、残る素直な軸として下端を
+  // 割り当てた)。帯の中身(図形)は持たず、無地の単色帯だけにする
+  // (ユーザー指定)。帯の太さはジョウホウ(media)と揃えてMEDIA_BAND(26%)。
+  // タイトル側は白地なので、文字色はgeo/mediaと同じINK(デフォルト)のまま。
   if (accent?.kind === "stamp") {
     return (
       <div style={{
@@ -504,9 +477,7 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
         borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
       }}>
         <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={accent.color} />
-        <div style={{ flex: `0 0 ${STAMP_BAND}`, position: "relative", flexShrink: 0, background: accent.color }}>
-          <StampMotif />
-        </div>
+        <div style={{ flex: `0 0 ${MEDIA_BAND}`, flexShrink: 0, background: accent.color }} />
       </div>
     );
   }
@@ -877,6 +848,21 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const idleFramesRef = useRef(0);
   const step = pitch;
 
+  // ★scroll-snapは「入場アニメーションが終わった直後にバインダーが横へ
+  // スライドして初期位置へ戻る」ドリフトの原因になっていた。sidePadは
+  // 数学的にはscrollLeft=0が先頭の正しいスナップ位置になるよう設計して
+  // あるが、containerWidthが浮動小数点でsidePadも端数を持つため、実機の
+  // ピクセル丸めでレイアウト計算とブラウザのスナップ判定がわずかに食い
+  // 違い、レイアウト確定後のどこかでブラウザ自身がscrollLeftを「本来の
+  // スナップ位置」へ勝手に補正することがあった(それがドリフトの実体)。
+  // 初期表示中はscroll-snap自体を無効にし、ユーザーが最初に指で触れた
+  // 瞬間に初めて有効化する。こうすると入場アニメーションや初期の
+  // レイアウト確定の間はスナップ補正が一切起こらず、ユーザーが触る頃には
+  // 位置がscrollLeft=0で完全に安定しているため、そこでスナップを
+  // 有効化しても動かない。スワイプで送る時のスナップ(中央へ吸着)は
+  // 最初のpointerdown以降は従来どおり効く。
+  const [snapEnabled, setSnapEnabled] = useState(false);
+
   // ---- 長押しドラッグでの並べ替え ----
   // itemsの並び自体は呼び出し側(RecordsTab)が毎回「自然な順序」で作り
   // 直すため、ユーザーが並べ替えた結果はitems本体ではなくkeyの配列
@@ -906,47 +892,82 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const LONG_PRESS_MS = 450;
   const MOVE_CANCEL_PX = 10;
   const pressRef = useRef<{ key: string; index: number; pointerId: number; clientX: number; clientY: number; timer: number } | null>(null);
-  const dragRef = useRef<{ key: string; pointerId: number; startClientX: number; startIndex: number; currentIndex: number; startScrollLeft: number } | null>(null);
-  const dragOffsetPxRef = useRef(0);
+  const dragRef = useRef<{ key: string; pointerId: number; startClientX: number; startIndex: number; currentIndex: number; rowLeft: number; grabAdjust: number } | null>(null);
+  // ドラッグ中の指のスクリーンX(生値、onMoveで毎回更新)と、そこから
+  // 算出した「掴んだバインダーが今いるべき連続位置(virtualIndex)」。
+  // 描画側はこのvirtualIndexだけを見て掴んだカードの位置を決める。
+  const pointerClientXRef = useRef(0);
+  const dragVirtualIndexRef = useRef(0);
   const dragRafRef = useRef<number | null>(null);
+  // ★ドラッグ中の並び順の「唯一の同期的な真実」。swapのたびにこのrefの配列を
+  // その場で書き換え、React state(order)へはそのコピーを流す。以前は
+  // orderRef.current(=Reactのstate)を毎フレームのswapの土台にしていたが、
+  // オートスクロールで1フレームに何度もvirtualIndexが進むと、Reactの再描画
+  // (非同期)が追いつかず、まだ古いorderのままの土台に対して次のswapを
+  // かけてしまい、最後のsetOrderが古い土台の結果で上書きする、という
+  // 競合が起きていた(掴んだバインダーが実際には全く動かず0番のまま、
+  // という不具合の実体)。同期的なrefを土台にすることでこの競合を無くす。
+  const dragOrderRef = useRef<string[]>([]);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
+
+  // ドラッグ中のオートスクロール。指の移動量ぶんスクロールする(1:1)方式は
+  // 画面端まで指を持っていくとそれ以上スクロールできず、遠くの候補まで
+  // 手繰り寄せられないという問題があった。掴んで動かした「方向」へ一定速度で
+  // 連続的にスクロールする方式にする: 掴んだ位置からの変位がデッドゾーンを
+  // 超えたら、短い助走(RAMP)を経て最大速度(MAX)に達し、以後は指を止めても
+  // その方向へ流れ続ける。指を中央側へ戻せば止まる。
+  const AUTOSCROLL_DEADZONE = 22;
+  const AUTOSCROLL_RAMP = 90;
+  const AUTOSCROLL_MAX = 16;
 
   const dragPollFrame = () => {
     const drag = dragRef.current;
     const el = scrollRef.current;
     if (!drag || !el) { dragRafRef.current = null; return; }
-    const virtualIndex = drag.startIndex + dragOffsetPxRef.current / step;
 
-    // ★以前は「端に近づいたら少しずつオートスクロールする」設計だった
-    // (virtualIndexの間接計算→端との距離判定→固定/加速速度でscrollLeftを
-    // 動かす)。この間接的な判定はgapのクランプ処理と噛み合わずズレがあり、
-    // 速度が指の実際の動きに追いつけないこともあって、「掴んだバインダー
-    // が画面外へ行って見失われる」「他のバインダーが追従して動いて
-    // 見えない」という報告が繰り返しあった。指の動きに完全に1:1で追従
-    // させる方式に作り替えた: ドラッグ開始時のscrollLeftを基準に、
-    // 指が動いた量(dragOffsetPxRef、右へ動くほど正)をそのまま
-    // scrollLeftへ加算する。これによりコンベア全体(=つまんでいない
-        // 他のバインダーも含めて)が指の動きにぴったり同期して連続的に
-    // スクロールするため、「指を右へ動かすと他のバインダーもスワイプ
-    // しているように動く」という見た目が自然に実現される(エッジ検出の
-    // ような特殊なしきい値処理が一切不要になった)。
+    // 掴んで動かした「方向」へ一定速度でスクロールする。指の位置に比例
+    // (1:1)させると画面端で頭打ちになるため、変位の符号(方向)から速度を
+    // 決め、その方向へ連続的に流し続ける(指を止めても流れ続け、中央側へ
+    // 戻すと止まる)。これにより指を画面端まで持っていっても、そこから
+    // 先の候補までスクロールで手繰り寄せられる。
+    const off = pointerClientXRef.current - drag.startClientX;
+    const mag = Math.abs(off);
+    let v = 0;
+    if (mag > AUTOSCROLL_DEADZONE) {
+      const ramp = Math.min(1, (mag - AUTOSCROLL_DEADZONE) / AUTOSCROLL_RAMP);
+      v = Math.sign(off) * AUTOSCROLL_MAX * ramp;
+    }
     const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
-    el.scrollLeft = Math.max(0, Math.min(maxScroll, drag.startScrollLeft + dragOffsetPxRef.current));
+    el.scrollLeft = Math.max(0, Math.min(maxScroll, el.scrollLeft + v));
     centerRef.current = el.scrollLeft / step;
 
-    if (virtualIndex > drag.currentIndex + 0.5 && drag.currentIndex < orderRef.current.length - 1) {
-      const next = orderRef.current.slice();
+    // 掴んだバインダーは指のスクリーン位置に貼り付いたまま、下のコンベアが
+    // スクロールしていく。指の下にあたる連続スロット位置(virtualIndex)を、
+    // スクロール込みの実座標(contentX)から算出する。grabAdjustは掴んだ瞬間に
+    // 位置が飛ばないための補正(beginDrag参照)。
+    const contentX = pointerClientXRef.current - drag.rowLeft + el.scrollLeft;
+    const virtualIndex = (contentX - sidePad) / step - 0.5 + drag.grabAdjust;
+    dragVirtualIndexRef.current = virtualIndex;
+
+    // swapは同期的なdragOrderRefを土台に、その場で書き換える。1フレームで
+    // virtualIndexが複数スロットぶん進んだ場合(オートスクロールが速い時)も
+    // whileで追いつくまで繰り返す。土台が常に最新なので、何回swapしても
+    // 競合しない。
+    const working = dragOrderRef.current;
+    let changed = false;
+    while (virtualIndex > drag.currentIndex + 0.5 && drag.currentIndex < working.length - 1) {
       const a = drag.currentIndex, b = drag.currentIndex + 1;
-      [next[a], next[b]] = [next[b], next[a]];
+      [working[a], working[b]] = [working[b], working[a]];
       drag.currentIndex = b;
-      setOrder(next);
-    } else if (virtualIndex < drag.currentIndex - 0.5 && drag.currentIndex > 0) {
-      const next = orderRef.current.slice();
-      const a = drag.currentIndex, b = drag.currentIndex - 1;
-      [next[a], next[b]] = [next[b], next[a]];
-      drag.currentIndex = b;
-      setOrder(next);
+      changed = true;
     }
+    while (virtualIndex < drag.currentIndex - 0.5 && drag.currentIndex > 0) {
+      const a = drag.currentIndex, b = drag.currentIndex - 1;
+      [working[a], working[b]] = [working[b], working[a]];
+      drag.currentIndex = b;
+      changed = true;
+    }
+    if (changed) setOrder(working.slice());
     setTick((t) => t + 1);
     dragRafRef.current = requestAnimationFrame(dragPollFrame);
   };
@@ -970,8 +991,16 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     // press(押下中)からdrag(確定)への切り替えを明示する。以後の
     // onMove/onUpはpressRefが空であることを見てdragRef側の分岐に入る。
     pressRef.current = null;
-    dragRef.current = { key, pointerId, startClientX: clientX, startIndex: index, currentIndex: index, startScrollLeft: el?.scrollLeft ?? 0 };
-    dragOffsetPxRef.current = 0;
+    const rowLeft = el ? el.getBoundingClientRect().left : 0;
+    const startScrollLeft = el?.scrollLeft ?? 0;
+    // 掴んだ瞬間、指がバインダーの中心/端どこを掴んだかに関わらず位置が
+    // 飛ばないよう、この瞬間のvirtualIndexがちょうどindexになる補正値を持つ。
+    const startContentX = clientX - rowLeft + startScrollLeft;
+    const grabAdjust = index - ((startContentX - sidePad) / step - 0.5);
+    pointerClientXRef.current = clientX;
+    dragVirtualIndexRef.current = index;
+    dragOrderRef.current = orderRef.current.slice();
+    dragRef.current = { key, pointerId, startClientX: clientX, startIndex: index, currentIndex: index, rowLeft, grabAdjust };
     setDraggingKey(key);
     if (dragRafRef.current == null) dragRafRef.current = requestAnimationFrame(dragPollFrame);
   };
@@ -982,7 +1011,10 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     const el = scrollRef.current;
     if (el) { el.style.overflowX = "auto"; el.style.touchAction = ""; el.style.scrollSnapType = "x mandatory"; }
     setDraggingKey(null);
-    onReorder?.(orderRef.current);
+    // 永続化の土台も同期的なdragOrderRef(=画面に見えている最新の並び)にする。
+    // orderRef(Reactのstate)は再描画が追いつかず古い可能性があるため。
+    setOrder(dragOrderRef.current.slice());
+    onReorder?.(dragOrderRef.current);
   };
 
   // ★以前はsetPointerCaptureで「指がどこへ動いても最初の要素がイベントを
@@ -1043,7 +1075,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       const drag = dragRef.current;
       if (drag && drag.pointerId === pointerId) {
         ev.preventDefault();
-        dragOffsetPxRef.current = ev.clientX - drag.startClientX;
+        pointerClientXRef.current = ev.clientX;
       }
     };
     const onUp = (ev: PointerEvent) => {
@@ -1212,8 +1244,13 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   return (
     <div
       ref={scrollRef} onScroll={onScroll} className="no-scrollbar"
+      // 最初にユーザーが触れた瞬間にだけscroll-snapを有効化する(初期表示中の
+      // ブラウザによるスナップ補正=ドリフトを断つため。上のsnapEnabled参照)。
+      // 何度呼んでも同値なので2回目以降のsetStateはReactが無視する。
+      onPointerDown={() => setSnapEnabled(true)}
       style={{
-        display: "flex", alignItems: "flex-end", overflowX: "auto", overflowAnchor: "none", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch",
+        display: "flex", alignItems: "flex-end", overflowX: "auto", overflowAnchor: "none",
+        scrollSnapType: snapEnabled ? "x mandatory" : "none", WebkitOverflowScrolling: "touch",
         padding: `${topPad}px 0 14px`, margin: "0 -16px",
       }}
     >
@@ -1241,16 +1278,16 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
         // フォーカス中(d=0)は0、|d|>=1では固定のgapだけシフトし、その間は
         // 滑らかに補間する。
         const spread = gap * Math.max(-1, Math.min(1, d));
-        // 長押しドラッグでつまみ上げている本人だけ、指の生の移動量
-        // (dragOffsetPxRef)から「本来あるべき連続的な位置(virtualIndex)」を
-        // 割り出し、現在のスロットindex(i、並べ替えのswapで離散的に飛ぶ)
-        // との差分をpx単位の追加オフセットとして上乗せする。swapの瞬間に
-        // iが±1ジャンプしても、同時に(virtualIndex - i)も逆向きに±1動く
-        // ため、合計の画面位置(i*step + dragExtraPx)は連続に保たれ、
-        // 指の動きにピクセル単位でぴったり追従して見える。
+        // 長押しドラッグでつまみ上げている本人だけ、dragPollFrameが毎フレーム
+        // 算出した「本来あるべき連続位置(virtualIndex)」と現在のスロット
+        // index(i、並べ替えのswapで離散的に飛ぶ)との差分をpx単位の追加
+        // オフセットとして上乗せする。swapの瞬間にiが±1ジャンプしても、
+        // 同時に(virtualIndex - i)も逆向きに±1動くため、合計の画面位置
+        // (i*step + dragExtraPx)は連続に保たれ、掴んだカードが指のスクリーン
+        // 位置に貼り付いたまま滑らかに見える。
         const isDragged = it.key === draggingKey && !!dragRef.current;
-        const dragExtraPx = isDragged && dragRef.current
-          ? ((dragRef.current.startIndex + dragOffsetPxRef.current / step) - i) * step
+        const dragExtraPx = isDragged
+          ? (dragVirtualIndexRef.current - i) * step
           : 0;
         // Binder3DにtransitionMsを渡さない(=CSSトランジション無し)のは
         // 意図的。スクロールスナップがmandatoryのため、指を離すとブラウザ

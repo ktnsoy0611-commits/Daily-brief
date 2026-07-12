@@ -9,6 +9,42 @@ interface BottomSheetProps {
   maxHeight?: string;
 }
 
+// ★オーバーレイのブラー(枠外)をタップして閉じると、その同じジェスチャーの
+// 後続イベント(pointerup/click)が、閉じ始めた瞬間にpointerEvents:noneへ
+// 切り替わったブラーを素通りして下のバインダー/カードへ突き抜け、「閉じた
+// つもりが下の要素を選んでしまう」不具合があった(pointerdownでのpreventDefault
+// だけでは実機Safariで防ぎきれなかった)。閉じ操作(枠外タップ)が発生した
+// 瞬間に、Reactのstate更新(非同期)を待たずにDOMへ直接、全画面を覆う透明な
+// シールドを最前面(zIndex:60、nav=25/ブラー=45/ポータルボタン=26より上)へ
+// 挿入し、その間のpointerdown/clickをcapture段階で握りつぶす。これにより
+// 閉じるジェスチャーの後続イベントも、直後の誤タップも、一切下へ通さない。
+// 短時間(閉じるアニメーションが終わる頃)で自動的に取り除く。ボタン等からの
+// プログラム的なrequestCloseでは呼ばないため、§7.7の「別経路で閉じた直後に
+// バインド！をすぐ押す」流れは従来どおり阻害しない(枠外タップ限定)。
+function raiseTapShield() {
+  if (typeof document === "undefined") return;
+  const shield = document.createElement("div");
+  shield.setAttribute("data-tap-shield", "");
+  shield.style.cssText = "position:fixed;inset:0;z-index:60;background:transparent;touch-action:none;";
+  let fallback = 0;
+  let removed = false;
+  const remove = () => { if (removed) return; removed = true; window.clearTimeout(fallback); shield.remove(); };
+  const swallow = (e: Event) => { e.preventDefault(); e.stopPropagation(); };
+  // 閉じるジェスチャーの後続イベント(pointerup/click)だけを飲み込み、その
+  // click を最後にシールドを外す。こうするとシールドは「閉じたこの1タップ」
+  // ぶんだけ生きて即座に消えるため、閉じた直後の素早い再タップ(ゴールを
+  // 閉じてすぐ開き直す等)は一切ブロックしない。固定時間(数百ms)居座らせると
+  // 素早い再タップまで飲み込んでしまい「反応しない」不具合を再発させる。
+  shield.addEventListener("pointerdown", swallow, true);
+  shield.addEventListener("pointerup", swallow, true);
+  shield.addEventListener("click", (e) => { swallow(e); remove(); }, true);
+  document.body.appendChild(shield);
+  // 互換clickが来ないケース(preventDefaultで抑止された等)の保険。閉じる
+  // ジェスチャー自体の長さ(指を離すまで)を十分にカバーしつつ、人間の
+  // 再タップ(通常200ms以上あと)より短くして再タップを邪魔しない。
+  fallback = window.setTimeout(remove, 180);
+}
+
 // iOSでキーボードが開くと、レイアウト上のビューポート(inset:0の基準)は
 // そのままなのに実際に見える領域(visualViewport)だけが狭くなり、下寄せの
 // オーバーレイがキーボードの裏に隠れてしまう。heightだけを見て器を狭めても、
@@ -88,9 +124,12 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
     // ヒットテストがブラーの下の要素(ボタン等)まで突き抜けてしまい、
     // 「ブラーを閉じたつもりが下のボタンを誤タップした」ことになっていた。
     // pointerdownでpreventDefault()すると、ブラウザはこのジェスチャーに
-    // 続く互換マウスイベント(click含む)を一切合成しなくなるため、
-    // この突き抜け自体が起こらなくなる。
+    // 続く互換マウスイベント(click含む)を一切合成しなくなる…はずだが、
+    // 実機Safariではこれだけでは突き抜けが残ったため、閉じ始めた瞬間に
+    // 全画面の吸収シールドを最前面へ挿入して後続イベントを物理的に
+    // 遮断する(raiseTapShield参照)。
     e.preventDefault();
+    raiseTapShield();
     requestClose();
   };
 
@@ -149,7 +188,10 @@ export function closeOnSelfClick(handler: () => void) {
   return (e: PointerEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
     // closeIfSelfと同じ理由(下の要素への互換clickの突き抜け防止)。
+    // preventDefaultだけでは実機で防ぎきれないため、こちらも吸収シールドを
+    // 立てて後続イベントを物理的に遮断する。
     e.preventDefault();
+    raiseTapShield();
     handler();
   };
 }

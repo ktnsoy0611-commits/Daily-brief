@@ -396,10 +396,23 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
   // 現れても二度と観測が始まらない不具合になっていた。callback refは
   // 依存配列を問わずDOMノードが実際にアタッチされた瞬間に呼ばれるため、
   // この早期returnの有無に関わらず確実に動く。
-  const MAP_SHRINK_RANGE_PX = 120;
+  // ★マップの縮小と「固定→最小で流れる」挙動。
+  // 設計: マップを「フルサイズ高さで固定した枠(zone)」で囲み、その枠の中で
+  // position:sticky+縮小させる。枠の高さが一定なので、
+  //  (1) マップを縮小しても枠の高さは変わらない=下のコンテンツ(今週のおすすめ)が
+  //      リフローで動かない=「グイッと引っ張られる」感覚が消える。
+  //  (2) 枠がフルサイズ高さぶんの領域を確保しているので、固定中はその領域が
+  //      下のコンテンツを常に押し下げ、マップが今週のおすすめに重ならない。
+  //  (3) スクロールが進んで枠の下端がマップの下端に追いつくと、CSS stickyの
+  //      仕様どおりマップが枠と一緒に自然に上へ流れて消える(=最小で流れる、
+  //      継ぎ目のジャンプ無し)。
+  // 縮小率はスクロール量に直結させ(センチネルが固定線を通り過ぎた量/RANGE)、
+  // RANGE=フルサイズ高さ×(1-最小率)にすることで、マップが枠から流れ出る
+  // ちょうどその頃に最小へ到達する。フルサイズ高さは器の幅から算出する。
   const mapShrinkCleanupRef = useRef<(() => void) | null>(null);
   const mapShrinkRafRef = useRef<number | null>(null);
   const [mapShrink, setMapShrink] = useState(0);
+  const [mapFullHeight, setMapFullHeight] = useState(0);
   const sentinelRef = useCallback((el: HTMLDivElement | null) => {
     mapShrinkCleanupRef.current?.();
     mapShrinkCleanupRef.current = null;
@@ -408,8 +421,20 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
     if (!root) return;
     const measure = () => {
       mapShrinkRafRef.current = null;
-      const scrolledPast = root.getBoundingClientRect().top - el.getBoundingClientRect().top;
-      setMapShrink(Math.max(0, Math.min(1, scrolledPast / MAP_SHRINK_RANGE_PX)));
+      const rootRect = root.getBoundingClientRect();
+      const cs = getComputedStyle(root);
+      const padTop = parseFloat(cs.paddingTop) || 0;
+      const padLeft = parseFloat(cs.paddingLeft) || 0;
+      const padRight = parseFloat(cs.paddingRight) || 0;
+      const contentWidth = root.clientWidth - padLeft - padRight;
+      const fullH = contentWidth * 0.75; // aspectRatio 4/3
+      setMapFullHeight(fullH);
+      // 固定線(マップがここに来たら貼り付く)= コンテナ上端+上パディング。
+      const stickyLine = rootRect.top + padTop;
+      // センチネルは枠の直前(高さ0)。固定線をどれだけ通り過ぎたか=縮小の進み。
+      const over = stickyLine - el.getBoundingClientRect().top;
+      const range = Math.max(1, fullH * (1 - MAP_MIN_WIDTH_RATIO));
+      setMapShrink(Math.max(0, Math.min(1, over / range)));
     };
     const onScroll = () => {
       if (mapShrinkRafRef.current == null) mapShrinkRafRef.current = requestAnimationFrame(measure);
@@ -454,12 +479,20 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
           中でposition:fixedにしてもnav(25)より手前に出せず、閉じる
           ボタンがnavに押されてクリックできなくなる不具合になっていた)。 */}
       <div ref={sentinelRef} style={{ height: 0 }} aria-hidden />
-      {/* 幅が縮んだ時に右へ寄せる処理は、以前はmargin(0 auto ⇄ 0 0 0 auto)を
-          縮小の二値と一緒に切り替えていたが、連続値になったことで
-          この親をdisplay:flex+justifyContent:flex-endにするだけで済む
-          ようになった(幅が縮むほど、余った分だけ自動的に右へ寄る)。 */}
-      <div style={{ position: "sticky", top: 0, zIndex: 4, visibility: mapFullscreen ? "hidden" : "visible", display: "flex", justifyContent: "flex-end" }}>
-        <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} shrink={mapShrink} onOpenFullscreen={() => setMapFullscreen(true)} />
+      {/* ★フルサイズ高さで固定した枠(zone)。この枠の中でマップをsticky固定+
+          縮小させる。枠の高さが一定なので縮小しても下のコンテンツが動かず
+          (引っ張られ感が消える)、枠がフルサイズぶんの領域を確保するので
+          固定中は今週のおすすめに重ならない。スクロールで枠の下端がマップの
+          下端に追いつくと、stickyの仕様でマップが枠ごと自然に上へ流れて消える
+          (最小で流れる、ジャンプ無し)。高さ未実測(0)の初回だけはautoにして
+          おく(その瞬間はマップ実寸=フルサイズなので枠もフルサイズになる)。 */}
+      <div style={{ height: mapFullHeight > 0 ? mapFullHeight : undefined }}>
+        {/* 幅が縮んだ時に右へ寄せる処理は、この親をdisplay:flex+
+            justifyContent:flex-endにするだけで済む(幅が縮むほど余った分だけ
+            自動的に右へ寄る)。 */}
+        <div style={{ position: "sticky", top: 0, zIndex: 4, visibility: mapFullscreen ? "hidden" : "visible", display: "flex", justifyContent: "flex-end" }}>
+          <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} shrink={mapShrink} onOpenFullscreen={() => setMapFullscreen(true)} />
+        </div>
       </div>
       {/* 全画面表示はAppShellの外(document.body直下)へPortalで描画し、
           祖先(sticky wrapper)の重なりコンテキストの影響を受けない、

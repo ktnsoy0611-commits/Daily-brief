@@ -214,6 +214,10 @@ export function AppShell() {
       <div data-tab-scroll-root style={{
         width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
         overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
+        // ★スクロール中に要素がサイズ変化(プランタブの地図の縮小など)しても、
+        // ブラウザのスクロールアンカリングがscrollTopを勝手に補正して
+        // 「グイッと引っ張られる」ジャンプを起こさないよう無効化する。
+        overflowAnchor: "none",
         padding: `max(16px, env(safe-area-inset-top)) 16px ${showProfile ? "24px" : "16px"}`,
       }}>
         {storageMode === "memory" && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}

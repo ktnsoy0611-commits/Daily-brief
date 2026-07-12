@@ -13,6 +13,7 @@ export const DEFAULT_STATE: AppState = {
   pendingReview: [],
   sources: [],
   bindLog: [],
+  shelfOrder: {},
 };
 
 // 目標への「最近どうですか？」を投げかける間隔

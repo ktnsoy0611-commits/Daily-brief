@@ -162,6 +162,10 @@ export interface AppState {
   pendingReview: string[];
   sources: Source[];
   bindLog: BindLogEntry[];
+  // アーカイブの棚(バショ/タイケン/ジョウホウ/モノ/ゴール)を長押しドラッグで
+  // 並べ替えた結果。棚の識別子(例: "place","experience")をキーに、その棚の
+  // BinderShelfItem.keyを並び順どおりに並べた配列を持つ。
+  shelfOrder: Record<string, string[]>;
 }
 
 export interface BriefCard {

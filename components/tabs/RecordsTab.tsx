@@ -235,11 +235,19 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
       }),
     }));
 
+  // 棚の並び順(長押しドラッグで並べ替えた結果)はAppStateに永続化する。
+  // キーは棚の識別子(place/experience/info/thing/goal)。
+  const reorderShelf = (shelfKey: string, order: string[]) => {
+    const next = structuredClone(appState);
+    next.shelfOrder = { ...(next.shelfOrder ?? {}), [shelfKey]: order };
+    persist(next);
+  };
+
   // 棚(行)のレイアウトは全行共通: 小さなラベル+BinderCoverflowRow。
-  const shelfRow = (title: string, items: BinderShelfItem[]) => items.length > 0 && (
+  const shelfRow = (title: string, shelfKey: string, items: BinderShelfItem[]) => items.length > 0 && (
     <section style={{ marginBottom: 24 }}>
       <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>{title}</div>
-      <BinderCoverflowRow items={items} />
+      <BinderCoverflowRow items={items} initialOrder={appState.shelfOrder?.[shelfKey]} onReorder={(order) => reorderShelf(shelfKey, order)} />
     </section>
   );
 
@@ -287,11 +295,11 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
 
         {viewMode === "list" ? (
           <>
-            {shelfRow("バショ", placeRowItems)}
-            {shelfRow("タイケン", experienceRowItems)}
-            {shelfRow("ジョウホウ", infoRowItems)}
-            {shelfRow("モノ", thingRowItems)}
-            {shelfRow("ゴール", goalRowItems)}
+            {shelfRow("バショ", "place", placeRowItems)}
+            {shelfRow("タイケン", "experience", experienceRowItems)}
+            {shelfRow("ジョウホウ", "info", infoRowItems)}
+            {shelfRow("モノ", "thing", thingRowItems)}
+            {shelfRow("ゴール", "goal", goalRowItems)}
 
             {placeRowItems.length === 0 && experienceRowItems.length === 0 && infoRowItems.length === 0 && thingRowItems.length === 0 && goalRowItems.length === 0 && pendingItems.length === 0 && (
               <div style={{ padding: "36px 4px", textAlign: "center" }}>

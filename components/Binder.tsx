@@ -23,9 +23,9 @@
 //     外側からすぐ背表紙が詰めて並ぶよう固定の隙間だけシフトする。
 //     スワイプ中は棚全体がわずかにパカッと開く一瞬のアニメーションが付く。
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BG, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
-import { shade } from "@/lib/helpers";
+import { haptic, shade } from "@/lib/helpers";
 
 // ---- デザインコード ---------------------------------------------------------
 //
@@ -212,18 +212,23 @@ function TargetMotif({ color = PAPER }: { color?: string }) {
   );
 }
 
-// モノ専用: 全面べた塗り+開く側の角に沿って収まる四半円、というミニマル
-// な構図。target(ゴール)と同じ「全面色+単一図形」という骨格は踏襲しつつ、
-// 図形を「上端中央からはみ出す円」ではなく「開く側の角(角丸)にぴったり
-// 収まる四半円」にすることで、ゴールとは違うシルエットになる。開く側の
-// 角(右下)はBinderCoverFace自体が角丸でクリップしているため、四半円の
-// カーブがちょうどその角丸に沿って続いて見える。「巻が増えても色だけ
-// 変える」という運用(thingVolumeAccent参照)に合わせ、図形自体は個体差を
-// 持たない固定形にしている。
+// モノ専用: 全面べた塗り+上部の余白に収まる小さな三角、というミニマルな
+// 構図。target(ゴール)と同じ「全面色+単一図形」という骨格は踏襲しつつ、
+// 初期実装(開く側の角に収まる四半円)はゴールの円と同じ「丸い図形」の
+// 語彙だったため見分けにくいという指摘を受け、図形の系統ごと変えた:
+// ゴール=円系(TargetMotif、上端中央から**はみ出す**巨大な円)に対し、
+// モノ=角系(小さな三角)。「丸⇄角」「はみ出す⇄収まる」「巨大⇄小さい」と
+// いう複数の軸を同時に反転させることで、同じ「全面べた塗り+単一図形」と
+// いう骨格を保ちながらも一目で見分けがつくようにしている。位置は下端
+// 中央(CoverBodyのタイトル直下)に置くと、タイトルが2〜3行に伸びた時に
+// 文字と重なってしまったため、タイトルが絶対に伸びてこない上部の余白
+// 帯(spacer、上から34%)の中に収めている。「巻が増えても色だけ変える」
+// という運用(thingVolumeAccent参照)に合わせ、図形自体は個体差を持たない
+// 固定形。
 function StampMotif({ color = PAPER }: { color?: string }) {
   return (
-    <div style={{ position: "absolute", right: 0, bottom: 0, width: "46%", aspectRatio: "1 / 1" }}>
-      <PlaneFill shape="quarterBR" color={color} />
+    <div style={{ position: "absolute", left: "50%", top: "10%", transform: "translateX(-50%)", width: "20%", aspectRatio: "1 / 1" }}>
+      <PlaneFill shape="triangleUp" color={color} />
     </div>
   );
 }
@@ -781,7 +786,7 @@ export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebro
   const fill = accent?.color ?? color;
   return (
     <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 500, position: "relative", cursor: onClick ? "pointer" : "default" }}>
-      <GoalBackCover color={shade(fill, -13)} />
+      <GoalBackCover color={shade(fill, -7)} />
       <div style={{ position: "absolute", inset: 0, transformOrigin: "0% 50%", transform: `rotateY(${tiltDeg}deg)` }}>
         <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
       </div>
@@ -824,11 +829,16 @@ const REST_LEFT = 70;
 // 右端/左端のすぐ外側から始まる固定の隙間(gap)だけシフトし、そこから
 // 先は元のpitchのまま詰めて並べる(距離に比例して隙間が広がり続ける
 // わけではない)。
-export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect = ITEM_CARD_ASPECT }: {
+export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect = ITEM_CARD_ASPECT, initialOrder, onReorder }: {
   items: BinderShelfItem[];
   itemWidth?: number;
   pitch?: number;
   aspect?: string;
+  // 並び順の永続化(任意)。initialOrderは初回マウント時の並び順の種
+  // (RecordsTab側でAppStateに保存された順序)。onReorderはドラッグで
+  // 並び替えが確定するたびに最新の並び順(keyの配列)を通知する。
+  initialOrder?: string[];
+  onReorder?: (order: string[]) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [, setTick] = useState(0);
@@ -840,6 +850,121 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const lastLeftRef = useRef(0);
   const idleFramesRef = useRef(0);
   const step = pitch;
+
+  // ---- 長押しドラッグでの並べ替え ----
+  // itemsの並び自体は呼び出し側(RecordsTab)が毎回「自然な順序」で作り
+  // 直すため、ユーザーが並べ替えた結果はitems本体ではなくkeyの配列
+  // (order)として別管理し、表示直前にitemsをこの順序へマップし直す。
+  const buildOrder = (base: string[] | undefined, keys: string[]): string[] => {
+    if (!base) return keys;
+    const keySet = new Set(keys);
+    const kept = base.filter((k) => keySet.has(k));
+    const missing = keys.filter((k) => !kept.includes(k));
+    return [...kept, ...missing];
+  };
+  const [order, setOrder] = useState<string[]>(() => buildOrder(initialOrder, items.map((it) => it.key)));
+  const orderRef = useRef(order);
+  orderRef.current = order;
+  const itemKeyList = items.map((it) => it.key).join(" ");
+  useEffect(() => {
+    setOrder((prev) => {
+      const next = buildOrder(prev, items.map((it) => it.key));
+      if (next.length === prev.length && next.every((k, idx) => k === prev[idx])) return prev;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemKeyList]);
+  const itemsByKey = new Map(items.map((it) => [it.key, it]));
+  const orderedItems = order.map((k) => itemsByKey.get(k)).filter((it): it is BinderShelfItem => !!it);
+
+  const LONG_PRESS_MS = 450;
+  const MOVE_CANCEL_PX = 10;
+  const pressRef = useRef<{ key: string; index: number; pointerId: number; clientX: number; clientY: number; timer: number } | null>(null);
+  const dragRef = useRef<{ key: string; pointerId: number; startClientX: number; startIndex: number; currentIndex: number } | null>(null);
+  const dragOffsetPxRef = useRef(0);
+  const dragRafRef = useRef<number | null>(null);
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+
+  const dragPollFrame = () => {
+    const drag = dragRef.current;
+    if (!drag) { dragRafRef.current = null; return; }
+    const virtualIndex = drag.startIndex + dragOffsetPxRef.current / step;
+    if (virtualIndex > drag.currentIndex + 0.5 && drag.currentIndex < orderRef.current.length - 1) {
+      const next = orderRef.current.slice();
+      const a = drag.currentIndex, b = drag.currentIndex + 1;
+      [next[a], next[b]] = [next[b], next[a]];
+      drag.currentIndex = b;
+      setOrder(next);
+    } else if (virtualIndex < drag.currentIndex - 0.5 && drag.currentIndex > 0) {
+      const next = orderRef.current.slice();
+      const a = drag.currentIndex, b = drag.currentIndex - 1;
+      [next[a], next[b]] = [next[b], next[a]];
+      drag.currentIndex = b;
+      setOrder(next);
+    }
+    setTick((t) => t + 1);
+    dragRafRef.current = requestAnimationFrame(dragPollFrame);
+  };
+
+  const beginDrag = (key: string, index: number, pointerId: number, clientX: number) => {
+    haptic(10);
+    const el = scrollRef.current;
+    if (el) { el.style.overflowX = "hidden"; el.style.touchAction = "none"; }
+    dragRef.current = { key, pointerId, startClientX: clientX, startIndex: index, currentIndex: index };
+    dragOffsetPxRef.current = 0;
+    setDraggingKey(key);
+    if (dragRafRef.current == null) dragRafRef.current = requestAnimationFrame(dragPollFrame);
+  };
+
+  const endDrag = () => {
+    dragRef.current = null;
+    if (dragRafRef.current != null) { cancelAnimationFrame(dragRafRef.current); dragRafRef.current = null; }
+    const el = scrollRef.current;
+    if (el) { el.style.overflowX = "auto"; el.style.touchAction = ""; }
+    setDraggingKey(null);
+    onReorder?.(orderRef.current);
+  };
+
+  const handleSlotPointerDown = (e: ReactPointerEvent<HTMLDivElement>, key: string, index: number) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    // captureに失敗しても(検証環境の合成イベントなど)長押し判定自体は
+    // 続行できるよう、ここは握りつぶす。
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
+    const timer = window.setTimeout(() => {
+      const press = pressRef.current;
+      if (press) beginDrag(press.key, press.index, press.pointerId, press.clientX);
+    }, LONG_PRESS_MS);
+    pressRef.current = { key, index, pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY, timer };
+  };
+  const handleSlotPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const press = pressRef.current;
+    if (press && press.pointerId === e.pointerId) {
+      const dx = e.clientX - press.clientX, dy = e.clientY - press.clientY;
+      // 一定以上動いたら長押しではなく通常のスワイプ/タップとみなし、
+      // ここまでpreventDefaultを一度も呼んでいないためネイティブの
+      // スクロールへそのまま委ねる。
+      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+        window.clearTimeout(press.timer);
+        pressRef.current = null;
+      }
+      return;
+    }
+    const drag = dragRef.current;
+    if (drag && drag.pointerId === e.pointerId) {
+      e.preventDefault();
+      dragOffsetPxRef.current = e.clientX - drag.startClientX;
+    }
+  };
+  const handleSlotPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const press = pressRef.current;
+    if (press && press.pointerId === e.pointerId) {
+      window.clearTimeout(press.timer);
+      pressRef.current = null;
+      return;
+    }
+    const drag = dragRef.current;
+    if (drag && drag.pointerId === e.pointerId) endDrag();
+  };
 
   // 初回描画の瞬間はまだ実測前でcontainerWidth=0のため、両端の余白
   // (sidePad)も0として最初のレイアウトが組まれる。ResizeObserverが実際の
@@ -969,7 +1094,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       style={{ display: "flex", alignItems: "flex-end", overflowX: "auto", overflowAnchor: "none", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", padding: `${topPad}px 0 14px` }}
     >
       <div style={{ flex: "0 0 auto", width: sidePad }} />
-      {items.map((it, i) => {
+      {orderedItems.map((it, i) => {
         const d = i - centerRef.current;
         // 左右どちらの隣も背表紙(リング側、ラベルが読める面)が正面を
         // 向くのは共通だが、静止角は左右で非対称にしている: 右側は90度を
@@ -982,6 +1107,17 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
         // フォーカス中(d=0)は0、|d|>=1では固定のgapだけシフトし、その間は
         // 滑らかに補間する。
         const spread = gap * Math.max(-1, Math.min(1, d));
+        // 長押しドラッグでつまみ上げている本人だけ、指の生の移動量
+        // (dragOffsetPxRef)から「本来あるべき連続的な位置(virtualIndex)」を
+        // 割り出し、現在のスロットindex(i、並べ替えのswapで離散的に飛ぶ)
+        // との差分をpx単位の追加オフセットとして上乗せする。swapの瞬間に
+        // iが±1ジャンプしても、同時に(virtualIndex - i)も逆向きに±1動く
+        // ため、合計の画面位置(i*step + dragExtraPx)は連続に保たれ、
+        // 指の動きにピクセル単位でぴったり追従して見える。
+        const isDragged = it.key === draggingKey && !!dragRef.current;
+        const dragExtraPx = isDragged && dragRef.current
+          ? ((dragRef.current.startIndex + dragOffsetPxRef.current / step) - i) * step
+          : 0;
         // Binder3DにtransitionMsを渡さない(=CSSトランジション無し)のは
         // 意図的。スクロールスナップがmandatoryのため、指を離すとブラウザ
         // 自身が滑らかなスナップアニメーションでscrollLeftを動かす。そこに
@@ -989,18 +1125,34 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
         // 変わり続けるものを90msかけて追いかける形になり、ネイティブの
         // スナップに対して常に半歩遅れて「ガクッ」と収束するように見える
         // 不具合があった。rAFで1フレームごとに値を更新しているのでこれ
-        // だけで十分滑らかに追従する。
+        // だけで十分滑らかに追従する。ただし並べ替えドラッグ中、つまみ上げて
+        // いない他のカードだけは例外: swapでindexが飛ぶ瞬間に位置が
+        // 瞬間移動して見えないよう、短いトランジションを付けて滑らかに
+        // 詰め直させる。
+        const wrapperTransition = !isDragged && draggingKey ? "transform 180ms ease" : undefined;
         return (
-          <div key={it.key} style={{
-            position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center", zIndex: Math.round(focus * 100),
-            animation: "binder-in 0.46s cubic-bezier(0.22,0.9,0.32,1) both", animationDelay: `${Math.min(i, 12) * 26}ms`,
-          }}>
-            <div style={{ position: "absolute", left: "50%", bottom: 0, width: itemWidth, transform: `translateX(calc(-50% + ${spread}px))` }}>
+          <div
+            key={it.key}
+            onPointerDown={(e) => handleSlotPointerDown(e, it.key, i)}
+            onPointerMove={handleSlotPointerMove}
+            onPointerUp={handleSlotPointerUp}
+            onPointerCancel={handleSlotPointerUp}
+            style={{
+              position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center",
+              zIndex: isDragged ? 1000 : Math.round(focus * 100), touchAction: draggingKey ? "none" : undefined,
+              userSelect: "none", WebkitUserSelect: "none",
+              animation: "binder-in 0.46s cubic-bezier(0.22,0.9,0.32,1) both", animationDelay: `${Math.min(i, 12) * 26}ms`,
+            }}>
+            <div style={{
+              position: "absolute", left: "50%", bottom: 0, width: itemWidth,
+              transform: `translateX(calc(-50% + ${spread + dragExtraPx}px))`,
+              transition: wrapperTransition,
+            }}>
               <Binder3D
-                width={itemWidth} aspect={aspect} rotateY={angle} scale={scale}
+                width={itemWidth} aspect={aspect} rotateY={angle} scale={isDragged ? scale * 1.06 : scale}
                 openDeg={openDegRef.current}
                 color={it.color} eyebrowLabel={it.eyebrowLabel} accent={it.accent}
-                title={it.title} count={it.count} onClick={it.onOpen}
+                title={it.title} count={it.count} onClick={isDragged ? undefined : it.onOpen}
               />
             </div>
           </div>

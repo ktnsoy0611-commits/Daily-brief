@@ -854,10 +854,13 @@ function ConfirmedStack({ items, dateLabel, onMarkDone, onDrop, onRegister }: {
               // iが大きい(元々リストの下の方にあった)ほど手前(高いzIndex)
               // にする。指定しないとflexの子はDOM順で後勝ちになり、意図と
               // 違う重なりになる。
+              // stackTransformはtranslateYのみ(縮小=scaleはしない)。下の
+              // カードが上のカードに隠れて見えなくなること自体は構わない、
+              // という指定。
               <div key={it.id} style={{ position: "relative", width: CARD_WIDTH, zIndex: i + 1 }}>
                 <ConfirmedCard
                   item={it} elRef={(el) => { cardEls.current[it.id] = el; }}
-                  stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px) scale(${i === 0 ? 1 : 0.92})` : undefined}
+                  stackTransform={stacking ? `translateY(${stackOffsets[it.id] ?? 0}px)` : undefined}
                   hide={falling}
                   disabled={stacking}
                   onMarkDone={() => onMarkDone(it)}

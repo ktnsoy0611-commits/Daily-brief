@@ -541,7 +541,7 @@ const OPEN_DEG_ACTIVE = 6;
 // 下端も動いてしまい、スワイプ中に本棚全体が上下にガクガク揺れて見える
 // 不具合があったため。棚に本の底が固定されているのと同じように、常に
 // 下端を基準に伸び縮みさせる。
-export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, scale = 1, transitionMs, color, eyebrowLabel, title, footer, count, accent, openDeg = OPEN_DEG_REST, onClick }: CoverContent & {
+export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, scale = 1, transitionMs, color, eyebrowLabel, title, footer, count, accent, openDeg = OPEN_DEG_REST, shadow = true, onClick }: CoverContent & {
   width: number | string;
   aspect?: string;
   depth?: number;
@@ -550,6 +550,9 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
   transitionMs?: number;
   count?: number;
   openDeg?: number;
+  // ゴールタブでは表紙の影を出さない(ユーザー指定)。Archiveの棚は
+  // 従来通り影を出すため、デフォルトはtrueのまま。
+  shadow?: boolean;
   onClick?: () => void;
 }) {
   const resolvedDepth = depth ?? Math.max(5, Math.min(14, 6 + (count ?? 0) * 0.5));
@@ -586,7 +589,7 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
             SOFT_SHADOWの値("0 4px 16px rgba(...)")はbox-shadowと
             drop-shadowで引数の並びが同じなのでそのまま流用できる。 */}
         <div style={{
-          position: "absolute", inset: 0, overflow: "visible", filter: `drop-shadow(${SOFT_SHADOW})`,
+          position: "absolute", inset: 0, overflow: "visible", filter: shadow ? `drop-shadow(${SOFT_SHADOW})` : "none",
           borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
           backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
           transformOrigin: "0% 50%",
@@ -621,65 +624,6 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
             <BinderBackCoverFace />
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ---- ゴールタブ専用: 台形に傾いた平面のバインダーカード ---------------------
-//
-// §7.13・§7.14で対応したのは「本の厚みを表す側面(BinderEdgeFace)の
-// 直角の角が、表紙の角丸の外側に飛び出て見える」問題だったが、そもそも
-// ユーザーの意図は「箱として3D構築する必要はない。角丸さえ正しく
-// マスクされていれば、平面のテクスチャ(表紙)をパースの効いた台形に
-// 変形するだけで十分」というものだった。ゴールタブは静止したグリッド
-// 表示で、Binder3Dが本来持つ「表紙⇄背表紙を連続的に回転で行き来する」
-// 機能(棚のコンベア用)を使っていないため、背表紙(BinderSpineFace)・
-// 無地の側面(BinderEdgeFace)・裏表紙(BinderBackCoverFace)という
-// 「箱」を構成する残り3面は最初から不要だった。この3面(特に
-// BinderEdgeFace)を無くせば、表紙の角丸とぶつかる「別要素の直角の角」
-// はそもそも存在し得なくなる。
-//
-// 表紙(BinderCoverFace)は元々、自分自身のoverflow:hidden+border-radiusで
-// 正しく丸くクリップされた平面(このクリップは3D変形を受けていないので
-// 崩れない)。この既に正しく丸い平面を、Binder3Dの表紙面と全く同じ手法
-// (variable: 変形されるラッパー自身にはoverflow:hidden/border-radiusを
-// 持たせず、visibleのままdrop-shadowだけを乗せる。実際の丸みは中の
-// BinderCoverFaceだけが担う)でrotateY(台形変形)する。表紙以外の面を
-// 一切作らないため、§7.13以前に起きていた「角丸と直角の側面が衝突する」
-// 描画上の矛盾が構造的に起こり得ない。
-export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebrowLabel, title, footer, accent, onClick, tiltDeg = -14 }: CoverContent & {
-  width: number | string;
-  aspect?: string;
-  onClick?: () => void;
-  // Binder3Dの箱をGoalsTabのグリッドで使っていた時と同じ見た目の角度
-  // (rotateY:-14)をデフォルトにし、印象を変えない。
-  tiltDeg?: number;
-}) {
-  return (
-    // ★影はfilter:drop-shadowではなく、この一番外側の(3D変形を一切受けない)
-    // 箱に素のbox-shadowとして持たせる。§7.16でfilterをtransformと同じ
-    // 要素に乗せる形にしてChromiumでは影が出ることを確認したが、実機
-    // Safariでは依然として影が出ないという報告があった。filter+
-    // perspective(祖先)+3D transformの組み合わせは、このコードベースで
-    // 何度もブラウザ間の差異(Chromiumでは平気でもSafariでは崩れる/
-    // 出ない)を起こしてきた前例が多い(§5・§7.9も参照)。perspectiveは
-    // それを持つ要素自身を3D変形するわけではない(子の3D変形の basisに
-    // なるだけ)ため、この一番外側の箱自体は普通の(3D変形を受けない)2D要素
-    // であり、素のbox-shadowを使う限り描画エンジンの違いに左右される
-    // 余地がない。表紙の開く側(右)に合わせて角丸も外側の箱に与えておく
-    // (影の形をおおよそ表紙の輪郭に合わせるためで、厳密なクリップ目的
-    // ではない。中身の実際のクリップは相変わらずBinderCoverFace自身が
-    // 3D変形を受けない状態で正しく行っている)。
-    <div onClick={onClick} style={{
-      width, aspectRatio: aspect, perspective: 900, cursor: onClick ? "pointer" : "default",
-      borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS, boxShadow: SOFT_SHADOW,
-    }}>
-      <div style={{
-        position: "relative", width: "100%", height: "100%", transformOrigin: "50% 100%",
-        transform: `rotateY(${tiltDeg}deg)`,
-      }}>
-        <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
       </div>
     </div>
   );

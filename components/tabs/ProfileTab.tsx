@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, Link2, Pencil, RotateCcw, X } from "lucide-react";
+import { Heart, Link2, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
@@ -11,13 +11,14 @@ import type { AppState } from "@/lib/types";
 // 「入力+右にボタン」の1行入力欄。この画面内の入力欄はすべてこの1つの
 // スタイルに揃える(以前はセクションごとにフォント・サイズ・線の太さが
 // バラバラだった)。
-// ★fontSizeは16px未満にしないこと。iOS Safariはfont-sizeが16px未満の
-// input要素にフォーカスすると、ページ全体を自動でズームインする仕様が
-// あり、ズーム変化の最中はレイアウトが一時的に乱れる(このinputの右にある
-// 「保存」ボタンが画面外へ押し出されて見えなくなる、という報告があった)。
-// 入力欄をもう一度タップすると直る、というのはズームが収まって再計算
-// されるタイミングと一致しており、この閾値未満のfont-sizeが原因だったと
-// 判断した。13pxから16pxへ上げることでズーム自体を発生させない。
+// (fontSize:16は「iOS Safariのフォーカス時自動ズーム対策」として一時
+// 導入したが、その後viewport設定(app/layout.tsx)で元々userScalable:false
+// になっており自動ズーム自体が発生しないことが判明し、この診断は誤り
+// だったと分かった。「気になっていること」欄が保存ボタン未表示になる
+// 不具合の実際の原因は特定できていないが、非編集/編集の2状態を切り替える
+// 構成自体を撤去し「情報源」と同じ常時表示の構成にしたことで、その
+// 状態遷移に起因する不具合の可能性そのものを消した(詳細はHANDOFF-
+// CURRENT.md参照)。fontSize:16はタップしやすい大きさとしてそのまま残す。)
 const settingsInputStyle: React.CSSProperties = {
   flex: 1, border: "none", borderBottom: `1.5px solid ${INK}`, background: "transparent",
   fontFamily: SANS, fontSize: 16, padding: "7px 2px", outline: "none", minWidth: 0,
@@ -74,7 +75,6 @@ export function ProfileTab({ appState, persist, onClose }: {
   persist: (next: AppState) => void;
   onClose: () => void;
 }) {
-  const [editingFocus, setEditingFocus] = useState(false);
   const [focusDraft, setFocusDraft] = useState(appState.profile?.currentFocus ?? "");
   const [srcInput, setSrcInput] = useState("");
 
@@ -87,7 +87,6 @@ export function ProfileTab({ appState, persist, onClose }: {
     next.profile = next.profile ?? { interests: [], currentFocus: "" };
     next.profile.currentFocus = focusDraft.trim();
     persist(next);
-    setEditingFocus(false);
   };
   const addSource = () => {
     const url = srcInput.trim();
@@ -146,33 +145,19 @@ export function ProfileTab({ appState, persist, onClose }: {
             「今の関心」を表す情報として1枚のカードにまとめる(以前は
             別々のカードだったが、近い内容として1つの括りにしてほしい
             という指摘を受けた)。
-            気になっていることの表示: 以前は非編集時(SERIF/17px/破線下線)と
-            編集時(入力欄、SANS)でフォント・サイズがまったく別物で、
-            タップして初めて「統一されたデザイン」になる、という見た目の
-            バグになっていた。両状態を同じフォント/サイズ/下線に揃え、
-            非編集時は右端に鉛筆アイコンを添えることで「ここは編集できる」
-            という手がかりを、テキストの見た目を変えずに示す。 */}
+            気になっていることの入力: 以前は非編集時(タップすると鉛筆
+            アイコン付きの表示に切り替わる)と編集時(入力欄+保存ボタン)を
+            state(editingFocus)で切り替えていたが、「情報源」の入力欄と
+            見た目・挙動を揃えてほしいという指摘を受け、この切り替え自体を
+            廃止した。情報源と全く同じ「常に入力欄+保存ボタンが両方
+            見えている」構成にし、タップの回数や状態遷移に依存しない
+            単純な形にした。 */}
         <SettingsCard label="気になっていること・好み" icon={Heart}>
-          {editingFocus ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input autoFocus value={focusDraft} onChange={(e) => setFocusDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveFocus()}
-                style={settingsInputStyle} />
-              <button onClick={saveFocus} style={rowBtn(INK, PAPER)}>保存</button>
-            </div>
-          ) : (
-            <button onClick={() => { setFocusDraft(appState.profile?.currentFocus ?? ""); setEditingFocus(true); }} style={{
-              display: "flex", alignItems: "center", gap: 8, width: "100%", border: "none", background: "transparent",
-              cursor: "pointer", padding: 0, textAlign: "left", borderBottom: `1.5px solid ${INK}`, paddingBottom: 7,
-            }}>
-              <span style={{
-                flex: 1, minWidth: 0, fontFamily: SANS, fontSize: 13, color: appState.profile?.currentFocus ? INK : "#B5B3A8",
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
-                {appState.profile?.currentFocus || "タップして入力（例: 最近は器に興味がある）"}
-              </span>
-              <Pencil size={12} strokeWidth={2} color="#9A988E" style={{ flexShrink: 0 }} />
-            </button>
-          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input value={focusDraft} onChange={(e) => setFocusDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveFocus()}
+              placeholder="タップして入力（例: 最近は器に興味がある）" style={settingsInputStyle} />
+            <button onClick={saveFocus} style={rowBtn(INK, PAPER)}>保存</button>
+          </div>
           {/* 以前はカテゴリごとの色分け+重み(weight)に応じた文字サイズの
               変化を両方使っており、色もサイズもバラバラな「ワードクラウド」
               のようになって見づらかった。1色・1サイズの地味なチップへ揃え、

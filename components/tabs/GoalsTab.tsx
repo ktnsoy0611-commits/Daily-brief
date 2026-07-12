@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { GoalBinderCard, goalAccent, GOAL_BASE } from "@/components/Binder";
+import { Binder3D, goalAccent, GOAL_BASE } from "@/components/Binder";
 import { AddCardTile, Masthead, rowBtn } from "@/components/common";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
@@ -106,29 +106,16 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
       <Masthead title="ゴール" statValue={goalItems.length} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32, paddingLeft: 8, paddingRight: 8 }}>
-        {/* ゴールはGoalBinderCard(Binder.tsx参照)で表示する。以前は
-            アーカイブの棚と同じBinder3D(表紙・背表紙・側面・裏表紙の4面を
-            組む箱)を流用していたが、ゴールタブは静止したグリッドで
-            表紙以外の3面を一度も見せる必要が無く、その3面(特に無地の
-            側面)が表紙の角丸と衝突して直角の角が飛び出て見える描画上の
-            矛盾を繰り返し起こしていた(§7.13・§7.14)。GoalBinderCardは
-            表紙面だけを角度(rotateY:-14、以前と同じ見た目)を付けて
-            台形に傾け、箱としての残り3面を最初から作らない。表紙自体は
-            自分のoverflow:hidden+border-radiusで正しく丸くクリップ
-            されており(この面は3D変形を受けていないので崩れない)、
-            それをdrop-shadow付きの非クリップなラッパーで傾けるだけなので、
-            角丸と衝突する別要素が構造的に存在しない。
-            台形の影が斜めに投影されるため、外側(AppShell側の
-            data-tab-scroll-root)が持つ16pxの余白だけでは、特に右列の
-            タイルの影がぎりぎり画面端で切れることがあった。ここに追加で
-            左右8pxの余白を足し、影がクリップされる前に収まる隙間を
-            確保している。 */}
+        {/* ゴールもアーカイブの棚と同じBinder3D(表紙・背表紙・側面・裏表紙の
+            4面を組む箱)で表示する。表紙の影(drop-shadow)は付けない指定
+            (shadow={false})。3D構造そのものに戻すユーザー指示のため、
+            §7.13〜§7.15にあったGoalBinderCard(平面のみの代替案)は撤去した。 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 30, columnGap: 14, justifyItems: "center" }}>
           {goalItems.map((g) => {
             const count = g.checkIns?.length ?? 0;
             return (
-              <GoalBinderCard
-                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT}
+              <Binder3D
+                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT} rotateY={-14} depth={22} count={count} shadow={false}
                 color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={goalAccent(g.id)}
                 onClick={() => setOpenGoalId(g.id)}
                 // 表紙にはGOAL・タイトル・記録の件数だけを表示する。以前は

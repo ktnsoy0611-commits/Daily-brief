@@ -77,11 +77,13 @@ button:active {
   to { opacity: 1; }
 }
 
-/* RecordsTabの棚(BinderCoverflowRow)の各バインダーが、下から順に
-   立ち上がってくる入場アニメーション用。ストックタブのカードの束が
-   幅を検知した瞬間に広がって見える動きに近い賑やかさを、記録タブにも
-   持たせるために使う。 */
+/* RecordsTabの棚(BinderCoverflowRow)の各バインダーが、左からサッと
+   滑り込んでくる入場アニメーション用。ストックタブのカードの束が
+   幅を検知した瞬間に広がって見える動き(左→右に流れる賑やかさ)に
+   近づけるため、以前の縦(translateY)の立ち上がりから横(translateX)の
+   滑り込みへ変更した(2026-07-12)。しつこく見えないよう短時間・
+   小さい移動量に留めている。 */
 @keyframes binder-in {
-  from { opacity: 0; transform: translateY(18px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
 }

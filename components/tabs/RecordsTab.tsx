@@ -7,7 +7,7 @@ import { BinderCoverflowRow, dateAccent, EXPERIENCE_ACCENT, goalAccent, GOAL_BAS
 import { BinderModal, type BinderItem, Masthead, PosterCard, rowBtn } from "@/components/common";
 import { KIND_ICON } from "@/components/tabs/StockTab";
 import { GOLD, GREEN, HAIRLINE, INK, PAPER, RUST, SANS, SERIF, domainDefOf, itemKindOf } from "@/lib/constants";
-import { dayInfo, domainOf, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
+import { dayInfo, domainOf, haptic, isWishBound, originBadge, pad, shortDate } from "@/lib/helpers";
 import type { Item, ItemKind, TabProps, Wish } from "@/lib/types";
 
 // 表紙は常に白なので、この値は背表紙の単色フォールバック(accent未指定時)
@@ -206,33 +206,50 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
     onOpen: () => goTab("goals"),
   }));
 
-  // ---- 日付ビュー: 実行した日ごとに1冊 ----
-  interface DayGroup { label: string; items: Item[]; wishes: typeof fulfilledWishes; lastAt: string }
+  // ---- 日付ビュー: 実行した日ごとに1冊。月をまたぐと1本の棚に延々と
+  // 並んでしまい見づらいため、月ごとに棚(行)を分ける。 ----
+  interface DayGroup { key: string; label: string; items: Item[]; wishes: typeof fulfilledWishes; lastAt: string }
   const dayGroups = new Map<string, DayGroup>();
   const dayOf = (iso: string) => {
     const { key, label } = dayInfo(iso);
-    if (!dayGroups.has(key)) dayGroups.set(key, { label, items: [], wishes: [], lastAt: iso });
+    if (!dayGroups.has(key)) dayGroups.set(key, { key, label, items: [], wishes: [], lastAt: iso });
     const g = dayGroups.get(key)!;
     if (new Date(iso).getTime() > new Date(g.lastAt).getTime()) g.lastAt = iso;
     return g;
   };
   doneItems.forEach((i) => { dayOf(i.doneAt ?? i.addedAt).items.push(i); });
   fulfilledWishes.forEach((w) => { dayOf(w.fulfilledAt ?? w.addedAt).wishes.push(w); });
-  const dayRowItems: BinderShelfItem[] = Array.from(dayGroups.values())
+
+  interface MonthGroup { label: string; days: DayGroup[]; lastAt: string }
+  const monthGroups = new Map<string, MonthGroup>();
+  dayGroups.forEach((sec) => {
+    const d = new Date(sec.lastAt);
+    const monthKey = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+    if (!monthGroups.has(monthKey)) monthGroups.set(monthKey, { label: `${d.getFullYear()}年${d.getMonth() + 1}月`, days: [], lastAt: sec.lastAt });
+    const mg = monthGroups.get(monthKey)!;
+    mg.days.push(sec);
+    if (new Date(sec.lastAt).getTime() > new Date(mg.lastAt).getTime()) mg.lastAt = sec.lastAt;
+  });
+  const monthRows: { label: string; items: BinderShelfItem[] }[] = Array.from(monthGroups.values())
     .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
-    .map((sec) => ({
-      key: sec.label, color: PLACE_BASE, eyebrowLabel: "DATE", accent: dateAccent(sec.label),
-      title: sec.label, count: sec.items.length + sec.wishes.length,
-      footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.items.length + sec.wishes.length}件・タップで見る</div>,
-      onOpen: () => setOpenFolder({
-        title: sec.label,
-        content: [
-          ...sec.items.map((i) => itemCard(i)),
-          ...sec.wishes.map((w) => (
-            <PosterCard key={`wish-${w.id}`} image={null} color={GOLD} title={w.title} sub={shortDate(w.fulfilledAt ?? w.addedAt)} label="WISH" />
-          )),
-        ],
-      }),
+    .map((mg) => ({
+      label: mg.label,
+      items: mg.days
+        .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime())
+        .map((sec): BinderShelfItem => ({
+          key: sec.key, color: PLACE_BASE, eyebrowLabel: "DATE", accent: dateAccent(sec.label),
+          title: sec.label, count: sec.items.length + sec.wishes.length,
+          footer: <div style={{ fontSize: 9, color: "rgba(28,28,30,0.6)", fontWeight: 700, textAlign: "center" }}>{sec.items.length + sec.wishes.length}件・タップで見る</div>,
+          onOpen: () => setOpenFolder({
+            title: sec.label,
+            content: [
+              ...sec.items.map((i) => itemCard(i)),
+              ...sec.wishes.map((w) => (
+                <PosterCard key={`wish-${w.id}`} image={null} color={GOLD} title={w.title} sub={shortDate(w.fulfilledAt ?? w.addedAt)} label="WISH" />
+              )),
+            ],
+          }),
+        })),
     }));
 
   // 棚の並び順(長押しドラッグで並べ替えた結果)はAppStateに永続化する。
@@ -342,10 +359,15 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
           </>
         ) : (
           <>
-            {dayRowItems.length === 0 ? (
+            {monthRows.length === 0 ? (
               <p style={{ fontSize: 11.5, color: "#9A988E", padding: "4px 2px" }}>まだ記録がありません。</p>
             ) : (
-              <BinderCoverflowRow items={dayRowItems} />
+              monthRows.map((mg) => (
+                <section key={mg.label} style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 2 }}>{mg.label}</div>
+                  <BinderCoverflowRow items={mg.items} />
+                </section>
+              ))
             )}
           </>
         )}

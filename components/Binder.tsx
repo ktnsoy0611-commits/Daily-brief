@@ -885,10 +885,35 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const dragRafRef = useRef<number | null>(null);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
 
+  // 端に寄せている間、この距離(px)以内でオートスクロールを発動する。
+  const AUTOSCROLL_EDGE_PX = 56;
+  // 1フレームあたりのオートスクロール量(px)。
+  const AUTOSCROLL_SPEED_PX = 7;
+
   const dragPollFrame = () => {
     const drag = dragRef.current;
-    if (!drag) { dragRafRef.current = null; return; }
+    const el = scrollRef.current;
+    if (!drag || !el) { dragRafRef.current = null; return; }
     const virtualIndex = drag.startIndex + dragOffsetPxRef.current / step;
+
+    // オートスクロール: ドラッグ中はスクロールコンテナのoverflowXを
+    // hiddenに凍結している(並べ替えの物理演算=centerRef基準の回転角を
+    // 安定させるため)が、これはユーザーのスワイプ操作を止めるだけで、
+    // programmaticなscrollLeftの変更は引き続き効く。つまんだカードの
+    // 画面上のX位置を概算し、コンテナ端に近づいたらscrollLeftを少しずつ
+    // 動かして追従させる。これが無いと、コンテナの外まで指を動かした
+    // 瞬間につまんだカードがoverflow:hiddenで見えなくなり、「掴んだ
+    // バインダーがどこに行ったかわからなくなる」というユーザー報告の
+    // バグになっていた。
+    const draggedScreenX = (virtualIndex - centerRef.current) * step + el.clientWidth / 2;
+    if (draggedScreenX < AUTOSCROLL_EDGE_PX) {
+      el.scrollLeft = Math.max(0, el.scrollLeft - AUTOSCROLL_SPEED_PX);
+      centerRef.current = el.scrollLeft / step;
+    } else if (draggedScreenX > el.clientWidth - AUTOSCROLL_EDGE_PX) {
+      el.scrollLeft = Math.min(el.scrollWidth - el.clientWidth, el.scrollLeft + AUTOSCROLL_SPEED_PX);
+      centerRef.current = el.scrollLeft / step;
+    }
+
     if (virtualIndex > drag.currentIndex + 0.5 && drag.currentIndex < orderRef.current.length - 1) {
       const next = orderRef.current.slice();
       const a = drag.currentIndex, b = drag.currentIndex + 1;
@@ -1141,7 +1166,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
               position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center",
               zIndex: isDragged ? 1000 : Math.round(focus * 100), touchAction: draggingKey ? "none" : undefined,
               userSelect: "none", WebkitUserSelect: "none",
-              animation: "binder-in 0.46s cubic-bezier(0.22,0.9,0.32,1) both", animationDelay: `${Math.min(i, 12) * 26}ms`,
+              animation: "binder-in 0.3s cubic-bezier(0.22,0.9,0.32,1) both", animationDelay: `${Math.min(i, 12) * 18}ms`,
             }}>
             <div style={{
               position: "absolute", left: "50%", bottom: 0, width: itemWidth,

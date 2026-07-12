@@ -159,7 +159,7 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
           {action && (
             <button onClick={(e) => { e.stopPropagation(); action.onClick(); }} style={{
               flexShrink: 0, padding: "4px 7px", borderRadius: 999, border: "none", cursor: "pointer",
-              background: INK, color: PAPER, fontFamily: SANS, fontSize: 8, fontWeight: 700, letterSpacing: "0.01em",
+              background: "rgba(255,255,255,0.94)", color: INK, fontFamily: SANS, fontSize: 8, fontWeight: 700, letterSpacing: "0.01em",
               whiteSpace: "nowrap",
             }}>{action.label}</button>
           )}

@@ -134,10 +134,7 @@ export function ProfileTab({ appState, persist, onClose }: {
     <>
       <header style={{ padding: "16px 4px 12px", borderBottom: `2px solid ${INK}`, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: INK, padding: 0, lineHeight: 1 }} aria-label="閉じる">←</button>
-        <div>
-          <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 20, letterSpacing: "0.02em", lineHeight: 1 }}>設定</div>
-          <div style={{ fontSize: 9, letterSpacing: "0.26em", color: "#9A988E", marginTop: 4 }}>SETTINGS</div>
-        </div>
+        <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 20, letterSpacing: "0.02em", lineHeight: 1 }}>設定</div>
       </header>
 
       <main style={{ paddingTop: 18 }}>
@@ -155,7 +152,7 @@ export function ProfileTab({ appState, persist, onClose }: {
         <SettingsCard label="気になっていること・好み" icon={Heart}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input value={focusDraft} onChange={(e) => setFocusDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveFocus()}
-              placeholder="タップして入力（例: 最近は器に興味がある）" style={settingsInputStyle} />
+              placeholder="タップして入力" style={settingsInputStyle} />
             <button onClick={saveFocus} style={rowBtn(INK, PAPER)}>保存</button>
           </div>
           {/* 以前はカテゴリごとの色分け+重み(weight)に応じた文字サイズの
@@ -186,7 +183,7 @@ export function ProfileTab({ appState, persist, onClose }: {
           ))}
           <div style={{ display: "flex", gap: 8, marginTop: sources.length === 0 ? 0 : 12 }}>
             <input value={srcInput} onChange={(e) => setSrcInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSource()}
-              placeholder="https:// から始まるURLを貼り付け" style={settingsInputStyle} />
+              placeholder="URLを貼り付け" style={settingsInputStyle} />
             <button onClick={addSource} style={rowBtn(INK, PAPER)}>登録</button>
           </div>
         </SettingsCard>

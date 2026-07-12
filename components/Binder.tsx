@@ -629,6 +629,53 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
   );
 }
 
+// ---- ゴールタブ専用: 裏表紙が右端からわずかに覗くバインダーカード -------------
+//
+// これまでの試行錯誤(§7.13〜§7.21)を経て、ユーザーから具体的なイメージが
+// 示された: 「机の上にノートが置いてあって、表表紙だけ少し開いて浮かせて
+// いるのを、少しあおりで見ている」構図。表紙自体の傾き・手前に出てくる
+// 見た目はそのまま(既存のBinder3Dの表紙と同じ角度感)に、その一つ下に
+// 裏表紙が一枚だけ、表紙の右(開く側)の縁に沿ってほんの少しだけ覗く。
+//
+// 実装は平面2枚だけの、意図的に単純な構成にしている:
+//   1. 裏表紙(GoalBackCover): 表紙より少し暗い色の、角丸の四角形。
+//      3D変形は一切受けず、コンテナにぴったり重ねて敷くだけ。
+//   2. 表紙(BinderCoverFace): 左端(蝶番)を軸にrotateYでわずかに傾ける。
+//      transformOriginを"0% 50%"(左端)にすることで、回転しても上端・
+//      下端・左端(蝶番)は裏表紙とぴったり重なったまま動かず、右端だけが
+//      パースにより奥へ後退する。結果、裏表紙のうち表紙の後退した右端の
+//      外側にあたる部分だけが、自然に細い帯として覗いて見える(手動で
+//      オフセットを計算する必要がない、幾何学的にそうなる)。
+// 側面(BinderEdgeFace)や背表紙(BinderSpineFace)のような、厚みを表現する
+// ための別パーツは一切使わない。§7.13・§7.14で繰り返し起きていた「表紙の
+// 角丸と別要素の直角の角が衝突する」問題は、そもそも角のある別要素を
+// 作らないことで構造的に起こり得ない。
+function GoalBackCover({ color }: { color: string }) {
+  return (
+    <div style={{
+      position: "absolute", inset: 0, background: color,
+      borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
+    }} />
+  );
+}
+
+export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebrowLabel, title, footer, accent, onClick, tiltDeg = -24 }: CoverContent & {
+  width: number | string;
+  aspect?: string;
+  onClick?: () => void;
+  tiltDeg?: number;
+}) {
+  const fill = accent?.color ?? color;
+  return (
+    <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 500, position: "relative", cursor: onClick ? "pointer" : "default" }}>
+      <GoalBackCover color={shade(fill, -26)} />
+      <div style={{ position: "absolute", inset: 0, transformOrigin: "0% 50%", transform: `rotateY(${tiltDeg}deg)` }}>
+        <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
+      </div>
+    </div>
+  );
+}
+
 // ---- コンベア状の棚(RecordsTab) -------------------------------------------
 
 export interface BinderShelfItem extends CoverContent {

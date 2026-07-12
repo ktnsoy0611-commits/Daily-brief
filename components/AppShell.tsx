@@ -291,8 +291,11 @@ export function AppShell() {
           ため、両方ともnavより高いzIndex=26にして常に手前に出している。 */}
       {!showProfile && (
         <>
+          {/* グラデーションの高さを44pxから26pxへ縮め、上端をnavに近い
+              位置(=下)へ寄せた。以前の44pxは表示領域を必要以上に狭めて
+              いた、という指摘によるもの。 */}
           <div aria-hidden style={{ position: "sticky", bottom: 0, width: "100%", height: 0, zIndex: 15, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", left: 0, right: 0, top: -44, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 44px, ${BG} 100%)` }} />
+            <div style={{ position: "absolute", left: 0, right: 0, top: -26, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 26px, ${BG} 100%)` }} />
           </div>
           <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
             {/* SOFT_SHADOW_LG(ぼかし32px)をそのまま使うと、NAV_BOTTOM_GAPで

@@ -3,7 +3,7 @@
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
-import { CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
+import { BG, CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
@@ -438,8 +438,17 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               (zIndex:15、画面下端に常駐)より低い描画レイヤーに置かれ、
               フッターがタブバーの直前でうっすら覆われて見づらくなる。
               バインド！ボタンと同じzIndex:26にして、常にグラデーション・
-              navより手前に出す。 */}
-          <footer style={{ position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, paddingBottom: isGrowth ? 8 : 0, flexShrink: 0 }}>
+              navより手前に出す。
+              ★zIndexを上げただけでは直りきらなかった: z-indexは「重なった
+              時にどちらが手前か」を決めるだけで、要素の透明な部分(ボタン
+              同士の隙間・下のpaddingの余白)まで裏を隠すわけではない。
+              この枠自体がbackground:transparentのままだったため、隙間から
+              下のグラデーション(zIndex:15)がそのまま透けて見え続けていた。
+              育成カードでボタンが出ている間だけ、枠自体にページ背景色(BG)を
+              敷き、矩形の範囲を丸ごと不透明にすることで、隙間からの透過を
+              構造的に無くした(通常カードの時はこの枠は中身が無く見えない
+              ため、透明のままにしてカードの影の抜けに影響しないようにする)。 */}
+          <footer style={{ position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, paddingBottom: isGrowth ? 8 : 0, flexShrink: 0, background: isGrowth ? BG : "transparent" }}>
             {isGrowth && (
               <div style={{ display: "flex", gap: 10 }}>
                 <button onClick={() => commit("skip")} style={{ flex: 1, padding: "13px 0", background: "transparent", border: "1.5px solid rgba(23,23,21,0.3)", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: "#5A5A54", cursor: "pointer" }}>あとで</button>

@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { Binder3D, goalAccent, GOAL_BASE } from "@/components/Binder";
+import { GoalBinderCard, goalAccent, GOAL_BASE } from "@/components/Binder";
 import { AddCardTile, Masthead, rowBtn } from "@/components/common";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
@@ -106,16 +106,16 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
       <Masthead title="ゴール" statValue={goalItems.length} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32, paddingLeft: 8, paddingRight: 8 }}>
-        {/* ゴールもアーカイブの棚と同じBinder3D(表紙・背表紙・側面・裏表紙の
-            4面を組む箱)で表示する。表紙の影(drop-shadow)は付けない指定
-            (shadow={false})。3D構造そのものに戻すユーザー指示のため、
-            §7.13〜§7.15にあったGoalBinderCard(平面のみの代替案)は撤去した。 */}
+        {/* ゴールはGoalBinderCard(Binder.tsx参照)で表示する。表紙は左端の
+            蝶番を軸にわずかに傾け、その下に裏表紙(表紙より暗い色の角丸の
+            四角形)が表紙の右(開く側)の縁からほんの少しだけ覗く、という
+            「机の上でノートの表紙だけ少し開いて浮いている」構図。 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 30, columnGap: 14, justifyItems: "center" }}>
           {goalItems.map((g) => {
             const count = g.checkIns?.length ?? 0;
             return (
-              <Binder3D
-                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT} rotateY={-14} depth={22} count={count} shadow={false}
+              <GoalBinderCard
+                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT}
                 color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={goalAccent(g.id)}
                 onClick={() => setOpenGoalId(g.id)}
                 // 表紙にはGOAL・タイトル・記録の件数だけを表示する。以前は

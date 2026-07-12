@@ -217,23 +217,39 @@ function TargetMotif({ color = PAPER }: { color?: string }) {
   );
 }
 
-// モノ専用: 白地(PAPER)の上に、太めのチェックマーク1つ、というシンプルな
-// 構図。円3つの組み合わせ(前版)から「シンプルで太めのチェックのような
-// デザイン」という指定を受けて作り直した。図形ボキャブラリー(円・半円・
-// 四半円・三角・長方形)には「チェック」そのものは無いため、長方形の
-// 縁(border-left+border-bottom)だけを描き、45度回転させるという古典的な
-// CSSチェックマーク技法で組む(L字の縁だけが見え、面としては何も塗ら
-// ない)。回転角は45度なので「0/45/90/180度のみ」という角度ルールの
-// 範囲内。位置はタイトルが絶対に伸びてこない上部の余白帯(spacer、上から
-// 34%)の中に収めている。「巻が増えても色だけ変える」という運用
-// (thingVolumeAccent参照)に合わせ、図形自体は個体差を持たない固定形。
-function StampMotif({ color }: { color: string }) {
+// モノ専用。旧版(チェックマーク・円3つの組み合わせ)はどちらも「白い
+// 余白の中に図形が浮いているだけ」で、target=全面/geo=上端の広い帯/
+// media=上端の細い帯/side=左端の帯、という他4種が必ず持っている
+// 「専用の帯(ゾーン)」をモノだけが持たない、という体系そのものの
+// 欠落が破綻の一因だった(帯の位置を使い切ると: 上端(geo/media)・
+// 左端(side)・全面(target)の3通りが埋まっており、残る素直な軸は
+// 下端だけ)。モノには下端の帯(STAMP_BAND)を新設し、そこにPAPER色の
+// 図形を並べる。図形の並べ方も「2x2グリッド(geo)」「ひとつだけ(media)」
+// 「縦の総柄(side)」に続く4つ目のバリエーションとして「横一列」を
+// 割り当てている。個体ごとの違いは持たせず(THING_VOLUME_HUESの通り
+// 色は巻数だけで決まる)、図形の並びそのものが「モノ」という種別の
+// 印になるようにしている。
+const STAMP_BAND = "30%";
+// ★SideSquareCell(帯の高さ÷個数、で縦の総柄が帯からはみ出さないよう
+// 保証した)と同じ考え方だが、こちらは横一列に並ぶため制約する軸が逆
+// (縦に積むなら高さの合計、横に並べるなら幅の合計が器を超えないことが
+// 重要)。flex:1でセル同士が幅を均等に分け合い、aspectRatio:1/1でその
+// 幅から高さを導く。3個分の幅の合計は必ず帯の幅(=カード幅)ぴったりに
+// 収まるため、高さも自動的に帯の高さ以下になる(帯の方が幅より高い
+// 比率のため)。maxHeightは万一の保険。
+function StampSquareCell({ shape }: { shape: PlaneShape }) {
   return (
-    <div style={{
-      position: "absolute", left: "28%", top: "10%", width: "30%", height: "16%",
-      borderLeft: `7px solid ${color}`, borderBottom: `7px solid ${color}`,
-      transform: "rotate(-45deg)", transformOrigin: "0% 100%",
-    }} />
+    <div style={{ position: "relative", flex: "1 1 0", aspectRatio: "1 / 1", maxHeight: "100%", overflow: "hidden" }}>
+      <PlaneFill shape={shape} color={PAPER} />
+    </div>
+  );
+}
+function StampMotif() {
+  const shapes: PlaneShape[] = ["quarterBL", "circle", "quarterBR"];
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: "10%", padding: "0 14%" }}>
+      {shapes.map((shape, i) => <StampSquareCell key={i} shape={shape} />)}
+    </div>
   );
 }
 
@@ -475,18 +491,22 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
     );
   }
 
-  // モノ専用(stamp)。白地(PAPER)+色付きの円を組み合わせたStampMotif。
-  // target(ゴール)のような色地ではなく、geo/mediaと同じ白地なので、
-  // 文字色はそれらと同じINK(デフォルト)のまま使う。
+  // モノ専用(stamp)。他4種と同じく「専用の帯」を持たせた構成に作り
+  // 直した(StampMotifのコメント参照)。geo/mediaが帯を上端に置くのに
+  // 対し、モノは下端に置く(既に上端(geo/media)・左端(side)・全面
+  // (target)が埋まっているため、残る素直な軸として下端を割り当てた)。
+  // 帯の中はPAPER色の図形+accent色の地、それ以外(タイトル側)は白地
+  // なので、文字色はgeo/mediaと同じINK(デフォルト)のまま使う。
   if (accent?.kind === "stamp") {
     return (
       <div style={{
         position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: PAPER, overflow: "hidden",
         borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
       }}>
-        <div style={{ flex: "0 0 34%", flexShrink: 0 }} />
         <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={accent.color} />
-        <StampMotif color={accent.color} />
+        <div style={{ flex: `0 0 ${STAMP_BAND}`, position: "relative", flexShrink: 0, background: accent.color }}>
+          <StampMotif />
+        </div>
       </div>
     );
   }
@@ -1070,29 +1090,22 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     if (el) el.scrollLeft = 0;
   }, [containerWidth]);
 
-  // ★上のエフェクトはcontainerWidthが確定した直後の1回だけscrollLeftを
-  // 0へ揃えるが、それでも入場アニメーション完了後にバインダーの位置が
-  // ずれるという報告があった。実機のみで起きるタイミング差(フォントの
-  // 読み込み完了に伴う再レイアウトなど、この環境のChromiumでは再現できない
-  // 要因を含む)が原因の可能性があるため、原因を1箇所に絞れないまま
-  // 対症療法にはなるが、入場アニメーションが確実に終わり切ったタイミング
-  // (最後のカードの遅延+持続時間より少し長め)でもう一度scrollLeftと
-  // centerRefを0へ強制的に揃え直す安全網を追加する。ユーザーがその間に
-  // 実際にスワイプを始めていた場合は上書きしないよう、dragRef/直近の
-  // スクロール量を見て「まだ何も操作していない」ときだけ適用する。
-  useEffect(() => {
-    if (containerWidth <= 0) return;
-    const timer = window.setTimeout(() => {
-      const el = scrollRef.current;
-      if (!el || dragRef.current) return;
-      if (Math.abs(el.scrollLeft) > 0.5) {
-        el.scrollLeft = 0;
-        centerRef.current = 0;
-        setTick((t) => t + 1);
-      }
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [containerWidth]);
+  // ★以前は「入場アニメーションが終わり切った600ms後にscrollLeftと
+  // centerRefを強制的に0へ揃え直す安全網」をここに置いていたが、これが
+  // 原因で「アニメーションが終わった瞬間に画面がスライドし、その後
+  // 初期値に戻る」という新たな不具合を生んでいたと判明したため撤去した。
+  // 実機Safariでは、scrollSnapType:"x mandatory"がドラッグ中以外は常に
+  // 有効なままのこの行(下記JSX参照)に対し、レイアウト確定後のどこかの
+  // タイミングでブラウザ自身のスナップ機構が「本来揃えるべき位置」へ
+  // scrollLeftを勝手に補正することがある(sidePadの計算上scrollLeft=0が
+  // 数学的には正しいスナップ位置のはずだが、containerWidthが浮動小数点
+  // なためsidePadも端数を持ち、実際のピクセル丸めでわずかにズレる余地が
+  // ある)。この時この安全網が600ms後に「まだ0に戻っていなければ0へ
+  // 戻す」処理を行っていたため、ブラウザの補正(0からのズレ)→この
+  // タイマーによる強制的な巻き戻し、という2段階の動きが「スライドして
+  // 初期値に戻る」という体感になっていた。ブラウザ側の補正自体は数px
+  // 程度のはずで単独では目立たない可能性が高く、後から強制的に0へ
+  // 巻き戻す対症療法をやめることで、この2段階の動き自体を無くす。
 
   useEffect(() => () => {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);

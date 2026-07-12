@@ -71,23 +71,27 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
   const [openGoalId, setOpenGoalId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [manualDraft, setManualDraft] = useState<Record<string, string>>({});
-
-  // ★バインダーを閉じた直後(BottomSheetの220msのフェードアウト中)に
-  // 同じバインダーを再タップすると、openGoalIdは既にそのidのまま(実際に
-  // nullになるのは閉じるアニメーション終了後)なので、同じ値をsetState
-  // してもReactは「変化なし」とみなして無視し、シートが開き直らない
-  // まま数百ms後に元の閉じる処理だけが完了して終わる、という不具合が
-  // あった。既に同じidが指定されている場合は一度nullを経由させてから
-  // 次のフレームで入れ直すことで、値としては異なる更新を強制し、
-  // 確実に(古いシートを破棄して)新しいシートを開き直す。
+  // ★バインダーを閉じた直後(BottomSheetの220msのフェードアウト中)に同じ
+  // バインダーを再タップすると、openGoalIdは既にそのidのまま(実際にnull
+  // になるのは閉じるアニメーション終了後)のため、同じ値をsetStateしても
+  // Reactは「変化なし」とみなして再レンダーをスキップする。以前はこれを
+  // 「一度nullを経由させてから次のフレームで入れ直す」という値の変化を
+  // 捏造するハックで回避していたが、rAFの1フレーム分の遅延が生じる上、
+  // 値の等価性判定に依存する不安定な仕組み自体は残っていたため、実機では
+  // 「時間を置かないと開けない」「反応するまで2〜3回かかる」という
+  // 再発報告があった。根本的には「このタップで開くべきシートの実体」を
+  // 値(id)の変化ではなく、タップそのものの発生回数で管理すべきだった。
+  // タップのたびに単調増加するnonceをキーの一部に含めることで、たとえ
+  // idが直前と同じでも(古いBottomSheetインスタンスの220ms閉じるタイマーが
+  // まだ生きていても)Reactに必ず「別のシート」として認識させ、古い
+  // インスタンスを即座に破棄(そのuseEffectクリーンアップで古いタイマーも
+  // 確実に解除される)して新しいインスタンスを確実にマウントする。
+  // 値の等価性判定に依存する分岐が無くなるため、タイミング次第で反応が
+  // 遅れたり複数回タップが必要になったりする余地が構造的に無くなる。
+  const [openNonce, setOpenNonce] = useState(0);
   const openGoalCard = (id: string) => {
-    setOpenGoalId((prev) => {
-      if (prev === id) {
-        requestAnimationFrame(() => setOpenGoalId(id));
-        return null;
-      }
-      return id;
-    });
+    setOpenGoalId(id);
+    setOpenNonce((n) => n + 1);
   };
 
   const addGoal = (title: string) => {
@@ -154,7 +158,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
 
       {adding && <AddGoalSheet onAdd={addGoal} onClose={() => setAdding(false)} />}
       {openGoal && (
-        <GoalDetailSheet goal={openGoal} draft={manualDraft[openGoal.id] ?? ""} onDraftChange={(v) => setManualDraft((d) => ({ ...d, [openGoal.id]: v }))}
+        <GoalDetailSheet key={`${openGoal.id}-${openNonce}`} goal={openGoal} draft={manualDraft[openGoal.id] ?? ""} onDraftChange={(v) => setManualDraft((d) => ({ ...d, [openGoal.id]: v }))}
           onManualAdd={() => addManualCheckIn(openGoal.id)} onRemove={() => removeGoal(openGoal.id)} onClose={() => setOpenGoalId(null)} />
       )}
     </>

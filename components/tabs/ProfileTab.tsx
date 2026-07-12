@@ -1,28 +1,36 @@
 "use client";
 
-import { RotateCcw, X } from "lucide-react";
+import { Heart, Link2, Pencil, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
+import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
 import { HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
 import { haptic, shortDate } from "@/lib/helpers";
 import type { AppState } from "@/lib/types";
 
-// セクション見出し。ラベル語彙(letter-spacingを効かせた小さいラベル)を
-// 画面内で1つに統一する。以前はセクションごとに説明文の有無・長さが
-// バラバラで、UIとしての一貫性を欠いていた。
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10, fontWeight: 700 }}>{children}</div>;
-}
-
-// 「入力+右にボタン」の1行入力欄。以前は「今、気になっていること」が
-// SERIF/16px/1.5px border、「お気に入りの情報源」がSANS/12.5px/1px border
-// と、同じ構造(入力欄+確定ボタン)なのにフォント・サイズ・線の太さが
-// バラバラで、この画面全体の「統一感がない」という指摘の中心だった。
-// この画面内の入力欄はすべてこの1つのスタイルに揃える。
+// 「入力+右にボタン」の1行入力欄。この画面内の入力欄はすべてこの1つの
+// スタイルに揃える(以前はセクションごとにフォント・サイズ・線の太さが
+// バラバラだった)。
 const settingsInputStyle: React.CSSProperties = {
   flex: 1, border: "none", borderBottom: `1.5px solid ${INK}`, background: "transparent",
   fontFamily: SANS, fontSize: 13, padding: "7px 2px", outline: "none", minWidth: 0,
 };
+
+// 各セクションを1枚の淡いカードにまとめる。以前はラベル+素のテキスト/
+// 入力欄が背景に直置きで並んでいるだけで、区切りが弱く「物足りない」
+// 見た目だった。カード化することで各セクションの範囲がひと目でわかり、
+// 画面にリズムが生まれる。
+function SettingsCard({ label, icon: Icon, children }: { label: string; icon?: IconType; children: React.ReactNode }) {
+  return (
+    <section style={{ background: "rgba(23,23,21,0.035)", border: `1px solid ${HAIRLINE}`, borderRadius: 18, padding: "14px 16px 16px", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+        {Icon && <Icon size={12} strokeWidth={2.2} color="#9A988E" />}
+        <span style={{ fontSize: 9, letterSpacing: "0.22em", color: "#9A988E", fontWeight: 700 }}>{label}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 // 削除・取り消しの丸いアイコンボタン。PlanSelectionBarの「選択を外す」と
 // 同じ語彙(rgba(168,85,47,0.12)地+RUST)に揃え、テキストの「削除」
@@ -126,74 +134,84 @@ export function ProfileTab({ appState, persist, onClose }: {
         </div>
       </header>
 
-      <section style={{ paddingTop: 20 }}>
-        <SectionLabel>今、気になっていること</SectionLabel>
-        {editingFocus ? (
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input autoFocus value={focusDraft} onChange={(e) => setFocusDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveFocus()}
-              style={settingsInputStyle} />
-            <button onClick={saveFocus} style={rowBtn(INK, PAPER)}>保存</button>
-          </div>
-        ) : (
-          <div onClick={() => { setFocusDraft(appState.profile?.currentFocus ?? ""); setEditingFocus(true); }} style={{
-            fontFamily: SERIF, fontSize: 17, lineHeight: 1.6, color: appState.profile?.currentFocus ? INK : "#9A988E", cursor: "pointer",
-            borderBottom: "1px dashed rgba(23,23,21,0.25)", paddingBottom: 10,
-          }}>
-            {appState.profile?.currentFocus || "タップして入力（例: 最近は器に興味がある）"}
-          </div>
-        )}
-      </section>
-
-      <section style={{ paddingTop: 26, paddingBottom: 24 }}>
-        <SectionLabel>興味・好み</SectionLabel>
-        {/* 以前はカテゴリごとの色分け+重み(weight)に応じた文字サイズの
-            変化を両方使っており、色もサイズもバラバラな「ワードクラウド」
-            のようになって見づらかった。1色・1サイズの地味なチップへ揃え、
-            重みは並び順(降順)だけで表す方が、興味の一覧としてずっと
-            読みやすい。 */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {interests.length === 0 ? (
-            <p style={{ fontSize: 12, color: "#9A988E" }}>まだありません。</p>
-          ) : interests.map((item) => (
-            <span key={item.id} style={{
-              display: "inline-flex", alignItems: "center", padding: "6px 12px", borderRadius: 999,
-              background: "rgba(23,23,21,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: 12,
+      <main style={{ paddingTop: 18 }}>
+        {/* 「今、気になっていること」: 以前は非編集時(SERIF/17px/破線下線)と
+            編集時(入力欄、SANS/13px)でフォント・サイズがまったく別物で、
+            タップして初めて「統一されたデザイン」になる、という見た目の
+            バグになっていた。両状態を同じフォント/サイズ/下線に揃え、
+            非編集時は右端に鉛筆アイコンを添えることで「ここは編集できる」
+            という手がかりを、テキストの見た目を変えずに示す。 */}
+        <SettingsCard label="今、気になっていること" icon={Pencil}>
+          {editingFocus ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input autoFocus value={focusDraft} onChange={(e) => setFocusDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveFocus()}
+                style={settingsInputStyle} />
+              <button onClick={saveFocus} style={rowBtn(INK, PAPER)}>保存</button>
+            </div>
+          ) : (
+            <button onClick={() => { setFocusDraft(appState.profile?.currentFocus ?? ""); setEditingFocus(true); }} style={{
+              display: "flex", alignItems: "center", gap: 8, width: "100%", border: "none", background: "transparent",
+              cursor: "pointer", padding: 0, textAlign: "left", borderBottom: `1.5px solid ${INK}`, paddingBottom: 7,
             }}>
-              {item.label}
-            </span>
+              <span style={{
+                flex: 1, minWidth: 0, fontFamily: SANS, fontSize: 13, color: appState.profile?.currentFocus ? INK : "#B5B3A8",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {appState.profile?.currentFocus || "タップして入力（例: 最近は器に興味がある）"}
+              </span>
+              <Pencil size={12} strokeWidth={2} color="#9A988E" style={{ flexShrink: 0 }} />
+            </button>
+          )}
+        </SettingsCard>
+
+        <SettingsCard label="興味・好み" icon={Heart}>
+          {/* 以前はカテゴリごとの色分け+重み(weight)に応じた文字サイズの
+              変化を両方使っており、色もサイズもバラバラな「ワードクラウド」
+              のようになって見づらかった。1色・1サイズの地味なチップへ揃え、
+              重みは並び順(降順)だけで表す方が、興味の一覧としてずっと
+              読みやすい。 */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {interests.length === 0 ? (
+              <p style={{ fontSize: 12, color: "#9A988E", margin: 0 }}>まだありません。</p>
+            ) : interests.map((item) => (
+              <span key={item.id} style={{
+                display: "inline-flex", alignItems: "center", padding: "6px 12px", borderRadius: 999,
+                background: "rgba(23,23,21,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: 12,
+              }}>
+                {item.label}
+              </span>
+            ))}
+          </div>
+        </SettingsCard>
+
+        <SettingsCard label="お気に入りの情報源" icon={Link2}>
+          {sources.length === 0 ? (
+            <p style={{ fontSize: 12, color: "#9A988E", margin: "0 0 12px" }}>まだありません。</p>
+          ) : sources.map((s) => (
+            <SettingsRow key={s.id} title={s.label} sub={s.url}
+              action={<IconButton onClick={() => removeSource(s.id)} label={`${s.label}を削除`}><X size={13} strokeWidth={2.4} /></IconButton>} />
           ))}
-        </div>
-      </section>
+          <div style={{ display: "flex", gap: 8, marginTop: sources.length === 0 ? 0 : 12 }}>
+            <input value={srcInput} onChange={(e) => setSrcInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSource()}
+              placeholder="https:// から始まるURLを貼り付け" style={settingsInputStyle} />
+            <button onClick={addSource} style={rowBtn(INK, PAPER)}>登録</button>
+          </div>
+        </SettingsCard>
 
-      <section style={{ paddingTop: 6, paddingBottom: 28 }}>
-        <SectionLabel>お気に入りの情報源</SectionLabel>
-        {sources.length === 0 ? (
-          <p style={{ fontSize: 12, color: "#9A988E", margin: "0 0 12px" }}>まだありません。</p>
-        ) : sources.map((s) => (
-          <SettingsRow key={s.id} title={s.label} sub={s.url}
-            action={<IconButton onClick={() => removeSource(s.id)} label={`${s.label}を削除`}><X size={13} strokeWidth={2.4} /></IconButton>} />
-        ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <input value={srcInput} onChange={(e) => setSrcInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSource()}
-            placeholder="https:// から始まるURLを貼り付け" style={settingsInputStyle} />
-          <button onClick={addSource} style={rowBtn(INK, PAPER)}>登録</button>
-        </div>
-      </section>
-
-      {/* バインド！(確定ビューでの綴じ操作)のログ。誤ってバインドして
-          ストック/プランからカードが消えてしまった時に、この画面から
-          元に戻せるようにする(HANDOFF-CURRENT.md §7.8参照)。 */}
-      <section style={{ paddingTop: 6, paddingBottom: 28 }}>
-        <SectionLabel>バインドの記録</SectionLabel>
-        {bindLog.length === 0 ? (
-          <p style={{ fontSize: 12, color: "#9A988E" }}>まだありません。</p>
-        ) : bindLog.map((entry) => (
-          <SettingsRow key={entry.id} faded={entry.undone}
-            title={`${entry.items.length}件・${entry.items.map((it) => it.title).join("、")}`}
-            sub={`${shortDate(entry.boundAt)}にバインド${entry.undone ? "・取り消し済み" : ""}`}
-            action={!entry.undone && <IconButton onClick={() => undoBind(entry.id)} label="バインドを元に戻す"><RotateCcw size={13} strokeWidth={2.4} /></IconButton>} />
-        ))}
-      </section>
+        {/* バインド！(確定ビューでの綴じ操作)のログ。誤ってバインドして
+            ストック/プランからカードが消えてしまった時に、この画面から
+            元に戻せるようにする(HANDOFF-CURRENT.md §7.8参照)。 */}
+        <SettingsCard label="バインドの記録" icon={RotateCcw}>
+          {bindLog.length === 0 ? (
+            <p style={{ fontSize: 12, color: "#9A988E", margin: 0 }}>まだありません。</p>
+          ) : bindLog.map((entry) => (
+            <SettingsRow key={entry.id} faded={entry.undone}
+              title={`${entry.items.length}件・${entry.items.map((it) => it.title).join("、")}`}
+              sub={`${shortDate(entry.boundAt)}にバインド${entry.undone ? "・取り消し済み" : ""}`}
+              action={!entry.undone && <IconButton onClick={() => undoBind(entry.id)} label="バインドを元に戻す"><RotateCcw size={13} strokeWidth={2.4} /></IconButton>} />
+          ))}
+        </SettingsCard>
+      </main>
     </>
   );
 }

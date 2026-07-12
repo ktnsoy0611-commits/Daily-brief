@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { Binder3D, goalAccent, GOAL_BASE } from "@/components/Binder";
+import { GoalBinderCard, goalAccent, GOAL_BASE } from "@/components/Binder";
 import { AddCardTile, Masthead, rowBtn } from "@/components/common";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
@@ -106,31 +106,21 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
       <Masthead title="ゴール" statValue={goalItems.length} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32, paddingLeft: 8, paddingRight: 8 }}>
-        {/* ゴールもアプリ共通のBinder3D(表紙+背表紙を持つリングバインダー)で
-            統一する。以前は専用のGoalCardを使っており、アーカイブタブの棚と
-            見た目が食い違っていた。グリッドでは常に表紙が正面(rotateY:0)
-            を向いた状態で並べ、タイトルを読み取りやすくしている。
-            rotateY(-14度)分だけ影が斜めに投影されるため、外側(AppShell側の
-            data-tab-scroll-root)が持つ16pxの余白だけでは、特に右列のタイルの
-            影がぎりぎり画面端で切れることがあった。ここに追加で左右8pxの
-            余白を足し、影がクリップされる前に収まる隙間を確保している。 */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 30, columnGap: 14, justifyItems: "center" }}>
+        {/* ゴールはGoalBinderCard(平面2Dのバインダー、Binder.tsx参照)で統一する。
+            以前はアーカイブと同じBinder3D(3D回転)を流用していたが、静止した
+            グリッドに3D変形は不要な上、描画バグの温床になっていたため撤廃した。
+            下からのぞく紙の層ぶん、行の間隔(rowGap)に余裕を持たせている。 */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 34, columnGap: 14, justifyItems: "center" }}>
           {goalItems.map((g) => {
-            const latest = g.checkIns?.[0];
             const count = g.checkIns?.length ?? 0;
             return (
-              <Binder3D
-                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT} rotateY={-14} depth={22} count={count}
+              <GoalBinderCard
+                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT}
                 color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={goalAccent(g.id)}
                 onClick={() => setOpenGoalId(g.id)}
                 footer={
-                  <div>
-                    {latest && (
-                      <p style={{ margin: "0 0 5px", fontSize: 9.5, lineHeight: 1.4, color: "rgba(253,251,245,0.8)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{latest.text}</p>
-                    )}
-                    <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(253,251,245,0.7)", borderTop: "1px solid rgba(253,251,245,0.3)", paddingTop: 6 }}>
-                      {count > 0 ? `記録 ${count}件・タップで見る` : "まだ記録がありません"}
-                    </div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(253,251,245,0.7)", borderTop: "1px solid rgba(253,251,245,0.3)", paddingTop: 6 }}>
+                    {count > 0 ? `記録 ${count}件・タップで見る` : "まだ記録がありません"}
                   </div>
                 }
               />

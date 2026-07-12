@@ -437,8 +437,7 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
         <MapFullscreenOverlay items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} onRequestClose={() => setMapFullscreen(false)} />,
         document.body
       )}
-      <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.8, margin: "10px 2px 22px" }}>ピンやカードをタップして、今日のプランを選ぶ。</p>
-
+      <div style={{ height: 22 }} />
       {plans.length > 0 && (
         <HorizontalShelf title="今週のおすすめ" badge={bundlesAreNew ? "NEW" : undefined}>
           {plans.map((plan) => (

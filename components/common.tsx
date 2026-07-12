@@ -26,13 +26,17 @@ export function Masthead({ title, statValue, statLabel, dateline, right, corner 
           <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 28, letterSpacing: "-0.01em", lineHeight: 1.15, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          {corner}
+          {/* 件数チップを左、設定(corner)を右端に固定する。以前はcornerを
+              件数チップより先(左)に置いており、設定アイコンが常に画面の
+              最も右端ではなかった。設定を常に一番右に置くことで、全タブで
+              位置を固定する。 */}
           {right ? right : (
             <div style={{ display: "flex", alignItems: "center", gap: 5, height: HEADER_CHIP_SIZE, background: PAPER, borderRadius: 999, padding: "0 16px", boxShadow: SOFT_SHADOW }}>
               <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16, lineHeight: 1, color: INK }}>{statValue}</span>
               <span style={{ fontSize: 10, color: "#9A988E", lineHeight: 1 }}>{statLabel}</span>
             </div>
           )}
+          {corner}
         </div>
       </div>
       {dateline && <div style={{ fontSize: 12, color: "#9A988E", marginTop: 10 }}>{dateline}</div>}

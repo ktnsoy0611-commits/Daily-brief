@@ -212,24 +212,25 @@ function TargetMotif({ color = PAPER }: { color?: string }) {
   );
 }
 
-// モノ専用: 全面べた塗り+上部の余白に収まる小さな三角、というミニマルな
-// 構図。target(ゴール)と同じ「全面色+単一図形」という骨格は踏襲しつつ、
-// 初期実装(開く側の角に収まる四半円)はゴールの円と同じ「丸い図形」の
-// 語彙だったため見分けにくいという指摘を受け、図形の系統ごと変えた:
-// ゴール=円系(TargetMotif、上端中央から**はみ出す**巨大な円)に対し、
-// モノ=角系(小さな三角)。「丸⇄角」「はみ出す⇄収まる」「巨大⇄小さい」と
-// いう複数の軸を同時に反転させることで、同じ「全面べた塗り+単一図形」と
-// いう骨格を保ちながらも一目で見分けがつくようにしている。位置は下端
-// 中央(CoverBodyのタイトル直下)に置くと、タイトルが2〜3行に伸びた時に
-// 文字と重なってしまったため、タイトルが絶対に伸びてこない上部の余白
-// 帯(spacer、上から34%)の中に収めている。「巻が増えても色だけ変える」
-// という運用(thingVolumeAccent参照)に合わせ、図形自体は個体差を持たない
-// 固定形。
-function StampMotif({ color = PAPER }: { color?: string }) {
+// モノ専用: 白地(PAPER)の上に、色調をずらした円を3つ重ねて組み合わせる
+// 構図。以前は「全面べた塗り+単一図形」という他ドメインと同じ骨格を
+// 使い回していた(初版はゴールと同じ円、次版はゴールと違う三角)が、
+// 「白地に、色のついた円を組み合わせてほしい」という明確な指定を受け、
+// 骨格自体を作り直した: 下地は白(target/geo/side/mediaのような色地では
+// ない)、図形は円のみ・複数(1つではない)。3つの円は同じ基準色から
+// shade()で明度違いの3段階(明・中間・暗)を作って使う。位置はタイトルが
+// 絶対に伸びてこない上部の余白帯(spacer、上から34%)の中に収めている。
+// 「巻が増えても色だけ変える」という運用(thingVolumeAccent参照)に合わせ、
+// 図形の配置・個数は個体差を持たない固定形。
+function StampMotif({ color }: { color: string }) {
+  const light = shade(color, 30);
+  const dark = shade(color, -14);
   return (
-    <div style={{ position: "absolute", left: "50%", top: "10%", transform: "translateX(-50%)", width: "20%", aspectRatio: "1 / 1" }}>
-      <PlaneFill shape="triangleUp" color={color} />
-    </div>
+    <>
+      <div style={{ position: "absolute", left: "14%", top: "8%", width: "30%", aspectRatio: "1 / 1", borderRadius: "50%", background: light }} />
+      <div style={{ position: "absolute", left: "38%", top: "16%", width: "22%", aspectRatio: "1 / 1", borderRadius: "50%", background: color }} />
+      <div style={{ position: "absolute", left: "56%", top: "5%", width: "16%", aspectRatio: "1 / 1", borderRadius: "50%", background: dark }} />
+    </>
   );
 }
 
@@ -237,11 +238,13 @@ function StampMotif({ color = PAPER }: { color?: string }) {
 // 配置する。target(全面)・media(上端の細い横帯)・geo(上端の広い横帯)は
 // いずれも「上端の帯、または全面」という水平の構図を軸にしているため、
 // タイケンだけ帯の向きそのもの(縦)を変えることで、同じセル+図形の
-// ボキャブラリーを使いながら一目で見分けがつくようにしている。図形は
-// mediaと同じ「帯の端に寄せて1つだけ置く」考え方を踏襲しつつ、縦帯なので
-// 「端」は上下方向になる(下端に寄せている)。SquareCellは高さを基準に
-// 正方形を作る実装のため、幅を基準にする縦帯用にSideSquareCellを別途
-// 用意した。
+// ボキャブラリーを使いながら一目で見分けがつくようにしている。SquareCell
+// は高さを基準に正方形を作る実装のため、幅を基準にする縦帯用に
+// SideSquareCellを別途用意した。図形は当初「端に1つだけ」だったが、
+// 「正方形のグリッドで4〜5個縦に並べてほしい」という指定を受け、同じ
+// 図形(kindごとに固定)をSIDE_MOTIF_COUNT回、帯の全高に均等配置する
+// 総柄(トーテムポール状)に作り直した。下地(帯の色)自体は変えていない。
+const SIDE_MOTIF_COUNT = 4;
 function SideSquareCell({ shape, color }: { shape: PlaneShape; color: string }) {
   return (
     <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", flexShrink: 0, overflow: "hidden" }}>
@@ -251,8 +254,10 @@ function SideSquareCell({ shape, color }: { shape: PlaneShape; color: string }) 
 }
 function SideMotif({ shape }: { shape: PlaneShape }) {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-      <SideSquareCell shape={shape} color={PAPER} />
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+      {Array.from({ length: SIDE_MOTIF_COUNT }, (_, i) => (
+        <SideSquareCell key={i} shape={shape} color={PAPER} />
+      ))}
     </div>
   );
 }
@@ -458,19 +463,18 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
     );
   }
 
-  // モノ専用(stamp)。target(ゴール)と同じ「全面べた塗り+単一図形」の
-  // 骨格だが、図形をStampMotif(開く側の角に収まる四半円)に差し替えて
-  // いるため、両者を並べても見分けがつく。
+  // モノ専用(stamp)。白地(PAPER)+色付きの円を組み合わせたStampMotif。
+  // target(ゴール)のような色地ではなく、geo/mediaと同じ白地なので、
+  // 文字色はそれらと同じINK(デフォルト)のまま使う。
   if (accent?.kind === "stamp") {
-    const light = "rgba(253,251,245,0.85)";
     return (
       <div style={{
-        position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: accent.color, overflow: "hidden",
+        position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: PAPER, overflow: "hidden",
         borderTopRightRadius: COVER_RADIUS, borderBottomRightRadius: COVER_RADIUS,
       }}>
         <div style={{ flex: "0 0 34%", flexShrink: 0 }} />
-        <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={light} titleColor={PAPER} />
-        <StampMotif color={PAPER} />
+        <CoverBody eyebrowLabel={eyebrowLabel} title={title} footer={footer} accentColor={accent.color} />
+        <StampMotif color={accent.color} />
       </div>
     );
   }
@@ -516,19 +520,9 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
 // media=縦縞、target=単色の枠)を背表紙でもそのまま踏襲することで、
 // 棚に並んで背表紙しか見えない状態でも扱いの違いが伝わるようにしている。
 function BinderSpineFace({ accent }: { accent: Accent }) {
-  if (accent.kind === "geo") {
-    // 縞の角度は45度で固定する(以前は20〜70度でハッシュから細かく
-    // 振っていたが、0/45/90/180以外の中途半端な角度は「揃っていない」
-    // 印象の一因だった)。個体差は縞の間隔の広さ・狭さの2段階だけで表す。
-    const light = shade(accent.color, 30);
-    const wide = (accent.seed >> 3) % 2 === 0;
-    const step = wide ? 14 : 8;
-    return (
-      <div style={{ position: "absolute", inset: 0, background: `repeating-linear-gradient(45deg, ${accent.color} 0, ${accent.color} ${step}px, ${light} ${step}px, ${light} ${step * 2}px)` }}>
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(255,255,255,0.12), rgba(0,0,0,0.14))" }} />
-      </div>
-    );
-  }
+  // バショ(geo)の背表紙は以前45度の縞模様だったが、「背表紙は単色に
+  // してほしい」という指定を受けて撤去した。geo固有の処理を持たず、
+  // 下のフォールバック(単色+左右の陰影オーバーレイ)へ素直に落ちる。
   if (accent.kind === "media") {
     const light = shade(accent.color, 24);
     return (
@@ -882,13 +876,19 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
   const pressRef = useRef<{ key: string; index: number; pointerId: number; clientX: number; clientY: number; timer: number } | null>(null);
   const dragRef = useRef<{ key: string; pointerId: number; startClientX: number; startIndex: number; currentIndex: number } | null>(null);
   const dragOffsetPxRef = useRef(0);
+  // 指(ポインタ)の生のscreen X座標。オートスクロールの要否は、この値と
+  // スクロールコンテナ自身のgetBoundingClientRect()を直接比較して決める
+  // (後述、以前はvirtualIndexベースの間接的な計算をしていたが不十分だった)。
+  const pointerClientXRef = useRef(0);
   const dragRafRef = useRef<number | null>(null);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
 
-  // 端に寄せている間、この距離(px)以内でオートスクロールを発動する。
-  const AUTOSCROLL_EDGE_PX = 56;
-  // 1フレームあたりのオートスクロール量(px)。
-  const AUTOSCROLL_SPEED_PX = 7;
+  // 端からこの距離(px)以内でオートスクロールを発動する。
+  const AUTOSCROLL_EDGE_PX = 72;
+  // オートスクロール速度(px/フレーム)。端にちょうど入った瞬間は控えめに、
+  // 端を大きく超えて(画面外まで)指を動かすほど最大速度まで加速する。
+  const AUTOSCROLL_MIN_SPEED = 6;
+  const AUTOSCROLL_MAX_SPEED = 30;
 
   const dragPollFrame = () => {
     const drag = dragRef.current;
@@ -899,18 +899,27 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     // オートスクロール: ドラッグ中はスクロールコンテナのoverflowXを
     // hiddenに凍結している(並べ替えの物理演算=centerRef基準の回転角を
     // 安定させるため)が、これはユーザーのスワイプ操作を止めるだけで、
-    // programmaticなscrollLeftの変更は引き続き効く。つまんだカードの
-    // 画面上のX位置を概算し、コンテナ端に近づいたらscrollLeftを少しずつ
-    // 動かして追従させる。これが無いと、コンテナの外まで指を動かした
-    // 瞬間につまんだカードがoverflow:hiddenで見えなくなり、「掴んだ
-    // バインダーがどこに行ったかわからなくなる」というユーザー報告の
-    // バグになっていた。
-    const draggedScreenX = (virtualIndex - centerRef.current) * step + el.clientWidth / 2;
-    if (draggedScreenX < AUTOSCROLL_EDGE_PX) {
-      el.scrollLeft = Math.max(0, el.scrollLeft - AUTOSCROLL_SPEED_PX);
+    // programmaticなscrollLeftの変更は引き続き効く。
+    // ★以前はカードの「あるべき位置」をvirtualIndex/centerRef/gapの
+    // クランプ込みで逆算してから端との距離を判定していたが、この間接的な
+    // 計算はgapのクランプ処理と噛み合わず実際の指の位置とズレることが
+    // あり、加えて速度が固定7px/フレーム(≒420px/秒)だったため、指を
+    // 素早く動かす現実的なドラッグ速度に追いつけず、結局カードが
+    // overflow:hiddenの外へ出て見失われていた。指のスクリーン座標を
+    // そのままコンテナのgetBoundingClientRect()と比較する直接的な判定に
+    // 変え、端を深く超えるほど速度も加速するようにした。
+    const rect = el.getBoundingClientRect();
+    const distFromLeft = pointerClientXRef.current - rect.left;
+    const distFromRight = rect.right - pointerClientXRef.current;
+    if (distFromLeft < AUTOSCROLL_EDGE_PX) {
+      const depth = Math.min(1, Math.max(0, (AUTOSCROLL_EDGE_PX - distFromLeft) / AUTOSCROLL_EDGE_PX));
+      const speed = AUTOSCROLL_MIN_SPEED + depth * (AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED);
+      el.scrollLeft = Math.max(0, el.scrollLeft - speed);
       centerRef.current = el.scrollLeft / step;
-    } else if (draggedScreenX > el.clientWidth - AUTOSCROLL_EDGE_PX) {
-      el.scrollLeft = Math.min(el.scrollWidth - el.clientWidth, el.scrollLeft + AUTOSCROLL_SPEED_PX);
+    } else if (distFromRight < AUTOSCROLL_EDGE_PX) {
+      const depth = Math.min(1, Math.max(0, (AUTOSCROLL_EDGE_PX - distFromRight) / AUTOSCROLL_EDGE_PX));
+      const speed = AUTOSCROLL_MIN_SPEED + depth * (AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED);
+      el.scrollLeft = Math.min(el.scrollWidth - el.clientWidth, el.scrollLeft + speed);
       centerRef.current = el.scrollLeft / step;
     }
 
@@ -943,6 +952,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     pressRef.current = null;
     dragRef.current = { key, pointerId, startClientX: clientX, startIndex: index, currentIndex: index };
     dragOffsetPxRef.current = 0;
+    pointerClientXRef.current = clientX;
     setDraggingKey(key);
     if (dragRafRef.current == null) dragRafRef.current = requestAnimationFrame(dragPollFrame);
   };
@@ -1015,6 +1025,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       if (drag && drag.pointerId === pointerId) {
         ev.preventDefault();
         dragOffsetPxRef.current = ev.clientX - drag.startClientX;
+        pointerClientXRef.current = ev.clientX;
       }
     };
     const onUp = (ev: PointerEvent) => {
@@ -1168,8 +1179,18 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
       ref={scrollRef} onScroll={onScroll} className="no-scrollbar"
       style={{ display: "flex", alignItems: "flex-end", overflowX: "auto", overflowAnchor: "none", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", padding: `${topPad}px 0 14px` }}
     >
-      <div style={{ flex: "0 0 auto", width: sidePad }} />
-      {orderedItems.map((it, i) => {
+      {/* containerWidth(=sidePadの元)が実測される前(0の間)はカードを
+          一切描画しない。以前はcontainerWidth=0のままsidePad=0で最初の
+          1フレームを描画し、直後にResizeObserverが実測してsidePadが
+          正しい値へ変わった瞬間、全カードの位置が0→正しい値へガクッと
+          動いていた(入場アニメーションを大きく・目立つようにしたことで
+          この「後からの位置補正」も同様に目立つようになり、「アニメーション
+          後に勝手にスライドする」という見え方になっていた)。containerWidth
+          が既知になるまでは何も描画せず、実測が済んだ「正しいレイアウト」
+          の状態で初めてカードを描画・入場アニメーションを開始することで、
+          アニメーション完了後に位置がずれる余地を構造的に無くした。 */}
+      {containerWidth > 0 && <div style={{ flex: "0 0 auto", width: sidePad }} />}
+      {containerWidth > 0 && orderedItems.map((it, i) => {
         const d = i - centerRef.current;
         // 左右どちらの隣も背表紙(リング側、ラベルが読める面)が正面を
         // 向くのは共通だが、静止角は左右で非対称にしている: 右側は90度を
@@ -1230,7 +1251,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
           </div>
         );
       })}
-      <div style={{ flex: "0 0 auto", width: sidePad }} />
+      {containerWidth > 0 && <div style={{ flex: "0 0 auto", width: sidePad }} />}
     </div>
   );
 }

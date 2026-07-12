@@ -65,7 +65,18 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
   // ように見えていた。pointerdownは指が触れた瞬間に確定するため、この
   // 揺れの影響を受けない。
   const closeIfSelf = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) requestClose();
+    if (e.target !== e.currentTarget) return;
+    // ★このpointerdownでrequestClose()を呼んでから実際にpointerEventsが
+    // noneへ切り替わるまでの間に、ブラウザが標準で送るpointerup後の
+    // 互換click イベントが割り込むと、その時点でこのブラーは既に
+    // pointerEvents:noneになっている(または切り替わり中)ため、click の
+    // ヒットテストがブラーの下の要素(ボタン等)まで突き抜けてしまい、
+    // 「ブラーを閉じたつもりが下のボタンを誤タップした」ことになっていた。
+    // pointerdownでpreventDefault()すると、ブラウザはこのジェスチャーに
+    // 続く互換マウスイベント(click含む)を一切合成しなくなるため、
+    // この突き抜け自体が起こらなくなる。
+    e.preventDefault();
+    requestClose();
   };
 
   return (
@@ -121,7 +132,10 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
 // closeIfSelfと同じ理由でonClickではなくonPointerDownにしている。
 export function closeOnSelfClick(handler: () => void) {
   return (e: PointerEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) handler();
+    if (e.target !== e.currentTarget) return;
+    // closeIfSelfと同じ理由(下の要素への互換clickの突き抜け防止)。
+    e.preventDefault();
+    handler();
   };
 }
 

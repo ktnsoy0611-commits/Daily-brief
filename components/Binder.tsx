@@ -935,6 +935,12 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     haptic(10);
     const el = scrollRef.current;
     if (el) { el.style.overflowX = "hidden"; el.style.touchAction = "none"; }
+    // 通常スクロール用のpollFrameループが(直前の慣性スクロールなどで)
+    // まだ動いていた場合、ドラッグ用のループと衝突しないよう先に止める。
+    if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    // press(押下中)からdrag(確定)への切り替えを明示する。以後の
+    // onMove/onUpはpressRefが空であることを見てdragRef側の分岐に入る。
+    pressRef.current = null;
     dragRef.current = { key, pointerId, startClientX: clientX, startIndex: index, currentIndex: index };
     dragOffsetPxRef.current = 0;
     setDraggingKey(key);
@@ -950,45 +956,80 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     onReorder?.(orderRef.current);
   };
 
+  // ★以前はsetPointerCaptureで「指がどこへ動いても最初の要素がイベントを
+  // 受け取り続ける」方式にしていたが、実機相当のマウス操作で再現テストした
+  // ところ、大きく・速くドラッグして複数回スワップが起きるケースでだけ
+  // ドラッグが「固まって」二度と終了しない不具合が再現した。原因を
+  // 突き止めると、swap(setOrder)のたびにReactがDOM上でスロットを並べ替え
+  // (同じ要素をinsertBeforeで移動)ており、この移動が一瞬でも要素を
+  // ドキュメントから外す形で実装されているブラウザでは、そのたびに
+  // pointer captureが仕様通り自動的に解除されていた(hasPointerCaptureで
+  // 実測して確認)。captureが外れた後は、指が実際にホバーしている別の
+  // 要素(棚の外や隣のセクションなど)へイベントが流れてしまい、
+  // pointerupがどのスロットにも届かず、ドラッグの終了処理
+  // (endDrag)が永久に呼ばれないままになっていた。
+  // 対策として、要素のcaptureに依存しない方式へ作り替えた:
+  // pointerdownの瞬間にwindowへ直接move/up/cancelリスナーを登録し、
+  // pointerIdの一致だけで判定する。この方式はDOM上のどの要素が
+  // 並べ替えでどう動こうと、windowという不変の対象に貼ったリスナーは
+  // 影響を受けないため、確実に最後まで追従できる。
+  const pointerMoveHandlerRef = useRef<((e: PointerEvent) => void) | null>(null);
+  const pointerUpHandlerRef = useRef<((e: PointerEvent) => void) | null>(null);
+  const detachGlobalPointerListeners = () => {
+    if (pointerMoveHandlerRef.current) {
+      window.removeEventListener("pointermove", pointerMoveHandlerRef.current);
+      pointerMoveHandlerRef.current = null;
+    }
+    if (pointerUpHandlerRef.current) {
+      window.removeEventListener("pointerup", pointerUpHandlerRef.current);
+      window.removeEventListener("pointercancel", pointerUpHandlerRef.current);
+      pointerUpHandlerRef.current = null;
+    }
+  };
+
   const handleSlotPointerDown = (e: ReactPointerEvent<HTMLDivElement>, key: string, index: number) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    // captureに失敗しても(検証環境の合成イベントなど)長押し判定自体は
-    // 続行できるよう、ここは握りつぶす。
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
+    const pointerId = e.pointerId;
     const timer = window.setTimeout(() => {
       const press = pressRef.current;
       if (press) beginDrag(press.key, press.index, press.pointerId, press.clientX);
     }, LONG_PRESS_MS);
-    pressRef.current = { key, index, pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY, timer };
-  };
-  const handleSlotPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const press = pressRef.current;
-    if (press && press.pointerId === e.pointerId) {
-      const dx = e.clientX - press.clientX, dy = e.clientY - press.clientY;
-      // 一定以上動いたら長押しではなく通常のスワイプ/タップとみなし、
-      // ここまでpreventDefaultを一度も呼んでいないためネイティブの
-      // スクロールへそのまま委ねる。
-      if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
-        window.clearTimeout(press.timer);
-        pressRef.current = null;
+    pressRef.current = { key, index, pointerId, clientX: e.clientX, clientY: e.clientY, timer };
+
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      const press = pressRef.current;
+      if (press) {
+        const dx = ev.clientX - press.clientX, dy = ev.clientY - press.clientY;
+        // 一定以上動いたら長押しではなく通常のスワイプ/タップとみなし、
+        // ここまでpreventDefaultを一度も呼んでいないためネイティブの
+        // スクロールへそのまま委ねる。
+        if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) {
+          window.clearTimeout(press.timer);
+          pressRef.current = null;
+          detachGlobalPointerListeners();
+        }
+        return;
       }
-      return;
-    }
-    const drag = dragRef.current;
-    if (drag && drag.pointerId === e.pointerId) {
-      e.preventDefault();
-      dragOffsetPxRef.current = e.clientX - drag.startClientX;
-    }
-  };
-  const handleSlotPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const press = pressRef.current;
-    if (press && press.pointerId === e.pointerId) {
-      window.clearTimeout(press.timer);
-      pressRef.current = null;
-      return;
-    }
-    const drag = dragRef.current;
-    if (drag && drag.pointerId === e.pointerId) endDrag();
+      const drag = dragRef.current;
+      if (drag && drag.pointerId === pointerId) {
+        ev.preventDefault();
+        dragOffsetPxRef.current = ev.clientX - drag.startClientX;
+      }
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      const press = pressRef.current;
+      if (press) { window.clearTimeout(press.timer); pressRef.current = null; }
+      const drag = dragRef.current;
+      if (drag && drag.pointerId === pointerId) endDrag();
+      detachGlobalPointerListeners();
+    };
+    pointerMoveHandlerRef.current = onMove;
+    pointerUpHandlerRef.current = onUp;
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
 
   // 初回描画の瞬間はまだ実測前でcontainerWidth=0のため、両端の余白
@@ -1097,6 +1138,15 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
     }
   };
   const onScroll = () => {
+    // ★長押しドラッグのオートスクロールが自分でscrollLeftを書き換える
+    // 際、それ自体がこのonScrollを再度発火させてしまう。ガードが無いと
+    // 通常スクロール用のpollFrameループがdragPollFrameループと同時に
+    // 2本走り、どちらもcenterRef.currentを別々の式で毎フレーム上書き
+    // し合って競合し、ドラッグ中の位置計算が破綻する(小さい移動では
+    // オートスクロールが発動せず気づかれないが、端まで大きく動かす
+    // ドラッグでだけ再現する不具合の実体だった)。ドラッグ中はこちらの
+    // ループを起動しない。
+    if (dragRef.current) return;
     if (rafRef.current == null) {
       idleFramesRef.current = 0;
       rafRef.current = requestAnimationFrame(pollFrame);
@@ -1159,9 +1209,6 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
           <div
             key={it.key}
             onPointerDown={(e) => handleSlotPointerDown(e, it.key, i)}
-            onPointerMove={handleSlotPointerMove}
-            onPointerUp={handleSlotPointerUp}
-            onPointerCancel={handleSlotPointerUp}
             style={{
               position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center",
               zIndex: isDragged ? 1000 : Math.round(focus * 100), touchAction: draggingKey ? "none" : undefined,

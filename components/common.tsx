@@ -135,35 +135,33 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
       )}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 42%, rgba(0,0,0,0.8) 100%)" }} />
       <PunchHoles />
-      {/* KEEPバッジ(左)・「行った」等のaction(中央)・プラン選択トグル(右)を
-          1本の横並びflexにまとめている。以前はこの3つをそれぞれ独立して
-          absolute配置しており、actionは右上のトグルと場所を取り合うため
-          右下(bottom:8)へ追いやられていた。flexでまとめてjustifyContent:
-          space-betweenにすることで、actionはバッジとトグルの間の余白へ
-          常に収まり(バッジが無ければ自動的に中央寄りになる)、どちらとも
-          重ならない。actionは内容が短い前提だが、念のためoverflow/ellipsis
-          で万一はみ出しそうな時も重なりではなく省略で逃がす。 */}
-      {(badge || action || onTogglePlanSelect) && (
-        <div style={{ position: "absolute", top: 8, left: HOLE_CLEAR, right: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-          {badge ? (
+      {/* KEEPバッジ・「行った」等のaction(チェックのアイコンボタン)・
+          プラン選択トグル・良かった(星)を、右上に1本の横並びflexで
+          まとめて詰めている。以前はバッジだけ左上に独立配置し、actionは
+          文字ラベルのボタンだった。「バッジは基本右上に」「actionは＋と
+          同じ大きさのアイコンでコンパクトに、右側に詰める」という指定を
+          受け、4要素すべてを同じ右詰めの列にまとめ、actionもチェック
+          アイコンのみの20px円ボタン(＋トグルと同寸)に統一した
+          (2026-07-12)。goodだけ元々top:8,right:8の独立配置だったが、
+          バッジが右上へ移ったことで重なるようになったため、この列に
+          合流させた(合流させないとバッジと良かったボタンが同じ場所に
+          描画されて衝突する)。 */}
+      {(badge || action || onTogglePlanSelect || onToggleGood) && (
+        <div style={{ position: "absolute", top: 8, left: 8, right: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
+          {badge && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 7.5, fontWeight: 800, letterSpacing: "0.02em", borderRadius: 999, padding: "3px 7px 3px 5px", flexShrink: 0 }}>
               {badge === "wish" ? <Sparkles size={8} color={INK} strokeWidth={2.4} /> : <Bookmark size={8} fill={INK} strokeWidth={0} />} {badge === "wish" ? "WISH" : "KEEP"}
             </span>
-          ) : <span />}
-          {/* actionはflexShrink:0にして、狭い時にバッジ/トグルに押されて
-              文字が省略される(ellipsis)ことがないようにする。代わりに
-              3要素の合計が万一収まりきらない場合は行の外へわずかに
-              はみ出すが、文字が読めなくなるよりそちらの方がまだよい。
-              実際にはbadge/action/toggleとも十分小さくしてあるため、
-              通常のカード幅で3点セットが収まりきらないことは無い。 */}
-          {action && (
-            <button onClick={(e) => { e.stopPropagation(); action.onClick(); }} style={{
-              flexShrink: 0, padding: "4px 7px", borderRadius: 999, border: "none", cursor: "pointer",
-              background: "rgba(255,255,255,0.94)", color: INK, fontFamily: SANS, fontSize: 8, fontWeight: 700, letterSpacing: "0.01em",
-              whiteSpace: "nowrap",
-            }}>{action.label}</button>
           )}
-          {onTogglePlanSelect ? (
+          {action && (
+            <button onClick={(e) => { e.stopPropagation(); action.onClick(); }} aria-label={action.label} style={{
+              flexShrink: 0, width: 20, height: 20, borderRadius: "50%", border: "none", cursor: "pointer",
+              background: "rgba(255,255,255,0.94)", color: INK, display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+            }}>
+              <Check size={11} strokeWidth={3} />
+            </button>
+          )}
+          {onTogglePlanSelect && (
             <button onClick={(e) => { e.stopPropagation(); onTogglePlanSelect(); }} aria-label={planSelected ? "プランの選択から外す" : "プランの候補に選ぶ"} style={{
               width: 20, height: 20, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0,
               background: planSelected ? BLUE : "rgba(255,255,255,0.94)", color: planSelected ? PAPER : INK,
@@ -171,7 +169,15 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
             }}>
               {planSelected ? <Check size={11} strokeWidth={3} /> : <Plus size={12} strokeWidth={2.6} />}
             </button>
-          ) : <span />}
+          )}
+          {onToggleGood && (
+            <button onClick={(e) => { e.stopPropagation(); onToggleGood(); }} aria-label="良かった" style={{
+              width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0,
+              background: good ? "#D9A441" : "rgba(23,23,21,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+            }}>
+              <Star size={14} fill={good ? "#fff" : "none"} color="#fff" strokeWidth={2} />
+            </button>
+          )}
         </div>
       )}
       <div style={{ position: "absolute", bottom: 10, left: HOLE_CLEAR, right: 10 }}>
@@ -179,14 +185,6 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
         <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
         {sub && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}
       </div>
-      {onToggleGood && (
-        <button onClick={(e) => { e.stopPropagation(); onToggleGood(); }} aria-label="良かった" style={{
-          position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer",
-          background: good ? "#D9A441" : "rgba(23,23,21,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
-        }}>
-          <Star size={14} fill={good ? "#fff" : "none"} color="#fff" strokeWidth={2} />
-        </button>
-      )}
     </div>
   );
 }

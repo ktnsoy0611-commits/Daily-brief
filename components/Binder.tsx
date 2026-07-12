@@ -658,13 +658,16 @@ export function GoalBinderCard({ width, aspect = ITEM_CARD_ASPECT, color, eyebro
 }) {
   return (
     <div onClick={onClick} style={{ width, aspectRatio: aspect, perspective: 900, cursor: onClick ? "pointer" : "default" }}>
+      {/* filter(drop-shadow)は、transformを持つ要素自身に与えないと
+          (=別の非変形の子要素に付けると)このperspectiveの入れ子の中では
+          描画されない(実測: 子要素に付けた版はピクセルを直接サンプリング
+          しても影の勾配が一切無かった)。Binder3D側で影が効いているのは
+          filterとtransformが同じ要素に乗っているためで、それに揃えた。 */}
       <div style={{
         position: "relative", width: "100%", height: "100%", transformOrigin: "50% 100%",
-        transform: `rotateY(${tiltDeg}deg)`,
+        transform: `rotateY(${tiltDeg}deg)`, filter: `drop-shadow(${SOFT_SHADOW})`,
       }}>
-        <div style={{ position: "absolute", inset: 0, filter: `drop-shadow(${SOFT_SHADOW})` }}>
-          <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
-        </div>
+        <BinderCoverFace color={color} eyebrowLabel={eyebrowLabel} title={title} footer={footer} accent={accent} />
       </div>
     </div>
   );

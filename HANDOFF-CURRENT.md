@@ -2116,6 +2116,10 @@ UI完成を受け、初期要件定義書(IMPLEMENTATION HANDOFF.md)全文と現
 `BriefCard.expiresAt`が無い(KEEPした展覧会の会期がItemへ引き継がれない) /
 既存ストック・同日朝刊との重複抑止 / 「ロケーション」トリガーの「ストック
 ピン近接」への再定義 / フェーズC-0(プロンプト実験場、品質バー付き)の新設。
+さらに情報源の自律進化(discovery_log=カード化前のURL+原文抜粋の恒久
+ログ・リンクトラバース・ドメイン昇格・情報源カード・Taste Profile)は
+SYSTEM-DESIGN.md §7、Claude Coworkとの分担(高頻度・定型=Gemini/低頻度・
+判断=Cowork、Supabase共有ハブの疎結合)は同 §8 を参照。
 
 ### 8.1 ユーザーと確定した3つの設計判断(2026-07-13、AskUserQuestionで確認済み)
 

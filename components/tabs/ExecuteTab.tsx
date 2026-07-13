@@ -639,14 +639,19 @@ function BinderFrontCover({ closed, falling, width, aspect }: { closed: boolean;
     // 表紙なので見た目は完全に同じ)。2D変形は祖先のopacity/translateに確実に
     // 追従するため、落下・フェードが正しく効く。切り替えの継ぎ目が出ないよう、
     // 落下中はrotateY⇄scaleXのトランジションも無効にする。
-    // さらに念のため、この表表紙自身にもopacityフェードを持たせる(祖先の
-    // opacityが万一Safariの合成レイヤーで無視されても、要素自身のopacityは
-    // 自分のレイヤーにかかるため確実に消える。二重の保険)。
+    // ★以前はここに「念のため」表表紙自身にもopacityフェードを重ねる保険を
+    // 入れていたが、これが新しいバグを生んだ: 祖先(ConfirmedStackの落下する
+    // 外側div)は既に自分自身のopacityを1→0へフェードしている。表表紙にも
+    // 独立したopacityフェードを重ねると、実効的な不透明度は祖先opacity×
+    // 自分のopacityの掛け算になり、下のカード(祖先のフェードしか持たない)
+    // より表表紙の方が速く透明になっていた。結果、落下開始直後に表表紙だけが
+    // 先に透けて後ろのカードが見えてしまう不具合になっていた
+    // (ユーザー報告により発覚)。2D変形(scaleX)化により表表紙は既に祖先の
+    // opacity/transformへ正しく追従するため、この自己フェードは不要かつ
+    // 有害だった。撤去し、祖先の単一のフェードだけに任せる。
     <div style={{
       position: "absolute", top: -BINDER_MARGIN_TB, left: -BINDER_MARGIN_LEFT - outerWidth, width: outerWidth, height: outerHeight,
       perspective: falling ? undefined : 900, pointerEvents: "none", zIndex: closed ? 30 : 0,
-      opacity: falling ? 0 : 1,
-      transition: falling ? `opacity ${FALL_MS}ms ease-in` : "none",
     }}>
       <div style={{
         position: "absolute", inset: 0, transformOrigin: "100% 50%",

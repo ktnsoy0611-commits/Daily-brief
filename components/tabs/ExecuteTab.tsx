@@ -863,15 +863,25 @@ function killMomentumScroll(el: HTMLElement | null) {
   el.style.overflowY = "auto";
 }
 
-function ConfirmedStack({ items, onMarkDone, onDrop, onRegister }: {
+function ConfirmedStack({ items, onMarkDone, onDrop, onRegister, onFallingChange }: {
   items: ExecItem[];
   onMarkDone: (item: ExecItem) => void;
   onDrop: (item: ExecItem) => void;
   onRegister: () => void;
+  onFallingChange?: (falling: boolean) => void;
 }) {
   const [registerPhase, setRegisterPhase] = useState<null | "stack" | "close" | "fall">(null);
   const [stackOffsets, setStackOffsets] = useState<Record<string, number>>({});
   const cardEls = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // fall(束が落ちる)フェーズに入ったことを、ConfirmedStackの外(この
+  // 上に静的に置かれている「選び直す・日付」の行)へ伝える。落下と
+  // 同じタイミングでその行もフェードアウトさせ、画面上に何も取り残さ
+  // ないようにするため(詳細はExecuteTab側のbindFadingコメント参照)。
+  useEffect(() => {
+    onFallingChange?.(registerPhase === "fall");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registerPhase]);
 
   // バインドボタンはどこからでも押せる固定位置にあるため、リストを
   // 下の方までスクロールした状態で押すと、スタック先である先頭カードが
@@ -1021,6 +1031,18 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
   // scrollLockedのコメント参照)。このタブ内では従来どおりmapMode/
   // setMapModeという名前のまま使い、既存コードとの差分を最小にしている。
   const [pinItem, setPinItem] = useState<Item | null>(null);
+  // バインド！でスタック→閉じる→落ちるアニメーションが走っている間、
+  // ConfirmedStack自身は綺麗にフェードして消えるが、その真上にある
+  // 「選び直す・日付」の行(ExecuteTab側で描画、ConfirmedStackの外)は
+  // 従来アニメーションと無関係な静的ヘッダーのままだった。これ自体は
+  // §7.31までは意図通り(他タブのMastheadと同じ静的chromeという扱い)
+  // だったが、日付をこの行へ移した結果、束が閉じて落ちていく間ずっと
+  // 画面上部にこの行だけが取り残されたように見え、「上側だけアニメー
+  // ションせず、その場に残る」という体感の不具合として報告された。
+  // ConfirmedStackの登録フェーズ(stack/close/fall)をここへ引き上げ、
+  // fall中はこの行も一緒にフェードアウトさせることで、画面上に何も
+  // 「静止した残骸」が残らないようにする。
+  const [bindFading, setBindFading] = useState(false);
   // 選択状態はAppShellへ引き上げ、ストックタブと共有している(タブを
   // 跨いでバインド候補を選べるようにするため)。draftSelectionという名前は
   // このタブ内での既存コードとの差分を最小にするため残しているが、実体は
@@ -1322,7 +1344,17 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
         // 開いたバインダーが覗く。「選び直す」で地図に戻れるのは以前と同じ。
         // 日付はバインダー左上ではなく、この「選び直す」と同じ行の右端に置く
         // (ユーザー指定、ピルにはしない素のテキスト)。
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        // ★バインド！でスタック→閉じる→落ちるアニメーションが進む間、この行
+        // 自体は元々アニメーションと無関係な静的ヘッダーだった。日付をここへ
+        // 移したことで、束が閉じて落ちていく間もこの行(選び直す・日付)だけが
+        // 画面上部に取り残されたように見え、「上側だけアニメーションせず
+        // その場に残る」という体感の不具合として報告された。ConfirmedStackが
+        // fallフェーズに入ったら(bindFading)この行も一緒にフェードアウト
+        // させ、画面上に静止した要素が残らないようにする。
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+          opacity: bindFading ? 0 : 1, transition: bindFading ? `opacity ${FALL_MS}ms ease-in` : "none",
+        }}>
           <button onClick={() => {
             setSelection({ itemIds: [...magazine.itemIds] });
             setMapMode(true);
@@ -1355,6 +1387,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
           onMarkDone={(item) => markDoneInMagazine(item.id)}
           onDrop={(item) => removeFromMagazine(item.id)}
           onRegister={registerBinder}
+          onFallingChange={setBindFading}
         />
       )}
 

@@ -1,0 +1,39 @@
+# Supabase Free は約1週間アクセスが無いとプロジェクトが一時停止する。
+# それを防ぐため、数日おきに軽いクエリを1回投げて起こしておく(heartbeat)。
+#
+# 有効化に必要なGitHubリポジトリ Secrets(Settings → Secrets and variables → Actions):
+#   SUPABASE_URL       … プロジェクトURL(例: https://xxxx.supabase.co)
+#   SUPABASE_ANON_KEY  … anon public キー
+# Secretsが未設定の間はジョブが no-op で終わる(何もせず成功)ので、
+# 設定前でもワークフローがエラーで赤くならない。
+name: Supabase heartbeat
+
+on:
+  schedule:
+    # 3日おき(協定世界時 0:00)。Supabaseの1週間停止に十分間に合う頻度。
+    - cron: "0 0 */3 * *"
+  workflow_dispatch: {}  # 手動実行も可能にしておく
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST endpoint
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Secrets未設定のためスキップします(まだSupabase未接続)。"
+            exit 0
+          fi
+          # RLSで中身は返らないが、この到達自体がプロジェクトを起こす。
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/app_state?select=key&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "HTTP $code"
+          # 2xx/4xx(401等)はプロジェクトが生きている証拠なのでOK。5xxのみ失敗扱い。
+          if [ "$code" -ge 500 ]; then
+            echo "Supabaseが5xxを返しました。"; exit 1
+          fi

@@ -649,6 +649,20 @@ function BinderFrontCover({ closed, falling, width, aspect }: { closed: boolean;
     // (ユーザー報告により発覚)。2D変形(scaleX)化により表表紙は既に祖先の
     // opacity/transformへ正しく追従するため、この自己フェードは不要かつ
     // 有害だった。撤去し、祖先の単一のフェードだけに任せる。
+    // ★rotateY(180)→scaleX(-1)の切り替え自体もチラつきの原因になっていた。
+    // 切り替えはregisterPhaseが"close"→"fall"になる瞬間(タイマー基準、
+    // STACK_MS+CLOSE_MS後)に起きるが、閉じる回転のtransition自体は
+    // closedがtrueになった瞬間(タイマー基準、STACK_MS後)から独立して
+    // 始まり、そのdurationが0.34s(340ms)ある一方でCLOSE_MSは320msしか
+    // 無かった。つまり回転アニメーションが視覚的に180degへ収束しきる前
+    // (実測でmatrix3dのz成分が0.025残っている=あと1.5度ほどのところ)で
+    // タイマーが先に"fall"へ進み、transition:noneで即座にscaleX(-1)へ
+    // 差し替えていたため、回転の最後のひとかけらが瞬間的にスキップされる
+    // 微小なスナップが起きていた(3D→2Dのレイヤー切り替えと重なって
+    // 「チラつき」として見えていたと考えられる)。CLOSE_SWING_MSを
+    // CLOSE_MSより十分短く(余裕60ms)することで、差し替えの瞬間には
+    // 回転が必ず視覚的に完了しきっているようにし、スナップそのものを
+    // 無くした。
     <div style={{
       position: "absolute", top: -BINDER_MARGIN_TB, left: -BINDER_MARGIN_LEFT - outerWidth, width: outerWidth, height: outerHeight,
       perspective: falling ? undefined : 900, pointerEvents: "none", zIndex: closed ? 30 : 0,
@@ -656,7 +670,7 @@ function BinderFrontCover({ closed, falling, width, aspect }: { closed: boolean;
       <div style={{
         position: "absolute", inset: 0, transformOrigin: "100% 50%",
         transform: falling ? "scaleX(-1)" : `rotateY(${closed ? 180 : 0}deg)`,
-        transition: falling ? "none" : "transform 0.34s cubic-bezier(0.45,0,0.2,1)",
+        transition: falling ? "none" : `transform ${CLOSE_SWING_MS}ms cubic-bezier(0.45,0,0.2,1)`,
       }}>
         <div style={{
           position: "absolute", inset: 0, background: PAPER, overflow: "hidden",
@@ -842,6 +856,11 @@ const [CONFIRMED_ASP_NUM, CONFIRMED_ASP_DEN] = ITEM_CARD_ASPECT.split("/").map((
 const CARD_HEIGHT = CARD_WIDTH * (CONFIRMED_ASP_DEN / CONFIRMED_ASP_NUM);
 const STACK_MS = 420;
 const CLOSE_MS = 320;
+// 表表紙が閉じる回転(rotateY 0→180度)自体のtransition時間。CLOSE_MSより
+// 60ms短く設定し、"close"フェーズが終わって"fall"フェーズへ切り替わる
+// (=rotateYからscaleXへの2D差し替えが起きる)瞬間には、回転が必ず視覚的に
+// 収束しきっているようにする(詳細はBinderFrontCoverのコメント参照)。
+const CLOSE_SWING_MS = 260;
 const FALL_MS = 420;
 
 // 慣性スクロール中でも確実にscrollTopを0へ戻すヘルパー。overflow-yを

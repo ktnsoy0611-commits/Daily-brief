@@ -626,23 +626,32 @@ function BinderFrontCover({ closed, falling, width, aspect }: { closed: boolean;
   const cardHeight = width * (aspDen / aspNum);
   const outerHeight = cardHeight + BINDER_MARGIN_TB * 2;
   return (
-    // ★fall(バインダーが下へ落ちる)フェーズだけperspectiveを外す。表表紙は
-    // 閉じるときrotateY(180)+perspectiveの3D変形を持つが、実機Safariでは
-    // 3D変形された要素が別の合成レイヤーに昇格し、祖先(落下する外側のdiv)の
-    // opacityフェード/translateを無視してその場に居座る=「バインダーの上の
-    // 部分だけ画面に残る」不具合になっていた(エンベロープの+ボタンがフラップに
-    // 隠れたのと同系統のSafariの3D合成の癖)。落下中はperspectiveを外すと
-    // rotateY(180)は奥行きの無い平面のミラー(見た目は白い表紙のまま)になり、
-    // 3Dレイヤーに昇格しないため、祖先のフェード/落下に普通に追従する。
-    // 180度時点ではperspectiveの有無で見た目がほぼ変わらないので継ぎ目は出ない。
+    // ★fall(バインダーが下へ落ちる)フェーズだけ、3D変形(rotateY+perspective)を
+    // 使わず平面の2D変形(scaleX(-1))に差し替える。表表紙は閉じるとき
+    // rotateY(180)+perspectiveの3D変形を持つが、実機Safariでは3D変形された
+    // 要素(rotateYは親のperspectiveの有無に関わらずその要素自身を3Dレンダリング
+    // コンテキストへ昇格させる)が別の合成レイヤーになり、祖先(落下する外側の
+    // div)のopacityフェード/translateを無視してその場に居座る=「バインダーの
+    // 上の部分だけ画面に残る」不具合になっていた(エンベロープの+ボタンがフラップに
+    // 隠れたのと同系統のSafari 3D合成の癖)。以前はperspectiveだけ外したが、
+    // 内側のrotateY(180)自体が3Dレイヤーを作るため効かなかった。rotateY(180)は
+    // 見た目上「水平ミラー」なので、落下中は2DのscaleX(-1)へ置き換える(白一色の
+    // 表紙なので見た目は完全に同じ)。2D変形は祖先のopacity/translateに確実に
+    // 追従するため、落下・フェードが正しく効く。切り替えの継ぎ目が出ないよう、
+    // 落下中はrotateY⇄scaleXのトランジションも無効にする。
+    // さらに念のため、この表表紙自身にもopacityフェードを持たせる(祖先の
+    // opacityが万一Safariの合成レイヤーで無視されても、要素自身のopacityは
+    // 自分のレイヤーにかかるため確実に消える。二重の保険)。
     <div style={{
       position: "absolute", top: -BINDER_MARGIN_TB, left: -BINDER_MARGIN_LEFT - outerWidth, width: outerWidth, height: outerHeight,
       perspective: falling ? undefined : 900, pointerEvents: "none", zIndex: closed ? 30 : 0,
+      opacity: falling ? 0 : 1,
+      transition: falling ? `opacity ${FALL_MS}ms ease-in` : "none",
     }}>
       <div style={{
         position: "absolute", inset: 0, transformOrigin: "100% 50%",
-        transform: `rotateY(${closed ? 180 : 0}deg)`,
-        transition: "transform 0.34s cubic-bezier(0.45,0,0.2,1)",
+        transform: falling ? "scaleX(-1)" : `rotateY(${closed ? 180 : 0}deg)`,
+        transition: falling ? "none" : "transform 0.34s cubic-bezier(0.45,0,0.2,1)",
       }}>
         <div style={{
           position: "absolute", inset: 0, background: PAPER, overflow: "hidden",

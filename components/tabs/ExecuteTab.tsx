@@ -413,6 +413,11 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
   const mapShrinkRafRef = useRef<number | null>(null);
   const [mapShrink, setMapShrink] = useState(0);
   const [mapFullHeight, setMapFullHeight] = useState(0);
+  // 枠(zone)のsticky top。フルサイズ高さと最小高さの差ぶんだけ負にすることで、
+  // マップが最小に達したちょうどその瞬間に枠がstickyで止まり、最小サイズの
+  // マップが画面上端に貼り付いたまま(その下をコンテンツが流れていく)になる
+  // (「最小まで縮小したら画面上側についてくる」の実装。下のJSX参照)。
+  const [mapZoneTop, setMapZoneTop] = useState(0);
   const sentinelRef = useCallback((el: HTMLDivElement | null) => {
     mapShrinkCleanupRef.current?.();
     mapShrinkCleanupRef.current = null;
@@ -429,11 +434,12 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
       const contentWidth = root.clientWidth - padLeft - padRight;
       const fullH = contentWidth * 0.75; // aspectRatio 4/3
       setMapFullHeight(fullH);
+      const range = Math.max(1, fullH * (1 - MAP_MIN_WIDTH_RATIO));
+      setMapZoneTop(-range);
       // 固定線(マップがここに来たら貼り付く)= コンテナ上端+上パディング。
       const stickyLine = rootRect.top + padTop;
       // センチネルは枠の直前(高さ0)。固定線をどれだけ通り過ぎたか=縮小の進み。
       const over = stickyLine - el.getBoundingClientRect().top;
-      const range = Math.max(1, fullH * (1 - MAP_MIN_WIDTH_RATIO));
       setMapShrink(Math.max(0, Math.min(1, over / range)));
     };
     const onScroll = () => {
@@ -479,18 +485,24 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
           中でposition:fixedにしてもnav(25)より手前に出せず、閉じる
           ボタンがnavに押されてクリックできなくなる不具合になっていた)。 */}
       <div ref={sentinelRef} style={{ height: 0 }} aria-hidden />
-      {/* ★フルサイズ高さで固定した枠(zone)。この枠の中でマップをsticky固定+
-          縮小させる。枠の高さが一定なので縮小しても下のコンテンツが動かず
-          (引っ張られ感が消える)、枠がフルサイズぶんの領域を確保するので
-          固定中は今週のおすすめに重ならない。スクロールで枠の下端がマップの
-          下端に追いつくと、stickyの仕様でマップが枠ごと自然に上へ流れて消える
-          (最小で流れる、ジャンプ無し)。高さ未実測(0)の初回だけはautoにして
-          おく(その瞬間はマップ実寸=フルサイズなので枠もフルサイズになる)。 */}
-      <div style={{ height: mapFullHeight > 0 ? mapFullHeight : undefined }}>
+      {/* ★フルサイズ高さで固定した枠(zone)+その中でsticky固定+縮小するマップ、
+          の二段sticky構成。
+          - 枠の高さが一定なので縮小しても下のコンテンツが動かず(引っ張られ感が
+            消える)、枠がフルサイズぶんの領域を確保するので固定中は今週の
+            おすすめに重ならない(縮小はスクロール量に連動)。
+          - 内側のマップはtop:0のstickyで、縮小中ずっと画面上端に貼り付く。
+          - 外側の枠はtop=-(フルH-最小H)のsticky。マップが最小に達したちょうど
+            その瞬間に枠が止まる高さに設定してあるため、最小サイズのマップが
+            そのまま画面上端に貼り付き続け(=最小まで縮小したら画面上側に
+            ついてくる)、その下を今週のおすすめ以降が流れていく。以前は枠を
+            非stickyにしていたため最小で枠ごと流れて消えていた。
+          高さ未実測(0)の初回だけはautoにしておく(その瞬間はマップ実寸=
+          フルサイズなので枠もフルサイズになる)。 */}
+      <div style={{ position: "sticky", top: mapZoneTop, height: mapFullHeight > 0 ? mapFullHeight : undefined, zIndex: 4 }}>
         {/* 幅が縮んだ時に右へ寄せる処理は、この親をdisplay:flex+
             justifyContent:flex-endにするだけで済む(幅が縮むほど余った分だけ
             自動的に右へ寄る)。 */}
-        <div style={{ position: "sticky", top: 0, zIndex: 4, visibility: mapFullscreen ? "hidden" : "visible", display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ position: "sticky", top: 0, visibility: mapFullscreen ? "hidden" : "visible", display: "flex", justifyContent: "flex-end" }}>
           <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} shrink={mapShrink} onOpenFullscreen={() => setMapFullscreen(true)} />
         </div>
       </div>
@@ -602,7 +614,7 @@ function BinderBackPanel() {
 // のは、閉じる途中(90度前後)で紙が画面手前へ迫り出す視差をはっきり感じ
 // させるため。ConfirmedCardより後のDOM順で描画することで、閉じ終わった
 // ときに自然にカードの手前へ重なる(詳細は上のコメント参照)。
-function BinderFrontCover({ closed, width, aspect }: { closed: boolean; width: number; aspect: string }) {
+function BinderFrontCover({ closed, falling, width, aspect }: { closed: boolean; falling?: boolean; width: number; aspect: string }) {
   const outerWidth = width + BINDER_MARGIN_LEFT + BINDER_MARGIN_RIGHT;
   // aspectRatioで高さを逆算せず、裏表紙側と必ず同じ高さになるよう明示的に
   // 計算する。以前はここもaspectRatioに任せていたが、表表紙の幅
@@ -614,9 +626,18 @@ function BinderFrontCover({ closed, width, aspect }: { closed: boolean; width: n
   const cardHeight = width * (aspDen / aspNum);
   const outerHeight = cardHeight + BINDER_MARGIN_TB * 2;
   return (
+    // ★fall(バインダーが下へ落ちる)フェーズだけperspectiveを外す。表表紙は
+    // 閉じるときrotateY(180)+perspectiveの3D変形を持つが、実機Safariでは
+    // 3D変形された要素が別の合成レイヤーに昇格し、祖先(落下する外側のdiv)の
+    // opacityフェード/translateを無視してその場に居座る=「バインダーの上の
+    // 部分だけ画面に残る」不具合になっていた(エンベロープの+ボタンがフラップに
+    // 隠れたのと同系統のSafariの3D合成の癖)。落下中はperspectiveを外すと
+    // rotateY(180)は奥行きの無い平面のミラー(見た目は白い表紙のまま)になり、
+    // 3Dレイヤーに昇格しないため、祖先のフェード/落下に普通に追従する。
+    // 180度時点ではperspectiveの有無で見た目がほぼ変わらないので継ぎ目は出ない。
     <div style={{
       position: "absolute", top: -BINDER_MARGIN_TB, left: -BINDER_MARGIN_LEFT - outerWidth, width: outerWidth, height: outerHeight,
-      perspective: 900, pointerEvents: "none", zIndex: closed ? 30 : 0,
+      perspective: falling ? undefined : 900, pointerEvents: "none", zIndex: closed ? 30 : 0,
     }}>
       <div style={{
         position: "absolute", inset: 0, transformOrigin: "100% 50%",
@@ -934,7 +955,7 @@ function ConfirmedStack({ items, onMarkDone, onDrop, onRegister }: {
               </div>
             ))}
             <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: CARD_WIDTH, height: CARD_HEIGHT, zIndex: items.length + 2, pointerEvents: "none" }}>
-              <BinderFrontCover closed={closed} width={CARD_WIDTH} aspect={ITEM_CARD_ASPECT} />
+              <BinderFrontCover closed={closed} falling={falling} width={CARD_WIDTH} aspect={ITEM_CARD_ASPECT} />
             </div>
           </div>
         </div>

@@ -2236,5 +2236,15 @@ PWA(manifest/アイコン/safe-area)は対応済み。
     Supabaseプロジェクト+環境変数+AuthのRedirect URLを用意してから
     (この環境ではダミー環境変数でのゲート描画確認はdev serverが不安定に
     なり断念、コードレビューで担保)。
-- **ユーザー側の外部準備待ち**: Supabaseプロジェクト作成・APIキー発行・
-  Vercel環境変数登録・GitHub Secrets登録。これが揃うと実接続の検証が可能になる。
+- **外部準備の進捗(2026-07-14、ユーザーがiPhoneのみで実施)**:
+  - Supabaseプロジェクト作成・schema.sql適用・キー取得: **済**。
+  - Vercel: プロジェクトは実は7月6日に接続済みだったものを利用。環境変数
+    2件(NEXT_PUBLIC_SUPABASE_URL/ANON_KEY)登録**済**。本番ブランチが
+    接続当時の`claude/qol-app-nextjs-migration-cvj6na`(2日前の古いコード)の
+    ままだったことが判明し、Settings→Environments→Production→Branch
+    Trackingを`main`へ変更**済**。同時に全45コミットを`main`へfast-forward
+    統合済み(以後も従来どおり、区切りごとにmainへ統合する)。
+  - このコミットのpushが「本番ブランチ=main」変更後の初の本番デプロイを
+    起動する。以後の残り: デプロイReady確認→アプリURLをSupabaseの
+    Auth→URL Configuration(Site URL/Redirect URLs)へ登録→マジックリンクの
+    往復テスト→app_stateへの保存確認。GitHub Secrets(heartbeat用)は未。

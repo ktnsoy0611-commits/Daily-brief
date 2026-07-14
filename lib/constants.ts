@@ -22,6 +22,11 @@ export const CHECKIN_INTERVAL_DAYS = 14;
 export const MILESTONE_INTERVAL_DAYS = 45;
 // 場所を持つItemの自動失効: expiresAtがなければaddedAtからこの日数で削除
 export const KEEP_MAX_AGE_DAYS = 30;
+// ブリーフの号(briefs[editionKey])はその日を過ぎたら二度と参照されない
+// (BriefTabは常にtodayKey()ベースのeditionKeyしか読まない)ため、無期限に
+// 溜まり続けるだけの死重になる。この日数を過ぎた号はAppShellの起動時
+// クリーンアップで削除する。
+export const BRIEF_RETENTION_DAYS = 14;
 
 export const SWIPE_THRESHOLD = 90;
 
@@ -171,7 +176,8 @@ export const CARDS: BriefCard[] = [
     title: "「建築と自然」展、今日から開幕",
     body: "願望リストの「安藤忠雄の建築を観る」に関連。国立近代美術館で本日より。会期は8月末まで、混雑は初週が最も少ない予測。",
     meta: ["国立近代美術館", "10:00 – 17:00", "¥1,800"], bg: "#2C4E74", fg: "#F3ECDD", accent: "#A8BFD6",
-    images: ["momat-a", "momat-b", "momat-c"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る" },
+    images: ["momat-a", "momat-b", "momat-c"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る",
+    expiresAt: "2026-08-31T23:59:59+09:00" },
   // 新作映画は「作品(kind:"movie")+映画館という場所(area)」の組み合わせ。
   { id: 2, glyph: "映", category: "CINEMA", categoryJp: "映画", trigger: "タイムリー", area: "日比谷", color: "#1A1712",
     kind: "movie",
@@ -276,5 +282,6 @@ export const CARDS: BriefCard[] = [
     title: "高円寺の古着市、年に2回の大型セールが明日から",
     body: "願望リストの「古着でジャケットを探す」に関連。複数の店舗が合同で開く大型セールで、掘り出し物が出やすいタイミングです。",
     meta: ["高円寺北口一帯", "10:00 – 19:00", "セールは3日間"], bg: "#8A3C34", fg: "#F3ECDD", accent: "#D9AFA4",
-    images: ["vintage-c"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("高円寺 古着 セール")}`, sourceLabel: "地図で見る" },
+    images: ["vintage-c"], sourceUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("高円寺 古着 セール")}`, sourceLabel: "地図で見る",
+    expiresAt: "2026-07-18T23:59:59+09:00" },
 ];

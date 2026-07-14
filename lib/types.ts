@@ -187,6 +187,11 @@ export interface BriefCard {
   // このカードがどのウィッシュに応えたものか(タイトル一致で照合)。フェーズ2の
   // Gemini生成ではidの明示的な紐付けに置き換わる、フェーズ1の暫定表現。
   sourceWishTitle?: string;
+  // 会期末・予約締切・上映終了など。KEEP時にItem.expiresAtへそのまま
+  // 引き継がれ、isExpiredItem()による自動失効の材料になる(SYSTEM-DESIGN.md
+  // §2で特定したギャップ: 従来これが無く、展覧会をKEEPしても会期末が
+  // Itemへ伝わらず自動失効が効かなかった)。
+  expiresAt?: string;
 }
 
 export interface GrowthCard {

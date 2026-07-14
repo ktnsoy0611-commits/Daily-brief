@@ -14,7 +14,7 @@ import { StockTab } from "@/components/tabs/StockTab";
 import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
-import { buildMagazine, detectInterests, haptic, hasPlace, isExpiredItem, todayKey } from "@/lib/helpers";
+import { buildMagazine, detectInterests, haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
 import type { AppState, ItemDomain, PlanSelection, TabId, TabProps } from "@/lib/types";
 
 const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
@@ -107,6 +107,12 @@ export function AppShell() {
         s.items = s.items.filter((i) => !expiredIds.includes(i.id));
         if (s.magazine) s.magazine.itemIds = s.magazine.itemIds.filter((id) => !expiredIds.includes(id));
         s.pendingReview = (s.pendingReview ?? []).filter((id) => !expiredIds.includes(id));
+        mutated = true;
+      }
+      // 古いブリーフの号(その日限りで二度と参照されない)を間引く。
+      const { pruned, changed: briefsChanged } = pruneOldBriefs(s.briefs ?? {});
+      if (briefsChanged) {
+        s.briefs = pruned;
         mutated = true;
       }
       setAppState(s);

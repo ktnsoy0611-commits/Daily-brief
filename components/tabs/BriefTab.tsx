@@ -297,7 +297,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
             title: card.title, category: card.categoryJp,
             area: card.area && card.area !== "—" ? card.area : undefined,
             images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
-            status: "candidate", addedAt: new Date().toISOString(),
+            status: "candidate", addedAt: new Date().toISOString(), expiresAt: card.expiresAt,
             origin: wish ? "wish" : "brief", sourceWishId: wish?.id,
           });
         }

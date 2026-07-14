@@ -1,5 +1,5 @@
-import { AREA_COORDS, AREA_FALLBACK, AUTO_THRESHOLD, INTEREST_RULES, KEEP_MAX_AGE_DAYS, KIND_DOMAIN } from "./constants";
-import type { AppState, Interest, Item, ItemDomain, ItemOrigin, Wish } from "./types";
+import { AREA_COORDS, AREA_FALLBACK, AUTO_THRESHOLD, BRIEF_RETENTION_DAYS, INTEREST_RULES, KEEP_MAX_AGE_DAYS, KIND_DOMAIN } from "./constants";
+import type { AppState, BriefState, Interest, Item, ItemDomain, ItemOrigin, Wish } from "./types";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -106,6 +106,24 @@ export function isExpiredItem(item: Item) {
   if (item.expiresAt) return new Date() > new Date(item.expiresAt);
   if (!hasPlace(item)) return false;
   return daysBetween(item.addedAt) > KEEP_MAX_AGE_DAYS;
+}
+
+// ブリーフの号(editionKey = "YYYY-MM-DD-am"/"YYYY-MM-DD-pm")は当日限りしか
+// 参照されない(BriefTabは常にtodayKey()ベースのキーだけを読む)ため、
+// 一定日数を過ぎた号は死重として削除する。日付部分だけ取り出せない
+// キー(不正な形式)は判定できないため安全側で残す。
+export function pruneOldBriefs(briefs: Record<string, BriefState>): { pruned: Record<string, BriefState>; changed: boolean } {
+  const pruned: Record<string, BriefState> = {};
+  let changed = false;
+  Object.entries(briefs).forEach(([key, value]) => {
+    const m = key.match(/^(\d{4}-\d{2}-\d{2})-(am|pm)$/);
+    if (m && daysBetween(m[1]) > BRIEF_RETENTION_DAYS) {
+      changed = true;
+      return;
+    }
+    pruned[key] = value;
+  });
+  return { pruned, changed };
 }
 
 // おすすめプランは木曜日に更新される、という仕様のための「週キー」。

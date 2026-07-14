@@ -2248,3 +2248,33 @@ PWA(manifest/アイコン/safe-area)は対応済み。
     起動する。以後の残り: デプロイReady確認→アプリURLをSupabaseの
     Auth→URL Configuration(Site URL/Redirect URLs)へ登録→マジックリンクの
     往復テスト→app_stateへの保存確認。GitHub Secrets(heartbeat用)は未。
+
+### 8.6 フェーズA 完了(2026-07-14)
+
+実機(iPhone、Vercel本番デプロイ)でエンドツーエンドの動作確認が取れ、
+フェーズAが完走した。
+
+- **マジックリンク往復**: サインイン→メール受信→リンクからログイン→
+  サインアウト→再ログインでデータが引き継がれることを確認済み。
+- **★実機で発見・修正したバグ**: 初回クラウド保存(`POST /rest/v1/app_state`)
+  が常に400で失敗していた。SupabaseのAPI Logsで特定: `app_state.value`列を
+  `not null`で作っていたが、`AppState.magazine`等は正当に`null`になりうる
+  値のため、その行を送るたびにPostgRESTがnot null制約違反として一括upsert
+  全体(11行)を拒否していた。`supabase/schema.sql`から`not null`を撤去し、
+  既存プロジェクトにも遡って効くALTER文を追加(コミット済み)。ユーザー側で
+  SQL Editorから直接ALTERを実行してもらい、以後Table Editorで11行
+  (bindLog/briefs/goals/items/magazine/pendingReview/profile/shelfOrder/
+  sources/weekendMeta/wishes)が正しく保存されることを確認した。
+- **Vercel本番ブランチの罠**: このプロジェクトは実は7月6日に接続済みだった
+  ため、Production BranchがVercelの新UI(Settings→Environments→Production→
+  Branch Tracking)に設定されたままの古いブランチ(`claude/qol-app-nextjs-
+  migration-cvj6na`)を向いていた。環境変数を登録してもこの設定を直すまで
+  本番ビルドに反映されず、原因特定に手間取った。以後Vercel関連の変更をする
+  際はこの設定も併せて確認すること。
+- **GitHub Secrets**(`SUPABASE_URL`/`SUPABASE_ANON_KEY`)登録済み、
+  heartbeatワークフローが正式稼働。
+- **教訓**: `not null`制約はスキーマ設計時にAppStateの各キーが取りうる
+  実際の値(特にnullableなフィールド)と突き合わせて検証すべきだった。
+  ローカル(この環境)での検証は環境変数なしのフォールバック経路しか
+  通せないため、実際のクラウド書き込みパスの検証は実機・実プロジェクトでの
+  一次情報(今回はSupabaseのAPI Logs)が不可欠だった。

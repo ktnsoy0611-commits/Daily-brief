@@ -30,10 +30,18 @@ create table if not exists app_state (
                                          -- (items/wishes/briefs/magazine/profile/
                                          --  weekendMeta/goals/pendingReview/sources/
                                          --  bindLog/shelfOrder)
-  value jsonb not null,                  -- そのキーの値(配列 or オブジェクト)
+  value jsonb,                           -- そのキーの値(配列/オブジェクト/null)。
+                                         -- AppState.magazine等、値そのものが
+                                         -- 正当にnullになりうるためnot nullに
+                                         -- しない(not nullにすると、その行を
+                                         -- 送るたびにPostgRESTが「空は許さない」
+                                         -- 制約違反=400で書き込み全体を拒否する)。
   updated_at timestamptz not null default now(),
   primary key (user_id, key)
 );
+-- 既存プロジェクトに前バージョンのスキーマを適用済みの場合、上のcreate table
+-- は素通りするため、この行が実際の修正を行う(冪等)。
+alter table app_state alter column value drop not null;
 
 alter table app_state enable row level security;
 drop policy if exists app_state_owner on app_state;

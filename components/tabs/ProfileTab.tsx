@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
 import { HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
 import type { AppState } from "@/lib/types";
 
@@ -201,6 +202,23 @@ export function ProfileTab({ appState, persist, onClose }: {
               action={!entry.undone && <IconButton onClick={() => undoBind(entry.id)} label="バインドを元に戻す"><RotateCcw size={13} strokeWidth={2.4} /></IconButton>} />
           ))}
         </SettingsCard>
+
+        {/* サインアウト。Supabase構成済みのときだけ表示する(このタブが
+            見えている時点でログイン済み)。未構成(localStorage運用)では
+            そもそもアカウントの概念が無いので出さない。押すとAppShellの
+            onAuthStateChangeがサインインゲートへ戻す。 */}
+        {isSupabaseConfigured && (
+          <button
+            onClick={() => { haptic(6); supabase?.auth.signOut(); }}
+            style={{
+              display: "block", margin: "4px auto 0", background: "none", border: "none",
+              cursor: "pointer", fontFamily: SANS, fontSize: 11.5, color: "#9A988E",
+              letterSpacing: "0.04em", padding: "8px 4px", textDecoration: "underline",
+            }}
+          >
+            サインアウト
+          </button>
+        )}
       </main>
     </>
   );

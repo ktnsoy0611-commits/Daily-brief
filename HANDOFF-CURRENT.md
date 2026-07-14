@@ -2220,8 +2220,21 @@ PWA(manifest/アイコン/safe-area)は対応済み。
   - `.github/workflows/supabase-heartbeat.yml`: 3日おきping。Secrets未設定なら
     no-opで成功。
   - `.env.local.example`: 必要な2変数のひな型。
-- **次(増分2)**: マジックリンク認証UI(AppShellのサインインゲート)。本体
-  シェルに触れるため独立した増分にする。これが入るまではcloudモードは
-  発火しない(セッションが無いため)。
+- **済(増分2)**: マジックリンク認証UI。
+  - `components/SignInGate.tsx`: メール入力→`signInWithOtp`(emailRedirectTo=
+    origin)→「リンクを送りました」表示。既存シート類と同じ簡素な見た目。
+  - `AppShell.tsx`: `authReady`/`userId` state。構成済みのときだけ
+    `getSession`+`onAuthStateChange`で追う。DataStoreのload useEffectを
+    `[authReady, userId]`依存に変更(未構成なら即、構成済みならログイン確定後・
+    サインアウトでappStateクリア)。レンダリングは既存の`if(!appState)`手前に
+    「構成済み&&!authReady→ローディング / 構成済み&&authReady&&!userId→
+    SignInGate」を差し込む。**未構成なら全分岐を素通り**(ゲートを出さない)。
+  - `ProfileTab.tsx`: 末尾に「サインアウト」(構成済み時のみ表示、`signOut`)。
+  - 検証: 環境変数なしでChromium起動→ゲート非表示・デモ52件保存・
+    picsum以外のエラーなし(既存挙動が完全に不変)。tsc/eslint/build通過。
+    ゲート自体の描画・サインインの往復・cloud保存の確認は、ユーザーが
+    Supabaseプロジェクト+環境変数+AuthのRedirect URLを用意してから
+    (この環境ではダミー環境変数でのゲート描画確認はdev serverが不安定に
+    なり断念、コードレビューで担保)。
 - **ユーザー側の外部準備待ち**: Supabaseプロジェクト作成・APIキー発行・
   Vercel環境変数登録・GitHub Secrets登録。これが揃うと実接続の検証が可能になる。

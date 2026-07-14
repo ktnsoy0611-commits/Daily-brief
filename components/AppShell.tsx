@@ -4,6 +4,7 @@ import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Settings, Sparkles, Sprou
 import { useCallback, useEffect, useState, type ComponentType, type CSSProperties } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { PlanSelectionBar } from "@/components/PlanSelectionBar";
+import { SignInGate } from "@/components/SignInGate";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { GoalsTab } from "@/components/tabs/GoalsTab";
@@ -12,6 +13,7 @@ import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
 import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { buildMagazine, detectInterests, haptic, hasPlace, isExpiredItem, todayKey } from "@/lib/helpers";
 import type { AppState, ItemDomain, PlanSelection, TabId, TabProps } from "@/lib/types";
 
@@ -28,6 +30,11 @@ export function AppShell() {
   const [tab, setTab] = useState<TabId>("records");
   const [showProfile, setShowProfile] = useState(false);
   const [storageMode, setStorageMode] = useState(DataStore.mode);
+  // 認証状態。Supabase未構成(環境変数なし)のときは認証ゲートを一切出さず、
+  // これまでどおりlocalStorageで動く。そのため未構成なら authReady は即true・
+  // userId は null 扱いで、ゲートの分岐をすべて素通りさせる。
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
+  const [userId, setUserId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   // ウィッシュはどのタブにいても書ける「受信箱」。タブバー横の独立した
   // ボタンから開くため、タブ固有の状態ではなくここに置く。
@@ -43,7 +50,29 @@ export function AppShell() {
   // 必要になったため、selectionと同じ理由でここへ引き上げた。
   const [execMapMode, setExecMapMode] = useState(false);
 
+  // 認証状態の監視(Supabase構成済みのときだけ)。初回セッションを確認して
+  // authReady を立て、以後 onAuthStateChange でサインイン/アウトを追う。
+  // 未構成なら何もしない(authReadyは初期値trueのまま、ゲートは出ない)。
   useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+    let alive = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      setUserId(data.session?.user.id ?? null);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user.id ?? null);
+      setAuthReady(true);
+    });
+    return () => { alive = false; sub.subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    // 認証の確認が済むまで待つ。構成済みで未ログインのときは何も読み込まず、
+    // 在メモリの状態もクリアしてゲートに委ねる(サインアウト時のリセットも兼ねる)。
+    if (!authReady) return;
+    if (isSupabaseConfigured && !userId) { setAppState(null); return; }
     let alive = true;
     DataStore.load().then(async (s) => {
       if (!alive) return;
@@ -85,7 +114,9 @@ export function AppShell() {
       if (mutated) await DataStore.save(s);
     });
     return () => { alive = false; };
-  }, []);
+    // 未構成なら初回のみ、構成済みなら userId が確定/変化(サインイン・アウト)
+    // するたびに読み直す。
+  }, [authReady, userId]);
 
   const persist = useCallback((next: AppState) => {
     setAppState(next);
@@ -146,6 +177,14 @@ export function AppShell() {
     if (changed) persist(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState?.wishes, appState?.items]);
+
+  // 認証ゲート(Supabase構成済みのときだけ)。未構成なら以下の2分岐は素通り。
+  if (isSupabaseConfigured && !authReady) {
+    return <div style={{ minHeight: "100svh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
+  }
+  if (isSupabaseConfigured && authReady && !userId) {
+    return <SignInGate />;
+  }
 
   if (!appState) {
     return <div style={{ minHeight: "100svh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;

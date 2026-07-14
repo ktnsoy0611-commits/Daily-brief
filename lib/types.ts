@@ -5,11 +5,6 @@
 
 import type { ReactNode } from "react";
 
-// do/buy/go の3値は、かつてWishにも付いていたが実際には一切使われて
-// いなかった(追加時は常に"do"がハードコードされていた)ため、Wishからは
-// 削除した。現在はプロフィールの興味(Interest)の分類にだけ使っている。
-export type CategoryId = "do" | "buy" | "go";
-
 // ---- Item: 収集物の統一モデル ------------------------------------------------
 //
 // 「何であるか(kind)」と「どこかへ行くことが絡むか(area、場所プロパティ)」を
@@ -102,7 +97,6 @@ export interface Goal {
 export interface Interest {
   id: string;
   label: string;
-  categoryId: CategoryId;
   kind: "hobby" | "artist" | "architect";
   weight: number;
   source: "auto" | "user";

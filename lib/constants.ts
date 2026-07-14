@@ -1,4 +1,4 @@
-import type { AppState, BriefCard, CategoryId, ItemDomain, ItemKind } from "./types";
+import type { AppState, BriefCard, ItemDomain, ItemKind } from "./types";
 
 export const STORAGE_KEY = "qol-app-state-v1";
 
@@ -82,38 +82,23 @@ export const NAV_BOTTOM_GAP = "max(4px, calc(env(safe-area-inset-bottom) - 26px)
 // から浮く量が変わればここに揃えるUIが下端に近づく量も連動させるため。
 export const NAV_OFFSET = `calc(82px + ${NAV_BOTTOM_GAP})`;
 
-export interface Category {
-  id: CategoryId;
-  label: string;
-  en: string;
-  color: string;
-}
-
-export const CATEGORIES: Category[] = [
-  { id: "do", label: "やりたい", en: "TO DO", color: BLUE },
-  { id: "buy", label: "欲しい", en: "TO BUY", color: RUST },
-  { id: "go", label: "行きたい", en: "TO GO", color: GREEN },
-];
-export const catOf = (id: CategoryId) => CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[0];
-
 // ---- 興味の自動検出（プロトタイプ: キーワード頻度。本実装ではGeminiに置換） --
 export interface InterestRule {
   match: RegExp;
   label: string;
-  categoryId: CategoryId;
   kind: "hobby";
 }
 export const INTEREST_RULES: InterestRule[] = [
-  { match: /カフェ|コーヒー|焙煎/, label: "カフェ巡り", categoryId: "do", kind: "hobby" },
-  { match: /古着|ヴィンテージ/, label: "古着収集", categoryId: "buy", kind: "hobby" },
-  { match: /映画|シネマ/, label: "映画鑑賞", categoryId: "go", kind: "hobby" },
-  { match: /展覧会|美術館|ギャラリー/, label: "アート鑑賞", categoryId: "go", kind: "hobby" },
-  { match: /建築/, label: "建築巡り", categoryId: "go", kind: "hobby" },
-  { match: /陶芸|工芸|手仕事/, label: "ものづくり", categoryId: "do", kind: "hobby" },
-  { match: /銭湯|温泉|サウナ/, label: "温泉・サウナ", categoryId: "go", kind: "hobby" },
-  { match: /古書|本屋|書店/, label: "本屋巡り", categoryId: "go", kind: "hobby" },
-  { match: /雑貨/, label: "雑貨集め", categoryId: "buy", kind: "hobby" },
-  { match: /ボルダリング|クライミング|筋トレ|ヨガ|ランニング/, label: "運動習慣", categoryId: "do", kind: "hobby" },
+  { match: /カフェ|コーヒー|焙煎/, label: "カフェ巡り", kind: "hobby" },
+  { match: /古着|ヴィンテージ/, label: "古着収集", kind: "hobby" },
+  { match: /映画|シネマ/, label: "映画鑑賞", kind: "hobby" },
+  { match: /展覧会|美術館|ギャラリー/, label: "アート鑑賞", kind: "hobby" },
+  { match: /建築/, label: "建築巡り", kind: "hobby" },
+  { match: /陶芸|工芸|手仕事/, label: "ものづくり", kind: "hobby" },
+  { match: /銭湯|温泉|サウナ/, label: "温泉・サウナ", kind: "hobby" },
+  { match: /古書|本屋|書店/, label: "本屋巡り", kind: "hobby" },
+  { match: /雑貨/, label: "雑貨集め", kind: "hobby" },
+  { match: /ボルダリング|クライミング|筋トレ|ヨガ|ランニング/, label: "運動習慣", kind: "hobby" },
 ];
 export const AUTO_THRESHOLD = 2;
 

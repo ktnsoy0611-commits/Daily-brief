@@ -136,7 +136,7 @@ export function detectInterests(wishes: Wish[], items: Item[]): Omit<Interest, "
   INTEREST_RULES.forEach((rule) => {
     const count = titles.filter((t) => rule.match.test(t)).length;
     if (count >= AUTO_THRESHOLD) {
-      results.push({ label: rule.label, categoryId: rule.categoryId, kind: rule.kind, weight: count, source: "auto" });
+      results.push({ label: rule.label, kind: rule.kind, weight: count, source: "auto" });
     }
   });
   return results;

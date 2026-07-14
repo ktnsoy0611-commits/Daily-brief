@@ -167,7 +167,7 @@ export function AppShell() {
     detected.forEach((d) => {
       const existing = next.profile.interests.find((i) => i.label === d.label);
       if (!existing) {
-        next.profile.interests.push({ id: `auto-${d.label}-${Date.now()}`, label: d.label, categoryId: d.categoryId, kind: d.kind ?? "hobby", weight: d.weight, source: "auto", addedAt: new Date().toISOString() });
+        next.profile.interests.push({ id: `auto-${d.label}-${Date.now()}`, label: d.label, kind: d.kind ?? "hobby", weight: d.weight, source: "auto", addedAt: new Date().toISOString() });
         changed = true;
       } else if (existing.source === "auto" && d.weight > existing.weight) {
         existing.weight = d.weight;

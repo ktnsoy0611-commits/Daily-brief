@@ -1,4 +1,4 @@
-import { AREA_COORDS, AREA_FALLBACK, AUTO_THRESHOLD, BRIEF_RETENTION_DAYS, INTEREST_RULES, KEEP_MAX_AGE_DAYS, KIND_DOMAIN } from "./constants";
+import { AREA_COORDS, AREA_FALLBACK, AREA_LATLNG, AUTO_THRESHOLD, BRIEF_RETENTION_DAYS, INTEREST_RULES, KEEP_MAX_AGE_DAYS, KIND_DOMAIN } from "./constants";
 import type { AppState, BriefState, Interest, Item, ItemDomain, ItemOrigin, Wish } from "./types";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
@@ -81,6 +81,15 @@ export function hasPlace(item: { area?: string; lat?: number; lng?: number }) {
   // 未入力、というItemが生まれるようになったため)。
   if (typeof item.lat === "number" && typeof item.lng === "number") return true;
   return !!item.area && item.area !== "—";
+}
+
+// 実地図(Leaflet)に置くための実緯度経度。Item自身のlat/lngを最優先し、
+// 無ければエリア名から既知エリアの実座標(AREA_LATLNG)へフォールバック。
+// どちらも無ければnull(実地図には置けない=ピンを出さない)。
+export function itemLatLng(item: { area?: string; lat?: number; lng?: number }): { lat: number; lng: number } | null {
+  if (typeof item.lat === "number" && typeof item.lng === "number") return { lat: item.lat, lng: item.lng };
+  const a = item.area ? AREA_LATLNG[item.area] : undefined;
+  return a ?? null;
 }
 // 願望の4ドメイン(モノ/バショ/タイケン/ジョウホウ)への規格化された振り分け。
 // ウィッシュ・ストック・プラン・アーカイブの棚は、すべてこのドメイン

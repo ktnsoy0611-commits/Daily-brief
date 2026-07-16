@@ -6,46 +6,11 @@ import { createPortal } from "react-dom";
 import { COVER_RADIUS, KIND_ACCENT, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
+import { LeafletMap } from "@/components/LeafletMap";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { AREA_COORDS, BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
+import { BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
 import { dayInfo, domainOf, hasPlace, haptic, img, mapsUrl, mostRecentThursday, originBadge, pinPosition, shade } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
-
-const MAP_BG_STYLE = {
-  background: "#F1EEE5",
-  backgroundImage: "repeating-linear-gradient(0deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px), repeating-linear-gradient(90deg, rgba(23,23,21,0.05) 0, rgba(23,23,21,0.05) 1px, transparent 1px, transparent 32px)",
-} as const;
-
-// 地図の中身(方眼背景・エリアラベル・ピン)。ドック表示(MapCanvas)と
-// 全画面表示(MapFullscreenOverlay)の両方から共有する。
-function MapPins({ items, selectedIds, onOpenPin }: {
-  items: Item[];
-  selectedIds: string[];
-  onOpenPin: (item: Item) => void;
-}) {
-  return (
-    <>
-      {Object.entries(AREA_COORDS).map(([name, pos]) => (
-        <span key={name} style={{ position: "absolute", left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)", fontSize: 8.5, letterSpacing: "0.06em", color: "rgba(23,23,21,0.28)", fontFamily: SANS, whiteSpace: "nowrap", pointerEvents: "none" }}>{name}</span>
-      ))}
-      {items.map((item) => {
-        const pos = pinPosition(item);
-        const selected = selectedIds.includes(item.id);
-        return (
-          <button key={item.id} onClick={() => onOpenPin(item)} aria-label={item.title} style={{
-            position: "absolute", left: `${pos.x}%`, top: `${pos.y}%`, width: 24, height: 24, marginLeft: -12, marginTop: -24,
-            borderRadius: "50% 50% 50% 0", transform: "rotate(-45deg)", cursor: "pointer", padding: 0,
-            background: selected ? BLUE : PAPER, border: `2px solid ${selected ? BLUE : (item.color ?? INK)}`,
-            boxShadow: "0 3px 7px rgba(23,23,21,0.3)", zIndex: selected ? 6 : 2,
-            transition: "transform 0.15s, background 0.15s",
-          }}>
-            <span style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(45deg)", width: 7, height: 7, borderRadius: "50%", background: selected ? PAPER : (item.color ?? INK) }} />
-          </button>
-        );
-      })}
-    </>
-  );
-}
 
 // ドック表示の地図。stuck(=下の棚のスクロールでsticky状態に入った)の
 // 間は幅を縮めるアニメーションを付ける。widthはレイアウトに実際に効く
@@ -71,15 +36,15 @@ function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen }: 
     <div style={{
       position: "relative", width: `${widthPct}%`, aspectRatio: "4 / 3", borderRadius: 16, overflow: "hidden",
       flexShrink: 0, border: `1px solid ${HAIRLINE}`,
-      ...MAP_BG_STYLE,
     }}>
-      <MapPins items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
+      {/* 背景=実地図(Leaflet+OSM)。ピンはLeafletMap内で自作デザインを重ねる。 */}
+      <LeafletMap items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
       {/* 地図右下の全画面トグル。地図単体をタブの他の内容(棚・帯)から
           切り離して大きく見たいという要望に応える。 */}
       <button onClick={onOpenFullscreen} aria-label="地図を全画面表示" style={{
         position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: "50%",
         background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 8,
+        boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
       }}>
         <Maximize2 size={15} strokeWidth={2} />
       </button>
@@ -115,13 +80,13 @@ function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }:
       transform: entered ? "scale(1)" : "scale(0.4)", transformOrigin: "top center",
       opacity: entered ? 1 : 0,
       transition: `transform ${MAP_FULLSCREEN_MS}ms cubic-bezier(0.32,0.72,0,1), opacity ${MAP_FULLSCREEN_MS - 60}ms ease`,
-      ...MAP_BG_STYLE,
+      background: "#EDE7DA",
     }}>
-      <MapPins items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
+      <LeafletMap items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
       <button onClick={requestClose} aria-label="地図の全画面表示を閉じる" style={{
         position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: "50%",
         background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 8,
+        boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
       }}>
         <Minimize2 size={15} strokeWidth={2} />
       </button>

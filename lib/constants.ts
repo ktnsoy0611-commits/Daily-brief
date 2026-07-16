@@ -107,13 +107,25 @@ export const INTEREST_RULES: InterestRule[] = [
 ];
 export const AUTO_THRESHOLD = 2;
 
-// ---- 地図の座標（スタイライズド。実装ではGoogle Mapsの実座標に置換） ----
+// ---- 地図の座標（スタイライズド。旧・自作地図のピン配置用。実地図(Leaflet)
+//      導入後もbuildRecommendedPlansの近接クラスタリングで内部的に使う） ----
 export const AREA_COORDS: Record<string, { x: number; y: number }> = {
   "竹橋": { x: 46, y: 32 }, "神保町": { x: 42, y: 38 }, "日比谷": { x: 50, y: 50 },
   "谷根千": { x: 56, y: 18 }, "浅草橋": { x: 66, y: 38 }, "蔵前": { x: 70, y: 42 },
   "両国": { x: 74, y: 48 }, "清澄白河": { x: 68, y: 58 }, "高円寺": { x: 8, y: 44 },
 };
 export const AREA_FALLBACK = { x: 50, y: 80 };
+
+// 実地図(Leaflet)用の、既知エリアの実緯度経度。lat/lngを持たないItem
+// (エリア名だけのもの・デモデータ)を実地図に置くためのフォールバック。
+// AREA_COORDSの抽象座標と違い、こちらは本物の緯度経度。
+export const AREA_LATLNG: Record<string, { lat: number; lng: number }> = {
+  "竹橋": { lat: 35.6906, lng: 139.7580 }, "神保町": { lat: 35.6959, lng: 139.7576 },
+  "日比谷": { lat: 35.6749, lng: 139.7594 }, "谷根千": { lat: 35.7261, lng: 139.7647 },
+  "浅草橋": { lat: 35.6986, lng: 139.7856 }, "蔵前": { lat: 35.7057, lng: 139.7910 },
+  "両国": { lat: 35.6960, lng: 139.7930 }, "清澄白河": { lat: 35.6817, lng: 139.7999 },
+  "高円寺": { lat: 35.7057, lng: 139.6497 }, "下北沢": { lat: 35.6613, lng: 139.6680 },
+};
 
 // ---- 願望の4ドメイン ----
 // 「究極の対象物は何か」で分ける、ウィッシュ・ストック・プラン・アーカイブ

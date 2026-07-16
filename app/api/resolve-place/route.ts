@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 
 // 場所の座標解決サーバー関数(フェーズB)。
 // SYSTEM-DESIGN.md §8.1 / HANDOFF-CURRENT.md §8.1-1 の多段フォールバック:
-//   (1) GoogleマップURLに埋まった座標を正規表現で抽出(API呼び出し0・無料)
-//   (2) 取れなければ Places API(New) の Text Search で名寄せ(店名+エリア)
+//   (1) GoogleマップURLに埋まった座標を正規表現で抽出(API呼び出し0・無料)。
+//       座標はあるが店名が取れない(緯度経度だけのピンURL等)場合は、
+//       Places API(New) の Nearby Search でその地点の直近の場所名を補完する。
+//   (2) 座標が取れなければ Places API(New) の Text Search で名寄せ(店名+エリア)
 //   (3) それも取れなければ null を返し、クライアント側でareaのAREA_COORDS
 //       中心へフォールバックする
 // Places APIキー(GOOGLE_PLACES_API_KEY)は NEXT_PUBLIC_ を付けずサーバー側
@@ -61,6 +63,39 @@ async function expandUrl(url: string): Promise<string> {
   }
 }
 
+// Places API(New) Nearby Search。座標だけ分かっていて名前が無いとき(緯度経度
+// だけのピンURL等)、その地点の直近の場所を1件引いて店名を補完する。半径を
+// 小さく取り、距離順(DISTANCE)で最も近い1件だけを返す。キー未設定なら諦める。
+async function placeNearby(lat: number, lng: number): Promise<{ name?: string; placeId?: string } | null> {
+  const key = process.env.GOOGLE_PLACES_API_KEY;
+  if (!key) return null; // 未設定(この環境等)なら静かに諦める→名前はundefinedのまま
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        // 課金最小化: id と表示名だけ要求する(座標は既に手元にある)。
+        "X-Goog-FieldMask": "places.id,places.displayName",
+      },
+      body: JSON.stringify({
+        maxResultCount: 1,
+        rankPreference: "DISTANCE",
+        locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: 60 } },
+        languageCode: "ja",
+        regionCode: "JP",
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const p = data?.places?.[0];
+    if (!p) return null;
+    return { name: p.displayName?.text, placeId: p.id };
+  } catch {
+    return null;
+  }
+}
+
 // Places API(New) Text Search。店名(+エリア)から実在の1件を名寄せする。
 async function placesTextSearch(query: string): Promise<Resolved | null> {
   const key = process.env.GOOGLE_PLACES_API_KEY;
@@ -102,17 +137,29 @@ export async function POST(req: Request) {
   const url = body.url?.trim();
   const query = body.query?.trim();
 
-  // (1) マップURLからの座標抽出(無料)。短縮URLは1回展開して再挑戦。
+  // (1) マップURLからの座標抽出(無料)。座標か名前のどちらかが欠けていれば
+  // 1回だけURLを展開して再挑戦する(短縮URLの座標埋め込み・/place/店名/の救済)。
   if (url && isMapsUrl(url)) {
     let coords = coordsFromMapsUrl(url);
     let name = nameFromMapsUrl(url);
-    if (!coords) {
+    let placeId: string | undefined;
+    if (!coords || !name) {
       const expanded = await expandUrl(url);
-      coords = coordsFromMapsUrl(expanded);
+      coords = coords ?? coordsFromMapsUrl(expanded);
       name = name ?? nameFromMapsUrl(expanded);
     }
     if (coords) {
-      return NextResponse.json({ ...coords, name, source: "url" } satisfies Resolved);
+      // 座標はあるが名前が取れない(緯度経度だけのピンURL等)場合、Places
+      // Nearby Searchでその地点の直近の場所名を補完する。キー未設定なら
+      // name は undefined のまま返り、従来どおりの挙動になる。
+      if (!name) {
+        const near = await placeNearby(coords.lat, coords.lng);
+        if (near) {
+          name = near.name;
+          placeId = near.placeId;
+        }
+      }
+      return NextResponse.json({ ...coords, name, placeId, source: "url" } satisfies Resolved);
     }
     // 座標は取れなかったが展開後URLから店名が拾えた場合、その名前で
     // Places名寄せを試す(短縮URLで座標が埋まっていないケースの救済)。

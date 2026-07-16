@@ -35,10 +35,26 @@ function coordsFromMapsUrl(url: string): { lat: number; lng: number } | null {
 
 const isMapsUrl = (url: string) => /google\.[^/]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/.test(url);
 
+// マップURLの /place/店名/ セグメントから店名を抜く(下書きの名前用)。
+function nameFromMapsUrl(url: string): string | undefined {
+  try {
+    const m = decodeURIComponent(new URL(url).pathname).match(/\/place\/([^/@]+)/);
+    if (m) return m[1].replace(/\+/g, " ").trim() || undefined;
+  } catch {
+    /* 無視 */
+  }
+  return undefined;
+}
+
 // 短縮URL(maps.app.goo.gl等)はリダイレクト先を1回辿って展開してから座標を抜く。
 async function expandUrl(url: string): Promise<string> {
   try {
-    const res = await fetch(url, { redirect: "follow" });
+    const res = await fetch(url, {
+      redirect: "follow",
+      // UAを付けないとGoogleが同意ページ等の別レスポンスを返し座標が拾えない
+      // ことがあるため、一般的なブラウザのUAを名乗る。
+      headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
+    });
     return res.url || url;
   } catch {
     return url;
@@ -89,12 +105,20 @@ export async function POST(req: Request) {
   // (1) マップURLからの座標抽出(無料)。短縮URLは1回展開して再挑戦。
   if (url && isMapsUrl(url)) {
     let coords = coordsFromMapsUrl(url);
+    let name = nameFromMapsUrl(url);
     if (!coords) {
       const expanded = await expandUrl(url);
       coords = coordsFromMapsUrl(expanded);
+      name = name ?? nameFromMapsUrl(expanded);
     }
     if (coords) {
-      return NextResponse.json({ ...coords, source: "url" } satisfies Resolved);
+      return NextResponse.json({ ...coords, name, source: "url" } satisfies Resolved);
+    }
+    // 座標は取れなかったが展開後URLから店名が拾えた場合、その名前で
+    // Places名寄せを試す(短縮URLで座標が埋まっていないケースの救済)。
+    if (name) {
+      const resolved = await placesTextSearch(name);
+      if (resolved) return NextResponse.json({ ...resolved, name: resolved.name ?? name });
     }
   }
 

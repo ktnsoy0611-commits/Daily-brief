@@ -75,7 +75,11 @@ export function shade(hex: string, percent: number) {
 // 場所プロパティを持つか(=「行く」が絡むか)。地図・モデルプランの
 // クラスタリングはすべてこの述語を基準にする。ドメイン(何であるか)とは
 // 完全に独立した別軸: タイケン・ジョウホウ・モノのItemもareaを持ちうる。
-export function hasPlace(item: Item) {
+export function hasPlace(item: { area?: string; lat?: number; lng?: number }) {
+  // 実座標(lat/lng)を持つものは、自由文のarea(エリア名)が空でも「場所が
+  // 絡む」とみなして地図に出す(フェーズBでURLから座標だけ取れてエリア名は
+  // 未入力、というItemが生まれるようになったため)。
+  if (typeof item.lat === "number" && typeof item.lng === "number") return true;
   return !!item.area && item.area !== "—";
 }
 // 願望の4ドメイン(モノ/バショ/タイケン/ジョウホウ)への規格化された振り分け。

@@ -46,6 +46,13 @@ export interface Item {
   category?: string;
   // 場所プロパティ。値があれば「行く」が絡むアイテムとして地図に出る。
   area?: string;
+  // 実座標(フェーズB)。マップURLからの抽出 or Places API(New)の名寄せで
+  // 得た緯度経度。あれば地図に実位置で出す(pinPositionがprojectLatLngで
+  // 0〜100%へ正規化)。無ければ従来どおりareaのAREA_COORDS中心へフォール
+  // バックする。placeIdはPlaces由来の場合の再取得キー(将来の写真取得等)。
+  lat?: number;
+  lng?: number;
+  placeId?: string;
   status: ItemStatus;
   addedAt: string;
   doneAt?: string;

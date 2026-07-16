@@ -19,13 +19,11 @@ export const KIND_ICON: Record<ItemKind, IconType> = {
 // スタック表示時の1枚幅を広めに確保する。
 const STACK_CARD_WIDTH = 132;
 
-// URLからバショを追加するシート。GoogleマップのURLは無料のPlaces APIで解析
-// (安価)、それ以外のURL(展覧会の公式サイトなど)はGeminiでの読み取りが
-// 必要になる(わずかに課金が発生しうる)、という使い分けを見せている。
-// この環境には実際のAPIがないため解析結果はモック。実装ではここを
-// サーバー側の関数呼び出しに置き換える。
-function mockParseUrl(url: string) {
-  const isMaps = /google\.com\/maps|maps\.app\.goo\.gl/.test(url);
+// URLからタイトル・種類を推測する(名前欄の下書き用)。座標の解決はサーバー
+// 関数(/api/resolve-place)が担うため、ここではクライアント側で軽く名前だけ
+// 推測する。GoogleマップURLはplace名を、その他URLはホスト名を初期値にする。
+function guessFromUrl(url: string) {
+  const isMaps = /google\.[^/]+\/maps|maps\.app\.goo\.gl/.test(url);
   let guessTitle = "新しい場所";
   try {
     const u = new URL(url);
@@ -38,11 +36,23 @@ function mockParseUrl(url: string) {
   } catch {
     /* 不正なURLはデフォルトのまま */
   }
-  return {
-    title: guessTitle,
-    category: isMaps ? "登録した場所" : "展覧会・イベント",
-    parseMethod: isMaps ? "places" : "gemini",
-  };
+  return { title: guessTitle, category: isMaps ? "登録した場所" : "展覧会・イベント", isMaps };
+}
+
+// サーバー関数に座標解決を依頼する。url(マップURLからの抽出)と
+// query(店名+エリアの名寄せ)のどちらか/両方を渡す。失敗時はsource:"none"。
+async function resolvePlace(input: { url?: string; query?: string }): Promise<{ lat?: number; lng?: number; placeId?: string; name?: string; source: string }> {
+  try {
+    const res = await fetch("/api/resolve-place", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return { source: "none" };
+    return await res.json();
+  } catch {
+    return { source: "none" };
+  }
 }
 
 interface ParsedPlace {
@@ -51,28 +61,52 @@ interface ParsedPlace {
   area: string;
   sourceUrl: string;
   sourceLabel: string;
+  lat?: number;
+  lng?: number;
+  placeId?: string;
 }
 
 function AddPlaceSheet({ onAdd, onClose }: { onAdd: (data: ParsedPlace) => void; onClose: () => void }) {
   const [step, setStep] = useState<"input" | "loading" | "confirm">("input");
   const [url, setUrl] = useState("");
-  const [parsed, setParsed] = useState<ReturnType<typeof mockParseUrl> | null>(null);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [area, setArea] = useState("");
+  // 座標解決の結果(url抽出 or Places名寄せ or none)。analyze時にurl由来を試し、
+  // 取れなければ追加時にquery(名前+エリア)で名寄せを試みる。
+  const [coords, setCoords] = useState<{ lat?: number; lng?: number; placeId?: string; source: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const analyze = () => {
+  const analyze = async () => {
     if (!url.trim()) return;
     setStep("loading");
-    setTimeout(() => {
-      const guess = mockParseUrl(url.trim());
-      setParsed(guess);
-      setTitle(guess.title);
-      setCategory(guess.category);
-      setStep("confirm");
-    }, 700);
+    const guess = guessFromUrl(url.trim());
+    setTitle(guess.title);
+    setCategory(guess.category);
+    // マップURLなら、まずURLに埋まった座標の抽出をサーバー関数に依頼(API呼び出し0)。
+    const r = guess.isMaps ? await resolvePlace({ url: url.trim() }) : { source: "none" };
+    setCoords(r);
+    if (r.name) setTitle(r.name);
+    setStep("confirm");
   };
-  const isMapsUrl = /google\.com\/maps|maps\.app\.goo\.gl/.test(url);
+
+  const commitAdd = async (requestClose: () => void) => {
+    if (!title.trim() || saving) return;
+    setSaving(true);
+    // まだ座標が取れていなければ、名前+エリアでPlaces名寄せを試みる(取れなくても続行)。
+    let c = coords;
+    if (!c || typeof c.lat !== "number") {
+      c = await resolvePlace({ query: `${title.trim()} ${area.trim()}`.trim() });
+    }
+    onAdd({
+      title: title.trim(), category: category.trim() || "登録した場所", area: area.trim(),
+      sourceUrl: url.trim(), sourceLabel: "登録したリンクを見る",
+      lat: c?.lat, lng: c?.lng, placeId: c?.placeId,
+    });
+    requestClose();
+  };
+
+  const hasCoords = coords && typeof coords.lat === "number";
 
   return (
     <BottomSheet onClose={onClose}>
@@ -98,16 +132,16 @@ function AddPlaceSheet({ onAdd, onClose }: { onAdd: (data: ParsedPlace) => void;
 
           {step === "loading" && (
             <div style={{ padding: "28px 0", textAlign: "center" }}>
-              <p style={{ fontSize: 12, color: "#9A988E" }}>{isMapsUrl ? "Places APIで解析中…" : "Geminiで内容を読み取り中…"}</p>
+              <p style={{ fontSize: 12, color: "#9A988E" }}>URLを解析中…</p>
             </div>
           )}
 
           {step === "confirm" && (
             <>
-              <div style={{ fontSize: 10, color: parsed?.parseMethod === "gemini" ? RUST : INK, marginBottom: 14, lineHeight: 1.7 }}>
-                {parsed?.parseMethod === "gemini"
-                  ? "※ Geminiで解析しました。内容を確認してください（わずかに課金が発生する場合があります）"
-                  : "※ Places APIで解析しました（無料枠内）"}
+              <div style={{ fontSize: 10, color: hasCoords ? INK : "#9A988E", marginBottom: 14, lineHeight: 1.7 }}>
+                {hasCoords
+                  ? "※ 地図の位置を取得しました。名前・エリアを確認して追加してください。"
+                  : "※ 座標が取れなかった場合は、名前とエリアから地図に配置します（エリアの目安で表示）。"}
               </div>
               <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>名前</label>
               <input value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 15, outline: "none", marginBottom: 12, background: "transparent" }} />
@@ -115,7 +149,7 @@ function AddPlaceSheet({ onAdd, onClose }: { onAdd: (data: ParsedPlace) => void;
               <input value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 13, outline: "none", marginBottom: 12, background: "transparent" }} />
               <label style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E" }}>エリア（任意）</label>
               <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="例: 蔵前" style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 13, outline: "none", marginBottom: 18, background: "transparent" }} />
-              <button onClick={() => { if (!title.trim()) return; onAdd({ title: title.trim(), category: category.trim() || "登録した場所", area: area.trim(), sourceUrl: url.trim(), sourceLabel: "登録したリンクを見る" }); requestClose(); }} disabled={!title.trim()} style={{ width: "100%", padding: "13px 0", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" }}>この内容で追加</button>
+              <button onClick={() => commitAdd(requestClose)} disabled={!title.trim() || saving} style={{ width: "100%", padding: "13px 0", background: title.trim() && !saving ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none", borderRadius: 999, cursor: title.trim() && !saving ? "pointer" : "default", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" }}>{saving ? "追加中…" : "この内容で追加"}</button>
             </>
           )}
         </OverlayCard>
@@ -321,6 +355,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
         addItem({
           id: `manual-${Date.now()}`, kind: "place", title: data.title, category: data.category,
           area: data.area || undefined, status: "candidate", addedAt: new Date().toISOString(),
+          lat: data.lat, lng: data.lng, placeId: data.placeId,
           images: [`url-${Date.now()}`], color: POSTER_PALETTE[hashStr(data.title) % POSTER_PALETTE.length],
           sourceUrl: data.sourceUrl, sourceLabel: data.sourceLabel, origin: "manual",
         }, "バショをストックしました");

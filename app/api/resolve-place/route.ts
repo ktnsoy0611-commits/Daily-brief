@@ -1,0 +1,109 @@
+import { NextResponse } from "next/server";
+
+// 場所の座標解決サーバー関数(フェーズB)。
+// SYSTEM-DESIGN.md §8.1 / HANDOFF-CURRENT.md §8.1-1 の多段フォールバック:
+//   (1) GoogleマップURLに埋まった座標を正規表現で抽出(API呼び出し0・無料)
+//   (2) 取れなければ Places API(New) の Text Search で名寄せ(店名+エリア)
+//   (3) それも取れなければ null を返し、クライアント側でareaのAREA_COORDS
+//       中心へフォールバックする
+// Places APIキー(GOOGLE_PLACES_API_KEY)は NEXT_PUBLIC_ を付けずサーバー側
+// だけが読む。ブラウザには座標の結果だけを返し、キーは決して露出しない。
+
+export const runtime = "nodejs";
+
+type Resolved = {
+  lat?: number;
+  lng?: number;
+  placeId?: string;
+  name?: string;
+  source: "url" | "places" | "none";
+};
+
+// GoogleマップのURL各種形式から緯度経度を抜く。API呼び出しは一切しない。
+function coordsFromMapsUrl(url: string): { lat: number; lng: number } | null {
+  // 例: .../@35.6895,139.6917,17z/...
+  let m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  // 例: ...!3d35.6895!4d139.6917...(place URLの内部表現)
+  m = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  // 例: ...?q=35.6895,139.6917 / ...&query=35.6895,139.6917
+  m = url.match(/[?&](?:q|query|ll|sll)=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  return null;
+}
+
+const isMapsUrl = (url: string) => /google\.[^/]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/.test(url);
+
+// 短縮URL(maps.app.goo.gl等)はリダイレクト先を1回辿って展開してから座標を抜く。
+async function expandUrl(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, { redirect: "follow" });
+    return res.url || url;
+  } catch {
+    return url;
+  }
+}
+
+// Places API(New) Text Search。店名(+エリア)から実在の1件を名寄せする。
+async function placesTextSearch(query: string): Promise<Resolved | null> {
+  const key = process.env.GOOGLE_PLACES_API_KEY;
+  if (!key) return null; // 未設定(この環境等)なら静かに諦める→フォールバック
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        // 課金は要求するフィールドで決まる。座標・id・名前だけに絞って最小コストにする。
+        "X-Goog-FieldMask": "places.id,places.location,places.displayName",
+      },
+      body: JSON.stringify({ textQuery: query, languageCode: "ja", regionCode: "JP", maxResultCount: 1 }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const p = data?.places?.[0];
+    if (!p?.location) return null;
+    return {
+      lat: p.location.latitude,
+      lng: p.location.longitude,
+      placeId: p.id,
+      name: p.displayName?.text,
+      source: "places",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(req: Request) {
+  let body: { url?: string; query?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ source: "none" } satisfies Resolved, { status: 400 });
+  }
+  const url = body.url?.trim();
+  const query = body.query?.trim();
+
+  // (1) マップURLからの座標抽出(無料)。短縮URLは1回展開して再挑戦。
+  if (url && isMapsUrl(url)) {
+    let coords = coordsFromMapsUrl(url);
+    if (!coords) {
+      const expanded = await expandUrl(url);
+      coords = coordsFromMapsUrl(expanded);
+    }
+    if (coords) {
+      return NextResponse.json({ ...coords, source: "url" } satisfies Resolved);
+    }
+  }
+
+  // (2) 名寄せ(Places Text Search)。店名+エリアのqueryがあれば試す。
+  if (query) {
+    const resolved = await placesTextSearch(query);
+    if (resolved) return NextResponse.json(resolved);
+  }
+
+  // (3) 何も取れず。クライアントがareaのAREA_COORDSへフォールバックする。
+  return NextResponse.json({ source: "none" } satisfies Resolved);
+}

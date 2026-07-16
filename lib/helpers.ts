@@ -137,7 +137,25 @@ export function mostRecentThursday(d = new Date()) {
   return thu.toISOString().slice(0, 10);
 }
 
-export function pinPosition(item: { id: string; area?: string }) {
+// 実座標(緯度経度)を、自作地図の0〜100%座標へ正規化する(フェーズB、
+// SYSTEM-DESIGN.md §8.1「スタイライズド地図+実座標」)。生活圏=東京23区を
+// 囲む固定のバウンディングボックスに対して線形投影する。緯度は北ほど地図の
+// 上(=y%が小さい)になるよう反転する。端の見切れ防止に少しクランプする。
+const TOKYO_BOUNDS = { latMin: 35.52, latMax: 35.83, lngMin: 139.56, lngMax: 139.92 };
+export function projectLatLng(lat: number, lng: number) {
+  const x = ((lng - TOKYO_BOUNDS.lngMin) / (TOKYO_BOUNDS.lngMax - TOKYO_BOUNDS.lngMin)) * 100;
+  const y = ((TOKYO_BOUNDS.latMax - lat) / (TOKYO_BOUNDS.latMax - TOKYO_BOUNDS.latMin)) * 100;
+  return { x: Math.min(96, Math.max(4, x)), y: Math.min(92, Math.max(6, y)) };
+}
+
+// 地図上のピン位置。実座標(lat/lng)を持つItemはそれを投影した実位置に、
+// 持たないItemは従来どおりareaのAREA_COORDS中心+idハッシュのゆらぎに置く
+// (フォールバック)。実データが入るほど地図が正確になり、入っていない
+// ものも「エリアのあたり」には必ず出る、という多段設計。
+export function pinPosition(item: { id: string; area?: string; lat?: number; lng?: number }) {
+  if (typeof item.lat === "number" && typeof item.lng === "number") {
+    return projectLatLng(item.lat, item.lng);
+  }
   const base = AREA_COORDS[item.area ?? ""] ?? AREA_FALLBACK;
   let h = 0;
   const id = item.id || "";

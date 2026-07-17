@@ -18,7 +18,7 @@ type GeneratedCard = {
   expiresAt?: string; serendipity?: boolean; sourceWishTitle?: string;
 };
 type GenResponse =
-  | { ok: true; cards: GeneratedCard[]; raw: string; retrieved: { url: string; status: string }[]; dropped: number }
+  | { ok: true; cards: GeneratedCard[]; raw: string; pages: { url: string; ok: boolean }[]; dropped: number; note?: string }
   | { ok: false; reason: string; detail?: string };
 
 // 「入力+右にボタン」の1行入力欄。この画面内の入力欄はすべてこの1つの
@@ -95,7 +95,7 @@ export function ProfileTab({ appState, persist, onClose }: {
   // カードをこの画面に表示して品質を目視確認するだけ(HANDOFF §8.12)。
   const [genState, setGenState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [genCards, setGenCards] = useState<GeneratedCard[]>([]);
-  const [genRetrieved, setGenRetrieved] = useState<{ url: string; status: string }[]>([]);
+  const [genPages, setGenPages] = useState<{ url: string; ok: boolean }[]>([]);
   const [genMsg, setGenMsg] = useState("");
   // 実験に使う情報源URL(改行区切り)。登録済みの「お気に入りの情報源」を
   // 初期値にしつつ、その場で貼り足し・編集できるようにする。本番では
@@ -168,7 +168,7 @@ export function ProfileTab({ appState, persist, onClose }: {
     setGenState("loading");
     setGenMsg("");
     setGenCards([]);
-    setGenRetrieved([]);
+    setGenPages([]);
     try {
       const res = await fetch("/api/generate-brief", {
         method: "POST",
@@ -194,16 +194,14 @@ export function ProfileTab({ appState, persist, onClose }: {
         return;
       }
       setGenCards(data.cards);
-      setGenRetrieved(data.retrieved);
+      setGenPages(data.pages);
       setGenState("done");
+      const notePart = data.note ? `${data.note} ` : "";
+      const dropPart = data.dropped > 0 ? `出典URLが確認できなかった${data.dropped}件は捏造防止のため除外しました。` : "";
       if (data.cards.length === 0) {
-        setGenMsg(
-          data.dropped > 0
-            ? `出典URLが確認できなかったため${data.dropped}件を除外しました（捏造防止）。結果0件です。情報源ページを読めていない可能性があるので、下の「読めたページ」を確認してください。`
-            : "カードが返りませんでした。情報源に合う情報が無かったか、ページを読めなかった可能性があります。下の「読めたページ」を確認してください。",
-        );
-      } else if (data.dropped > 0) {
-        setGenMsg(`出典URLが確認できなかった${data.dropped}件は捏造防止のため除外しました。`);
+        setGenMsg(`${notePart}${dropPart || "カードが返りませんでした。情報源に合う情報が無かったか、ページ本文を取得できなかった可能性があります。下の「読み込んだページ」を確認してください。"}`.trim());
+      } else {
+        setGenMsg(`${notePart}${dropPart}`.trim());
       }
     } catch (e) {
       setGenState("error");
@@ -344,19 +342,16 @@ export function ProfileTab({ appState, persist, onClose }: {
             </div>
           ))}
 
-          {genRetrieved.length > 0 && (
+          {genPages.length > 0 && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>実際に読めたページ</div>
-              {genRetrieved.map((s, i) => {
-                const ok = /success/i.test(s.status);
-                return (
-                  <div key={i} style={{ fontSize: 10, color: "#9A988E", marginBottom: 3, display: "flex", gap: 6 }}>
-                    <span style={{ color: ok ? "#33633F" : RUST, flexShrink: 0 }}>{ok ? "✓" : "×"}</span>
-                    <a href={s.url} target="_blank" rel="noopener noreferrer"
-                      style={{ color: "#9A988E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.url}</a>
-                  </div>
-                );
-              })}
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>読み込んだページ（✓=本文取得成功）</div>
+              {genPages.map((s, i) => (
+                <div key={i} style={{ fontSize: 10, color: "#9A988E", marginBottom: 3, display: "flex", gap: 6 }}>
+                  <span style={{ color: s.ok ? "#33633F" : RUST, flexShrink: 0 }}>{s.ok ? "✓" : "×"}</span>
+                  <a href={s.url} target="_blank" rel="noopener noreferrer"
+                    style={{ color: "#9A988E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.url}</a>
+                </div>
+              ))}
             </div>
           )}
         </SettingsCard>

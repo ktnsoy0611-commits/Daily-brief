@@ -18,7 +18,7 @@ type GeneratedCard = {
   expiresAt?: string; serendipity?: boolean; sourceWishTitle?: string;
 };
 type GenResponse =
-  | { ok: true; cards: GeneratedCard[]; raw: string; retrieved: { url: string; status: string }[]; discovered: { url: string; title?: string }[] }
+  | { ok: true; cards: GeneratedCard[]; raw: string; retrieved: { url: string; status: string }[]; dropped: number }
   | { ok: false; reason: string; detail?: string };
 
 // 「入力+右にボタン」の1行入力欄。この画面内の入力欄はすべてこの1つの
@@ -96,7 +96,6 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [genState, setGenState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [genCards, setGenCards] = useState<GeneratedCard[]>([]);
   const [genRetrieved, setGenRetrieved] = useState<{ url: string; status: string }[]>([]);
-  const [genDiscovered, setGenDiscovered] = useState<{ url: string; title?: string }[]>([]);
   const [genMsg, setGenMsg] = useState("");
   // 実験に使う情報源URL(改行区切り)。登録済みの「お気に入りの情報源」を
   // 初期値にしつつ、その場で貼り足し・編集できるようにする。本番では
@@ -170,7 +169,6 @@ export function ProfileTab({ appState, persist, onClose }: {
     setGenMsg("");
     setGenCards([]);
     setGenRetrieved([]);
-    setGenDiscovered([]);
     try {
       const res = await fetch("/api/generate-brief", {
         method: "POST",
@@ -197,9 +195,16 @@ export function ProfileTab({ appState, persist, onClose }: {
       }
       setGenCards(data.cards);
       setGenRetrieved(data.retrieved);
-      setGenDiscovered(data.discovered);
       setGenState("done");
-      if (data.cards.length === 0) setGenMsg("カードが返りませんでした。情報源に合う情報が無かったか、ページを読めなかった可能性があります。下の「読めたページ」を確認してください。");
+      if (data.cards.length === 0) {
+        setGenMsg(
+          data.dropped > 0
+            ? `出典URLが確認できなかったため${data.dropped}件を除外しました（捏造防止）。結果0件です。情報源ページを読めていない可能性があるので、下の「読めたページ」を確認してください。`
+            : "カードが返りませんでした。情報源に合う情報が無かったか、ページを読めなかった可能性があります。下の「読めたページ」を確認してください。",
+        );
+      } else if (data.dropped > 0) {
+        setGenMsg(`出典URLが確認できなかった${data.dropped}件は捏造防止のため除外しました。`);
+      }
     } catch (e) {
       setGenState("error");
       setGenMsg(`通信に失敗しました。${e instanceof Error ? e.message : ""}`);
@@ -339,21 +344,9 @@ export function ProfileTab({ appState, persist, onClose }: {
             </div>
           ))}
 
-          {genDiscovered.length > 0 && (
-            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>見つけた個別ページ（段階1）</div>
-              {genDiscovered.map((s, i) => (
-                <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
-                  style={{ display: "block", fontSize: 10, color: "#9A988E", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {s.title ? `${s.title} — ${s.url}` : s.url}
-                </a>
-              ))}
-            </div>
-          )}
-
           {genRetrieved.length > 0 && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>実際に読めたページ（段階2）</div>
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>実際に読めたページ</div>
               {genRetrieved.map((s, i) => {
                 const ok = /success/i.test(s.status);
                 return (

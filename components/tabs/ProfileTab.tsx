@@ -18,7 +18,7 @@ type GeneratedCard = {
   expiresAt?: string; serendipity?: boolean; sourceWishTitle?: string;
 };
 type GenResponse =
-  | { ok: true; cards: GeneratedCard[]; raw: string; sources: { title: string; uri: string }[] }
+  | { ok: true; cards: GeneratedCard[]; raw: string; retrieved: { url: string; status: string }[] }
   | { ok: false; reason: string; detail?: string };
 
 // 「入力+右にボタン」の1行入力欄。この画面内の入力欄はすべてこの1つの
@@ -95,8 +95,12 @@ export function ProfileTab({ appState, persist, onClose }: {
   // カードをこの画面に表示して品質を目視確認するだけ(HANDOFF §8.12)。
   const [genState, setGenState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [genCards, setGenCards] = useState<GeneratedCard[]>([]);
-  const [genSources, setGenSources] = useState<{ title: string; uri: string }[]>([]);
+  const [genRetrieved, setGenRetrieved] = useState<{ url: string; status: string }[]>([]);
   const [genMsg, setGenMsg] = useState("");
+  // 実験に使う情報源URL(改行区切り)。登録済みの「お気に入りの情報源」を
+  // 初期値にしつつ、その場で貼り足し・編集できるようにする。本番では
+  // Coworkが用意した情報源リストがこの役割を担う。
+  const [genUrls, setGenUrls] = useState(() => (appState.sources ?? []).map((s) => s.url).join("\n"));
 
   const interests = (appState.profile?.interests ?? []).slice().sort((a, b) => b.weight - a.weight);
   const sources = appState.sources ?? [];
@@ -154,11 +158,17 @@ export function ProfileTab({ appState, persist, onClose }: {
   // 渡し、Geminiが本物のWeb検索で作ったカードを受け取って表示する。
   const runGenerate = async () => {
     if (genState === "loading") return;
+    const urls = genUrls.split("\n").map((u) => u.trim()).filter((u) => /^https?:\/\//.test(u));
+    if (urls.length === 0) {
+      setGenState("error");
+      setGenMsg("情報源のURLを1つ以上入力してください(http〜で始まるもの)。");
+      return;
+    }
     haptic();
     setGenState("loading");
     setGenMsg("");
     setGenCards([]);
-    setGenSources([]);
+    setGenRetrieved([]);
     try {
       const res = await fetch("/api/generate-brief", {
         method: "POST",
@@ -167,6 +177,7 @@ export function ProfileTab({ appState, persist, onClose }: {
           wishes: (appState.wishes ?? []).filter((w) => w.status === "stock").map((w) => w.title),
           interests: interests.map((i) => i.label),
           focus: appState.profile?.currentFocus ?? "",
+          sources: urls,
           count: 3,
         }),
       });
@@ -176,14 +187,16 @@ export function ProfileTab({ appState, persist, onClose }: {
         setGenMsg(
           data.reason === "no_key"
             ? "GEMINI_API_KEYが未設定です。Vercelの環境変数に登録すると動きます。"
+            : data.reason === "no_sources"
+            ? "情報源のURLを1つ以上入力してください。"
             : `生成に失敗しました(${data.reason})。${data.detail ?? ""}`,
         );
         return;
       }
       setGenCards(data.cards);
-      setGenSources(data.sources);
+      setGenRetrieved(data.retrieved);
       setGenState("done");
-      if (data.cards.length === 0) setGenMsg("カードが返りませんでした。時間をおいて再試行してください。");
+      if (data.cards.length === 0) setGenMsg("カードが返りませんでした。情報源に合う情報が無かったか、ページを読めなかった可能性があります。下の「読めたページ」を確認してください。");
     } catch (e) {
       setGenState("error");
       setGenMsg(`通信に失敗しました。${e instanceof Error ? e.message : ""}`);
@@ -268,10 +281,22 @@ export function ProfileTab({ appState, persist, onClose }: {
             (CARDS/injectDemo)と一緒にこのカードごと撤去する予定
             (HANDOFF §8.12)。 */}
         <SettingsCard label="ブリーフ生成の実験（開発用）" icon={Sparkles}>
-          <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.7, margin: "0 0 12px" }}>
-            今のウィッシュ・興味から、Geminiが実際にWebを検索してカードを試作します。
-            まだ本番のブリーフには反映されません。
+          <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.7, margin: "0 0 10px" }}>
+            下の情報源ページをGeminiが実際に読み、そこに載っている情報から、
+            今のウィッシュ・興味に合うカードを試作します(Google全体の検索は
+            しません)。まだ本番のブリーフには反映されません。
           </p>
+          <textarea
+            value={genUrls}
+            onChange={(e) => setGenUrls(e.target.value)}
+            placeholder={"情報源のURLを1行に1つ\n例: https://www.momat.go.jp/"}
+            rows={3}
+            style={{
+              width: "100%", boxSizing: "border-box", resize: "vertical", border: `1px solid ${HAIRLINE}`,
+              borderRadius: 10, padding: 10, fontFamily: SANS, fontSize: 12, lineHeight: 1.6, outline: "none",
+              background: "#FAFAF6", color: INK, marginBottom: 10,
+            }}
+          />
           <button
             onClick={runGenerate}
             disabled={genState === "loading"}
@@ -309,15 +334,19 @@ export function ProfileTab({ appState, persist, onClose }: {
             </div>
           ))}
 
-          {genSources.length > 0 && (
+          {genRetrieved.length > 0 && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>参照したページ</div>
-              {genSources.map((s, i) => (
-                <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer"
-                  style={{ display: "block", fontSize: 10, color: "#9A988E", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {s.title || s.uri}
-                </a>
-              ))}
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>読めたページ</div>
+              {genRetrieved.map((s, i) => {
+                const ok = /success/i.test(s.status);
+                return (
+                  <div key={i} style={{ fontSize: 10, color: "#9A988E", marginBottom: 3, display: "flex", gap: 6 }}>
+                    <span style={{ color: ok ? "#33633F" : RUST, flexShrink: 0 }}>{ok ? "✓" : "×"}</span>
+                    <a href={s.url} target="_blank" rel="noopener noreferrer"
+                      style={{ color: "#9A988E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.url}</a>
+                  </div>
+                );
+              })}
             </div>
           )}
         </SettingsCard>

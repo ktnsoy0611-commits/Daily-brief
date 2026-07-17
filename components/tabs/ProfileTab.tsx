@@ -1,13 +1,25 @@
 "use client";
 
-import { Heart, Link2, RotateCcw, X } from "lucide-react";
+import { Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
-import { HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
+import { BLUE, HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
 import type { AppState } from "@/lib/types";
+
+// フェーズC-0「プロンプト実験場」で生成されるカードの形(BriefCard相当の
+// 部分集合)。本番のデッキ統合前に、設定画面で品質を目視確認するためだけの
+// 暫定型。/api/generate-brief の返り値と一致させる。
+type GeneratedCard = {
+  title: string; body: string; kind: string; trigger: string;
+  area?: string; sourceUrl?: string; sourceLabel?: string; meta?: string[];
+  expiresAt?: string; serendipity?: boolean; sourceWishTitle?: string;
+};
+type GenResponse =
+  | { ok: true; cards: GeneratedCard[]; raw: string; sources: { title: string; uri: string }[] }
+  | { ok: false; reason: string; detail?: string };
 
 // 「入力+右にボタン」の1行入力欄。この画面内の入力欄はすべてこの1つの
 // スタイルに揃える(以前はセクションごとにフォント・サイズ・線の太さが
@@ -79,6 +91,13 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [focusDraft, setFocusDraft] = useState(appState.profile?.currentFocus ?? "");
   const [srcInput, setSrcInput] = useState("");
 
+  // フェーズC-0: ブリーフ生成の実験。まだ本番デッキには繋がず、返ってきた
+  // カードをこの画面に表示して品質を目視確認するだけ(HANDOFF §8.12)。
+  const [genState, setGenState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [genCards, setGenCards] = useState<GeneratedCard[]>([]);
+  const [genSources, setGenSources] = useState<{ title: string; uri: string }[]>([]);
+  const [genMsg, setGenMsg] = useState("");
+
   const interests = (appState.profile?.interests ?? []).slice().sort((a, b) => b.weight - a.weight);
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
@@ -129,6 +148,46 @@ export function ProfileTab({ appState, persist, onClose }: {
     entry.undone = true;
     entry.undoneAt = new Date().toISOString();
     persist(next);
+  };
+
+  // 生成を試す: 現在のウィッシュ・興味・気になっていることをサーバー関数へ
+  // 渡し、Geminiが本物のWeb検索で作ったカードを受け取って表示する。
+  const runGenerate = async () => {
+    if (genState === "loading") return;
+    haptic();
+    setGenState("loading");
+    setGenMsg("");
+    setGenCards([]);
+    setGenSources([]);
+    try {
+      const res = await fetch("/api/generate-brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wishes: (appState.wishes ?? []).filter((w) => w.status === "stock").map((w) => w.title),
+          interests: interests.map((i) => i.label),
+          focus: appState.profile?.currentFocus ?? "",
+          count: 3,
+        }),
+      });
+      const data: GenResponse = await res.json();
+      if (!data.ok) {
+        setGenState("error");
+        setGenMsg(
+          data.reason === "no_key"
+            ? "GEMINI_API_KEYが未設定です。Vercelの環境変数に登録すると動きます。"
+            : `生成に失敗しました(${data.reason})。${data.detail ?? ""}`,
+        );
+        return;
+      }
+      setGenCards(data.cards);
+      setGenSources(data.sources);
+      setGenState("done");
+      if (data.cards.length === 0) setGenMsg("カードが返りませんでした。時間をおいて再試行してください。");
+    } catch (e) {
+      setGenState("error");
+      setGenMsg(`通信に失敗しました。${e instanceof Error ? e.message : ""}`);
+    }
   };
 
   return (
@@ -201,6 +260,66 @@ export function ProfileTab({ appState, persist, onClose }: {
               sub={`${shortDate(entry.boundAt)}にバインド${entry.undone ? "・取り消し済み" : ""}`}
               action={!entry.undone && <IconButton onClick={() => undoBind(entry.id)} label="バインドを元に戻す"><RotateCcw size={13} strokeWidth={2.4} /></IconButton>} />
           ))}
+        </SettingsCard>
+
+        {/* フェーズC-0「プロンプト実験場」。まだ本番のブリーフタブには繋がず、
+            Geminiが本物のWeb検索で作ったカードをここに表示して品質を目視
+            確認するための開発用セクション。アプリ完成時にはサンプルデータ
+            (CARDS/injectDemo)と一緒にこのカードごと撤去する予定
+            (HANDOFF §8.12)。 */}
+        <SettingsCard label="ブリーフ生成の実験（開発用）" icon={Sparkles}>
+          <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.7, margin: "0 0 12px" }}>
+            今のウィッシュ・興味から、Geminiが実際にWebを検索してカードを試作します。
+            まだ本番のブリーフには反映されません。
+          </p>
+          <button
+            onClick={runGenerate}
+            disabled={genState === "loading"}
+            style={{
+              width: "100%", padding: "11px 0", background: genState === "loading" ? "rgba(23,23,21,0.2)" : INK,
+              color: PAPER, border: "none", borderRadius: 999, cursor: genState === "loading" ? "default" : "pointer",
+              fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em",
+            }}
+          >
+            {genState === "loading" ? "生成中…（数十秒かかります）" : "生成を試す"}
+          </button>
+
+          {genMsg && (
+            <p style={{ fontSize: 11, color: genState === "error" ? RUST : "#9A988E", lineHeight: 1.7, margin: "12px 0 0" }}>{genMsg}</p>
+          )}
+
+          {genCards.map((c, i) => (
+            <div key={i} style={{ marginTop: 12, padding: "12px 0 0", borderTop: `1px solid ${HAIRLINE}` }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", marginBottom: 4 }}>
+                <span style={{ fontSize: 8.5, letterSpacing: "0.12em", color: c.serendipity ? BLUE : "#9A988E", fontWeight: 700 }}>
+                  {c.kind}・{c.trigger}{c.area ? `・${c.area}` : ""}
+                </span>
+              </div>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13.5, lineHeight: 1.4, color: INK }}>{c.title}</div>
+              <p style={{ fontSize: 11.5, color: "#5A5A54", lineHeight: 1.7, margin: "4px 0 0" }}>{c.body}</p>
+              {c.meta && c.meta.length > 0 && (
+                <div style={{ fontSize: 10, color: "#9A988E", marginTop: 4 }}>{c.meta.join(" ・ ")}</div>
+              )}
+              {c.sourceUrl && (
+                <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "inline-block", marginTop: 6, fontSize: 10.5, color: BLUE, wordBreak: "break-all" }}>
+                  {c.sourceLabel || c.sourceUrl}
+                </a>
+              )}
+            </div>
+          ))}
+
+          {genSources.length > 0 && (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>参照したページ</div>
+              {genSources.map((s, i) => (
+                <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "block", fontSize: 10, color: "#9A988E", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {s.title || s.uri}
+                </a>
+              ))}
+            </div>
+          )}
         </SettingsCard>
 
         {/* サインアウト。Supabase構成済みのときだけ表示する(このタブが

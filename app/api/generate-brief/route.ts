@@ -18,12 +18,17 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 60; // 複数URLの読み込み込みの生成は数十秒かかりうる
 
-// 既定のモデル。環境変数 GEMINI_MODEL で上書きできる。特定バージョンを
-// 決め打ちすると「新規ユーザーにはもう使えない」等で404になることがある
-// (実際 gemini-2.5-flash がそうなった)ため、常に最新のflashを指すエイリアス
-// を既定にし、それでも駄目なら下の listFlashModel() で実際に使えるモデルを
-// 問い合わせて自動フォールバックする。
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// 既定のモデル。環境変数 GEMINI_MODEL で上書きできる。
+// **モデル選定の根拠(コスト精査)**: この実験の中身は「渡した情報源ページを
+// 読んで、カード形式に整形・抜き出す」= ほぼ抽出タスク。深い推論は要らない。
+// Geminiは Pro(高性能・高コスト) > Flash(低コスト) > Flash-Lite(最安) の3階層で、
+// SYSTEM-DESIGN.md §3-2 も新着抽出は Flash-Lite と定めている。Flash-Lite でも
+// url_context(URL読み込み)は対応しており能力面で不足しないため、最安の
+// Flash-Lite を既定にする(推論の重い "thinking" 系モデルは避ける)。特定
+// バージョンの決め打ちは「新規ユーザーにはもう使えない」等で404になる
+// (実際 gemini-2.5-flash がそうなった)ため、-latest エイリアスを使い、それでも
+// 駄目なら listFlashModel() で実在モデルへ自動フォールバックする。
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 function endpointFor(model: string) {
@@ -32,7 +37,7 @@ function endpointFor(model: string) {
 }
 
 // このキーで実際に generateContent できる flash 系モデルを1つ探す。
-// gemini-flash-latest が使えないアカウントでも、ここで実在モデルへ寄せる。
+// コスト優先で Flash-Lite → Flash の順に、かつ安定版(-latest)を優先して選ぶ。
 async function listFlashModel(key: string): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/models`, { headers: { "x-goog-api-key": key } });
@@ -40,12 +45,16 @@ async function listFlashModel(key: string): Promise<string | null> {
     const data = await res.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const models: any[] = (data?.models ?? []).filter((m: any) => (m?.supportedGenerationMethods ?? []).includes("generateContent"));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const flash = models.filter((m: any) => /flash/i.test(m?.name ?? "") && !/lite|vision|embedding|aqa|imagen|tts|audio|thinking/i.test(m?.name ?? ""));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const latest = flash.find((m: any) => /flash-latest/i.test(m?.name ?? ""));
-    const pick = latest ?? flash[flash.length - 1] ?? models[0];
-    return pick?.name ?? null; // 例: "models/gemini-flash-latest"
+    const nm = (m: { name?: string }) => m?.name ?? "";
+    // 画像/音声/埋め込み専用や推論の重いthinking系は除外し、flash系だけに絞る。
+    const flash = models.filter((m) => /flash/i.test(nm(m)) && !/vision|embedding|aqa|imagen|tts|audio|thinking/i.test(nm(m)));
+    const pick =
+      flash.find((m) => /flash-lite-latest/i.test(nm(m))) ?? // 最安・安定
+      flash.find((m) => /flash-lite/i.test(nm(m))) ??        // 最安
+      flash.find((m) => /flash-latest/i.test(nm(m))) ??      // 次点・安定
+      flash[flash.length - 1] ??                             // 何かしらのflash
+      models[0];                                             // 最後の砦
+    return pick?.name ?? null; // 例: "models/gemini-flash-lite-latest"
   } catch {
     return null;
   }
@@ -173,7 +182,10 @@ ${sources.map((u) => `- ${u}`).join("\n")}
     // tools使用時はresponseSchema(JSONモード)が併用不可のため、JSONは
     // プロンプト指示で出させサーバー側でパースする。
     tools: [{ url_context: {} }],
-    generationConfig: { temperature: 0.6 },
+    // 出力トークンの上限を絞ってコストを抑える(必要なのは最大6枚の
+    // コンパクトなJSONだけで長文は要らない)。入力側もsources最大10件・
+    // count最大6で抑えている。
+    generationConfig: { temperature: 0.6, maxOutputTokens: 3072 },
   });
   const callModel = (model: string) =>
     fetch(endpointFor(model), {

@@ -88,9 +88,14 @@ export function LeafletMap({ items, selectedIds, onOpenPin, style }: {
       const map = L.map(containerRef.current, {
         center: TOKYO_CENTER, zoom: 12, zoomControl: false, attributionControl: true,
       });
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      // OSM標準タイルは道路以外に店名アイコン・看板文字等の情報量が多く、
+      // アプリの禁欲的なバウハウス調デザインと毛色が違う(ユーザー指定で
+      // ミニマル化)。CartoDB Positron(淡色・低情報量、無料・キー不要)へ
+      // 切り替える。地図データ自体は引き続きOSM由来。
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
         maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        subdomains: "abcd",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       }).addTo(map);
       // ユーザーが一度でも操作したら、以後はマーカー更新で視点を動かさない。
       map.on("dragstart zoomstart", () => { userMovedRef.current = true; });

@@ -191,17 +191,21 @@ function extractJsonArray<T>(text: string): T[] | null {
 }
 
 // ---- プロンプト(システム=役割・ルール固定 / ユーザー=動的データ) --------
-const SYSTEM_DISCOVER = `あなたはユーザーの興味関心に基づき、適切なコンテンツを選定する情報抽出システムです。提供された一覧ページのテキスト内容と、そのページに実在するリンク一覧から、ユーザーの興味に最も合致する個別記事のURLを抽出します。
-【厳守事項】
-1. 提供された「実在リンク一覧」に含まれるURLだけを出力すること。URLの推測や創作は絶対に行わない。
-2. ユーザーの興味に合致するものがない場合は、何も出力しない(空)。`;
+const SYSTEM_DISCOVER = `あなたは、ユーザーの関心に基づいて「次に読むべき個別ページ」を選ぶURL選定システムです。入力される「実在リンク一覧(アンカーテキスト → URL)」は、一覧ページのHTMLから機械的に抽出された実在リンクです。
+厳守事項:
+1. 出力するURLは、必ず入力の「実在リンク一覧」に含まれるものだけにする。URLの推測・改変・一部変更・創作は一切しない。
+2. 一覧ページの主題(例: 展覧会一覧なら個々の展覧会)に沿う、個別の催し・作品・記事の詳細ページだけを選ぶ。トップ・カテゴリ索引・ナビゲーション・過去アーカイブの一覧など、個別の内容を指さないリンクは選ばない。
+3. アンカーテキストから、既に終了した過去の催しだと明らかに判断できるものは選ばない。
+4. ユーザーの関心に合致するものが無ければ、何も出力しない。`;
 
-const SYSTEM_EXTRACT = `あなたは情報抽出のプロフェッショナルです。提供された記事の内容を解析し、ユーザーの興味に合致する情報を指定のJSONフォーマットで出力してください。
-【絶対原則】
-1. 事実の厳格な抽出(No Hallucination): 読み込んだページのテキストに記載されている事実のみを使用する。ページから読み取れない情報を一般知識で補完したり、実在しないイベントや日付を創作するのは厳禁。必要な情報が十分に読み取れない場合はそのカードを作成しない。
-2. URLの正確性: sourceUrl は、提供された記事のURLをそのまま記述する。推測や創作は禁止。
-3. エリア制限とセレンディピティ: 提案は指定された【生活圏】の範囲内に限定する。生活圏外の提案は、興味に極めて強く合致する非日常的なものに限り最大1枚まで「セレンディピティ枠」として許可する(その場合 serendipity:true とし trigger に「セレンディピティ」)。
-4. 客観的かつ簡潔な表現: ユーザーの個人的な予定や行動(例「仕事帰りに寄れる」)を前提とした文言は使わない。「なぜこの情報がおすすめか」が1行で伝わる、簡潔で具体的な文章にする。`;
+const SYSTEM_EXTRACT = `あなたは、与えられたWebページの本文からユーザー向けの提案カードをJSONで作る情報抽出システムです。
+絶対原則:
+1. 事実の厳格な抽出(No Hallucination): 各ページの本文テキストに実際に書かれている事実だけを使う。書かれていないことの補完・推測・創作は禁止。何が・どこで・いつ が読み取れないページはカードにしない。
+2. 現在時刻の考慮: 与えられた「今日の日付」を基準に、開催中またはこれから始まる催し・情報だけを対象にする。既に終了した(会期や締切が今日より前の)ものはカードにしない。会期末・終了日・締切が本文から読み取れる場合は expiresAt にその日付(ISO8601)を入れる。
+3. URLの正確性: sourceUrl は、そのカードの根拠にしたページとして入力で与えられたURLをそのまま使う。推測・改変・創作は禁止。
+4. エリア: 提案は原則【生活圏】の範囲内に限る。生活圏外は、ユーザーの関心に極めて強く合致する非日常的なものに限り最大1件だけ許可し、その場合 serendipity:true と trigger:"セレンディピティ" を付ける。
+5. 客観的かつ簡潔: ユーザー個人の予定や行動(例「仕事帰りに寄れる」)を前提にした表現は使わない。なぜ今それが良いのかが一読で伝わる、短く具体的な文にする。誇張しない。
+6. 指定のJSON以外は一切出力しない。合致する情報が無ければ [] を返す。`;
 
 type GeneratedCard = {
   title: string; body: string; kind: string; trigger: string;
@@ -236,7 +240,18 @@ export async function POST(req: Request) {
   const count = Math.min(Math.max(body.count ?? 3, 1), 6);
   if (sources.length === 0) return NextResponse.json({ ok: false, reason: "no_sources" } satisfies GenResult);
 
-  const tasteBlock = `${focus ? `気になっていること: ${focus}\n` : ""}${wishes.length ? `叶えたい願い: ${wishes.join(" / ")}\n` : ""}${interests.length ? `興味・好み: ${interests.join(" / ")}` : ""}`.trim() || "(特になし)";
+  // 3種の関心を、役割を分けて渡す(無差別なタグの羅列にしない)。
+  // focus=今の気分(最優先)、wishes=具体的な願い(直接応えると価値大)、
+  // interests=長期の傾向(全体のバイアス)。
+  const tasteBlock = [
+    `- 今、特に気になっていること(今の気分。最優先で汲む): ${focus || "なし"}`,
+    `- 叶えたい願い(これに直接応える情報は特に価値が高い): ${wishes.length ? wishes.join(" / ") : "なし"}`,
+    `- 長期的な興味・好みの傾向(全体のバイアス): ${interests.length ? interests.join(" / ") : "なし"}`,
+  ].join("\n");
+
+  // 東京基準の今日の日付(過去の催しを除外する判断材料)。
+  const jst = new Date(Date.now() + 9 * 3600 * 1000);
+  const todayJp = `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日`;
 
   try {
     // === 事前: 情報源(一覧)ページを実取得し、本文テキストと実在リンクを得る ===
@@ -270,9 +285,11 @@ export async function POST(req: Request) {
       // 見出し情報を担う「アンカーテキスト -> URL」の一覧だけを渡す。選定に
       // 必要な情報はこれで足りる。
       const listText = linkPool.map((l) => `${l.text || "(無題)"} -> ${l.url}`).join("\n");
-      const discoverUser = `以下の「実在リンク一覧」から、【ユーザーの興味・好み】に合致する個別記事のURLを最大${count}件抽出してください。出力は抽出したURLのみを改行区切りで出力し、前後に説明文やコードフェンスは含めないでください。一覧に無いURLは絶対に出力しないでください。
+      const discoverUser = `今日は${todayJp}です。
+以下の「実在リンク一覧」から、下記ユーザーの関心に合致し、今読む価値のある個別ページのURLを最大${count}件選んでください。アンカーテキストから既に終了した過去の催しだと明らかに分かるものは選ばないでください。
+出力は選んだURLのみを改行区切りで。説明文やコードフェンスは付けない。一覧に無いURLは出力しない。合致するものが無ければ何も出力しない。
 
-【ユーザーの興味・好み】
+【ユーザーの関心】
 ${tasteBlock}
 
 【実在リンク一覧(アンカーテキスト -> URL)】
@@ -320,20 +337,30 @@ ${listText}`;
       })
       .filter(Boolean)
       .join("\n\n====\n\n");
-    const extractUser = `以下のページ内容から情報を抽出して、最大${count}枚のブリーフカードを作成してください。
+    const extractUser = `今日は${todayJp}です。以下の各ページの本文から、下記ユーザーの関心に合う「開催中またはこれから始まる」情報を、最大${count}枚のカードにしてJSON配列で出力してください。既に終了した(会期・締切が今日より前の)ものは含めないでください。合うものが無ければ [] を返してください。
 
 【生活圏】
 ${LIVING_AREA}
 
-【ユーザーの興味・好み】
+【ユーザーの関心】
 ${tasteBlock}
 
-【読み込む個別ページ情報】
+【ページ内容(それぞれ URL と本文)】
 ${pageBlocks}
 
-【出力フォーマット制限】
-以下のキーを持つJSONの配列のみを出力してください。マークダウンのコードフェンスや説明文は一切含めないでください。合致する情報がない場合は [] を出力してください。
-各要素のキー: title / body / kind("place"|"exhibition"|"live"|"activity"|"food"|"movie"|"book"|"album"|"info"|"thing") / trigger("タイムリー"|"興味との一致"|"ロケーション"|"セレンディピティ") / area(オプショナル,東京23区内のエリア名) / sourceUrl(そのカードの根拠にした上記URL) / sourceLabel / meta(オプショナル,文字列配列) / expiresAt(オプショナル,ISO8601) / serendipity(オプショナル,真偽) / sourceWishTitle(オプショナル)`;
+【出力フォーマット】
+JSONの配列のみ(マークダウンのコードフェンスや説明文は一切付けない)。各要素のキー:
+- title: 短い見出し
+- body: 短い説明(なぜ今おすすめかが一読で分かる)
+- kind: "place"|"exhibition"|"live"|"activity"|"food"|"movie"|"book"|"album"|"info"|"thing" のいずれか
+- trigger: "タイムリー"|"興味との一致"|"ロケーション"|"セレンディピティ" のいずれか
+- area: 場所が関わる場合のみ、東京23区内のエリア名(例「蔵前」)
+- sourceUrl: そのカードの根拠にした、上で与えられたページのURL
+- sourceLabel: リンクの文言(例「公式サイトを見る」)
+- meta: 会場・日時・料金などの短い補足の文字列配列(任意)
+- expiresAt: 会期末・締切が読み取れる場合のみ ISO8601(任意)
+- serendipity: 生活圏外の特別枠なら true(任意)
+- sourceWishTitle: 特定の「叶えたい願い」に直接応える場合のみ、その願いのタイトルを完全一致で(任意)`;
 
     const r2 = await callGemini(key, SYSTEM_EXTRACT, extractUser, true);
     if (!r2.ok) {
@@ -341,11 +368,21 @@ ${pageBlocks}
     }
     const rawCards = extractJsonArray<GeneratedCard>(r2.text) ?? [];
 
-    // 最終防波堤: sourceUrl が「実際に本文を取得できたURL」に一致するカードだけ通す。
+    // 最終防波堤(2つ):
+    // (1) sourceUrl が「実際に本文を取得できたURL」に一致するカードだけ通す
+    //     (モデルが推測創作したURLを排除)。
+    // (2) expiresAt が今日より過去のカードは除外(終了済みの催しを機械的に落とす。
+    //     AIが原則2を守り損ねた場合の保険)。
     const fetchedNorms = new Set(usable.map((p) => normUrl(p.url)));
+    const nowMs = Date.now();
     const cards = rawCards.filter((c) => {
       const su = (c.sourceUrl ?? "").trim();
-      return !!su && fetchedNorms.has(normUrl(su));
+      if (!su || !fetchedNorms.has(normUrl(su))) return false;
+      if (c.expiresAt) {
+        const t = Date.parse(c.expiresAt);
+        if (!Number.isNaN(t) && t < nowMs) return false;
+      }
+      return true;
     });
     const dropped = rawCards.length - cards.length;
 

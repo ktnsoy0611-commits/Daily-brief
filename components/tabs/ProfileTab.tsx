@@ -315,9 +315,11 @@ export function ProfileTab({ appState, persist, onClose }: {
 
           {genCards.map((c, i) => (
             <div key={i} style={{ marginTop: 12, padding: "12px 0 0", borderTop: `1px solid ${HAIRLINE}` }}>
+              {/* セレンディピティ枠のカードは特別扱いせず他のカードと同じ
+                  見た目で馴染ませる(「セレンディピティ」の語は出さない)。 */}
               <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", marginBottom: 4 }}>
-                <span style={{ fontSize: 8.5, letterSpacing: "0.12em", color: c.serendipity ? BLUE : "#9A988E", fontWeight: 700 }}>
-                  {c.kind}・{c.trigger}{c.area ? `・${c.area}` : ""}
+                <span style={{ fontSize: 8.5, letterSpacing: "0.12em", color: "#9A988E", fontWeight: 700 }}>
+                  {c.kind}{c.trigger && c.trigger !== "セレンディピティ" ? `・${c.trigger}` : ""}{c.area ? `・${c.area}` : ""}
                 </span>
               </div>
               <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13.5, lineHeight: 1.4, color: INK }}>{c.title}</div>

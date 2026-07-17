@@ -93,7 +93,10 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
     <div style={{
       width: "100%", height: "100%", background: PAPER, borderRadius: 18, overflow: "hidden",
       display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
-      border: card.serendipity ? `2px solid ${BLUE}` : "none", position: "relative", userSelect: "none",
+      // セレンディピティ枠も特別な縁取りを付けず、他のカードと同じ見た目に
+      // 馴染ませる(「思いがけない提案」であることを声高にラベルしない方が
+      // 体験として良い、というユーザー指定)。
+      border: "none", position: "relative", userSelect: "none",
     }}>
       <div
         onPointerDown={(e) => e.stopPropagation()}
@@ -109,9 +112,6 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           </div>
         )}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.1), rgba(0,0,0,0) 40%, rgba(0,0,0,0.22) 100%)", pointerEvents: "none" }} />
-        {card.serendipity && (
-          <span style={{ position: "absolute", left: 0, bottom: 12, background: BLUE, color: PAPER, fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: "0.18em", padding: "5px 14px 5px 18px" }}>セレンディピティ枠</span>
-        )}
         {isTop && hasPhotos && (
           <span style={{
             position: "absolute", bottom: 12, right: 14, display: "flex", alignItems: "center", gap: 5,
@@ -123,8 +123,10 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
       <div style={{ flex: 1, padding: "16px 20px 18px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
         <div style={{ marginBottom: 8 }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: card.serendipity ? BLUE : "#5A5A54", flexShrink: 0 }} />
-            <span style={{ fontSize: 9, color: card.serendipity ? BLUE : "#5A5A54", fontWeight: 700, letterSpacing: "0.05em" }}>{card.category} ・ {card.trigger}</span>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#5A5A54", flexShrink: 0 }} />
+            {/* セレンディピティのカードは「セレンディピティ」の語を出さず、
+                カテゴリだけ表示して他カードと同じ見た目にする。 */}
+            <span style={{ fontSize: 9, color: "#5A5A54", fontWeight: 700, letterSpacing: "0.05em" }}>{card.category}{card.trigger && card.trigger !== "セレンディピティ" ? ` ・ ${card.trigger}` : ""}</span>
           </span>
         </div>
         <h2 style={{ margin: "0 0 7px", fontFamily: SERIF, fontWeight: 700, fontSize: 19, lineHeight: 1.35, color: INK }}>{card.title}</h2>

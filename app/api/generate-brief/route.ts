@@ -18,8 +18,38 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 60; // 複数URLの読み込み込みの生成は数十秒かかりうる
 
-const GEMINI_MODEL = "gemini-2.5-flash";
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// 既定のモデル。環境変数 GEMINI_MODEL で上書きできる。特定バージョンを
+// 決め打ちすると「新規ユーザーにはもう使えない」等で404になることがある
+// (実際 gemini-2.5-flash がそうなった)ため、常に最新のflashを指すエイリアス
+// を既定にし、それでも駄目なら下の listFlashModel() で実際に使えるモデルを
+// 問い合わせて自動フォールバックする。
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
+
+function endpointFor(model: string) {
+  const m = model.startsWith("models/") ? model.slice("models/".length) : model;
+  return `${API_BASE}/models/${m}:generateContent`;
+}
+
+// このキーで実際に generateContent できる flash 系モデルを1つ探す。
+// gemini-flash-latest が使えないアカウントでも、ここで実在モデルへ寄せる。
+async function listFlashModel(key: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/models`, { headers: { "x-goog-api-key": key } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const models: any[] = (data?.models ?? []).filter((m: any) => (m?.supportedGenerationMethods ?? []).includes("generateContent"));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const flash = models.filter((m: any) => /flash/i.test(m?.name ?? "") && !/lite|vision|embedding|aqa|imagen|tts|audio|thinking/i.test(m?.name ?? ""));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const latest = flash.find((m: any) => /flash-latest/i.test(m?.name ?? ""));
+    const pick = latest ?? flash[flash.length - 1] ?? models[0];
+    return pick?.name ?? null; // 例: "models/gemini-flash-latest"
+  } catch {
+    return null;
+  }
+}
 
 // §3-1/§3-2 の「大原則」をシステムプロンプトに明記する。事実の創作禁止・
 // 存在しないデータ(動線/予定/貯金/運動)への言及禁止・参照元URL必須、に加え、
@@ -135,21 +165,31 @@ ${sources.map((u) => `- ${u}`).join("\n")}
 - expiresAt: 会期末・締切がある場合のみ ISO8601(例 "2026-08-31T23:59:59+09:00")
 - sourceWishTitle: 特定のウィッシュに応えたカードなら、そのウィッシュのタイトルを完全一致で`;
 
-  try {
-    const res = await fetch(ENDPOINT, {
+  const reqBody = JSON.stringify({
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+    // url_context: プロンプト中のURLを実際に取得して読む。Google全体の
+    // 検索(google_search)は使わない=登録した情報源からの抽出に限定する。
+    // tools使用時はresponseSchema(JSONモード)が併用不可のため、JSONは
+    // プロンプト指示で出させサーバー側でパースする。
+    tools: [{ url_context: {} }],
+    generationConfig: { temperature: 0.6 },
+  });
+  const callModel = (model: string) =>
+    fetch(endpointFor(model), {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        // url_context: プロンプト中のURLを実際に取得して読む。Google全体の
-        // 検索(google_search)は使わない=登録した情報源からの抽出に限定する。
-        // tools使用時はresponseSchema(JSONモード)が併用不可のため、JSONは
-        // プロンプト指示で出させサーバー側でパースする。
-        tools: [{ url_context: {} }],
-        generationConfig: { temperature: 0.6 },
-      }),
+      body: reqBody,
     });
+
+  try {
+    let res = await callModel(DEFAULT_MODEL);
+    // モデル名が無効(404 = 新規ユーザーに提供停止 等)なら、このキーで
+    // 実際に使えるflashモデルを問い合わせて1回だけ再試行する。
+    if (res.status === 404) {
+      const alt = await listFlashModel(key);
+      if (alt) res = await callModel(alt);
+    }
 
     if (!res.ok) {
       const detail = await res.text().catch(() => "");

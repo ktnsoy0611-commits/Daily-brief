@@ -17,8 +17,20 @@ type GeneratedCard = {
   area?: string; sourceUrl?: string; sourceLabel?: string; meta?: string[];
   expiresAt?: string; serendipity?: boolean; sourceWishTitle?: string;
 };
+type SiteTrace = {
+  source: string; fetched: boolean; pageType?: "listing" | "single";
+  sameHostLinkCount: number; excludedByDate: number;
+  sentToSelectionCount: number; selectedCount: number; droppedNotInLinkSet: number;
+};
+type PageReadTrace = { url: string; ok: boolean };
+type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; serendipityExtra: number; overCount: number };
+type TokenUsage = { promptTokens: number; candidateTokens: number; totalTokens: number; calls: number };
 type GenResponse =
-  | { ok: true; cards: GeneratedCard[]; raw: string; pages: { url: string; ok: boolean }[]; dropped: number; note?: string }
+  | {
+      ok: true; cards: GeneratedCard[]; candidateCount: number;
+      sites: SiteTrace[]; pagesRead: PageReadTrace[];
+      dropped: DropSummary; tokens: TokenUsage; note?: string;
+    }
   | { ok: false; reason: string; detail?: string };
 
 // 「入力+右にボタン」の1行入力欄。この画面内の入力欄はすべてこの1つの
@@ -95,7 +107,11 @@ export function ProfileTab({ appState, persist, onClose }: {
   // カードをこの画面に表示して品質を目視確認するだけ(HANDOFF §8.12)。
   const [genState, setGenState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [genCards, setGenCards] = useState<GeneratedCard[]>([]);
-  const [genPages, setGenPages] = useState<{ url: string; ok: boolean }[]>([]);
+  const [genSites, setGenSites] = useState<SiteTrace[]>([]);
+  const [genPagesRead, setGenPagesRead] = useState<PageReadTrace[]>([]);
+  const [genDropped, setGenDropped] = useState<DropSummary | null>(null);
+  const [genTokens, setGenTokens] = useState<TokenUsage | null>(null);
+  const [genCandidateCount, setGenCandidateCount] = useState(0);
   const [genMsg, setGenMsg] = useState("");
   // 実験に使う情報源URL(改行区切り)。登録済みの「お気に入りの情報源」を
   // 初期値にしつつ、その場で貼り足し・編集できるようにする。本番では
@@ -168,7 +184,11 @@ export function ProfileTab({ appState, persist, onClose }: {
     setGenState("loading");
     setGenMsg("");
     setGenCards([]);
-    setGenPages([]);
+    setGenSites([]);
+    setGenPagesRead([]);
+    setGenDropped(null);
+    setGenTokens(null);
+    setGenCandidateCount(0);
     try {
       const res = await fetch("/api/generate-brief", {
         method: "POST",
@@ -194,12 +214,17 @@ export function ProfileTab({ appState, persist, onClose }: {
         return;
       }
       setGenCards(data.cards);
-      setGenPages(data.pages);
+      setGenSites(data.sites);
+      setGenPagesRead(data.pagesRead);
+      setGenDropped(data.dropped);
+      setGenTokens(data.tokens);
+      setGenCandidateCount(data.candidateCount);
       setGenState("done");
       const notePart = data.note ? `${data.note} ` : "";
-      const dropPart = data.dropped > 0 ? `出典URLが確認できなかった${data.dropped}件は捏造防止のため除外しました。` : "";
+      const totalDropped = data.dropped.sourceInvalid + data.dropped.expired + data.dropped.duplicateCandidate + data.dropped.serendipityExtra + data.dropped.overCount;
+      const dropPart = totalDropped > 0 ? `検証で${totalDropped}件を除外しました(内訳は下記)。` : "";
       if (data.cards.length === 0) {
-        setGenMsg(`${notePart}${dropPart || "カードが返りませんでした。情報源に合う情報が無かったか、ページ本文を取得できなかった可能性があります。下の「読み込んだページ」を確認してください。"}`.trim());
+        setGenMsg(`${notePart}${dropPart || "カードが返りませんでした。情報源に合う情報が無かったか、ページを読めなかった可能性があります。下の詳細を確認してください。"}`.trim());
       } else {
         setGenMsg(`${notePart}${dropPart}`.trim());
       }
@@ -342,16 +367,61 @@ export function ProfileTab({ appState, persist, onClose }: {
             </div>
           ))}
 
-          {genPages.length > 0 && (
+          {/* 実行トレース: 各段階で何が起きたかを目視確認できるようにする
+              (層A=サイトごとのURL選定 / 層B=候補ページの取得 / 除外内訳 /
+              トークン実測)。「Geminiに何を渡し何が返ったか見えない」という
+              不透明さの解消が目的(HANDOFF §8.12参照)。 */}
+          {genSites.length > 0 && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>読み込んだページ（✓=本文取得成功）</div>
-              {genPages.map((s, i) => (
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>サイトごとの処理（層A）</div>
+              {genSites.map((s, i) => (
+                <div key={i} style={{ fontSize: 10, color: "#9A988E", marginBottom: 6, lineHeight: 1.6 }}>
+                  <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ color: s.fetched ? "#33633F" : RUST }}>{s.fetched ? "✓" : "×"}</span> {s.source}
+                  </div>
+                  {s.fetched && (
+                    <div style={{ paddingLeft: 14 }}>
+                      型:{s.pageType === "listing" ? "一覧" : "単体"} ／ 同一ホストリンク:{s.sameHostLinkCount} ／
+                      日付で機械除外:{s.excludedByDate} ／ 選定対象:{s.sentToSelectionCount} ／
+                      選定:{s.selectedCount} ／ 実在リンク外を破棄:{s.droppedNotInLinkSet}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {genPagesRead.length > 0 && (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>候補ページの取得（層B・✓=本文取得成功）→ 候補{genCandidateCount}件</div>
+              {genPagesRead.map((s, i) => (
                 <div key={i} style={{ fontSize: 10, color: "#9A988E", marginBottom: 3, display: "flex", gap: 6 }}>
                   <span style={{ color: s.ok ? "#33633F" : RUST, flexShrink: 0 }}>{s.ok ? "✓" : "×"}</span>
                   <a href={s.url} target="_blank" rel="noopener noreferrer"
                     style={{ color: "#9A988E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.url}</a>
                 </div>
               ))}
+            </div>
+          )}
+
+          {genDropped && (genDropped.sourceInvalid + genDropped.expired + genDropped.duplicateCandidate + genDropped.serendipityExtra + genDropped.overCount > 0) && (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>除外の内訳（層D・検証）</div>
+              <div style={{ fontSize: 10, color: "#9A988E", lineHeight: 1.8 }}>
+                出典URL不一致: {genDropped.sourceInvalid} ／ 終了済み: {genDropped.expired} ／
+                重複候補: {genDropped.duplicateCandidate} ／ セレンディピティ超過: {genDropped.serendipityExtra} ／
+                枚数上限超過: {genDropped.overCount}
+              </div>
+            </div>
+          )}
+
+          {genTokens && (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>トークン使用量（実測）</div>
+              <div style={{ fontSize: 10, color: "#9A988E" }}>
+                入力 {genTokens.promptTokens.toLocaleString()} ／ 出力 {genTokens.candidateTokens.toLocaleString()} ／
+                合計 {genTokens.totalTokens.toLocaleString()}（{genTokens.calls}回のAPI呼び出し）
+              </div>
             </div>
           )}
         </SettingsCard>

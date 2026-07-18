@@ -18,8 +18,7 @@ type GeneratedCard = {
   expiresAt?: string; isDerived?: boolean; sourceWishTitle?: string;
 };
 type SiteTrace = {
-  source: string; fetched: boolean;
-  linkCount: number; selectedCount: number; droppedNotInPage: number; singleHop: boolean;
+  source: string; fetched: boolean; linkCount: number;
 };
 type PageReadTrace = { url: string; ok: boolean };
 type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number };
@@ -374,7 +373,7 @@ export function ProfileTab({ appState, persist, onClose }: {
               不透明さの解消が目的(HANDOFF §8.12参照)。 */}
           {genSites.length > 0 && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>サイトごとの処理（層A）</div>
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>情報源の取得</div>
               {genSites.map((s, i) => (
                 <div key={i} style={{ fontSize: 10, color: "#9A988E", marginBottom: 6, lineHeight: 1.6 }}>
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -382,9 +381,7 @@ export function ProfileTab({ appState, persist, onClose }: {
                   </div>
                   {s.fetched && (
                     <div style={{ paddingLeft: 14 }}>
-                      Markdown中のリンク:{s.linkCount} ／ 個別URL選定:{s.selectedCount} ／
-                      実在URL外を破棄:{s.droppedNotInPage}
-                      {s.singleHop ? " ／ 個別URLなし→ページ自体を使用(単ホップ)" : ""}
+                      一覧から直接抽出(単ホップ) ／ Markdown中のリンク:{s.linkCount}
                     </div>
                   )}
                 </div>
@@ -394,7 +391,7 @@ export function ProfileTab({ appState, persist, onClose }: {
 
           {genPagesRead.length > 0 && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>個別ページの取得（層B・✓=Markdown取得成功）→ 候補{genCandidateCount}件</div>
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>取得したページ（✓=Markdown取得成功）→ 抽出候補{genCandidateCount}件</div>
               {genPagesRead.map((s, i) => (
                 <div key={i} style={{ fontSize: 10, color: "#9A988E", marginBottom: 3, display: "flex", gap: 6 }}>
                   <span style={{ color: s.ok ? "#33633F" : RUST, flexShrink: 0 }}>{s.ok ? "✓" : "×"}</span>

@@ -3492,3 +3492,66 @@ Jina経由の実取得はここで検証できない。**
 一番弱い生fetchだった」こと。同じ場所で繰り返し失敗する時は、上物のチューニング
 ではなく「その下のレイヤー(この場合は取得方式)自体が間違っていないか」を疑う。
 今回ユーザー自身の調査(スクレイピングAPIの導入)が正しくその一段下を突いた。
+
+## 8.12.14 Jina化の実機成功・単ホップ化でトークン削減・夜間Cron方式の確定(2026-07-18)
+
+§8.12.13のJina Reader化を実機(Vercel本番)でテストし、**artscapeが実データで
+綺麗に通った**(取得✗が解消・カードの出典URLが実在の個別展覧会ページを正確に
+指す)。retrievalの方式変更が効いたことを確認。トレース: 層Aが一覧Markdownの
+88リンクから個別6URLを選定→層Bが6個別ページを取得→候補3件→建築巡りに合致した
+実在展覧会カード。品質は実用水準に達した。
+
+**残った2問題とユーザーとの確定方針**:
+
+**問題1: トークン消費が大きい(実測 合計22,627・入力21,596)。** 内訳の主因は
+層Bが**6つの個別ページのMarkdownを丸ごと読んでいた**こと(かつ「生成」を押す
+たびに毎回6ページを読み直す)。
+
+**問題2: Cowork と アプリ側Gemini の分担。** ユーザー確定: 夜間プールはOK / 生成
+ボタンは不要(カードは常に用意済みに) / Coworkのトークンも節約したい / できるだけ
+アプリ側の無料枠Geminiに寄せたい。
+
+この2つは同じ問題の裏表。**重い抽出を「押すたび」から「一晩に一度」へ償却し、
+無料枠のGeminiに寄せる**のが解。AskUserQuestionで2点を確定:
+- **分担**: 夜間の巡回・抽出・編成 = アプリ側Gemini(Cron・無料枠)。Cowork = 発掘・
+  審査(週1・低トークン)のみ。Jinaが取得の脆さを解いたので、日々の取得はGemini側に
+  戻せる(前に「取得をCoworkへ」と言ったのはretrievalの脆さが理由だった)。
+- **順序**: まず単ホップ化で即時トークン削減(フェーズ1・今セッション) → その後に
+  夜間Cron+プール+デッキ自動生成(フェーズ2・ユーザー側準備を伴う)。
+
+**フェーズ1 実装(このセッション・コードのみ・`app/api/generate-brief/route.ts`)**:
+個別ページを6枚読むのをやめ、**情報源の一覧ページ1枚のMarkdownから直接レコードを
+抽出する単ホップ**にした。一覧ページに各展覧会の題名・会場・会期・概要が既に載って
+いるため成立する。各レコードの sourceUrl は一覧中のリンク(=個別ページの実URL)を
+そのまま使う。
+- 層A(Geminiによる個別URL選定)と個別ページのJina再取得を**削除**(URL選定の呼び出し
+  1回と6ページ分のfetchが消える)。Gemini呼び出しは3回→2回、入力トークンは一覧1枚分へ。
+- `fetchSite`が一覧をJina取得しMarkdownと実在URL集合(`markdownUrlMap`、捏造防止の
+  allowlist)を返すだけに。層B(`SYSTEM_CANDIDATES`)は一覧Markdownを直接入力にし、
+  「並ぶ個別の事物を1件ずつレコード化・sourceUrlは本文中に実在するリンクを使う」
+  よう調整。抽出上限を`EXTRACT_LIMIT_PER_LISTING`(12)へ。抽出後、各sourceUrlが
+  「個別リンク or 一覧ページ自身」の実在URL集合に含まれるか検証。
+- `stripMarkdownNoise`で画像記法・過剰空行を落としてから渡す(軽い節約)。
+- 層C(`SYSTEM_CLASSIFY`)・層D(strong/moderate分類→枚数配分・重複統合・生活圏/
+  期限切れ検証)は維持。`ProfileTab.tsx`のSiteTraceを単ホップの実態(`linkCount`のみ・
+  「一覧から直接抽出」表示)へ。
+
+検証: tsc/eslint(既知2件)/build通過。単体テストで`stripMarkdownNoise`(画像・空行
+除去)・sourceUrl検証(個別リンク+一覧ページ自身が有効・捏造URLは無効)を確認。
+no_key/no_sourcesのフォールバックをローカル本番ビルドへの実HTTPで確認。**実際の
+トークン削減とカード品質は、サンドボックスの外部fetch遮断のため未検証。次回ユーザーの
+Vercel実機でartscapeを試し、入力トークンが約21kから一覧1枚分へ落ちること・カードが
+引き続き実在情報で出ることを確認する。** 単ホップは個別ページの深い本文を読まない
+ため、カード本文が一覧の記述ぶんだけ浅くなる可能性がある(深さは将来KEEP時に個別
+ページを取る想定)。品質が不足するようなら調整する。
+
+**フェーズ2(次・本設計・未着手)**: 夜間Cron(GH Actions scheduleで保護ルートを叩く・
+heartbeatと同じ方式。Vercel cronは未設定)が、単ホップ抽出→`content_cache`プール→
+`SYSTEM_CLASSIFY`+層Dでデッキ編成→`app_state`の新キー`generatedDecks`
+(`Record<editionKey, BriefCard[]>`)へ書く。`dataStore.ts`の`SERVER_OWNED_KEYS`に
+`"generatedDecks"`を入れれば、クライアントは読むが上書きしない(既存機構がそのまま
+効く)。`BriefTab`はデッキを`CARDS`定数でなく`generatedDecks[editionKey]`から取る
+(生成ボタンは元々無い)。ユーザー側準備: `SUPABASE_SERVICE_ROLE_KEY`・
+`OWNER_USER_ID`・`CRON_SECRET`・`JINA_API_KEY`(任意)、schema.sqlの
+content_cache url一意インデックス追記、GH Actionsワークフロー有効化。計画の全文は
+`/root/.claude/plans/crispy-munching-river.md`(承認済み)。

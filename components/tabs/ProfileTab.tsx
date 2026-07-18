@@ -15,15 +15,15 @@ import type { AppState } from "@/lib/types";
 type GeneratedCard = {
   title: string; body: string; kind: string; trigger: string;
   area?: string; sourceUrl?: string; sourceLabel?: string; meta?: string[];
-  expiresAt?: string; serendipity?: boolean; sourceWishTitle?: string;
+  expiresAt?: string; isDerived?: boolean; sourceWishTitle?: string;
 };
 type SiteTrace = {
   source: string; fetched: boolean; pageType?: "listing" | "single";
-  sameHostLinkCount: number; excludedByDate: number;
+  sameHostLinkCount: number; pathScoped: boolean; scopedLinkCount: number; excludedByDate: number;
   sentToSelectionCount: number; selectedCount: number; droppedNotInLinkSet: number;
 };
 type PageReadTrace = { url: string; ok: boolean };
-type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; serendipityExtra: number; overCount: number };
+type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number };
 type TokenUsage = { promptTokens: number; candidateTokens: number; totalTokens: number; calls: number };
 type GenResponse =
   | {
@@ -195,7 +195,7 @@ export function ProfileTab({ appState, persist, onClose }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           wishes: (appState.wishes ?? []).filter((w) => w.status === "stock").map((w) => w.title),
-          interests: interests.map((i) => i.label),
+          interests: interests.map((i) => ({ label: i.label, weight: i.weight })),
           focus: appState.profile?.currentFocus ?? "",
           sources: urls,
           count: 3,
@@ -221,7 +221,7 @@ export function ProfileTab({ appState, persist, onClose }: {
       setGenCandidateCount(data.candidateCount);
       setGenState("done");
       const notePart = data.note ? `${data.note} ` : "";
-      const totalDropped = data.dropped.sourceInvalid + data.dropped.expired + data.dropped.duplicateCandidate + data.dropped.serendipityExtra + data.dropped.overCount;
+      const totalDropped = data.dropped.sourceInvalid + data.dropped.expired + data.dropped.duplicateCandidate + data.dropped.outOfArea + data.dropped.overQuota;
       const dropPart = totalDropped > 0 ? `検証で${totalDropped}件を除外しました(内訳は下記)。` : "";
       if (data.cards.length === 0) {
         setGenMsg(`${notePart}${dropPart || "カードが返りませんでした。情報源に合う情報が無かったか、ページを読めなかった可能性があります。下の詳細を確認してください。"}`.trim());
@@ -346,11 +346,12 @@ export function ProfileTab({ appState, persist, onClose }: {
 
           {genCards.map((c, i) => (
             <div key={i} style={{ marginTop: 12, padding: "12px 0 0", borderTop: `1px solid ${HAIRLINE}` }}>
-              {/* セレンディピティ枠のカードは特別扱いせず他のカードと同じ
-                  見た目で馴染ませる(「セレンディピティ」の語は出さない)。 */}
+              {/* 興味の広がり(派生)枠のカードも特別扱いせず他のカードと
+                  同じ見た目で馴染ませる(trigger文字列ではなく isDerived
+                  フラグで判定する)。 */}
               <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", marginBottom: 4 }}>
                 <span style={{ fontSize: 8.5, letterSpacing: "0.12em", color: "#9A988E", fontWeight: 700 }}>
-                  {c.kind}{c.trigger && c.trigger !== "セレンディピティ" ? `・${c.trigger}` : ""}{c.area ? `・${c.area}` : ""}
+                  {c.kind}{c.trigger && !c.isDerived ? `・${c.trigger}` : ""}{c.area ? `・${c.area}` : ""}
                 </span>
               </div>
               <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13.5, lineHeight: 1.4, color: INK }}>{c.title}</div>
@@ -382,6 +383,7 @@ export function ProfileTab({ appState, persist, onClose }: {
                   {s.fetched && (
                     <div style={{ paddingLeft: 14 }}>
                       型:{s.pageType === "listing" ? "一覧" : "単体"} ／ 同一ホストリンク:{s.sameHostLinkCount} ／
+                      パス階層で絞込:{s.pathScoped ? `済(${s.scopedLinkCount}件)` : "未(全件使用)"} ／
                       日付で機械除外:{s.excludedByDate} ／ 選定対象:{s.sentToSelectionCount} ／
                       選定:{s.selectedCount} ／ 実在リンク外を破棄:{s.droppedNotInLinkSet}
                     </div>
@@ -404,13 +406,13 @@ export function ProfileTab({ appState, persist, onClose }: {
             </div>
           )}
 
-          {genDropped && (genDropped.sourceInvalid + genDropped.expired + genDropped.duplicateCandidate + genDropped.serendipityExtra + genDropped.overCount > 0) && (
+          {genDropped && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>除外の内訳（層D・検証）</div>
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>分類・除外の内訳（層C分類 → 層D検証）</div>
               <div style={{ fontSize: 10, color: "#9A988E", lineHeight: 1.8 }}>
-                出典URL不一致: {genDropped.sourceInvalid} ／ 終了済み: {genDropped.expired} ／
-                重複候補: {genDropped.duplicateCandidate} ／ セレンディピティ超過: {genDropped.serendipityExtra} ／
-                枚数上限超過: {genDropped.overCount}
+                無関係と分類: {genDropped.irrelevant} ／ 出典URL不一致: {genDropped.sourceInvalid} ／
+                終了済み: {genDropped.expired} ／ 重複候補: {genDropped.duplicateCandidate} ／
+                生活圏外: {genDropped.outOfArea} ／ 上限超過(採用漏れ): {genDropped.overQuota}
               </div>
             </div>
           )}

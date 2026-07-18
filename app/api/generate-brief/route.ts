@@ -33,7 +33,7 @@ const LIVING_AREA = "東京23区(および電車で日常的に行ける範囲)"
 
 // ---- 上限(トークン・件数の制御) ------------------------------------------
 const LISTING_MIN_LINKS = 4;    // 同一ホストへのリンクがこれ以上なら「一覧型」
-const LINKS_LIMIT_PER_SITE = 50; // 1サイトから層Aへ渡すリンクの最大数
+const LINKS_LIMIT_PER_SITE = 150; // 1サイトから層Aへ渡すリンクの最大数
 const SELECT_LIMIT_PER_SITE = 4; // 層Aが1サイトから選ぶ個別URLの最大数
 const MAX_CANDIDATE_PAGES = 8;   // 層Bで実際に取得する個別ページの合計上限
 const EXTRACT_LIMIT_PER_PAGE = 2; // 層Bが1ページから作る候補レコードの最大数

@@ -18,9 +18,8 @@ type GeneratedCard = {
   expiresAt?: string; isDerived?: boolean; sourceWishTitle?: string;
 };
 type SiteTrace = {
-  source: string; fetched: boolean; pageType?: "listing" | "single";
-  sameHostLinkCount: number; pathScoped: boolean; scopedLinkCount: number; excludedByDate: number;
-  sentToSelectionCount: number; selectedCount: number; droppedNotInLinkSet: number;
+  source: string; fetched: boolean;
+  linkCount: number; selectedCount: number; droppedNotInPage: number; singleHop: boolean;
 };
 type PageReadTrace = { url: string; ok: boolean };
 type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number };
@@ -313,9 +312,10 @@ export function ProfileTab({ appState, persist, onClose }: {
             (HANDOFF §8.12)。 */}
         <SettingsCard label="ブリーフ生成の実験（開発用）" icon={Sparkles}>
           <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.7, margin: "0 0 10px" }}>
-            下の情報源ページをGeminiが実際に読み、そこに載っている情報から、
-            今のウィッシュ・興味に合うカードを試作します(Google全体の検索は
-            しません)。まだ本番のブリーフには反映されません。
+            下の情報源ページをレンダリング(Jina Reader)でクリーンな本文に変換して
+            Geminiが読み、そこに載っている情報から、今のウィッシュ・興味に合う
+            カードを試作します(Google全体の検索はしません)。まだ本番のブリーフには
+            反映されません。
           </p>
           <textarea
             value={genUrls}
@@ -382,10 +382,9 @@ export function ProfileTab({ appState, persist, onClose }: {
                   </div>
                   {s.fetched && (
                     <div style={{ paddingLeft: 14 }}>
-                      型:{s.pageType === "listing" ? "一覧" : "単体"} ／ 同一ホストリンク:{s.sameHostLinkCount} ／
-                      パス階層で絞込:{s.pathScoped ? `済(${s.scopedLinkCount}件)` : "未(全件使用)"} ／
-                      日付で機械除外:{s.excludedByDate} ／ 選定対象:{s.sentToSelectionCount} ／
-                      選定:{s.selectedCount} ／ 実在リンク外を破棄:{s.droppedNotInLinkSet}
+                      Markdown中のリンク:{s.linkCount} ／ 個別URL選定:{s.selectedCount} ／
+                      実在URL外を破棄:{s.droppedNotInPage}
+                      {s.singleHop ? " ／ 個別URLなし→ページ自体を使用(単ホップ)" : ""}
                     </div>
                   )}
                 </div>
@@ -395,7 +394,7 @@ export function ProfileTab({ appState, persist, onClose }: {
 
           {genPagesRead.length > 0 && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>候補ページの取得（層B・✓=本文取得成功）→ 候補{genCandidateCount}件</div>
+              <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>個別ページの取得（層B・✓=Markdown取得成功）→ 候補{genCandidateCount}件</div>
               {genPagesRead.map((s, i) => (
                 <div key={i} style={{ fontSize: 10, color: "#9A988E", marginBottom: 3, display: "flex", gap: 6 }}>
                   <span style={{ color: s.ok ? "#33633F" : RUST, flexShrink: 0 }}>{s.ok ? "✓" : "×"}</span>

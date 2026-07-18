@@ -377,11 +377,17 @@ async function processSite(
   const sameHostLinkCount = rawLinks.length;
   const nowMs = Date.now();
   let excludedByDate = 0;
+  // リンク数が上限を超える場合、DOM順(先頭から)で切ると、周辺テキストが
+  // 乏しいナビゲーション・関連リンクが先に残り、情報の濃い一覧項目(会期・
+  // 会場等が書かれている)が後方にあるせいで弾かれることがある。周辺テキスト
+  // の長さ(=情報量)で降順に並べ替えてから切ることで、内容の薄いリンクより
+  // 一覧項目を優先して層Aへ渡す。
   const keptLinks = rawLinks
     .filter((l) => {
       if (isClearlyExpired(l.ctx, nowMs)) { excludedByDate++; return false; }
       return true;
     })
+    .sort((a, b) => b.ctx.length - a.ctx.length)
     .slice(0, LINKS_LIMIT_PER_SITE);
 
   const pageType: "listing" | "single" = sameHostLinkCount >= LISTING_MIN_LINKS ? "listing" : "single";
@@ -516,7 +522,10 @@ export async function POST(req: Request) {
         const t = Date.parse(c.end);
         if (!Number.isNaN(t) && t < nowMs) { dropExpired++; continue; }
       }
-      const k = normUrl(su);
+      // 重複判定は「出典URL+名称」の組み合わせで行う。URLだけで判定すると、
+      // 1ページから複数の異なる事物を抽出する場合(EXTRACT_LIMIT_PER_PAGE>1)に、
+      // 同じページに書かれた別々の事物まで誤って「重複」と見なしてしまう。
+      const k = `${normUrl(su)}|${(c.name ?? "").trim().toLowerCase()}`;
       if (seenCandidate.has(k)) { dropDup++; continue; }
       seenCandidate.add(k);
       candidates.push(c);

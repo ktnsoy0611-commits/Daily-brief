@@ -39,7 +39,8 @@ const DERIVED_TRIGGER = "興味の広がり"; // matchStrength:"moderate" に付
 
 // ---- 上限(トークン・件数の制御) ------------------------------------------
 const LISTING_MIN_LINKS = 4;    // 同一ホストへのリンクがこれ以上なら「一覧型」
-const LINKS_LIMIT_PER_SITE = 150; // 1サイトから層Aへ渡すリンクの最大数
+const LINKS_LIMIT_PER_SITE = 150;   // パス階層フィルタで絞り込めた場合の上限(既に構造的に精査済みの集合なので広めに許容)
+const UNSCOPED_LINKS_LIMIT = 60;    // 絞り込みが0件でフォールバックした場合の上限(構造的な足切りが効いていない=ノイズが多いので、トークンを掛けすぎない)
 const SELECT_LIMIT_PER_SITE = 4; // 層Aが1サイトから選ぶ個別URLの最大数
 const MAX_CANDIDATE_PAGES = 8;   // 層Bで実際に取得する個別ページの合計上限
 const EXTRACT_LIMIT_PER_PAGE = 2; // 層Bが1ページから作る候補レコードの最大数
@@ -450,7 +451,7 @@ async function processSite(
       return true;
     })
     .sort((a, b) => b.ctx.length - a.ctx.length)
-    .slice(0, LINKS_LIMIT_PER_SITE);
+    .slice(0, pathScoped ? LINKS_LIMIT_PER_SITE : UNSCOPED_LINKS_LIMIT);
 
   const pageType: "listing" | "single" = rawLinks.length >= LISTING_MIN_LINKS ? "listing" : "single";
 
@@ -666,17 +667,21 @@ export async function POST(req: Request) {
       (isDerived ? moderatePool : strongPool).push(card);
     }
 
-    // サイト横断で同一事物を指す候補が複数残っていれば統合する(URL一致 or
-    // 名称の緩い一致)。strong→moderateの順に見るため、重複時はstrong側の
-    // 分類を優先して残す。
+    // サイト横断で同一事物を指す候補が複数残っていれば統合する(名称の緩い
+    // 一致のみで判定する)。URL一致は判定に使わない: 1ページから複数の
+    // 異なる事物を抽出できる設計(EXTRACT_LIMIT_PER_PAGE>1、例えば「秋の
+    // 東京」のような1ページで複数の見どころを紹介する記事)のため、URLが
+    // 同じというだけで別々の事物を誤って統合してしまう(§8.12.10で層B側の
+    // 重複判定を直したのと同じ種類のバグを層Dで再発させていた)。
+    // strong→moderateの順に見るため、重複時はstrong側の分類を優先して残す。
     let dropDupClassified = 0;
     const acceptedStrong: GeneratedCard[] = [];
     const acceptedModerate: GeneratedCard[] = [];
     for (const pool of [{ list: strongPool, bucket: acceptedStrong }, { list: moderatePool, bucket: acceptedModerate }]) {
       for (const c of pool.list) {
         const dup =
-          acceptedStrong.some((a) => normUrl(a.sourceUrl ?? "") === normUrl(c.sourceUrl ?? "") || namesLikelyMatch(a.title, c.title)) ||
-          acceptedModerate.some((a) => normUrl(a.sourceUrl ?? "") === normUrl(c.sourceUrl ?? "") || namesLikelyMatch(a.title, c.title));
+          acceptedStrong.some((a) => namesLikelyMatch(a.title, c.title)) ||
+          acceptedModerate.some((a) => namesLikelyMatch(a.title, c.title));
         if (dup) { dropDupClassified++; continue; }
         pool.bucket.push(c);
       }

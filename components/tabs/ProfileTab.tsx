@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
+import { Heart, Link2, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
@@ -135,6 +135,25 @@ export function ProfileTab({ appState, persist, onClose }: {
   const interests = (appState.profile?.interests ?? []).slice().sort((a, b) => b.weight - a.weight);
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
+
+  // 「デモ用データを投入」(プランタブ)で入るテスト用のウィッシュ/Item/ゴールは
+  // demo-系のidを持つ。これらのタイトル(サウナ・古着・雑貨など)が実際の
+  // 興味・好みチップの自動検出材料になってしまい、「気になっていること」を
+  // 書いても好みチップが変わらないように見える、という混同を招く。実データと
+  // 区別してここから一括で消せるようにする(該当データが無ければこのカード
+  // 自体を表示しない)。
+  const demoItemCount = (appState.items ?? []).filter((i) => i.id.startsWith("demo-")).length;
+  const demoWishCount = (appState.wishes ?? []).filter((w) => w.id.startsWith("demo-wish-")).length;
+  const demoGoalCount = (appState.goals ?? []).filter((g) => g.id.startsWith("demo-goal-")).length;
+  const demoTotal = demoItemCount + demoWishCount + demoGoalCount;
+  const clearDemoData = () => {
+    haptic(10);
+    const next = structuredClone(appState);
+    next.items = next.items.filter((i) => !i.id.startsWith("demo-"));
+    next.wishes = next.wishes.filter((w) => !w.id.startsWith("demo-wish-"));
+    next.goals = (next.goals ?? []).filter((g) => !g.id.startsWith("demo-goal-"));
+    persist(next);
+  };
 
   const saveFocus = async () => {
     const next = structuredClone(appState);
@@ -299,7 +318,31 @@ export function ProfileTab({ appState, persist, onClose }: {
               </span>
             ))}
           </div>
+          {/* この欄のチップは上の入力欄(気になっていること)とは別物: ウィッシュ・
+              KEEPしたItemのタイトルから自動検出される(手入力は反映されない)。
+              上の欄を書き換えてもチップ自体はすぐには変わらない、という
+              混同が実際にあったため明記する。 */}
+          <p style={{ fontSize: 10, color: "#9A988E", lineHeight: 1.6, margin: "8px 0 0" }}>
+            ※チップはウィッシュ・KEEPした記録から自動で検出されます(上の入力とは別です)。
+          </p>
         </SettingsCard>
+
+        {demoTotal > 0 && (
+          <SettingsCard label="テストデータ" icon={Trash2}>
+            <p style={{ fontSize: 11.5, color: "#5A5A54", lineHeight: 1.7, margin: "0 0 12px" }}>
+              「デモ用データを投入」で入れたテスト用のウィッシュ・記録・ゴールが
+              {demoTotal}件残っています。実際のタイトル(サウナ・古着など)が上の
+              「興味・好み」チップの自動検出に混ざるため、実データだけにしたい
+              場合はここで消せます。
+            </p>
+            <button onClick={clearDemoData} style={{
+              width: "100%", padding: "11px 0", background: RUST, color: PAPER, border: "none",
+              borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
+            }}>
+              テストデータを削除({demoTotal}件)
+            </button>
+          </SettingsCard>
+        )}
 
         <SettingsCard label="お気に入りの情報源" icon={Link2}>
           {sources.length === 0 ? (

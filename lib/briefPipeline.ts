@@ -79,13 +79,35 @@ export function normUrl(u: string): string {
 function normName(s: string): string {
   return s.normalize("NFKC").toLowerCase().replace(/[\s　]+/g, "").replace(/[「」『』【】()（）・,、.。!！?？:：;；\-—–]/g, "");
 }
+// 2つの文字列に共通する最長の連続部分文字列の長さ(動的計画法)。
+// namesLikelyMatchが「前後に会場名・年など異なる情報が付いて、単純な
+// 包含関係にならない」表記ゆれを拾うために使う。
+function longestCommonSubstringLength(a: string, b: string): number {
+  let prev = new Array(b.length + 1).fill(0);
+  let max = 0;
+  for (let i = 1; i <= a.length; i++) {
+    const curr = new Array(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        curr[j] = prev[j - 1] + 1;
+        if (curr[j] > max) max = curr[j];
+      }
+    }
+    prev = curr;
+  }
+  return max;
+}
 export function namesLikelyMatch(a: string, b: string): boolean {
   const na = normName(a);
   const nb = normName(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
   const [shorter, longer] = na.length <= nb.length ? [na, nb] : [nb, na];
-  return shorter.length >= 4 && longer.includes(shorter);
+  if (shorter.length >= 4 && longer.includes(shorter)) return true;
+  // 単純な包含関係にはならないが、核となる名称部分が長く一致している場合も
+  // 同一の事物とみなす(例:「○○展 東京都美術館」⇔「○○展(2026年開催)」)。
+  const lcs = longestCommonSubstringLength(na, nb);
+  return lcs >= 6 && lcs >= shorter.length * 0.6;
 }
 
 // Markdownの画像記法などトークンを食うだけの要素を落とす(軽いトークン節約)。
@@ -443,6 +465,12 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
       }
       const k = `${normUrl(su)}|${(c.name ?? "").trim().toLowerCase()}`;
       if (seenCandidate.has(k)) { dropDup++; continue; }
+      // 同じ一覧から同一の事物が名称の表記ゆれ(会場・年などの付帯情報の
+      // 有無)で複数レコードとして抽出されることがある。URLが違っても
+      // 名称が実質同じなら、この段階で1件にまとめておく(そのまま層C・層Dへ
+      // 進むと、Geminiが分類のたびに独自の言い回しでtitleを書き直すため、
+      // 最終的な重複除去(名称の緩い一致)をすり抜けやすくなる)。
+      if (c.name && candidates.some((x) => x.name && namesLikelyMatch(x.name, c.name!))) { dropDup++; continue; }
       seenCandidate.add(k);
       candidates.push({ ...c, site: originSiteFor(su) });
     }

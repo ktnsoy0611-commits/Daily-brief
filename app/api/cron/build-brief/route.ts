@@ -80,7 +80,7 @@ export async function GET(req: Request) {
   if (!sources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
 
   // 2. 生成
-  const result = await buildDeck({ taste, sources, count: 6 });
+  const result = await buildDeck({ taste, sources, count: 20 });
   if (!result.ok) {
     const status = result.reason.startsWith("gemini_") || result.reason === "fetch_failed" ? 502 : 200;
     return NextResponse.json({ ...result, brainFiles: brain.filesRead }, { status });

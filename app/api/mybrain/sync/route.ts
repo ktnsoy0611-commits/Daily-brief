@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { syncMyBrain, type SyncTasteInput } from "@/lib/myBrainWrite";
 
-// 設定画面(気になっていること・お気に入りの情報源)やウィッシュ追加など、
-// ユーザーがtasteを能動的に編集した直後に呼ばれる。アプリ(Supabase)が
-// 唯一の編集場所であることは変わらず、この呼び出しはmy-brainをその内容の
-// 鏡として更新するだけ。my-brain未設定/書き込み権限なしでも失敗を無視して
-// 良い(アプリ自体の保存はSupabase側で完結しているため)。
+// 設定画面(好み・興味・お気に入りの情報源)やウィッシュ追加など、ユーザーが
+// tasteを能動的に編集した直後に呼ばれる。my-brainをその内容の鏡として
+// 更新する(読み側は /api/mybrain/read、AppShell起動時のpullで使う)。
+// my-brain未設定/書き込み権限なしでも失敗を無視して良い(アプリ自体の
+// 保存はSupabase側で完結しているため)。
 
 export const runtime = "nodejs";
 export const maxDuration = 20;

@@ -8,17 +8,20 @@ import type { BriefCard } from "@/lib/types";
 
 // 夜間のブリーフ生成Cron。GitHub Actions のスケジュール実行(build-brief.yml)から
 // CRON_SECRET 付きで叩かれる。処理:
-//   1. taste(気になっていること・興味・願い)は app_state(アプリの設定画面が
-//      唯一の編集場所)を正とする。情報源は「お気に入り(app_state)」と
-//      「my-brainのそれ以外の欄(将来Coworkが書き足す発掘URL)」を合わせて使う
-//      (どちらも対等に扱う。今はCoworkが動いていないのでmy-brain側は空のことが多い)。
+//   1. taste(好み・興味・願い)は app_state(アプリの設定画面)とmy-brain
+//      (Coworkや将来のジャーナル等、他アプリが直接書き足す可能性がある方)の
+//      両方をラベル単位で合わせて使う(片方にしか無い項目も取りこぼさない)。
+//      情報源も同様に「お気に入り(app_state)」と「my-brainのその他の欄」を
+//      対等に合わせて使う。
 //   2. buildDeck() で単ホップ抽出→分類→編成(アプリ側Gemini無料枠)
 //   3. 抽出レコードを content_cache へ蓄積(url重複は除外・非致命)
 //   4. デッキ(BriefCard[])を app_state.generatedDecks[editionKey] へ書く
-//   5. 使ったtasteをmy-brainへ書き戻す(鏡を最新化。設定画面から編集した時にも
-//      同期しているが、興味は自動検出のため都度は同期しておらず、夜間1回で
-//      追いつかせる)。
-// クライアントはこのキーを読むが上書きしない(dataStore の SERVER_OWNED_KEYS)。
+//   5. 合わせた結果をmy-brainへ書き戻す(鏡を最新化)。app_stateへの書き戻しは
+//      ここでは行わない(クライアントが所有するキーなので、同時に編集された
+//      場合に上書きし合う競合を避けるため)。my-brain側の更新をアプリ画面へ
+//      反映する経路は、クライアント起動時のpull(AppShell)が担う。
+// クライアントはgeneratedDecksキーを読むが上書きしない(dataStore の
+// SERVER_OWNED_KEYS)。
 //
 // 必要な環境変数(未設定なら 500/该当reason で静かに終わる):
 //   CRON_SECRET / NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / OWNER_USER_ID
@@ -61,30 +64,47 @@ export async function GET(req: Request) {
   }
   const supa = createClient(supaUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  // 1. taste は app_state(アプリの設定画面)を正として組み立てる。
+  // 1. taste(好み・興味)は app_state(アプリの設定画面)とmy-brain(他アプリが
+  // 直接書き足す可能性がある方)をラベル単位で合わせて使う。
   const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes"]);
   const byKey: Record<string, unknown> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
   const rawSources = Array.isArray(byKey.sources) ? (byKey.sources as unknown[]) : [];
   const appFavoriteSources: { url: string; label?: string }[] = rawSources
     .filter((s): s is { url: string; label?: string } => !!s && typeof s === "object" && typeof (s as { url?: unknown }).url === "string")
     .map((s) => ({ url: s.url, label: s.label }));
-  const profile = byKey.profile as { interests?: unknown; currentFocus?: string } | undefined;
+  const profile = byKey.profile as { interests?: unknown } | undefined;
   const rawInterests = Array.isArray(profile?.interests) ? (profile!.interests as unknown[]) : [];
-  const interests: InterestSignal[] = rawInterests
-    .filter((i): i is { label: string; weight?: number } => !!i && typeof i === "object" && typeof (i as { label?: unknown }).label === "string")
+  const isSignalLike = (i: unknown): i is { label: string; weight?: number; category?: string } =>
+    !!i && typeof i === "object" && typeof (i as { label?: unknown }).label === "string";
+  const appTaste: InterestSignal[] = rawInterests
+    .filter((i): i is { label: string; weight?: number; category?: string } => isSignalLike(i) && i.category === "taste")
+    .map((i) => ({ label: i.label, weight: i.weight ?? 0 }));
+  const appInterest: InterestSignal[] = rawInterests
+    .filter((i): i is { label: string; weight?: number; category?: string } => isSignalLike(i) && i.category === "interest")
     .map((i) => ({ label: i.label, weight: i.weight ?? 0 }));
   const rawWishes = Array.isArray(byKey.wishes) ? (byKey.wishes as unknown[]) : [];
   const wishes: string[] = rawWishes
     .filter((w): w is { status?: string; title: string } => !!w && typeof w === "object" && (w as { status?: unknown }).status === "stock")
     .map((w) => w.title);
-  const focus: string | undefined = profile?.currentFocus || undefined;
 
   // 情報源はお気に入り(app_state)とmy-brainのその他の欄(将来Coworkが発掘した
   // URLを書き足す場所)を対等に合わせて使う。生活圏はmy-brain側にしか
   // 入力欄が無いのでそちらから読む。
   const brain = await loadMyBrain();
   const sources = Array.from(new Set([...appFavoriteSources.map((s) => s.url), ...brain.sources.map((s) => s.url)]));
-  const taste: TasteInput = { focus, interests, wishes, livingArea: brain.taste.livingArea };
+  // 片方にしかないラベルも取りこぼさないよう、ラベル単位で合わせる
+  // (重複はweightが大きい方を残す)。
+  function mergeSignals(a: InterestSignal[], b: InterestSignal[]): InterestSignal[] {
+    const map = new Map<string, InterestSignal>();
+    for (const x of [...a, ...b]) {
+      const existing = map.get(x.label);
+      if (!existing || x.weight > existing.weight) map.set(x.label, x);
+    }
+    return Array.from(map.values());
+  }
+  const mergedTaste = mergeSignals(appTaste, brain.taste.taste ?? []);
+  const mergedInterest = mergeSignals(appInterest, brain.taste.interest ?? []);
+  const taste: TasteInput = { taste: mergedTaste, interest: mergedInterest, wishes, livingArea: brain.taste.livingArea };
 
   if (!sources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
 
@@ -156,10 +176,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, reason: "deck_write_failed", detail: writeErr.message }, { status: 502 });
   }
 
-  // 5. my-brainへ書き戻す(鏡を最新化)。興味は自動検出で頻繁に変わるため
-  // 設定画面の編集時には都度同期していない。夜間にここで一度だけ追いつかせる。
-  // 失敗しても(未設定・権限不足等)デッキ生成自体は成功として扱う。
-  const mybrainSync = await syncMyBrain({ focus, livingArea: brain.taste.livingArea, interests, wishes, sources: appFavoriteSources });
+  // 5. 合わせた結果(app_state・my-brain両方の内容を含む)をmy-brainへ書き戻す。
+  // 興味は自動検出で頻繁に変わるため設定画面の編集時には都度同期しておらず、
+  // 夜間にここで一度だけ追いつかせる。失敗しても(未設定・権限不足等)
+  // デッキ生成自体は成功として扱う。
+  const mybrainSync = await syncMyBrain({ livingArea: brain.taste.livingArea, taste: mergedTaste, interest: mergedInterest, wishes, sources: appFavoriteSources });
 
   return NextResponse.json({
     ok: true, editionKey, cardCount: cards.length, pooled,

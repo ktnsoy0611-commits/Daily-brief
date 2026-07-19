@@ -101,10 +101,14 @@ export interface Goal {
   checkIns: CheckIn[];
 }
 
+// 好み(taste)=比較的安定したジャンル・カルチャーの好み /
+// 興味(interest)=時期によって変わる、今関心を持っていること。
+// どちらもカード生成の材料になり、KEEP等のフィードバックや外部アプリ
+// (将来のジャーナル等、my-brain経由)からも更新されうる。
 export interface Interest {
   id: string;
   label: string;
-  kind: "hobby" | "artist" | "architect";
+  category: "taste" | "interest";
   weight: number;
   source: "auto" | "user";
   addedAt?: string;
@@ -112,7 +116,6 @@ export interface Interest {
 
 export interface Profile {
   interests: Interest[];
-  currentFocus: string;
 }
 
 export interface Source {

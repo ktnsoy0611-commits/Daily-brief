@@ -82,6 +82,20 @@ function migrate(s: any): AppState {
   const merged = { ...structuredClone(DEFAULT_STATE), ...s };
   merged.magazine = merged.magazine ?? null;
   merged.profile = merged.profile ?? structuredClone(DEFAULT_STATE.profile);
+  // 旧形式(「気になっていること」を自由文で持つProfile.currentFocus、
+  // 好み/興味を区別しないInterest.kind)からの移行。currentFocusという
+  // 概念自体を廃止したため単純に破棄する。旧チップ(自動検出・手入力とも
+  // 区別が無かった)は、時期で変わる「興味」側の初期値として一括で移す
+  // (「好み」側は空から始まる。ユーザーが改めて選び直す想定)。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (merged.profile as any).currentFocus;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  merged.profile.interests = (merged.profile.interests ?? []).map((i: any) => {
+    if (i.category === "taste" || i.category === "interest") return i;
+    const rest = { ...i };
+    delete rest.kind;
+    return { ...rest, category: "interest" };
+  });
   merged.weekendMeta = merged.weekendMeta ?? structuredClone(DEFAULT_STATE.weekendMeta);
   merged.goals = merged.goals ?? [];
   merged.pendingReview = merged.pendingReview ?? [];

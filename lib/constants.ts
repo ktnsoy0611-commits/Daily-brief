@@ -7,7 +7,7 @@ export const DEFAULT_STATE: AppState = {
   items: [],
   briefs: {},
   magazine: null,
-  profile: { interests: [], currentFocus: "" },
+  profile: { interests: [] },
   weekendMeta: { lastSeenBundleWeek: null },
   goals: [],
   pendingReview: [],
@@ -89,22 +89,24 @@ export const NAV_BOTTOM_GAP = "max(4px, calc(env(safe-area-inset-bottom) - 26px)
 export const NAV_OFFSET = `calc(82px + ${NAV_BOTTOM_GAP})`;
 
 // ---- 興味の自動検出（プロトタイプ: キーワード頻度。本実装ではGeminiに置換） --
+// 自動検出はウィッシュ・KEEPしたItemという「直近の行動」から拾うため、
+// 性質上つねに興味(category:"interest"、時期で変わる方)に分類する
+// (lib/helpers.tsのdetectInterests参照)。
 export interface InterestRule {
   match: RegExp;
   label: string;
-  kind: "hobby";
 }
 export const INTEREST_RULES: InterestRule[] = [
-  { match: /カフェ|コーヒー|焙煎/, label: "カフェ巡り", kind: "hobby" },
-  { match: /古着|ヴィンテージ/, label: "古着収集", kind: "hobby" },
-  { match: /映画|シネマ/, label: "映画鑑賞", kind: "hobby" },
-  { match: /展覧会|美術館|ギャラリー/, label: "アート鑑賞", kind: "hobby" },
-  { match: /建築/, label: "建築巡り", kind: "hobby" },
-  { match: /陶芸|工芸|手仕事/, label: "ものづくり", kind: "hobby" },
-  { match: /銭湯|温泉|サウナ/, label: "温泉・サウナ", kind: "hobby" },
-  { match: /古書|本屋|書店/, label: "本屋巡り", kind: "hobby" },
-  { match: /雑貨/, label: "雑貨集め", kind: "hobby" },
-  { match: /ボルダリング|クライミング|筋トレ|ヨガ|ランニング/, label: "運動習慣", kind: "hobby" },
+  { match: /カフェ|コーヒー|焙煎/, label: "カフェ巡り" },
+  { match: /古着|ヴィンテージ/, label: "古着収集" },
+  { match: /映画|シネマ/, label: "映画鑑賞" },
+  { match: /展覧会|美術館|ギャラリー/, label: "アート鑑賞" },
+  { match: /建築/, label: "建築巡り" },
+  { match: /陶芸|工芸|手仕事/, label: "ものづくり" },
+  { match: /銭湯|温泉|サウナ/, label: "温泉・サウナ" },
+  { match: /古書|本屋|書店/, label: "本屋巡り" },
+  { match: /雑貨/, label: "雑貨集め" },
+  { match: /ボルダリング|クライミング|筋トレ|ヨガ|ランニング/, label: "運動習慣" },
 ];
 export const AUTO_THRESHOLD = 2;
 

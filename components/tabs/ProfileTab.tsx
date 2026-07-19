@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
+import { Compass, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
@@ -94,13 +94,53 @@ function SettingsRow({ title, sub, faded, action }: { title: string; sub: string
   );
 }
 
+// 好み/興味で共通のチップ表示+追加欄。1色・1サイズのチップに揃えている
+// のは、色分け+重み比例フォントサイズだった旧デザインが「ワードクラウド」
+// のようで読みにくかったため。重み(weight)降順で並べる。
+function InterestChips({ items, onRemove, inputValue, onInputChange, onAdd, placeholder }: {
+  items: { id: string; label: string }[];
+  onRemove: (id: string) => void;
+  inputValue: string;
+  onInputChange: (v: string) => void;
+  onAdd: () => void;
+  placeholder: string;
+}) {
+  return (
+    <>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {items.length === 0 ? (
+          <p style={{ fontSize: 12, color: "#9A988E", margin: 0 }}>まだありません。</p>
+        ) : items.map((item) => (
+          <span key={item.id} style={{
+            display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 8px 6px 12px", borderRadius: 999,
+            background: "rgba(23,23,21,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: 12,
+          }}>
+            {item.label}
+            <button onClick={() => onRemove(item.id)} aria-label={`${item.label}を削除`} style={{
+              width: 16, height: 16, borderRadius: "50%", border: "none", background: "rgba(23,23,21,0.1)", color: INK,
+              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, flexShrink: 0,
+            }}>
+              <X size={9} strokeWidth={2.6} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <input value={inputValue} onChange={(e) => onInputChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onAdd()}
+          placeholder={placeholder} style={settingsInputStyle} />
+        <button onClick={onAdd} style={rowBtn(INK, PAPER)}>追加</button>
+      </div>
+    </>
+  );
+}
+
 export function ProfileTab({ appState, persist, onClose }: {
   appState: AppState;
   persist: (next: AppState) => void;
   onClose: () => void;
 }) {
-  const [focusDraft, setFocusDraft] = useState(appState.profile?.currentFocus ?? "");
   const [srcInput, setSrcInput] = useState("");
+  const [tasteInput, setTasteInput] = useState("");
   const [interestInput, setInterestInput] = useState("");
   // my-brainへの同期結果。以前は結果を見ずに握りつぶしていたため、失敗しても
   // 画面に何も出ず原因が分からなかった。保存のたびにここへ表示する。
@@ -133,29 +173,31 @@ export function ProfileTab({ appState, persist, onClose }: {
   // Coworkが用意した情報源リストがこの役割を担う。
   const [genUrls, setGenUrls] = useState(() => (appState.sources ?? []).map((s) => s.url).join("\n"));
 
-  const interests = (appState.profile?.interests ?? []).slice().sort((a, b) => b.weight - a.weight);
+  const allInterests = appState.profile?.interests ?? [];
+  const taste = allInterests.filter((i) => i.category === "taste").sort((a, b) => b.weight - a.weight);
+  const interest = allInterests.filter((i) => i.category === "interest").sort((a, b) => b.weight - a.weight);
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
 
-  // 興味・好みチップはstateそのもの(profile.interests)の表示であり、ここから
-  // 直接追加・削除できる(=今どんなデータでカードが生成されているかを見て
-  // 編集できる単一の場所にする)。追加した項目はsource:"user"にして、自動検出の
-  // 重み更新(source==="auto"の項目だけが対象)に上書きされないようにする。
-  const addInterest = async () => {
-    const label = interestInput.trim();
-    if (!label) return;
+  // 好み(taste)・興味(interest)はどちらもstateそのもの(profile.interests、
+  // categoryで区別)の表示であり、ここから直接追加・削除できる(=今どんな
+  // データでカードが生成されているかを見て編集できる場所にする)。追加した
+  // 項目はsource:"user"にして、自動検出の重み更新(source==="auto"の項目
+  // だけが対象)に上書きされないようにする。
+  const addInterestItem = async (category: "taste" | "interest", label: string) => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
     haptic();
     const next = structuredClone(appState);
-    next.profile = next.profile ?? { interests: [], currentFocus: "" };
-    if (!next.profile.interests.some((i) => i.label === label)) {
-      next.profile.interests.push({ id: `interest-${Date.now()}`, label, kind: "hobby", weight: 10, source: "user", addedAt: new Date().toISOString() });
+    next.profile = next.profile ?? { interests: [] };
+    if (!next.profile.interests.some((i) => i.category === category && i.label === trimmed)) {
+      next.profile.interests.push({ id: `${category}-${Date.now()}`, label: trimmed, category, weight: 10, source: "user", addedAt: new Date().toISOString() });
     }
     persist(next);
-    setInterestInput("");
     setSyncMsg("my-brainへ同期中…");
     reportSync(await syncTasteToMyBrain(next));
   };
-  const removeInterest = async (id: string) => {
+  const removeInterestItem = async (id: string) => {
     haptic(6);
     const next = structuredClone(appState);
     next.profile.interests = next.profile.interests.filter((i) => i.id !== id);
@@ -163,15 +205,9 @@ export function ProfileTab({ appState, persist, onClose }: {
     setSyncMsg("my-brainへ同期中…");
     reportSync(await syncTasteToMyBrain(next));
   };
+  const addTaste = () => { addInterestItem("taste", tasteInput); setTasteInput(""); };
+  const addInterest = () => { addInterestItem("interest", interestInput); setInterestInput(""); };
 
-  const saveFocus = async () => {
-    const next = structuredClone(appState);
-    next.profile = next.profile ?? { interests: [], currentFocus: "" };
-    next.profile.currentFocus = focusDraft.trim();
-    persist(next);
-    setSyncMsg("my-brainへ同期中…");
-    reportSync(await syncTasteToMyBrain(next));
-  };
   const addSource = async () => {
     const url = srcInput.trim();
     if (!/^https?:\/\//.test(url)) return;
@@ -243,8 +279,8 @@ export function ProfileTab({ appState, persist, onClose }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           wishes: (appState.wishes ?? []).filter((w) => w.status === "stock").map((w) => w.title),
-          interests: interests.map((i) => ({ label: i.label, weight: i.weight })),
-          focus: appState.profile?.currentFocus ?? "",
+          taste: taste.map((i) => ({ label: i.label, weight: i.weight })),
+          interest: interest.map((i) => ({ label: i.label, weight: i.weight })),
           sources: urls,
           count: 3,
         }),
@@ -293,51 +329,23 @@ export function ProfileTab({ appState, persist, onClose }: {
         {syncMsg && (
           <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.6, margin: "0 2px 14px" }}>{syncMsg}</p>
         )}
-        {/* 「今、気になっていること」と「興味・好み」は、どちらも
-            「今の関心」を表す情報として1枚のカードにまとめる(以前は
-            別々のカードだったが、近い内容として1つの括りにしてほしい
-            という指摘を受けた)。
-            気になっていることの入力: 以前は非編集時(タップすると鉛筆
-            アイコン付きの表示に切り替わる)と編集時(入力欄+保存ボタン)を
-            state(editingFocus)で切り替えていたが、「情報源」の入力欄と
-            見た目・挙動を揃えてほしいという指摘を受け、この切り替え自体を
-            廃止した。情報源と全く同じ「常に入力欄+保存ボタンが両方
-            見えている」構成にし、タップの回数や状態遷移に依存しない
-            単純な形にした。 */}
-        <SettingsCard label="気になっていること・好み" icon={Heart}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input value={focusDraft} onChange={(e) => setFocusDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveFocus()}
-              placeholder="タップして入力" style={settingsInputStyle} />
-            <button onClick={saveFocus} style={rowBtn(INK, PAPER)}>保存</button>
-          </div>
-          {/* チップはstate(profile.interests)をそのまま表示・編集する場所。
-              自動検出(source:"auto")と手入力(source:"user")のどちらも
-              同じ並びに混在させ、重み(weight)降順で並べる。1色・1サイズに
-              揃えているのは、色分け+重み比例フォントサイズだった旧デザインが
-              「ワードクラウド」のようで読みにくかったため。 */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-            {interests.length === 0 ? (
-              <p style={{ fontSize: 12, color: "#9A988E", margin: 0 }}>まだありません。</p>
-            ) : interests.map((item) => (
-              <span key={item.id} style={{
-                display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 8px 6px 12px", borderRadius: 999,
-                background: "rgba(23,23,21,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: 12,
-              }}>
-                {item.label}
-                <button onClick={() => removeInterest(item.id)} aria-label={`${item.label}を削除`} style={{
-                  width: 16, height: 16, borderRadius: "50%", border: "none", background: "rgba(23,23,21,0.1)", color: INK,
-                  display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, flexShrink: 0,
-                }}>
-                  <X size={9} strokeWidth={2.6} />
-                </button>
-              </span>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <input value={interestInput} onChange={(e) => setInterestInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addInterest()}
-              placeholder="興味・好みを追加" style={settingsInputStyle} />
-            <button onClick={addInterest} style={rowBtn(INK, PAPER)}>追加</button>
-          </div>
+        {/* 好み(taste)=比較的安定したジャンル・カルチャーの好み。
+            興味(interest)=今、関心を持っていること(時期によって変わる)。
+            どちらもstate(profile.interests、categoryで区別)をそのまま
+            表示・編集する場所で、自由文の「気になっていること」のような
+            別概念の入力欄は持たない。ここから直接追加・削除したものも、
+            KEEP等のフィードバックからの自動検出(興味側にのみ入る)も
+            同じ並びに混在する。 */}
+        <SettingsCard label="好み" icon={Heart}>
+          <InterestChips items={taste} onRemove={removeInterestItem}
+            inputValue={tasteInput} onInputChange={setTasteInput} onAdd={addTaste}
+            placeholder="好みを追加" />
+        </SettingsCard>
+
+        <SettingsCard label="興味" icon={Compass}>
+          <InterestChips items={interest} onRemove={removeInterestItem}
+            inputValue={interestInput} onInputChange={setInterestInput} onAdd={addInterest}
+            placeholder="興味を追加" />
         </SettingsCard>
 
         <SettingsCard label="お気に入りの情報源" icon={Link2}>

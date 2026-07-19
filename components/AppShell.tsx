@@ -1,7 +1,7 @@
 "use client";
 
 import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Settings, Sparkles, Sprout } from "lucide-react";
-import { useCallback, useEffect, useState, type ComponentType, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { PlanSelectionBar } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
@@ -129,6 +129,35 @@ export function AppShell() {
     setAppState(next);
     DataStore.save(next).then(setStorageMode);
   }, []);
+
+  // my-brain(GitHub)→アプリの取り込み。好み・興味はアプリの設定画面から
+  // my-brainへ書き込む(syncTasteToMyBrain)が、逆方向(my-brainを他アプリ
+  // ―将来のジャーナル等―が直接更新した内容をこのアプリへ反映する)は、
+  // クライアントがGitHubへ直接アクセスできない(GITHUB_TOKENはサーバーのみ)
+  // ため、起動時にサーバー経由(/api/mybrain/read)で1回だけ取り込む。
+  // ローカルに無いラベルだけを追加する(既存の重みは上書きしない)。
+  const pulledMyBrainRef = useRef(false);
+  useEffect(() => {
+    if (!appState || pulledMyBrainRef.current) return;
+    pulledMyBrainRef.current = true;
+    fetch("/api/mybrain/read").then((r) => r.json()).then((data) => {
+      if (!data?.ok) return;
+      const next = structuredClone(appState);
+      next.profile = next.profile ?? { interests: [] };
+      let changed = false;
+      const mergeIn = (category: "taste" | "interest", items: { label: string; weight: number }[]) => {
+        items.forEach((d) => {
+          if (!next.profile.interests.some((i) => i.category === category && i.label === d.label)) {
+            next.profile.interests.push({ id: `mybrain-${category}-${d.label}-${Date.now()}`, label: d.label, category, weight: d.weight, source: "user", addedAt: new Date().toISOString() });
+            changed = true;
+          }
+        });
+      };
+      mergeIn("taste", data.taste ?? []);
+      mergeIn("interest", data.interest ?? []);
+      if (changed) persist(next);
+    }).catch(() => {});
+  }, [appState, persist]);
   const goTab = useCallback((id: TabId) => setTab(id), []);
   const toggleItemSelection = useCallback((id: string) => {
     haptic(8);
@@ -170,12 +199,14 @@ export function AppShell() {
     if (!appState) return;
     const detected = detectInterests(appState.wishes, appState.items);
     const next = structuredClone(appState);
-    next.profile = next.profile ?? { interests: [], currentFocus: "" };
+    next.profile = next.profile ?? { interests: [] };
     let changed = false;
     detected.forEach((d) => {
       const existing = next.profile.interests.find((i) => i.label === d.label);
       if (!existing) {
-        next.profile.interests.push({ id: `auto-${d.label}-${Date.now()}`, label: d.label, kind: d.kind ?? "hobby", weight: d.weight, source: "auto", addedAt: new Date().toISOString() });
+        // 自動検出は直近の行動(ウィッシュ・KEEP)からの兆しなので、
+        // 常に興味(category:"interest"、時期で変わる方)として保存する。
+        next.profile.interests.push({ id: `auto-${d.label}-${Date.now()}`, label: d.label, category: "interest", weight: d.weight, source: "auto", addedAt: new Date().toISOString() });
         changed = true;
       } else if (existing.source === "auto" && d.weight > existing.weight) {
         existing.weight = d.weight;

@@ -1,6 +1,6 @@
 // my-brain リポジトリ(GitHub)への書き込み。アプリの「設定」画面が
-// taste(気になっていること・興味・願い)と「お気に入りの情報源」の
-// 唯一の編集場所であり続ける(ユーザーはGitHubを直接操作しない)。
+// taste(好み・興味・願い)と「お気に入りの情報源」の唯一の編集場所で
+// あり続ける(ユーザーはGitHubを直接操作しない)。
 // my-brainはその内容をそのまま映す「鏡」で、Coworkが読む側の実体になる。
 // 一方向の書き込み(アプリ→my-brain)であり、逆方向(my-brainを人力で編集した
 // 内容をアプリへ取り込む)は今は無い(taste-state.mdはこの関数が丸ごと
@@ -15,9 +15,9 @@
 //      呼び出し側(設定画面・夜間Cron)の処理は止めない。
 
 export type SyncTasteInput = {
-  focus?: string;
   livingArea?: string;
-  interests?: { label: string; weight: number }[];
+  taste?: { label: string; weight: number }[];    // 好み(比較的安定)
+  interest?: { label: string; weight: number }[]; // 興味(時期で変わる)
   wishes?: string[];
   sources?: { url: string; label?: string }[];
 };
@@ -29,25 +29,24 @@ const FAV_END = "<!-- END app-managed:favorites -->";
 function bullet(lines: string[]): string {
   return lines.length ? lines.map((l) => `- ${l}`).join("\n") : "";
 }
+function byWeightDesc(items: { label: string; weight: number }[]): string[] {
+  return items.slice().sort((a, b) => b.weight - a.weight).map((i) => i.label);
+}
 
 // taste-state.md は全体を管理下に置く(自由メモ欄は持たせない。設定画面の
 // 内容がそのまま反映される1枚の鏡)。
 export function renderTasteStateMd(t: SyncTasteInput): string {
-  const interestLines = (t.interests ?? [])
-    .slice()
-    .sort((a, b) => b.weight - a.weight)
-    .map((i) => i.label);
   return [
     "# taste-state（アプリの設定画面から自動同期・直接編集しても上書きされます）",
-    "",
-    "## 気になっていること",
-    t.focus?.trim() ? bullet([t.focus.trim()]) : "",
     "",
     "## 生活圏",
     bullet([t.livingArea?.trim() || "東京23区(および電車で日常的に行ける範囲)"]),
     "",
-    "## 興味・リサーチ対象",
-    bullet(interestLines) || "(まだありません)",
+    "## 好み（比較的安定したジャンル・カルチャーの好み）",
+    bullet(byWeightDesc(t.taste ?? [])) || "(まだありません)",
+    "",
+    "## 興味（今、関心を持っていること。時期によって変わる）",
+    bullet(byWeightDesc(t.interest ?? [])) || "(まだありません)",
     "",
     "## 願い",
     bullet((t.wishes ?? []).filter((w) => w.trim())) || "(まだありません)",

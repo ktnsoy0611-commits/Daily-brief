@@ -6,12 +6,12 @@
 //
 // ユーザーは非エンジニアで、YAMLのような書式は書けない。そのため taste-state.md /
 // sources.md は「## 見出し + 箇条書き」という素のMarkdownで読めるようにする
-// (parseSections/parseFocusSection/parseBulletSection)。YAML front-matter は
-// 将来Coworkが自動更新する場合等に備えた上位互換のオプションとして残し、
-// front-matterで埋まらなかった項目だけをMarkdown見出しから拾う(フォールバック)。
+// (parseSections/parseBulletSection)。YAML front-matter は将来Coworkが自動
+// 更新する場合等に備えた上位互換のオプションとして残し、front-matterで
+// 埋まらなかった項目だけをMarkdown見出しから拾う(フォールバック)。
 //
 // 対象ファイル(いずれも任意。無ければその項目は空):
-//   taste-state.md: 「## 気になっていること」「## 興味・リサーチ対象」
+//   taste-state.md: 「## 好み」(比較的安定)「## 興味」(時期で変わる)
 //     「## 願い」「## 生活圏」の見出し+箇条書き(またはYAML front-matter)
 //   sources.md: 箇条書きのURL/Markdownリンク一覧(またはYAML front-matter)
 //   profile.md: 読まない(ユーザーが手で管理する固定情報のため taste の源にしない)
@@ -112,14 +112,6 @@ function firstLineOf(lines: string[]): string | undefined {
   }
   return undefined;
 }
-// 「気になっていること」は複数の箇条書きになりうる(例: 別々の関心事を並べて
-// 書く)ため、箇条書きがあれば全項目を " / " で連結した1つの短期的関心の文に
-// まとめる。箇条書きが無い(1行だけ書かれた)場合はその行をそのまま使う。
-function focusFromLines(lines: string[]): string | undefined {
-  const bullets = bulletsOf(lines);
-  if (bullets.length) return bullets.join(" / ");
-  return firstLineOf(lines);
-}
 // 箇条書き行(- / * / ・ で始まる行)を配列で返す(コメント行・空行は無視)。
 function bulletsOf(lines: string[]): string[] {
   const out: string[] = [];
@@ -154,14 +146,14 @@ function interestsFromBullets(bullets: string[]): InterestSignal[] {
 
 function tasteFromMarkdown(md: string): TasteInput {
   const sections = parseSections(md);
-  const focus = focusFromLines(findSection(sections, /気になっ|focus/i) ?? []);
   const livingArea = firstLineOf(findSection(sections, /生活圏|エリア|living/i) ?? []);
-  const interestBullets = bulletsOf(findSection(sections, /興味|リサーチ|関心|interest/i) ?? []);
+  const tasteBullets = bulletsOf(findSection(sections, /好み|taste/i) ?? []);
+  const interestBullets = bulletsOf(findSection(sections, /興味|関心|interest/i) ?? []);
   const wishBullets = bulletsOf(findSection(sections, /願い|ウィッシュ|wish/i) ?? []);
   return {
-    focus,
     livingArea,
-    interests: interestBullets.length ? interestsFromBullets(interestBullets) : undefined,
+    taste: tasteBullets.length ? interestsFromBullets(tasteBullets) : undefined,
+    interest: interestBullets.length ? interestsFromBullets(interestBullets) : undefined,
     wishes: wishBullets.length ? wishBullets : undefined,
   };
 }
@@ -207,21 +199,21 @@ export async function loadMyBrain(): Promise<MyBrain> {
   if (tasteMd) {
     filesRead.push("taste-state.md");
     const fm = parseFrontMatter(tasteMd);
-    taste.focus = asString(fm.focus);
     taste.livingArea = asString(fm.living_area ?? fm.livingArea);
-    taste.interests = parseInterests(fm.interests);
+    taste.taste = parseInterests(fm.taste);
+    taste.interest = parseInterests(fm.interest);
     taste.wishes = asStringArray(fm.wishes);
     // sources を taste-state.md に同居させている場合も拾う。
     const inline = parseSources(fm.sources);
     if (inline.length) sources = inline;
 
     // YAML front-matterで埋まらなかった項目は、素のMarkdown見出し+箇条書き
-    // (## 気になっていること / ## 興味・リサーチ対象 / ## 願い / ## 生活圏)から補う。
-    // ユーザーはYAMLを書けないため、こちらが主な書き方になる想定。
+    // (## 好み / ## 興味 / ## 願い / ## 生活圏)から補う。ユーザーはYAMLを
+    // 書けないため、こちらが主な書き方になる想定。
     const md = tasteFromMarkdown(tasteMd);
-    taste.focus = taste.focus ?? md.focus;
     taste.livingArea = taste.livingArea ?? md.livingArea;
-    if (!taste.interests?.length) taste.interests = md.interests;
+    if (!taste.taste?.length) taste.taste = md.taste;
+    if (!taste.interest?.length) taste.interest = md.interest;
     if (!taste.wishes?.length) taste.wishes = md.wishes;
   }
   if (sourcesMd) {

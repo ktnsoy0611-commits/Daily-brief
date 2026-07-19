@@ -1,5 +1,5 @@
 import { AREA_COORDS, AREA_FALLBACK, AREA_LATLNG, AUTO_THRESHOLD, BRIEF_RETENTION_DAYS, INTEREST_RULES, KEEP_MAX_AGE_DAYS, KIND_DOMAIN } from "./constants";
-import type { AppState, BriefState, Interest, Item, ItemDomain, ItemOrigin, Wish } from "./types";
+import type { AppState, BriefState, Item, ItemDomain, ItemOrigin, Wish } from "./types";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -179,13 +179,15 @@ export function pinPosition(item: { id: string; area?: string; lat?: number; lng
 }
 
 // ---- 興味の自動検出（プロトタイプ: キーワード頻度。本実装ではGeminiに置換） --
-export function detectInterests(wishes: Wish[], items: Item[]): Omit<Interest, "id" | "addedAt">[] {
+// ここで検出されるのはウィッシュ・KEEPの「直近の行動」からの兆しなので、
+// 呼び出し側(AppShell)でcategory:"interest"(時期で変わる方)として保存する。
+export function detectInterests(wishes: Wish[], items: Item[]): { label: string; weight: number }[] {
   const titles = [...wishes.map((w) => w.title), ...items.map((i) => i.title)];
-  const results: Omit<Interest, "id" | "addedAt">[] = [];
+  const results: { label: string; weight: number }[] = [];
   INTEREST_RULES.forEach((rule) => {
     const count = titles.filter((t) => rule.match.test(t)).length;
     if (count >= AUTO_THRESHOLD) {
-      results.push({ label: rule.label, kind: rule.kind, weight: count, source: "auto" });
+      results.push({ label: rule.label, weight: count });
     }
   });
   return results;

@@ -101,6 +101,21 @@ export function ProfileTab({ appState, persist, onClose }: {
 }) {
   const [focusDraft, setFocusDraft] = useState(appState.profile?.currentFocus ?? "");
   const [srcInput, setSrcInput] = useState("");
+  // my-brainへの同期結果。以前は結果を見ずに握りつぶしていたため、失敗しても
+  // 画面に何も出ず原因が分からなかった。保存のたびにここへ表示する。
+  const [syncMsg, setSyncMsg] = useState("");
+  const reportSync = (result: Awaited<ReturnType<typeof syncTasteToMyBrain>>) => {
+    if (!result) { setSyncMsg("my-brainへの同期に失敗しました(通信エラー)。"); return; }
+    if (!result.ok) {
+      const reasonJp =
+        result.reason === "no_repo" ? "MYBRAIN_REPO未設定"
+        : result.reason === "no_token" ? "GITHUB_TOKEN未設定"
+        : result.reason;
+      setSyncMsg(`my-brainへの同期に失敗しました(${reasonJp})。`);
+      return;
+    }
+    setSyncMsg(result.wrote.length ? `my-brainに反映しました(${result.wrote.join("・")})。` : "my-brainは既に最新でした。");
+  };
 
   // フェーズC-0: ブリーフ生成の実験。まだ本番デッキには繋がず、返ってきた
   // カードをこの画面に表示して品質を目視確認するだけ(HANDOFF §8.12)。
@@ -121,14 +136,15 @@ export function ProfileTab({ appState, persist, onClose }: {
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
 
-  const saveFocus = () => {
+  const saveFocus = async () => {
     const next = structuredClone(appState);
     next.profile = next.profile ?? { interests: [], currentFocus: "" };
     next.profile.currentFocus = focusDraft.trim();
     persist(next);
-    syncTasteToMyBrain(next);
+    setSyncMsg("my-brainへ同期中…");
+    reportSync(await syncTasteToMyBrain(next));
   };
-  const addSource = () => {
+  const addSource = async () => {
     const url = srcInput.trim();
     if (!/^https?:\/\//.test(url)) return;
     haptic();
@@ -142,14 +158,16 @@ export function ProfileTab({ appState, persist, onClose }: {
     next.sources = next.sources ?? [];
     next.sources.unshift({ id: `src-${Date.now()}`, url, label, addedAt: new Date().toISOString() });
     persist(next);
-    syncTasteToMyBrain(next);
     setSrcInput("");
+    setSyncMsg("my-brainへ同期中…");
+    reportSync(await syncTasteToMyBrain(next));
   };
-  const removeSource = (id: string) => {
+  const removeSource = async (id: string) => {
     const next = structuredClone(appState);
     next.sources = next.sources.filter((s) => s.id !== id);
     persist(next);
-    syncTasteToMyBrain(next);
+    setSyncMsg("my-brainへ同期中…");
+    reportSync(await syncTasteToMyBrain(next));
   };
   // バインド！(確定ビューでの綴じ操作)を元に戻す。ログの対象Itemを
   // done→candidateへ戻すだけの単純な取り消しで、マガジンの再構築は
@@ -244,6 +262,9 @@ export function ProfileTab({ appState, persist, onClose }: {
       </header>
 
       <main style={{ paddingTop: 18 }}>
+        {syncMsg && (
+          <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.6, margin: "0 2px 14px" }}>{syncMsg}</p>
+        )}
         {/* 「今、気になっていること」と「興味・好み」は、どちらも
             「今の関心」を表す情報として1枚のカードにまとめる(以前は
             別々のカードだったが、近い内容として1つの括りにしてほしい

@@ -2,20 +2,28 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildDeck, type InterestSignal, type TasteInput } from "@/lib/briefPipeline";
 import { loadMyBrain } from "@/lib/myBrain";
+import { syncMyBrain } from "@/lib/myBrainWrite";
 import { generatedToBriefCard } from "@/lib/deckStyle";
 import type { BriefCard } from "@/lib/types";
 
 // 夜間のブリーフ生成Cron。GitHub Actions のスケジュール実行(build-brief.yml)から
 // CRON_SECRET 付きで叩かれる。処理:
-//   1. my-brain(GitHub)から taste・情報源を読む(無ければ app_state をフォールバック)
+//   1. taste(気になっていること・興味・願い)は app_state(アプリの設定画面が
+//      唯一の編集場所)を正とする。情報源は「お気に入り(app_state)」と
+//      「my-brainのそれ以外の欄(将来Coworkが書き足す発掘URL)」を合わせて使う
+//      (どちらも対等に扱う。今はCoworkが動いていないのでmy-brain側は空のことが多い)。
 //   2. buildDeck() で単ホップ抽出→分類→編成(アプリ側Gemini無料枠)
 //   3. 抽出レコードを content_cache へ蓄積(url重複は除外・非致命)
 //   4. デッキ(BriefCard[])を app_state.generatedDecks[editionKey] へ書く
+//   5. 使ったtasteをmy-brainへ書き戻す(鏡を最新化。設定画面から編集した時にも
+//      同期しているが、興味は自動検出のため都度は同期しておらず、夜間1回で
+//      追いつかせる)。
 // クライアントはこのキーを読むが上書きしない(dataStore の SERVER_OWNED_KEYS)。
 //
 // 必要な環境変数(未設定なら 500/该当reason で静かに終わる):
 //   CRON_SECRET / NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / OWNER_USER_ID
-//   (taste源) MYBRAIN_REPO / GITHUB_TOKEN(任意) / (生成) GEMINI_API_KEY / JINA_API_KEY(任意)
+//   (taste源・書き戻し) MYBRAIN_REPO / GITHUB_TOKEN(書き込み権限必須) /
+//   (生成) GEMINI_API_KEY / JINA_API_KEY(任意)
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,33 +61,36 @@ export async function GET(req: Request) {
   }
   const supa = createClient(supaUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  // 1. taste + 情報源(my-brain 優先、無ければ app_state)
-  const brain = await loadMyBrain();
-  let taste: TasteInput = { ...brain.taste };
-  let sources: string[] = brain.sources.map((s) => s.url);
+  // 1. taste は app_state(アプリの設定画面)を正として組み立てる。
+  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes"]);
+  const byKey: Record<string, unknown> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
+  const rawSources = Array.isArray(byKey.sources) ? (byKey.sources as unknown[]) : [];
+  const appFavoriteSources: { url: string; label?: string }[] = rawSources
+    .filter((s): s is { url: string; label?: string } => !!s && typeof s === "object" && typeof (s as { url?: unknown }).url === "string")
+    .map((s) => ({ url: s.url, label: s.label }));
+  const profile = byKey.profile as { interests?: unknown; currentFocus?: string } | undefined;
+  const rawInterests = Array.isArray(profile?.interests) ? (profile!.interests as unknown[]) : [];
+  const interests: InterestSignal[] = rawInterests
+    .filter((i): i is { label: string; weight?: number } => !!i && typeof i === "object" && typeof (i as { label?: unknown }).label === "string")
+    .map((i) => ({ label: i.label, weight: i.weight ?? 0 }));
+  const rawWishes = Array.isArray(byKey.wishes) ? (byKey.wishes as unknown[]) : [];
+  const wishes: string[] = rawWishes
+    .filter((w): w is { status?: string; title: string } => !!w && typeof w === "object" && (w as { status?: unknown }).status === "stock")
+    .map((w) => w.title);
+  const focus: string | undefined = profile?.currentFocus || undefined;
 
-  if (!sources.length || !(taste.interests && taste.interests.length)) {
-    const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes"]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const byKey: Record<string, any> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
-    if (!sources.length && Array.isArray(byKey.sources)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      sources = byKey.sources.map((s: any) => s?.url).filter((u: unknown): u is string => typeof u === "string");
-    }
-    if (!(taste.interests && taste.interests.length) && byKey.profile) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const interests: InterestSignal[] = (byKey.profile.interests ?? []).map((i: any) => ({ label: i.label, weight: i.weight ?? 0 }));
-      taste = { ...taste, focus: taste.focus ?? byKey.profile.currentFocus, interests };
-    }
-    if (!(taste.wishes && taste.wishes.length) && Array.isArray(byKey.wishes)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      taste = { ...taste, wishes: byKey.wishes.filter((w: any) => w.status === "stock").map((w: any) => w.title) };
-    }
-  }
+  // 情報源はお気に入り(app_state)とmy-brainのその他の欄(将来Coworkが発掘した
+  // URLを書き足す場所)を対等に合わせて使う。生活圏はmy-brain側にしか
+  // 入力欄が無いのでそちらから読む。
+  const brain = await loadMyBrain();
+  const sources = Array.from(new Set([...appFavoriteSources.map((s) => s.url), ...brain.sources.map((s) => s.url)]));
+  const taste: TasteInput = { focus, interests, wishes, livingArea: brain.taste.livingArea };
 
   if (!sources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
 
-  // 2. 生成
+  // 2. 生成。countは「全体で最大何枚まで」という安全弁で、埋めにいく目標では
+  // ない。実際の枚数は1情報源あたり最大3枚(buildDeckのSITE_CARD_LIMIT)で
+  // 決まるので、情報源が少ない今は自然に数枚程度になる。
   const result = await buildDeck({ taste, sources, count: 20 });
   if (!result.ok) {
     const status = result.reason.startsWith("gemini_") || result.reason === "fetch_failed" ? 502 : 200;
@@ -137,6 +148,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, reason: "deck_write_failed", detail: writeErr.message }, { status: 502 });
   }
 
+  // 5. my-brainへ書き戻す(鏡を最新化)。興味は自動検出で頻繁に変わるため
+  // 設定画面の編集時には都度同期していない。夜間にここで一度だけ追いつかせる。
+  // 失敗しても(未設定・権限不足等)デッキ生成自体は成功として扱う。
+  const mybrainSync = await syncMyBrain({ focus, livingArea: brain.taste.livingArea, interests, wishes, sources: appFavoriteSources });
+
   return NextResponse.json({
     ok: true, editionKey, cardCount: cards.length, pooled,
     // 診断用: 実際に採番したカードidを出す。デプロイが最新なら100000番台に
@@ -145,5 +161,6 @@ export async function GET(req: Request) {
     cardIds: cards.map((c) => c.id),
     brainFiles: brain.filesRead, sourceCount: sources.length,
     sites: result.sites, dropped: result.dropped, tokens: result.tokens,
+    mybrainSync,
   });
 }

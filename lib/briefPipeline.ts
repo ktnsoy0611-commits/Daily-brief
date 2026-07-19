@@ -19,10 +19,11 @@ const JINA_BASE = "https://r.jina.ai/";
 const DEFAULT_LIVING_AREA = "東京23区(および電車で日常的に行ける範囲)";
 const DERIVED_TRIGGER = "興味の広がり";
 
-const EXTRACT_LIMIT_PER_LISTING = 15; // 層Bが1つの一覧から作る候補レコードの最大数
+const EXTRACT_LIMIT_PER_LISTING = 10; // 層Bが1つの一覧から作る候補レコードの最大数
 const LISTING_TEXT_LIMIT = 10000;     // 層Bに渡す1つの一覧Markdownの上限(文字数)
-const TOTAL_TEXT_LIMIT = 30000;       // 層Bに渡す本文合計の上限(文字数)
+const TOTAL_TEXT_LIMIT = 30000;       // 層Bに渡す本文合計の上限(文字数、SOURCE_LIMIT分の一覧を賄う)
 const SOURCE_LIMIT = 6;               // 1回の生成で読みに行く情報源(一覧)の最大数
+const SITE_CARD_LIMIT = 3;            // 層Dで1つの情報源から採用するカードの最大数
 const ENRICH_PAGE_TEXT_LIMIT = 4000;  // 層E(本文詳細化)で1個別ページに使う本文の上限(文字数)
 const ENRICH_CONCURRENCY = 6;         // 層Eで個別ページを同時取得する数
 
@@ -46,6 +47,7 @@ export type GeneratedCard = {
 export type CandidateRecord = {
   name: string; summary?: string; venue?: string; area?: string;
   start?: string; end?: string; price?: string; sourceUrl?: string;
+  site?: string; // 由来する情報源(入力sources[]の1つ)。層Dのサイト別上限に使う
 };
 export type BuildResult =
   | {
@@ -399,6 +401,17 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
       validUrlSet.add(normUrl(s.url));
       for (const k of s.allow.keys()) validUrlSet.add(k);
     }
+    // 候補のURLがどの情報源(サイト)に由来するかを調べる(層Dのサイト別上限用)。
+    // 入力sources[]の順にsiteFetchesと対応しているのでインデックスで引ける。
+    function originSiteFor(url: string): string | undefined {
+      const k = normUrl(url);
+      for (let i = 0; i < siteFetches.length; i++) {
+        const s = siteFetches[i];
+        if (!s.fetched) continue;
+        if (normUrl(s.url) === k || s.allow.has(k)) return sources[i];
+      }
+      return undefined;
+    }
 
     // 層B: 一覧Markdownから直接、候補レコードをまとめて1回で抽出(単ホップ)。
     let budget = TOTAL_TEXT_LIMIT;
@@ -431,7 +444,7 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
       const k = `${normUrl(su)}|${(c.name ?? "").trim().toLowerCase()}`;
       if (seenCandidate.has(k)) { dropDup++; continue; }
       seenCandidate.add(k);
-      candidates.push(c);
+      candidates.push({ ...c, site: originSiteFor(su) });
     }
     if (candidates.length === 0) {
       return {
@@ -449,9 +462,10 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
     const rawClassified = extractJsonArray<ClassifiedCandidate>(rC.text) ?? [];
 
     // 層D: コードが「載せる/何件か」を決める。出典URLはidで候補から引く。
+    type PoolItem = { card: GeneratedCard; site?: string };
     let dropExpired2 = 0, dropOutOfArea = 0, irrelevant = 0;
-    const strongPool: GeneratedCard[] = [];
-    const moderatePool: GeneratedCard[] = [];
+    const strongPool: PoolItem[] = [];
+    const moderatePool: PoolItem[] = [];
     for (const r of rawClassified) {
       const src = typeof r.id === "number" ? candidates[r.id] : undefined;
       if (!src) continue;
@@ -464,35 +478,54 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
       }
       if (!r.title || !r.body || !r.kind) continue;
       const isDerived = r.matchStrength === "moderate";
-      (isDerived ? moderatePool : strongPool).push({
+      const card: GeneratedCard = {
         title: r.title, body: r.body, kind: r.kind,
         trigger: r.trigger ?? (isDerived ? DERIVED_TRIGGER : "興味との一致"),
         area: r.area, sourceUrl: src.sourceUrl, sourceLabel: r.sourceLabel,
         meta: r.meta, expiresAt: r.expiresAt, isDerived, sourceWishTitle: r.sourceWishTitle,
-      });
+      };
+      (isDerived ? moderatePool : strongPool).push({ card, site: src.site });
     }
 
     // サイト横断の重複統合(名称の緩い一致のみ。strong優先)。
     let dropDupClassified = 0;
-    const acceptedStrong: GeneratedCard[] = [];
-    const acceptedModerate: GeneratedCard[] = [];
+    const acceptedStrong: PoolItem[] = [];
+    const acceptedModerate: PoolItem[] = [];
     for (const pool of [{ list: strongPool, bucket: acceptedStrong }, { list: moderatePool, bucket: acceptedModerate }]) {
-      for (const c of pool.list) {
+      for (const item of pool.list) {
         const dup =
-          acceptedStrong.some((a) => namesLikelyMatch(a.title, c.title)) ||
-          acceptedModerate.some((a) => namesLikelyMatch(a.title, c.title));
+          acceptedStrong.some((a) => namesLikelyMatch(a.card.title, item.card.title)) ||
+          acceptedModerate.some((a) => namesLikelyMatch(a.card.title, item.card.title));
         if (dup) { dropDupClassified++; continue; }
-        pool.bucket.push(c);
+        pool.bucket.push(item);
       }
     }
 
-    // 枚数配分(コードが決める)。派生枠は count>=3 の日だけ1枚。
-    const derivedQuota = count >= 3 ? Math.min(1, acceptedModerate.length) : 0;
-    const straightQuota = count - derivedQuota;
-    const pickedStrong = acceptedStrong.slice(0, straightQuota);
-    const pickedModerate = acceptedModerate.slice(0, derivedQuota);
-    const dropOverQuota = Math.max(0, acceptedStrong.length - pickedStrong.length) + Math.max(0, acceptedModerate.length - pickedModerate.length);
-    const cards: GeneratedCard[] = [...pickedStrong, ...pickedModerate];
+    // 枚数配分(コードが決める)。1つの情報源(サイト)から採用するのは最大
+    // SITE_CARD_LIMIT件まで(1サイトが一覧を丸ごと占有しないための上限。
+    // gotokyoのような巨大ポータル1つに偏るのを防いだ経緯そのもの)。
+    // 派生(興味の広がり)は全体で最大1枚のみ、サイトを問わない。
+    // count は全体の安全弁(上限)であって、埋めにいく目標ではない。
+    const bySite = new Map<string, PoolItem[]>();
+    for (const item of acceptedStrong) {
+      const key = item.site ?? "__unknown__";
+      if (!bySite.has(key)) bySite.set(key, []);
+      bySite.get(key)!.push(item);
+    }
+    let dropOverQuota = 0;
+    const straightCards: GeneratedCard[] = [];
+    for (const items of bySite.values()) {
+      const take = items.slice(0, SITE_CARD_LIMIT);
+      dropOverQuota += items.length - take.length;
+      straightCards.push(...take.map((x) => x.card));
+    }
+    const derivedTake = acceptedModerate.slice(0, 1);
+    dropOverQuota += Math.max(0, acceptedModerate.length - derivedTake.length);
+    let cards: GeneratedCard[] = [...straightCards, ...derivedTake.map((x) => x.card)];
+    if (cards.length > count) {
+      dropOverQuota += cards.length - count;
+      cards = cards.slice(0, count);
+    }
 
     // 層E: 採用が確定したカードだけ、個別ページを追加取得して本文を詳細化する
     // (全候補ではなく最終的にデッキへ入る分だけなのでコストを抑えられる)。

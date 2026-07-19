@@ -7,6 +7,7 @@ import { rowBtn } from "@/components/common";
 import { BLUE, HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
+import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import type { AppState } from "@/lib/types";
 
 // フェーズC-0「プロンプト実験場」で生成されるカードの形(BriefCard相当の
@@ -125,6 +126,7 @@ export function ProfileTab({ appState, persist, onClose }: {
     next.profile = next.profile ?? { interests: [], currentFocus: "" };
     next.profile.currentFocus = focusDraft.trim();
     persist(next);
+    syncTasteToMyBrain(next);
   };
   const addSource = () => {
     const url = srcInput.trim();
@@ -140,12 +142,14 @@ export function ProfileTab({ appState, persist, onClose }: {
     next.sources = next.sources ?? [];
     next.sources.unshift({ id: `src-${Date.now()}`, url, label, addedAt: new Date().toISOString() });
     persist(next);
+    syncTasteToMyBrain(next);
     setSrcInput("");
   };
   const removeSource = (id: string) => {
     const next = structuredClone(appState);
     next.sources = next.sources.filter((s) => s.id !== id);
     persist(next);
+    syncTasteToMyBrain(next);
   };
   // バインド！(確定ビューでの綴じ操作)を元に戻す。ログの対象Itemを
   // done→candidateへ戻すだけの単純な取り消しで、マガジンの再構築は

@@ -14,6 +14,7 @@ import { StockTab } from "@/components/tabs/StockTab";
 import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { buildMagazine, detectInterests, haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
 import type { AppState, ItemDomain, PlanSelection, TabId, TabProps } from "@/lib/types";
 
@@ -161,6 +162,7 @@ export function AppShell() {
     const next = structuredClone(appState);
     next.wishes.unshift({ id: `wish-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title, category, status: "stock", addedAt: new Date().toISOString() });
     persist(next);
+    syncTasteToMyBrain(next);
     showToast("ウィッシュを書きました");
   };
 

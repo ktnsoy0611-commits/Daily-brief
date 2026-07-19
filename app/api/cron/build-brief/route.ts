@@ -115,7 +115,13 @@ export async function GET(req: Request) {
 
   // 4. デッキを generatedDecks[editionKey] へ(既存を読み、当該号を更新、古い号を掃除)
   const editionKey = jstEditionKey();
-  const cards: BriefCard[] = result.cards.map((c, i) => generatedToBriefCard(c, i + 1));
+  // idはダミーデータ(lib/constants.ts CARDS、id:1〜14)と衝突しない範囲から採番する。
+  // 同じeditionKeyで先にダミーデッキを表示・スワイプ済みだった場合、briefs
+  // [editionKey].decisions は小さい数値idで記録されている。生成カードのidが
+  // それと重なると「もう決定済み」と誤判定され、実際には見せていないのに
+  // カードが飛ばされてしまう(実機で発見)。
+  const GENERATED_ID_BASE = 100000;
+  const cards: BriefCard[] = result.cards.map((c, i) => generatedToBriefCard(c, GENERATED_ID_BASE + i));
 
   const { data: existingDeck } = await supa.from("app_state").select("value").eq("user_id", ownerId).eq("key", "generatedDecks").maybeSingle();
   const decks: Record<string, BriefCard[]> = (existingDeck?.value as Record<string, BriefCard[]>) ?? {};

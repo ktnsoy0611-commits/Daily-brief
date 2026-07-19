@@ -377,6 +377,7 @@ export interface BinderItem {
   title: string;
   category?: string;
   categoryJp?: string;
+  body?: string;
   images?: string[];
   meta?: string[];
   sourceUrl?: string;
@@ -404,7 +405,10 @@ export function BinderModal({ item, onClose, actionSlot }: {
           )}
           <OverlayCard>
             <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
-            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: actionSlot ? 12 : 16 }}>{item.title}</div>
+            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: item.body ? 10 : actionSlot ? 12 : 16 }}>{item.title}</div>
+            {item.body && (
+              <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.75, color: "#4A4A44", margin: `0 0 ${actionSlot ? 12 : 16}px` }}>{item.body}</p>
+            )}
             {actionSlot && <div style={{ marginBottom: 16 }}>{actionSlot(requestClose)}</div>}
             {item.meta && item.meta.length > 0 && (
               <div style={{ borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`, padding: "12px 2px", margin: "0 0 18px", display: "flex", flexDirection: "column", gap: 7 }}>

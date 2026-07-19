@@ -245,17 +245,27 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   // いたが、ダミーのカードid(1〜14)をスワイプするとその決定が残り、生成カードの
   // idと衝突して「もう見た」と誤判定される不具合の原因になっていたため撤去した
   // (SYSTEM-DESIGN §8 のサンプルデータ撤去にも沿う)。
+  // この号で既に育成カード(checkin/milestone)を1枚さばいたか。育成カードの
+  // 決定キーは "checkin-..."/"milestone-..." で始まる。
+  const growthDecidedThisEdition = Object.keys(decisions).some(
+    (k) => k.startsWith("checkin-") || k.startsWith("milestone-"),
+  );
   const generated = appState.generatedDecks?.[editionKey];
   const deck: DeckCard[] = useMemo(() => {
     const source: BriefCard[] = generated && generated.length > 0 ? generated : [];
     const base: DeckCard[] = [...source];
-    if (dueCandidate) {
+    // 育成カードは1号につき最大1枚だけ差し込む。**既にこの号で育成カードを
+    // 決定済み(記録 or あとで)なら差し込まない**。これが無いと、育成カードを
+    // 「あとで」でスキップしても、そのゴールは依然「期限到来中」のままなので
+    // dueCandidate が同じ育成カードを再計算で差し込み直し、同じチェックイン
+    // カードが延々とループして先へ進めなくなっていた(実機で発見)。
+    if (dueCandidate && !growthDecidedThisEdition) {
       const { g, kind } = dueCandidate;
       const growthCard: GrowthCard = { id: `${kind}-${g.id}`, type: kind, goalId: g.id, goalTitle: g.title };
       base.splice(3, 0, growthCard);
     }
     return base;
-  }, [dueCandidate, generated]);
+  }, [dueCandidate, generated, growthDecidedThisEdition]);
 
   const index = deck.filter((c) => decisions[c.id]).length;
   const done = index >= deck.length;

@@ -50,6 +50,8 @@ export function searchUrl(query: string) {
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 export function img(seed: string, w = 400, h = 300) {
+  // 実URL(OGP画像など)はそのまま使う。それ以外(旧来のシード)はプレースホルダへ。
+  if (/^https?:\/\//i.test(seed)) return seed;
   return `https://picsum.photos/seed/${seed}/${w}/${h}`;
 }
 

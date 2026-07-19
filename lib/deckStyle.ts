@@ -1,7 +1,8 @@
 // 生成カード(buildDeck の GeneratedCard)を、ブリーフタブが表示できる BriefCard へ
 // マップする。BriefCard は見た目のフィールド(bg/fg/color/glyph/category/categoryJp)を
 // 持つが、生成カードは kind と内容しか持たないため、kind ごとの意匠テーブルで補う。
-// 写真は持たせない(images:[])= 現行の「写真が無いカードは色ベタ+字面」表示になる。
+// 写真は生成カードが持つOGP画像(og:image)をそのまま引き継ぐ。無ければ images:[] で
+// 現行の「写真が無いカードは色ベタ+字面」表示になる。
 
 import { shade } from "@/lib/helpers";
 import type { BriefCard, ItemKind } from "@/lib/types";
@@ -42,7 +43,7 @@ export function generatedToBriefCard(gc: GeneratedCard, id: number): BriefCard {
     bg: s.color,
     fg: PAPER_FG,
     accent: shade(s.color, 45),
-    images: [],
+    images: gc.images ?? [],
     sourceUrl: gc.sourceUrl,
     sourceLabel: gc.sourceLabel ?? (gc.sourceUrl ? "出典を見る" : undefined),
     sourceWishTitle: gc.sourceWishTitle,

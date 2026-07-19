@@ -127,7 +127,7 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
     }}>
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={img(image, 340, 450)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <img src={img(image, 340, 450)} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : (
         <div style={{ position: "absolute", bottom: "-16%", right: "-14%", width: "64%", aspectRatio: "1 / 1", transform: "rotate(-16deg)", opacity: 0.15 }}>
           {Icon ? <Icon size="100%" strokeWidth={1} color="#fff" /> : glyph ? <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: "220%", color: "#fff" }}>{glyph}</span> : null}

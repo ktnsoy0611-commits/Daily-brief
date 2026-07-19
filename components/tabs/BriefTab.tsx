@@ -105,7 +105,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
       >
         {hasPhotos ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={img(card.images![0], 500, 400)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          <img src={img(card.images![0], 500, 400)} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         ) : (
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <span aria-hidden style={{ fontFamily: SERIF, fontWeight: 700, fontSize: "min(42vw, 170px)", lineHeight: 1, color: card.fg, opacity: 0.92 }}>{card.glyph}</span>

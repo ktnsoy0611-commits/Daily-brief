@@ -43,6 +43,7 @@ export type GeneratedCard = {
   title: string; body: string; kind: string; trigger: string;
   area?: string; sourceUrl?: string; sourceLabel?: string; meta?: string[];
   expiresAt?: string; isDerived?: boolean; sourceWishTitle?: string;
+  images?: string[]; // OGP画像(og:image)。無ければ未設定=色ベタ表示
 };
 export type CandidateRecord = {
   name: string; summary?: string; venue?: string; area?: string;
@@ -150,6 +151,54 @@ async function fetchViaJina(url: string): Promise<FetchedPage> {
     return { url, ok: true, md };
   } catch {
     return { url, ok: false, md: "" };
+  }
+}
+
+// ---- OGP画像(og:image)の取得 ---------------------------------------------
+// 個別ページの生HTMLのheadから og:image / twitter:image を1枚だけ取り出す。
+// https画面でhttp画像を出すとmixed-contentで弾かれるため https のみ採用する。
+// 取得はベストエフォート: ブロック・不在・http のときは null(=写真なし=色ベタ)。
+const OG_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+export function extractOgImage(html: string, baseUrl: string): string | null {
+  const head = html.slice(0, 200000); // メタタグはhead(先頭)にあるので前方だけ見る
+  const patterns: RegExp[] = [
+    /<meta[^>]+property=["']og:image(?::secure_url|:url)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::secure_url|:url)?["']/i,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["']/i,
+  ];
+  for (const re of patterns) {
+    const m = head.match(re);
+    if (!m || !m[1]) continue;
+    let raw = m[1].trim();
+    if (raw.startsWith("//")) raw = "https:" + raw; // プロトコル相対はhttpsへ
+    let abs: string;
+    try {
+      abs = new URL(raw, baseUrl).href;
+    } catch {
+      continue;
+    }
+    if (!/^https:\/\//i.test(abs)) continue; // httpはmixed-contentになるので不採用
+    return abs;
+  }
+  return null;
+}
+
+async function fetchOgImage(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": OG_UA, Accept: "text/html,application/xhtml+xml" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const ct = res.headers.get("content-type") || "";
+    if (!/html/i.test(ct)) return null;
+    const html = await res.text();
+    return extractOgImage(html, url);
+  } catch {
+    return null;
   }
 }
 
@@ -337,10 +386,23 @@ async function enrichCardBodies(
   if (withUrl.length === 0) return { cards, usage: ZERO_USAGE, pagesRead: [] };
 
   const uniqueUrls = Array.from(new Set(withUrl.map((x) => x.c.sourceUrl!)));
-  const fetched = await mapWithConcurrency(uniqueUrls, ENRICH_CONCURRENCY, (u) => fetchViaJina(u));
+  // 個別ページの本文(Jina)とOGP画像(生HTMLのog:image)を並行して取得する。
+  const [fetched, ogImages] = await Promise.all([
+    mapWithConcurrency(uniqueUrls, ENRICH_CONCURRENCY, (u) => fetchViaJina(u)),
+    mapWithConcurrency(uniqueUrls, ENRICH_CONCURRENCY, (u) => fetchOgImage(u)),
+  ]);
   const pageByUrl = new Map<string, FetchedPage>();
   fetched.forEach((p, i) => pageByUrl.set(uniqueUrls[i], p));
+  const ogByUrl = new Map<string, string | null>();
+  ogImages.forEach((im, i) => ogByUrl.set(uniqueUrls[i], im));
   const pagesRead: PageReadTrace[] = fetched.map((p) => ({ url: p.url, ok: p.ok }));
+
+  // OGP画像を先に付与しておく(本文詳細化の成否に関わらず写真は載せる)。
+  const out = cards.slice();
+  for (const { c, i } of withUrl) {
+    const og = ogByUrl.get(c.sourceUrl!);
+    if (og) out[i] = { ...out[i], images: [og] };
+  }
 
   const blocks = withUrl
     .map(({ c, i }) => {
@@ -351,13 +413,12 @@ async function enrichCardBodies(
     })
     .filter(Boolean)
     .join("\n");
-  if (!blocks) return { cards, usage: ZERO_USAGE, pagesRead };
+  if (!blocks) return { cards: out, usage: ZERO_USAGE, pagesRead };
 
   const r = await callGemini(key, SYSTEM_ENRICH_BODY, userEnrich(todayJp, blocks), true, 8192);
-  if (!r.ok) return { cards, usage: ZERO_USAGE, pagesRead };
+  if (!r.ok) return { cards: out, usage: ZERO_USAGE, pagesRead };
 
   const rewritten = extractJsonArray<{ id?: number; body?: string }>(r.text) ?? [];
-  const out = cards.slice();
   for (const item of rewritten) {
     if (typeof item.id !== "number" || !out[item.id]) continue;
     if (typeof item.body === "string" && item.body.trim()) out[item.id] = { ...out[item.id], body: item.body.trim() };

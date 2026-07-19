@@ -176,6 +176,15 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const [milestoneText, setMilestoneText] = useState("");
   const [milestoneRating, setMilestoneRating] = useState<1 | 2 | 3 | null>(null);
   const startRef = useRef({ x: 0, y: 0 });
+  // commit()の二重発火を防ぐ同期ロックと、その保留中setTimeoutの参照。
+  // タブを離れる等でこのコンポーネントがアンマウントされた場合、生の
+  // setTimeoutはコンポーネントのライフサイクルと無関係に動き続けてしまう
+  // (Reactは自動でクリアしない)ため、アンマウント時に明示的に破棄する。
+  const committingRef = useRef(false);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (commitTimerRef.current != null) clearTimeout(commitTimerRef.current);
+  }, []);
   // カードの実寸は、dvhベースの割合による推測ではなく、実際にレイアウト
   // された「カードを中央寄せする枠」のサイズを直接測って決める。以前は
   // `calc(Xdvh * 0.75)`という推測値を使っていたが、実機(特にSafari)では
@@ -269,6 +278,16 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
   const index = deck.filter((c) => decisions[c.id]).length;
   const done = index >= deck.length;
+  // 安全網: 表示すべきカードが進んだ(=決定が保存された)のに、何らかの
+  // 理由でexit/dragが定位置に戻っていなければ、ここで強制的にリセットする。
+  // 通常のフローではcommit()のsetTimeout内で既に行っているため実質的には
+  // 二重の保険だが、万一そこが正しく完了しなかった場合に「カードが画面上
+  // 動かせない/めくれない」状態のまま固まるのを防ぐ。
+  useEffect(() => {
+    setExit(null);
+    setDrag({ dx: 0, dy: 0, active: false });
+    committingRef.current = false;
+  }, [index]);
   // 育成カード(checkin/milestone)は「keep」判定にはならない(answered/skippedのみ)ため、
   // ここでBriefCardであることをTSにも保証する。
   const keptCards = deck.filter((c): c is BriefCard => !isGrowthCard(c) && decisions[c.id] === "keep");
@@ -279,11 +298,21 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const canRecord = isCheckin ? !!checkinAnswer.trim() : isMilestone ? !!(milestoneText.trim() && milestoneRating) : true;
 
   const commit = (dir: "keep" | "skip") => {
-    if (done || exit) return;
+    // exit(state)だけでの再入防止は、Reactの再レンダーが挟まるまでの間
+    // (同じイベントtick内で複数回pointerupが発火した場合など)は効かない
+    // ことがある。committingRefは即座に反映される同期フラグなので、その
+    // 抜け道を塞ぐ。iOSで合成のpointerup/pointercancelが連続して届くと、
+    // stateの反映が間に合わず同じカードへcommitが二重に走り、「keepの
+    // 判定はストックされるのに画面のカードが進まない」ように見える不具合の
+    // 芽になりうるため、二重の入り口(state+ref)で確実に1回だけに絞る。
+    if (done || exit || committingRef.current) return;
+    committingRef.current = true;
     const card = deck[index];
     haptic(dir === "keep" ? 18 : 8);
     setExit(dir);
-    setTimeout(() => {
+    if (commitTimerRef.current != null) clearTimeout(commitTimerRef.current);
+    commitTimerRef.current = setTimeout(() => {
+      commitTimerRef.current = null;
       const next = structuredClone(appState);
       const brief = next.briefs[editionKey] ?? { decisions: {} };
 
@@ -329,6 +358,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
       setCheckinAnswer("");
       setMilestoneText("");
       setMilestoneRating(null);
+      committingRef.current = false;
       persist(next);
     }, 320);
   };
@@ -337,7 +367,15 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
     if (exit || done || isGrowth) return; // 育成カードはテキスト入力と衝突するためドラッグ無効
     startRef.current = { x: e.clientX, y: e.clientY };
     setDrag({ dx: 0, dy: 0, active: true });
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    // 合成イベント(自動テスト)やごく稀なブラウザの状態では、有効な
+    // ポインタが存在しないとして例外を投げることがある(Binder.tsxの
+    // ドラッグ実装と同じ既知の事象)。ここで握りつぶしても、キャプチャに
+    // 失敗するだけでドラッグ自体(pointermove/pointerupの追跡)は続行できる。
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* noop */
+    }
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!drag.active || exit) return;

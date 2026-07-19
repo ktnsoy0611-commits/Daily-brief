@@ -3,7 +3,7 @@
 import { ArrowLeft, Bookmark, Check, Maximize2, Minimize2, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { COVER_RADIUS, KIND_ACCENT, placeAccent } from "@/components/Binder";
+import { COVER_RADIUS, placeAccent } from "@/components/Binder";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
 import { LeafletMap } from "@/components/LeafletMap";
@@ -326,13 +326,12 @@ function PlanDetailSheet({ plan, selected, onToggle, onClose }: {
 // プランタブの選択画面。地図(場所が絡むItemのピン。ドメインを問わない)+
 // 「今週のおすすめ・モノ・バショ・タイケン・ジョウホウ」の棚。棚の区分と
 // 名称はストックタブ・アーカイブと共通の語彙(domainOf)にしている。
-function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onTogglePlan, onInjectDemo, bundlesAreNew }: {
+function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onTogglePlan, bundlesAreNew }: {
   stocked: Item[];
   draftSelection: string[];
   onOpenPin: (item: Item) => void;
   onToggleItem: (item: Item) => void;
   onTogglePlan: (itemIds: string[]) => void;
-  onInjectDemo: () => void;
   bundlesAreNew: boolean;
 }) {
   const byNewest = (a: Item, b: Item) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
@@ -423,7 +422,6 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
       <main style={{ padding: "48px 4px", textAlign: "center" }}>
         <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 19, marginBottom: 10 }}>Keepが、まだありません。</div>
         <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepするか、ストックタブの「モノ」「バショ」「タイケン」「ジョウホウ」から追加すると、ここに集まります。</p>
-        <button onClick={onInjectDemo} style={{ padding: "13px 26px", background: INK, color: PAPER, border: "none", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.12em" }}>デモ用データを投入</button>
       </main>
     );
   }
@@ -1167,138 +1165,6 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
     setMapMode(false);
     goTab("records");
   };
-  // 場所のKeepだけでなく、作品(メディア)・ウィッシュリスト・目標も
-  // まとめて投入する。地図(場所)だけ投入してもストック/ゴールタブは
-  // 空のままでテストしづらいため、アプリ全体を一度に試せる分量にしている。
-  // アーカイブタブの棚は「実行済み(done)」しか並ばないため、バインダーが
-  // 何冊も、しかも厚みの違いも含めて並んだ様子を最初から見られるよう、
-  // ほとんどの場所・メディアをdone状態(日付をずらして)で投入し、
-  // 地図での選び直しを試せる分だけ候補(candidate/keep)を残す。
-  const injectDemo = () => {
-    const next = structuredClone(appState);
-    const now = Date.now();
-    // まずウィッシュ(自由文の願い)を投入する。ブリーフのダミーカードの
-    // sourceWishTitleと同じ文面を含めることで、ブリーフでKEEPした時に
-    // origin:"wish"のItemが実際に生まれる流れを試せる。カテゴリーは
-    // 願いの究極の対象物(モノ/バショ/タイケン/ジョウホウ)で振り分ける。
-    const demoWishes = ([
-      ["安藤忠雄の建築を観る", "experience"], ["浅煎りの豆を買う", "thing"], ["古着でジャケットを探す", "thing"],
-      ["サウナを開拓する", "experience"], ["もっと歩く", "place"], ["フィルムカメラを買う", "thing"],
-      ["陶芸をはじめる", "experience"], ["秋に一人旅へ行く", "place"],
-    ] as [string, ItemDomain][]).map(([title, category], i) => ({
-      id: `demo-wish-${now}-${i}`, title, category, status: "stock" as const, addedAt: new Date(now - i * 86400000).toISOString(),
-    }));
-    next.wishes.push(...demoWishes);
-
-    // Itemは1つの配列に統一。kindで種類(place/作品系/thing)、areaの有無で
-    // 「行くが絡むか」を表す(新作映画=movie+area、旧作映画=movieのみ、
-    // そこでしか買えないモノ=thing+area、など)。
-    const demo: { kind: ItemKind; title: string; category?: string; area?: string; creator?: string; price?: string; images?: string[]; sourceUrl?: string; sourceLabel?: string; meta?: string[]; done: boolean }[] = [
-      { kind: "exhibition", title: "「建築と自然」展を観る", category: "展覧会", area: "竹橋", images: ["momat-a", "momat-b"], sourceUrl: "https://www.momat.go.jp/", sourceLabel: "公式サイトを見る", meta: ["国立近代美術館", "10:00–17:00", "¥1,800"], done: true },
-      { kind: "exhibition", title: "竹橋のギャラリーで版画展を観る", category: "展覧会", area: "竹橋", images: ["print-a", "print-b"], sourceUrl: mapsUrl("竹橋 ギャラリー"), sourceLabel: "地図で見る", meta: ["竹橋"], done: true },
-      { kind: "place", title: "神保町の古書店街を歩く", category: "近所の発見", area: "神保町", images: ["books-a", "books-b"], sourceUrl: mapsUrl("神保町 古書店街"), sourceLabel: "地図で見る", meta: ["神保町"], done: true },
-      { kind: "exhibition", title: "神保町の器店、作家の個展", category: "雑貨", area: "神保町", images: ["books-c"], sourceUrl: mapsUrl("神保町 器 個展"), sourceLabel: "地図で見る", meta: ["神保町", "会期は今月いっぱい"], done: true },
-      { kind: "place", title: "喫茶店でゆっくり読書する", category: "近所の発見", area: "神保町", images: ["kissa-a"], sourceUrl: mapsUrl("神保町 純喫茶"), sourceLabel: "地図で見る", meta: ["神保町"], done: false },
-      { kind: "place", title: "日比谷公園を散歩する", category: "身体", area: "日比谷", images: ["hibiya-park-a"], sourceUrl: mapsUrl("日比谷公園"), sourceLabel: "地図で見る", meta: ["日比谷公園"], done: true },
-      { kind: "place", title: "日比谷のミッドセンチュリー家具店", category: "雑貨", area: "日比谷", images: ["furniture-a"], sourceUrl: mapsUrl("日比谷 家具店"), sourceLabel: "地図で見る", meta: ["日比谷"], done: false },
-      { kind: "place", title: "谷根千の坂道を散歩する", category: "身体", area: "谷根千", images: ["zakka-a", "zakka-b"], sourceUrl: mapsUrl("谷根千 散歩コース"), sourceLabel: "地図で見る", meta: ["谷根千エリア"], done: true },
-      { kind: "place", title: "谷中の陶器市を覗く", category: "雑貨", area: "谷根千", images: ["zakka-c"], sourceUrl: mapsUrl("谷中 陶器市"), sourceLabel: "地図で見る", meta: ["谷中エリア", "会期は今週末まで"], done: true },
-      { kind: "place", title: "谷根千の純喫茶でひと休み", category: "近所の発見", area: "谷根千", images: ["kissa-b"], sourceUrl: mapsUrl("谷根千 純喫茶"), sourceLabel: "地図で見る", meta: ["谷根千エリア"], done: true },
-      { kind: "place", title: "浅草橋のボルダリングジムへ", category: "身体", area: "浅草橋", images: ["climb-a", "climb-b"], sourceUrl: mapsUrl("浅草橋 ボルダリングジム"), sourceLabel: "地図で見る", meta: ["浅草橋駅から徒歩6分"], done: true },
-      { kind: "place", title: "浅草橋の手芸問屋街を歩く", category: "雑貨", area: "浅草橋", images: ["zakka-d"], sourceUrl: mapsUrl("浅草橋 問屋街"), sourceLabel: "地図で見る", meta: ["浅草橋"], done: false },
-      { kind: "place", title: "蔵前の焙煎所で豆を買う", category: "近所の発見", area: "蔵前", images: ["kuramae-a", "kuramae-b"], sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", meta: ["COFFEE WRIGHTS", "9:00–18:00"], done: true },
-      { kind: "place", title: "銭湯サウナを開拓する", category: "未知との遭遇", area: "蔵前", images: ["sauna-a", "sauna-b"], sourceUrl: mapsUrl("蔵前 銭湯"), sourceLabel: "地図で見る", meta: ["蔵前"], done: true },
-      { kind: "place", title: "蔵前のレザー工房を覗く", category: "雑貨", area: "蔵前", images: ["leather-a"], sourceUrl: mapsUrl("蔵前 レザー工房"), sourceLabel: "地図で見る", meta: ["蔵前"], done: true },
-      { kind: "exhibition", title: "『大工の技術史』展を観る", category: "展覧会", area: "両国", images: ["carpentry-a", "carpentry-b"], sourceUrl: mapsUrl("江戸東京博物館"), sourceLabel: "公式サイトを見る", meta: ["江戸東京博物館"], done: true },
-      { kind: "place", title: "両国国技館のまわりを歩く", category: "身体", area: "両国", images: ["ryogoku-a"], sourceUrl: mapsUrl("両国国技館"), sourceLabel: "地図で見る", meta: ["両国"], done: false },
-      { kind: "place", title: "清澄白河で陶芸体験をする", category: "未知との遭遇", area: "清澄白河", images: ["pottery-a", "pottery-b"], sourceUrl: mapsUrl("清澄白河 陶芸体験"), sourceLabel: "地図で見る", meta: ["清澄白河・陶房"], done: true },
-      { kind: "place", title: "清澄白河のロースタリー巡り", category: "近所の発見", area: "清澄白河", images: ["kiyosumi-a"], sourceUrl: mapsUrl("清澄白河 ロースタリー"), sourceLabel: "地図で見る", meta: ["清澄白河"], done: true },
-      { kind: "place", title: "高円寺の古着屋を覗く", category: "古着", area: "高円寺", images: ["vintage-a", "vintage-b"], sourceUrl: mapsUrl("高円寺 古着屋"), sourceLabel: "地図で見る", meta: ["高円寺北口エリア"], done: true },
-      { kind: "place", title: "高円寺の古着市、大型セール", category: "古着", area: "高円寺", images: ["vintage-c"], sourceUrl: mapsUrl("高円寺 古着 セール"), sourceLabel: "地図で見る", meta: ["高円寺北口一帯", "セールは3日間"], done: true },
-      { kind: "place", title: "高円寺の小さなレコード店", category: "音楽", area: "高円寺", images: ["record-a"], sourceUrl: mapsUrl("高円寺 レコード店"), sourceLabel: "地図で見る", meta: ["高円寺"], done: false },
-      // アーカイブタブのバインダー柄(グリッド構図・色相)のバリエーションを
-      // 一覧で見比べられるよう、行った場所のエリア数を大きく増やしている
-      // (バインダー1冊=エリア1つのため、エリア数=バインダー数になる)。
-      { kind: "place", title: "中目黒の川沿いを散歩する", category: "身体", area: "中目黒", images: ["nakameguro-a"], sourceUrl: mapsUrl("中目黒 目黒川"), sourceLabel: "地図で見る", meta: ["中目黒"], done: true },
-      { kind: "place", title: "代官山の独立系書店を覗く", category: "近所の発見", area: "代官山", images: ["daikanyama-a"], sourceUrl: mapsUrl("代官山 書店"), sourceLabel: "地図で見る", meta: ["代官山"], done: true },
-      { kind: "place", title: "荻窪のラーメン店に並ぶ", category: "近所の発見", area: "荻窪", images: ["ogikubo-a"], sourceUrl: mapsUrl("荻窪 ラーメン"), sourceLabel: "地図で見る", meta: ["荻窪"], done: true },
-      { kind: "place", title: "吉祥寺の雑貨店めぐり", category: "雑貨", area: "吉祥寺", images: ["kichijoji-a"], sourceUrl: mapsUrl("吉祥寺 雑貨店"), sourceLabel: "地図で見る", meta: ["吉祥寺"], done: true },
-      { kind: "live", title: "三軒茶屋の小劇場で芝居を観る", category: "未知との遭遇", area: "三軒茶屋", images: ["sangenjaya-a"], sourceUrl: mapsUrl("三軒茶屋 小劇場"), sourceLabel: "地図で見る", meta: ["三軒茶屋"], done: true },
-      { kind: "place", title: "下北沢の古着屋めぐり", category: "古着", area: "下北沢", images: ["shimokita-a"], sourceUrl: mapsUrl("下北沢 古着屋"), sourceLabel: "地図で見る", meta: ["下北沢"], done: false },
-      { kind: "place", title: "自由が丘のスイーツ店めぐり", category: "近所の発見", area: "自由が丘", images: ["jiyugaoka-a"], sourceUrl: mapsUrl("自由が丘 スイーツ"), sourceLabel: "地図で見る", meta: ["自由が丘"], done: true },
-      { kind: "place", title: "経堂の商店街を歩く", category: "身体", area: "経堂", images: ["kyodo-a"], sourceUrl: mapsUrl("経堂 商店街"), sourceLabel: "地図で見る", meta: ["経堂"], done: true },
-      { kind: "place", title: "東小金井の古本市に寄る", category: "近所の発見", area: "東小金井", images: ["higashikoganei-a"], sourceUrl: mapsUrl("東小金井 古本市"), sourceLabel: "地図で見る", meta: ["東小金井"], done: false },
-      { kind: "place", title: "早稲田のカレー屋を開拓する", category: "近所の発見", area: "早稲田", images: ["waseda-a"], sourceUrl: mapsUrl("早稲田 カレー"), sourceLabel: "地図で見る", meta: ["早稲田"], done: true },
-      { kind: "place", title: "根津神社の参道を歩く", category: "身体", area: "根津", images: ["nezu-a"], sourceUrl: mapsUrl("根津神社"), sourceLabel: "地図で見る", meta: ["根津"], done: true },
-      { kind: "place", title: "千駄木の路地裏カフェへ", category: "近所の発見", area: "千駄木", images: ["sendagi-a"], sourceUrl: mapsUrl("千駄木 カフェ"), sourceLabel: "地図で見る", meta: ["千駄木"], done: true },
-      { kind: "place", title: "巣鴨の商店街で買い物", category: "雑貨", area: "巣鴨", images: ["sugamo-a"], sourceUrl: mapsUrl("巣鴨 商店街"), sourceLabel: "地図で見る", meta: ["巣鴨"], done: false },
-      { kind: "place", title: "十条の立ち飲み屋を覗く", category: "未知との遭遇", area: "十条", images: ["jujo-a"], sourceUrl: mapsUrl("十条 立ち飲み"), sourceLabel: "地図で見る", meta: ["十条"], done: true },
-      // 場所を持つ作品(新作の劇場公開)と、場所を持たない作品(旧作を家で観る・
-      // 本・アルバム)の両方を混ぜ、「作品か場所か」ではなく「種類×場所の有無」
-      // というモデルをデモデータでも示す。
-      { kind: "movie", title: "単館上映のドキュメンタリー", category: "映画", area: "両国", images: ["carpentry-a"], sourceUrl: mapsUrl("両国 ミニシアター"), sourceLabel: "地図で見る", meta: ["両国のミニシアター", "19:40の回"], done: true },
-      { kind: "movie", title: "Perfect Days 2", done: true },
-      { kind: "movie", title: "深夜のホラー特集上映", done: false },
-      { kind: "exhibition", title: "写真家の回顧展", creator: "損保ジャパン美術館", done: false },
-      { kind: "live", title: "下北沢の対バンライブ", done: true },
-      { kind: "live", title: "高円寺の弾き語りナイト", done: true },
-      { kind: "live", title: "野外音楽フェス", done: false },
-      { kind: "book", title: "建築家のエッセイ集", done: true },
-      { kind: "book", title: "書評サイトで話題の短編集", done: true },
-      { kind: "book", title: "積読中の長編小説", done: false },
-      { kind: "album", title: "通勤で聴き切る一枚", done: true },
-      { kind: "album", title: "学生時代によく聴いたアルバム", done: true },
-      { kind: "album", title: "評判の新譜", done: false },
-      // モノ: 場所なし(オンラインで買う)と、場所あり(そこでしか買えない)の両方。
-      { kind: "thing", title: "フィルムカメラ", price: "¥72,000", done: false },
-      { kind: "thing", title: "作家ものの器", area: "谷根千", price: "¥6,000前後", sourceUrl: mapsUrl("谷中 器"), sourceLabel: "地図で見る", done: true },
-      { kind: "thing", title: "浅煎りのコーヒー豆", area: "蔵前", price: "¥1,800", sourceUrl: mapsUrl("COFFEE WRIGHTS 蔵前"), sourceLabel: "地図で見る", done: true },
-    ];
-    demo.forEach((d, i) => {
-      // 2/3のItemをウィッシュ由来(origin:"wish")にする。アーカイブの
-      // ウィッシュバインダーが30枚を超えて2冊目(続き)に割れる様子まで
-      // デモデータだけで確認できる分量になる。
-      const wish = i % 3 !== 0 ? demoWishes[i % demoWishes.length] : undefined;
-      // 場所カードの色は、バインダー側の「行き先」棚が同じエリア名から生成
-      // する色(placeAccent)と揃え、作品はジャンルのバインダー色(KIND_ACCENT、
-      // タイケン/ジョウホウ双方のマップを結合したもの)を基準に明暗を
-      // 振った近似色にする。
-      const color = d.area ? placeAccent(d.area).color
-        : d.kind !== "place" && d.kind !== "thing" ? shade(KIND_ACCENT[d.kind as Exclude<ItemKind, "place" | "thing">].color, ((i % 3) - 1) * 13)
-        : placeAccent(d.title).color;
-      next.items.push({
-        id: `demo-${now}-${i}`, kind: d.kind, title: d.title, category: d.category, area: d.area,
-        creator: d.creator, price: d.price,
-        status: d.done ? "done" : "candidate",
-        addedAt: new Date(now - (i + 3) * 30 * 3600 * 1000).toISOString(),
-        doneAt: d.done ? new Date(now - i * 22 * 3600 * 1000).toISOString() : undefined,
-        images: d.images, meta: d.meta, sourceUrl: d.sourceUrl, sourceLabel: d.sourceLabel, color,
-        origin: wish ? "wish" : "brief", sourceWishId: wish?.id,
-      });
-    });
-    if ((next.goals ?? []).length === 0) {
-      // 目標のバインダーはgoalAccentが名前のハッシュだけで色相を振る単色
-      // べた塗りのため、色のバリエーションを見比べられるよう数を増やしている。
-      next.goals = [
-        { id: `demo-goal-${now}`, title: "毎週どこか知らない街を歩く", addedAt: new Date(now - 20 * 86400000).toISOString(), checkIns: [
-          { id: `demo-ci-${now}-1`, at: new Date(now - 2 * 86400000).toISOString(), text: "神保町の路地を歩いた。古本の匂いが良かった。", source: "manual" },
-          { id: `demo-ci-${now}-2`, at: new Date(now - 9 * 86400000).toISOString(), text: "蔵前をぶらぶら。焙煎所で豆を買った。", source: "manual" },
-        ] },
-        { id: `demo-goal-${now}-2`, title: "月に一度は展覧会へ行く", addedAt: new Date(now - 40 * 86400000).toISOString(), checkIns: [] },
-        { id: `demo-goal-${now}-3`, title: "毎朝10分だけ日記を書く", addedAt: new Date(now - 55 * 86400000).toISOString(), checkIns: [
-          { id: `demo-ci-${now}-3`, at: new Date(now - 1 * 86400000).toISOString(), text: "3行だけ書いて終わり。それでいい。", source: "manual" },
-        ] },
-        { id: `demo-goal-${now}-4`, title: "行ったことのない銭湯を開拓する", addedAt: new Date(now - 30 * 86400000).toISOString(), checkIns: [] },
-        { id: `demo-goal-${now}-5`, title: "月に1冊は積読を崩す", addedAt: new Date(now - 70 * 86400000).toISOString(), checkIns: [
-          { id: `demo-ci-${now}-4`, at: new Date(now - 5 * 86400000).toISOString(), text: "エッセイ集を読み終えた。", source: "manual" },
-        ] },
-        { id: `demo-goal-${now}-6`, title: "自炊の日を週3日にする", addedAt: new Date(now - 12 * 86400000).toISOString(), checkIns: [] },
-        { id: `demo-goal-${now}-7`, title: "季節ごとに一人旅へ行く", addedAt: new Date(now - 90 * 86400000).toISOString(), checkIns: [] },
-        { id: `demo-goal-${now}-8`, title: "近所の商店街の店を1つずつ回る", addedAt: new Date(now - 8 * 86400000).toISOString(), checkIns: [] },
-      ];
-    }
-    persist(next);
-  };
   // 以前は素のテキストリンク(背景なし)だったため、ページ全体が想定外に
   // スクロールした際に本文と見分けがつかず流れて消えて見えた
   // (globals.cssのoverflow修正が根本対応だが、それとは別にヘッダーとして
@@ -1362,7 +1228,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
           <MapPlanner
             stocked={stocked} draftSelection={draftSelection}
             onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onTogglePlan={toggleDraftPlan}
-            onInjectDemo={injectDemo} bundlesAreNew={bundlesAreNew}
+            bundlesAreNew={bundlesAreNew}
           />
           {/* 選択中のカードを確定する操作は、タブを跨いで共有するAppShellの
               フローティングUI(画面右下、スタックアイコン+取り消し+

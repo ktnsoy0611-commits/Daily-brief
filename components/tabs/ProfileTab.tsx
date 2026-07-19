@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, Link2, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
+import { Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
@@ -101,6 +101,7 @@ export function ProfileTab({ appState, persist, onClose }: {
 }) {
   const [focusDraft, setFocusDraft] = useState(appState.profile?.currentFocus ?? "");
   const [srcInput, setSrcInput] = useState("");
+  const [interestInput, setInterestInput] = useState("");
   // my-brainへの同期結果。以前は結果を見ずに握りつぶしていたため、失敗しても
   // 画面に何も出ず原因が分からなかった。保存のたびにここへ表示する。
   const [syncMsg, setSyncMsg] = useState("");
@@ -136,23 +137,31 @@ export function ProfileTab({ appState, persist, onClose }: {
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
 
-  // 「デモ用データを投入」(プランタブ)で入るテスト用のウィッシュ/Item/ゴールは
-  // demo-系のidを持つ。これらのタイトル(サウナ・古着・雑貨など)が実際の
-  // 興味・好みチップの自動検出材料になってしまい、「気になっていること」を
-  // 書いても好みチップが変わらないように見える、という混同を招く。実データと
-  // 区別してここから一括で消せるようにする(該当データが無ければこのカード
-  // 自体を表示しない)。
-  const demoItemCount = (appState.items ?? []).filter((i) => i.id.startsWith("demo-")).length;
-  const demoWishCount = (appState.wishes ?? []).filter((w) => w.id.startsWith("demo-wish-")).length;
-  const demoGoalCount = (appState.goals ?? []).filter((g) => g.id.startsWith("demo-goal-")).length;
-  const demoTotal = demoItemCount + demoWishCount + demoGoalCount;
-  const clearDemoData = () => {
-    haptic(10);
+  // 興味・好みチップはstateそのもの(profile.interests)の表示であり、ここから
+  // 直接追加・削除できる(=今どんなデータでカードが生成されているかを見て
+  // 編集できる単一の場所にする)。追加した項目はsource:"user"にして、自動検出の
+  // 重み更新(source==="auto"の項目だけが対象)に上書きされないようにする。
+  const addInterest = async () => {
+    const label = interestInput.trim();
+    if (!label) return;
+    haptic();
     const next = structuredClone(appState);
-    next.items = next.items.filter((i) => !i.id.startsWith("demo-"));
-    next.wishes = next.wishes.filter((w) => !w.id.startsWith("demo-wish-"));
-    next.goals = (next.goals ?? []).filter((g) => !g.id.startsWith("demo-goal-"));
+    next.profile = next.profile ?? { interests: [], currentFocus: "" };
+    if (!next.profile.interests.some((i) => i.label === label)) {
+      next.profile.interests.push({ id: `interest-${Date.now()}`, label, kind: "hobby", weight: 10, source: "user", addedAt: new Date().toISOString() });
+    }
     persist(next);
+    setInterestInput("");
+    setSyncMsg("my-brainへ同期中…");
+    reportSync(await syncTasteToMyBrain(next));
+  };
+  const removeInterest = async (id: string) => {
+    haptic(6);
+    const next = structuredClone(appState);
+    next.profile.interests = next.profile.interests.filter((i) => i.id !== id);
+    persist(next);
+    setSyncMsg("my-brainへ同期中…");
+    reportSync(await syncTasteToMyBrain(next));
   };
 
   const saveFocus = async () => {
@@ -301,48 +310,35 @@ export function ProfileTab({ appState, persist, onClose }: {
               placeholder="タップして入力" style={settingsInputStyle} />
             <button onClick={saveFocus} style={rowBtn(INK, PAPER)}>保存</button>
           </div>
-          {/* 以前はカテゴリごとの色分け+重み(weight)に応じた文字サイズの
-              変化を両方使っており、色もサイズもバラバラな「ワードクラウド」
-              のようになって見づらかった。1色・1サイズの地味なチップへ揃え、
-              重みは並び順(降順)だけで表す方が、興味の一覧としてずっと
-              読みやすい。 */}
+          {/* チップはstate(profile.interests)をそのまま表示・編集する場所。
+              自動検出(source:"auto")と手入力(source:"user")のどちらも
+              同じ並びに混在させ、重み(weight)降順で並べる。1色・1サイズに
+              揃えているのは、色分け+重み比例フォントサイズだった旧デザインが
+              「ワードクラウド」のようで読みにくかったため。 */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
             {interests.length === 0 ? (
               <p style={{ fontSize: 12, color: "#9A988E", margin: 0 }}>まだありません。</p>
             ) : interests.map((item) => (
               <span key={item.id} style={{
-                display: "inline-flex", alignItems: "center", padding: "6px 12px", borderRadius: 999,
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 8px 6px 12px", borderRadius: 999,
                 background: "rgba(23,23,21,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: 12,
               }}>
                 {item.label}
+                <button onClick={() => removeInterest(item.id)} aria-label={`${item.label}を削除`} style={{
+                  width: 16, height: 16, borderRadius: "50%", border: "none", background: "rgba(23,23,21,0.1)", color: INK,
+                  display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, flexShrink: 0,
+                }}>
+                  <X size={9} strokeWidth={2.6} />
+                </button>
               </span>
             ))}
           </div>
-          {/* この欄のチップは上の入力欄(気になっていること)とは別物: ウィッシュ・
-              KEEPしたItemのタイトルから自動検出される(手入力は反映されない)。
-              上の欄を書き換えてもチップ自体はすぐには変わらない、という
-              混同が実際にあったため明記する。 */}
-          <p style={{ fontSize: 10, color: "#9A988E", lineHeight: 1.6, margin: "8px 0 0" }}>
-            ※チップはウィッシュ・KEEPした記録から自動で検出されます(上の入力とは別です)。
-          </p>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <input value={interestInput} onChange={(e) => setInterestInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addInterest()}
+              placeholder="興味・好みを追加" style={settingsInputStyle} />
+            <button onClick={addInterest} style={rowBtn(INK, PAPER)}>追加</button>
+          </div>
         </SettingsCard>
-
-        {demoTotal > 0 && (
-          <SettingsCard label="テストデータ" icon={Trash2}>
-            <p style={{ fontSize: 11.5, color: "#5A5A54", lineHeight: 1.7, margin: "0 0 12px" }}>
-              「デモ用データを投入」で入れたテスト用のウィッシュ・記録・ゴールが
-              {demoTotal}件残っています。実際のタイトル(サウナ・古着など)が上の
-              「興味・好み」チップの自動検出に混ざるため、実データだけにしたい
-              場合はここで消せます。
-            </p>
-            <button onClick={clearDemoData} style={{
-              width: "100%", padding: "11px 0", background: RUST, color: PAPER, border: "none",
-              borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
-            }}>
-              テストデータを削除({demoTotal}件)
-            </button>
-          </SettingsCard>
-        )}
 
         <SettingsCard label="お気に入りの情報源" icon={Link2}>
           {sources.length === 0 ? (
@@ -372,11 +368,10 @@ export function ProfileTab({ appState, persist, onClose }: {
           ))}
         </SettingsCard>
 
-        {/* フェーズC-0「プロンプト実験場」。まだ本番のブリーフタブには繋がず、
-            Geminiが本物のWeb検索で作ったカードをここに表示して品質を目視
-            確認するための開発用セクション。アプリ完成時にはサンプルデータ
-            (CARDS/injectDemo)と一緒にこのカードごと撤去する予定
-            (HANDOFF §8.12)。 */}
+        {/* フェーズC-0「プロンプト実験場」。本番のブリーフタブは夜間Cronが
+            生成したデッキ(generatedDecks)のみを使う。サンプルデータ
+            (CARDS・injectDemo)は撤去済み。このカードは生成パイプラインの
+            動作確認用として残す(HANDOFF §8.12)。 */}
         <SettingsCard label="ブリーフ生成の実験（開発用）" icon={Sparkles}>
           <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.7, margin: "0 0 10px" }}>
             下の情報源ページをレンダリング(Jina Reader)でクリーンな本文に変換して

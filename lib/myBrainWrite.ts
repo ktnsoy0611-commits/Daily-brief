@@ -89,8 +89,13 @@ export function mergeSourcesMd(existing: string | null, sources: { url: string; 
 
 type FileMeta = { content: string; sha: string } | null;
 
-async function getFileMeta(repo: string, path: string, token: string, ref: string): Promise<FileMeta> {
-  const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`, {
+// ref未指定(undefined)ならGitHub側がリポジトリのデフォルトブランチを
+// 自動で使う(GET/PUTのcontents APIどちらも仕様上そう定義されている)。
+// "main"を決め打ちしていると、既定ブランチ名がmaster等のリポジトリで
+// 「Branch main not found」の404になるため、指定が無い限り一切送らない。
+async function getFileMeta(repo: string, path: string, token: string, ref?: string): Promise<FileMeta> {
+  const q = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+  const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}${q}`, {
     headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "User-Agent": "daily-brief" },
     signal: AbortSignal.timeout(15000),
   });
@@ -101,10 +106,12 @@ async function getFileMeta(repo: string, path: string, token: string, ref: strin
   return { content, sha: data.sha as string };
 }
 
-async function putFile(repo: string, path: string, content: string, sha: string | undefined, token: string, ref: string, message: string): Promise<void> {
+async function putFile(repo: string, path: string, content: string, sha: string | undefined, token: string, ref: string | undefined, message: string): Promise<void> {
   const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
     method: "PUT",
     headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "User-Agent": "daily-brief", "Content-Type": "application/json" },
+    // branchを省略(undefined)するとJSON.stringifyが自動でキー自体を除く
+    // (GitHub側はそれをデフォルトブランチの指定として扱う)。
     body: JSON.stringify({ message, content: Buffer.from(content, "utf-8").toString("base64"), sha, branch: ref }),
     signal: AbortSignal.timeout(15000),
   });
@@ -119,7 +126,7 @@ export async function syncMyBrain(input: SyncTasteInput): Promise<SyncResult> {
   const token = process.env.GITHUB_TOKEN;
   if (!repo || !/^[^/]+\/[^/]+$/.test(repo)) return { ok: false, reason: "no_repo" };
   if (!token) return { ok: false, reason: "no_token" };
-  const ref = process.env.MYBRAIN_REF || "main";
+  const ref = process.env.MYBRAIN_REF || undefined;
 
   const wrote: string[] = [];
   try {

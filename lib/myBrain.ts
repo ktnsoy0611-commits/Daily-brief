@@ -166,9 +166,12 @@ function tasteFromMarkdown(md: string): TasteInput {
   };
 }
 
-async function fetchFile(repo: string, path: string, token: string | undefined, ref: string): Promise<string | null> {
+// ref未指定ならリポジトリのデフォルトブランチを使う("main"を決め打ちすると
+// 既定ブランチ名がmaster等のリポジトリで404になるため指定が無い限り送らない)。
+async function fetchFile(repo: string, path: string, token: string | undefined, ref?: string): Promise<string | null> {
   try {
-    const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`, {
+    const q = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+    const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}${q}`, {
       headers: {
         Accept: "application/vnd.github.raw+json",
         "User-Agent": "daily-brief",
@@ -189,7 +192,7 @@ export async function loadMyBrain(): Promise<MyBrain> {
   const repo = process.env.MYBRAIN_REPO;
   if (!repo || !/^[^/]+\/[^/]+$/.test(repo)) return EMPTY;
   const token = process.env.GITHUB_TOKEN;
-  const ref = process.env.MYBRAIN_REF || "main";
+  const ref = process.env.MYBRAIN_REF || undefined;
 
   // taste(興味/ウィッシュ/focus)の源は taste-state.md のみ。profile.md は
   // 「ほぼ固定の基礎情報」としてユーザーが手で管理する領域なので、ここでは読まない。

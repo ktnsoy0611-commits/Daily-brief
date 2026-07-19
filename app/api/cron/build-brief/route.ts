@@ -126,12 +126,20 @@ export async function GET(req: Request) {
 
   // 4. デッキを generatedDecks[editionKey] へ(既存を読み、当該号を更新、古い号を掃除)
   const editionKey = jstEditionKey();
-  // idはダミーデータ(lib/constants.ts CARDS、id:1〜14)と衝突しない範囲から採番する。
-  // 同じeditionKeyで先にダミーデッキを表示・スワイプ済みだった場合、briefs
-  // [editionKey].decisions は小さい数値idで記録されている。生成カードのidが
-  // それと重なると「もう決定済み」と誤判定され、実際には見せていないのに
-  // カードが飛ばされてしまう(実機で発見)。
-  const GENERATED_ID_BASE = 100000;
+  // ★idは「生成の実行ごとに」重複しない値でなければならない。以前は固定値
+  // (100000)を毎回のベースにしていたため、同じeditionKeyに対して生成が
+  // 複数回走ると(手動でのworkflow再実行・スケジュールの再試行など)、
+  // 前回と全く違う内容のカードに前回と同じid(例:100001)が割り当てられて
+  // いた。ユーザーのbriefs[editionKey].decisionsはidをキーに記録されるため、
+  // 「id:100001は決定済み」という古い記録が、中身が入れ替わった新しい
+  // カードにもそのまま適用されてしまい、スワイプしてもカウンター
+  // (deck.filter(c=>decisions[c.id]).length)が一向に進まないのに、
+  // 各スワイプごとにItemはstatus:"candidate"で新規push()されるためストック
+  // にはどんどん溜まっていく、という不具合になっていた(実機の画面録画を
+  // ピクセル単位で解析して特定)。Date.now()を毎回のベースにすることで、
+  // 生成の実行が変われば必ず別のid空間になり、古いdecisionsが新しい内容の
+  // カードに誤って適用されることが構造的に無くなる。
+  const GENERATED_ID_BASE = Date.now();
   const cards: BriefCard[] = result.cards.map((c, i) => generatedToBriefCard(c, GENERATED_ID_BASE + i));
 
   const { data: existingDeck } = await supa.from("app_state").select("value").eq("user_id", ownerId).eq("key", "generatedDecks").maybeSingle();
@@ -155,9 +163,9 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true, editionKey, cardCount: cards.length, pooled,
-    // 診断用: 実際に採番したカードidを出す。デプロイが最新なら100000番台に
-    // なる。もし1,2,3のままなら、この保護ルートを叩いているデプロイが古い
-    // (APP_BASE_URL がデプロイ固定URL等)ことを意味する。
+    // 診断用: 実際に採番したカードidを出す。Date.now()ベースの大きな数値に
+    // なる。もし1,2,3のような小さい値のままなら、この保護ルートを叩いている
+    // デプロイが古い(APP_BASE_URL がデプロイ固定URL等)ことを意味する。
     cardIds: cards.map((c) => c.id),
     brainFiles: brain.filesRead, sourceCount: sources.length,
     sites: result.sites, dropped: result.dropped, tokens: result.tokens,

@@ -33,12 +33,19 @@ jobs:
             exit 0
           fi
           # 生成は数十秒かかりうるので十分な最大時間を与える。
-          body=$(curl -sS --max-time 120 -w "\n%{http_code}" \
+          # -L: リダイレクト(例: URL末尾のスラッシュ有無による308)を追従する。
+          # 追従しないと、実際にはAPIへ届かず「リダイレクト応答」だけを見て
+          # 成功したかのように見えてしまう(ジョブが緑でも中身が空の原因)。
+          body=$(curl -sS -L --max-time 120 -w "\n%{http_code}" \
             -H "x-cron-secret: $CRON_SECRET" \
             "$APP_BASE_URL/api/cron/build-brief")
           code=$(echo "$body" | tail -n1)
           echo "$body" | sed '$d'
           echo "HTTP $code"
-          if [ "$code" -ge 500 ]; then
-            echo "生成ルートが5xxを返しました。"; exit 1
+          # 200番台以外(401=シークレット不一致、500=生成失敗等)はすべて失敗扱いにする。
+          # 以前は5xxだけを失敗としていたため、他の失敗(401等)がジョブ上は
+          # 「緑」に見えてしまっていた。
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "生成ルートが失敗を返しました(HTTP $code)。上のレスポンス本文を確認してください。"
+            exit 1
           fi

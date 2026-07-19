@@ -2,13 +2,19 @@
 //
 // my-brain はユーザーが git で版管理する「自己モデルの真実源」。夜間の生成Cron
 // (と実験ルート)は、アプリ内 app_state ではなくここを直接読んで taste 信号にする
-// (AskUserQuestionで確定した方式)。人間可読と機械可読を両立させるため、各 .md の
-// 先頭 YAML front-matter だけを機械が読み、その下は自由なメモ/ジャーナルにできる。
+// (AskUserQuestionで確定した方式)。
+//
+// ユーザーは非エンジニアで、YAMLのような書式は書けない。そのため taste-state.md /
+// sources.md は「## 見出し + 箇条書き」という素のMarkdownで読めるようにする
+// (parseSections/parseFocusSection/parseBulletSection)。YAML front-matter は
+// 将来Coworkが自動更新する場合等に備えた上位互換のオプションとして残し、
+// front-matterで埋まらなかった項目だけをMarkdown見出しから拾う(フォールバック)。
 //
 // 対象ファイル(いずれも任意。無ければその項目は空):
-//   taste-state.md front-matter: focus / living_area / interests[] / wishes[]
-//   sources.md     front-matter: sources[]
-//   profile.md     front-matter: 補助(living_area 等。taste-state.md を優先)
+//   taste-state.md: 「## 気になっていること」「## 興味・リサーチ対象」
+//     「## 願い」「## 生活圏」の見出し+箇条書き(またはYAML front-matter)
+//   sources.md: 箇条書きのURL/Markdownリンク一覧(またはYAML front-matter)
+//   profile.md: 読まない(ユーザーが手で管理する固定情報のため taste の源にしない)
 //
 // env: MYBRAIN_REPO="owner/repo"(必須) / GITHUB_TOKEN(private リポジトリ用・任意) /
 //      MYBRAIN_REF(ブランチ。既定 main)。未設定/取得失敗時は静かに空を返す。
@@ -76,6 +82,82 @@ export function parseSources(v: unknown): SourceEntry[] {
   return out;
 }
 
+// ---- 素のMarkdown(見出し+箇条書き)のparser。YAMLが書けないユーザー向け ----
+
+// 「## 見出し」ごとに本文行を切り分ける。見出しの深さ(#の数)は問わない。
+function parseSections(md: string): { heading: string; lines: string[] }[] {
+  const lines = md.split(/\r?\n/);
+  const sections: { heading: string; lines: string[] }[] = [];
+  let current: { heading: string; lines: string[] } | null = null;
+  for (const line of lines) {
+    const h = line.match(/^#{1,6}\s*(.+?)\s*$/);
+    if (h) {
+      current = { heading: h[1], lines: [] };
+      sections.push(current);
+      continue;
+    }
+    if (current) current.lines.push(line);
+  }
+  return sections;
+}
+function findSection(sections: { heading: string; lines: string[] }[], keywordRe: RegExp): string[] | null {
+  const s = sections.find((sec) => keywordRe.test(sec.heading));
+  return s ? s.lines : null;
+}
+// 見出し直下の最初の空でない行(箇条書きの記号は取り除く)を1つの文として返す。
+function firstLineOf(lines: string[]): string | undefined {
+  for (const raw of lines) {
+    const t = raw.replace(/^\s*[-*・]\s*/, "").replace(/<!--.*?-->/g, "").trim();
+    if (t) return t;
+  }
+  return undefined;
+}
+// 箇条書き行(- / * / ・ で始まる行)を配列で返す(コメント行・空行は無視)。
+function bulletsOf(lines: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of lines) {
+    if (/^\s*<!--/.test(raw)) continue; // コメント行(例示など)は読まない
+    const m = raw.match(/^\s*[-*・]\s*(.+)$/);
+    if (!m) continue;
+    const t = m[1].trim();
+    if (t) out.push(t);
+  }
+  return out;
+}
+// Markdownリンク "[表示](URL)" または素のURL、"表示: URL" の3形式に対応。
+function parseSourceBullets(bullets: string[]): SourceEntry[] {
+  const out: SourceEntry[] = [];
+  for (const b of bullets) {
+    const link = b.match(/\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/);
+    if (link) { out.push({ url: link[2], label: link[1].trim() || undefined }); continue; }
+    const labeled = b.match(/^(.*?)[:：]\s*(https?:\/\/\S+)/);
+    if (labeled && labeled[1].trim()) { out.push({ url: labeled[2].trim(), label: labeled[1].trim() }); continue; }
+    const bare = b.match(/https?:\/\/\S+/);
+    if (bare) out.push({ url: bare[0] });
+  }
+  return out;
+}
+// 見出し配下の箇条書きを興味タグにする。並び順が上ほど重要という前提で、
+// 上から降順の重みを振る(先頭が最も強い興味)。
+function interestsFromBullets(bullets: string[]): InterestSignal[] {
+  const n = bullets.length;
+  return bullets.map((label, i) => ({ label, weight: n - i }));
+}
+
+function tasteFromMarkdown(md: string): TasteInput {
+  const sections = parseSections(md);
+  const focus = firstLineOf(findSection(sections, /気になっ|focus/i) ?? []);
+  const livingArea = firstLineOf(findSection(sections, /生活圏|エリア|living/i) ?? []);
+  const interestBullets = bulletsOf(findSection(sections, /興味|リサーチ|関心|interest/i) ?? []);
+  const wishBullets = bulletsOf(findSection(sections, /願い|ウィッシュ|wish/i) ?? []);
+  return {
+    focus,
+    livingArea,
+    interests: interestBullets.length ? interestsFromBullets(interestBullets) : undefined,
+    wishes: wishBullets.length ? wishBullets : undefined,
+  };
+}
+
 async function fetchFile(repo: string, path: string, token: string | undefined, ref: string): Promise<string | null> {
   try {
     const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`, {
@@ -121,11 +203,21 @@ export async function loadMyBrain(): Promise<MyBrain> {
     // sources を taste-state.md に同居させている場合も拾う。
     const inline = parseSources(fm.sources);
     if (inline.length) sources = inline;
+
+    // YAML front-matterで埋まらなかった項目は、素のMarkdown見出し+箇条書き
+    // (## 気になっていること / ## 興味・リサーチ対象 / ## 願い / ## 生活圏)から補う。
+    // ユーザーはYAMLを書けないため、こちらが主な書き方になる想定。
+    const md = tasteFromMarkdown(tasteMd);
+    taste.focus = taste.focus ?? md.focus;
+    taste.livingArea = taste.livingArea ?? md.livingArea;
+    if (!taste.interests?.length) taste.interests = md.interests;
+    if (!taste.wishes?.length) taste.wishes = md.wishes;
   }
   if (sourcesMd) {
     filesRead.push("sources.md");
     const fm = parseFrontMatter(sourcesMd);
-    const s = parseSources(fm.sources);
+    let s = parseSources(fm.sources);
+    if (!s.length) s = parseSourceBullets(bulletsOf(sourcesMd.split(/\r?\n/)));
     if (s.length) sources = s;
   }
 

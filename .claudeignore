@@ -1,0 +1,34 @@
+# 依存パッケージ
+node_modules/
+
+# Next.js ビルド成果物
+.next/
+out/
+build/
+dist/
+
+# ログ
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS が生成するファイル
+.DS_Store
+Thumbs.db
+
+# 静的アセット
+public/
+
+# 環境変数（機密情報）
+.env
+.env.local
+.env*.local
+
+# エディタ・IDE
+.vscode/
+.idea/
+
+# キャッシュ
+.cache/
+*.tsbuildinfo

@@ -3,7 +3,7 @@
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
-import { BG, CARDS, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
+import { BG, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
@@ -240,12 +240,14 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
     return candidates[0] ?? null;
   }, [appState.goals]);
 
-  // デッキは夜間Cronが生成した generatedDecks[editionKey] を使う。まだ生成が
-  // 稼働していない/その号が無い間は、開発用ダミー(CARDS)へフォールバックする
-  // (本番の生成が安定したら CARDS ごと撤去する。SYSTEM-DESIGN §8)。
+  // デッキは夜間Cronが生成した generatedDecks[editionKey] のみを使う。その号が
+  // まだ無い間は空(休刊表示)にする。以前はダミー(CARDS)へフォールバックして
+  // いたが、ダミーのカードid(1〜14)をスワイプするとその決定が残り、生成カードの
+  // idと衝突して「もう見た」と誤判定される不具合の原因になっていたため撤去した
+  // (SYSTEM-DESIGN §8 のサンプルデータ撤去にも沿う)。
   const generated = appState.generatedDecks?.[editionKey];
   const deck: DeckCard[] = useMemo(() => {
-    const source: BriefCard[] = generated && generated.length > 0 ? generated : CARDS;
+    const source: BriefCard[] = generated && generated.length > 0 ? generated : [];
     const base: DeckCard[] = [...source];
     if (dueCandidate) {
       const { g, kind } = dueCandidate;

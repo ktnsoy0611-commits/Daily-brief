@@ -139,6 +139,10 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true, editionKey, cardCount: cards.length, pooled,
+    // 診断用: 実際に採番したカードidを出す。デプロイが最新なら100000番台に
+    // なる。もし1,2,3のままなら、この保護ルートを叩いているデプロイが古い
+    // (APP_BASE_URL がデプロイ固定URL等)ことを意味する。
+    cardIds: cards.map((c) => c.id),
     brainFiles: brain.filesRead, sourceCount: sources.length,
     sites: result.sites, dropped: result.dropped, tokens: result.tokens,
   });

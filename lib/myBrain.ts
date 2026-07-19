@@ -112,6 +112,14 @@ function firstLineOf(lines: string[]): string | undefined {
   }
   return undefined;
 }
+// 「気になっていること」は複数の箇条書きになりうる(例: 別々の関心事を並べて
+// 書く)ため、箇条書きがあれば全項目を " / " で連結した1つの短期的関心の文に
+// まとめる。箇条書きが無い(1行だけ書かれた)場合はその行をそのまま使う。
+function focusFromLines(lines: string[]): string | undefined {
+  const bullets = bulletsOf(lines);
+  if (bullets.length) return bullets.join(" / ");
+  return firstLineOf(lines);
+}
 // 箇条書き行(- / * / ・ で始まる行)を配列で返す(コメント行・空行は無視)。
 function bulletsOf(lines: string[]): string[] {
   const out: string[] = [];
@@ -146,7 +154,7 @@ function interestsFromBullets(bullets: string[]): InterestSignal[] {
 
 function tasteFromMarkdown(md: string): TasteInput {
   const sections = parseSections(md);
-  const focus = firstLineOf(findSection(sections, /気になっ|focus/i) ?? []);
+  const focus = focusFromLines(findSection(sections, /気になっ|focus/i) ?? []);
   const livingArea = firstLineOf(findSection(sections, /生活圏|エリア|living/i) ?? []);
   const interestBullets = bulletsOf(findSection(sections, /興味|リサーチ|関心|interest/i) ?? []);
   const wishBullets = bulletsOf(findSection(sections, /願い|ウィッシュ|wish/i) ?? []);

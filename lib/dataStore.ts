@@ -20,10 +20,11 @@ let memoryMode = typeof window === "undefined" || typeof window.localStorage ===
 // load()時にセッションを確認して立てる。これがtrueの間だけsave/loadがSupabaseを使う。
 let cloudActive = false;
 
-// サーバー(Vercel Cron、フェーズC以降)が所有するキー。クライアントからは
-// upsertで上書きしないようにする。現状はCronがまだ無く briefs もクライアントが
-// 書くため空。フェーズCでCronがbriefsを生成するようになったらここに追加する。
-const SERVER_OWNED_KEYS: ReadonlySet<string> = new Set<string>();
+// サーバー(夜間Cron=app/api/cron/build-brief)が所有するキー。クライアントからは
+// upsertで上書きしないよう save 時に除外する。load では全キーを読むため、Cronが
+// 書いたデッキ(generatedDecks)はクライアントに反映されるが、クライアントの保存が
+// それを消すことはない。
+const SERVER_OWNED_KEYS: ReadonlySet<string> = new Set<string>(["generatedDecks"]);
 
 async function hasSession(): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return false;
@@ -87,6 +88,7 @@ function migrate(s: any): AppState {
   merged.sources = merged.sources ?? [];
   merged.items = merged.items ?? [];
   merged.bindLog = merged.bindLog ?? [];
+  merged.generatedDecks = merged.generatedDecks ?? {};
 
   // ---- 場所(keeps)+作品(records.media)の2コンテナ → Item統一への移行 ----
   // 「場所か作品か」は排他ではなく「種類(kind)×場所の有無(area)」の直交と

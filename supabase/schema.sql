@@ -134,3 +134,8 @@ alter table content_cache enable row level security;
 drop policy if exists content_cache_owner on content_cache;
 create policy content_cache_owner on content_cache
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- 同一URLの候補を二重にプールしないための一意インデックス(夜間Cronの重複防止)。
+-- payload の url を式インデックスにする。既存プロジェクトにも冪等に効く。
+create unique index if not exists content_cache_user_url
+  on content_cache (user_id, (payload->>'url'));

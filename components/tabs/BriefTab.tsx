@@ -240,15 +240,20 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
     return candidates[0] ?? null;
   }, [appState.goals]);
 
+  // デッキは夜間Cronが生成した generatedDecks[editionKey] を使う。まだ生成が
+  // 稼働していない/その号が無い間は、開発用ダミー(CARDS)へフォールバックする
+  // (本番の生成が安定したら CARDS ごと撤去する。SYSTEM-DESIGN §8)。
+  const generated = appState.generatedDecks?.[editionKey];
   const deck: DeckCard[] = useMemo(() => {
-    const base: DeckCard[] = [...CARDS];
+    const source: BriefCard[] = generated && generated.length > 0 ? generated : CARDS;
+    const base: DeckCard[] = [...source];
     if (dueCandidate) {
       const { g, kind } = dueCandidate;
       const growthCard: GrowthCard = { id: `${kind}-${g.id}`, type: kind, goalId: g.id, goalTitle: g.title };
       base.splice(3, 0, growthCard);
     }
     return base;
-  }, [dueCandidate]);
+  }, [dueCandidate, generated]);
 
   const index = deck.filter((c) => decisions[c.id]).length;
   const done = index >= deck.length;

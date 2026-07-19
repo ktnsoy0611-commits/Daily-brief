@@ -3555,3 +3555,63 @@ heartbeatと同じ方式。Vercel cronは未設定)が、単ホップ抽出→`c
 `OWNER_USER_ID`・`CRON_SECRET`・`JINA_API_KEY`(任意)、schema.sqlの
 content_cache url一意インデックス追記、GH Actionsワークフロー有効化。計画の全文は
 `/root/.claude/plans/crispy-munching-river.md`(承認済み)。
+
+## 8.12.15 my-brain を taste 源にした夜間Cron・デッキ自動生成を実装(2026-07-18)
+
+§8.12.14の続き。ユーザーからの2要望に対応した。(A)カード本文が「〜に関心がある
+ユーザーにとって…興味の広がりを感じさせる機会です」のような合致理由の定型文に
+なっていた→本文=事物の内容要約へ(SYSTEM_CLASSIFYのbody定義を変更、コミット済)。
+(B)ユーザーがGitHubに`my-brain`リポジトリ(profile.md/taste-state.md等)を新設。
+これを「人間が編集する自己モデルの真実源」とし、夜間の生成Cronが直接読む方針で
+確定(AskUserQuestion: 直接読む・Cowork不要・gitが唯一の真実源)。同時にトークンの
+本丸=「一晩に一度だけ抽出→デッキを用意済みに、生成ボタン廃止」を組んだ。
+
+**分担の確定(§8ハイブリッドの具体化)**: 夜間の巡回・抽出・編成=アプリ側Gemini
+(Cron・無料枠)。Cowork=良い情報源の発掘・審査(週1・低トークン)のみ、その結果を
+my-brainの情報源リストへ書く(将来)。「取得をCoworkへ」と一度言ったのはretrievalの
+脆さが理由だったが、Jinaがそれを解いたので日々の取得はGemini側に戻した。
+
+**実装(全てビルド/型/lint/単体テスト通過。実キー・外部fetchはサンドボックス制約で
+未検証、ユーザーのVercel実機で確認)**:
+- `lib/briefPipeline.ts`(新): generate-briefの「取得(Jina単ホップ)→層B→層C→層D」を
+  `buildDeck({taste,sources,count})`へ切り出し、実験ルートと夜間Cronで共用。
+  `generate-brief/route.ts`はbodyを渡すだけの薄いラッパーに。返り値に`records`
+  (検証済み候補)を追加(プール用)。
+- `lib/myBrain.ts`(新): GitHub API(`contents`・`vnd.github.raw`)でmy-brainの
+  taste-state.md/sources.md/profile.mdを取得しfront-matterをparse(js-yaml追加)。
+  返り値`{focus,livingArea,interests[{label,weight}],wishes,sources[{url,label}]}`。
+  env未設定/失敗時は静かに空。env: `MYBRAIN_REPO`/`GITHUB_TOKEN`(任意)/`MYBRAIN_REF`。
+  front-matterはflow/block両style・文字列配列・欠損/壊れYAMLに寛容(単体テスト済)。
+- `lib/deckStyle.ts`(新): buildDeckのGeneratedCardを表示可能なBriefCardへマップ。
+  kindごとの意匠テーブル(category/categoryJp/glyph/color)でbg/fg/accentを補い、
+  images:[]で色ベタ表示。
+- `app/api/cron/build-brief/route.ts`(新): GET・`CRON_SECRET`保護・service-role
+  クライアント+`OWNER_USER_ID`。my-brainからtaste/情報源(無ければapp_stateへ
+  フォールバック)→buildDeck→content_cacheへ蓄積(url重複除外・非致命)→
+  `app_state.generatedDecks[editionKey]`へBriefCard[]を書く(既存を読み当該号を更新・
+  14日より古い号を掃除)。editionKeyはJST基準(朝刊am/夕刊pm、正午境)。
+- デッキの置き場と表示: `lib/types.ts`の`AppState`に`generatedDecks:
+  Record<string,BriefCard[]>`を追加。`lib/constants.ts`のDEFAULT_STATEと
+  dataStoreのmigrateに既定`{}`。`lib/dataStore.ts`の`SERVER_OWNED_KEYS`に
+  `"generatedDecks"`を追加(クライアントは読むが上書きしない=既存機構がそのまま
+  効く)。`BriefTab.tsx`はデッキを`generatedDecks[editionKey]`から取り、無い間は
+  ダミー`CARDS`へフォールバック(本番安定後にCARDSごと撤去)。生成ボタンは元々無い。
+- 起動: `.github/workflows/build-brief.yml`(新)。既存heartbeatと同方式で保護ルートを
+  curl。朝刊(06:30 JST=21:30 UTC)・夕刊(13:30 JST=04:30 UTC)+workflow_dispatch。
+  Secrets: `APP_BASE_URL`(安定URL)/`CRON_SECRET`。未設定ならno-op成功。
+- `supabase/schema.sql`: content_cacheに`content_cache_user_url`一意インデックス
+  (user_id,(payload->>'url'))を冪等追記。`.env.local.example`に新env一式。
+
+**未解決/要ユーザー対応**:
+- **my-brainのスキーマ確定**: add_repoの承認プロンプトが未承認で、my-brainの実
+  ファイルをまだ読めていない。`lib/myBrain.ts`は上記の提案スキーマ(YAML
+  front-matter)に対して寛容にparseするが、ユーザーがadd_repoを承認するか
+  taste-state.mdを提示したら、実物とフィールド名をすり合わせる。
+- **ユーザー側準備(フェーズ2の起動)**: Vercel環境変数(SUPABASE_SERVICE_ROLE_KEY/
+  OWNER_USER_ID/CRON_SECRET/GEMINI_API_KEY/MYBRAIN_REPO/GITHUB_TOKEN(任意)/
+  JINA_API_KEY(任意))、GitHub Secrets(APP_BASE_URL/CRON_SECRET)、schema.sqlの
+  一意インデックス実行、GH Actions有効化、my-brainにtaste-state.md(+sources.md)を
+  用意。その後workflow_dispatchでCronを手動実行し、content_cache挿入・
+  generatedDecks書き込み・ブリーフタブがボタン無しでデッキ表示・クライアント保存が
+  上書きしない・本文が内容要約になっていること、を実機確認。
+- 本文の内容要約化は実キーでの出力確認が未(次回デプロイで確認)。

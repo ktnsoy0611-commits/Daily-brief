@@ -1,0 +1,44 @@
+# 夜間のブリーフ生成Cron。Vercel の保護ルート /api/cron/build-brief を叩き、
+# アプリ側Gemini(無料枠)が my-brain の taste・情報源を読んでデッキを生成し
+# app_state.generatedDecks へ書く。朝刊(早朝JST)・夕刊(正午過ぎJST)の2本。
+#
+# 有効化に必要なGitHubリポジトリ Secrets(Settings → Secrets and variables → Actions):
+#   APP_BASE_URL … アプリの安定URL(例: https://daily-brief-lyart-six.vercel.app)
+#   CRON_SECRET  … /api/cron/build-brief の secret と同じ値(Vercel環境変数と一致させる)
+# Secretsが未設定の間はジョブが no-op で成功する(赤くならない)。
+#
+# 生成に必要な環境変数は Vercel 側(NEXT_PUBLIC_SUPABASE_URL /
+# SUPABASE_SERVICE_ROLE_KEY / OWNER_USER_ID / MYBRAIN_REPO / GITHUB_TOKEN /
+# GEMINI_API_KEY / JINA_API_KEY)に設定する。ここ(GH Actions)は URL を叩くだけ。
+name: Build brief deck
+
+on:
+  schedule:
+    # JST は UTC+9。朝刊 = 06:30 JST(21:30 UTC 前日)、夕刊 = 13:30 JST(04:30 UTC)。
+    - cron: "30 21 * * *"
+    - cron: "30 4 * * *"
+  workflow_dispatch: {} # 手動実行(検証用)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger brief generation
+        env:
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_BASE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Secrets未設定のためスキップします(APP_BASE_URL / CRON_SECRET)。"
+            exit 0
+          fi
+          # 生成は数十秒かかりうるので十分な最大時間を与える。
+          body=$(curl -sS --max-time 120 -w "\n%{http_code}" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$APP_BASE_URL/api/cron/build-brief")
+          code=$(echo "$body" | tail -n1)
+          echo "$body" | sed '$d'
+          echo "HTTP $code"
+          if [ "$code" -ge 500 ]; then
+            echo "生成ルートが5xxを返しました。"; exit 1
+          fi

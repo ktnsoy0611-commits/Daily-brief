@@ -101,27 +101,21 @@ export async function loadMyBrain(): Promise<MyBrain> {
   const token = process.env.GITHUB_TOKEN;
   const ref = process.env.MYBRAIN_REF || "main";
 
-  const [tasteMd, sourcesMd, profileMd] = await Promise.all([
+  // taste(興味/ウィッシュ/focus)の源は taste-state.md のみ。profile.md は
+  // 「ほぼ固定の基礎情報」としてユーザーが手で管理する領域なので、ここでは読まない。
+  const [tasteMd, sourcesMd] = await Promise.all([
     fetchFile(repo, "taste-state.md", token, ref),
     fetchFile(repo, "sources.md", token, ref),
-    fetchFile(repo, "profile.md", token, ref),
   ]);
   const filesRead: string[] = [];
   const taste: TasteInput = {};
   let sources: SourceEntry[] = [];
 
-  if (profileMd) {
-    filesRead.push("profile.md");
-    const fm = parseFrontMatter(profileMd);
-    taste.livingArea = asString(fm.living_area ?? fm.livingArea) ?? taste.livingArea;
-    taste.focus = asString(fm.focus) ?? taste.focus;
-  }
   if (tasteMd) {
     filesRead.push("taste-state.md");
     const fm = parseFrontMatter(tasteMd);
-    // taste-state.md を profile.md より優先する。
-    taste.focus = asString(fm.focus) ?? taste.focus;
-    taste.livingArea = asString(fm.living_area ?? fm.livingArea) ?? taste.livingArea;
+    taste.focus = asString(fm.focus);
+    taste.livingArea = asString(fm.living_area ?? fm.livingArea);
     taste.interests = parseInterests(fm.interests);
     taste.wishes = asStringArray(fm.wishes);
     // sources を taste-state.md に同居させている場合も拾う。

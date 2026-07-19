@@ -193,6 +193,10 @@ export function ProfileTab({ appState, persist, onClose }: {
     if (!next.profile.interests.some((i) => i.category === category && i.label === trimmed)) {
       next.profile.interests.push({ id: `${category}-${Date.now()}`, label: trimmed, category, weight: 10, source: "user", addedAt: new Date().toISOString() });
     }
+    // 手動で追加し直したラベルは除外リストから外す(自動検出を再び許す)。
+    if (next.profile.dismissedInterests?.length) {
+      next.profile.dismissedInterests = next.profile.dismissedInterests.filter((l) => l !== trimmed);
+    }
     persist(next);
     setSyncMsg("my-brainへ同期中…");
     reportSync(await syncTasteToMyBrain(next));
@@ -200,7 +204,16 @@ export function ProfileTab({ appState, persist, onClose }: {
   const removeInterestItem = async (id: string) => {
     haptic(6);
     const next = structuredClone(appState);
+    next.profile = next.profile ?? { interests: [] };
+    // 削除するラベルを控えておき、自動検出(detectInterests)が二度と
+    // 再追加しないよう除外リスト(tombstone)へ入れる。これをしないと、
+    // persistのたびに走る自動検出が同じラベルをすぐ復活させてしまう。
+    const removed = next.profile.interests.find((i) => i.id === id)?.label;
     next.profile.interests = next.profile.interests.filter((i) => i.id !== id);
+    if (removed) {
+      const dismissed = next.profile.dismissedInterests ?? [];
+      if (!dismissed.includes(removed)) next.profile.dismissedInterests = [...dismissed, removed];
+    }
     persist(next);
     setSyncMsg("my-brainへ同期中…");
     reportSync(await syncTasteToMyBrain(next));

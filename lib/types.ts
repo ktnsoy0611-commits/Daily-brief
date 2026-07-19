@@ -116,6 +116,10 @@ export interface Interest {
 
 export interface Profile {
   interests: Interest[];
+  // ユーザーが設定画面で明示的に削除した興味/好みのラベル。自動検出
+  // (detectInterests)がこれらを二度と再追加しないための除外リスト
+  // (tombstone)。同じラベルを手動で追加し直すと解除される。
+  dismissedInterests?: string[];
 }
 
 export interface Source {

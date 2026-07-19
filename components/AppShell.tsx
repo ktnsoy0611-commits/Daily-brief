@@ -200,8 +200,12 @@ export function AppShell() {
     const detected = detectInterests(appState.wishes, appState.items);
     const next = structuredClone(appState);
     next.profile = next.profile ?? { interests: [] };
+    // ユーザーが設定画面で消したラベルは再追加・重み更新の対象にしない
+    // (これが無いと、削除→persistで走る自動検出が即座に復活させてしまう)。
+    const dismissed = new Set(next.profile.dismissedInterests ?? []);
     let changed = false;
     detected.forEach((d) => {
+      if (dismissed.has(d.label)) return;
       const existing = next.profile.interests.find((i) => i.label === d.label);
       if (!existing) {
         // 自動検出は直近の行動(ウィッシュ・KEEP)からの兆しなので、

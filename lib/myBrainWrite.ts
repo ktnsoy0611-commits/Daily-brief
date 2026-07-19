@@ -120,6 +120,21 @@ async function putFile(repo: string, path: string, content: string, sha: string 
   }
 }
 
+// GitHubのcontents API(DELETE)でファイルを消す。putFileと同じくbranchは
+// undefinedなら送らない(デフォルトブランチ扱い)。呼び出し側は失敗を握りつぶす。
+async function deleteFile(repo: string, path: string, sha: string, token: string, ref: string | undefined, message: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    method: "DELETE",
+    headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "User-Agent": "daily-brief", "Content-Type": "application/json" },
+    body: JSON.stringify({ message, sha, branch: ref }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`delete ${path} failed: ${res.status} ${detail.slice(0, 300)}`);
+  }
+}
+
 export async function syncMyBrain(input: SyncTasteInput): Promise<SyncResult> {
   const repo = process.env.MYBRAIN_REPO;
   const token = process.env.GITHUB_TOKEN;
@@ -141,6 +156,20 @@ export async function syncMyBrain(input: SyncTasteInput): Promise<SyncResult> {
     if (sourcesMeta === null || sourcesMeta.content !== sourcesContent) {
       await putFile(repo, "sources.md", sourcesContent, sourcesMeta?.sha, token, ref, "お気に入りの情報源を同期");
       wrote.push("sources.md");
+    }
+
+    // 旧命名の孤児 taste_state.md(アンダースコア)が残っていたら消す。アプリは
+    // 一貫してハイフンの taste-state.md だけを使うため、アンダースコア版は
+    // 過去の残骸で、放置するとmy-brainにstateが2つあるように見える。削除の
+    // 失敗は本体の同期を止めない(ベストエフォート)。
+    try {
+      const strayMeta = await getFileMeta(repo, "taste_state.md", token, ref);
+      if (strayMeta) {
+        await deleteFile(repo, "taste_state.md", strayMeta.sha, token, ref, "重複した旧stateファイルを削除");
+        wrote.push("taste_state.md(削除)");
+      }
+    } catch {
+      // 消せなくても無視(次回の同期でまた試みる)。
     }
     return { ok: true, wrote };
   } catch (e) {

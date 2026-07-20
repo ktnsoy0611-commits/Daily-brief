@@ -1,7 +1,7 @@
 "use client";
 
 import { Compass, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
 import { BLUE, HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
@@ -105,25 +105,52 @@ function InterestChips({ items, onRemove, inputValue, onInputChange, onAdd, plac
   onAdd: () => void;
   placeholder: string;
 }) {
+  // 好み・興味は主にCoworkの分析が維持するデータなので、×を1回押しただけでは
+  // 消さない(誤削除防止)。1回目で「消す？」の確認状態にし、2回目で実際に削除。
+  // 数秒触らなければ自動で確認を解除する。
+  const [armedId, setArmedId] = useState<string | null>(null);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleX = (id: string) => {
+    haptic();
+    if (armTimer.current) clearTimeout(armTimer.current);
+    if (armedId === id) {
+      setArmedId(null);
+      onRemove(id);
+      return;
+    }
+    setArmedId(id);
+    armTimer.current = setTimeout(() => setArmedId(null), 3500);
+  };
   return (
     <>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {items.length === 0 ? (
           <p style={{ fontSize: 12, color: "#9A988E", margin: 0 }}>まだありません。</p>
-        ) : items.map((item) => (
+        ) : items.map((item) => {
+          const armed = armedId === item.id;
+          return (
           <span key={item.id} style={{
             display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 8px 6px 12px", borderRadius: 999,
-            background: "rgba(23,23,21,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: 12,
+            background: armed ? "rgba(183,65,42,0.12)" : "rgba(23,23,21,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: 12,
+            transition: "background 0.15s",
           }}>
             {item.label}
-            <button onClick={() => onRemove(item.id)} aria-label={`${item.label}を削除`} style={{
-              width: 16, height: 16, borderRadius: "50%", border: "none", background: "rgba(23,23,21,0.1)", color: INK,
-              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, flexShrink: 0,
-            }}>
-              <X size={9} strokeWidth={2.6} />
-            </button>
+            {armed ? (
+              <button onClick={() => handleX(item.id)} aria-label={`${item.label}を削除する`} style={{
+                height: 16, padding: "0 7px", borderRadius: 999, border: "none", background: RUST, color: PAPER,
+                display: "flex", alignItems: "center", cursor: "pointer", fontFamily: SANS, fontWeight: 700, fontSize: 9, letterSpacing: "0.04em", flexShrink: 0,
+              }}>消す</button>
+            ) : (
+              <button onClick={() => handleX(item.id)} aria-label={`${item.label}を削除`} style={{
+                width: 16, height: 16, borderRadius: "50%", border: "none", background: "rgba(23,23,21,0.1)", color: INK,
+                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, flexShrink: 0,
+              }}>
+                <X size={9} strokeWidth={2.6} />
+              </button>
+            )}
           </span>
-        ))}
+          );
+        })}
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <input value={inputValue} onChange={(e) => onInputChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onAdd()}

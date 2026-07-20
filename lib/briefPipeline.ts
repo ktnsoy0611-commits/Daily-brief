@@ -22,9 +22,9 @@ const DEFAULT_LIVING_AREA = "東京23区(および電車で日常的に行ける
 const DERIVED_TRIGGER = "興味の広がり";
 
 const EXTRACT_LIMIT_PER_LISTING = 10; // 層Bが1つの一覧から作る候補レコードの最大数
-const LISTING_TEXT_LIMIT = 10000;     // 層Bに渡す1つの一覧Markdownの上限(文字数)
-const TOTAL_TEXT_LIMIT = 30000;       // 層Bに渡す本文合計の上限(文字数、SOURCE_LIMIT分の一覧を賄う)
-const SOURCE_LIMIT = 6;               // 1回の生成で読みに行く情報源(一覧)の最大数
+const LISTING_TEXT_LIMIT = 6000;      // 層Bに渡す1つの一覧Markdownの上限(文字数)
+const TOTAL_TEXT_LIMIT = 60000;       // 層Bに渡す本文合計の上限(文字数、固定+ローテーションの~10サイトを賄う)
+const SOURCE_LIMIT = 24;              // buildDeckが読む情報源(一覧)の安全弁。実件数はCronが決める
 const SITE_CARD_LIMIT = 3;            // 層Dで1つの情報源から採用するカードの最大数
 const ENRICH_PAGE_TEXT_LIMIT = 6000;  // 層E(本文詳細化)で1個別ページに使う本文の上限(文字数)
 const ENRICH_CONCURRENCY = 6;         // 層Eで個別ページを同時取得する数
@@ -367,24 +367,20 @@ ${DOMAIN_KIND_TABLE}
 下記フィールドのJSON配列のみを出力する。該当候補が無い場合は [] を出力する。
 id / matchStrength / inLivingArea(任意) / title(任意) / body(任意) / kind(任意) / trigger(任意) / sourceWishTitle(任意) / area(任意) / sourceLabel(任意) / meta(任意,文字列配列) / expiresAt(任意,ISO8601)`;
 
-const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文詳細化モジュールです。既に選ばれたカードごとに、
-その事物の個別ページ本文を読み、カードの本文(body)をより具体的な内容要約に書き直します。
+const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文詳細化モジュールです。既に選ばれたカードごとに、その事物の個別ページ本文を読み、カードの本文(body)を書き直します。
 
 # 入力仕様
 <基準日>: 本日の日付
-<カード群>: 各カードの id・title・現在の body・sourcePage(その事物の個別ページのMarkdown本文)
+<プロファイル>: ユーザーの好み・興味・これから好みそうな傾向（末尾の誘いの一文の根拠にのみ使う）
+<カード群>: 各カードの id・title・現在の body・sourcePage（その事物の個別ページのMarkdown本文）
 
 # 書き直しルール
-1. body は sourcePage 本文に明記された情報のみを根拠とする。本文に無い情報の補完・
-   推測・一般知識の使用は禁止。
-2. body は3〜5文(120〜200字程度)で、その事物そのものの内容を具体的に述べる。
-   何の展示・作品か、誰(作家・出演者・監督等)によるものか、テーマや背景、
-   何が見どころか、会場・会期・料金など、本文から読み取れる具体的な事実を
-   できるだけ盛り込む。固有名や数字を省略せず、内容が薄い一般論で終わらせない。
-3. ユーザーへの言及・意義づけ(「〜に関心がある人にとって」等)・評価・誇張は
-   書かない。事実の要約のみ。
-4. sourcePage から書き直す情報が読み取れない場合は、現在の body をそのまま返す。
-5. title は変更しない。
+1. body の大部分は sourcePage 本文に明記された事実のみを根拠とする。本文に無い情報の補完・推測・一般知識の使用は禁止。
+2. 構成は「内容の要約（2〜4文）＋ 最後に短い誘いの一文（1文）」とする。
+   - 要約: その事物そのものの内容を具体的に述べる（何の展示・作品か、誰によるものか、テーマ・見どころ、会場・会期・料金など、本文から読み取れる固有名や数字を省略しない）。
+   - 誘いの一文: <プロファイル>を踏まえ、なぜ今これを見てほしいかを自然な話し言葉で1文添える。事実の要約と矛盾しないこと。
+3. 誘いの一文で禁止すること: 「〜に関心がある人にとって」「〜な機会です」のような定型的な言い回し。ユーザーの属性のラベル貼り。プロファイルに無い決めつけ。本文に無い事実の追加。自然な一文にならない場合は、誘いの一文を省いて要約だけにする。
+4. 評価の誇張・過度な煽りはしない。title は変更しない。sourcePage から書き直す情報が読み取れない場合は現在の body をそのまま返す。
 
 # 出力契約
 下記フィールドのJSON配列のみを出力する。入力カードは1件も省略しない。
@@ -396,8 +392,8 @@ function userCandidates(todayJp: string, extractLimit: number, pageBlocks: strin
 function userClassify(todayJp: string, livingArea: string, tasteBlock: string, candidatesJson: string): string {
   return `<基準日>${todayJp}</基準日>\n<生活圏>${livingArea}</生活圏>\n<プロファイル>\n${tasteBlock}\n</プロファイル>\n<候補一覧>\n${candidatesJson}\n</候補一覧>`;
 }
-function userEnrich(todayJp: string, blocks: string): string {
-  return `<基準日>${todayJp}</基準日>\n<カード群>\n${blocks}\n</カード群>`;
+function userEnrich(todayJp: string, profileText: string, blocks: string): string {
+  return `<基準日>${todayJp}</基準日>\n<プロファイル>\n${profileText}\n</プロファイル>\n<カード群>\n${blocks}\n</カード群>`;
 }
 
 // 並行数を制限しつつ全件処理する(Jina Readerを一度に大量に叩いてレート制限に
@@ -418,7 +414,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
 // 層E: 採用が確定したカードだけ個別ページを取得し、本文をより具体的に書き直す。
 // 1ページから複数カードが生まれている場合はページ取得を1回にまとめる。
 async function enrichCardBodies(
-  key: string, todayJp: string, cards: GeneratedCard[],
+  key: string, todayJp: string, profileText: string, cards: GeneratedCard[],
 ): Promise<{ cards: GeneratedCard[]; usage: TokenUsage; pagesRead: PageReadTrace[] }> {
   const withUrl = cards.map((c, i) => ({ c, i })).filter((x) => x.c.sourceUrl);
   if (withUrl.length === 0) return { cards, usage: ZERO_USAGE, pagesRead: [] };
@@ -453,7 +449,7 @@ async function enrichCardBodies(
     .join("\n");
   if (!blocks) return { cards: out, usage: ZERO_USAGE, pagesRead };
 
-  const r = await callGemini(key, SYSTEM_ENRICH_BODY, userEnrich(todayJp, blocks), true, 8192);
+  const r = await callGemini(key, SYSTEM_ENRICH_BODY, userEnrich(todayJp, profileText, blocks), true, 8192);
   if (!r.ok) return { cards: out, usage: ZERO_USAGE, pagesRead };
 
   const rewritten = extractJsonArray<{ id?: number; body?: string }>(r.text) ?? [];
@@ -539,6 +535,8 @@ export async function buildDeck(input: {
   const interestLine = `興味: ${interestSignals.length ? interestSignals.map((i) => i.label).join(" / ") : "なし"}`;
   const emergingLine = `これから好みそうな傾向: ${emergingSignals.length ? emergingSignals.map((i) => i.label).join(" / ") : "なし"}`;
   const tasteBlockClassify = `${wishesLine}\n${tasteLine}\n${interestLine}\n${emergingLine}`;
+  // 層E(本文詳細化)の「誘い1文」の根拠に使う。ウィッシュは含めず好み・興味・傾向だけ。
+  const tasteBlockEnrich = `${tasteLine}\n${interestLine}\n${emergingLine}`;
 
   const jst = new Date(Date.now() + 9 * 3600 * 1000);
   const todayJp = `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日`;
@@ -722,7 +720,7 @@ export async function buildDeck(input: {
 
     // 層E: 採用が確定したカードだけ、個別ページを追加取得して本文を詳細化する
     // (全候補ではなく最終的にデッキへ入る分だけなのでコストを抑えられる)。
-    const enrich = await enrichCardBodies(key, todayJp, cards);
+    const enrich = await enrichCardBodies(key, todayJp, tasteBlockEnrich, cards);
     tokens = addUsage(tokens, enrich.usage);
 
     return {

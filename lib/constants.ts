@@ -119,6 +119,19 @@ export const AREA_COORDS: Record<string, { x: number; y: number }> = {
 };
 export const AREA_FALLBACK = { x: 50, y: 80 };
 
+// アプリ内蔵の固定情報源。展覧会・カルチャーイベント・映画の一覧系サイト
+// (東京中心・カルチャー寄り)。ユーザーが手で登録するお気に入りとは別に、
+// 夜間Cronが毎晩必ず巡回する(会期・上映は鮮度が命なのでローテーションに
+// 埋もれさせない)。淘汰の対象にはしない。ミニシアター単館等へ差し替えたい
+// 場合はこの配列を編集する。robots/規約は本番運用前に個別確認する前提。
+export const FIXED_SOURCES: string[] = [
+  "https://www.tokyoartbeat.com/",                 // 展覧会・アートイベント一覧
+  "https://artscape.jp/exhibition/",               // 展覧会(Jina取得実績あり)
+  "https://bijutsutecho.com/exhibitions",          // 美術・展覧会
+  "https://www.timeout.jp/tokyo/ja/things-to-do",  // カルチャーイベント
+  "https://eiga.com/now/",                         // 公開中の映画・上映
+];
+
 // 実地図(Leaflet)用の、既知エリアの実緯度経度。lat/lngを持たないItem
 // (エリア名だけのもの・デモデータ)を実地図に置くためのフォールバック。
 // AREA_COORDSの抽象座標と違い、こちらは本物の緯度経度。

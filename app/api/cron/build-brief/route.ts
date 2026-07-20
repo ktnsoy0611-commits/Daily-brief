@@ -5,6 +5,7 @@ import { loadMyBrain } from "@/lib/myBrain";
 import { deleteMyBrainFile, readMyBrainFile, syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
 import { buildLogLines, groupByMonth, mergeMonthFile, oldLogPaths } from "@/lib/feedbackLog";
 import { generatedToBriefCard } from "@/lib/deckStyle";
+import { FIXED_SOURCES } from "@/lib/constants";
 import type { BriefCard } from "@/lib/types";
 
 // 夜間のブリーフ生成Cron。GitHub Actions のスケジュール実行(build-brief.yml)から
@@ -106,7 +107,10 @@ export async function GET(req: Request) {
   // URLを書き足す場所)を対等に合わせて使う。生活圏はmy-brain側にしか
   // 入力欄が無いのでそちらから読む。
   const brain = await loadMyBrain();
-  const allSources = Array.from(new Set([...appFavoriteSources.map((s) => s.url), ...brain.sources.map((s) => s.url)]))
+  // 固定(アプリ内蔵)＋お気に入り(app_state)＋発掘(my-brain sources.md)。
+  // 発掘プールの並び順(打率順)はCoworkの発掘タスクが保つ前提。
+  const brainSourceUrls = brain.sources.map((s) => s.url);
+  const allSources = Array.from(new Set([...FIXED_SOURCES, ...appFavoriteSources.map((s) => s.url), ...brainSourceUrls]))
     .filter((u) => !dismissedSrcSet.has(normSrc(u)));
   // 片方にしかないラベルも取りこぼさないよう、ラベル単位で合わせる
   // (重複はweightが大きい方を残す)。
@@ -126,11 +130,10 @@ export async function GET(req: Request) {
 
   if (!allSources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
 
-  // Cron専有の巡回状態(crawlState): 情報源のローテーション位置(offset)と、
-  // 各情報源の前回内容ハッシュ(digests)を保存する。クライアントはこのキーを
+  // Cron専有の巡回状態(crawlState): 各情報源の前回内容ハッシュ(digests)を保存し、
+  // 更新のないサイトの抽出をスキップする(トークン節約)。クライアントはこのキーを
   // 一切触らない(AppStateに無いキーなので保存対象にならない)。
-  const rawCrawl = (byKey.crawlState ?? {}) as { offset?: unknown; digests?: unknown };
-  const prevOffset = typeof rawCrawl.offset === "number" && rawCrawl.offset >= 0 ? Math.floor(rawCrawl.offset) : 0;
+  const rawCrawl = (byKey.crawlState ?? {}) as { digests?: unknown };
   const prevDigests: Record<string, string> =
     rawCrawl.digests && typeof rawCrawl.digests === "object"
       ? Object.fromEntries(
@@ -138,13 +141,31 @@ export async function GET(req: Request) {
         )
       : {};
 
-  // Q1: 情報源が SOURCE_WINDOW を超えて増えても、毎回先頭だけを読むのではなく、
-  // offset を起点に窓をずらして読む(全ソースを順に巡る)。次回はこの続きから。
+  // 巡回対象の選択: 固定(FIXED_SOURCES)＋お気に入りは毎晩必ず巡回。発掘プールからは
+  // SOURCE_WINDOW件を「前寄せの重み付き非復元ランダム」で選ぶ(基本ランダム・上位
+  // =打率が高い側がほんの少し出やすい)。淘汰・打率順の並べ替えはCoworkの発掘タスクが
+  // 担うので、ここは並びを尊重して選ぶだけ(統計は持たない)。
   const SOURCE_WINDOW = 6;
-  const startOffset = allSources.length ? prevOffset % allSources.length : 0;
-  const rotated = [...allSources.slice(startOffset), ...allSources.slice(0, startOffset)];
-  const sources = rotated.slice(0, SOURCE_WINDOW);
-  const nextOffset = allSources.length ? (startOffset + sources.length) % allSources.length : 0;
+  const SELECT_BIAS = 0.6; // 前寄せの強さ(0=完全ランダム)。小さめ=「ほんの少し」。
+  const pinnedSet = new Set([...FIXED_SOURCES, ...appFavoriteSources.map((s) => s.url)].map(normSrc));
+  const pinned = allSources.filter((u) => pinnedSet.has(normSrc(u)));
+  const rotatePool = allSources.filter((u) => !pinnedSet.has(normSrc(u)));
+  // 前寄せ重み付き非復元ランダム抽出。weight = 1 + BIAS*(1 - i/len)。
+  function weightedSample(pool: string[], k: number): string[] {
+    const items = pool.map((u, i) => ({ u, w: 1 + SELECT_BIAS * (pool.length > 1 ? 1 - i / (pool.length - 1) : 1) }));
+    const picked: string[] = [];
+    while (picked.length < k && items.length) {
+      const total = items.reduce((s, x) => s + x.w, 0);
+      let r = Math.random() * total;
+      let idx = 0;
+      for (let i = 0; i < items.length; i++) { r -= items[i].w; if (r <= 0) { idx = i; break; } }
+      picked.push(items[idx].u);
+      items.splice(idx, 1);
+    }
+    return picked;
+  }
+  const rotatePick = weightedSample(rotatePool, SOURCE_WINDOW);
+  const sources = [...pinned, ...rotatePick];
 
   // Q2: 既に作った/KEEP済みのカードと同じものを作らないための除外リスト。
   // 直近のデッキ(generatedDecks)とストックのItemから、URLとタイトルを集める。
@@ -276,12 +297,12 @@ export async function GET(req: Request) {
     deckWritten = true;
   }
 
-  // Q1/Q3: 巡回状態を保存する。offset は次回の窓の開始位置、digests は今回取得
-  // できた各情報源の最新ハッシュ(前回分にマージ)。クライアントは触らないキー。
+  // Q3: 巡回状態を保存する。digests は今回取得できた各情報源の最新ハッシュ
+  // (前回分にマージ)。更新の無いサイトを次回スキップするのに使う。
   try {
     const mergedDigests = { ...prevDigests, ...result.digests };
     await supa.from("app_state").upsert(
-      { user_id: ownerId, key: "crawlState", value: { offset: nextOffset, digests: mergedDigests }, updated_at: new Date().toISOString() },
+      { user_id: ownerId, key: "crawlState", value: { digests: mergedDigests }, updated_at: new Date().toISOString() },
       { onConflict: "user_id,key" },
     );
   } catch {
@@ -354,8 +375,10 @@ export async function GET(req: Request) {
     // デプロイが古い(APP_BASE_URL がデプロイ固定URL等)ことを意味する。
     cardIds: cards.map((c) => c.id),
     brainFiles: brain.filesRead,
-    // sourceCount=今回読んだ窓のサイズ / sourceTotal=プール全体 / offsetは巡回位置。
-    sourceCount: sources.length, sourceTotal: allSources.length, offset: startOffset, nextOffset,
+    // sourceCount=今晩巡回した数(固定＋抽選) / sourceTotal=プール全体 /
+    // pinnedCount=固定＋お気に入り(毎晩) / rotatePoolSize=発掘プールの母数。
+    sourceCount: sources.length, sourceTotal: allSources.length,
+    pinnedCount: pinned.length, rotatePoolSize: rotatePool.length,
     note: result.note,
     sites: result.sites, dropped: result.dropped, tokens: result.tokens,
     logWrote, proposedSource, mybrainSync,

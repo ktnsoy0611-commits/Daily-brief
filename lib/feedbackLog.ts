@@ -31,7 +31,9 @@ function clean(s: string | undefined): string {
 
 // 1行の自己完結ログ行を作る。区切りは全角｜。exact一致で重複排除できるよう決定的にする。
 function makeLine(date: string, reaction: string, title: string, kind: string, url: string, summary: string): LogLine {
-  const line = `- ${date}｜${reaction}｜${clean(title)}｜${clean(kind)}｜${clean(url)}｜${clean(summary).slice(0, 160)}`;
+  // 要約(カード本文)は分析タスクがコンテキストとして読む材料なので、途中で
+  // 切らずカード本文(約200字)が丸ごと収まる長さまで許す。
+  const line = `- ${date}｜${reaction}｜${clean(title)}｜${clean(kind)}｜${clean(url)}｜${clean(summary).slice(0, 400)}`;
   return { month: date.slice(0, 7), line };
 }
 
@@ -40,7 +42,7 @@ function makeLine(date: string, reaction: string, title: string, kind: string, u
 export function buildLogLines(
   briefs: Record<string, { decisions?: Record<string, string>; feedback?: Record<string, boolean> }>,
   decks: Record<string, BriefCard[]>,
-  items: { title?: string; kind?: string; sourceUrl?: string; good?: boolean; status?: string; doneAt?: string; addedAt?: string }[],
+  items: { title?: string; kind?: string; sourceUrl?: string; good?: boolean; status?: string; doneAt?: string; addedAt?: string; summary?: string }[],
 ): LogLine[] {
   const out: LogLine[] = [];
   for (const [editionKey, brief] of Object.entries(briefs ?? {})) {
@@ -60,11 +62,11 @@ export function buildLogLines(
     if (!it || typeof it.title !== "string") continue;
     if (it.status === "done") {
       const d = ymd(it.doneAt) ?? ymd(it.addedAt);
-      if (d) out.push(makeLine(d, "実行", it.title, it.kind ?? "", it.sourceUrl ?? "", ""));
+      if (d) out.push(makeLine(d, "実行", it.title, it.kind ?? "", it.sourceUrl ?? "", it.summary ?? ""));
     }
     if (it.good === true) {
       const d = ymd(it.doneAt) ?? ymd(it.addedAt);
-      if (d) out.push(makeLine(d, "星付き", it.title, it.kind ?? "", it.sourceUrl ?? "", ""));
+      if (d) out.push(makeLine(d, "星付き", it.title, it.kind ?? "", it.sourceUrl ?? "", it.summary ?? ""));
     }
   }
   return out;

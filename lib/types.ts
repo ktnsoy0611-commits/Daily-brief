@@ -62,6 +62,10 @@ export interface Item {
   price?: string;
   images?: string[];
   meta?: string[];
+  // 由来カードの本文(要約)。KEEP時にBriefCard.bodyを引き継ぐ。分析用の反応ログ
+  // (my-brain logs/feedback)で、実行・星付きといった強いシグナルの行にも内容の
+  // コンテキストを残すために使う(カードがgeneratedDecksから消えた後も残る)。
+  summary?: string;
   sourceUrl?: string;
   sourceLabel?: string;
   color?: string;

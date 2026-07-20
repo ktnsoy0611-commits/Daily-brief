@@ -214,6 +214,9 @@ export interface BriefCard {
   // §2で特定したギャップ: 従来これが無く、展覧会をKEEPしても会期末が
   // Itemへ伝わらず自動失効が効かなかった)。
   expiresAt?: string;
+  // 情報源カード(§7-5)。trueなら「新しい情報源: ○○」の提案カード。KEEPは
+  // Itemを作らず sourceUrl をお気に入り情報源へ登録、SKIPは除外リストへ入れる。
+  sourceProposal?: boolean;
 }
 
 export interface GrowthCard {

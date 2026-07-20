@@ -329,6 +329,23 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
             }
           }
         }
+      } else if (card.sourceProposal && card.sourceUrl) {
+        // 情報源カード(§7-5): KEEPはお気に入り情報源へ登録(Itemは作らない)、
+        // SKIPは除外リストへ入れて次回以降プールから外す。
+        brief.decisions[card.id] = dir;
+        const url = card.sourceUrl;
+        if (dir === "keep") {
+          next.sources = next.sources ?? [];
+          if (!next.sources.some((s) => s.url === url)) {
+            let label = url;
+            try { label = new URL(url).hostname.replace(/^www\./, ""); } catch { /* そのまま */ }
+            next.sources.unshift({ id: `src-${Date.now()}`, url, label, addedAt: new Date().toISOString() });
+          }
+        } else {
+          next.profile = next.profile ?? { interests: [] };
+          const d = next.profile.dismissedSources ?? [];
+          if (!d.includes(url)) next.profile.dismissedSources = [...d, url];
+        }
       } else {
         brief.decisions[card.id] = dir;
         if (dir === "keep") {

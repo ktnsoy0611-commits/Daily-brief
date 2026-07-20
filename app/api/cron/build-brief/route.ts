@@ -178,6 +178,39 @@ export async function GET(req: Request) {
   const GENERATED_ID_BASE = Date.now();
   const cards: BriefCard[] = result.cards.map((c, i) => generatedToBriefCard(c, GENERATED_ID_BASE + i));
 
+  // 情報源カード(§7-5): Coworkが発掘してプールに入った情報源のうち、まだ提案して
+  // いない・お気に入りでも除外でもないものを1件だけ「新しい情報源」カードとして
+  // デッキ先頭に混ぜ、KEEP/SKIPで採否を確認できるようにする。提案済みURLは
+  // sources-proposed.md に記録して二度提案しない。非致命。
+  let proposedSource: string | null = null;
+  try {
+    const favSet = new Set(appFavoriteSources.map((s) => normSrc(s.url)));
+    const proposedRaw = (await readMyBrainFile("sources-proposed.md")) ?? "";
+    const proposedSet = new Set(
+      proposedRaw.split(/\r?\n/).map((l) => l.match(/^-\s*(\S+)/)?.[1]).filter((u): u is string => !!u).map(normSrc),
+    );
+    const candidate = brain.sources
+      .map((s) => s.url)
+      .find((u) => !favSet.has(normSrc(u)) && !dismissedSrcSet.has(normSrc(u)) && !proposedSet.has(normSrc(u)));
+    if (candidate) {
+      let label = candidate;
+      try { label = new URL(candidate).hostname.replace(/^www\./, ""); } catch { /* そのまま */ }
+      cards.unshift({
+        id: GENERATED_ID_BASE + 900000, category: "情報源", categoryJp: "情報源", trigger: "新しい情報源",
+        title: `新しい情報源: ${label}`,
+        body: `${label} を情報源に加えました。良ければ右へスワイプして残し、合わなければ左へ。`,
+        bg: "#ECE9E1", fg: "#1C1C1E", accent: "#8A8578",
+        sourceUrl: candidate, sourceLabel: label, sourceProposal: true,
+      });
+      proposedSource = candidate;
+      const prevLines = proposedRaw.split(/\r?\n/).filter((l) => l.startsWith("- "));
+      const nextProposed = `# sources-proposed（提案済みの情報源URL。二度提案しないための記録）\n\n${[...prevLines, `- ${candidate}`].join("\n")}\n`;
+      await writeMyBrainFile("sources-proposed.md", nextProposed, "提案した情報源を記録");
+    }
+  } catch {
+    /* 情報源カードの失敗はデッキ生成を止めない */
+  }
+
   const { data: existingDeck } = await supa.from("app_state").select("value").eq("user_id", ownerId).eq("key", "generatedDecks").maybeSingle();
   const decks: Record<string, BriefCard[]> = (existingDeck?.value as Record<string, BriefCard[]>) ?? {};
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 3600 * 1000;
@@ -259,6 +292,6 @@ export async function GET(req: Request) {
     cardIds: cards.map((c) => c.id),
     brainFiles: brain.filesRead, sourceCount: sources.length,
     sites: result.sites, dropped: result.dropped, tokens: result.tokens,
-    logWrote, mybrainSync,
+    logWrote, proposedSource, mybrainSync,
   });
 }

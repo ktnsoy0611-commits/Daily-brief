@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildDeck, type InterestSignal } from "@/lib/briefPipeline";
+import { buildDeck, type InterestSignal, type WishInput } from "@/lib/briefPipeline";
 
 // ブリーフ生成の実験用サーバー関数(フェーズC-0「プロンプト実験場」)。
 // 実体の取得・抽出・分類・編成は lib/briefPipeline.ts の buildDeck() が担う
@@ -25,15 +25,30 @@ function parseSignals(v: unknown): InterestSignal[] {
     .slice(0, 20);
 }
 
+function parseWishes(v: unknown): WishInput[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((w): WishInput | null => {
+      if (typeof w === "string") return w.trim() ? { title: w.trim() } : null;
+      if (w && typeof w === "object" && typeof (w as { title?: unknown }).title === "string") {
+        const o = w as { title: string; domain?: unknown };
+        return o.title.trim() ? { title: o.title.trim(), domain: typeof o.domain === "string" ? o.domain : undefined } : null;
+      }
+      return null;
+    })
+    .filter((w): w is WishInput => w !== null)
+    .slice(0, 20);
+}
+
 export async function POST(req: Request) {
-  let body: { wishes?: string[]; taste?: unknown; interest?: unknown; sources?: string[]; count?: number };
+  let body: { wishes?: unknown; taste?: unknown; interest?: unknown; sources?: string[]; count?: number };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, reason: "bad_request" }, { status: 400 });
   }
 
-  const wishes = (body.wishes ?? []).filter((w) => typeof w === "string" && w.trim()).slice(0, 20);
+  const wishes = parseWishes(body.wishes);
   const taste = parseSignals(body.taste);
   const interest = parseSignals(body.interest);
   const sources = (body.sources ?? []).filter((u) => typeof u === "string").map((u) => u.trim());

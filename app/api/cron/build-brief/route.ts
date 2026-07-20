@@ -83,9 +83,9 @@ export async function GET(req: Request) {
     .filter((i): i is { label: string; weight?: number; category?: string } => isSignalLike(i) && i.category === "interest")
     .map((i) => ({ label: i.label, weight: i.weight ?? 0 }));
   const rawWishes = Array.isArray(byKey.wishes) ? (byKey.wishes as unknown[]) : [];
-  const wishes: string[] = rawWishes
-    .filter((w): w is { status?: string; title: string } => !!w && typeof w === "object" && (w as { status?: unknown }).status === "stock")
-    .map((w) => w.title);
+  const wishes: { title: string; domain?: string }[] = rawWishes
+    .filter((w): w is { status?: string; title: string; category?: string } => !!w && typeof w === "object" && (w as { status?: unknown }).status === "stock")
+    .map((w) => ({ title: w.title, domain: w.category }));
 
   // 情報源はお気に入り(app_state)とmy-brainのその他の欄(将来Coworkが発掘した
   // URLを書き足す場所)を対等に合わせて使う。生活圏はmy-brain側にしか
@@ -180,7 +180,7 @@ export async function GET(req: Request) {
   // 興味は自動検出で頻繁に変わるため設定画面の編集時には都度同期しておらず、
   // 夜間にここで一度だけ追いつかせる。失敗しても(未設定・権限不足等)
   // デッキ生成自体は成功として扱う。
-  const mybrainSync = await syncMyBrain({ livingArea: brain.taste.livingArea, taste: mergedTaste, interest: mergedInterest, wishes, sources: appFavoriteSources });
+  const mybrainSync = await syncMyBrain({ livingArea: brain.taste.livingArea, taste: mergedTaste, interest: mergedInterest, wishes: wishes.map((w) => w.title), sources: appFavoriteSources });
 
   return NextResponse.json({
     ok: true, editionKey, cardCount: cards.length, pooled,

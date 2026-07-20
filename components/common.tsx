@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Check, Plus, Sparkles, Star } from "lucide-react";
+import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BLUE, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
@@ -418,8 +418,9 @@ export function BinderModal({ item, onClose, actionSlot }: {
               </div>
             )}
             {item.sourceUrl && (
-              <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", padding: "13px 0", background: INK, color: PAPER, borderRadius: 999, textDecoration: "none", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em" }}>
-                {item.sourceLabel ?? "情報ソースを見る"} ↗
+              <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "13px 0", background: INK, color: PAPER, borderRadius: 999, textDecoration: "none", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>
+                {item.sourceLabel ?? "出典を見る"}
+                <ExternalLink size={13} strokeWidth={2.2} />
               </a>
             )}
           </OverlayCard>

@@ -25,9 +25,24 @@ const KIND_STYLE: Record<ItemKind, { category: string; categoryJp: string; glyph
 };
 const FALLBACK_STYLE = KIND_STYLE.info;
 
+const isUrl = (s: string) => /^https?:\/\//i.test(s.trim());
+function hostOf(u?: string): string | undefined {
+  if (!u) return undefined;
+  try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return undefined; }
+}
+
 export function generatedToBriefCard(gc: GeneratedCard, id: number): BriefCard {
   const kind = (gc.kind && gc.kind in KIND_STYLE ? gc.kind : "info") as ItemKind;
   const s = KIND_STYLE[kind] ?? FALLBACK_STYLE;
+  // meta にURLや空文字が紛れ込むとカード内に生URLが表示されてしまうので除く。
+  const cleanMeta = (gc.meta ?? []).map((m) => (typeof m === "string" ? m.trim() : "")).filter((m) => m && !isUrl(m));
+  // 出典ボタンのラベル: LLMがURLをそのまま入れることがあるので、URLらしければ
+  // ドメイン名から「○○で見る」を作る。無ければ「出典を見る」。
+  const host = hostOf(gc.sourceUrl);
+  const rawLabel = gc.sourceLabel?.trim();
+  const sourceLabel = gc.sourceUrl
+    ? (rawLabel && !isUrl(rawLabel) ? rawLabel : host ? `${host}で見る` : "出典を見る")
+    : undefined;
   return {
     id,
     glyph: s.glyph,
@@ -39,13 +54,13 @@ export function generatedToBriefCard(gc: GeneratedCard, id: number): BriefCard {
     kind,
     title: gc.title,
     body: gc.body,
-    meta: gc.meta,
+    meta: cleanMeta.length ? cleanMeta : undefined,
     bg: s.color,
     fg: PAPER_FG,
     accent: shade(s.color, 45),
     images: gc.images ?? [],
     sourceUrl: gc.sourceUrl,
-    sourceLabel: gc.sourceLabel ?? (gc.sourceUrl ? "出典を見る" : undefined),
+    sourceLabel,
     sourceWishTitle: gc.sourceWishTitle,
     expiresAt: gc.expiresAt,
     serendipity: gc.isDerived,

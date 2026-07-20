@@ -43,7 +43,8 @@ export type TasteInput = {
   livingArea?: string;
 };
 export type TokenUsage = { promptTokens: number; candidateTokens: number; totalTokens: number; calls: number };
-export type SiteTrace = { source: string; fetched: boolean; linkCount: number };
+// unchanged: 前回のダイジェスト(内容ハッシュ)と一致し、抽出をスキップしたサイト。
+export type SiteTrace = { source: string; fetched: boolean; linkCount: number; unchanged?: boolean };
 export type PageReadTrace = { url: string; ok: boolean };
 export type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number };
 export type GeneratedCard = {
@@ -63,6 +64,9 @@ export type BuildResult =
       records: CandidateRecord[]; // 検証を通った候補レコード(content_cacheプール用)
       sites: SiteTrace[]; pagesRead: PageReadTrace[];
       dropped: DropSummary; tokens: TokenUsage; note?: string;
+      // 今回取得した各情報源の内容ハッシュ(normUrl→hash)。Cronがこれを保存し、
+      // 次回 input.digests として渡すと、変化のないサイトを再抽出せずスキップできる。
+      digests: Record<string, string>;
     }
   | { ok: false; reason: string; detail?: string };
 type ClassifiedCandidate = {
@@ -74,6 +78,17 @@ type ClassifiedCandidate = {
 
 const ZERO_USAGE: TokenUsage = { promptTokens: 0, candidateTokens: 0, totalTokens: 0, calls: 0 };
 const ZERO_DROPS: DropSummary = { sourceInvalid: 0, expired: 0, duplicateCandidate: 0, outOfArea: 0, irrelevant: 0, overQuota: 0 };
+
+// 内容ハッシュ(FNV-1a・32bit)。サイトのMarkdownが前回から変わったかの
+// 判定にだけ使う(暗号強度は不要)。同じ入力に対して安定した16進文字列を返す。
+export function contentHash(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
 
 // ---- URL正規化・名称一致 --------------------------------------------------
 export function normUrl(u: string): string {
@@ -460,9 +475,24 @@ async function fetchSite(sourceUrl: string): Promise<SiteFetch> {
 }
 
 // ---- 本体: taste + sources → デッキ ---------------------------------------
-export async function buildDeck(input: { taste: TasteInput; sources: string[]; count: number }): Promise<BuildResult> {
+// exclude: 既に作った/KEEP済みのカードのURL・タイトル。これに一致する候補は
+//   除外し「前に作ったカードと同じもの」を作らない(Q2 重複防止)。
+// digests: 前回取得した各情報源の内容ハッシュ(normUrl→hash)。今回の取得結果と
+//   一致する(=更新が無い)サイトは抽出をスキップしてトークンを節約する(Q3)。
+export async function buildDeck(input: {
+  taste: TasteInput;
+  sources: string[];
+  count: number;
+  exclude?: { urls?: string[]; names?: string[] };
+  digests?: Record<string, string>;
+}): Promise<BuildResult> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { ok: false, reason: "no_key" };
+
+  const excludeUrlSet = new Set((input.exclude?.urls ?? []).filter((u) => typeof u === "string").map(normUrl));
+  const excludeNames = (input.exclude?.names ?? []).filter((n) => typeof n === "string" && n.trim());
+  const prevDigests = input.digests ?? {};
+  const isExcludedName = (name?: string) => !!name && excludeNames.some((e) => namesLikelyMatch(e, name));
 
   const sources = (input.sources ?? [])
     .filter((u) => typeof u === "string" && /^https?:\/\//.test(u.trim()))
@@ -511,13 +541,34 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
 
   try {
     const siteFetches = await Promise.all(sources.map((s) => fetchSite(s)));
-    const sites = siteFetches.map((r) => r.trace);
-    const pagesRead: PageReadTrace[] = siteFetches.map((r) => ({ url: r.url, ok: r.fetched }));
     let tokens = ZERO_USAGE;
 
-    const usable = siteFetches.filter((r) => r.fetched && r.md);
+    // Q3: 取得できた各サイトの内容ハッシュを計算し、前回(input.digests)と一致する
+    // サイトは「更新なし」とみなして抽出対象から外す(Geminiに渡さない=トークン節約)。
+    // digests は今回取得できた全サイトの最新ハッシュを返す(Cronが保存し次回渡す)。
+    const digests: Record<string, string> = {};
+    const unchangedKeys = new Set<string>();
+    for (const r of siteFetches) {
+      if (!r.fetched || !r.md) continue;
+      const k = normUrl(r.url);
+      const h = contentHash(r.md);
+      digests[k] = h;
+      if (prevDigests[k] && prevDigests[k] === h) unchangedKeys.add(k);
+    }
+    const sites: SiteTrace[] = siteFetches.map((r) => ({
+      ...r.trace,
+      unchanged: r.fetched && !!r.md && unchangedKeys.has(normUrl(r.url)),
+    }));
+    const pagesRead: PageReadTrace[] = siteFetches.map((r) => ({ url: r.url, ok: r.fetched }));
+
+    const usable = siteFetches.filter((r) => r.fetched && r.md && !unchangedKeys.has(normUrl(r.url)));
     if (usable.length === 0) {
-      return { ok: true, cards: [], candidateCount: 0, records: [], sites, pagesRead, dropped: ZERO_DROPS, tokens, note: "情報源ページを取得できませんでした。" };
+      const anyFetched = siteFetches.some((r) => r.fetched && r.md);
+      return {
+        ok: true, cards: [], candidateCount: 0, records: [], sites, pagesRead,
+        dropped: ZERO_DROPS, tokens, digests,
+        note: anyFetched ? "取得できた情報源に前回からの更新がありませんでした。" : "情報源ページを取得できませんでした。",
+      };
     }
 
     const validUrlSet = new Set<string>();
@@ -565,6 +616,9 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
         const t = Date.parse(c.end);
         if (!Number.isNaN(t) && t < nowMs) { dropExpired++; continue; }
       }
+      // Q2: 前回までに既に作った/KEEP済みのカードと同じもの(同じURL・同じ名称)は
+      // 作らない。dropDup(重複)に集計する。
+      if (excludeUrlSet.has(normUrl(su)) || isExcludedName(c.name)) { dropDup++; continue; }
       const k = `${normUrl(su)}|${(c.name ?? "").trim().toLowerCase()}`;
       if (seenCandidate.has(k)) { dropDup++; continue; }
       // 同じ一覧から同一の事物が名称の表記ゆれ(会場・年などの付帯情報の
@@ -578,7 +632,7 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
     }
     if (candidates.length === 0) {
       return {
-        ok: true, cards: [], candidateCount: 0, records: [], sites, pagesRead,
+        ok: true, cards: [], candidateCount: 0, records: [], sites, pagesRead, digests,
         dropped: { ...ZERO_DROPS, sourceInvalid: dropSourceInvalid, expired: dropExpired, duplicateCandidate: dropDup },
         tokens, note: "候補が抽出できませんでした。",
       };
@@ -623,6 +677,11 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
     const acceptedModerate: PoolItem[] = [];
     for (const pool of [{ list: strongPool, bucket: acceptedStrong }, { list: moderatePool, bucket: acceptedModerate }]) {
       for (const item of pool.list) {
+        // 層Cがタイトルを言い換えるため、層Bの名称では拾えなかった既出カードとの
+        // 重複を、最終タイトルで改めて弾く(Q2)。
+        if (isExcludedName(item.card.title) || (item.card.sourceUrl && excludeUrlSet.has(normUrl(item.card.sourceUrl)))) {
+          dropDupClassified++; continue;
+        }
         const dup =
           acceptedStrong.some((a) => namesLikelyMatch(a.card.title, item.card.title)) ||
           acceptedModerate.some((a) => namesLikelyMatch(a.card.title, item.card.title));
@@ -664,7 +723,7 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
 
     return {
       ok: true, cards: enrich.cards, candidateCount: candidates.length, records: candidates,
-      sites, pagesRead: [...pagesRead, ...enrich.pagesRead],
+      sites, pagesRead: [...pagesRead, ...enrich.pagesRead], digests,
       dropped: {
         sourceInvalid: dropSourceInvalid,
         expired: dropExpired + dropExpired2,

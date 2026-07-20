@@ -67,7 +67,7 @@ export async function GET(req: Request) {
 
   // 1. taste(好み・興味)は app_state(アプリの設定画面)とmy-brain(他アプリが
   // 直接書き足す可能性がある方)をラベル単位で合わせて使う。
-  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items"]);
+  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items", "crawlState"]);
   const byKey: Record<string, unknown> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
   const rawSources = Array.isArray(byKey.sources) ? (byKey.sources as unknown[]) : [];
   const appFavoriteSources: { url: string; label?: string }[] = rawSources
@@ -106,7 +106,7 @@ export async function GET(req: Request) {
   // URLを書き足す場所)を対等に合わせて使う。生活圏はmy-brain側にしか
   // 入力欄が無いのでそちらから読む。
   const brain = await loadMyBrain();
-  const sources = Array.from(new Set([...appFavoriteSources.map((s) => s.url), ...brain.sources.map((s) => s.url)]))
+  const allSources = Array.from(new Set([...appFavoriteSources.map((s) => s.url), ...brain.sources.map((s) => s.url)]))
     .filter((u) => !dismissedSrcSet.has(normSrc(u)));
   // 片方にしかないラベルも取りこぼさないよう、ラベル単位で合わせる
   // (重複はweightが大きい方を残す)。
@@ -122,12 +122,53 @@ export async function GET(req: Request) {
   const mergedInterest = mergeSignals(appInterest, brain.taste.interest ?? []).filter((s) => !dismissedSet.has(s.label));
   const taste: TasteInput = { taste: mergedTaste, interest: mergedInterest, wishes, livingArea: brain.taste.livingArea };
 
-  if (!sources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
+  if (!allSources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
+
+  // Cron専有の巡回状態(crawlState): 情報源のローテーション位置(offset)と、
+  // 各情報源の前回内容ハッシュ(digests)を保存する。クライアントはこのキーを
+  // 一切触らない(AppStateに無いキーなので保存対象にならない)。
+  const rawCrawl = (byKey.crawlState ?? {}) as { offset?: unknown; digests?: unknown };
+  const prevOffset = typeof rawCrawl.offset === "number" && rawCrawl.offset >= 0 ? Math.floor(rawCrawl.offset) : 0;
+  const prevDigests: Record<string, string> =
+    rawCrawl.digests && typeof rawCrawl.digests === "object"
+      ? Object.fromEntries(
+          Object.entries(rawCrawl.digests as Record<string, unknown>).filter(([, v]) => typeof v === "string") as [string, string][],
+        )
+      : {};
+
+  // Q1: 情報源が SOURCE_WINDOW を超えて増えても、毎回先頭だけを読むのではなく、
+  // offset を起点に窓をずらして読む(全ソースを順に巡る)。次回はこの続きから。
+  const SOURCE_WINDOW = 6;
+  const startOffset = allSources.length ? prevOffset % allSources.length : 0;
+  const rotated = [...allSources.slice(startOffset), ...allSources.slice(0, startOffset)];
+  const sources = rotated.slice(0, SOURCE_WINDOW);
+  const nextOffset = allSources.length ? (startOffset + sources.length) % allSources.length : 0;
+
+  // Q2: 既に作った/KEEP済みのカードと同じものを作らないための除外リスト。
+  // 直近のデッキ(generatedDecks)とストックのItemから、URLとタイトルを集める。
+  const excludeUrls: string[] = [];
+  const excludeNames: string[] = [];
+  const recentDecks = (byKey.generatedDecks ?? {}) as Record<string, { sourceUrl?: string; title?: string }[]>;
+  for (const deck of Object.values(recentDecks)) {
+    for (const c of deck ?? []) {
+      if (typeof c?.sourceUrl === "string") excludeUrls.push(c.sourceUrl);
+      if (typeof c?.title === "string") excludeNames.push(c.title);
+    }
+  }
+  const excludeItems = Array.isArray(byKey.items) ? (byKey.items as { sourceUrl?: string; title?: string }[]) : [];
+  for (const it of excludeItems) {
+    if (typeof it?.sourceUrl === "string") excludeUrls.push(it.sourceUrl);
+    if (typeof it?.title === "string") excludeNames.push(it.title);
+  }
 
   // 2. 生成。countは「全体で最大何枚まで」という安全弁で、埋めにいく目標では
   // ない。実際の枚数は1情報源あたり最大3枚(buildDeckのSITE_CARD_LIMIT)で
   // 決まるので、情報源が少ない今は自然に数枚程度になる。
-  const result = await buildDeck({ taste, sources, count: 20 });
+  const result = await buildDeck({
+    taste, sources, count: 20,
+    exclude: { urls: excludeUrls, names: excludeNames },
+    digests: prevDigests,
+  });
   if (!result.ok) {
     const status = result.reason.startsWith("gemini_") || result.reason === "fetch_failed" ? 502 : 200;
     return NextResponse.json({ ...result, brainFiles: brain.filesRead }, { status });
@@ -178,12 +219,18 @@ export async function GET(req: Request) {
   const GENERATED_ID_BASE = Date.now();
   const cards: BriefCard[] = result.cards.map((c, i) => generatedToBriefCard(c, GENERATED_ID_BASE + i));
 
-  // 情報源カード(§7-5): Coworkが発掘してプールに入った情報源のうち、まだ提案して
-  // いない・お気に入りでも除外でもないものを1件だけ「新しい情報源」カードとして
-  // デッキ先頭に混ぜ、KEEP/SKIPで採否を確認できるようにする。提案済みURLは
-  // sources-proposed.md に記録して二度提案しない。非致命。
+  // 新しいカードが1枚も無い場合(全情報源が前回から更新なし=Q3、または候補が
+  // 分類で全て落ちた場合)は、既存のデッキを空で上書きして消してしまわないよう、
+  // デッキ書き込みと情報源カードの提案をスキップする。巡回状態(crawlState)・
+  // ログ・同期は下で通常どおり行う。
   let proposedSource: string | null = null;
-  try {
+  let deckWritten = false;
+  if (result.cards.length > 0) {
+    // 情報源カード(§7-5): Coworkが発掘してプールに入った情報源のうち、まだ提案して
+    // いない・お気に入りでも除外でもないものを1件だけ「新しい情報源」カードとして
+    // デッキ先頭に混ぜ、KEEP/SKIPで採否を確認できるようにする。提案済みURLは
+    // sources-proposed.md に記録して二度提案しない。非致命。
+    try {
     const favSet = new Set(appFavoriteSources.map((s) => normSrc(s.url)));
     const proposedRaw = (await readMyBrainFile("sources-proposed.md")) ?? "";
     const proposedSet = new Set(
@@ -207,22 +254,36 @@ export async function GET(req: Request) {
       const nextProposed = `# sources-proposed（提案済みの情報源URL。二度提案しないための記録）\n\n${[...prevLines, `- ${candidate}`].join("\n")}\n`;
       await writeMyBrainFile("sources-proposed.md", nextProposed, "提案した情報源を記録");
     }
-  } catch {
-    /* 情報源カードの失敗はデッキ生成を止めない */
+    } catch {
+      /* 情報源カードの失敗はデッキ生成を止めない */
+    }
+
+    const { data: existingDeck } = await supa.from("app_state").select("value").eq("user_id", ownerId).eq("key", "generatedDecks").maybeSingle();
+    const decks: Record<string, BriefCard[]> = (existingDeck?.value as Record<string, BriefCard[]>) ?? {};
+    const cutoff = Date.now() - RETENTION_DAYS * 24 * 3600 * 1000;
+    for (const k of Object.keys(decks)) if (isOldEdition(k, cutoff)) delete decks[k];
+    decks[editionKey] = cards;
+
+    const { error: writeErr } = await supa.from("app_state").upsert(
+      { user_id: ownerId, key: "generatedDecks", value: decks, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,key" },
+    );
+    if (writeErr) {
+      return NextResponse.json({ ok: false, reason: "deck_write_failed", detail: writeErr.message }, { status: 502 });
+    }
+    deckWritten = true;
   }
 
-  const { data: existingDeck } = await supa.from("app_state").select("value").eq("user_id", ownerId).eq("key", "generatedDecks").maybeSingle();
-  const decks: Record<string, BriefCard[]> = (existingDeck?.value as Record<string, BriefCard[]>) ?? {};
-  const cutoff = Date.now() - RETENTION_DAYS * 24 * 3600 * 1000;
-  for (const k of Object.keys(decks)) if (isOldEdition(k, cutoff)) delete decks[k];
-  decks[editionKey] = cards;
-
-  const { error: writeErr } = await supa.from("app_state").upsert(
-    { user_id: ownerId, key: "generatedDecks", value: decks, updated_at: new Date().toISOString() },
-    { onConflict: "user_id,key" },
-  );
-  if (writeErr) {
-    return NextResponse.json({ ok: false, reason: "deck_write_failed", detail: writeErr.message }, { status: 502 });
+  // Q1/Q3: 巡回状態を保存する。offset は次回の窓の開始位置、digests は今回取得
+  // できた各情報源の最新ハッシュ(前回分にマージ)。クライアントは触らないキー。
+  try {
+    const mergedDigests = { ...prevDigests, ...result.digests };
+    await supa.from("app_state").upsert(
+      { user_id: ownerId, key: "crawlState", value: { offset: nextOffset, digests: mergedDigests }, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,key" },
+    );
+  } catch {
+    /* 巡回状態の保存失敗はデッキ生成を止めない */
   }
 
   // 5. 反応の生ログを my-brain の logs/feedback-YYYY-MM.md へエクスポート。
@@ -285,12 +346,15 @@ export async function GET(req: Request) {
   const mybrainSync = await syncMyBrain({ sources: appFavoriteSources });
 
   return NextResponse.json({
-    ok: true, editionKey, cardCount: cards.length, pooled,
+    ok: true, editionKey, cardCount: cards.length, pooled, deckWritten,
     // 診断用: 実際に採番したカードidを出す。Date.now()ベースの大きな数値に
     // なる。もし1,2,3のような小さい値のままなら、この保護ルートを叩いている
     // デプロイが古い(APP_BASE_URL がデプロイ固定URL等)ことを意味する。
     cardIds: cards.map((c) => c.id),
-    brainFiles: brain.filesRead, sourceCount: sources.length,
+    brainFiles: brain.filesRead,
+    // sourceCount=今回読んだ窓のサイズ / sourceTotal=プール全体 / offsetは巡回位置。
+    sourceCount: sources.length, sourceTotal: allSources.length, offset: startOffset, nextOffset,
+    note: result.note,
     sites: result.sites, dropped: result.dropped, tokens: result.tokens,
     logWrote, proposedSource, mybrainSync,
   });

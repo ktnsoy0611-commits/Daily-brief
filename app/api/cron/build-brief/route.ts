@@ -92,6 +92,11 @@ export async function GET(req: Request) {
     ? ((profile as { dismissedInterests?: unknown[] }).dismissedInterests as unknown[]).filter((x): x is string => typeof x === "string")
     : [];
   const dismissedSet = new Set(dismissed);
+  const dismissedSources: string[] = Array.isArray((profile as { dismissedSources?: unknown } | undefined)?.dismissedSources)
+    ? ((profile as { dismissedSources?: unknown[] }).dismissedSources as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+  const normSrc = (u: string) => u.trim().replace(/\/+$/, "").toLowerCase();
+  const dismissedSrcSet = new Set(dismissedSources.map(normSrc));
   const rawWishes = Array.isArray(byKey.wishes) ? (byKey.wishes as unknown[]) : [];
   const wishes: { title: string; domain?: string }[] = rawWishes
     .filter((w): w is { status?: string; title: string; category?: string } => !!w && typeof w === "object" && (w as { status?: unknown }).status === "stock")
@@ -101,7 +106,8 @@ export async function GET(req: Request) {
   // URLを書き足す場所)を対等に合わせて使う。生活圏はmy-brain側にしか
   // 入力欄が無いのでそちらから読む。
   const brain = await loadMyBrain();
-  const sources = Array.from(new Set([...appFavoriteSources.map((s) => s.url), ...brain.sources.map((s) => s.url)]));
+  const sources = Array.from(new Set([...appFavoriteSources.map((s) => s.url), ...brain.sources.map((s) => s.url)]))
+    .filter((u) => !dismissedSrcSet.has(normSrc(u)));
   // 片方にしかないラベルも取りこぼさないよう、ラベル単位で合わせる
   // (重複はweightが大きい方を残す)。
   function mergeSignals(a: InterestSignal[], b: InterestSignal[]): InterestSignal[] {
@@ -229,8 +235,16 @@ export async function GET(req: Request) {
       "",
     ].join("\n");
     await writeMyBrainFile("taste-user.md", userMd, "手編集(追加・除外)を同期");
+    const srcMd = [
+      "# sources-user（アプリで削除した情報源。発掘タスクはこれを尊重する）",
+      "",
+      "## 除外（プールに入れない・cowork:discoveredから外す）",
+      dismissedSources.length ? dismissedSources.map((u) => `- ${u}`).join("\n") : "（なし）",
+      "",
+    ].join("\n");
+    await writeMyBrainFile("sources-user.md", srcMd, "削除した情報源を同期");
   } catch {
-    /* taste-user.mdの失敗はデッキ生成を止めない */
+    /* taste-user.md/sources-user.mdの失敗はデッキ生成を止めない */
   }
 
   // 7. お気に入りの情報源(sources.md)を my-brain へ同期する(taste-state.md は

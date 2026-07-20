@@ -1,7 +1,7 @@
 "use client";
 
 import { Compass, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
 import { BLUE, HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
@@ -206,6 +206,34 @@ export function ProfileTab({ appState, persist, onClose }: {
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
 
+  // Coworkが発掘して my-brain のプール(sources.md)に入れた情報源も、
+  // お気に入りと合わせて一覧・削除できるように起動時に取り込む。
+  const [poolSources, setPoolSources] = useState<{ url: string; label?: string }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/mybrain/read").then((r) => r.json()).then((d) => {
+      if (alive && d?.ok && Array.isArray(d.sources)) {
+        setPoolSources(d.sources.filter((s: unknown): s is { url: string; label?: string } => !!s && typeof (s as { url?: unknown }).url === "string"));
+      }
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const normU = (u: string) => u.trim().replace(/\/+$/, "").toLowerCase();
+  const dismissedSrc = new Set(appState.profile?.dismissedSources ?? []);
+  const favUrlSet = new Set(sources.map((s) => normU(s.url)));
+  const favVisible = sources.filter((s) => !dismissedSrc.has(s.url));
+  const discovered = poolSources.filter((p) => !favUrlSet.has(normU(p.url)) && !dismissedSrc.has(p.url));
+  // 情報源の削除: Coworkが発掘した分はプールから即座には消せない(次の更新で反映)
+  // ため、除外リストへ記録してUI上は消す。生成の巡回対象からも外れる。
+  const dismissSource = (url: string) => {
+    haptic();
+    const next = structuredClone(appState);
+    next.profile = next.profile ?? { interests: [] };
+    const d = next.profile.dismissedSources ?? [];
+    if (!d.includes(url)) next.profile.dismissedSources = [...d, url];
+    persist(next);
+  };
+
   // 好み(taste)・興味(interest)はどちらもstateそのもの(profile.interests、
   // categoryで区別)の表示であり、ここから直接追加・削除できる(=今どんな
   // データでカードが生成されているかを見て編集できる場所にする)。追加した
@@ -388,14 +416,22 @@ export function ProfileTab({ appState, persist, onClose }: {
             placeholder="興味を追加" />
         </SettingsCard>
 
-        <SettingsCard label="お気に入りの情報源" icon={Link2}>
-          {sources.length === 0 ? (
+        <SettingsCard label="情報源" icon={Link2}>
+          {favVisible.length === 0 && discovered.length === 0 ? (
             <p style={{ fontSize: 12, color: "#9A988E", margin: "0 0 12px" }}>まだありません。</p>
-          ) : sources.map((s) => (
-            <SettingsRow key={s.id} title={s.label} sub={s.url}
-              action={<IconButton onClick={() => removeSource(s.id)} label={`${s.label}を削除`}><X size={13} strokeWidth={2.4} /></IconButton>} />
-          ))}
-          <div style={{ display: "flex", gap: 8, marginTop: sources.length === 0 ? 0 : 12 }}>
+          ) : (
+            <>
+              {favVisible.map((s) => (
+                <SettingsRow key={s.id} title={s.label} sub={s.url}
+                  action={<IconButton onClick={() => removeSource(s.id)} label={`${s.label}を削除`}><X size={13} strokeWidth={2.4} /></IconButton>} />
+              ))}
+              {discovered.map((s) => (
+                <SettingsRow key={`found-${s.url}`} title={s.label || s.url} sub={s.url}
+                  action={<IconButton onClick={() => dismissSource(s.url)} label={`${s.label || s.url}を削除`}><X size={13} strokeWidth={2.4} /></IconButton>} />
+              ))}
+            </>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: favVisible.length === 0 && discovered.length === 0 ? 0 : 12 }}>
             <input value={srcInput} onChange={(e) => setSrcInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSource()}
               placeholder="URLを貼り付け" style={settingsInputStyle} />
             <button onClick={addSource} style={rowBtn(INK, PAPER)}>登録</button>

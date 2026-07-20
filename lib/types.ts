@@ -116,10 +116,13 @@ export interface Interest {
 
 export interface Profile {
   interests: Interest[];
-  // ユーザーが設定画面で明示的に削除した興味/好みのラベル。自動検出
-  // (detectInterests)がこれらを二度と再追加しないための除外リスト
-  // (tombstone)。同じラベルを手動で追加し直すと解除される。
+  // ユーザーが設定画面で明示的に削除した興味/好みのラベル。Coworkの分析が
+  // これらを二度と好み/興味へ復活させないための除外リスト(tombstone)。
+  // 同じラベルを手動で追加し直すと解除される。
   dismissedInterests?: string[];
+  // ユーザーが設定画面で削除した情報源URL(Coworkが発掘してプールに入れたもの
+  // を含む)。生成の巡回対象から外し、次の更新でプールからも除く。
+  dismissedSources?: string[];
 }
 
 export interface Source {

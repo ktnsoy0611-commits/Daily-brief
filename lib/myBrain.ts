@@ -100,10 +100,6 @@ function parseSections(md: string): { heading: string; lines: string[] }[] {
   }
   return sections;
 }
-function findSection(sections: { heading: string; lines: string[] }[], keywordRe: RegExp): string[] | null {
-  const s = sections.find((sec) => keywordRe.test(sec.heading));
-  return s ? s.lines : null;
-}
 // 見出し直下の最初の空でない行(箇条書きの記号は取り除く)を1つの文として返す。
 function firstLineOf(lines: string[]): string | undefined {
   for (const raw of lines) {
@@ -146,14 +142,22 @@ function interestsFromBullets(bullets: string[]): InterestSignal[] {
 
 function tasteFromMarkdown(md: string): TasteInput {
   const sections = parseSections(md);
-  const livingArea = firstLineOf(findSection(sections, /生活圏|エリア|living/i) ?? []);
-  const tasteBullets = bulletsOf(findSection(sections, /好み|taste/i) ?? []);
-  const interestBullets = bulletsOf(findSection(sections, /興味|関心|interest/i) ?? []);
-  const wishBullets = bulletsOf(findSection(sections, /願い|ウィッシュ|wish/i) ?? []);
+  // 見出しの判定は「## 見出し」の本文(Markdown)向け。英語エイリアス(taste等)は
+  // 使わない(ファイル冒頭の "# taste-state" というタイトルが /taste/ に誤マッチ
+  // して好みが空になる不具合があったため。英語表記はYAML front-matter側が担う)。
+  // 「## これから好みそうな傾向」は語中に「好み」を含むので、好み・興味の判定から
+  // 必ず除外する(この節を先に別扱いする)。
+  const isEmerging = (h: string) => /これから好みそうな傾向|傾向|広がり|emerging/i.test(h);
+  const livingArea = firstLineOf(sections.find((s) => /生活圏|エリア/.test(s.heading))?.lines ?? []);
+  const emergingBullets = bulletsOf(sections.find((s) => isEmerging(s.heading))?.lines ?? []);
+  const tasteBullets = bulletsOf(sections.find((s) => /好み/.test(s.heading) && !isEmerging(s.heading))?.lines ?? []);
+  const interestBullets = bulletsOf(sections.find((s) => /興味|関心/.test(s.heading) && !isEmerging(s.heading))?.lines ?? []);
+  const wishBullets = bulletsOf(sections.find((s) => /願い|ウィッシュ/.test(s.heading))?.lines ?? []);
   return {
     livingArea,
     taste: tasteBullets.length ? interestsFromBullets(tasteBullets) : undefined,
     interest: interestBullets.length ? interestsFromBullets(interestBullets) : undefined,
+    emerging: emergingBullets.length ? interestsFromBullets(emergingBullets) : undefined,
     wishes: wishBullets.length ? wishBullets : undefined,
   };
 }
@@ -202,6 +206,7 @@ export async function loadMyBrain(): Promise<MyBrain> {
     taste.livingArea = asString(fm.living_area ?? fm.livingArea);
     taste.taste = parseInterests(fm.taste);
     taste.interest = parseInterests(fm.interest);
+    taste.emerging = parseInterests(fm.emerging ?? fm.tendencies);
     taste.wishes = asStringArray(fm.wishes);
     // sources を taste-state.md に同居させている場合も拾う。
     const inline = parseSources(fm.sources);
@@ -214,6 +219,7 @@ export async function loadMyBrain(): Promise<MyBrain> {
     taste.livingArea = taste.livingArea ?? md.livingArea;
     if (!taste.taste?.length) taste.taste = md.taste;
     if (!taste.interest?.length) taste.interest = md.interest;
+    if (!taste.emerging?.length) taste.emerging = md.emerging;
     if (!taste.wishes?.length) taste.wishes = md.wishes;
   }
   if (sourcesMd) {

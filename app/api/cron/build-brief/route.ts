@@ -120,7 +120,9 @@ export async function GET(req: Request) {
   }
   const mergedTaste = mergeSignals(appTaste, brain.taste.taste ?? []).filter((s) => !dismissedSet.has(s.label));
   const mergedInterest = mergeSignals(appInterest, brain.taste.interest ?? []).filter((s) => !dismissedSet.has(s.label));
-  const taste: TasteInput = { taste: mergedTaste, interest: mergedInterest, wishes, livingArea: brain.taste.livingArea };
+  // 「これから好みそうな傾向」は分析タスク(Cowork)が taste-state.md に書く
+  // 予測信号で、アプリ側(app_state)には入力欄が無い。my-brain のものをそのまま使う。
+  const taste: TasteInput = { taste: mergedTaste, interest: mergedInterest, emerging: brain.taste.emerging, wishes, livingArea: brain.taste.livingArea };
 
   if (!allSources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
 

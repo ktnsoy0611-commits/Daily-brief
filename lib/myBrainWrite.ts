@@ -135,6 +135,25 @@ async function deleteFile(repo: string, path: string, sha: string, token: string
   }
 }
 
+// 単一ファイルを my-brain のデフォルトブランチへ書く汎用関数。夜間Cronが
+// discovery-seeds.md を書き出すのに使う(既存と同じ内容なら書かない=無駄な
+// コミットを避ける)。env未設定/失敗時は ok:false を返すだけ(呼び出し側は非致命)。
+export async function writeMyBrainFile(path: string, content: string, message: string): Promise<SyncResult> {
+  const repo = process.env.MYBRAIN_REPO;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !/^[^/]+\/[^/]+$/.test(repo)) return { ok: false, reason: "no_repo" };
+  if (!token) return { ok: false, reason: "no_token" };
+  const ref = process.env.MYBRAIN_REF || undefined;
+  try {
+    const meta = await getFileMeta(repo, path, token, ref);
+    if (meta && meta.content === content) return { ok: true, wrote: [] };
+    await putFile(repo, path, content, meta?.sha, token, ref, message);
+    return { ok: true, wrote: [path] };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export async function syncMyBrain(input: SyncTasteInput): Promise<SyncResult> {
   const repo = process.env.MYBRAIN_REPO;
   const token = process.env.GITHUB_TOKEN;

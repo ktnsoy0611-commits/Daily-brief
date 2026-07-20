@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { buildDeck, type InterestSignal, type TasteInput } from "@/lib/briefPipeline";
+import { buildDeck, extractKeepSubjects, type InterestSignal, type TasteInput } from "@/lib/briefPipeline";
 import { loadMyBrain } from "@/lib/myBrain";
-import { syncMyBrain } from "@/lib/myBrainWrite";
+import { syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
+import { buildSeedsMarkdown, collectDecisions } from "@/lib/discoverySeeds";
 import { generatedToBriefCard } from "@/lib/deckStyle";
 import type { BriefCard } from "@/lib/types";
 
@@ -66,7 +67,7 @@ export async function GET(req: Request) {
 
   // 1. taste(好み・興味)は app_state(アプリの設定画面)とmy-brain(他アプリが
   // 直接書き足す可能性がある方)をラベル単位で合わせて使う。
-  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes"]);
+  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks"]);
   const byKey: Record<string, unknown> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
   const rawSources = Array.isArray(byKey.sources) ? (byKey.sources as unknown[]) : [];
   const appFavoriteSources: { url: string; label?: string }[] = rawSources
@@ -176,7 +177,27 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, reason: "deck_write_failed", detail: writeErr.message }, { status: 502 });
   }
 
-  // 5. 合わせた結果(app_state・my-brain両方の内容を含む)をmy-brainへ書き戻す。
+  // 5. KEEP/SKIP分析 → discovery-seeds.md(情報源スカウトの検索の手がかり)。
+  // briefs(号ごとのdecisions/feedback)とgeneratedDecks(号ごとのカード)を
+  // 突き合わせ、好調なドメイン(コード集計)とよく選ばれる題材(Gemini抽出)を
+  // my-brainへ書く。KEEP実績が無い間は「まだ判断材料が少ない」になる。非致命。
+  let seedsWrote: string[] = [];
+  try {
+    const briefsVal = (byKey.briefs ?? {}) as Record<string, { decisions?: Record<string, string>; feedback?: Record<string, boolean> }>;
+    const decksVal = (byKey.generatedDecks ?? {}) as Record<string, BriefCard[]>;
+    const { kept, skipped } = collectDecisions(briefsVal, decksVal);
+    const subjects = await extractKeepSubjects(
+      kept.map((k) => ({ title: k.title, body: k.body })),
+      skipped.map((s) => ({ title: s.title, body: s.body })),
+    );
+    const seedsMd = buildSeedsMarkdown(kept, skipped, subjects);
+    const seedsResult = await writeMyBrainFile("discovery-seeds.md", seedsMd, "KEEP/SKIP分析からdiscovery-seedsを更新");
+    if (seedsResult.ok) seedsWrote = seedsResult.wrote;
+  } catch {
+    /* discovery-seedsの失敗はデッキ生成を止めない */
+  }
+
+  // 6. 合わせた結果(app_state・my-brain両方の内容を含む)をmy-brainへ書き戻す。
   // 興味は自動検出で頻繁に変わるため設定画面の編集時には都度同期しておらず、
   // 夜間にここで一度だけ追いつかせる。失敗しても(未設定・権限不足等)
   // デッキ生成自体は成功として扱う。
@@ -190,6 +211,6 @@ export async function GET(req: Request) {
     cardIds: cards.map((c) => c.id),
     brainFiles: brain.filesRead, sourceCount: sources.length,
     sites: result.sites, dropped: result.dropped, tokens: result.tokens,
-    mybrainSync,
+    seedsWrote, mybrainSync,
   });
 }

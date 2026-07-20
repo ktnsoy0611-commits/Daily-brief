@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { buildDeck, extractKeepSubjects, type InterestSignal, type TasteInput } from "@/lib/briefPipeline";
+import { buildDeck, type InterestSignal, type TasteInput } from "@/lib/briefPipeline";
 import { loadMyBrain } from "@/lib/myBrain";
-import { syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
-import { buildSeedsMarkdown, collectDecisions } from "@/lib/discoverySeeds";
+import { deleteMyBrainFile, readMyBrainFile, syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
+import { buildLogLines, groupByMonth, mergeMonthFile, oldLogPaths } from "@/lib/feedbackLog";
 import { generatedToBriefCard } from "@/lib/deckStyle";
 import type { BriefCard } from "@/lib/types";
 
@@ -67,7 +67,7 @@ export async function GET(req: Request) {
 
   // 1. taste(好み・興味)は app_state(アプリの設定画面)とmy-brain(他アプリが
   // 直接書き足す可能性がある方)をラベル単位で合わせて使う。
-  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks"]);
+  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items"]);
   const byKey: Record<string, unknown> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
   const rawSources = Array.isArray(byKey.sources) ? (byKey.sources as unknown[]) : [];
   const appFavoriteSources: { url: string; label?: string }[] = rawSources
@@ -83,6 +83,15 @@ export async function GET(req: Request) {
   const appInterest: InterestSignal[] = rawInterests
     .filter((i): i is { label: string; weight?: number; category?: string } => isSignalLike(i) && i.category === "interest")
     .map((i) => ({ label: i.label, weight: i.weight ?? 0 }));
+  // ユーザーの手編集: 手動で足したラベル(source:"user")と、消したラベル(dismissed)。
+  // taste-user.md へ書き出し、Coworkの分析がこれを尊重する。除外は生成からも外す。
+  const userAddedLabels: string[] = rawInterests
+    .filter((i): i is { label: string; source?: string } => !!i && typeof i === "object" && typeof (i as { label?: unknown }).label === "string" && (i as { source?: unknown }).source === "user")
+    .map((i) => i.label);
+  const dismissed: string[] = Array.isArray((profile as { dismissedInterests?: unknown } | undefined)?.dismissedInterests)
+    ? ((profile as { dismissedInterests?: unknown[] }).dismissedInterests as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+  const dismissedSet = new Set(dismissed);
   const rawWishes = Array.isArray(byKey.wishes) ? (byKey.wishes as unknown[]) : [];
   const wishes: { title: string; domain?: string }[] = rawWishes
     .filter((w): w is { status?: string; title: string; category?: string } => !!w && typeof w === "object" && (w as { status?: unknown }).status === "stock")
@@ -103,8 +112,8 @@ export async function GET(req: Request) {
     }
     return Array.from(map.values());
   }
-  const mergedTaste = mergeSignals(appTaste, brain.taste.taste ?? []);
-  const mergedInterest = mergeSignals(appInterest, brain.taste.interest ?? []);
+  const mergedTaste = mergeSignals(appTaste, brain.taste.taste ?? []).filter((s) => !dismissedSet.has(s.label));
+  const mergedInterest = mergeSignals(appInterest, brain.taste.interest ?? []).filter((s) => !dismissedSet.has(s.label));
   const taste: TasteInput = { taste: mergedTaste, interest: mergedInterest, wishes, livingArea: brain.taste.livingArea };
 
   if (!sources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
@@ -177,31 +186,56 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, reason: "deck_write_failed", detail: writeErr.message }, { status: 502 });
   }
 
-  // 5. KEEP/SKIP分析 → discovery-seeds.md(情報源スカウトの検索の手がかり)。
-  // briefs(号ごとのdecisions/feedback)とgeneratedDecks(号ごとのカード)を
-  // 突き合わせ、好調なドメイン(コード集計)とよく選ばれる題材(Gemini抽出)を
-  // my-brainへ書く。KEEP実績が無い間は「まだ判断材料が少ない」になる。非致命。
-  let seedsWrote: string[] = [];
+  // 5. 反応の生ログを my-brain の logs/feedback-YYYY-MM.md へエクスポート。
+  // briefs(決定)×generatedDecks(カード)＋items(KEEP後の実行・星)を、カードが
+  // 14日でgeneratedDecksから消える前に月ごとのログへ焼き付ける(機械的・分析なし)。
+  // これで恒久履歴は app_state でなく my-brain 側に貯まり(=stateを太らせない)、
+  // 別のCoworkタスクがこのログを読んで推論・分析する。保持は12か月(古い月は削除)。非致命。
+  const logWrote: string[] = [];
   try {
     const briefsVal = (byKey.briefs ?? {}) as Record<string, { decisions?: Record<string, string>; feedback?: Record<string, boolean> }>;
     const decksVal = (byKey.generatedDecks ?? {}) as Record<string, BriefCard[]>;
-    const { kept, skipped } = collectDecisions(briefsVal, decksVal);
-    const subjects = await extractKeepSubjects(
-      kept.map((k) => ({ title: k.title, body: k.body })),
-      skipped.map((s) => ({ title: s.title, body: s.body })),
-    );
-    const seedsMd = buildSeedsMarkdown(kept, skipped, subjects);
-    const seedsResult = await writeMyBrainFile("discovery-seeds.md", seedsMd, "KEEP/SKIP分析からdiscovery-seedsを更新");
-    if (seedsResult.ok) seedsWrote = seedsResult.wrote;
+    const itemsVal = Array.isArray(byKey.items) ? (byKey.items as Parameters<typeof buildLogLines>[2]) : [];
+    const lines = buildLogLines(briefsVal, decksVal, itemsVal);
+    for (const [month, monthLines] of groupByMonth(lines)) {
+      const path = `logs/feedback-${month}.md`;
+      const existing = await readMyBrainFile(path);
+      const content = mergeMonthFile(existing, monthLines);
+      if (content !== (existing ?? "")) {
+        const r = await writeMyBrainFile(path, content, `反応ログを更新(${month})`);
+        if (r.ok) logWrote.push(...r.wrote);
+      }
+    }
+    for (const p of oldLogPaths(new Date())) {
+      await deleteMyBrainFile(p, "保持期間切れの反応ログを削除");
+    }
   } catch {
-    /* discovery-seedsの失敗はデッキ生成を止めない */
+    /* 反応ログの失敗はデッキ生成を止めない */
   }
 
-  // 6. 合わせた結果(app_state・my-brain両方の内容を含む)をmy-brainへ書き戻す。
-  // 興味は自動検出で頻繁に変わるため設定画面の編集時には都度同期しておらず、
-  // 夜間にここで一度だけ追いつかせる。失敗しても(未設定・権限不足等)
-  // デッキ生成自体は成功として扱う。
-  const mybrainSync = await syncMyBrain({ livingArea: brain.taste.livingArea, taste: mergedTaste, interest: mergedInterest, wishes: wishes.map((w) => w.title), sources: appFavoriteSources });
+  // 6. ユーザーの手編集(手動で足した好み・興味＝source:"user"、消した＝dismissed)を
+  // taste-user.md へ書き出す。好み・興味チップ本体はCoworkが taste-state.md を
+  // 所有するが、この taste-user.md を読んでユーザーの追加を残し・除外を尊重する。非致命。
+  try {
+    const bullet = (arr: string[]) => (arr.length ? arr.map((l) => `- ${l}`).join("\n") : "（なし）");
+    const userMd = [
+      "# taste-user（アプリでの手編集。分析タスクはこれを尊重する）",
+      "",
+      "## 追加（手動で足した好み・興味。消さないこと）",
+      bullet(userAddedLabels),
+      "",
+      "## 除外（手動で消した。好み・興味に復活させないこと）",
+      bullet(dismissed),
+      "",
+    ].join("\n");
+    await writeMyBrainFile("taste-user.md", userMd, "手編集(追加・除外)を同期");
+  } catch {
+    /* taste-user.mdの失敗はデッキ生成を止めない */
+  }
+
+  // 7. お気に入りの情報源(sources.md)を my-brain へ同期する(taste-state.md は
+  // Coworkが所有するのでここでは書かない)。失敗してもデッキ生成は成功扱い。
+  const mybrainSync = await syncMyBrain({ sources: appFavoriteSources });
 
   return NextResponse.json({
     ok: true, editionKey, cardCount: cards.length, pooled,
@@ -211,6 +245,6 @@ export async function GET(req: Request) {
     cardIds: cards.map((c) => c.id),
     brainFiles: brain.filesRead, sourceCount: sources.length,
     sites: result.sites, dropped: result.dropped, tokens: result.tokens,
-    seedsWrote, mybrainSync,
+    logWrote, mybrainSync,
   });
 }

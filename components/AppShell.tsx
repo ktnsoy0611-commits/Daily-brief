@@ -15,7 +15,7 @@ import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOF
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
-import { buildMagazine, detectInterests, haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
+import { buildMagazine, haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
 import type { AppState, ItemDomain, PlanSelection, TabId, TabProps } from "@/lib/types";
 
 const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
@@ -142,20 +142,28 @@ export function AppShell() {
     pulledMyBrainRef.current = true;
     fetch("/api/mybrain/read").then((r) => r.json()).then((data) => {
       if (!data?.ok) return;
+      // 好み・興味チップはCoworkが taste-state.md を所有する。アプリはそれを取り込んで
+      // 表示するだけ。ユーザーが手で足したチップ(source:"user")は残し、それ以外
+      // (Cowork由来)は taste-state.md の現在値で置き換える(Coworkが消したものは消える)。
+      // 手で消したラベル(dismissedInterests)は復活させない。
+      const brainTaste: { label?: unknown; weight?: unknown }[] = Array.isArray(data.taste) ? data.taste : [];
+      const brainInterest: { label?: unknown; weight?: unknown }[] = Array.isArray(data.interest) ? data.interest : [];
+      if (brainTaste.length === 0 && brainInterest.length === 0) return; // Coworkの結果がまだ無ければ触らない
       const next = structuredClone(appState);
       next.profile = next.profile ?? { interests: [] };
-      let changed = false;
-      const mergeIn = (category: "taste" | "interest", items: { label: string; weight: number }[]) => {
-        items.forEach((d) => {
-          if (!next.profile.interests.some((i) => i.category === category && i.label === d.label)) {
-            next.profile.interests.push({ id: `mybrain-${category}-${d.label}-${Date.now()}`, label: d.label, category, weight: d.weight, source: "user", addedAt: new Date().toISOString() });
-            changed = true;
-          }
-        });
-      };
-      mergeIn("taste", data.taste ?? []);
-      mergeIn("interest", data.interest ?? []);
-      if (changed) persist(next);
+      const dismissed = new Set(next.profile.dismissedInterests ?? []);
+      const userManual = next.profile.interests.filter((i) => i.source === "user" && !dismissed.has(i.label));
+      const pinned = new Set(userManual.map((i) => `${i.category}:${i.label}`));
+      const fromBrain = (category: "taste" | "interest", items: { label?: unknown; weight?: unknown }[]) =>
+        items
+          .filter((d): d is { label: string; weight?: number } => !!d && typeof d.label === "string" && !dismissed.has(d.label) && !pinned.has(`${category}:${d.label}`))
+          .map((d) => ({ id: `cowork-${category}-${d.label}`, label: d.label, category, weight: typeof d.weight === "number" ? d.weight : 0, source: "auto" as const, addedAt: new Date().toISOString() }));
+      const nextInterests = [...userManual, ...fromBrain("taste", brainTaste), ...fromBrain("interest", brainInterest)];
+      const keyOf = (arr: typeof nextInterests) => arr.map((i) => `${i.category}:${i.label}`).sort().join("|");
+      if (keyOf(nextInterests) !== keyOf(next.profile.interests)) {
+        next.profile.interests = nextInterests;
+        persist(next);
+      }
     }).catch(() => {});
   }, [appState, persist]);
   const goTab = useCallback((id: TabId) => setTab(id), []);
@@ -195,31 +203,11 @@ export function AppShell() {
     showToast("ウィッシュを書きました");
   };
 
-  useEffect(() => {
-    if (!appState) return;
-    const detected = detectInterests(appState.wishes, appState.items);
-    const next = structuredClone(appState);
-    next.profile = next.profile ?? { interests: [] };
-    // ユーザーが設定画面で消したラベルは再追加・重み更新の対象にしない
-    // (これが無いと、削除→persistで走る自動検出が即座に復活させてしまう)。
-    const dismissed = new Set(next.profile.dismissedInterests ?? []);
-    let changed = false;
-    detected.forEach((d) => {
-      if (dismissed.has(d.label)) return;
-      const existing = next.profile.interests.find((i) => i.label === d.label);
-      if (!existing) {
-        // 自動検出は直近の行動(ウィッシュ・KEEP)からの兆しなので、
-        // 常に興味(category:"interest"、時期で変わる方)として保存する。
-        next.profile.interests.push({ id: `auto-${d.label}-${Date.now()}`, label: d.label, category: "interest", weight: d.weight, source: "auto", addedAt: new Date().toISOString() });
-        changed = true;
-      } else if (existing.source === "auto" && d.weight > existing.weight) {
-        existing.weight = d.weight;
-        changed = true;
-      }
-    });
-    if (changed) persist(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appState?.wishes, appState?.items]);
+  // 好み・興味の検出・更新は、アプリ側の単純なキーワード頻度(旧detectInterests)を
+  // やめ、Coworkの週次分析(反応ログ→推論)が担うことにした。アプリはCoworkが
+  // taste-state.mdへ書いた結果を起動時pull(下記)で取り込んで表示するだけ。
+  // ユーザーの手編集(設定画面での追加・2段階削除)は引き続き可能で、
+  // syncTasteToMyBrainでmy-brainへ反映される。
 
   // 認証ゲート(Supabase構成済みのときだけ)。未構成なら以下の2分岐は素通り。
   if (isSupabaseConfigured && !authReady) {

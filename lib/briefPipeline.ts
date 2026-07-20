@@ -679,45 +679,5 @@ export async function buildDeck(input: { taste: TasteInput; sources: string[]; c
   }
 }
 
-// ---- KEEP/SKIP分析: よく選ばれる題材の抽出 --------------------------------
-// 夜間Cronが discovery-seeds.md を作るために使う。KEEPされたカードとSKIPされた
-// カードの本文を渡し、KEEPに繰り返し現れる具体的な題材(ブランド/人物/場所/
-// ジャンル/キーワード)を抽出する。ドメイン別のKEEP集計はコード側(discoverySeeds.ts)
-// が担い、ここは本文からの題材抽出だけを担当する。
-const SYSTEM_KEEP_SUBJECTS = `あなたはユーザーの反応ログから、次の情報源探索の手がかりとなる「題材」を抽出するアナリストです。
-
-# 入力
-<KEEP>: ユーザーが残したカードの一覧（title — body）。ユーザーが好んだもの。
-<SKIP>: ユーザーが流したカードの一覧。好まなかったもの。
-
-# 抽出
-KEEP に繰り返し現れ、SKIP には現れにくい、具体的な題材を挙げる。種類は次のいずれか:
-- brand（ブランド・レーベル・店名）
-- person（作家・アーティスト・監督などの人物名）
-- place（場所・会場・エリア名）
-- genre（ジャンル・様式）
-- keyword（上記以外の題材キーワード）
-カードの文中に実際に現れる語だけを使う。原文に無い語を推測で足さない。KEEP群での出現が多いものほど上に置く。最大20件。
-
-# 出力
-JSON配列のみを出力する。各要素は label と kind を持つ。該当が無ければ [] を出力する。
-[{ "label": "…", "kind": "brand|person|place|genre|keyword" }]`;
-
-export async function extractKeepSubjects(
-  kept: { title: string; body: string }[],
-  skipped: { title: string; body: string }[],
-): Promise<{ label: string; kind: string }[]> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key || kept.length === 0) return [];
-  const fmt = (cards: { title: string; body: string }[]) =>
-    cards.slice(0, 60).map((c, i) => `${i + 1}. ${c.title} — ${c.body}`).join("\n");
-  const user = `<KEEP>\n${fmt(kept)}\n</KEEP>\n<SKIP>\n${fmt(skipped)}\n</SKIP>`;
-  const r = await callGemini(key, SYSTEM_KEEP_SUBJECTS, user, true, 1024);
-  if (!r.ok) return [];
-  const arr = extractJsonArray<{ label?: string; kind?: string }>(r.text) ?? [];
-  const kinds = new Set(["brand", "person", "place", "genre", "keyword"]);
-  return arr
-    .filter((x) => x && typeof x.label === "string" && x.label.trim())
-    .map((x) => ({ label: x.label!.trim(), kind: typeof x.kind === "string" && kinds.has(x.kind) ? x.kind : "keyword" }))
-    .slice(0, 20);
-}
+// (KEEP/SKIP分析はGeminiでなくCoworkの週次タスクが logs/feedback-*.md を読んで
+//  推論込みで行う方式に変更したため、ここにあった題材抽出関数は撤去した。)

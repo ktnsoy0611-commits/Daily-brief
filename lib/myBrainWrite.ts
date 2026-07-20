@@ -154,6 +154,38 @@ export async function writeMyBrainFile(path: string, content: string, message: s
   }
 }
 
+// my-brain の1ファイルを読む(無ければnull)。夜間Cronがログの月ファイルを
+// 追記(既存に足す)するために、まず既存本文を読むのに使う。
+export async function readMyBrainFile(path: string): Promise<string | null> {
+  const repo = process.env.MYBRAIN_REPO;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !/^[^/]+\/[^/]+$/.test(repo)) return null;
+  const ref = process.env.MYBRAIN_REF || undefined;
+  try {
+    const meta = await getFileMeta(repo, path, token ?? "", ref);
+    return meta?.content ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// my-brain の1ファイルを削除(無ければ何もしない)。ログの保持期間切れ月の掃除用。
+export async function deleteMyBrainFile(path: string, message: string): Promise<SyncResult> {
+  const repo = process.env.MYBRAIN_REPO;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !/^[^/]+\/[^/]+$/.test(repo)) return { ok: false, reason: "no_repo" };
+  if (!token) return { ok: false, reason: "no_token" };
+  const ref = process.env.MYBRAIN_REF || undefined;
+  try {
+    const meta = await getFileMeta(repo, path, token, ref);
+    if (!meta) return { ok: true, wrote: [] };
+    await deleteFile(repo, path, meta.sha, token, ref, message);
+    return { ok: true, wrote: [path] };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export async function syncMyBrain(input: SyncTasteInput): Promise<SyncResult> {
   const repo = process.env.MYBRAIN_REPO;
   const token = process.env.GITHUB_TOKEN;
@@ -163,12 +195,10 @@ export async function syncMyBrain(input: SyncTasteInput): Promise<SyncResult> {
 
   const wrote: string[] = [];
   try {
-    const tasteContent = renderTasteStateMd(input);
-    const tasteMeta = await getFileMeta(repo, "taste-state.md", token, ref);
-    if (tasteMeta === null || tasteMeta.content !== tasteContent) {
-      await putFile(repo, "taste-state.md", tasteContent, tasteMeta?.sha, token, ref, "設定画面の内容を同期");
-      wrote.push("taste-state.md");
-    }
+    // taste-state.md(好み・興味)はCoworkの週次分析タスクが所有・上書きするように
+    // なったため、アプリ側からはここを書かない(夜間にここで書くと毎晩Coworkの
+    // 分析を上書きしてしまうため)。アプリはお気に入りの情報源(sources.md)だけを
+    // 書く。ユーザーの手編集(追加/除外)は Cron が taste-user.md へ別途書き出す。
 
     const sourcesMeta = await getFileMeta(repo, "sources.md", token, ref);
     const sourcesContent = mergeSourcesMd(sourcesMeta?.content ?? null, input.sources ?? []);

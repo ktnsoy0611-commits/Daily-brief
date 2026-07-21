@@ -64,6 +64,7 @@ export function generatedToBriefCard(gc: GeneratedCard, id: number): BriefCard {
     images: gc.images ?? [],
     sourceUrl: gc.sourceUrl,
     sourceLabel,
+    sourceWishId: gc.sourceWishId,
     sourceWishTitle: gc.sourceWishTitle,
     expiresAt: gc.expiresAt,
     serendipity: gc.isDerived,

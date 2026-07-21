@@ -449,7 +449,7 @@ export function ProfileTab({ appState, persist, onClose }: {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          wishes: (appState.wishes ?? []).filter((w) => w.status === "stock").map((w) => ({ title: w.title, domain: w.category })),
+          wishes: (appState.wishes ?? []).filter((w) => w.status === "stock").map((w) => ({ title: w.title, domain: w.category, id: w.id })),
           taste: taste.map((i) => ({ label: i.label, weight: i.weight })),
           interest: interest.map((i) => ({ label: i.label, weight: i.weight })),
           sources: urls,

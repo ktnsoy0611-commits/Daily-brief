@@ -237,8 +237,11 @@ export interface BriefCard {
   sourceLabel?: string;
   // KEEPしたときに作られるItemの種類。省略時は"place"(行く場所の提案)。
   kind?: ItemKind;
-  // このカードがどのウィッシュに応えたものか(タイトル一致で照合)。フェーズ2の
-  // Gemini生成ではidの明示的な紐付けに置き換わる、フェーズ1の暫定表現。
+  // このカードがどのウィッシュに応えたものか。Geminiが返した願いのidを
+  // 検証済みで持つ(言い換えに強い)。KEEP時にこのidで願いへ紐づける。
+  sourceWishId?: string;
+  // 旧: タイトル文字一致用。sourceWishIdが無いカード(旧デッキ)のための
+  // フォールバックとして残す。
   sourceWishTitle?: string;
   // 会期末・予約締切・上映終了など。KEEP時にItem.expiresAtへそのまま
   // 引き継がれ、isExpiredItem()による自動失効の材料になる(SYSTEM-DESIGN.md

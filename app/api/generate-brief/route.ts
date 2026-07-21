@@ -31,8 +31,8 @@ function parseWishes(v: unknown): WishInput[] {
     .map((w): WishInput | null => {
       if (typeof w === "string") return w.trim() ? { title: w.trim() } : null;
       if (w && typeof w === "object" && typeof (w as { title?: unknown }).title === "string") {
-        const o = w as { title: string; domain?: unknown };
-        return o.title.trim() ? { title: o.title.trim(), domain: typeof o.domain === "string" ? o.domain : undefined } : null;
+        const o = w as { title: string; domain?: unknown; id?: unknown };
+        return o.title.trim() ? { title: o.title.trim(), domain: typeof o.domain === "string" ? o.domain : undefined, id: typeof o.id === "string" ? o.id : undefined } : null;
       }
       return null;
     })

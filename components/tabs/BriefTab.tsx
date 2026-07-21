@@ -359,11 +359,17 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
           // KEEPは常にItemを1件作るだけ(以前は「作品なら直接records.media、
           // それ以外はkeeps」という2経路の分岐があった)。種類はカード側の
           // kind(省略時は"place")、場所の有無はareaの有無がそのまま決める。
-          // ウィッシュに応えたカード(sourceWishTitle)は、まだ叶えていない
-          // 同名のウィッシュが実在する場合だけorigin:"wish"として紐付ける。
-          const wish = card.sourceWishTitle
-            ? next.wishes.find((w) => w.title === card.sourceWishTitle && w.status === "stock")
-            : undefined;
+          // ウィッシュに応えたカードは origin:"wish" として紐付ける。まず
+          // sourceWishId(Geminiが返した願いのid・言い換えに強い)で照合し、
+          // 無い場合(旧デッキ)だけ従来の sourceWishTitle 文字一致にフォールバック。
+          // どちらも「まだ叶えていない(status:"stock")願い」に限る。
+          const wish =
+            (card.sourceWishId
+              ? next.wishes.find((w) => w.id === card.sourceWishId && w.status === "stock")
+              : undefined) ??
+            (card.sourceWishTitle
+              ? next.wishes.find((w) => w.title === card.sourceWishTitle && w.status === "stock")
+              : undefined);
           next.items.push({
             id: `brief-${editionKey}-${card.id}`, kind: card.kind ?? "place",
             title: card.title, category: card.categoryJp, summary: card.body,

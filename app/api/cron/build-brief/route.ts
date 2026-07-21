@@ -117,9 +117,9 @@ export async function GET(req: Request) {
   const normSrc = (u: string) => u.trim().replace(/\/+$/, "").toLowerCase();
   const dismissedSrcSet = new Set(dismissedSources.map(normSrc));
   const rawWishes = Array.isArray(byKey.wishes) ? (byKey.wishes as unknown[]) : [];
-  const wishes: { title: string; domain?: string }[] = rawWishes
-    .filter((w): w is { status?: string; title: string; category?: string } => !!w && typeof w === "object" && (w as { status?: unknown }).status === "stock")
-    .map((w) => ({ title: w.title, domain: w.category }));
+  const wishes: { title: string; domain?: string; id?: string }[] = rawWishes
+    .filter((w): w is { status?: string; title: string; category?: string; id?: string } => !!w && typeof w === "object" && (w as { status?: unknown }).status === "stock")
+    .map((w) => ({ title: w.title, domain: w.category, id: typeof w.id === "string" ? w.id : undefined }));
 
   // 情報源はお気に入り(app_state)とmy-brainのその他の欄(将来Coworkが発掘した
   // URLを書き足す場所)を対等に合わせて使う。生活圏はmy-brain側にしか

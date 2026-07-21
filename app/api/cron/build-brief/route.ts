@@ -314,6 +314,26 @@ export async function GET(req: Request) {
     /* 巡回状態の保存失敗はデッキ生成を止めない */
   }
 
+  // 直近の生成サマリを cronStatus へ保存する。ユーザーがVercelのログを見なくても
+  // 設定画面で「いつ・何号を・何枚・何サイト巡回したか」を確認できるようにする。
+  // クライアントは読むが上書きしない(SERVER_OWNED_KEYS)。非致命。
+  try {
+    await supa.from("app_state").upsert(
+      {
+        user_id: ownerId, key: "cronStatus",
+        value: {
+          at: new Date().toISOString(), editionKey,
+          cardCount: cards.length, sourceCount: sources.length,
+          pooled, totalTokens: result.tokens.totalTokens, note: result.note,
+        },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,key" },
+    );
+  } catch {
+    /* 生成サマリの保存失敗はデッキ生成を止めない */
+  }
+
   // 5. 反応の生ログを my-brain の logs/feedback-YYYY-MM.md へエクスポート。
   // briefs(決定)×generatedDecks(カード)＋items(KEEP後の実行・星)を、カードが
   // 14日でgeneratedDecksから消える前に月ごとのログへ焼き付ける(機械的・分析なし)。

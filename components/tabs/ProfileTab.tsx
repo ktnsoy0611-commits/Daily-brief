@@ -1,6 +1,6 @@
 "use client";
 
-import { Compass, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
+import { Activity, Compass, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
@@ -239,6 +239,12 @@ export function ProfileTab({ appState, persist, onClose }: {
   const interest = allInterests.filter((i) => i.category === "interest").sort((a, b) => b.weight - a.weight);
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
+  const cronStatus = appState.cronStatus;
+  const editionJp = (k: string) => (k.endsWith("-am") ? "朝刊" : k.endsWith("-pm") ? "夕刊" : "");
+  const cronWhen = (iso: string) => {
+    try { return new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
+    catch { return iso; }
+  };
 
   // Coworkが発掘して my-brain のプール(sources.md)に入れた情報源も、
   // お気に入りと合わせて一覧・削除できるように起動時に取り込む。
@@ -533,6 +539,26 @@ export function ProfileTab({ appState, persist, onClose }: {
         </>)}
 
         {tab === "other" && (<>
+        {/* 夜間Cron(ブリーフ生成)の直近の実行サマリ。Vercelのログを見なくても
+            「動いているか・いつ・何枚生成したか」をここで確認できる。 */}
+        <SettingsCard label="ブリーフ生成の状況" icon={Activity}>
+          {cronStatus ? (
+            <>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 13 }}>
+                {cronStatus.cardCount}枚を生成{cronStatus.cardCount === 0 && cronStatus.note ? `（${cronStatus.note}）` : ""}
+              </div>
+              <div style={{ fontSize: 10.5, color: "#9A988E", marginTop: 4, lineHeight: 1.7 }}>
+                {cronWhen(cronStatus.at)} ・ {editionJp(cronStatus.editionKey)} ・ 情報源{cronStatus.sourceCount}サイト巡回<br />
+                プール+{cronStatus.pooled} ／ トークン{cronStatus.totalTokens.toLocaleString()}
+              </div>
+            </>
+          ) : (
+            <p style={{ fontSize: 12, color: "#9A988E", margin: 0, lineHeight: 1.7 }}>
+              まだ生成の記録がありません。夜間の生成(または手動実行)が動くと、ここに直近の状況が表示されます。
+            </p>
+          )}
+        </SettingsCard>
+
         {/* バインド！(確定ビューでの綴じ操作)のログ。誤ってバインドして
             ストック/プランからカードが消えてしまった時に、この画面から
             元に戻せるようにする(HANDOFF-CURRENT.md §7.8参照)。 */}

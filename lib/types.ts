@@ -192,6 +192,19 @@ export interface AppState {
   // 所有するキー(dataStoreのSERVER_OWNED_KEYS)で、クライアントは読むが
   // 上書きしない。無い号は休刊表示。
   generatedDecks: Record<string, BriefCard[]>;
+  // 夜間Cron(ブリーフ生成)の直近の実行サマリ。ユーザーがVercelのログを見なくても
+  // 「いつ・何号を・何枚生成し・何サイト巡回したか」を設定画面で確認できるようにする。
+  // generatedDecksと同じくサーバー(Cron)が所有するキー(SERVER_OWNED_KEYS)で、
+  // クライアントは読むが上書きしない。
+  cronStatus?: {
+    at: string;          // 実行時刻(ISO)
+    editionKey: string;  // 生成した号("YYYY-MM-DD-am"|"-pm")
+    cardCount: number;   // この実行で書き込んだカード枚数
+    sourceCount: number; // 今晩巡回した情報源数(固定＋抽選)
+    pooled: number;      // content_cacheに新規蓄積した候補数
+    totalTokens: number; // Gemini実測トークン合計
+    note?: string;       // 補足(更新なし・候補ゼロ等)
+  };
 }
 
 export interface BriefCard {

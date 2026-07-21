@@ -53,6 +53,7 @@ export type GeneratedCard = {
   area?: string; sourceUrl?: string; sourceLabel?: string; meta?: string[];
   expiresAt?: string; isDerived?: boolean; sourceWishTitle?: string;
   images?: string[]; // OGP画像(og:image)。無ければ未設定=色ベタ表示
+  lat?: number; lng?: number; placeId?: string; // 会場/エリアをPlacesで名寄せした実座標
 };
 export type CandidateRecord = {
   name: string; summary?: string; venue?: string; area?: string;
@@ -220,6 +221,37 @@ async function fetchOgImage(url: string): Promise<string | null> {
     if (!/html/i.test(ct)) return null;
     const html = await res.text();
     return extractOgImage(html, url);
+  } catch {
+    return null;
+  }
+}
+
+// ---- 場所の名寄せ(Places API(New) Text Search) --------------------------
+// 会場名・エリアから実座標を1件引く。app/api/resolve-place と同じPlaces(New)
+// Text Searchだが、こちらは生成パイプライン(サーバー)内で会場を持つカードに
+// 座標を付けるために使う。GOOGLE_PLACES_API_KEY 未設定なら null(=座標なし=
+// 従来どおりAREA_LATLNGへのフォールバック任せ)。ベストエフォート。
+export type Geo = { lat: number; lng: number; placeId?: string };
+async function geocodePlace(query: string): Promise<Geo | null> {
+  const key = process.env.GOOGLE_PLACES_API_KEY;
+  if (!key || !query.trim()) return null;
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        // 課金は要求フィールドで決まる。座標・idだけに絞って最小コストにする。
+        "X-Goog-FieldMask": "places.id,places.location",
+      },
+      body: JSON.stringify({ textQuery: query, languageCode: "ja", regionCode: "JP", maxResultCount: 1 }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const p = data?.places?.[0];
+    if (!p?.location) return null;
+    return { lat: p.location.latitude, lng: p.location.longitude, placeId: p.id };
   } catch {
     return null;
   }
@@ -648,7 +680,9 @@ export async function buildDeck(input: {
     const rawClassified = extractJsonArray<ClassifiedCandidate>(rC.text) ?? [];
 
     // 層D: コードが「載せる/何件か」を決める。出典URLはidで候補から引く。
-    type PoolItem = { card: GeneratedCard; site?: string };
+    // geoQuery = 会場名＋エリア(候補レコード由来)。最終採用カードにPlacesで
+    // 実座標を付けるための名寄せ文字列。
+    type PoolItem = { card: GeneratedCard; site?: string; geoQuery?: string };
     let dropExpired2 = 0, dropOutOfArea = 0, irrelevant = 0;
     const strongPool: PoolItem[] = [];
     const moderatePool: PoolItem[] = [];
@@ -670,7 +704,9 @@ export async function buildDeck(input: {
         area: r.area, sourceUrl: src.sourceUrl, sourceLabel: r.sourceLabel,
         meta: r.meta, expiresAt: r.expiresAt, isDerived, sourceWishTitle: r.sourceWishTitle,
       };
-      (isDerived ? moderatePool : strongPool).push({ card, site: src.site });
+      const geoParts = [src.venue, r.area ?? src.area].map((s) => (s ?? "").trim()).filter(Boolean);
+      const geoQuery = Array.from(new Set(geoParts)).join(" ").trim();
+      (isDerived ? moderatePool : strongPool).push({ card, site: src.site, geoQuery: geoQuery || undefined });
     }
 
     // サイト横断の重複統合(名称の緩い一致のみ。strong優先)。
@@ -704,19 +740,30 @@ export async function buildDeck(input: {
       bySite.get(key)!.push(item);
     }
     let dropOverQuota = 0;
-    const straightCards: GeneratedCard[] = [];
+    const straightItems: PoolItem[] = [];
     for (const items of bySite.values()) {
       const take = items.slice(0, SITE_CARD_LIMIT);
       dropOverQuota += items.length - take.length;
-      straightCards.push(...take.map((x) => x.card));
+      straightItems.push(...take);
     }
     const derivedTake = acceptedModerate.slice(0, 1);
     dropOverQuota += Math.max(0, acceptedModerate.length - derivedTake.length);
-    let cards: GeneratedCard[] = [...straightCards, ...derivedTake.map((x) => x.card)];
-    if (cards.length > count) {
-      dropOverQuota += cards.length - count;
-      cards = cards.slice(0, count);
+    let finalItems: PoolItem[] = [...straightItems, ...derivedTake];
+    if (finalItems.length > count) {
+      dropOverQuota += finalItems.length - count;
+      finalItems = finalItems.slice(0, count);
     }
+
+    // 会場/エリアを持つカードにPlacesで実座標を付ける(展覧会など「行く場所」の
+    // カードが、AREA_LATLNGに無いエリアでも地図にピンとして出るように)。
+    // GOOGLE_PLACES_API_KEY未設定なら何もしない(=座標なし=従来どおり)。最終
+    // 採用分だけ・並列で名寄せするのでコストと待ち時間を抑える。
+    await mapWithConcurrency(finalItems, 4, async (it) => {
+      if (!it.geoQuery || typeof it.card.lat === "number") return;
+      const g = await geocodePlace(it.geoQuery);
+      if (g) { it.card.lat = g.lat; it.card.lng = g.lng; if (g.placeId) it.card.placeId = g.placeId; }
+    });
+    const cards: GeneratedCard[] = finalItems.map((x) => x.card);
 
     // 層E: 採用が確定したカードだけ、個別ページを追加取得して本文を詳細化する
     // (全候補ではなく最終的にデッキへ入る分だけなのでコストを抑えられる)。

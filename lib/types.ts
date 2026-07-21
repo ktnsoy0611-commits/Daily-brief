@@ -216,6 +216,14 @@ export interface BriefCard {
   categoryJp?: string;
   trigger: string;
   area?: string;
+  // 実座標(生成時にPlaces API(New)で会場名・エリアから名寄せしたもの)。
+  // KEEPでItem.lat/lngへ引き継がれ、実地図(Leaflet)にピンとして出る。
+  // 展覧会など「行く場所」のカードで、AREA_LATLNGに無いエリアでも地図に
+  // 出せるようにするため(以前は area がAREA_LATLNGの既知エリアでないと
+  // 地図に出なかった)。
+  lat?: number;
+  lng?: number;
+  placeId?: string;
   color?: string;
   title: string;
   body: string;

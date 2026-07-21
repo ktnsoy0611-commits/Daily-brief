@@ -261,7 +261,14 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   );
   const generated = appState.generatedDecks?.[editionKey];
   const deck: DeckCard[] = useMemo(() => {
-    const source: BriefCard[] = generated && generated.length > 0 ? generated : [];
+    // 会期末(expiresAt)を過ぎたカードは出さない。生成時にも除外しているが、
+    // 生成後〜閲覧までに会期が終わったカードが号の中に残るのを表示側でも弾く。
+    const nowMs = Date.now();
+    const source: BriefCard[] = (generated ?? []).filter((c) => {
+      if (!c.expiresAt) return true;
+      const t = Date.parse(c.expiresAt);
+      return Number.isNaN(t) || t >= nowMs;
+    });
     const base: DeckCard[] = [...source];
     // 育成カードは1号につき最大1枚だけ差し込む。**既にこの号で育成カードを
     // 決定済み(記録 or あとで)なら差し込まない**。これが無いと、育成カードを

@@ -452,7 +452,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
   return (
     <>
-      <Masthead title="ブリーフ" statValue={done ? keptCards.length : index + 1} statLabel={done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
+      <Masthead title="ブリーフ" statValue={deck.length === 0 ? "" : done ? keptCards.length : index + 1} statLabel={deck.length === 0 ? "休刊" : done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
       <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
         {deck.map((c, i) => (
           <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: decisions[c.id] === "keep" || decisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : decisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(23,23,21,0.1)", transition: "background 0.3s" }} />
@@ -548,6 +548,18 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
             )}
           </footer>
         </div>
+      ) : deck.length === 0 ? (
+        // その号のデッキがまだ無い(夜間Cronが未生成、または候補ゼロ)状態。
+        // 以前はここも「ここまで。」と、スワイプし終えたかのような表示になって
+        // いたが、実際にはまだ届いていない/休刊なので、それが分かる別表示にする。
+        // クライアントには「生成中/失敗」を判別する信号が無い(Cronはサーバー側)
+        // ため、両方を正直に包む「まだ届いていません」に寄せる。
+        <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
+          <div style={{ fontSize: 10, letterSpacing: "0.28em", color: "#9A988E" }}>NO ISSUE YET</div>
+          <h2 style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 26, lineHeight: 1.4, margin: "10px 0 20px" }}>{editionLabel}は、まだ<br />届いていません。</h2>
+          <p style={{ fontSize: 11.5, color: "#9A988E", lineHeight: 1.8, margin: "0 0 8px" }}>新しいブリーフは夜間に用意されます。しばらくすると、ここに提案が並びます。</p>
+          <p style={{ fontSize: 11.5, color: "#9A988E", lineHeight: 1.8, margin: 0 }}>右上の設定から、情報源や興味・好みを増やすと、提案が見つかりやすくなります。</p>
+        </main>
       ) : (
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.28em", color: "#9A988E" }}>END OF ISSUE</div>

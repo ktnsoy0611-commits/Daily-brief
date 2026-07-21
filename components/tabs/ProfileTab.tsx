@@ -233,6 +233,9 @@ export function ProfileTab({ appState, persist, onClose }: {
   // 初期値にしつつ、その場で貼り足し・編集できるようにする。本番では
   // Coworkが用意した情報源リストがこの役割を担う。
   const [genUrls, setGenUrls] = useState(() => (appState.sources ?? []).map((s) => s.url).join("\n"));
+  // 「今すぐ生成」= 本人が設定画面から夜間Cronと同じ本番生成を手動起動する。
+  const [genNow, setGenNow] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [genNowMsg, setGenNowMsg] = useState("");
 
   const allInterests = appState.profile?.interests ?? [];
   const taste = allInterests.filter((i) => i.category === "taste").sort((a, b) => b.weight - a.weight);
@@ -384,6 +387,42 @@ export function ProfileTab({ appState, persist, onClose }: {
     entry.undone = true;
     entry.undoneAt = new Date().toISOString();
     persist(next);
+  };
+
+  // 今すぐ生成: 夜間Cronと同じ本番生成(build-brief)を、本人のアクセストークンで
+  // 手動起動する。成功したら generatedDecks/cronStatus がサーバー側で更新される
+  // ので、反映のために画面を再読み込みする(SERVER_OWNED_KEYSは起動時pullで読む)。
+  const generateNow = async () => {
+    if (genNow === "loading" || !supabase) return;
+    haptic();
+    setGenNow("loading");
+    setGenNowMsg("");
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) { setGenNow("error"); setGenNowMsg("ログイン情報を取得できませんでした。一度サインインし直してください。"); return; }
+      const res = await fetch("/api/cron/build-brief", { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setGenNow("error");
+        const reason: string = data?.reason ?? `${res.status}`;
+        setGenNowMsg(
+          reason === "no_key" ? "GEMINI_API_KEYが未設定です(Vercelの環境変数)。"
+          : reason === "no_sources" ? "巡回する情報源がありません。情報源タブで追加してください。"
+          : reason === "not_configured" ? "サーバーの環境変数(Supabase/OWNER)が未設定です。"
+          : reason === "unauthorized" ? "認可に失敗しました。サインインし直してください。"
+          : reason.startsWith("gemini_") ? `生成に失敗しました(${reason})。少し待って再試行してください。`
+          : `生成に失敗しました(${reason})。`,
+        );
+        return;
+      }
+      setGenNow("done");
+      setGenNowMsg(`${data.cardCount ?? 0}枚を生成しました${data.cardCount === 0 && data.note ? `（${data.note}）` : ""}。反映のため画面を更新します…`);
+      setTimeout(() => window.location.reload(), 1400);
+    } catch (e) {
+      setGenNow("error");
+      setGenNowMsg(`通信に失敗しました。${e instanceof Error ? e.message : ""}`);
+    }
   };
 
   // 生成を試す: 現在のウィッシュ・興味・気になっていることをサーバー関数へ
@@ -554,8 +593,27 @@ export function ProfileTab({ appState, persist, onClose }: {
             </>
           ) : (
             <p style={{ fontSize: 12, color: "#9A988E", margin: 0, lineHeight: 1.7 }}>
-              まだ生成の記録がありません。夜間の生成(または手動実行)が動くと、ここに直近の状況が表示されます。
+              まだ生成の記録がありません。夜間の生成(または下の「今すぐ生成」)が動くと、ここに直近の状況が表示されます。
             </p>
+          )}
+          {isSupabaseConfigured && (
+            <>
+              <button
+                onClick={generateNow}
+                disabled={genNow === "loading"}
+                style={{
+                  width: "100%", marginTop: 14, padding: "11px 0",
+                  background: genNow === "loading" ? "rgba(23,23,21,0.2)" : INK, color: PAPER,
+                  border: "none", borderRadius: 999, cursor: genNow === "loading" ? "default" : "pointer",
+                  fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em",
+                }}
+              >
+                {genNow === "loading" ? "生成中…（1分ほどかかります）" : "今すぐ生成"}
+              </button>
+              {genNowMsg && (
+                <p style={{ fontSize: 11, color: genNow === "error" ? RUST : "#9A988E", lineHeight: 1.7, margin: "10px 0 0" }}>{genNowMsg}</p>
+              )}
+            </>
           )}
         </SettingsCard>
 

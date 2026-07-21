@@ -52,15 +52,33 @@ function isOldEdition(editionKey: string, cutoffMs: number): boolean {
 }
 
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  const provided = new URL(req.url).searchParams.get("secret") ?? req.headers.get("x-cron-secret") ?? "";
-  if (!secret || provided !== secret) {
-    return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
-  }
-
   const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const ownerId = process.env.OWNER_USER_ID;
+
+  // 認可は2経路。(1)夜間のGitHub Actionsは CRON_SECRET で叩く。(2)本人(OWNER)が
+  // アプリの設定画面から「今すぐ生成」した場合は、Supabaseのアクセストークンを
+  // 検証し、そのユーザーIDが OWNER_USER_ID と一致すれば許可する(本人の
+  // 自分のデータに対する手動実行なので安全)。
+  const secret = process.env.CRON_SECRET;
+  const provided = new URL(req.url).searchParams.get("secret") ?? req.headers.get("x-cron-secret") ?? "";
+  let authorized = !!secret && provided === secret;
+  if (!authorized) {
+    const authHeader = req.headers.get("authorization") ?? "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (token && anonKey && supaUrl && ownerId) {
+      try {
+        const authClient = createClient(supaUrl, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+        const { data } = await authClient.auth.getUser(token);
+        if (data?.user?.id === ownerId) authorized = true;
+      } catch { /* 無効トークンは未認可のまま */ }
+    }
+  }
+  if (!authorized) {
+    return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
+  }
+
   if (!supaUrl || !serviceKey || !ownerId) {
     return NextResponse.json({ ok: false, reason: "not_configured" }, { status: 500 });
   }

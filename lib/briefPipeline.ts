@@ -49,7 +49,7 @@ export type SiteTrace = { source: string; fetched: boolean; linkCount: number; u
 export type PageReadTrace = { url: string; ok: boolean };
 export type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number };
 export type GeneratedCard = {
-  title: string; body: string; kind: string; trigger: string;
+  title: string; body: string; detail?: string; kind: string; trigger: string;
   area?: string; sourceUrl?: string; sourceLabel?: string; meta?: string[];
   expiresAt?: string; isDerived?: boolean;
   sourceWishId?: string;    // 応えた願いのid(id化・言い換えに強い)
@@ -401,24 +401,25 @@ ${DOMAIN_KIND_TABLE}
 下記フィールドのJSON配列のみを出力する。該当候補が無い場合は [] を出力する。
 id / matchStrength / inLivingArea(任意) / title(任意) / body(任意) / kind(任意) / trigger(任意) / sourceWishId(任意) / area(任意) / sourceLabel(任意) / meta(任意,文字列配列) / expiresAt(任意,ISO8601)`;
 
-const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文詳細化モジュールです。既に選ばれたカードごとに、その事物の個別ページ本文を読み、カードの本文(body)を書き直します。
+const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文詳細化モジュールです。既に選ばれたカードごとに、その事物の個別ページ本文を読み、カードの本文(body)と詳細(detail)を書きます。
 
 # 入力仕様
 <基準日>: 本日の日付
-<プロファイル>: ユーザーの好み・興味・これから好みそうな傾向（末尾の誘いの一文の根拠にのみ使う）
+<プロファイル>: ユーザーの好み・興味・これから好みそうな傾向（bodyの誘いの一文の根拠にのみ使う）
 <カード群>: 各カードの id・title・現在の body・sourcePage（その事物の個別ページのMarkdown本文）
 
 # 書き直しルール
-1. body の大部分は sourcePage 本文に明記された事実のみを根拠とする。本文に無い情報の補完・推測・一般知識の使用は禁止。
-2. 構成は「内容の要約（2〜4文）＋ 最後に短い誘いの一文（1文）」とする。
-   - 要約: その事物そのものの内容を具体的に述べる（何の展示・作品か、誰によるものか、テーマ・見どころ、会場・会期・料金など、本文から読み取れる固有名や数字を省略しない）。
-   - 誘いの一文: <プロファイル>を踏まえ、なぜ今これを見てほしいかを自然な話し言葉で1文添える。事実の要約と矛盾しないこと。
-3. 誘いの一文で禁止すること: 「〜に関心がある人にとって」「〜な機会です」のような定型的な言い回し。ユーザーの属性のラベル貼り。プロファイルに無い決めつけ。本文に無い事実の追加。自然な一文にならない場合は、誘いの一文を省いて要約だけにする。
-4. 評価の誇張・過度な煽りはしない。title は変更しない。sourcePage から書き直す情報が読み取れない場合は現在の body をそのまま返す。
+1. body・detail とも、記述は sourcePage 本文に明記された事実のみを根拠とする。本文に無い情報の補完・推測・一般知識の使用は禁止。
+2. body: カード表面に出す短い紹介文。「内容の要約（2〜3文）＋ 最後に短い誘いの一文（1文）」とする。
+   - 要約: 何の展示・作品か、誰によるものか等、本文の要点を簡潔に。
+   - 誘いの一文: <プロファイル>を踏まえ、なぜ今これを見てほしいかを自然な話し言葉で1文添える。事実と矛盾しないこと。
+3. detail: タップして開く詳細画面で読む、より詳しい説明。4〜7文（200〜400字程度）。sourcePage 本文から読み取れる具体的な情報——テーマや背景、構成・見どころ、出品作家・出演者・監督などの固有名、会場・会期・時間・料金・アクセスなど——をできるだけ具体的に盛り込む。固有名や数字を省略しない。bodyの単なる繰り返しにしない。
+4. 禁止事項: bodyの誘いの一文で「〜に関心がある人にとって」「〜な機会です」のような定型的な言い回し・ユーザーの属性のラベル貼り・プロファイルに無い決めつけ・本文に無い事実の追加。detailには誘い文やユーザーへの言及を入れず、事実の説明に徹する。評価の誇張・過度な煽りはしない。
+5. title は変更しない。sourcePage から読み取れる情報が乏しい場合は、body は現在の body をそのまま返し、detail は空文字列でよい。
 
 # 出力契約
 下記フィールドのJSON配列のみを出力する。入力カードは1件も省略しない。
-id / body`;
+id / body / detail`;
 
 function userCandidates(todayJp: string, extractLimit: number, pageBlocks: string): string {
   return `<基準日>${todayJp}</基準日>\n<抽出上限>${extractLimit}</抽出上限>\n<ページ群>\n${pageBlocks}\n</ページ群>`;
@@ -486,10 +487,13 @@ async function enrichCardBodies(
   const r = await callGemini(key, SYSTEM_ENRICH_BODY, userEnrich(todayJp, profileText, blocks), true, 8192);
   if (!r.ok) return { cards: out, usage: ZERO_USAGE, pagesRead };
 
-  const rewritten = extractJsonArray<{ id?: number; body?: string }>(r.text) ?? [];
+  const rewritten = extractJsonArray<{ id?: number; body?: string; detail?: string }>(r.text) ?? [];
   for (const item of rewritten) {
     if (typeof item.id !== "number" || !out[item.id]) continue;
-    if (typeof item.body === "string" && item.body.trim()) out[item.id] = { ...out[item.id], body: item.body.trim() };
+    const patch: Partial<GeneratedCard> = {};
+    if (typeof item.body === "string" && item.body.trim()) patch.body = item.body.trim();
+    if (typeof item.detail === "string" && item.detail.trim()) patch.detail = item.detail.trim();
+    if (Object.keys(patch).length) out[item.id] = { ...out[item.id], ...patch };
   }
   return { cards: out, usage: r.usage, pagesRead };
 }

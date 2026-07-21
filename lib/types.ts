@@ -66,6 +66,8 @@ export interface Item {
   // (my-brain logs/feedback)で、実行・星付きといった強いシグナルの行にも内容の
   // コンテキストを残すために使う(カードがgeneratedDecksから消えた後も残る)。
   summary?: string;
+  // 詳細オーバーレイで読む、summaryより詳しい説明(生成カードのdetail)。
+  detail?: string;
   sourceUrl?: string;
   sourceLabel?: string;
   color?: string;
@@ -227,6 +229,8 @@ export interface BriefCard {
   color?: string;
   title: string;
   body: string;
+  // タップして開く詳細で読む、bodyより詳しい説明。KEEPでItem.detailへ引き継ぐ。
+  detail?: string;
   meta?: string[];
   bg: string;
   fg: string;

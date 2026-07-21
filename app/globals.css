@@ -89,3 +89,19 @@ button:active {
   from { opacity: 0; transform: translateX(-64px); }
   to { opacity: 1; transform: translateX(0); }
 }
+
+/* ロード画面: デザインコード(§5 バウハウス調)の小さな幾何学図形が、
+   左から右へ転がって(translate+rotate)横断していく待機アニメーション。
+   図形ごとに開始を少しずつ遅らせ、色は定数(BLUE/RUST/GREEN/GOLD)に合わせる。 */
+@keyframes brief-roll {
+  0%   { transform: translateX(-32px) rotate(0deg); opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateX(232px) rotate(360deg); opacity: 0; }
+}
+.brief-roll-shape {
+  animation: brief-roll 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .brief-roll-shape { animation: none; opacity: 0.9; }
+}

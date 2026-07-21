@@ -57,6 +57,7 @@ export function generatedToBriefCard(gc: GeneratedCard, id: number): BriefCard {
     kind,
     title: gc.title,
     body: gc.body,
+    detail: gc.detail,
     meta: cleanMeta.length ? cleanMeta : undefined,
     bg: s.color,
     fg: PAPER_FG,

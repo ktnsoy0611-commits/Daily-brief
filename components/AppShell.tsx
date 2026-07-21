@@ -11,7 +11,7 @@ import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
-import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BG, BLUE, GOLD, GREEN, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -25,6 +25,24 @@ const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; str
   { id: "stock", label: "ストック", Icon: Heart },
   { id: "execute", label: "プラン", Icon: MapIcon },
 ];
+
+// 読み込み待機画面。デザインコード(§5)の幾何学図形が左から右へ転がって
+// 横断する(globals.cssの brief-roll)。図形ごとに開始を少しずつ遅らせて、
+// 円・正方形・三角・長方形が続いて流れる。
+function LoadingScreen() {
+  const base: React.CSSProperties = { position: "absolute", top: "50%", left: 0, willChange: "transform" };
+  return (
+    <div style={{ height: "100svh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, fontFamily: SANS }}>
+      <div style={{ position: "relative", width: 200, height: 34, overflow: "hidden" }}>
+        <span className="brief-roll-shape" style={{ ...base, marginTop: -10, width: 20, height: 20, borderRadius: "50%", background: RUST, animationDelay: "0s" }} />
+        <span className="brief-roll-shape" style={{ ...base, marginTop: -10, width: 20, height: 20, background: BLUE, animationDelay: "0.6s" }} />
+        <span className="brief-roll-shape" style={{ ...base, marginTop: -9, width: 0, height: 0, borderLeft: "10px solid transparent", borderRight: "10px solid transparent", borderBottom: `18px solid ${GOLD}`, animationDelay: "1.2s" }} />
+        <span className="brief-roll-shape" style={{ ...base, marginTop: -6, width: 24, height: 12, borderRadius: 2, background: GREEN, animationDelay: "1.8s" }} />
+      </div>
+      <div style={{ color: "#9A988E", fontSize: 12, letterSpacing: "0.08em" }}>読み込んでいます…</div>
+    </div>
+  );
+}
 
 export function AppShell() {
   const [appState, setAppState] = useState<AppState | null>(null);
@@ -211,14 +229,14 @@ export function AppShell() {
 
   // 認証ゲート(Supabase構成済みのときだけ)。未構成なら以下の2分岐は素通り。
   if (isSupabaseConfigured && !authReady) {
-    return <div style={{ minHeight: "100svh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
+    return <LoadingScreen />;
   }
   if (isSupabaseConfigured && authReady && !userId) {
     return <SignInGate />;
   }
 
   if (!appState) {
-    return <div style={{ minHeight: "100svh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: SANS, color: "#9A988E", fontSize: 13 }}>読み込んでいます…</div>;
+    return <LoadingScreen />;
   }
 
   const interestCount = (appState.profile?.interests ?? []).length;

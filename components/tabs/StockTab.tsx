@@ -386,7 +386,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
       <BinderModal
         item={itemDetail ? {
           title: itemDetail.title, category: itemDetail.category ?? itemKindOf(itemDetail.kind).label,
-          summary: itemDetail.summary, images: itemDetail.images,
+          summary: itemDetail.summary, detail: itemDetail.detail, images: itemDetail.images,
           meta: [...(itemDetail.meta ?? []), ...(itemDetail.creator ? [itemDetail.creator] : []), ...(itemDetail.price ? [itemDetail.price] : [])],
           sourceUrl: itemDetail.sourceUrl, sourceLabel: itemDetail.sourceLabel,
         } : null}

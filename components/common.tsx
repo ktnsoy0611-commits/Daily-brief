@@ -377,10 +377,12 @@ export interface BinderItem {
   title: string;
   category?: string;
   categoryJp?: string;
-  // 説明文。ブリーフのカード本文がKEEP時に Item.summary へ入るので、それを
-  // ここへ渡すと詳細オーバーレイに表示される(bodyは他の呼び出し元用の別名)。
+  // 説明文。詳細オーバーレイには detail(長文) を優先して表示し、無ければ
+  // body/summary(短文)にフォールバックする。ブリーフのカードは body(短)と
+  // detail(長)を両方持つので、詳細では detail が出る。
   body?: string;
   summary?: string;
+  detail?: string;
   images?: string[];
   meta?: string[];
   sourceUrl?: string;
@@ -399,18 +401,28 @@ export function BinderModal({ item, onClose, actionSlot }: {
     <BottomSheet onClose={onClose} maxHeight="76vh">
       {(requestClose) => (
         <>
-          {(item.images ?? []).length > 0 && (
+          {(item.images ?? []).length === 1 ? (
+            // 写真が1枚(OGP画像は横長)のときは、傾けた小さいスタックにせず
+            // 大きく1枚を見せる。読み込めなければ隠す(色ベタのまま)。
+            <div style={{ padding: "2px 0 16px" }}>
+              <img
+                src={img(item.images![0], 720, 450)} alt=""
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                style={{ width: "100%", aspectRatio: "16 / 10", objectFit: "cover", borderRadius: 14, boxShadow: "0 10px 26px rgba(23,23,21,0.18)", display: "block" }}
+              />
+            </div>
+          ) : (item.images ?? []).length > 1 ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 18px" }}>
               {(item.images ?? []).map((seed, i) => (
-                <img key={seed} src={img(seed, 300, 380)} alt="" style={{ width: "32%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 6, border: "4px solid #fff", boxShadow: "0 8px 20px rgba(23,23,21,0.3)", transform: `rotate(${rotations[i % 3]}deg)`, marginLeft: i === 0 ? 0 : -18, position: "relative", zIndex: i }} />
+                <img key={seed} src={img(seed, 300, 380)} alt="" style={{ width: "40%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 8, border: "4px solid #fff", boxShadow: "0 8px 20px rgba(23,23,21,0.3)", transform: `rotate(${rotations[i % 3]}deg)`, marginLeft: i === 0 ? 0 : -22, position: "relative", zIndex: i }} />
               ))}
             </div>
-          )}
+          ) : null}
           <OverlayCard>
             <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
-            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: (item.body ?? item.summary) ? 10 : actionSlot ? 12 : 16 }}>{item.title}</div>
-            {(item.body ?? item.summary) && (
-              <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.75, color: "#4A4A44", margin: `0 0 ${actionSlot ? 12 : 16}px` }}>{item.body ?? item.summary}</p>
+            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: (item.detail ?? item.body ?? item.summary) ? 10 : actionSlot ? 12 : 16 }}>{item.title}</div>
+            {(item.detail ?? item.body ?? item.summary) && (
+              <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.85, color: "#4A4A44", margin: `0 0 ${actionSlot ? 12 : 16}px`, whiteSpace: "pre-wrap" }}>{item.detail ?? item.body ?? item.summary}</p>
             )}
             {actionSlot && <div style={{ marginBottom: 16 }}>{actionSlot(requestClose)}</div>}
             {item.meta && item.meta.length > 0 && (

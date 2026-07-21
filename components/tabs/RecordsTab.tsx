@@ -62,7 +62,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const totalCount = doneItems.length + fulfilledWishes.length;
 
   const itemDetail = (i: Item): BinderItem => ({
-    title: i.title, category: i.category ?? itemKindOf(i.kind).label, summary: i.summary, images: i.images,
+    title: i.title, category: i.category ?? itemKindOf(i.kind).label, summary: i.summary, detail: i.detail, images: i.images,
     meta: [...(i.meta ?? []), ...(i.creator ? [i.creator] : []), ...(i.price ? [i.price] : [])],
     sourceUrl: i.sourceUrl, sourceLabel: i.sourceLabel,
   });

@@ -372,7 +372,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               : undefined);
           next.items.push({
             id: `brief-${editionKey}-${card.id}`, kind: card.kind ?? "place",
-            title: card.title, category: card.categoryJp, summary: card.body,
+            title: card.title, category: card.categoryJp, summary: card.body, detail: card.detail,
             area: card.area && card.area !== "—" ? card.area : undefined,
             lat: card.lat, lng: card.lng, placeId: card.placeId,
             images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,

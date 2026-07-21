@@ -382,11 +382,10 @@ ${DOMAIN_KIND_TABLE}
 # 分類ルール
 1. 記述は候補レコードに含まれる情報のみを根拠とする。レコードに無い情報の補完・推測は禁止。
 2. 入力された候補は1件も省略せず、すべてについて分類結果を出力する。
-3. matchStrength は候補とプロファイルとの関係で判定する。網は広めに取る。
-   "strong": 願望リスト・好み・興味 のいずれかに直接合致する候補(今の関心の中心)
-   "moderate": 好み・興味・これから好みそうな傾向 から連想される、関連する・隣接する物事(直接は一致しないが地続き)。広めに拾う。
-   "none": プロファイルのどの信号ともまったく関連が無い候補のみ。
-   少しでも関連が考えられる候補は none にせず moderate にする(取りこぼしより拾いすぎを優先する。ユーザーは後で外せる)。
+3. matchStrength は候補とプロファイルとの関係で判定する。
+   "strong": 願望リスト・好みのいずれかに直接合致する候補
+   "moderate": 興味、またはこれから好みそうな傾向に合致する候補、または好みに近接するが一致はしない候補
+   "none": プロファイルのいずれとも関連が無い候補
 4. matchStrength が "none" の候補は id と matchStrength のみを出力する。他のフィールドは出力しない。
 5. matchStrength が "strong" または "moderate" の候補は、id・matchStrength に加えて以下も出力する。
    inLivingArea: 候補の所在地が<生活圏>内かどうか。所在地の記述が無い候補は true とする。
@@ -610,18 +609,15 @@ export async function buildDeck(input: {
     }));
     const pagesRead: PageReadTrace[] = siteFetches.map((r) => ({ url: r.url, ok: r.fetched }));
 
-    // 更新の無いサイトも抽出する。展覧会・映画の一覧は日々ほぼ変わらないが、
-    // まだ出していない催しが多数あり、スキップすると毎日ほぼ0枚になってしまう
-    // (実機で「今日はカード1枚」の主因)。既出カードはexclude(Q2)で除くので
-    // 重複は出ない。トークンは増えるが、カード枚数を優先するユーザー方針
-    // (基準を緩めて広く網を張り、間違いはskipで消す)を優先する。unchanged
-    // フラグはトレース表示のためだけ残す(digestの計算・保存も継続)。
-    const usable = siteFetches.filter((r) => r.fetched && r.md);
+    // 更新の無いサイト(前回とダイジェスト一致)は抽出対象から外す(Geminiに
+    // 渡さない=トークン節約。ユーザー指定で「更新の無いサイトは抽出しなくてよい」)。
+    const usable = siteFetches.filter((r) => r.fetched && r.md && !unchangedKeys.has(normUrl(r.url)));
     if (usable.length === 0) {
+      const anyFetched = siteFetches.some((r) => r.fetched && r.md);
       return {
         ok: true, cards: [], candidateCount: 0, records: [], sites, pagesRead,
         dropped: ZERO_DROPS, tokens, digests,
-        note: "情報源ページを取得できませんでした。",
+        note: anyFetched ? "取得できた情報源に前回からの更新がありませんでした。" : "情報源ページを取得できませんでした。",
       };
     }
 

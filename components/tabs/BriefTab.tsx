@@ -162,6 +162,11 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
 
 type Decision = "keep" | "skip" | "answered" | "skipped";
 
+// 未消化カードのプール上限。号(朝刊/夕刊)を横断して、まだ消化していない
+// カードを1ヶ月ぶん最大この枚数まで表示する(生成側=CronのPOOL_CAPと同じ値。
+// Cronは30枚に達すると新規生成を止める)。
+const POOL_CAP = 30;
+
 // 育成カード用フッター(あとで/記録する)の高さぶんの予約枠。isGrowthを
 // 問わず常にこの高さを確保しておくことで、フッターの有無によって
 // カードの実寸が変わる(=スワイプで昇格した瞬間にガクッと動く)ことが
@@ -218,17 +223,45 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const editionKey = `${dateKey}-${edition}`;
   const editionLabel = edition === "am" ? "朝刊" : "夕刊";
   const decisions: Record<string, Decision> = (appState.briefs?.[editionKey]?.decisions as Record<string, Decision>) ?? {};
-  const feedback = appState.briefs?.[editionKey]?.feedback ?? {};
+  // ★未消化カードは号(朝刊/夕刊)を横断して1ヶ月ぶん最大30枚まで貯まる(§req4)。
+  // 決定(keep/skip)・旗は号ごとの briefs[*] に散って記録されるが、カードidは
+  // 生成実行ごとにDate.nowベースで一意なので、全号ぶんをマージして引ける。
+  const allDecisions: Record<string, Decision> = useMemo(() => {
+    const m: Record<string, Decision> = {};
+    for (const b of Object.values(appState.briefs ?? {})) {
+      for (const [id, d] of Object.entries((b?.decisions ?? {}) as Record<string, Decision>)) m[id] = d;
+    }
+    return m;
+  }, [appState.briefs]);
+  const allFeedback: Record<string, boolean> = useMemo(() => {
+    const m: Record<string, boolean> = {};
+    for (const b of Object.values(appState.briefs ?? {})) {
+      for (const [id, v] of Object.entries(b?.feedback ?? {})) if (v) m[id] = true;
+    }
+    return m;
+  }, [appState.briefs]);
+  // カードidから、それが属する号(editionKey)を引く。決定・旗をそのカードの
+  // 元の号に記録するため(未消化プールは号横断のため、今の号に記録すると
+  // ログ焼き付け(号ごとにカードと決定を突き合わせる)が壊れる)。見つからない
+  // 育成カード等は今の号。
+  const editionOfCard = (id: string | number): string => {
+    const decks = appState.generatedDecks ?? {};
+    for (const [ek, cards] of Object.entries(decks)) {
+      if ((cards ?? []).some((c) => String(c.id) === String(id))) return ek;
+    }
+    return editionKey;
+  };
 
   // カードの質が低かったときの控えめなフィードバック。本実装では
   // このカードを生成した情報源(source)のスコアを下げる材料になる。
   const toggleFlag = (cardId: string | number) => {
     haptic(6);
     const next = structuredClone(appState);
-    const brief = next.briefs[editionKey] ?? { decisions: {} };
+    const ed = editionOfCard(cardId);
+    const brief = next.briefs[ed] ?? { decisions: {} };
     brief.feedback = brief.feedback ?? {};
     brief.feedback[cardId] = !brief.feedback[cardId];
-    next.briefs[editionKey] = brief;
+    next.briefs[ed] = brief;
     persist(next);
   };
 
@@ -259,17 +292,42 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const growthDecidedThisEdition = Object.keys(decisions).some(
     (k) => k.startsWith("checkin-") || k.startsWith("milestone-"),
   );
-  const generated = appState.generatedDecks?.[editionKey];
+  // このコンポーネントのマウント時点で「既に消化済み(keep/skip)」だったカードidを
+  // 固定スナップショットしておく。プールからはこれらを除く(=既に片付けたカードは
+  // 出さない)。一方、このビュー滞在中に消化したカードはスナップショットに含ま
+  // れないためプールに残り、既存のスワイプ機構(indexが決定数ぶん進む)がそのまま
+  // 働く。タブ切替でこのコンポーネントは key={tab} ごと作り直されるため、次に
+  // ブリーフを開いた時には新しいスナップショットで片付け済みが除かれる。
+  const decidedAtMountRef = useRef<Set<string> | null>(null);
+  if (decidedAtMountRef.current === null) {
+    decidedAtMountRef.current = new Set(Object.keys(allDecisions));
+  }
+
   const deck: DeckCard[] = useMemo(() => {
-    // 会期末(expiresAt)を過ぎたカードは出さない。生成時にも除外しているが、
-    // 生成後〜閲覧までに会期が終わったカードが号の中に残るのを表示側でも弾く。
+    // デッキ=号(朝刊/夕刊)を横断した「未消化カードのプール」。新しい号から順に、
+    // 会期切れ・マウント時点で消化済みのものを除いて集め、最大 POOL_CAP(30)枚。
+    // editionKey("YYYY-MM-DD-am|pm")は文字列比較で新しい順に並ぶ(同日ならpm>am)。
     const nowMs = Date.now();
-    const source: BriefCard[] = (generated ?? []).filter((c) => {
-      if (!c.expiresAt) return true;
-      const t = Date.parse(c.expiresAt);
-      return Number.isNaN(t) || t >= nowMs;
-    });
-    const base: DeckCard[] = [...source];
+    const decks = appState.generatedDecks ?? {};
+    const edKeys = Object.keys(decks).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+    const seen = new Set<string>();
+    const pool: BriefCard[] = [];
+    for (const ek of edKeys) {
+      for (const c of decks[ek] ?? []) {
+        const id = String(c.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        if (decidedAtMountRef.current!.has(id)) continue; // 既に片付けたカードは出さない
+        if (c.expiresAt) {
+          const t = Date.parse(c.expiresAt);
+          if (!Number.isNaN(t) && t < nowMs) continue; // 会期切れは出さない
+        }
+        pool.push(c);
+        if (pool.length >= POOL_CAP) break;
+      }
+      if (pool.length >= POOL_CAP) break;
+    }
+    const base: DeckCard[] = [...pool];
     // 育成カードは1号につき最大1枚だけ差し込む。**既にこの号で育成カードを
     // 決定済み(記録 or あとで)なら差し込まない**。これが無いと、育成カードを
     // 「あとで」でスキップしても、そのゴールは依然「期限到来中」のままなので
@@ -281,9 +339,9 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
       base.splice(3, 0, growthCard);
     }
     return base;
-  }, [dueCandidate, generated, growthDecidedThisEdition]);
+  }, [dueCandidate, appState.generatedDecks, growthDecidedThisEdition]);
 
-  const index = deck.filter((c) => decisions[c.id]).length;
+  const index = deck.filter((c) => allDecisions[c.id]).length;
   const done = index >= deck.length;
   // 安全網: 表示すべきカードが進んだ(=決定が保存された)のに、何らかの
   // 理由でexit/dragが定位置に戻っていなければ、ここで強制的にリセットする。
@@ -297,7 +355,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   }, [index]);
   // 育成カード(checkin/milestone)は「keep」判定にはならない(answered/skippedのみ)ため、
   // ここでBriefCardであることをTSにも保証する。
-  const keptCards = deck.filter((c): c is BriefCard => !isGrowthCard(c) && decisions[c.id] === "keep");
+  const keptCards = deck.filter((c): c is BriefCard => !isGrowthCard(c) && allDecisions[c.id] === "keep");
   const currentCard = deck[index];
   const isCheckin = currentCard?.type === "checkin";
   const isMilestone = currentCard?.type === "milestone";
@@ -321,7 +379,11 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
     commitTimerRef.current = setTimeout(() => {
       commitTimerRef.current = null;
       const next = structuredClone(appState);
-      const brief = next.briefs[editionKey] ?? { decisions: {} };
+      // 未消化プールは号横断のため、決定はカードの「元の号」に記録する
+      // (今の号に記録するとログ焼き付けが号内でカードと決定を突き合わせられ
+      // なくなる)。育成カードはプール外なので今の号に記録する。
+      const ed = isGrowthCard(card) ? editionKey : editionOfCard(card.id);
+      const brief = next.briefs[ed] ?? { decisions: {} };
 
       if (isGrowthCard(card)) {
         brief.decisions[card.id] = dir === "keep" ? "answered" : "skipped";
@@ -371,7 +433,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               ? next.wishes.find((w) => w.title === card.sourceWishTitle && w.status === "stock")
               : undefined);
           next.items.push({
-            id: `brief-${editionKey}-${card.id}`, kind: card.kind ?? "place",
+            id: `brief-${ed}-${card.id}`, kind: card.kind ?? "place",
             title: card.title, category: card.categoryJp, summary: card.body, detail: card.detail,
             area: card.area && card.area !== "—" ? card.area : undefined,
             lat: card.lat, lng: card.lng, placeId: card.placeId,
@@ -382,8 +444,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         }
       }
 
-      if (Object.keys(brief.decisions).length >= deck.length) brief.completedAt = new Date().toISOString();
-      next.briefs[editionKey] = brief;
+      next.briefs[ed] = brief;
       setExit(null);
       setDrag({ dx: 0, dy: 0, active: false });
       setCheckinAnswer("");
@@ -469,7 +530,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
       <Masthead title="ブリーフ" statValue={deck.length === 0 ? "" : done ? keptCards.length : index + 1} statLabel={deck.length === 0 ? "休刊" : done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
       <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
         {deck.map((c, i) => (
-          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: decisions[c.id] === "keep" || decisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : decisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(23,23,21,0.1)", transition: "background 0.3s" }} />
+          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(23,23,21,0.1)", transition: "background 0.3s" }} />
         ))}
       </div>
 
@@ -510,7 +571,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
                     checkinValue={isTop ? checkinAnswer : ""} onCheckinChange={isTop ? setCheckinAnswer : () => {}}
                     milestoneText={isTop ? milestoneText : ""} onMilestoneTextChange={isTop ? setMilestoneText : () => {}}
                     milestoneRating={isTop ? milestoneRating : null} onMilestoneRatingChange={isTop ? setMilestoneRating : () => {}}
-                    flagged={isTop ? !!feedback[card.id] : undefined} onFlag={isTop ? () => toggleFlag(card.id) : undefined} />
+                    flagged={isTop ? !!allFeedback[card.id] : undefined} onFlag={isTop ? () => toggleFlag(card.id) : undefined} />
                 </div>
               ))}
             </main>

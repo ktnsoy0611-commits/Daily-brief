@@ -27,7 +27,11 @@ export const KEEP_MAX_AGE_DAYS = 30;
 // (BriefTabは常にtodayKey()ベースのeditionKeyしか読まない)ため、無期限に
 // 溜まり続けるだけの死重になる。この日数を過ぎた号はAppShellの起動時
 // クリーンアップで削除する。
-export const BRIEF_RETENTION_DAYS = 14;
+// ★カード本体(generatedDecks)は30日保持(Cronの RETENTION_DAYS)。決定
+// (briefs.decisions)はそれより長く残す必要がある。もし決定の方が先に
+// 消えると、まだ保持中の未消化でないカードの「消化済み」記録が失われ、
+// そのカードが未消化プールに復活してしまう。よって35日(カードより長く)にする。
+export const BRIEF_RETENTION_DAYS = 35;
 
 export const SWIPE_THRESHOLD = 90;
 

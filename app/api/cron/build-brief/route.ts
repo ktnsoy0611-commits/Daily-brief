@@ -33,7 +33,9 @@ import type { BriefCard } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const RETENTION_DAYS = 14;
+const RETENTION_DAYS = 30;   // 生成カード(号)の保持日数。1ヶ月を過ぎた号は削除する
+const POOL_CAP = 30;         // 未消化(keep/skipされていない)カードの上限。これに達したら生成しない
+const GEN_TARGET = 10;       // 1号(朝刊/夕刊)で生成する目標枚数。朝刊10+夕刊10=1日20枚
 
 function jstEditionKey(): string {
   const jst = new Date(Date.now() + 9 * 3600 * 1000);
@@ -49,6 +51,33 @@ function isOldEdition(editionKey: string, cutoffMs: number): boolean {
   if (!m) return false; // 読めないキーは安全側で残す
   const t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
   return t < cutoffMs;
+}
+
+// 号を横断して「未消化(keep/skipされていない)カード」の枚数を数える。
+// 決定(briefs.decisions)はカードidをキーに号ごとに散っているが、カードidは
+// 生成実行ごとに一意なので、全号の決定をマージして「決定済みでない・会期
+// 切れでもない」カードを数える。これが POOL_CAP(30)に達している間は新規生成
+// しない(トークン節約)。ブリーフタブの未消化プール表示と同じ母数。
+function countUndigested(decksVal: unknown, briefsVal: unknown): number {
+  const decks = (decksVal ?? {}) as Record<string, { id?: unknown; expiresAt?: string }[]>;
+  const briefs = (briefsVal ?? {}) as Record<string, { decisions?: Record<string, unknown> }>;
+  const decided = new Set<string>();
+  for (const b of Object.values(briefs)) for (const id of Object.keys(b?.decisions ?? {})) decided.add(id);
+  const now = Date.now();
+  const seen = new Set<string>(); // ブリーフタブのプールと同じく重複idは1回だけ数える
+  let n = 0;
+  for (const deck of Object.values(decks)) {
+    for (const c of deck ?? []) {
+      const id = String(c?.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (decided.has(id)) continue;
+      const exp = c?.expiresAt;
+      if (exp) { const t = Date.parse(exp); if (!Number.isNaN(t) && t < now) continue; }
+      n++;
+    }
+  }
+  return n;
 }
 
 export async function GET(req: Request) {
@@ -207,23 +236,31 @@ export async function GET(req: Request) {
     if (typeof it?.title === "string") excludeNames.push(it.title);
   }
 
-  // 2. 生成。countは「全体で最大何枚まで」という安全弁で、埋めにいく目標では
-  // ない。実際の枚数は1情報源あたり最大3枚(buildDeckのSITE_CARD_LIMIT)で
-  // 決まるので、情報源が少ない今は自然に数枚程度になる。
-  const result = await buildDeck({
-    taste, sources, count: 20,
-    exclude: { urls: excludeUrls, names: excludeNames },
-    digests: prevDigests,
-  });
-  if (!result.ok) {
+  // 2. 未消化(keep/skipされていない)カードのバックログを数える。1ヶ月ぶん最大
+  // POOL_CAP(30)枚まで貯めておき、これに達している間は新しく生成しない
+  // (毎日生成→未消化のまま破棄を繰り返すとGeminiのトークンが無駄なため)。
+  const undigested = countUndigested(byKey.generatedDecks, byKey.briefs);
+  const genCount = Math.max(0, Math.min(GEN_TARGET, POOL_CAP - undigested));
+  const skipGen = genCount === 0;
+
+  // 3. 生成。countは「この号で最大何枚まで」(目標GEN_TARGET=10、ただし残り
+  // 容量まで)。バックログが上限ならbuildDeckを呼ばない=トークンを使わない。
+  const result = skipGen
+    ? null
+    : await buildDeck({
+        taste, sources, count: genCount,
+        exclude: { urls: excludeUrls, names: excludeNames },
+        digests: prevDigests,
+      });
+  if (result && !result.ok) {
     const status = result.reason.startsWith("gemini_") || result.reason === "fetch_failed" ? 502 : 200;
     return NextResponse.json({ ...result, brainFiles: brain.filesRead }, { status });
   }
 
-  // 3. content_cache プール(url重複を除外して新規のみ挿入・非致命)
+  // 4. content_cache プール(url重複を除外して新規のみ挿入・非致命)
   let pooled = 0;
   try {
-    if (result.records.length) {
+    if (result && result.records.length) {
       const { data: existing } = await supa.from("content_cache").select("payload").eq("user_id", ownerId);
       const seen = new Set<string>(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -263,73 +300,82 @@ export async function GET(req: Request) {
   // 生成の実行が変われば必ず別のid空間になり、古いdecisionsが新しい内容の
   // カードに誤って適用されることが構造的に無くなる。
   const GENERATED_ID_BASE = Date.now();
-  const cards: BriefCard[] = result.cards.map((c, i) => generatedToBriefCard(c, GENERATED_ID_BASE + i));
+  const cards: BriefCard[] = result ? result.cards.map((c, i) => generatedToBriefCard(c, GENERATED_ID_BASE + i)) : [];
 
-  // 新しいカードが1枚も無い場合(全情報源が前回から更新なし=Q3、または候補が
-  // 分類で全て落ちた場合)は、既存のデッキを空で上書きして消してしまわないよう、
-  // デッキ書き込みと情報源カードの提案をスキップする。巡回状態(crawlState)・
-  // ログ・同期は下で通常どおり行う。
   let proposedSource: string | null = null;
   let deckWritten = false;
-  if (result.cards.length > 0) {
-    // 情報源カード(§7-5): Coworkが発掘してプールに入った情報源のうち、まだ提案して
-    // いない・お気に入りでも除外でもないものを1件だけ「新しい情報源」カードとして
-    // デッキ先頭に混ぜ、KEEP/SKIPで採否を確認できるようにする。提案済みURLは
-    // sources-proposed.md に記録して二度提案しない。非致命。
+
+  // 情報源カード(§7-5): 新しいカードを生成した号でだけ、Coworkが発掘してプールに
+  // 入った情報源のうち、まだ提案していない・お気に入りでも除外でもないものを
+  // 1件だけ「新しい情報源」カードとしてデッキ先頭に混ぜ、KEEP/SKIPで採否を
+  // 確認できるようにする。提案済みURLは sources-proposed.md に記録して二度
+  // 提案しない。非致命。生成を見送った号(cards空)では提案しない。
+  if (cards.length > 0) {
     try {
-    const favSet = new Set(appFavoriteSources.map((s) => normSrc(s.url)));
-    const proposedRaw = (await readMyBrainFile("sources-proposed.md")) ?? "";
-    const proposedSet = new Set(
-      proposedRaw.split(/\r?\n/).map((l) => l.match(/^-\s*(\S+)/)?.[1]).filter((u): u is string => !!u).map(normSrc),
-    );
-    const candidate = brain.sources
-      .map((s) => s.url)
-      .find((u) => !favSet.has(normSrc(u)) && !dismissedSrcSet.has(normSrc(u)) && !proposedSet.has(normSrc(u)));
-    if (candidate) {
-      let label = candidate;
-      try { label = new URL(candidate).hostname.replace(/^www\./, ""); } catch { /* そのまま */ }
-      cards.unshift({
-        id: GENERATED_ID_BASE + 900000, category: "情報源", categoryJp: "情報源", trigger: "新しい情報源",
-        title: `新しい情報源: ${label}`,
-        body: `${label} を情報源に加えました。良ければ右へスワイプして残し、合わなければ左へ。`,
-        bg: "#ECE9E1", fg: "#1C1C1E", accent: "#8A8578",
-        sourceUrl: candidate, sourceLabel: label, sourceProposal: true,
-      });
-      proposedSource = candidate;
-      const prevLines = proposedRaw.split(/\r?\n/).filter((l) => l.startsWith("- "));
-      const nextProposed = `# sources-proposed（提案済みの情報源URL。二度提案しないための記録）\n\n${[...prevLines, `- ${candidate}`].join("\n")}\n`;
-      await writeMyBrainFile("sources-proposed.md", nextProposed, "提案した情報源を記録");
-    }
+      const favSet = new Set(appFavoriteSources.map((s) => normSrc(s.url)));
+      const proposedRaw = (await readMyBrainFile("sources-proposed.md")) ?? "";
+      const proposedSet = new Set(
+        proposedRaw.split(/\r?\n/).map((l) => l.match(/^-\s*(\S+)/)?.[1]).filter((u): u is string => !!u).map(normSrc),
+      );
+      const candidate = brain.sources
+        .map((s) => s.url)
+        .find((u) => !favSet.has(normSrc(u)) && !dismissedSrcSet.has(normSrc(u)) && !proposedSet.has(normSrc(u)));
+      if (candidate) {
+        let label = candidate;
+        try { label = new URL(candidate).hostname.replace(/^www\./, ""); } catch { /* そのまま */ }
+        cards.unshift({
+          id: GENERATED_ID_BASE + 900000, category: "情報源", categoryJp: "情報源", trigger: "新しい情報源",
+          title: `新しい情報源: ${label}`,
+          body: `${label} を情報源に加えました。良ければ右へスワイプして残し、合わなければ左へ。`,
+          bg: "#ECE9E1", fg: "#1C1C1E", accent: "#8A8578",
+          sourceUrl: candidate, sourceLabel: label, sourceProposal: true,
+        });
+        proposedSource = candidate;
+        const prevLines = proposedRaw.split(/\r?\n/).filter((l) => l.startsWith("- "));
+        const nextProposed = `# sources-proposed（提案済みの情報源URL。二度提案しないための記録）\n\n${[...prevLines, `- ${candidate}`].join("\n")}\n`;
+        await writeMyBrainFile("sources-proposed.md", nextProposed, "提案した情報源を記録");
+      }
     } catch {
       /* 情報源カードの失敗はデッキ生成を止めない */
     }
+  }
 
+  // デッキ書き込み。生成を見送った号でも、1ヶ月(RETENTION_DAYS)を過ぎた古い号の
+  // 掃除だけは毎回行う(ユーザー指定「1ヶ月経ったカードは削除」)。新しいカードが
+  // あれば当該号を追加する。カードが1枚も無い場合は既存デッキを空で上書きして
+  // 消さない(掃除の結果だけ書き戻す)。
+  {
     const { data: existingDeck } = await supa.from("app_state").select("value").eq("user_id", ownerId).eq("key", "generatedDecks").maybeSingle();
     const decks: Record<string, BriefCard[]> = (existingDeck?.value as Record<string, BriefCard[]>) ?? {};
     const cutoff = Date.now() - RETENTION_DAYS * 24 * 3600 * 1000;
-    for (const k of Object.keys(decks)) if (isOldEdition(k, cutoff)) delete decks[k];
-    decks[editionKey] = cards;
-
-    const { error: writeErr } = await supa.from("app_state").upsert(
-      { user_id: ownerId, key: "generatedDecks", value: decks, updated_at: new Date().toISOString() },
-      { onConflict: "user_id,key" },
-    );
-    if (writeErr) {
-      return NextResponse.json({ ok: false, reason: "deck_write_failed", detail: writeErr.message }, { status: 502 });
+    let mutated = false;
+    for (const k of Object.keys(decks)) if (isOldEdition(k, cutoff)) { delete decks[k]; mutated = true; }
+    if (cards.length > 0) { decks[editionKey] = cards; mutated = true; }
+    if (mutated) {
+      const { error: writeErr } = await supa.from("app_state").upsert(
+        { user_id: ownerId, key: "generatedDecks", value: decks, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" },
+      );
+      if (writeErr && cards.length > 0) {
+        return NextResponse.json({ ok: false, reason: "deck_write_failed", detail: writeErr.message }, { status: 502 });
+      }
     }
-    deckWritten = true;
+    deckWritten = cards.length > 0;
   }
 
   // Q3: 巡回状態を保存する。digests は今回取得できた各情報源の最新ハッシュ
-  // (前回分にマージ)。更新の無いサイトを次回スキップするのに使う。
-  try {
-    const mergedDigests = { ...prevDigests, ...result.digests };
-    await supa.from("app_state").upsert(
-      { user_id: ownerId, key: "crawlState", value: { digests: mergedDigests }, updated_at: new Date().toISOString() },
-      { onConflict: "user_id,key" },
-    );
-  } catch {
-    /* 巡回状態の保存失敗はデッキ生成を止めない */
+  // (前回分にマージ)。更新の無いサイトを次回スキップするのに使う。生成を
+  // 見送った号(result=null)は取得していないので更新しない。
+  if (result) {
+    try {
+      const mergedDigests = { ...prevDigests, ...result.digests };
+      await supa.from("app_state").upsert(
+        { user_id: ownerId, key: "crawlState", value: { digests: mergedDigests }, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" },
+      );
+    } catch {
+      /* 巡回状態の保存失敗はデッキ生成を止めない */
+    }
   }
 
   // 直近の生成サマリを cronStatus へ保存する。ユーザーがVercelのログを見なくても
@@ -342,7 +388,8 @@ export async function GET(req: Request) {
         value: {
           at: new Date().toISOString(), editionKey,
           cardCount: cards.length, sourceCount: sources.length,
-          pooled, totalTokens: result.tokens.totalTokens, note: result.note,
+          pooled, totalTokens: result?.tokens.totalTokens ?? 0,
+          note: result?.note ?? (skipGen ? `未消化のカードが${undigested}枚あるため、今回は生成を見送りました。` : undefined),
         },
         updated_at: new Date().toISOString(),
       },
@@ -422,8 +469,9 @@ export async function GET(req: Request) {
     // pinnedCount=固定＋お気に入り(毎晩) / rotatePoolSize=発掘プールの母数。
     sourceCount: sources.length, sourceTotal: allSources.length,
     pinnedCount: pinned.length, rotatePoolSize: rotatePool.length,
-    note: result.note,
-    sites: result.sites, dropped: result.dropped, tokens: result.tokens,
+    note: result?.note ?? (skipGen ? `未消化のカードが${undigested}枚あるため、今回は生成を見送りました。` : undefined),
+    skipped: skipGen, undigested,
+    sites: result?.sites ?? [], dropped: result?.dropped, tokens: result?.tokens,
     logWrote, proposedSource, mybrainSync,
   });
 }

@@ -68,7 +68,7 @@ export async function GET(req: Request) {
 
   // 1. taste(好み・興味)は app_state(アプリの設定画面)とmy-brain(他アプリが
   // 直接書き足す可能性がある方)をラベル単位で合わせて使う。
-  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items", "crawlState"]);
+  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items", "crawlState", "fixedSources"]);
   const byKey: Record<string, unknown> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
   const rawSources = Array.isArray(byKey.sources) ? (byKey.sources as unknown[]) : [];
   const appFavoriteSources: { url: string; label?: string }[] = rawSources
@@ -107,10 +107,15 @@ export async function GET(req: Request) {
   // URLを書き足す場所)を対等に合わせて使う。生活圏はmy-brain側にしか
   // 入力欄が無いのでそちらから読む。
   const brain = await loadMyBrain();
-  // 固定(アプリ内蔵)＋お気に入り(app_state)＋発掘(my-brain sources.md)。
+  // 規定(固定)情報源: ユーザーが設定画面で編集していれば app_state.fixedSources を、
+  // 未編集なら内蔵の FIXED_SOURCES を使う。
+  const effectiveFixed = Array.isArray(byKey.fixedSources)
+    ? (byKey.fixedSources as unknown[]).filter((u): u is string => typeof u === "string" && /^https?:\/\//.test(u))
+    : FIXED_SOURCES;
+  // 固定＋お気に入り(app_state)＋発掘(my-brain sources.md)。
   // 発掘プールの並び順(打率順)はCoworkの発掘タスクが保つ前提。
   const brainSourceUrls = brain.sources.map((s) => s.url);
-  const allSources = Array.from(new Set([...FIXED_SOURCES, ...appFavoriteSources.map((s) => s.url), ...brainSourceUrls]))
+  const allSources = Array.from(new Set([...effectiveFixed, ...appFavoriteSources.map((s) => s.url), ...brainSourceUrls]))
     .filter((u) => !dismissedSrcSet.has(normSrc(u)));
   // 片方にしかないラベルも取りこぼさないよう、ラベル単位で合わせる
   // (重複はweightが大きい方を残す)。
@@ -147,7 +152,7 @@ export async function GET(req: Request) {
   // 担うので、ここは並びを尊重して選ぶだけ(統計は持たない)。
   const SOURCE_WINDOW = 6;
   const SELECT_BIAS = 0.6; // 前寄せの強さ(0=完全ランダム)。小さめ=「ほんの少し」。
-  const pinnedSet = new Set([...FIXED_SOURCES, ...appFavoriteSources.map((s) => s.url)].map(normSrc));
+  const pinnedSet = new Set([...effectiveFixed, ...appFavoriteSources.map((s) => s.url)].map(normSrc));
   const pinned = allSources.filter((u) => pinnedSet.has(normSrc(u)));
   const rotatePool = allSources.filter((u) => !pinnedSet.has(normSrc(u)));
   // 前寄せ重み付き非復元ランダム抽出。weight = 1 + BIAS*(1 - i/len)。

@@ -4,7 +4,7 @@ import { Compass, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
-import { BLUE, HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
+import { BLUE, FIXED_SOURCES, HAIRLINE, INK, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -76,6 +76,27 @@ function IconButton({ onClick, label, children }: { onClick: () => void; label: 
     }}>
       {children}
     </button>
+  );
+}
+
+// URLの削除ボタン。情報源は誤って消すと生成の巡回対象から外れてしまうため、
+// チップと同様に一発では消さない。1回目のタップで「本当に削除？」の確認状態に
+// なり、2回目で実削除。armed(確認状態かどうか)は親が共有stateで持つ(同時に
+// armされるのは1つだけ)。数秒触らなければ親が自動で解除する。
+function ConfirmDeleteButton({ armed, onArm, onConfirm, label }: {
+  armed: boolean; onArm: () => void; onConfirm: () => void; label: string;
+}) {
+  if (armed) {
+    return (
+      <button onClick={onConfirm} aria-label={`${label}を本当に削除する`} style={{
+        height: 28, padding: "0 12px", borderRadius: 999, border: "none", background: RUST, color: PAPER,
+        display: "flex", alignItems: "center", cursor: "pointer", fontFamily: SANS, fontWeight: 700,
+        fontSize: 10.5, letterSpacing: "0.03em", flexShrink: 0, whiteSpace: "nowrap",
+      }}>本当に削除？</button>
+    );
+  }
+  return (
+    <IconButton onClick={onArm} label={`${label}を削除`}><X size={13} strokeWidth={2.4} /></IconButton>
   );
 }
 
@@ -167,8 +188,21 @@ export function ProfileTab({ appState, persist, onClose }: {
   onClose: () => void;
 }) {
   const [srcInput, setSrcInput] = useState("");
+  const [fixedInput, setFixedInput] = useState("");
   const [tasteInput, setTasteInput] = useState("");
   const [interestInput, setInterestInput] = useState("");
+  // 上部のタブ: 好み・興味 / 情報源 / その他。
+  const [tab, setTab] = useState<"taste" | "sources" | "other">("taste");
+  // URL削除の2段階確認。同時にarmされるのは1つだけ(キーで識別)。数秒で自動解除。
+  const [armedKey, setArmedKey] = useState<string | null>(null);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const arm = (key: string) => {
+    haptic();
+    if (armTimer.current) clearTimeout(armTimer.current);
+    setArmedKey(key);
+    armTimer.current = setTimeout(() => setArmedKey(null), 3500);
+  };
+  const disarm = () => { if (armTimer.current) clearTimeout(armTimer.current); setArmedKey(null); };
   // my-brainへの同期結果。以前は結果を見ずに握りつぶしていたため、失敗しても
   // 画面に何も出ず原因が分からなかった。保存のたびにここへ表示する。
   const [syncMsg, setSyncMsg] = useState("");
@@ -275,6 +309,30 @@ export function ProfileTab({ appState, persist, onClose }: {
   };
   const addTaste = () => { addInterestItem("taste", tasteInput); setTasteInput(""); };
   const addInterest = () => { addInterestItem("interest", interestInput); setInterestInput(""); };
+
+  // 規定の情報源(展覧会・イベント・映画などアプリ内蔵のFIXED_SOURCES)。未編集なら
+  // 内蔵リストをそのまま表示し、編集した時点で appState.fixedSources へ写し取る。
+  // これは app_state 内だけで完結し(夜間Cronが直接読む)、my-brainには同期しない。
+  const fixedList = appState.fixedSources ?? FIXED_SOURCES;
+  const hostLabel = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
+  const addFixedSource = () => {
+    const url = fixedInput.trim();
+    if (!/^https?:\/\//.test(url)) return;
+    haptic();
+    const next = structuredClone(appState);
+    const cur = next.fixedSources ?? [...FIXED_SOURCES];
+    if (!cur.some((u) => normU(u) === normU(url))) cur.unshift(url);
+    next.fixedSources = cur;
+    persist(next);
+    setFixedInput("");
+  };
+  const removeFixedSource = (url: string) => {
+    haptic(6);
+    const next = structuredClone(appState);
+    const cur = next.fixedSources ?? [...FIXED_SOURCES];
+    next.fixedSources = cur.filter((u) => normU(u) !== normU(url));
+    persist(next);
+  };
 
   const addSource = async () => {
     const url = srcInput.trim();
@@ -397,6 +455,19 @@ export function ProfileTab({ appState, persist, onClose }: {
         {syncMsg && (
           <p style={{ fontSize: 11, color: "#9A988E", lineHeight: 1.6, margin: "0 2px 14px" }}>{syncMsg}</p>
         )}
+
+        {/* 上部タブ。好み・興味は同じタブ、情報源(URL)は別タブ、それ以外は「その他」。 */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+          {([["taste", "好み・興味"], ["sources", "情報源"], ["other", "その他"]] as const).map(([id, lbl]) => (
+            <button key={id} onClick={() => { haptic(); setTab(id); disarm(); }} style={{
+              flex: 1, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer",
+              background: tab === id ? INK : "rgba(23,23,21,0.06)", color: tab === id ? PAPER : INK,
+              fontFamily: SANS, fontWeight: 700, fontSize: 11.5, letterSpacing: "0.03em",
+            }}>{lbl}</button>
+          ))}
+        </div>
+
+        {tab === "taste" && (<>
         {/* 好み(taste)=比較的安定したジャンル・カルチャーの好み。
             興味(interest)=今、関心を持っていること(時期によって変わる)。
             どちらもstate(profile.interests、categoryで区別)をそのまま
@@ -415,19 +486,41 @@ export function ProfileTab({ appState, persist, onClose }: {
             inputValue={interestInput} onInputChange={setInterestInput} onAdd={addInterest}
             placeholder="興味を追加" />
         </SettingsCard>
+        </>)}
 
-        <SettingsCard label="情報源" icon={Link2}>
+        {tab === "sources" && (<>
+          <SettingsCard label="規定の情報源（展覧会・イベント・映画）" icon={Link2}>
+            <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.7, margin: "0 0 10px" }}>
+              毎晩かならず巡回する内蔵の情報源です。変えたいときは削除して、新しいURLを登録してください。
+            </p>
+            {fixedList.length === 0 ? (
+              <p style={{ fontSize: 12, color: "#9A988E", margin: "0 0 12px" }}>まだありません。</p>
+            ) : fixedList.map((url) => (
+              <SettingsRow key={`fixed-${url}`} title={hostLabel(url)} sub={url}
+                action={<ConfirmDeleteButton armed={armedKey === `fixed-${url}`} onArm={() => arm(`fixed-${url}`)}
+                  onConfirm={() => { disarm(); removeFixedSource(url); }} label={hostLabel(url)} />} />
+            ))}
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <input value={fixedInput} onChange={(e) => setFixedInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addFixedSource()}
+                placeholder="URLを貼り付け" style={settingsInputStyle} />
+              <button onClick={addFixedSource} style={rowBtn(INK, PAPER)}>登録</button>
+            </div>
+          </SettingsCard>
+
+          <SettingsCard label="その他の情報源" icon={Link2}>
           {favVisible.length === 0 && discovered.length === 0 ? (
             <p style={{ fontSize: 12, color: "#9A988E", margin: "0 0 12px" }}>まだありません。</p>
           ) : (
             <>
               {favVisible.map((s) => (
                 <SettingsRow key={s.id} title={s.label} sub={s.url}
-                  action={<IconButton onClick={() => removeSource(s.id)} label={`${s.label}を削除`}><X size={13} strokeWidth={2.4} /></IconButton>} />
+                  action={<ConfirmDeleteButton armed={armedKey === `fav-${s.id}`} onArm={() => arm(`fav-${s.id}`)}
+                    onConfirm={() => { disarm(); removeSource(s.id); }} label={s.label} />} />
               ))}
               {discovered.map((s) => (
                 <SettingsRow key={`found-${s.url}`} title={s.label || s.url} sub={s.url}
-                  action={<IconButton onClick={() => dismissSource(s.url)} label={`${s.label || s.url}を削除`}><X size={13} strokeWidth={2.4} /></IconButton>} />
+                  action={<ConfirmDeleteButton armed={armedKey === `disc-${s.url}`} onArm={() => arm(`disc-${s.url}`)}
+                    onConfirm={() => { disarm(); dismissSource(s.url); }} label={s.label || s.url} />} />
               ))}
             </>
           )}
@@ -437,7 +530,9 @@ export function ProfileTab({ appState, persist, onClose }: {
             <button onClick={addSource} style={rowBtn(INK, PAPER)}>登録</button>
           </div>
         </SettingsCard>
+        </>)}
 
+        {tab === "other" && (<>
         {/* バインド！(確定ビューでの綴じ操作)のログ。誤ってバインドして
             ストック/プランからカードが消えてしまった時に、この画面から
             元に戻せるようにする(HANDOFF-CURRENT.md §7.8参照)。 */}
@@ -587,6 +682,7 @@ export function ProfileTab({ appState, persist, onClose }: {
             サインアウト
           </button>
         )}
+        </>)}
       </main>
     </>
   );

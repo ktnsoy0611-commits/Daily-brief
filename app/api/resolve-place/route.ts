@@ -81,7 +81,9 @@ async function placeNearby(lat: number, lng: number): Promise<{ name?: string; p
       body: JSON.stringify({
         maxResultCount: 1,
         rankPreference: "DISTANCE",
-        locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: 60 } },
+        // ピンした地点の建物・店を取りこぼしにくいよう、半径をやや広めに取る
+        // (DISTANCE順なので最も近い1件が返る)。
+        locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: 150 } },
         languageCode: "ja",
         regionCode: "JP",
       }),

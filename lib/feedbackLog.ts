@@ -29,11 +29,24 @@ function clean(s: string | undefined): string {
   return (s ?? "").replace(/[｜\n\r]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// URLはドメイン(ホスト)だけをログに残す。分析(好みの傾向)にはドメインで十分で、
+// 長いパス・クエリ文字列はトークンの無駄なので落とす。ドメインは発掘タスクが
+// 情報源の打率(KEEP率)を集計・淘汰するのに使う。
+function domainOfUrl(url: string): string {
+  const u = (url ?? "").trim();
+  if (!u) return "";
+  try {
+    return new URL(u).hostname.replace(/^www\./, "");
+  } catch {
+    return u.slice(0, 40);
+  }
+}
+
 // 1行の自己完結ログ行を作る。区切りは全角｜。exact一致で重複排除できるよう決定的にする。
 function makeLine(date: string, reaction: string, title: string, kind: string, url: string, summary: string): LogLine {
-  // 要約(カード本文)は分析タスクがコンテキストとして読む材料なので、途中で
-  // 切らずカード本文(約200字)が丸ごと収まる長さまで許す。
-  const line = `- ${date}｜${reaction}｜${clean(title)}｜${clean(kind)}｜${clean(url)}｜${clean(summary).slice(0, 400)}`;
+  // 要約(カード本文)は分析タスクがコンテキストとして読む主材料。途中で切らず
+  // カード本文(約200字)が丸ごと収まる長さまで許す。URLはドメインだけにする。
+  const line = `- ${date}｜${reaction}｜${clean(title)}｜${clean(kind)}｜${clean(domainOfUrl(url))}｜${clean(summary).slice(0, 400)}`;
   return { month: date.slice(0, 7), line };
 }
 

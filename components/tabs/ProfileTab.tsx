@@ -343,6 +343,24 @@ export function ProfileTab({ appState, persist, onClose }: {
     persist(next);
   };
 
+  // デモ・テスト用のダミー(injectDemoで入れたアイテム・ウィッシュ・ゴールや、
+  // 試行中のスワイプ記録)を消す。好み・興味・情報源などの設定は残し、
+  // コンテンツ側だけを初期化する。反応ログ(my-brain)の元データが消えるので、
+  // 以後の生成でダミー由来の行は増えない(既存のログファイルはGitHubで手動削除)。
+  const clearTestData = () => {
+    haptic(12);
+    const next = structuredClone(appState);
+    next.items = [];
+    next.wishes = [];
+    next.goals = [];
+    next.briefs = {};
+    next.bindLog = [];
+    next.magazine = null;
+    next.pendingReview = [];
+    next.shelfOrder = {};
+    persist(next);
+  };
+
   const addSource = async () => {
     const url = srcInput.trim();
     if (!/^https?:\/\//.test(url)) return;
@@ -614,6 +632,25 @@ export function ProfileTab({ appState, persist, onClose }: {
                 <p style={{ fontSize: 11, color: genNow === "error" ? RUST : "#9A988E", lineHeight: 1.7, margin: "10px 0 0" }}>{genNowMsg}</p>
               )}
             </>
+          )}
+        </SettingsCard>
+
+        {/* デモ・テストデータの削除。injectDemoで入れたダミーや試行中の記録を
+            一括で消す(好み・興味・情報源などの設定は残す)。2段階確認。 */}
+        <SettingsCard label="データの整理" icon={RotateCcw}>
+          <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.7, margin: "0 0 12px" }}>
+            デモ投入や動作確認で入ったアイテム・ウィッシュ・ゴール・スワイプ記録を、まとめて削除します（好み・興味・情報源などの設定は残ります）。反応ログのファイルは、GitHubのmy-brainから手動で消してください。
+          </p>
+          {armedKey === "clear-test" ? (
+            <button onClick={() => { disarm(); clearTestData(); }} style={{
+              width: "100%", padding: "11px 0", background: RUST, color: PAPER, border: "none", borderRadius: 999,
+              cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
+            }}>本当に削除？（元に戻せません）</button>
+          ) : (
+            <button onClick={() => arm("clear-test")} style={{
+              width: "100%", padding: "11px 0", background: "transparent", color: RUST, border: `1.5px solid rgba(168,85,47,0.5)`,
+              borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
+            }}>デモ・テストデータを削除</button>
           )}
         </SettingsCard>
 

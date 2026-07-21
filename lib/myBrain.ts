@@ -12,7 +12,9 @@
 //
 // 対象ファイル(いずれも任意。無ければその項目は空):
 //   taste-state.md: 「## 好み」(比較的安定)「## 興味」(時期で変わる)
-//     「## 願い」「## 生活圏」の見出し+箇条書き(またはYAML front-matter)
+//     「## 興味の関連キーワード」(興味から派生する関連・隣接テーマ。旧「## これから
+//     好みそうな傾向」も後方互換で読む)「## 願い」「## 生活圏」の見出し+箇条書き
+//     (またはYAML front-matter)
 //   sources.md: 箇条書きのURL/Markdownリンク一覧(またはYAML front-matter)
 //   profile.md: 読まない(ユーザーが手で管理する固定情報のため taste の源にしない)
 //
@@ -145,19 +147,20 @@ function tasteFromMarkdown(md: string): TasteInput {
   // 見出しの判定は「## 見出し」の本文(Markdown)向け。英語エイリアス(taste等)は
   // 使わない(ファイル冒頭の "# taste-state" というタイトルが /taste/ に誤マッチ
   // して好みが空になる不具合があったため。英語表記はYAML front-matter側が担う)。
-  // 「## これから好みそうな傾向」は語中に「好み」を含むので、好み・興味の判定から
-  // 必ず除外する(この節を先に別扱いする)。
-  const isEmerging = (h: string) => /これから好みそうな傾向|傾向|広がり|emerging/i.test(h);
+  // 「## 興味の関連キーワード」(新)・「## これから好みそうな傾向」(旧・後方互換)は
+  // どちらも語中に「興味」「好み」を含むので、好み・興味の判定から必ず除外する
+  // (この節を先に別扱いする)。
+  const isRelated = (h: string) => /関連キーワード|関連|派生|これから好みそうな傾向|傾向|広がり|emerging|related/i.test(h);
   const livingArea = firstLineOf(sections.find((s) => /生活圏|エリア/.test(s.heading))?.lines ?? []);
-  const emergingBullets = bulletsOf(sections.find((s) => isEmerging(s.heading))?.lines ?? []);
-  const tasteBullets = bulletsOf(sections.find((s) => /好み/.test(s.heading) && !isEmerging(s.heading))?.lines ?? []);
-  const interestBullets = bulletsOf(sections.find((s) => /興味|関心/.test(s.heading) && !isEmerging(s.heading))?.lines ?? []);
+  const relatedBullets = bulletsOf(sections.find((s) => isRelated(s.heading))?.lines ?? []);
+  const tasteBullets = bulletsOf(sections.find((s) => /好み/.test(s.heading) && !isRelated(s.heading))?.lines ?? []);
+  const interestBullets = bulletsOf(sections.find((s) => /興味|関心/.test(s.heading) && !isRelated(s.heading))?.lines ?? []);
   const wishBullets = bulletsOf(sections.find((s) => /願い|ウィッシュ/.test(s.heading))?.lines ?? []);
   return {
     livingArea,
     taste: tasteBullets.length ? interestsFromBullets(tasteBullets) : undefined,
     interest: interestBullets.length ? interestsFromBullets(interestBullets) : undefined,
-    emerging: emergingBullets.length ? interestsFromBullets(emergingBullets) : undefined,
+    related: relatedBullets.length ? interestsFromBullets(relatedBullets) : undefined,
     wishes: wishBullets.length ? wishBullets : undefined,
   };
 }
@@ -190,7 +193,7 @@ export async function loadMyBrain(): Promise<MyBrain> {
   const token = process.env.GITHUB_TOKEN;
   const ref = process.env.MYBRAIN_REF || undefined;
 
-  // taste(興味/ウィッシュ/focus)の源は taste-state.md のみ。profile.md は
+  // taste(好み/興味/関連キーワード/生活圏)の源は taste-state.md のみ。profile.md は
   // 「ほぼ固定の基礎情報」としてユーザーが手で管理する領域なので、ここでは読まない。
   const [tasteMd, sourcesMd] = await Promise.all([
     fetchFile(repo, "taste-state.md", token, ref),
@@ -206,7 +209,7 @@ export async function loadMyBrain(): Promise<MyBrain> {
     taste.livingArea = asString(fm.living_area ?? fm.livingArea);
     taste.taste = parseInterests(fm.taste);
     taste.interest = parseInterests(fm.interest);
-    taste.emerging = parseInterests(fm.emerging ?? fm.tendencies);
+    taste.related = parseInterests(fm.related ?? fm.emerging ?? fm.tendencies);
     taste.wishes = asStringArray(fm.wishes);
     // sources を taste-state.md に同居させている場合も拾う。
     const inline = parseSources(fm.sources);
@@ -219,7 +222,7 @@ export async function loadMyBrain(): Promise<MyBrain> {
     taste.livingArea = taste.livingArea ?? md.livingArea;
     if (!taste.taste?.length) taste.taste = md.taste;
     if (!taste.interest?.length) taste.interest = md.interest;
-    if (!taste.emerging?.length) taste.emerging = md.emerging;
+    if (!taste.related?.length) taste.related = md.related;
     if (!taste.wishes?.length) taste.wishes = md.wishes;
   }
   if (sourcesMd) {

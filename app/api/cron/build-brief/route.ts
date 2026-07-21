@@ -176,9 +176,10 @@ export async function GET(req: Request) {
   }
   const mergedTaste = mergeSignals(appTaste, brain.taste.taste ?? []).filter((s) => !dismissedSet.has(s.label));
   const mergedInterest = mergeSignals(appInterest, brain.taste.interest ?? []).filter((s) => !dismissedSet.has(s.label));
-  // 「これから好みそうな傾向」は分析タスク(Cowork)が taste-state.md に書く
-  // 予測信号で、アプリ側(app_state)には入力欄が無い。my-brain のものをそのまま使う。
-  const taste: TasteInput = { taste: mergedTaste, interest: mergedInterest, emerging: brain.taste.emerging, wishes, livingArea: brain.taste.livingArea };
+  // 「興味の関連キーワード」は分析タスク(Cowork)が taste-state.md に書く、興味から
+  // 派生する関連・隣接テーマで、アプリ側(app_state)には入力欄が無い。my-brain の
+  // ものをそのまま使う(moderate=興味の広がり判定の材料)。
+  const taste: TasteInput = { taste: mergedTaste, interest: mergedInterest, related: brain.taste.related, wishes, livingArea: brain.taste.livingArea };
 
   if (!allSources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
 

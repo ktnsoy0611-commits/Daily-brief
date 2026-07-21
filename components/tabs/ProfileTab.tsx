@@ -443,8 +443,8 @@ export function ProfileTab({ appState, persist, onClose }: {
     }
   };
 
-  // 生成を試す: 現在のウィッシュ・興味・気になっていることをサーバー関数へ
-  // 渡し、Geminiが本物のWeb検索で作ったカードを受け取って表示する。
+  // 生成を試す: 現在のウィッシュ・好み・興味をサーバー関数へ渡し、
+  // Geminiが本物のWeb検索で作ったカードを受け取って表示する。
   const runGenerate = async () => {
     if (genState === "loading") return;
     const urls = genUrls.split("\n").map((u) => u.trim()).filter((u) => /^https?:\/\//.test(u));
@@ -534,10 +534,9 @@ export function ProfileTab({ appState, persist, onClose }: {
         {/* 好み(taste)=比較的安定したジャンル・カルチャーの好み。
             興味(interest)=今、関心を持っていること(時期によって変わる)。
             どちらもstate(profile.interests、categoryで区別)をそのまま
-            表示・編集する場所で、自由文の「気になっていること」のような
-            別概念の入力欄は持たない。ここから直接追加・削除したものも、
-            KEEP等のフィードバックからの自動検出(興味側にのみ入る)も
-            同じ並びに混在する。 */}
+            表示・編集する。ここから直接追加・削除したものも、KEEP等の
+            フィードバックからの自動検出(興味側にのみ入る)も同じ並びに混在する。
+            (かつての自由文「気になっていること」欄はウィッシュで代替済みのため廃止。) */}
         <SettingsCard label="好み" icon={Heart}>
           <InterestChips items={taste} onRemove={removeInterestItem}
             inputValue={tasteInput} onInputChange={setTasteInput} onAdd={addTaste}

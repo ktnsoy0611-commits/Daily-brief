@@ -2,8 +2,8 @@
 
 import { Activity, BookOpen, Film, MapPin, Music, Music2, Newspaper, Package, Palette, UtensilsCrossed } from "lucide-react";
 import { useState, type CSSProperties } from "react";
-import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { AddCardTile, BinderModal, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
+import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
+import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
 import { BLUE, INK, ITEM_DOMAINS, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
 import { domainOf, hashStr, haptic, originBadge, shortDate } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
@@ -15,6 +15,10 @@ export const KIND_ICON: Record<ItemKind, IconType> = {
   movie: Film, book: BookOpen, album: Music, info: Newspaper,
   thing: Package,
 };
+
+// ルーズリーフの穴+切り取り線が小さすぎるカードだと窮屈に見えるため、
+// スタック表示時の1枚幅を広めに確保する。
+const STACK_CARD_WIDTH = 132;
 
 // GoogleマップのURLかどうか(表示ラベルの出し分け用の軽い判定)。座標・名前の
 // 実際の解決はサーバー関数(/api/resolve-place)が担う。
@@ -180,6 +184,7 @@ function StackSection({ title, count, children }: { title: string; count: number
 // ブリーフのKEEP由来のカードにはKEEP、ウィッシュが形になったカードには
 // WISHのバッジが付き、手動追加したものと見分けられる。
 export function StockTab({ appState, persist, showToast, profileButton, selection, toggleItemSelection }: TabProps) {
+  const [openDomain, setOpenDomain] = useState<ItemDomain | null>(null);
   const [adding, setAdding] = useState<ItemDomain | null>(null);
   const [itemDetail, setItemDetail] = useState<Item | null>(null);
 
@@ -219,44 +224,48 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
     showToast("アーカイブに移しました");
   };
 
-  const itemCard = (i: Item) => (
+  const itemCard = (i: Item, size?: number) => (
     <PosterCard key={i.id} image={i.images?.[0]} color={i.color} title={i.title}
       sub={i.area && i.area !== "—" ? i.area : (i.creator || i.category || i.price || i.summary || shortDate(i.addedAt))}
       label={domainDefOf(domainOf(i)).label}
-      icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)}
-      action={{ label: itemKindOf(i.kind).doneActionLabel, onClick: () => markItemDone(i.id) }}
-      onClick={() => setItemDetail(i)}
-      planSelected={selection.itemIds.includes(i.id)}
-      onTogglePlanSelect={() => toggleItemSelection(i.id)} />
+      icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)} size={size}
+      action={size ? undefined : { label: itemKindOf(i.kind).doneActionLabel, onClick: () => markItemDone(i.id) }}
+      onClick={size ? undefined : () => setItemDetail(i)}
+      planSelected={size ? undefined : selection.itemIds.includes(i.id)}
+      onTogglePlanSelect={size ? undefined : () => toggleItemSelection(i.id)} />
   );
 
-  // グリッドの1セル幅(2列)。＋タイルには marginLeft:auto を付け、最後の行の
-  // どこにカードが来ても＋を必ずその行の右端へ押しやる(要件: 一番下の行の右端)。
-  const cell: CSSProperties = { flex: "0 0 calc(50% - 5px)", maxWidth: "calc(50% - 5px)" };
-
   const totalCount = stocked.length;
+  const openItems = openDomain ? domainItems[openDomain] : [];
 
   return (
     <>
       <Masthead title="ストック" statValue={totalCount} statLabel="件" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
-        {ITEM_DOMAINS.map((d) => {
-          const items = domainItems[d.id];
-          return (
-            <StackSection key={d.id} title={d.label} count={items.length}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                {items.map((i) => (
-                  <div key={i.id} style={cell}>{itemCard(i)}</div>
-                ))}
-                <div style={{ ...cell, marginLeft: "auto" }}>
-                  <AddCardTile onClick={() => { haptic(); setAdding(d.id); }} label={`${d.label}を追加`} />
-                </div>
-              </div>
-            </StackSection>
-          );
-        })}
+        {ITEM_DOMAINS.map((d) => (
+          <StackSection key={d.id} title={d.label} count={domainItems[d.id].length}>
+            <CardStack cardWidth={STACK_CARD_WIDTH}
+              items={domainItems[d.id].slice().reverse().map((i) => ({ key: i.id, node: itemCard(i, STACK_CARD_WIDTH) }))}
+              onOpen={() => setOpenDomain(d.id)}
+              onAdd={() => { haptic(); setAdding(d.id); }}
+              addLabel={`${d.label}を追加`} />
+          </StackSection>
+        ))}
       </main>
+
+      {openDomain && (
+        <BottomSheet onClose={() => setOpenDomain(null)} maxHeight="74vh">
+          {(requestClose) => (
+            <>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{ITEM_DOMAINS.find((d) => d.id === openDomain)?.label}</div>
+              <div onPointerDown={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
+                {openItems.length === 0 ? <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : openItems.map((i) => itemCard(i))}
+              </div>
+            </>
+          )}
+        </BottomSheet>
+      )}
 
       {adding && (
         <AddItemSheet

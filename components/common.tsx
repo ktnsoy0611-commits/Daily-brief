@@ -250,20 +250,22 @@ export function AddCardTile({ onClick, aspect = ITEM_CARD_ASPECT, size, label }:
 // 実際に紙の束を軽く広げたような自然さを出す。さらに指で触れているカードは
 // 一回り拡大し、その両隣のカードは逃げるように少しずれる、というプレミア
 // アプリでよく見る「押した手応え」のアニメーションを加えている。
-export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLabel }: {
+// 1行ぶんの束(ずらして重ねたカードの1段)。CardStackがrowCapごとにこれを
+// 縦に積む。＋タイルは「showAdd=一番下の行」のときだけ右端に出す。
+function StackRow({ items, aspect, cardWidth, cardHeight, onOpen, onAdd, addLabel, showAdd }: {
   items: { key: string; node: ReactNode }[];
   aspect?: string;
-  cardWidth?: number;
+  cardWidth: number;
+  cardHeight: number;
   onOpen: () => void;
   onAdd: () => void;
   addLabel: string;
+  showAdd: boolean;
 }) {
   const [touchedKey, setTouchedKey] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const shown = items.slice(-4);
-  const [num, den] = (aspect ?? ITEM_CARD_ASPECT).split("/").map((s) => parseFloat(s.trim()));
-  const cardHeight = Math.round((cardWidth * den) / num);
+  const shown = items;
   const touchedIdx = shown.findIndex((it) => it.key === touchedKey);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, startIdx: 0, moved: false });
   const release = () => { dragRef.current.active = false; setTouchedKey(null); };
@@ -287,8 +289,8 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   // ように逆算する(枚数が少なければ0.82倍キャップの方が効いて、＋タイルの
   // 手前でもっと手前寄りに収まる=隙間が空くだけで重なりすぎない)。
   const addTileWidth = cardWidth;
-  const addLeft = Math.max(0, containerWidth - addTileWidth);
-  const targetLastCardLeft = addLeft + addTileWidth * 0.25 - cardWidth;
+  const addLeft = showAdd ? Math.max(0, containerWidth - addTileWidth) : containerWidth;
+  const targetLastCardLeft = (showAdd ? addLeft + addTileWidth * 0.25 : containerWidth) - cardWidth;
   const rawStep = shown.length > 1 ? targetLastCardLeft / (shown.length - 1) : 0;
   const offsetStep = Math.max(0, Math.min(rawStep, cardWidth * 0.82));
 
@@ -318,7 +320,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
           const dx = e.clientX - dragRef.current.startX;
           const dy = e.clientY - dragRef.current.startY;
           if (Math.abs(dx) > 6 || Math.abs(dy) > 6) dragRef.current.moved = true;
-          const shift = Math.round(dx / offsetStep);
+          const shift = offsetStep > 0 ? Math.round(dx / offsetStep) : 0;
           const newIdx = Math.min(shown.length - 1, Math.max(0, dragRef.current.startIdx + shift));
           const newKey = shown[newIdx]?.key;
           if (newKey && newKey !== touchedKey) setTouchedKey(newKey);
@@ -357,10 +359,42 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
       })}
       {/* zIndex:0でカード全員より奥に置く。カードは常にzIndex>=1(タッチ中は
           20)なので、拡大されたカードが被さってきても＋タイルが手前に
-          出てくることはない。 */}
-      <div style={{ position: "absolute", left: addLeft, top: 8, width: addTileWidth, zIndex: 0 }}>
-        <AddCardTile aspect={aspect} size={addTileWidth} onClick={onAdd} label={addLabel} />
-      </div>
+          出てくることはない。＋タイルは一番下の行だけに出す。 */}
+      {showAdd && (
+        <div style={{ position: "absolute", left: addLeft, top: 8, width: addTileWidth, zIndex: 0 }}>
+          <AddCardTile aspect={aspect} size={addTileWidth} onClick={onAdd} label={addLabel} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 1行に収める最大枚数。これを超えたぶんは次の行(下)へ折り返す。
+const STACK_ROW_CAP = 5;
+
+// ストック等で使う「カードの束」。rowCapごとに行(StackRow)へ分割して縦に積む。
+// 先頭=古い/末尾=新しい前提で渡されるので、一番下の行に最新のカードと＋タイルが
+// 来る。枚数がrowCap以下なら1行だけ(＝従来と同じ見た目)。
+export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLabel, rowCap = STACK_ROW_CAP }: {
+  items: { key: string; node: ReactNode }[];
+  aspect?: string;
+  cardWidth?: number;
+  onOpen: () => void;
+  onAdd: () => void;
+  addLabel: string;
+  rowCap?: number;
+}) {
+  const [num, den] = (aspect ?? ITEM_CARD_ASPECT).split("/").map((s) => parseFloat(s.trim()));
+  const cardHeight = Math.round((cardWidth * den) / num);
+  const rows: { key: string; node: ReactNode }[][] = [];
+  for (let i = 0; i < items.length; i += rowCap) rows.push(items.slice(i, i + rowCap));
+  if (rows.length === 0) rows.push([]); // カードが無くても＋タイルの行を1つ出す
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {rows.map((row, ri) => (
+        <StackRow key={ri} items={row} aspect={aspect} cardWidth={cardWidth} cardHeight={cardHeight}
+          onOpen={onOpen} onAdd={onAdd} addLabel={addLabel} showAdd={ri === rows.length - 1} />
+      ))}
     </div>
   );
 }

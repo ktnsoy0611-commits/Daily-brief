@@ -377,7 +377,10 @@ export interface BinderItem {
   title: string;
   category?: string;
   categoryJp?: string;
+  // 説明文。ブリーフのカード本文がKEEP時に Item.summary へ入るので、それを
+  // ここへ渡すと詳細オーバーレイに表示される(bodyは他の呼び出し元用の別名)。
   body?: string;
+  summary?: string;
   images?: string[];
   meta?: string[];
   sourceUrl?: string;
@@ -405,9 +408,9 @@ export function BinderModal({ item, onClose, actionSlot }: {
           )}
           <OverlayCard>
             <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
-            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: item.body ? 10 : actionSlot ? 12 : 16 }}>{item.title}</div>
-            {item.body && (
-              <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.75, color: "#4A4A44", margin: `0 0 ${actionSlot ? 12 : 16}px` }}>{item.body}</p>
+            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: (item.body ?? item.summary) ? 10 : actionSlot ? 12 : 16 }}>{item.title}</div>
+            {(item.body ?? item.summary) && (
+              <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.75, color: "#4A4A44", margin: `0 0 ${actionSlot ? 12 : 16}px` }}>{item.body ?? item.summary}</p>
             )}
             {actionSlot && <div style={{ marginBottom: 16 }}>{actionSlot(requestClose)}</div>}
             {item.meta && item.meta.length > 0 && (

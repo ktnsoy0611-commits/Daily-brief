@@ -62,7 +62,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const totalCount = doneItems.length + fulfilledWishes.length;
 
   const itemDetail = (i: Item): BinderItem => ({
-    title: i.title, category: i.category ?? itemKindOf(i.kind).label, images: i.images,
+    title: i.title, category: i.category ?? itemKindOf(i.kind).label, summary: i.summary, images: i.images,
     meta: [...(i.meta ?? []), ...(i.creator ? [i.creator] : []), ...(i.price ? [i.price] : [])],
     sourceUrl: i.sourceUrl, sourceLabel: i.sourceLabel,
   });
@@ -72,7 +72,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
       label={domainDefOf(domainOf(i)).label} icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)}
       good={opts?.withGood ? !!i.good : undefined}
       onToggleGood={opts?.withGood ? () => toggleGood(i.id) : undefined}
-      onClick={i.images?.length || i.meta?.length ? () => setBinderItem(itemDetail(i)) : undefined} />
+      onClick={i.images?.length || i.meta?.length || i.summary ? () => setBinderItem(itemDetail(i)) : undefined} />
   );
 
   const toggleGood = (id: string) => {

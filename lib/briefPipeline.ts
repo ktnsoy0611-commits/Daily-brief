@@ -21,11 +21,11 @@ const JINA_BASE = "https://r.jina.ai/";
 const DEFAULT_LIVING_AREA = "東京23区(および電車で日常的に行ける範囲)";
 const DERIVED_TRIGGER = "興味の広がり";
 
-const EXTRACT_LIMIT_PER_LISTING = 10; // 層Bが1つの一覧から作る候補レコードの最大数
+const EXTRACT_LIMIT_PER_LISTING = 18; // 層Bが1つの一覧から作る候補レコードの最大数(枚数を増やすため10→18)
 const LISTING_TEXT_LIMIT = 6000;      // 層Bに渡す1つの一覧Markdownの上限(文字数)
 const TOTAL_TEXT_LIMIT = 60000;       // 層Bに渡す本文合計の上限(文字数、固定+ローテーションの~10サイトを賄う)
-const SOURCE_LIMIT = 24;              // buildDeckが読む情報源(一覧)の安全弁。実件数はCronが決める
-const SITE_CARD_LIMIT = 3;            // 層Dで1つの情報源から採用するカードの最大数
+const SOURCE_LIMIT = 30;              // buildDeckが読む情報源(一覧)の安全弁。実件数はCronが決める(固定5+お気に入り+抽選10を賄う)
+const SITE_CARD_LIMIT = 6;            // 層Dで1つの情報源から採用するカードの最大数(枚数を増やすため3→6)
 const ENRICH_PAGE_TEXT_LIMIT = 6000;  // 層E(本文詳細化)で1個別ページに使う本文の上限(文字数)
 const ENRICH_CONCURRENCY = 6;         // 層Eで個別ページを同時取得する数
 
@@ -382,10 +382,11 @@ ${DOMAIN_KIND_TABLE}
 # 分類ルール
 1. 記述は候補レコードに含まれる情報のみを根拠とする。レコードに無い情報の補完・推測は禁止。
 2. 入力された候補は1件も省略せず、すべてについて分類結果を出力する。
-3. matchStrength は候補とプロファイルとの関係で判定する。
-   "strong": 願望リスト・好みのいずれかに直接合致する候補
-   "moderate": 興味、またはこれから好みそうな傾向に合致する候補、または好みに近接するが一致はしない候補
-   "none": プロファイルのいずれとも関連が無い候補
+3. matchStrength は候補とプロファイルとの関係で判定する。網は広めに取る。
+   "strong": 願望リスト・好み・興味 のいずれかに直接合致する候補(今の関心の中心)
+   "moderate": 好み・興味・これから好みそうな傾向 から連想される、関連する・隣接する物事(直接は一致しないが地続き)。広めに拾う。
+   "none": プロファイルのどの信号ともまったく関連が無い候補のみ。
+   少しでも関連が考えられる候補は none にせず moderate にする(取りこぼしより拾いすぎを優先する。ユーザーは後で外せる)。
 4. matchStrength が "none" の候補は id と matchStrength のみを出力する。他のフィールドは出力しない。
 5. matchStrength が "strong" または "moderate" の候補は、id・matchStrength に加えて以下も出力する。
    inLivingArea: 候補の所在地が<生活圏>内かどうか。所在地の記述が無い候補は true とする。
@@ -609,13 +610,18 @@ export async function buildDeck(input: {
     }));
     const pagesRead: PageReadTrace[] = siteFetches.map((r) => ({ url: r.url, ok: r.fetched }));
 
-    const usable = siteFetches.filter((r) => r.fetched && r.md && !unchangedKeys.has(normUrl(r.url)));
+    // 更新の無いサイトも抽出する。展覧会・映画の一覧は日々ほぼ変わらないが、
+    // まだ出していない催しが多数あり、スキップすると毎日ほぼ0枚になってしまう
+    // (実機で「今日はカード1枚」の主因)。既出カードはexclude(Q2)で除くので
+    // 重複は出ない。トークンは増えるが、カード枚数を優先するユーザー方針
+    // (基準を緩めて広く網を張り、間違いはskipで消す)を優先する。unchanged
+    // フラグはトレース表示のためだけ残す(digestの計算・保存も継続)。
+    const usable = siteFetches.filter((r) => r.fetched && r.md);
     if (usable.length === 0) {
-      const anyFetched = siteFetches.some((r) => r.fetched && r.md);
       return {
         ok: true, cards: [], candidateCount: 0, records: [], sites, pagesRead,
         dropped: ZERO_DROPS, tokens, digests,
-        note: anyFetched ? "取得できた情報源に前回からの更新がありませんでした。" : "情報源ページを取得できませんでした。",
+        note: "情報源ページを取得できませんでした。",
       };
     }
 
@@ -745,27 +751,34 @@ export async function buildDeck(input: {
       }
     }
 
-    // 枚数配分(コードが決める)。1つの情報源(サイト)から採用するのは最大
-    // SITE_CARD_LIMIT件まで(1サイトが一覧を丸ごと占有しないための上限。
-    // gotokyoのような巨大ポータル1つに偏るのを防いだ経緯そのもの)。
-    // 派生(興味の広がり)は全体で最大1枚のみ、サイトを問わない。
-    // count は全体の安全弁(上限)であって、埋めにいく目標ではない。
-    const bySite = new Map<string, PoolItem[]>();
-    for (const item of acceptedStrong) {
-      const key = item.site ?? "__unknown__";
-      if (!bySite.has(key)) bySite.set(key, []);
-      bySite.get(key)!.push(item);
-    }
-    let dropOverQuota = 0;
-    const straightItems: PoolItem[] = [];
-    for (const items of bySite.values()) {
-      const take = items.slice(0, SITE_CARD_LIMIT);
-      dropOverQuota += items.length - take.length;
-      straightItems.push(...take);
-    }
-    const derivedTake = acceptedModerate.slice(0, 1);
-    dropOverQuota += Math.max(0, acceptedModerate.length - derivedTake.length);
-    let finalItems: PoolItem[] = [...straightItems, ...derivedTake];
+    // 枚数配分(コードが決める)。strong・moderate とも「1つの情報源(サイト)から
+    // 採用するのは最大 SITE_CARD_LIMIT 件まで」に絞り(1サイトが一覧を丸ごと
+    // 占有しないための上限。gotokyoのような巨大ポータル1つに偏るのを防いだ
+    // 経緯そのもの)、strong を先に、続いて moderate(興味の広がり)を count まで
+    // 詰める。以前は派生(moderate)を全体で1枚に固定していたが、ユーザー方針
+    // (基準を緩めて既存の興味から関連する物事まで広く網を張り、カードを多く
+    // 拾う。間違いは後でskipできる)に合わせ、moderate もサイト上限まで採用して
+    // count(=目標枚数)まで埋めるようにした。
+    const siteCapped = (pool: PoolItem[]): { taken: PoolItem[]; dropped: number } => {
+      const bySite = new Map<string, PoolItem[]>();
+      for (const item of pool) {
+        const key = item.site ?? "__unknown__";
+        if (!bySite.has(key)) bySite.set(key, []);
+        bySite.get(key)!.push(item);
+      }
+      const taken: PoolItem[] = [];
+      let dropped = 0;
+      for (const items of bySite.values()) {
+        const take = items.slice(0, SITE_CARD_LIMIT);
+        dropped += items.length - take.length;
+        taken.push(...take);
+      }
+      return { taken, dropped };
+    };
+    const straight = siteCapped(acceptedStrong);
+    const derived = siteCapped(acceptedModerate);
+    let dropOverQuota = straight.dropped + derived.dropped;
+    let finalItems: PoolItem[] = [...straight.taken, ...derived.taken];
     if (finalItems.length > count) {
       dropOverQuota += finalItems.length - count;
       finalItems = finalItems.slice(0, count);

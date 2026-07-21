@@ -168,7 +168,7 @@ export async function GET(req: Request) {
   // SOURCE_WINDOW件を「前寄せの重み付き非復元ランダム」で選ぶ(基本ランダム・上位
   // =打率が高い側がほんの少し出やすい)。淘汰・打率順の並べ替えはCoworkの発掘タスクが
   // 担うので、ここは並びを尊重して選ぶだけ(統計は持たない)。
-  const SOURCE_WINDOW = 6;
+  const SOURCE_WINDOW = 10;
   const SELECT_BIAS = 0.6; // 前寄せの強さ(0=完全ランダム)。小さめ=「ほんの少し」。
   const pinnedSet = new Set([...effectiveFixed, ...appFavoriteSources.map((s) => s.url)].map(normSrc));
   const pinned = allSources.filter((u) => pinnedSet.has(normSrc(u)));

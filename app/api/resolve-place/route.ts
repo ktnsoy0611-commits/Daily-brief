@@ -3,8 +3,11 @@ import { NextResponse } from "next/server";
 // 場所の座標解決サーバー関数(フェーズB)。
 // SYSTEM-DESIGN.md §8.1 / HANDOFF-CURRENT.md §8.1-1 の多段フォールバック:
 //   (1) GoogleマップURLに埋まった座標を正規表現で抽出(API呼び出し0・無料)。
-//       座標はあるが店名が取れない(緯度経度だけのピンURL等)場合は、
-//       Places API(New) の Nearby Search でその地点の直近の場所名を補完する。
+//       店名は、まず URL の /place/店名/ から、取れなければマップのページを
+//       1回だけ取得して og:title / <title>(=その場所の名前が入っている)から
+//       拾う。**Places の Nearby Search は使わない**(Places API(New) にその
+//       メソッドが無い/有効化できない環境があるため。ユーザー報告 2026-07)。
+//       ページ取得はHTTPのみで課金ゼロ。
 //   (2) 座標が取れなければ Places API(New) の Text Search で名寄せ(店名+エリア)
 //   (3) それも取れなければ null を返し、クライアント側でareaのAREA_COORDS
 //       中心へフォールバックする
@@ -48,53 +51,68 @@ function nameFromMapsUrl(url: string): string | undefined {
   return undefined;
 }
 
-// 短縮URL(maps.app.goo.gl等)はリダイレクト先を1回辿って展開してから座標を抜く。
-async function expandUrl(url: string): Promise<string> {
+// HTMLエンティティの最小デコード(og:title/title に含まれる &amp; 等)。
+function decodeHtml(s: string): string {
+  return s
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#0*39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)));
+}
+
+// タイトル文字列から「場所の名前」だけを取り出す。Googleマップのタイトルは
+// 「店名 · 住所」「店名 - Google マップ」等の形なので、先頭の名前部分だけ残す。
+function cleanPlaceName(raw: string): string | undefined {
+  let s = decodeHtml(raw).trim();
+  if (!s) return undefined;
+  // 「店名 · 〒110-… 住所」→ 中黒(·/・)の手前まで
+  s = s.split(/\s[·・]\s/)[0].trim();
+  // 「… - Google マップ / Google Maps」等のサイト名接尾辞を落とす
+  s = s.replace(/\s*[-–—|]\s*Google\s*(?:マップ|Maps)\b.*$/i, "").trim();
+  s = s.replace(/\s*[-–—|]\s*Google\b.*$/i, "").trim();
+  if (!s || /^google\s*(?:マップ|maps)?$/i.test(s)) return undefined;
+  return s;
+}
+
+// マップのページHTMLから場所名を拾う(og:title → twitter:title → <title>)。
+function nameFromHtml(html: string): string | undefined {
+  if (!html) return undefined;
+  const meta = (prop: string): string | undefined => {
+    const patterns = [
+      new RegExp(`<meta[^>]+(?:property|name|itemprop)=["']${prop}["'][^>]*\\scontent=["']([^"']*)["']`, "i"),
+      new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name|itemprop)=["']${prop}["']`, "i"),
+    ];
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m && m[1].trim()) return m[1];
+    }
+    return undefined;
+  };
+  for (const cand of [meta("og:title"), meta("twitter:title")]) {
+    if (cand) { const c = cleanPlaceName(cand); if (c) return c; }
+  }
+  const t = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (t) { const c = cleanPlaceName(t[1]); if (c) return c; }
+  return undefined;
+}
+
+// マップURL(短縮URL含む)を1回だけ取得し、展開後の最終URLとページHTMLを返す。
+// 短縮URL(maps.app.goo.gl)はリダイレクトを辿ると /place/店名/@座標 付きの
+// 最終URLになることが多く、そこから座標も名前も取れる。取れない場合の名前は
+// HTML本文(og:title等)から拾う。
+async function fetchMapsPage(url: string): Promise<{ finalUrl: string; html: string }> {
   try {
     const res = await fetch(url, {
       redirect: "follow",
-      // UAを付けないとGoogleが同意ページ等の別レスポンスを返し座標が拾えない
-      // ことがあるため、一般的なブラウザのUAを名乗る。
+      // UAを付けないとGoogleが同意ページ等の別レスポンスを返すことがあるため、
+      // 一般的なモバイルブラウザのUAを名乗る。
       headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15" },
+      signal: AbortSignal.timeout(10000),
     });
-    return res.url || url;
+    const html = await res.text().catch(() => "");
+    return { finalUrl: res.url || url, html };
   } catch {
-    return url;
-  }
-}
-
-// Places API(New) Nearby Search。座標だけ分かっていて名前が無いとき(緯度経度
-// だけのピンURL等)、その地点の直近の場所を1件引いて店名を補完する。半径を
-// 小さく取り、距離順(DISTANCE)で最も近い1件だけを返す。キー未設定なら諦める。
-async function placeNearby(lat: number, lng: number): Promise<{ name?: string; placeId?: string } | null> {
-  const key = process.env.GOOGLE_PLACES_API_KEY;
-  if (!key) return null; // 未設定(この環境等)なら静かに諦める→名前はundefinedのまま
-  try {
-    const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": key,
-        // 課金最小化: id と表示名だけ要求する(座標は既に手元にある)。
-        "X-Goog-FieldMask": "places.id,places.displayName",
-      },
-      body: JSON.stringify({
-        maxResultCount: 1,
-        rankPreference: "DISTANCE",
-        // ピンした地点の建物・店を取りこぼしにくいよう、半径をやや広めに取る
-        // (DISTANCE順なので最も近い1件が返る)。
-        locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: 150 } },
-        languageCode: "ja",
-        regionCode: "JP",
-      }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const p = data?.places?.[0];
-    if (!p) return null;
-    return { name: p.displayName?.text, placeId: p.id };
-  } catch {
-    return null;
+    return { finalUrl: url, html: "" };
   }
 }
 
@@ -139,32 +157,22 @@ export async function POST(req: Request) {
   const url = body.url?.trim();
   const query = body.query?.trim();
 
-  // (1) マップURLからの座標抽出(無料)。座標か名前のどちらかが欠けていれば
-  // 1回だけURLを展開して再挑戦する(短縮URLの座標埋め込み・/place/店名/の救済)。
+  // (1) マップURLからの座標・名前の抽出(API呼び出し0)。座標か名前のどちらかが
+  // 欠けていれば1回だけページを取得して、展開後URLとHTMLの両方から補う。
   if (url && isMapsUrl(url)) {
     let coords = coordsFromMapsUrl(url);
     let name = nameFromMapsUrl(url);
-    let placeId: string | undefined;
     if (!coords || !name) {
-      const expanded = await expandUrl(url);
-      coords = coords ?? coordsFromMapsUrl(expanded);
-      name = name ?? nameFromMapsUrl(expanded);
+      const { finalUrl, html } = await fetchMapsPage(url);
+      coords = coords ?? coordsFromMapsUrl(finalUrl);
+      // 名前は (a)展開後URLの /place/ →(b)ページの og:title/<title> の順で拾う。
+      name = name ?? nameFromMapsUrl(finalUrl) ?? nameFromHtml(html);
     }
     if (coords) {
-      // 座標はあるが名前が取れない(緯度経度だけのピンURL等)場合、Places
-      // Nearby Searchでその地点の直近の場所名を補完する。キー未設定なら
-      // name は undefined のまま返り、従来どおりの挙動になる。
-      if (!name) {
-        const near = await placeNearby(coords.lat, coords.lng);
-        if (near) {
-          name = near.name;
-          placeId = near.placeId;
-        }
-      }
-      return NextResponse.json({ ...coords, name, placeId, source: "url" } satisfies Resolved);
+      return NextResponse.json({ ...coords, name, source: "url" } satisfies Resolved);
     }
-    // 座標は取れなかったが展開後URLから店名が拾えた場合、その名前で
-    // Places名寄せを試す(短縮URLで座標が埋まっていないケースの救済)。
+    // 座標は取れなかったが名前が拾えた場合、その名前で Places 名寄せを試す
+    // (短縮URLで座標が埋まっていないケースの救済)。
     if (name) {
       const resolved = await placesTextSearch(name);
       if (resolved) return NextResponse.json({ ...resolved, name: resolved.name ?? name });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { buildDeck, type InterestSignal, type TasteInput } from "@/lib/briefPipeline";
+import { analyzeTaste, buildDeck, type InterestSignal, type TasteInput } from "@/lib/briefPipeline";
 import { loadMyBrain } from "@/lib/myBrain";
 import { deleteMyBrainFile, readMyBrainFile, syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
 import { buildLogLines, groupByMonth, mergeMonthFile, oldLogPaths } from "@/lib/feedbackLog";
@@ -78,6 +78,59 @@ function countUndigested(decksVal: unknown, briefsVal: unknown): number {
     }
   }
   return n;
+}
+
+type Signal = { label: string; weight: number };
+
+// taste-state.md を4セクション(生活圏/好み/興味/興味の関連キーワード)＋願いで
+// 書き出す。夜間の分析Cronが唯一の書き手(myBrainWriteのrenderTasteStateMdは
+// 関連キーワードを持たない旧版なので、関連キーワードを含むこちらを使う)。
+function renderTasteStateMd(t: { livingArea: string; taste: Signal[]; interest: Signal[]; related: Signal[]; wishes: string[] }): string {
+  const bl = (arr: Signal[]) =>
+    arr.length ? arr.slice().sort((a, b) => b.weight - a.weight).map((i) => `- ${i.label}`).join("\n") : "(まだありません)";
+  const wb = (arr: string[]) => {
+    const w = arr.filter((x) => x.trim());
+    return w.length ? w.map((x) => `- ${x}`).join("\n") : "(まだありません)";
+  };
+  return [
+    "# taste-state（夜間の分析Cronが自動生成・上書きします）",
+    "",
+    "## 生活圏",
+    `- ${t.livingArea}`,
+    "",
+    "## 好み（比較的安定したジャンル・カルチャーの好み）",
+    bl(t.taste),
+    "",
+    "## 興味（今、関心を持っていること。時期によって変わる）",
+    bl(t.interest),
+    "",
+    "## 興味の関連キーワード（興味から派生する関連・隣接テーマ。カード生成の網を広げる材料）",
+    bl(t.related),
+    "",
+    "## 願い",
+    wb(t.wishes),
+    "",
+  ].join("\n");
+}
+
+// 分析結果の好み・興味から、app_state.profile.interests(チップ)の次の値を作る。
+// 手動で足したチップ(source:"user")と手動削除(dismissedInterests)は保持する
+// (AppShell起動時pullと同じマージ規則)。実際の upsert は呼び出し側(supaが
+// 型付きで手元にある場所)で行う。これでチップが毎晩 taste-state と一致する。
+function mergeChips(profileVal: unknown, taste: Signal[], interest: Signal[], dismissed: string[]): Record<string, unknown> {
+  const prof = (profileVal && typeof profileVal === "object" ? profileVal : { interests: [] }) as {
+    interests?: { id?: string; label: string; category: "taste" | "interest"; weight?: number; source?: string }[];
+    dismissedInterests?: string[];
+  };
+  const dism = new Set([...(prof.dismissedInterests ?? []), ...dismissed]);
+  const userManual = (prof.interests ?? []).filter((i) => i?.source === "user" && !dism.has(i.label));
+  const pinned = new Set(userManual.map((i) => `${i.category}:${i.label}`));
+  const now = new Date().toISOString();
+  const mk = (category: "taste" | "interest", sigs: Signal[]) =>
+    sigs
+      .filter((s) => !dism.has(s.label) && !pinned.has(`${category}:${s.label}`))
+      .map((s) => ({ id: `cowork-${category}-${s.label}`, label: s.label, category, weight: s.weight, source: "auto" as const, addedAt: now }));
+  return { ...prof, interests: [...userManual, ...mk("taste", taste), ...mk("interest", interest)] };
 }
 
 export async function GET(req: Request) {
@@ -455,8 +508,47 @@ export async function GET(req: Request) {
     /* taste-user.md/sources-user.mdの失敗はデッキ生成を止めない */
   }
 
+  // 6.5 夜間 taste 分析(Gemini)。反応ログから 好み・興味・興味の関連キーワードを
+  // 作り、taste-state.md とチップ(app_state.profile.interests)の両方を毎晩更新する。
+  // 以前は週1のCowork分析タスクだけが担い、taste-stateが空/古いまま=チップが
+  // 合わない・関連キーワードが生成に乗らなかった(issues 4,5)。生成本体(count)とは
+  // 独立に、バックログ満杯で生成を見送った晩でも必ず実行する。非致命。
+  let tasteAnalyzed: { ok: boolean; note?: string; counts?: { taste: number; interest: number; related: number } } = { ok: false };
+  try {
+    const jst = new Date(Date.now() + 9 * 3600 * 1000);
+    const todayJp = `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日`;
+    const briefsVal = (byKey.briefs ?? {}) as Record<string, { decisions?: Record<string, string>; feedback?: Record<string, boolean> }>;
+    const decksVal = (byKey.generatedDecks ?? {}) as Record<string, BriefCard[]>;
+    const itemsVal = Array.isArray(byKey.items) ? (byKey.items as Parameters<typeof buildLogLines>[2]) : [];
+    const logText = buildLogLines(briefsVal, decksVal, itemsVal).map((l) => l.line).join("\n");
+    const at = await analyzeTaste({
+      todayJp, logText,
+      currentTaste: (brain.taste.taste ?? []).map((s) => s.label),
+      currentInterest: (brain.taste.interest ?? []).map((s) => s.label),
+      userAdded: userAddedLabels,
+      dismissed,
+    });
+    if (at.ok) {
+      const livingArea = brain.taste.livingArea?.trim() || "東京23区(および電車で日常的に行ける範囲)";
+      const md = renderTasteStateMd({ livingArea, taste: at.taste, interest: at.interest, related: at.related, wishes: wishes.map((w) => w.title) });
+      await writeMyBrainFile("taste-state.md", md, "夜間のtaste分析を反映");
+      // チップ(profile.interests)へ反映。手動追加・除外は保持。
+      const nextProfile = mergeChips(byKey.profile, at.taste, at.interest, dismissed);
+      await supa.from("app_state").upsert(
+        { user_id: ownerId, key: "profile", value: nextProfile, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" },
+      );
+      tasteAnalyzed = { ok: true, counts: { taste: at.taste.length, interest: at.interest.length, related: at.related.length } };
+    } else {
+      tasteAnalyzed = { ok: false, note: at.reason };
+    }
+  } catch (e) {
+    tasteAnalyzed = { ok: false, note: e instanceof Error ? e.message : String(e) };
+  }
+
   // 7. お気に入りの情報源(sources.md)を my-brain へ同期する(taste-state.md は
-  // Coworkが所有するのでここでは書かない)。失敗してもデッキ生成は成功扱い。
+  // 夜間の分析Cronが上記6.5で所有・上書きするのでここでは書かない)。失敗しても
+  // デッキ生成は成功扱い。
   const mybrainSync = await syncMyBrain({ sources: appFavoriteSources });
 
   return NextResponse.json({
@@ -473,6 +565,6 @@ export async function GET(req: Request) {
     note: result?.note ?? (skipGen ? `未消化のカードが${undigested}枚あるため、今回は生成を見送りました。` : undefined),
     skipped: skipGen, undigested,
     sites: result?.sites ?? [], dropped: result?.dropped, tokens: result?.tokens,
-    logWrote, proposedSource, mybrainSync,
+    logWrote, proposedSource, mybrainSync, tasteAnalyzed,
   });
 }

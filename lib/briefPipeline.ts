@@ -137,6 +137,29 @@ export function namesLikelyMatch(a: string, b: string): boolean {
   return lcs >= 6 && lcs >= shorter.length * 0.6;
 }
 
+// 展覧会名から定型語(特別展/企画展/展覧会/展 等・位置を問わず)を除いた核の名称。
+// namesLikelyMatch が拾えない「○○展」⇔「特別展 ○○」⇔「○○ 展覧会」のような
+// 展の位置違いを同一視するためのキー(issue 3: 別サイト・別日の同一展の重複)。
+export function canonicalEventName(name: string): string {
+  return normName(name)
+    .replace(/(特別|企画|回顧|記念|巡回|コレクション)?展覧会/g, "")
+    .replace(/(特別|企画|回顧|記念|巡回|コレクション)展/g, "")
+    .replace(/展$/g, "")
+    .replace(/exhibitions?/gi, "");
+}
+// 2つの名称が同一の事物を指すか。namesLikelyMatch に加えて、展の定型語を
+// 除いた核名称(canonicalEventName)の一致・包含でも同一とみなす。4文字未満の
+// 短い核名称は誤統合を避けて完全一致のみ対象にする。
+export function sameEvent(a: string, b: string): boolean {
+  if (namesLikelyMatch(a, b)) return true;
+  const ca = canonicalEventName(a);
+  const cb = canonicalEventName(b);
+  if (!ca || !cb) return false;
+  if (ca === cb) return true;
+  const [sh, lo] = ca.length <= cb.length ? [ca, cb] : [cb, ca];
+  return sh.length >= 4 && lo.includes(sh);
+}
+
 // Markdownの画像記法などトークンを食うだけの要素を落とす(軽いトークン節約)。
 export function stripMarkdownNoise(md: string): string {
   return md
@@ -528,7 +551,7 @@ export async function buildDeck(input: {
   const excludeUrlSet = new Set((input.exclude?.urls ?? []).filter((u) => typeof u === "string").map(normUrl));
   const excludeNames = (input.exclude?.names ?? []).filter((n) => typeof n === "string" && n.trim());
   const prevDigests = input.digests ?? {};
-  const isExcludedName = (name?: string) => !!name && excludeNames.some((e) => namesLikelyMatch(e, name));
+  const isExcludedName = (name?: string) => !!name && excludeNames.some((e) => sameEvent(e, name));
 
   const sources = (input.sources ?? [])
     .filter((u) => typeof u === "string" && /^https?:\/\//.test(u.trim()))
@@ -639,15 +662,14 @@ export async function buildDeck(input: {
     }
 
     // 層B: 一覧Markdownから直接、候補レコードをまとめて1回で抽出(単ホップ)。
-    let budget = TOTAL_TEXT_LIMIT;
+    // テキスト予算は全 usable サイトへ均等配分する。以前は先頭から
+    // LISTING_TEXT_LIMIT ずつ食っていたため、先頭に並ぶ固定サイトだけで
+    // TOTAL_TEXT_LIMIT を使い切り、後方の発掘プール・お気に入りが0字になって
+    // 候補が1件も出ない不具合があった(issues 1,2)。均等配分で全情報源が
+    // 必ず一定量の本文を持ち、どの情報源からも候補が拾えるようにする。
+    const perSource = Math.min(LISTING_TEXT_LIMIT, Math.max(1500, Math.floor(TOTAL_TEXT_LIMIT / usable.length)));
     const pageBlocks = usable
-      .map((s) => {
-        if (budget <= 0) return "";
-        const slice = s.md.slice(0, Math.min(LISTING_TEXT_LIMIT, budget));
-        budget -= slice.length;
-        return `<ページ url="${s.url}">\n${slice}\n</ページ>`;
-      })
-      .filter(Boolean)
+      .map((s) => `<ページ url="${s.url}">\n${s.md.slice(0, perSource)}\n</ページ>`)
       .join("\n");
 
     const rB = await callGemini(key, SYSTEM_CANDIDATES, userCandidates(todayJp, EXTRACT_LIMIT_PER_LISTING, pageBlocks), true, 8192);
@@ -676,7 +698,7 @@ export async function buildDeck(input: {
       // 名称が実質同じなら、この段階で1件にまとめておく(そのまま層C・層Dへ
       // 進むと、Geminiが分類のたびに独自の言い回しでtitleを書き直すため、
       // 最終的な重複除去(名称の緩い一致)をすり抜けやすくなる)。
-      if (c.name && candidates.some((x) => x.name && namesLikelyMatch(x.name, c.name!))) { dropDup++; continue; }
+      if (c.name && candidates.some((x) => x.name && sameEvent(x.name, c.name!))) { dropDup++; continue; }
       seenCandidate.add(k);
       candidates.push({ ...c, site: originSiteFor(su) });
     }
@@ -740,45 +762,50 @@ export async function buildDeck(input: {
           dropDupClassified++; continue;
         }
         const dup =
-          acceptedStrong.some((a) => namesLikelyMatch(a.card.title, item.card.title)) ||
-          acceptedModerate.some((a) => namesLikelyMatch(a.card.title, item.card.title));
+          acceptedStrong.some((a) => sameEvent(a.card.title, item.card.title)) ||
+          acceptedModerate.some((a) => sameEvent(a.card.title, item.card.title));
         if (dup) { dropDupClassified++; continue; }
         pool.bucket.push(item);
       }
     }
 
-    // 枚数配分(コードが決める)。strong・moderate とも「1つの情報源(サイト)から
-    // 採用するのは最大 SITE_CARD_LIMIT 件まで」に絞り(1サイトが一覧を丸ごと
-    // 占有しないための上限。gotokyoのような巨大ポータル1つに偏るのを防いだ
-    // 経緯そのもの)、strong を先に、続いて moderate(興味の広がり)を count まで
-    // 詰める。以前は派生(moderate)を全体で1枚に固定していたが、ユーザー方針
-    // (基準を緩めて既存の興味から関連する物事まで広く網を張り、カードを多く
-    // 拾う。間違いは後でskipできる)に合わせ、moderate もサイト上限まで採用して
-    // count(=目標枚数)まで埋めるようにした。
-    const siteCapped = (pool: PoolItem[]): { taken: PoolItem[]; dropped: number } => {
+    // 枚数配分(コードが決める)。サイト横断のラウンドロビン(各サイトから
+    // 1枚ずつ順に取り、count まで)で詰める。以前は「サイトごとに集めて出現順に
+    // 並べ、count で切る」方式で、先頭に並ぶ固定サイトのカードだけで count を
+    // 食い切り、お気に入り・発掘のカードが切り落とされていた(issues 1,2)。
+    // ラウンドロビンにすることで固定・お気に入り・発掘が均等に乗る。1サイト
+    // からの採用上限は SITE_CARD_LIMIT のまま(グループ化の時点で頭打ち)。
+    // strong を先に count まで詰め、余りがあれば moderate(興味の広がり)で補充。
+    const groupBySite = (pool: PoolItem[]): PoolItem[][] => {
       const bySite = new Map<string, PoolItem[]>();
       for (const item of pool) {
-        const key = item.site ?? "__unknown__";
-        if (!bySite.has(key)) bySite.set(key, []);
-        bySite.get(key)!.push(item);
+        const k = item.site ?? "__unknown__";
+        if (!bySite.has(k)) bySite.set(k, []);
+        const g = bySite.get(k)!;
+        if (g.length < SITE_CARD_LIMIT) g.push(item); // 1サイト上限
       }
-      const taken: PoolItem[] = [];
-      let dropped = 0;
-      for (const items of bySite.values()) {
-        const take = items.slice(0, SITE_CARD_LIMIT);
-        dropped += items.length - take.length;
-        taken.push(...take);
-      }
-      return { taken, dropped };
+      return Array.from(bySite.values());
     };
-    const straight = siteCapped(acceptedStrong);
-    const derived = siteCapped(acceptedModerate);
-    let dropOverQuota = straight.dropped + derived.dropped;
-    let finalItems: PoolItem[] = [...straight.taken, ...derived.taken];
-    if (finalItems.length > count) {
-      dropOverQuota += finalItems.length - count;
-      finalItems = finalItems.slice(0, count);
+    const roundRobin = (groups: PoolItem[][], limit: number): PoolItem[] => {
+      const out: PoolItem[] = [];
+      let progressed = true;
+      while (out.length < limit && progressed) {
+        progressed = false;
+        for (const g of groups) {
+          if (g.length === 0) continue;
+          out.push(g.shift()!);
+          progressed = true;
+          if (out.length >= limit) break;
+        }
+      }
+      return out;
+    };
+    let finalItems: PoolItem[] = roundRobin(groupBySite(acceptedStrong), count);
+    if (finalItems.length < count) {
+      finalItems = [...finalItems, ...roundRobin(groupBySite(acceptedModerate), count - finalItems.length)];
     }
+    // トレース用: 採用しきれずに落ちた総数(サイト上限＋枚数上限)。
+    const dropOverQuota = Math.max(0, acceptedStrong.length + acceptedModerate.length - finalItems.length);
 
     // 会場/エリアを持つカードにPlacesで実座標を付ける(展覧会など「行く場所」の
     // カードが、AREA_LATLNGに無いエリアでも地図にピンとして出るように)。
@@ -814,5 +841,91 @@ export async function buildDeck(input: {
   }
 }
 
-// (KEEP/SKIP分析はGeminiでなくCoworkの週次タスクが logs/feedback-*.md を読んで
-//  推論込みで行う方式に変更したため、ここにあった題材抽出関数は撤去した。)
+// ---- 夜間 taste 分析 -------------------------------------------------------
+// 反応ログ(残した/流した/拒否/実行/星付き)から 好み・興味・興味の関連キーワードを
+// 分析する。以前はCoworkの週次タスクが担っていたが、(a)週1でしか動かない、
+// (b)データが乏しいと止まる、ため taste-state が空/古いままになり、チップも
+// 関連キーワードも更新されなかった。これを夜間Cron(Gemini)へ移し、毎晩
+// taste-state.md とチップの両方を更新する(issues 4,5)。
+const SYSTEM_ANALYZE_TASTE = `あなたはある人の反応の記録を読み、その人の「好み」「興味」「興味の関連キーワード」を分析し、JSONで出力する担当です。推論を用いてよいが、記録に無いことを断定・創作しない。
+
+# 入力仕様
+<基準日>: 本日の日付
+<反応ログ>: 1行1件「日付｜反応｜題名｜分野｜要約」。反応の強さは 実行 > 星付き > 残した > 流した(弱い否定) > 拒否(強い否定)。直近を重視し、以前との変化も見る。
+<現在の好み>/<現在の興味>: 前回の結果(差分の基準)。
+<手動で追加された項目>: ユーザーが自分で足した好み・興味。必ず結果に含める。
+<手動で除外された項目>: ユーザーが自分で消した項目。どの結果にも入れない。
+
+# 分類ルール
+1. 記録に現れた事実に基づく。判断材料が乏しい項目は無理に作らず、少数または空配列でよい(創作禁止)。
+2. taste(好み): 安定して繰り返し好まれているジャンル・様式・作家・ブランド等。強い順。
+3. interest(興味): いま関心が強い・最近強まった/新しく現れたもの。強い順。
+4. related(興味の関連キーワード): 上の興味・好みから連想される、関連・隣接する短いキーワード。**気軽に広めに、5〜10件**挙げる。興味そのものの言い換えではなく、まだ手を出していないが地続きの方向(カード生成で網を少し広げる材料)。
+5. すべて短い語句のみ(説明文にしない)。各項目に weight(1〜10、強いほど大)。手動で追加された項目は weight を高め(8以上)にする。
+
+# 出力契約
+次のJSONのみを出力する(前後に文章を付けない)。該当が無いキーは空配列にする。
+{"taste":[{"label":"…","weight":7}],"interest":[{"label":"…","weight":6}],"related":[{"label":"…","weight":5}]}`;
+
+export type AnalyzeTasteResult =
+  | { ok: true; taste: InterestSignal[]; interest: InterestSignal[]; related: InterestSignal[]; usage: TokenUsage }
+  | { ok: false; reason: string };
+
+export async function analyzeTaste(input: {
+  todayJp: string;
+  logText: string;
+  currentTaste: string[];
+  currentInterest: string[];
+  userAdded: string[];
+  dismissed: string[];
+}): Promise<AnalyzeTasteResult> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return { ok: false, reason: "no_key" };
+  const join = (a: string[]) => (a.length ? a.join(" / ") : "なし");
+  const user = [
+    `<基準日>${input.todayJp}</基準日>`,
+    `<反応ログ>\n${input.logText.trim().slice(0, 12000) || "(まだ記録がありません)"}\n</反応ログ>`,
+    `<現在の好み>${join(input.currentTaste)}</現在の好み>`,
+    `<現在の興味>${join(input.currentInterest)}</現在の興味>`,
+    `<手動で追加された項目>${join(input.userAdded)}</手動で追加された項目>`,
+    `<手動で除外された項目>${join(input.dismissed)}</手動で除外された項目>`,
+  ].join("\n");
+  const r = await callGemini(key, SYSTEM_ANALYZE_TASTE, user, true, 2048);
+  if (!r.ok) return { ok: false, reason: `gemini_${r.status}` };
+  let obj: Record<string, unknown> | null = null;
+  try {
+    let t = r.text.trim();
+    const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fence) t = fence[1].trim();
+    const s = t.indexOf("{"), e = t.lastIndexOf("}");
+    if (s !== -1 && e !== -1 && e > s) t = t.slice(s, e + 1);
+    obj = JSON.parse(t);
+  } catch {
+    obj = null;
+  }
+  if (!obj || typeof obj !== "object") return { ok: false, reason: "parse_failed" };
+  const dismSet = new Set(input.dismissed.map((s) => s.trim()).filter(Boolean));
+  const toSignals = (v: unknown): InterestSignal[] => {
+    if (!Array.isArray(v)) return [];
+    const out: InterestSignal[] = [];
+    for (const x of v) {
+      let label = "", weight = 1;
+      if (x && typeof x === "object") {
+        label = String((x as { label?: unknown }).label ?? "").trim();
+        const w = Number((x as { weight?: unknown }).weight);
+        weight = Number.isFinite(w) ? Math.max(1, Math.min(10, w)) : 1;
+      } else if (typeof x === "string") {
+        label = x.trim();
+      }
+      if (label && !dismSet.has(label)) out.push({ label, weight });
+    }
+    return out.slice(0, 20);
+  };
+  return {
+    ok: true,
+    taste: toSignals(obj.taste),
+    interest: toSignals(obj.interest),
+    related: toSignals(obj.related),
+    usage: r.usage,
+  };
+}

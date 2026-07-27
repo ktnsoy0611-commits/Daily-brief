@@ -52,6 +52,7 @@ export type GeneratedCard = {
   title: string; body: string; detail?: string; kind: string; trigger: string;
   area?: string; sourceUrl?: string; sourceLabel?: string; meta?: string[];
   expiresAt?: string; isDerived?: boolean;
+  isInfo?: boolean;         // 好み/興味に強く当たらない中立の「新着情報」カード
   sourceWishId?: string;    // 応えた願いのid(id化・言い換えに強い)
   sourceWishTitle?: string; // 旧: 文字一致用(後方互換のため残す)
   images?: string[]; // OGP画像(og:image)。無ければ未設定=色ベタ表示
@@ -408,17 +409,19 @@ ${DOMAIN_KIND_TABLE}
 3. matchStrength は候補とプロファイルとの関係で判定する。
    "strong": 願望リスト・好みのいずれかに直接合致する候補
    "moderate": 興味、または興味の関連キーワードに合致する候補、または好みに近接するが一致はしない候補
-   "none": プロファイルのいずれとも関連が無い候補
+   "info": 上のいずれにも強くは当たらないが、<生活圏>内で、終了しておらず(開催中またはこれから)、読む価値のありそうな新着の物事。提案ではなく中立な「新着情報」として扱う。
+   "none": <生活圏>外、終了済み、または明らかに無関係・読む価値が乏しい候補のみ
 4. matchStrength が "none" の候補は id と matchStrength のみを出力する。他のフィールドは出力しない。
-5. matchStrength が "strong" または "moderate" の候補は、id・matchStrength に加えて以下も出力する。
+5. matchStrength が "strong"・"moderate"・"info" の候補は、id・matchStrength に加えて以下も出力する。
    inLivingArea: 候補の所在地が<生活圏>内かどうか。所在地の記述が無い候補は true とする。
    title: 事物が分かる短い見出し
-   body: 事物そのものの内容を1〜3文で要約する(何が・どこで・いつ等、候補レコードに書かれた事実に基づく)。プロファイルとの合致理由や「〜に関心がある人にとって」等のユーザーへの言及・意義づけは書かない
+   body: 事物そのものの内容を1〜3文で要約する(何が・どこで・いつ等、候補レコードに書かれた事実に基づく)。概略に留めず、本文にある具体的な要素(固有名・日時・場所など)を最低1つは含める。プロファイルとの合致理由や「〜に関心がある人にとって」等のユーザーへの言及・意義づけは書かない
    kind: "place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。sourceWishIdを付ける場合は、その願いに[ドメイン: …]があれば上記対応表に沿ったkindを優先する
-   trigger: matchStrength が "strong" のとき、時期が理由なら "タイムリー"、好みが理由なら "興味との一致"、場所・地域性が理由なら "ロケーション"。matchStrength が "moderate" のときは "興味の広がり"。
-   sourceWishId: 願望リストのいずれかに直接応える場合のみ、その願いの行頭にある識別子(idの値)だけを記す(任意)。願いの文章ではなく識別子を記すこと。応える願いが無ければ付けない。
    area・sourceLabel・meta・expiresAt: 候補レコードに情報があれば記す(任意)
-6. matchStrength が "strong" どうし・"moderate" どうしは、それぞれの集合の中でプロファイルとの合致度が高い順に並べて出力する。
+   trigger と sourceWishId は "strong"・"moderate" のときだけ出力する("info" には付けない):
+     trigger: "strong" のとき、時期が理由なら "タイムリー"、好みが理由なら "興味との一致"、場所・地域性が理由なら "ロケーション"。"moderate" のときは "興味の広がり"。
+     sourceWishId: 願望リストのいずれかに直接応える場合のみ、その願いの行頭にある識別子(idの値)だけを記す(任意)。願いの文章ではなく識別子を記すこと。応える願いが無ければ付けない。
+6. matchStrength が "strong" どうし・"moderate" どうし・"info" どうしは、それぞれの集合の中で、合致度(infoは新着性・読む価値)が高い順に並べて出力する。
 
 # 出力契約
 下記フィールドのJSON配列のみを出力する。該当候補が無い場合は [] を出力する。
@@ -434,8 +437,9 @@ const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文�
 # 書き直しルール
 1. body・detail とも、記述は sourcePage 本文に明記された事実のみを根拠とする。本文に無い情報の補完・推測・一般知識の使用は禁止。
 2. body: カード表面に出す短い紹介文。「内容の要約（2〜3文）＋ 最後に短い誘いの一文（1文）」とする。
-   - 要約: 何の展示・作品か、誰によるものか等、本文の要点を簡潔に。
+   - 要約: 何の展示・作品か、誰によるものか等、本文の要点を簡潔に。概略で終わらせず、本文にある固有名・日時・場所などの具体を最低1つは含める。
    - 誘いの一文: <プロファイル>を踏まえ、なぜ今これを見てほしいかを自然な話し言葉で1文添える。事実と矛盾しないこと。
+   - ただし 情報カード="true" のカードは、誘いの一文を付けず、内容の中立な要約（3文程度）だけにする。
 3. detail: タップして開く詳細画面で読む、より詳しい説明。4〜7文（200〜400字程度）。sourcePage 本文から読み取れる具体的な情報——テーマや背景、構成・見どころ、出品作家・出演者・監督などの固有名、会場・会期・時間・料金・アクセスなど——をできるだけ具体的に盛り込む。固有名や数字を省略しない。bodyの単なる繰り返しにしない。
 4. 禁止事項: bodyの誘いの一文で「〜に関心がある人にとって」「〜な機会です」のような定型的な言い回し・ユーザーの属性のラベル貼り・プロファイルに無い決めつけ・本文に無い事実の追加。detailには誘い文やユーザーへの言及を入れず、事実の説明に徹する。評価の誇張・過度な煽りはしない。
 5. title は変更しない。sourcePage から読み取れる情報が乏しい場合は、body は現在の body をそのまま返し、detail は空文字列でよい。
@@ -501,7 +505,7 @@ async function enrichCardBodies(
       const page = pageByUrl.get(c.sourceUrl!);
       if (!page || !page.ok || !page.md) return "";
       const text = stripMarkdownNoise(page.md).slice(0, ENRICH_PAGE_TEXT_LIMIT);
-      return `<カード id="${i}" title="${c.title}">\n<現在のbody>${c.body}</現在のbody>\n<個別ページ>\n${text}\n</個別ページ>\n</カード>`;
+      return `<カード id="${i}" title="${c.title}"${c.isInfo ? ' 情報カード="true"' : ""}>\n<現在のbody>${c.body}</現在のbody>\n<個別ページ>\n${text}\n</個別ページ>\n</カード>`;
     })
     .filter(Boolean)
     .join("\n");
@@ -724,37 +728,45 @@ export async function buildDeck(input: {
     let dropExpired2 = 0, dropOutOfArea = 0, irrelevant = 0;
     const strongPool: PoolItem[] = [];
     const moderatePool: PoolItem[] = [];
+    const infoPool: PoolItem[] = [];
     for (const r of rawClassified) {
       const src = typeof r.id === "number" ? candidates[r.id] : undefined;
       if (!src) continue;
       if (!r.matchStrength || r.matchStrength === "none") { irrelevant++; continue; }
-      if (r.matchStrength !== "strong" && r.matchStrength !== "moderate") continue;
+      if (r.matchStrength !== "strong" && r.matchStrength !== "moderate" && r.matchStrength !== "info") continue;
       if (r.inLivingArea === false) { dropOutOfArea++; continue; }
       if (r.expiresAt) {
         const t = Date.parse(r.expiresAt);
         if (!Number.isNaN(t) && t < Date.now()) { dropExpired2++; continue; }
       }
       if (!r.title || !r.body || !r.kind) continue;
+      const isInfo = r.matchStrength === "info";
       const isDerived = r.matchStrength === "moderate";
       const card: GeneratedCard = {
         title: r.title, body: r.body, kind: r.kind,
-        trigger: r.trigger ?? (isDerived ? DERIVED_TRIGGER : "興味との一致"),
+        trigger: r.trigger ?? (isInfo ? "新着" : isDerived ? DERIVED_TRIGGER : "興味との一致"),
         area: r.area, sourceUrl: src.sourceUrl, sourceLabel: r.sourceLabel,
-        meta: r.meta, expiresAt: r.expiresAt, isDerived,
+        meta: r.meta, expiresAt: r.expiresAt, isDerived, isInfo,
         // AIが返したidは検証してから採用する(渡した願いのidに一致する時だけ)。
-        // 捏造・言い換えを弾く(§8.12.5「AIの出力するidは信用しない」に沿う)。
-        sourceWishId: r.sourceWishId && wishIdSet.has(r.sourceWishId) ? r.sourceWishId : undefined,
+        // 捏造・言い換えを弾く(§8.12.5「AIの出力するidは信用しない」に沿う)。情報
+        // カードは願いに応えるものではないのでsourceWishIdは付けない。
+        sourceWishId: !isInfo && r.sourceWishId && wishIdSet.has(r.sourceWishId) ? r.sourceWishId : undefined,
       };
       const geoParts = [src.venue, r.area ?? src.area].map((s) => (s ?? "").trim()).filter(Boolean);
       const geoQuery = Array.from(new Set(geoParts)).join(" ").trim();
-      (isDerived ? moderatePool : strongPool).push({ card, site: src.site, geoQuery: geoQuery || undefined });
+      (isInfo ? infoPool : isDerived ? moderatePool : strongPool).push({ card, site: src.site, geoQuery: geoQuery || undefined });
     }
 
-    // サイト横断の重複統合(名称の緩い一致のみ。strong優先)。
+    // サイト横断の重複統合(名称の緩い一致のみ。strong→moderate→info の順で優先)。
     let dropDupClassified = 0;
     const acceptedStrong: PoolItem[] = [];
     const acceptedModerate: PoolItem[] = [];
-    for (const pool of [{ list: strongPool, bucket: acceptedStrong }, { list: moderatePool, bucket: acceptedModerate }]) {
+    const acceptedInfo: PoolItem[] = [];
+    for (const pool of [
+      { list: strongPool, bucket: acceptedStrong },
+      { list: moderatePool, bucket: acceptedModerate },
+      { list: infoPool, bucket: acceptedInfo },
+    ]) {
       for (const item of pool.list) {
         // 層Cがタイトルを言い換えるため、層Bの名称では拾えなかった既出カードとの
         // 重複を、最終タイトルで改めて弾く(Q2)。
@@ -763,7 +775,8 @@ export async function buildDeck(input: {
         }
         const dup =
           acceptedStrong.some((a) => sameEvent(a.card.title, item.card.title)) ||
-          acceptedModerate.some((a) => sameEvent(a.card.title, item.card.title));
+          acceptedModerate.some((a) => sameEvent(a.card.title, item.card.title)) ||
+          acceptedInfo.some((a) => sameEvent(a.card.title, item.card.title));
         if (dup) { dropDupClassified++; continue; }
         pool.bucket.push(item);
       }
@@ -804,8 +817,14 @@ export async function buildDeck(input: {
     if (finalItems.length < count) {
       finalItems = [...finalItems, ...roundRobin(groupBySite(acceptedModerate), count - finalItems.length)];
     }
+    // strong+moderate で埋まらない残り枠は、中立の「新着情報」カード(info)で
+    // 埋める。当たらない日でもデッキが空にならず、スワイプの反応がデータとして
+    // 貯まる(ユーザー方針: 100%当たらなくても情報カードとして出す)。
+    if (finalItems.length < count) {
+      finalItems = [...finalItems, ...roundRobin(groupBySite(acceptedInfo), count - finalItems.length)];
+    }
     // トレース用: 採用しきれずに落ちた総数(サイト上限＋枚数上限)。
-    const dropOverQuota = Math.max(0, acceptedStrong.length + acceptedModerate.length - finalItems.length);
+    const dropOverQuota = Math.max(0, acceptedStrong.length + acceptedModerate.length + acceptedInfo.length - finalItems.length);
 
     // 会場/エリアを持つカードにPlacesで実座標を付ける(展覧会など「行く場所」の
     // カードが、AREA_LATLNGに無いエリアでも地図にピンとして出るように)。

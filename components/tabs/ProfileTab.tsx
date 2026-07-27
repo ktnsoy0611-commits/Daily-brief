@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
+import { Activity, BarChart3, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
@@ -241,6 +241,30 @@ export function ProfileTab({ appState, persist, onClose }: {
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
   const cronStatus = appState.cronStatus;
+
+  // 今月の反応の集計(読み取りのみ)。分析の材料(=my-brainのログ)が貯まって
+  // いることを本人が確認できるようにする。残した/実行/星は前向きな反応として
+  // ログに焼き付く材料、流したは参考(ログには残さない)。月はローカル(JST)基準。
+  const nowYm = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
+  const ymOfIso = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+  const reactionCounts = (() => {
+    let kept = 0, skipped = 0, done = 0, starred = 0;
+    for (const [ek, b] of Object.entries(appState.briefs ?? {})) {
+      if (ek.slice(0, 7) !== nowYm) continue; // editionKey = YYYY-MM-DD-am|pm
+      const fb = (b as { feedback?: Record<string, boolean> }).feedback ?? {};
+      const decisions = (b as { decisions?: Record<string, string> }).decisions ?? {};
+      for (const [cid, dec] of Object.entries(decisions)) {
+        if (fb[cid]) continue; // 旗=拒否は残した/流したに数えない
+        if (dec === "keep") kept++; else if (dec === "skip") skipped++;
+      }
+    }
+    for (const it of appState.items ?? []) {
+      if (it.status === "done" && ymOfIso(it.doneAt ?? it.addedAt) === nowYm) done++;
+      if (it.good === true && ymOfIso(it.doneAt ?? it.addedAt) === nowYm) starred++;
+    }
+    return { kept, skipped, done, starred };
+  })();
+
   const editionJp = (k: string) => (k.endsWith("-am") ? "朝刊" : k.endsWith("-pm") ? "夕刊" : "");
   const cronWhen = (iso: string) => {
     try { return new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
@@ -584,6 +608,23 @@ export function ProfileTab({ appState, persist, onClose }: {
         </>)}
 
         {tab === "other" && (<>
+        {/* 今月の反応の集計。カードにどう反応したかが分析(好み・興味の学習)の
+            材料になっていることを、本人が数字で確認できるようにする。残した・
+            実行・星は前向きな反応としてログ(my-brain)に貯まる材料。 */}
+        <SettingsCard label="今月の反応" icon={BarChart3}>
+          <div style={{ display: "flex", gap: 8 }}>
+            {([["残した", reactionCounts.kept], ["実行", reactionCounts.done], ["星", reactionCounts.starred], ["流した", reactionCounts.skipped]] as const).map(([lbl, n]) => (
+              <div key={lbl} style={{ flex: 1, textAlign: "center", padding: "10px 0", borderRadius: 12, background: "rgba(23,23,21,0.04)" }}>
+                <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 20, color: INK, lineHeight: 1 }}>{n}</div>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, color: "#9A988E", marginTop: 5 }}>{lbl}</div>
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 10.5, color: "#9A988E", lineHeight: 1.7, margin: "10px 0 0" }}>
+            残した・実行・星が、好み・興味の学習の材料になります（GitHubのmy-brainに記録されます）。流したは参考で、記録には残しません。
+          </p>
+        </SettingsCard>
+
         {/* 夜間Cron(ブリーフ生成)の直近の実行サマリ。Vercelのログを見なくても
             「動いているか・いつ・何枚生成したか」をここで確認できる。 */}
         <SettingsCard label="ブリーフ生成の状況" icon={Activity}>

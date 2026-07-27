@@ -11,10 +11,10 @@ export const maxDuration = 15;
 
 export async function GET() {
   const brain = await loadMyBrain();
+  // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
   return NextResponse.json({
     ok: brain.ok,
     taste: brain.taste.taste ?? [],
-    interest: brain.taste.interest ?? [],
     livingArea: brain.taste.livingArea,
     sources: brain.sources,
     filesRead: brain.filesRead,

@@ -83,19 +83,35 @@ function migrate(s: any): AppState {
   merged.magazine = merged.magazine ?? null;
   merged.profile = merged.profile ?? structuredClone(DEFAULT_STATE.profile);
   // 旧形式(「気になっていること」を自由文で持つProfile.currentFocus、
-  // 好み/興味を区別しないInterest.kind)からの移行。currentFocusという
-  // 概念自体を廃止したため単純に破棄する。旧チップ(自動検出・手入力とも
-  // 区別が無かった)は、時期で変わる「興味」側の初期値として一括で移す
-  // (「好み」側は空から始まる。ユーザーが改めて選び直す想定)。
+  // 好み/興味を区別するInterest.category、旧Interest.kind)からの移行。
+  // currentFocusは概念自体を廃止したため破棄。好み(taste)/興味(interest)は
+  // 概念が重なり重複しやすいため「興味・好み」1リストへ統合したので
+  // (HANDOFF §8.14 優先度3)、categoryを落とし、同一labelを重複除去して
+  // 1本化する(weightが大きい方・手入力(source:"user")を優先)。
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (merged.profile as any).currentFocus;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  merged.profile.interests = (merged.profile.interests ?? []).map((i: any) => {
-    if (i.category === "taste" || i.category === "interest") return i;
-    const rest = { ...i };
-    delete rest.kind;
-    return { ...rest, category: "interest" };
-  });
+  {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const byLabel = new Map<string, any>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const raw of (merged.profile.interests ?? []) as any[]) {
+      if (!raw || typeof raw.label !== "string") continue;
+      const rest = { ...raw };
+      delete rest.kind;
+      delete rest.category; // 好み/興味の区別を廃止(1リストへ統合)
+      const weight = typeof rest.weight === "number" ? rest.weight : 0;
+      const cur = byLabel.get(rest.label);
+      if (!cur) { byLabel.set(rest.label, { ...rest, weight }); continue; }
+      // 重複labelは統合: weightは大きい方、手入力(user)を自動より優先。
+      const curWeight = typeof cur.weight === "number" ? cur.weight : 0;
+      byLabel.set(rest.label, {
+        ...cur,
+        weight: Math.max(curWeight, weight),
+        source: cur.source === "user" || rest.source === "user" ? "user" : cur.source,
+      });
+    }
+    merged.profile.interests = Array.from(byLabel.values());
+  }
   merged.weekendMeta = merged.weekendMeta ?? structuredClone(DEFAULT_STATE.weekendMeta);
   merged.goals = merged.goals ?? [];
   merged.pendingReview = merged.pendingReview ?? [];

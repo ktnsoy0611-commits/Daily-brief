@@ -38,9 +38,8 @@ export type InterestSignal = { label: string; weight: number };
 export type WishInput = { title: string; domain?: string; id?: string };
 export type TasteInput = {
   wishes?: (string | WishInput)[];
-  taste?: InterestSignal[];    // 好み(比較的安定したジャンル・カルチャーの好み)
-  interest?: InterestSignal[]; // 興味(時期によって変わる、今関心を持っていること)
-  related?: InterestSignal[]; // 興味の関連キーワード(興味から派生する関連・隣接テーマ。カード生成の網を少し広げる材料)
+  taste?: InterestSignal[];   // 興味・好み(関心を持ち好んでいるテーマ。好み/興味を統合した1リスト)
+  related?: InterestSignal[]; // 興味・好みの関連キーワード(そこから派生する関連・隣接テーマ。カード生成の網を少し広げる材料)
   livingArea?: string;
 };
 export type TokenUsage = { promptTokens: number; candidateTokens: number; totalTokens: number; calls: number };
@@ -407,8 +406,8 @@ ${DOMAIN_KIND_TABLE}
 1. 記述は候補レコードに含まれる情報のみを根拠とする。レコードに無い情報の補完・推測は禁止。
 2. 入力された候補は1件も省略せず、すべてについて分類結果を出力する。
 3. matchStrength は候補とプロファイルとの関係で判定する。
-   "strong": 願望リスト・好みのいずれかに直接合致する候補
-   "moderate": 興味、または興味の関連キーワードに合致する候補、または好みに近接するが一致はしない候補
+   "strong": 願望リスト・興味・好みのいずれかに直接合致する候補
+   "moderate": 興味・好みの関連キーワードに合致する、または興味・好みに近接するが直接は一致しない候補
    "info": 上のいずれにも強くは当たらないが、<生活圏>内で、終了しておらず(開催中またはこれから)、読む価値のありそうな新着の物事。提案ではなく中立な「新着情報」として扱う。
    "none": <生活圏>外、終了済み、または明らかに無関係・読む価値が乏しい候補のみ
 4. matchStrength が "none" の候補は id と matchStrength のみを出力する。他のフィールドは出力しない。
@@ -419,7 +418,7 @@ ${DOMAIN_KIND_TABLE}
    kind: "place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。sourceWishIdを付ける場合は、その願いに[ドメイン: …]があれば上記対応表に沿ったkindを優先する
    area・sourceLabel・meta・expiresAt: 候補レコードに情報があれば記す(任意)
    trigger と sourceWishId は "strong"・"moderate" のときだけ出力する("info" には付けない):
-     trigger: "strong" のとき、時期が理由なら "タイムリー"、好みが理由なら "興味との一致"、場所・地域性が理由なら "ロケーション"。"moderate" のときは "興味の広がり"。
+     trigger: "strong" のとき、時期が理由なら "タイムリー"、興味・好みが理由なら "興味との一致"、場所・地域性が理由なら "ロケーション"。"moderate" のときは "興味の広がり"。
      sourceWishId: 願望リストのいずれかに直接応える場合のみ、その願いの行頭にある識別子(idの値)だけを記す(任意)。願いの文章ではなく識別子を記すこと。応える願いが無ければ付けない。
 6. matchStrength が "strong" どうし・"moderate" どうし・"info" どうしは、それぞれの集合の中で、合致度(infoは新着性・読む価値)が高い順に並べて出力する。
 
@@ -578,11 +577,10 @@ export async function buildDeck(input: {
     })
     .filter((w): w is WishInput => w !== null)
     .slice(0, 20);
-  // 好み(taste)=strong判定、興味(interest)=moderate判定の材料。以前は単一の
-  // 興味リストを重み順で上下半分に割って強い/弱いを作っていたが、好み/興味を
-  // 明示的な別カテゴリとして扱うようになったため、その区分をそのまま使う。
-  const tasteSignals = (input.taste.taste ?? []).filter((i) => i && typeof i.label === "string" && i.label.trim()).slice(0, 20);
-  const interestSignals = (input.taste.interest ?? []).filter((i) => i && typeof i.label === "string" && i.label.trim()).slice(0, 20);
+  // 「興味・好み」=strong判定(直接合致)の材料、「興味・好みの関連キーワード」=
+  // moderate判定(地続きの広がり)の材料。好み/興味は概念が重なり重複しやすいので
+  // 1リストへ統合した(HANDOFF §8.14 優先度3)。
+  const tasteSignals = (input.taste.taste ?? []).filter((i) => i && typeof i.label === "string" && i.label.trim()).slice(0, 30);
   const relatedSignals = (input.taste.related ?? []).filter((i) => i && typeof i.label === "string" && i.label.trim()).slice(0, 20);
   const livingArea = (input.taste.livingArea ?? "").trim() || DEFAULT_LIVING_AREA;
 
@@ -604,12 +602,11 @@ export async function buildDeck(input: {
         })
         .join("\n")}`
     : "願望リスト: なし";
-  const tasteLine = `好み: ${tasteSignals.length ? tasteSignals.map((i) => i.label).join(" / ") : "なし"}`;
-  const interestLine = `興味: ${interestSignals.length ? interestSignals.map((i) => i.label).join(" / ") : "なし"}`;
-  const relatedLine = `興味の関連キーワード: ${relatedSignals.length ? relatedSignals.map((i) => i.label).join(" / ") : "なし"}`;
-  const tasteBlockClassify = `${wishesLine}\n${tasteLine}\n${interestLine}\n${relatedLine}`;
-  // 層E(本文詳細化)の「誘い1文」の根拠に使う。ウィッシュは含めず好み・興味・関連キーワードだけ。
-  const tasteBlockEnrich = `${tasteLine}\n${interestLine}\n${relatedLine}`;
+  const tasteLine = `興味・好み: ${tasteSignals.length ? tasteSignals.map((i) => i.label).join(" / ") : "なし"}`;
+  const relatedLine = `興味・好みの関連キーワード: ${relatedSignals.length ? relatedSignals.map((i) => i.label).join(" / ") : "なし"}`;
+  const tasteBlockClassify = `${wishesLine}\n${tasteLine}\n${relatedLine}`;
+  // 層E(本文詳細化)の「誘い1文」の根拠に使う。ウィッシュは含めず興味・好み・関連キーワードだけ。
+  const tasteBlockEnrich = `${tasteLine}\n${relatedLine}`;
 
   const jst = new Date(Date.now() + 9 * 3600 * 1000);
   const todayJp = `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日`;

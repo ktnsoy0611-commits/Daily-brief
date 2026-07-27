@@ -147,19 +147,24 @@ function tasteFromMarkdown(md: string): TasteInput {
   // 見出しの判定は「## 見出し」の本文(Markdown)向け。英語エイリアス(taste等)は
   // 使わない(ファイル冒頭の "# taste-state" というタイトルが /taste/ に誤マッチ
   // して好みが空になる不具合があったため。英語表記はYAML front-matter側が担う)。
-  // 「## 興味の関連キーワード」(新)・「## これから好みそうな傾向」(旧・後方互換)は
-  // どちらも語中に「興味」「好み」を含むので、好み・興味の判定から必ず除外する
-  // (この節を先に別扱いする)。
+  // 「## 興味・好みの関連キーワード」(新)・「## 興味の関連キーワード」「## これから
+  // 好みそうな傾向」(旧・後方互換)はどれも語中に「興味」「好み」を含むので、
+  // 興味・好みの判定から必ず除外する(この節を先に別扱いする)。
   const isRelated = (h: string) => /関連キーワード|関連|派生|これから好みそうな傾向|傾向|広がり|emerging|related/i.test(h);
+  // 好み/興味は「## 興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
+  // 統合見出しは「好み」も「興味」も含むので、両方を含みうる非related節を
+  // まとめて拾う。古い taste-state.md の「## 好み」「## 興味」別節も同じ条件で
+  // 拾われ、まとめて1リストへマージされる(重複labelは順序を保って除去)。
+  const isTasteInterest = (h: string) => !isRelated(h) && /好み|興味|関心/.test(h);
   const livingArea = firstLineOf(sections.find((s) => /生活圏|エリア/.test(s.heading))?.lines ?? []);
   const relatedBullets = bulletsOf(sections.find((s) => isRelated(s.heading))?.lines ?? []);
-  const tasteBullets = bulletsOf(sections.find((s) => /好み/.test(s.heading) && !isRelated(s.heading))?.lines ?? []);
-  const interestBullets = bulletsOf(sections.find((s) => /興味|関心/.test(s.heading) && !isRelated(s.heading))?.lines ?? []);
+  const tasteBullets = Array.from(
+    new Set(sections.filter((s) => isTasteInterest(s.heading)).flatMap((s) => bulletsOf(s.lines))),
+  );
   const wishBullets = bulletsOf(sections.find((s) => /願い|ウィッシュ/.test(s.heading))?.lines ?? []);
   return {
     livingArea,
     taste: tasteBullets.length ? interestsFromBullets(tasteBullets) : undefined,
-    interest: interestBullets.length ? interestsFromBullets(interestBullets) : undefined,
     related: relatedBullets.length ? interestsFromBullets(relatedBullets) : undefined,
     wishes: wishBullets.length ? wishBullets : undefined,
   };
@@ -207,8 +212,11 @@ export async function loadMyBrain(): Promise<MyBrain> {
     filesRead.push("taste-state.md");
     const fm = parseFrontMatter(tasteMd);
     taste.livingArea = asString(fm.living_area ?? fm.livingArea);
-    taste.taste = parseInterests(fm.taste);
-    taste.interest = parseInterests(fm.interest);
+    // 好み/興味は1リストへ統合。front-matterに旧 taste / interest が別々にあっても
+    // まとめて taste へ集約する(label順を保って重複除去)。
+    const fmTaste = [...parseInterests(fm.taste), ...parseInterests(fm.interest)];
+    const fmSeen = new Set<string>();
+    taste.taste = fmTaste.filter((i) => (fmSeen.has(i.label) ? false : (fmSeen.add(i.label), true)));
     taste.related = parseInterests(fm.related ?? fm.emerging ?? fm.tendencies);
     taste.wishes = asStringArray(fm.wishes);
     // sources を taste-state.md に同居させている場合も拾う。
@@ -216,12 +224,11 @@ export async function loadMyBrain(): Promise<MyBrain> {
     if (inline.length) sources = inline;
 
     // YAML front-matterで埋まらなかった項目は、素のMarkdown見出し+箇条書き
-    // (## 好み / ## 興味 / ## 願い / ## 生活圏)から補う。ユーザーはYAMLを
-    // 書けないため、こちらが主な書き方になる想定。
+    // (## 興味・好み / ## 興味・好みの関連キーワード / ## 願い / ## 生活圏)から
+    // 補う。ユーザーはYAMLを書けないため、こちらが主な書き方になる想定。
     const md = tasteFromMarkdown(tasteMd);
     taste.livingArea = taste.livingArea ?? md.livingArea;
     if (!taste.taste?.length) taste.taste = md.taste;
-    if (!taste.interest?.length) taste.interest = md.interest;
     if (!taste.related?.length) taste.related = md.related;
     if (!taste.wishes?.length) taste.wishes = md.wishes;
   }

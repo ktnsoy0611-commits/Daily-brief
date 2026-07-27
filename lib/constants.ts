@@ -92,10 +92,10 @@ export const NAV_BOTTOM_GAP = "max(4px, calc(env(safe-area-inset-bottom) - 26px)
 // から浮く量が変わればここに揃えるUIが下端に近づく量も連動させるため。
 export const NAV_OFFSET = `calc(82px + ${NAV_BOTTOM_GAP})`;
 
-// ---- 興味の自動検出（プロトタイプ: キーワード頻度。本実装ではGeminiに置換） --
-// 自動検出はウィッシュ・KEEPしたItemという「直近の行動」から拾うため、
-// 性質上つねに興味(category:"interest"、時期で変わる方)に分類する
-// (lib/helpers.tsのdetectInterests参照)。
+// ---- 興味の自動検出（プロトタイプ: キーワード頻度。現在は未使用） --
+// 好み/興味は「興味・好み」1リストへ統合し、チップ本体はCoworkの週次分析が
+// taste-state.md で所有する(HANDOFF §8.14 優先度3)。この頻度検出ルールは
+// 現在どこからも参照されていない(lib/helpers.tsのdetectInterests参照)。
 export interface InterestRule {
   match: RegExp;
   label: string;

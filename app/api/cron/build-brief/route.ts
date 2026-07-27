@@ -82,24 +82,26 @@ function countUndigested(decksVal: unknown, briefsVal: unknown): number {
 
 type Signal = { label: string; weight: number };
 
-// taste-state.md の好み・興味から、app_state.profile.interests(チップ)の次の値を作る。
-// 手動で足したチップ(source:"user")と手動削除(dismissedInterests)は保持する
-// (AppShell起動時pullと同じマージ規則)。実際の upsert は呼び出し側(supaが
-// 型付きで手元にある場所)で行う。これでチップが毎晩 taste-state と一致する。
-function mergeChips(profileVal: unknown, taste: Signal[], interest: Signal[], dismissed: string[]): Record<string, unknown> {
+// taste-state.md の「興味・好み」から、app_state.profile.interests(チップ)の次の値を
+// 作る。好み/興味は1リストへ統合済み(HANDOFF §8.14 優先度3)。手動で足したチップ
+// (source:"user")と手動削除(dismissedInterests)は保持する(AppShell起動時pullと同じ
+// マージ規則)。実際の upsert は呼び出し側(supaが型付きで手元にある場所)で行う。
+// これでチップが毎晩 taste-state と一致する。
+function mergeChips(profileVal: unknown, taste: Signal[], dismissed: string[]): Record<string, unknown> {
   const prof = (profileVal && typeof profileVal === "object" ? profileVal : { interests: [] }) as {
-    interests?: { id?: string; label: string; category: "taste" | "interest"; weight?: number; source?: string }[];
+    interests?: { id?: string; label: string; weight?: number; source?: string }[];
     dismissedInterests?: string[];
   };
   const dism = new Set([...(prof.dismissedInterests ?? []), ...dismissed]);
   const userManual = (prof.interests ?? []).filter((i) => i?.source === "user" && !dism.has(i.label));
-  const pinned = new Set(userManual.map((i) => `${i.category}:${i.label}`));
+  const pinned = new Set(userManual.map((i) => i.label));
   const now = new Date().toISOString();
-  const mk = (category: "taste" | "interest", sigs: Signal[]) =>
-    sigs
-      .filter((s) => !dism.has(s.label) && !pinned.has(`${category}:${s.label}`))
-      .map((s) => ({ id: `cowork-${category}-${s.label}`, label: s.label, category, weight: s.weight, source: "auto" as const, addedAt: now }));
-  return { ...prof, interests: [...userManual, ...mk("taste", taste), ...mk("interest", interest)] };
+  const seen = new Set<string>();
+  const fromCowork = taste
+    .filter((s) => !dism.has(s.label) && !pinned.has(s.label))
+    .filter((s) => (seen.has(s.label) ? false : (seen.add(s.label), true)))
+    .map((s) => ({ id: `cowork-${s.label}`, label: s.label, weight: s.weight, source: "auto" as const, addedAt: now }));
+  return { ...prof, interests: [...userManual, ...fromCowork] };
 }
 
 export async function GET(req: Request) {
@@ -145,13 +147,11 @@ export async function GET(req: Request) {
     .map((s) => ({ url: s.url, label: s.label }));
   const profile = byKey.profile as { interests?: unknown } | undefined;
   const rawInterests = Array.isArray(profile?.interests) ? (profile!.interests as unknown[]) : [];
-  const isSignalLike = (i: unknown): i is { label: string; weight?: number; category?: string } =>
+  const isSignalLike = (i: unknown): i is { label: string; weight?: number } =>
     !!i && typeof i === "object" && typeof (i as { label?: unknown }).label === "string";
+  // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
   const appTaste: InterestSignal[] = rawInterests
-    .filter((i): i is { label: string; weight?: number; category?: string } => isSignalLike(i) && i.category === "taste")
-    .map((i) => ({ label: i.label, weight: i.weight ?? 0 }));
-  const appInterest: InterestSignal[] = rawInterests
-    .filter((i): i is { label: string; weight?: number; category?: string } => isSignalLike(i) && i.category === "interest")
+    .filter((i): i is { label: string; weight?: number } => isSignalLike(i))
     .map((i) => ({ label: i.label, weight: i.weight ?? 0 }));
   // ユーザーの手編集: 手動で足したラベル(source:"user")と、消したラベル(dismissed)。
   // taste-user.md へ書き出し、Coworkの分析がこれを尊重する。除外は生成からも外す。
@@ -197,11 +197,10 @@ export async function GET(req: Request) {
     return Array.from(map.values());
   }
   const mergedTaste = mergeSignals(appTaste, brain.taste.taste ?? []).filter((s) => !dismissedSet.has(s.label));
-  const mergedInterest = mergeSignals(appInterest, brain.taste.interest ?? []).filter((s) => !dismissedSet.has(s.label));
-  // 「興味の関連キーワード」は分析タスク(Cowork)が taste-state.md に書く、興味から
-  // 派生する関連・隣接テーマで、アプリ側(app_state)には入力欄が無い。my-brain の
-  // ものをそのまま使う(moderate=興味の広がり判定の材料)。
-  const taste: TasteInput = { taste: mergedTaste, interest: mergedInterest, related: brain.taste.related, wishes, livingArea: brain.taste.livingArea };
+  // 「興味・好みの関連キーワード」は分析タスク(Cowork)が taste-state.md に書く、
+  // 興味・好みから派生する関連・隣接テーマで、アプリ側(app_state)には入力欄が
+  // 無い。my-brain のものをそのまま使う(moderate=興味の広がり判定の材料)。
+  const taste: TasteInput = { taste: mergedTaste, related: brain.taste.related, wishes, livingArea: brain.taste.livingArea };
 
   if (!allSources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
 
@@ -482,18 +481,18 @@ export async function GET(req: Request) {
   // 好み・興味を app_state.profile.interests(チップ)へコピーするだけ(Gemini不使用)。
   // これでアプリを開かなくても毎晩チップが taste-state と一致する(issue 5)。手動で
   // 足したチップ(source:"user")・手動削除(dismissedInterests)は保持する。非致命。
-  let chipsSynced: { ok: boolean; note?: string; counts?: { taste: number; interest: number } } = { ok: false };
+  let chipsSynced: { ok: boolean; note?: string; counts?: { taste: number } } = { ok: false };
   try {
     const bt = brain.taste;
+    // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
     const tasteSigs = (bt.taste ?? []).map((s) => ({ label: s.label, weight: s.weight }));
-    const interestSigs = (bt.interest ?? []).map((s) => ({ label: s.label, weight: s.weight }));
-    if (tasteSigs.length + interestSigs.length > 0) {
-      const nextProfile = mergeChips(byKey.profile, tasteSigs, interestSigs, dismissed);
+    if (tasteSigs.length > 0) {
+      const nextProfile = mergeChips(byKey.profile, tasteSigs, dismissed);
       await supa.from("app_state").upsert(
         { user_id: ownerId, key: "profile", value: nextProfile, updated_at: new Date().toISOString() },
         { onConflict: "user_id,key" },
       );
-      chipsSynced = { ok: true, counts: { taste: tasteSigs.length, interest: interestSigs.length } };
+      chipsSynced = { ok: true, counts: { taste: tasteSigs.length } };
     } else {
       // taste-state.md がまだ空(Coworkが未実行)なら、既存チップを消さないよう触らない。
       chipsSynced = { ok: false, note: "taste-state が空(Cowork分析待ち)" };

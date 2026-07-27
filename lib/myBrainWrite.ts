@@ -16,8 +16,7 @@
 
 export type SyncTasteInput = {
   livingArea?: string;
-  taste?: { label: string; weight: number }[];    // 好み(比較的安定)
-  interest?: { label: string; weight: number }[]; // 興味(時期で変わる)
+  taste?: { label: string; weight: number }[]; // 興味・好み(好み/興味を統合した1リスト)
   wishes?: string[];
   sources?: { url: string; label?: string }[];
 };
@@ -42,11 +41,8 @@ export function renderTasteStateMd(t: SyncTasteInput): string {
     "## 生活圏",
     bullet([t.livingArea?.trim() || "東京23区(および電車で日常的に行ける範囲)"]),
     "",
-    "## 好み（比較的安定したジャンル・カルチャーの好み）",
+    "## 興味・好み（関心を持ち、好んでいるテーマ）",
     bullet(byWeightDesc(t.taste ?? [])) || "(まだありません)",
-    "",
-    "## 興味（今、関心を持っていること。時期によって変わる）",
-    bullet(byWeightDesc(t.interest ?? [])) || "(まだありません)",
     "",
     "## 願い",
     bullet((t.wishes ?? []).filter((w) => w.trim())) || "(まだありません)",

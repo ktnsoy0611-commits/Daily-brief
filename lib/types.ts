@@ -107,14 +107,13 @@ export interface Goal {
   checkIns: CheckIn[];
 }
 
-// 好み(taste)=比較的安定したジャンル・カルチャーの好み /
-// 興味(interest)=時期によって変わる、今関心を持っていること。
-// どちらもカード生成の材料になり、KEEP等のフィードバックや外部アプリ
-// (将来のジャーナル等、my-brain経由)からも更新されうる。
+// 興味・好み(関心を持ち好んでいるテーマ)。以前は好み(taste)/興味(interest)を
+// category で分けていたが、概念が重なり重複しやすいため1リストへ統合した
+// (HANDOFF §8.14 優先度3)。カード生成の材料になり、KEEP等のフィードバックや
+// 外部アプリ(将来のジャーナル等、my-brain経由)からも更新されうる。
 export interface Interest {
   id: string;
   label: string;
-  category: "taste" | "interest";
   weight: number;
   source: "auto" | "user";
   addedAt?: string;

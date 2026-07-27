@@ -9,15 +9,15 @@ export type MyBrainSyncResult = { ok: true; wrote: string[] } | { ok: false; rea
 // (以前は結果を一切見ておらず、失敗しても何も表示されなかった)。
 export async function syncTasteToMyBrain(appState: AppState): Promise<MyBrainSyncResult | null> {
   const allInterests = appState.profile?.interests ?? [];
-  const taste = allInterests.filter((i) => i.category === "taste").map((i) => ({ label: i.label, weight: i.weight }));
-  const interest = allInterests.filter((i) => i.category === "interest").map((i) => ({ label: i.label, weight: i.weight }));
+  // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
+  const taste = allInterests.map((i) => ({ label: i.label, weight: i.weight }));
   const wishes = (appState.wishes ?? []).filter((w) => w.status === "stock").map((w) => w.title);
   const sources = (appState.sources ?? []).map((s) => ({ url: s.url, label: s.label }));
   try {
     const res = await fetch("/api/mybrain/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taste, interest, wishes, sources }),
+      body: JSON.stringify({ taste, wishes, sources }),
     });
     return (await res.json()) as MyBrainSyncResult;
   } catch (e) {

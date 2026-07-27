@@ -164,20 +164,25 @@ export function AppShell() {
       // 表示するだけ。ユーザーが手で足したチップ(source:"user")は残し、それ以外
       // (Cowork由来)は taste-state.md の現在値で置き換える(Coworkが消したものは消える)。
       // 手で消したラベル(dismissedInterests)は復活させない。
-      const brainTaste: { label?: unknown; weight?: unknown }[] = Array.isArray(data.taste) ? data.taste : [];
-      const brainInterest: { label?: unknown; weight?: unknown }[] = Array.isArray(data.interest) ? data.interest : [];
-      if (brainTaste.length === 0 && brainInterest.length === 0) return; // Coworkの結果がまだ無ければ触らない
+      // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
+      // read routeはそれを単一 taste で返す(interestは後方互換で来ても取り込む)。
+      const brainTaste: { label?: unknown; weight?: unknown }[] = [
+        ...(Array.isArray(data.taste) ? data.taste : []),
+        ...(Array.isArray(data.interest) ? data.interest : []),
+      ];
+      if (brainTaste.length === 0) return; // Coworkの結果がまだ無ければ触らない
       const next = structuredClone(appState);
       next.profile = next.profile ?? { interests: [] };
       const dismissed = new Set(next.profile.dismissedInterests ?? []);
       const userManual = next.profile.interests.filter((i) => i.source === "user" && !dismissed.has(i.label));
-      const pinned = new Set(userManual.map((i) => `${i.category}:${i.label}`));
-      const fromBrain = (category: "taste" | "interest", items: { label?: unknown; weight?: unknown }[]) =>
-        items
-          .filter((d): d is { label: string; weight?: number } => !!d && typeof d.label === "string" && !dismissed.has(d.label) && !pinned.has(`${category}:${d.label}`))
-          .map((d) => ({ id: `cowork-${category}-${d.label}`, label: d.label, category, weight: typeof d.weight === "number" ? d.weight : 0, source: "auto" as const, addedAt: new Date().toISOString() }));
-      const nextInterests = [...userManual, ...fromBrain("taste", brainTaste), ...fromBrain("interest", brainInterest)];
-      const keyOf = (arr: typeof nextInterests) => arr.map((i) => `${i.category}:${i.label}`).sort().join("|");
+      const pinned = new Set(userManual.map((i) => i.label));
+      const seen = new Set<string>();
+      const fromBrain = brainTaste
+        .filter((d): d is { label: string; weight?: number } => !!d && typeof d.label === "string" && !dismissed.has(d.label) && !pinned.has(d.label))
+        .filter((d) => (seen.has(d.label) ? false : (seen.add(d.label), true)))
+        .map((d) => ({ id: `cowork-${d.label}`, label: d.label, weight: typeof d.weight === "number" ? d.weight : 0, source: "auto" as const, addedAt: new Date().toISOString() }));
+      const nextInterests = [...userManual, ...fromBrain];
+      const keyOf = (arr: typeof nextInterests) => arr.map((i) => i.label).sort().join("|");
       if (keyOf(nextInterests) !== keyOf(next.profile.interests)) {
         next.profile.interests = nextInterests;
         persist(next);

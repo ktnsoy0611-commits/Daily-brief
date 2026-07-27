@@ -180,9 +180,10 @@ export function pinPosition(item: { id: string; area?: string; lat?: number; lng
   return { x: Math.min(95, Math.max(5, base.x + jx)), y: Math.min(92, Math.max(8, base.y + jy)) };
 }
 
-// ---- 興味の自動検出（プロトタイプ: キーワード頻度。本実装ではGeminiに置換） --
-// ここで検出されるのはウィッシュ・KEEPの「直近の行動」からの兆しなので、
-// 呼び出し側(AppShell)でcategory:"interest"(時期で変わる方)として保存する。
+// ---- 興味の自動検出（プロトタイプ: キーワード頻度。現在は未使用） --
+// 好み/興味は「興味・好み」1リストへ統合し、チップ本体はCoworkの週次分析が
+// taste-state.md で所有する(HANDOFF §8.14 優先度3)。このアプリ側の単純な
+// キーワード頻度検出は現在どこからも呼ばれていない(参考として残置)。
 export function detectInterests(wishes: Wish[], items: Item[]): { label: string; weight: number }[] {
   const titles = [...wishes.map((w) => w.title), ...items.map((i) => i.title)];
   const results: { label: string; weight: number }[] = [];

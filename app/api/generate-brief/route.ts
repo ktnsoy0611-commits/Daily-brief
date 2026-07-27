@@ -49,12 +49,15 @@ export async function POST(req: Request) {
   }
 
   const wishes = parseWishes(body.wishes);
-  const taste = parseSignals(body.taste);
-  const interest = parseSignals(body.interest);
+  // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
+  // 旧クライアントが interest を別で送っても取り込む(後方互換)。
+  const merged = [...parseSignals(body.taste), ...parseSignals(body.interest)];
+  const seen = new Set<string>();
+  const taste = merged.filter((s) => (seen.has(s.label) ? false : (seen.add(s.label), true)));
   const sources = (body.sources ?? []).filter((u) => typeof u === "string").map((u) => u.trim());
   const count = body.count ?? 3;
 
-  const result = await buildDeck({ taste: { taste, interest, wishes }, sources, count });
+  const result = await buildDeck({ taste: { taste, wishes }, sources, count });
   const status = result.ok ? 200 : result.reason.startsWith("gemini_") || result.reason === "fetch_failed" ? 502 : 200;
   return NextResponse.json(result, { status });
 }

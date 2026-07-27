@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Compass, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
+import { Activity, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
@@ -190,7 +190,6 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [srcInput, setSrcInput] = useState("");
   const [fixedInput, setFixedInput] = useState("");
   const [tasteInput, setTasteInput] = useState("");
-  const [interestInput, setInterestInput] = useState("");
   // 上部のタブ: 好み・興味 / 情報源 / その他。
   const [tab, setTab] = useState<"taste" | "sources" | "other">("taste");
   // URL削除の2段階確認。同時にarmされるのは1つだけ(キーで識別)。数秒で自動解除。
@@ -237,9 +236,8 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [genNow, setGenNow] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [genNowMsg, setGenNowMsg] = useState("");
 
-  const allInterests = appState.profile?.interests ?? [];
-  const taste = allInterests.filter((i) => i.category === "taste").sort((a, b) => b.weight - a.weight);
-  const interest = allInterests.filter((i) => i.category === "interest").sort((a, b) => b.weight - a.weight);
+  // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
+  const taste = (appState.profile?.interests ?? []).slice().sort((a, b) => b.weight - a.weight);
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
   const cronStatus = appState.cronStatus;
@@ -277,19 +275,18 @@ export function ProfileTab({ appState, persist, onClose }: {
     persist(next);
   };
 
-  // 好み(taste)・興味(interest)はどちらもstateそのもの(profile.interests、
-  // categoryで区別)の表示であり、ここから直接追加・削除できる(=今どんな
-  // データでカードが生成されているかを見て編集できる場所にする)。追加した
-  // 項目はsource:"user"にして、自動検出の重み更新(source==="auto"の項目
-  // だけが対象)に上書きされないようにする。
-  const addInterestItem = async (category: "taste" | "interest", label: string) => {
+  // 「興味・好み」はstateそのもの(profile.interests)の表示であり、ここから直接
+  // 追加・削除できる(=今どんなデータでカードが生成されているかを見て編集できる
+  // 場所にする)。追加した項目はsource:"user"にして、自動検出の重み更新
+  // (source==="auto"の項目だけが対象)に上書きされないようにする。
+  const addInterestItem = async (label: string) => {
     const trimmed = label.trim();
     if (!trimmed) return;
     haptic();
     const next = structuredClone(appState);
     next.profile = next.profile ?? { interests: [] };
-    if (!next.profile.interests.some((i) => i.category === category && i.label === trimmed)) {
-      next.profile.interests.push({ id: `${category}-${Date.now()}`, label: trimmed, category, weight: 10, source: "user", addedAt: new Date().toISOString() });
+    if (!next.profile.interests.some((i) => i.label === trimmed)) {
+      next.profile.interests.push({ id: `interest-${Date.now()}`, label: trimmed, weight: 10, source: "user", addedAt: new Date().toISOString() });
     }
     // 手動で追加し直したラベルは除外リストから外す(自動検出を再び許す)。
     if (next.profile.dismissedInterests?.length) {
@@ -316,8 +313,7 @@ export function ProfileTab({ appState, persist, onClose }: {
     setSyncMsg("my-brainへ同期中…");
     reportSync(await syncTasteToMyBrain(next));
   };
-  const addTaste = () => { addInterestItem("taste", tasteInput); setTasteInput(""); };
-  const addInterest = () => { addInterestItem("interest", interestInput); setInterestInput(""); };
+  const addTaste = () => { addInterestItem(tasteInput); setTasteInput(""); };
 
   // 規定の情報源(展覧会・イベント・映画などアプリ内蔵のFIXED_SOURCES)。未編集なら
   // 内蔵リストをそのまま表示し、編集した時点で appState.fixedSources へ写し取る。
@@ -469,7 +465,6 @@ export function ProfileTab({ appState, persist, onClose }: {
         body: JSON.stringify({
           wishes: (appState.wishes ?? []).filter((w) => w.status === "stock").map((w) => ({ title: w.title, domain: w.category, id: w.id })),
           taste: taste.map((i) => ({ label: i.label, weight: i.weight })),
-          interest: interest.map((i) => ({ label: i.label, weight: i.weight })),
           sources: urls,
           count: 3,
         }),
@@ -531,22 +526,16 @@ export function ProfileTab({ appState, persist, onClose }: {
         </div>
 
         {tab === "taste" && (<>
-        {/* 好み(taste)=比較的安定したジャンル・カルチャーの好み。
-            興味(interest)=今、関心を持っていること(時期によって変わる)。
-            どちらもstate(profile.interests、categoryで区別)をそのまま
-            表示・編集する。ここから直接追加・削除したものも、KEEP等の
-            フィードバックからの自動検出(興味側にのみ入る)も同じ並びに混在する。
+        {/* 「興味・好み」= state(profile.interests)をそのまま表示・編集する
+            1リスト。好み/興味は概念が重なり重複しやすいため統合した
+            (HANDOFF §8.14 優先度3)。ここから直接追加・削除したものも、
+            KEEP等のフィードバックからの自動検出(Cowork分析経由)も同じ並びに
+            混在する。手入力は残すが必須ではなく、主にログ分析が育てる。
             (かつての自由文「気になっていること」欄はウィッシュで代替済みのため廃止。) */}
-        <SettingsCard label="好み" icon={Heart}>
+        <SettingsCard label="興味・好み" icon={Heart}>
           <InterestChips items={taste} onRemove={removeInterestItem}
             inputValue={tasteInput} onInputChange={setTasteInput} onAdd={addTaste}
-            placeholder="好みを追加" />
-        </SettingsCard>
-
-        <SettingsCard label="興味" icon={Compass}>
-          <InterestChips items={interest} onRemove={removeInterestItem}
-            inputValue={interestInput} onInputChange={setInterestInput} onAdd={addInterest}
-            placeholder="興味を追加" />
+            placeholder="興味・好みを追加" />
         </SettingsCard>
         </>)}
 

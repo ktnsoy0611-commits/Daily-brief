@@ -1,8 +1,14 @@
-// 反応の生ログ(KEEP/SKIP/拒否/実行/星)を my-brain の logs/feedback-YYYY-MM.md へ
+// 前向きな反応だけの生ログを my-brain の logs/feedback-YYYY-MM.md へ
 // エクスポートするための純粋関数。夜間Cronがこれを使い、カード内容が
 // generatedDecks(app_stateで14日保持)から消える前に、月ごとのログへ焼き付ける。
 // 分析はしない(それは別のCoworkタスクが logs/ を読んで推論する)。
 // app_state に恒久ログを溜めず、履歴は my-brain 側に置くための仕組み。
+//
+// 記録するのは「残した(KEEP)・実行・星付き」だけ。流した(SKIP)・拒否(旗)は
+// 記録しない(ユーザー方針: 好きなものだけを蓄積する)。1行は「日付・タイトル・
+// 要約本文」のみに簡素化してある(反応種別・kind・ドメインは持たせない)。
+// ※これによりドメイン別のKEEP率淘汰は分母(SKIP)を失うため、発掘の淘汰
+//   ロジックは別途見直しが要る。
 
 import type { BriefCard } from "./types";
 
@@ -29,29 +35,19 @@ function clean(s: string | undefined): string {
   return (s ?? "").replace(/[｜\n\r]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-// URLはドメイン(ホスト)だけをログに残す。分析(好みの傾向)にはドメインで十分で、
-// 長いパス・クエリ文字列はトークンの無駄なので落とす。ドメインは発掘タスクが
-// 情報源の打率(KEEP率)を集計・淘汰するのに使う。
-function domainOfUrl(url: string): string {
-  const u = (url ?? "").trim();
-  if (!u) return "";
-  try {
-    return new URL(u).hostname.replace(/^www\./, "");
-  } catch {
-    return u.slice(0, 40);
-  }
-}
-
-// 1行の自己完結ログ行を作る。区切りは全角｜。exact一致で重複排除できるよう決定的にする。
-function makeLine(date: string, reaction: string, title: string, kind: string, url: string, summary: string): LogLine {
+// 1行の自己完結ログ行を作る。区切りは全角｜。exact一致で重複排除できるよう
+// 決定的にする。中身は「日付・タイトル・要約本文」のみ(タイトルと要約本文だけを
+// 残すというユーザー方針。反応種別・kind・ドメインは持たせない)。
+function makeLine(date: string, title: string, summary: string): LogLine {
   // 要約(カード本文)は分析タスクがコンテキストとして読む主材料。途中で切らず
-  // カード本文(約200字)が丸ごと収まる長さまで許す。URLはドメインだけにする。
-  const line = `- ${date}｜${reaction}｜${clean(title)}｜${clean(kind)}｜${clean(domainOfUrl(url))}｜${clean(summary).slice(0, 400)}`;
+  // カード本文(約200字)が丸ごと収まる長さまで許す。
+  const line = `- ${date}｜${clean(title)}｜${clean(summary).slice(0, 400)}`;
   return { month: date.slice(0, 7), line };
 }
 
 // briefs(号ごとの決定)× generatedDecks(号ごとのカード)＋ items(KEEP後の顛末)から
-// フラットなログ行を作る。1カード=1行(拒否>残した>流した の強い方を採る)。
+// フラットなログ行を作る。前向きな反応(残した・実行・星付き)だけを記録し、
+// 流した(skip)・拒否(旗)は記録しない。
 export function buildLogLines(
   briefs: Record<string, { decisions?: Record<string, string>; feedback?: Record<string, boolean> }>,
   decks: Record<string, BriefCard[]>,
@@ -66,20 +62,21 @@ export function buildLogLines(
       const card = byId.get(String(cardId));
       if (!card) continue; // 育成カード等、デッキに本体が無いものは記録しない
       const flagged = !!brief.feedback?.[cardId];
-      const reaction = flagged ? "拒否" : decision === "keep" ? "残した" : decision === "skip" ? "流した" : null;
-      if (!reaction) continue;
-      out.push(makeLine(ed.date, reaction, card.title ?? "", card.kind ?? "", card.sourceUrl ?? "", card.body ?? ""));
+      // 流した(skip)・拒否(旗)は記録しない。残した(keep)だけを焼き付ける。
+      if (flagged || decision !== "keep") continue;
+      out.push(makeLine(ed.date, card.title ?? "", card.body ?? ""));
     }
   }
   for (const it of items ?? []) {
     if (!it || typeof it.title !== "string") continue;
+    // 実行・星付きは残した(KEEP)を経た前向きな反応なので記録する。
     if (it.status === "done") {
       const d = ymd(it.doneAt) ?? ymd(it.addedAt);
-      if (d) out.push(makeLine(d, "実行", it.title, it.kind ?? "", it.sourceUrl ?? "", it.summary ?? ""));
+      if (d) out.push(makeLine(d, it.title, it.summary ?? ""));
     }
     if (it.good === true) {
       const d = ymd(it.doneAt) ?? ymd(it.addedAt);
-      if (d) out.push(makeLine(d, "星付き", it.title, it.kind ?? "", it.sourceUrl ?? "", it.summary ?? ""));
+      if (d) out.push(makeLine(d, it.title, it.summary ?? ""));
     }
   }
   return out;

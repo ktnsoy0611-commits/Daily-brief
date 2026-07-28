@@ -15,9 +15,11 @@
 //      呼び出し側(設定画面・夜間Cron)の処理は止めない。
 
 export type SyncTasteInput = {
-  livingArea?: string;
-  taste?: { label: string; weight: number }[]; // 興味・好み(好み/興味を統合した1リスト)
-  wishes?: string[];
+  // taste-state.md 内の app-managed ゾーンへ書く「ユーザーの手編集」。
+  // 分析結果(興味・好み本体・関連キーワード)は Cowork がゾーンの外に書き、
+  // アプリはゾーンの中だけを差し替える(同じファイルを衝突なく共同編集する)。
+  manualInterests?: { label: string }[]; // 設定画面で手動追加した興味・好み
+  dismissed?: string[];                  // 設定画面で手動削除した(復活させない)
   sources?: { url: string; label?: string }[];
 };
 export type SyncResult = { ok: true; wrote: string[] } | { ok: false; reason: string };
@@ -25,29 +27,57 @@ export type SyncResult = { ok: true; wrote: string[] } | { ok: false; reason: st
 const FAV_BEGIN = "<!-- BEGIN app-managed:favorites -->";
 const FAV_END = "<!-- END app-managed:favorites -->";
 
-function bullet(lines: string[]): string {
-  return lines.length ? lines.map((l) => `- ${l}`).join("\n") : "";
-}
-function byWeightDesc(items: { label: string; weight: number }[]): string[] {
-  return items.slice().sort((a, b) => b.weight - a.weight).map((i) => i.label);
+// taste-state.md 内のアプリ管理ゾーン(手動追加・除外)。Coworkはこの内側を
+// 触らず、アプリはこの内側だけを差し替える(sources.md のお気に入りと同型)。
+const TASTE_BEGIN = "<!-- BEGIN app-managed:taste -->";
+const TASTE_END = "<!-- END app-managed:taste -->";
+
+function renderTasteZone(manualInterests: { label: string }[], dismissed: string[]): string {
+  const adds = manualInterests.map((i) => i.label.trim()).filter(Boolean);
+  const dism = dismissed.map((l) => l.trim()).filter(Boolean);
+  return [
+    TASTE_BEGIN,
+    "## 手動で追加した興味・好み（アプリの設定画面が管理・Coworkは触らない）",
+    adds.length ? adds.map((l) => `- ${l}`).join("\n") : "(まだありません)",
+    "",
+    "## 手動で除外（復活させない・アプリの設定画面が管理・Coworkは触らない）",
+    dism.length ? dism.map((l) => `- ${l}`).join("\n") : "(まだありません)",
+    TASTE_END,
+  ].join("\n");
 }
 
-// taste-state.md は全体を管理下に置く(自由メモ欄は持たせない。設定画面の
-// 内容がそのまま反映される1枚の鏡)。
-export function renderTasteStateMd(t: SyncTasteInput): string {
-  return [
-    "# taste-state（アプリの設定画面から自動同期・直接編集しても上書きされます）",
-    "",
-    "## 生活圏",
-    bullet([t.livingArea?.trim() || "東京23区(および電車で日常的に行ける範囲)"]),
-    "",
-    "## 興味・好み（関心を持ち、好んでいるテーマ）",
-    bullet(byWeightDesc(t.taste ?? [])) || "(まだありません)",
-    "",
-    "## 願い",
-    bullet((t.wishes ?? []).filter((w) => w.trim())) || "(まだありません)",
-    "",
-  ].join("\n");
+// 既存の taste-state.md のうち、app-managed ゾーン(手動追加・除外)だけを差し替える。
+// マーカーが無ければ末尾に新設し、ファイル自体が無ければ最小の骨格を作る
+// (興味・好み本体・関連キーワードは Cowork の分析が後で埋める)。ゾーンの外は
+// 一切変更しない(=Coworkが書いた分析結果を消さない)。
+export function mergeTasteStateMd(existing: string | null, manualInterests: { label: string }[], dismissed: string[]): string {
+  const zone = renderTasteZone(manualInterests, dismissed);
+  if (existing == null) {
+    return [
+      "# taste-state（興味・好みの真実源。Coworkの分析とアプリの手編集を同じファイルで同期します）",
+      "",
+      "## 生活圏",
+      "- 東京23区(および電車で日常的に行ける範囲)",
+      "",
+      "## 興味・好み",
+      "(Coworkの分析待ち)",
+      "",
+      "## 興味・好みの関連キーワード",
+      "(Coworkの分析待ち)",
+      "",
+      zone,
+      "",
+      "## 願い",
+      "(まだありません)",
+      "",
+    ].join("\n");
+  }
+  const b = existing.indexOf(TASTE_BEGIN);
+  const e = existing.indexOf(TASTE_END);
+  if (b === -1 || e === -1 || e < b) {
+    return `${existing.replace(/\s*$/, "")}\n\n${zone}\n`;
+  }
+  return existing.slice(0, b) + zone + existing.slice(e + TASTE_END.length);
 }
 
 function renderFavoritesBlock(sources: { url: string; label?: string }[]): string {
@@ -192,10 +222,16 @@ export async function syncMyBrain(input: SyncTasteInput): Promise<SyncResult> {
 
   const wrote: string[] = [];
   try {
-    // taste-state.md(好み・興味)はCoworkの週次分析タスクが所有・上書きするように
-    // なったため、アプリ側からはここを書かない(夜間にここで書くと毎晩Coworkの
-    // 分析を上書きしてしまうため)。アプリはお気に入りの情報源(sources.md)だけを
-    // 書く。ユーザーの手編集(追加/除外)は Cron が taste-user.md へ別途書き出す。
+    // taste-state.md は「興味・好みの真実源」で1ファイルに統合した(HANDOFF §8.16)。
+    // Coworkの分析(興味・好み本体・関連キーワード)はゾーンの外に書き、アプリは
+    // app-managed ゾーン(手動追加・除外)だけを差し替える。同じファイルを衝突なく
+    // 共同編集する(以前は taste-user.md へ別ファイルで書き出していたのを廃止)。
+    const tasteMeta = await getFileMeta(repo, "taste-state.md", token, ref);
+    const tasteContent = mergeTasteStateMd(tasteMeta?.content ?? null, input.manualInterests ?? [], input.dismissed ?? []);
+    if (tasteMeta === null || tasteMeta.content !== tasteContent) {
+      await putFile(repo, "taste-state.md", tasteContent, tasteMeta?.sha, token, ref, "手動の興味・好み(追加・除外)を同期");
+      wrote.push("taste-state.md");
+    }
 
     const sourcesMeta = await getFileMeta(repo, "sources.md", token, ref);
     const sourcesContent = mergeSourcesMd(sourcesMeta?.content ?? null, input.sources ?? []);
@@ -204,18 +240,14 @@ export async function syncMyBrain(input: SyncTasteInput): Promise<SyncResult> {
       wrote.push("sources.md");
     }
 
-    // 旧命名の孤児 taste_state.md(アンダースコア)が残っていたら消す。アプリは
-    // 一貫してハイフンの taste-state.md だけを使うため、アンダースコア版は
-    // 過去の残骸で、放置するとmy-brainにstateが2つあるように見える。削除の
-    // 失敗は本体の同期を止めない(ベストエフォート)。
-    try {
-      const strayMeta = await getFileMeta(repo, "taste_state.md", token, ref);
-      if (strayMeta) {
-        await deleteFile(repo, "taste_state.md", strayMeta.sha, token, ref, "重複した旧stateファイルを削除");
-        wrote.push("taste_state.md(削除)");
-      }
-    } catch {
-      // 消せなくても無視(次回の同期でまた試みる)。
+    // 孤児ファイルの掃除(ベストエフォート・失敗しても本体を止めない):
+    // taste_state.md(アンダースコアの旧名)と、taste-user.md(taste-stateへ統合し
+    // 廃止した旧ファイル)。放置すると同じ情報が複数ファイルにあるように見える。
+    for (const stray of ["taste_state.md", "taste-user.md"]) {
+      try {
+        const m = await getFileMeta(repo, stray, token, ref);
+        if (m) { await deleteFile(repo, stray, m.sha, token, ref, "統合により不要になったファイルを削除"); wrote.push(`${stray}(削除)`); }
+      } catch { /* 消せなくても無視(次回の同期でまた試みる) */ }
     }
     return { ok: true, wrote };
   } catch (e) {

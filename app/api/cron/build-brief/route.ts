@@ -453,22 +453,11 @@ export async function GET(req: Request) {
     /* 反応ログの失敗はデッキ生成を止めない */
   }
 
-  // 6. ユーザーの手編集(手動で足した好み・興味＝source:"user"、消した＝dismissed)を
-  // taste-user.md へ書き出す。好み・興味チップ本体はCoworkが taste-state.md を
-  // 所有するが、この taste-user.md を読んでユーザーの追加を残し・除外を尊重する。非致命。
+  // 6. アプリで削除した情報源を sources-user.md へ書き出す(発掘タスクが尊重する)。
+  // ※ユーザーの手編集(手動追加した興味・好み＝source:"user"、除外＝dismissed)は
+  // taste-state.md の app-managed ゾーンへ統合したので、下の syncMyBrain がまとめて
+  // 書く(旧 taste-user.md は廃止・HANDOFF §8.16)。非致命。
   try {
-    const bullet = (arr: string[]) => (arr.length ? arr.map((l) => `- ${l}`).join("\n") : "（なし）");
-    const userMd = [
-      "# taste-user（アプリでの手編集。分析タスクはこれを尊重する）",
-      "",
-      "## 追加（手動で足した好み・興味。消さないこと）",
-      bullet(userAddedLabels),
-      "",
-      "## 除外（手動で消した。好み・興味に復活させないこと）",
-      bullet(dismissed),
-      "",
-    ].join("\n");
-    await writeMyBrainFile("taste-user.md", userMd, "手編集(追加・除外)を同期");
     const srcMd = [
       "# sources-user（アプリで削除した情報源。発掘タスクはこれを尊重する）",
       "",
@@ -478,7 +467,7 @@ export async function GET(req: Request) {
     ].join("\n");
     await writeMyBrainFile("sources-user.md", srcMd, "削除した情報源を同期");
   } catch {
-    /* taste-user.md/sources-user.mdの失敗はデッキ生成を止めない */
+    /* sources-user.mdの失敗はデッキ生成を止めない */
   }
 
   // 6.5 チップの毎晩同期。分析(好み・興味・関連キーワードの作成)は精度が要るので
@@ -506,10 +495,15 @@ export async function GET(req: Request) {
     chipsSynced = { ok: false, note: e instanceof Error ? e.message : String(e) };
   }
 
-  // 7. お気に入りの情報源(sources.md)を my-brain へ同期する(taste-state.md は
-  // Coworkの週次分析タスクが所有・上書きするのでここでは書かない)。失敗しても
+  // 7. お気に入りの情報源(sources.md)＋ taste-state.md の app-managed ゾーン
+  // (手動追加した興味・好み＝source:"user"、除外＝dismissed)を my-brain へ同期する
+  // (夜間のバックストップ。分析結果=ゾーンの外はCoworkが所有し触らない)。失敗しても
   // デッキ生成は成功扱い。
-  const mybrainSync = await syncMyBrain({ sources: appFavoriteSources });
+  const mybrainSync = await syncMyBrain({
+    sources: appFavoriteSources,
+    manualInterests: userAddedLabels.map((label) => ({ label })),
+    dismissed,
+  });
 
   return NextResponse.json({
     ok: true, editionKey, cardCount: cards.length, pooled, deckWritten,

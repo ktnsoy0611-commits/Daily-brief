@@ -3718,3 +3718,55 @@ KEEP を新しい興味の入口にし、正が続いた興味を好みへ昇格
 提案/情報カードになる・サイト別候補数)は本番デプロイでのみ確認可能(この環境は
 外部fetch不可)。次回、設定の実験カードにカルチャー誌URL＋eiga/timeout/bijutsutecho
 を入れ、サイト別の取得成否・候補件数・生成カードを見て切り分ける。**
+
+## 8.16 ★「今すぐ生成」で0枚になる根治・分類の意味的拡張・taste2ファイル統合(2026-07-28)
+
+「今すぐ生成でカードが1枚も出ない(情報カードすら)」「分析が毎回データ不足」「ブランド名を
+入れても上位概念(ファッション)に結びつかない」「taste-state と taste-user が重複して
+分かりにくい」への対応。ユーザー確認: 生成は**「今すぐ生成」**(=夜間Cronと同じ経路)/
+スキップは**ログに残さないまま**/ taste-state と taste-user は**1ファイルに統合**。
+
+**A. 0枚の根治(コードのみ)**:
+- **更新なしスキップが空を招かないように**(`lib/briefPipeline.ts`): 取得した全サイトの
+  一覧Markdownが前回と同ハッシュ(=更新なし)でも、取得できた全サイトを抽出対象に
+  フォールバックする。展覧会・雑誌の一覧は日々ほぼ同内容で、`unchanged`スキップだけだと
+  容易に0枚になっていた(=ユーザー報告の主因)。取得が全滅した時のみ空を返す。
+- **手動「今すぐ生成」は forceFresh** で更新なし判定自体を無効化(`build-brief` route が
+  Bearerトークン認可=本人の手動実行を検知して buildDeck へ渡す)。夜間の GitHub
+  Actions(x-cron-secret)は従来どおりトークン節約(unchangedスキップ)を維持。
+- 連鎖の解消: 0枚が続く→反応が貯まらない→logs空→分析が毎回「データ不足」だった。
+  Aで生成が出れば keep/実行/星 のログが貯まり分析が機能する(スキップ非記録は方針どおり維持)。
+
+**B. 分類を意味的に拡張(`SYSTEM_CLASSIFY` ルール3・プロンプト変更)**: 合致を文字どおりの
+一致に限らず、プロファイル各項目の上位/下位/隣接概念まで汲む(例: 特定のブランド名→
+「ファッション」という上位ジャンル)。網羅的なタグ登録に頼らず拾えるようにした。
+
+**C. 分析を前向き信号のみで機能させる(`COWORK-ROUTINES.md` 分析プロンプト・変更)**:
+スキップ非記録に合わせ「## 避けられる傾向(流した・拒否から)」を削除、反応の強さも
+実行>星>残した の3段に。加えて「具体(ブランド名等)から上位ジャンル・傾向も推定して
+興味・好みに含める」を明記(Bと同じ穴を分析側でも塞ぐ)。ログ行の説明も
+「日付｜タイトル｜要約本文」「前向きな反応だけ」に整合。
+
+**D. taste-state と taste-user を1ファイルへ統合(コード＋Cowork分析プロンプト)**:
+`sources.md` のお気に入りマーカー方式を踏襲し、**taste-state.md 内に app-managed ゾーン**
+(`<!-- BEGIN/END app-managed:taste -->`)を設けた。ゾーンの中=アプリが管理する「手動で
+追加した興味・好み」「手動で除外」、ゾーンの外=Coworkの分析(興味・好み本体・関連
+キーワード・生活圏・願い)。両者が同じファイルを衝突なく共同編集する。
+- `lib/myBrainWrite.ts`: `renderTasteStateMd`(未使用の旧・全体上書き)を廃し、ゾーンだけ
+  差し替える `mergeTasteStateMd` を新設。`syncMyBrain` が taste-state.md のゾーンを更新し、
+  旧 `taste-user.md`/`taste_state.md` を削除(ベストエフォート)。`SyncTasteInput` は
+  `manualInterests`(source:"user")＋`dismissed`＋`sources`。
+- `lib/myBrainSyncClient.ts`: 全interestsでなく **source:"user" の手動追加＋dismissed** を送る。
+- `lib/myBrain.ts` `tasteFromMarkdown`: Coworkの「## 興味・好み」＋ゾーンの「## 手動で
+  追加した興味・好み」を合算し、「## 手動で除外」を差し引いて taste にする(zone対応)。
+- `app/api/cron/build-brief/route.ts`: 旧 taste-user.md 書き出しを撤去し、`syncMyBrain` に
+  `manualInterests`＋`dismissed` を渡す夜間バックストップへ。sources-user.md は継続。
+- ドキュメント: taste-state=興味の真実源(1ファイル)/taste-analysis=詳細分析メモ、と整理。
+  taste-user は state へ統合し廃止。
+
+検証: `tsc`/`eslint`(既知img2件)/`build` 通過。Node単体テストで、taste-stateゾーンの
+新規生成・既存C(Cowork分析)を保ったままゾーンだけ差し替え・パース(Cowork興味好み ∪
+手動追加 − 除外)を確認。**実キー・実ネットワークが要る実挙動(0枚が解消するか・ブランド→
+上位概念で拾えるか・分析が貯まるか・taste-state 1ファイル同期)は本番デプロイでのみ
+確認可能(この環境は外部fetch不可)。実機で「今すぐ生成」を押し、実験カードのサイト別
+候補数を見て切り分ける。**

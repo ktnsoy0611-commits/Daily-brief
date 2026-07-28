@@ -158,9 +158,14 @@ function tasteFromMarkdown(md: string): TasteInput {
   const isTasteInterest = (h: string) => !isRelated(h) && /好み|興味|関心/.test(h);
   const livingArea = firstLineOf(sections.find((s) => /生活圏|エリア/.test(s.heading))?.lines ?? []);
   const relatedBullets = bulletsOf(sections.find((s) => isRelated(s.heading))?.lines ?? []);
+  // taste-state.md は1ファイルに統合(HANDOFF §8.16)。Coworkが書く「## 興味・好み」と、
+  // アプリのapp-managedゾーン「## 手動で追加した興味・好み」は共に isTasteInterest に
+  // 該当するので、まとめて拾えば手動追加も自動で合算される。「## 手動で除外」は
+  // 好み/興味を含まないので taste には入らないが、その項目は taste から差し引く。
+  const dismissedSet = new Set(bulletsOf(sections.find((s) => /除外/.test(s.heading))?.lines ?? []));
   const tasteBullets = Array.from(
     new Set(sections.filter((s) => isTasteInterest(s.heading)).flatMap((s) => bulletsOf(s.lines))),
-  );
+  ).filter((l) => !dismissedSet.has(l));
   const wishBullets = bulletsOf(sections.find((s) => /願い|ウィッシュ/.test(s.heading))?.lines ?? []);
   return {
     livingArea,

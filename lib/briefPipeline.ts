@@ -404,10 +404,10 @@ ${DOMAIN_KIND_TABLE}
 # 分類ルール
 1. 記述は候補レコードに含まれる情報のみを根拠とする。レコードに無い情報の補完・推測は禁止。
 2. 入力された候補は1件も省略せず、すべてについて分類結果を出力する。
-3. matchStrength は候補とプロファイルとの関係で判定する。
-   "strong": 願望リスト・興味・好みのいずれかに直接合致する候補
-   "moderate": 興味・好みの関連キーワードに合致する、または興味・好みに近接するが直接は一致しない候補
-   "info": 上のいずれにも強くは当たらないが、<生活圏>内で、終了しておらず(開催中またはこれから)、読む価値のありそうな新着の物事。提案ではなく中立な「新着情報」として扱う。
+3. matchStrength は候補とプロファイルとの関係で判定する。合致は文字どおりの一致に限らない。プロファイルの各項目が指す上位概念・下位概念・隣接ジャンルまで含めて考える(例: 特定のブランド名は「ファッション」という上位ジャンルを、ある作家名はその分野を含意する。候補がその上位・隣接の範囲に入るなら合致とみなす)。
+   "strong": 願望リスト・興味・好みのいずれかに、直接またはその上位/下位概念として合致する候補
+   "moderate": 興味・好みの関連キーワードに合致する、または興味・好みと地続きの隣接領域にある候補
+   "info": 上のいずれにも当たらないが、<生活圏>内で、終了しておらず(開催中またはこれから)、読む価値のありそうな新着の物事。提案ではなく中立な「新着情報」として扱う。
    "none": <生活圏>外、終了済み、または明らかに無関係・読む価値が乏しい候補のみ
 4. matchStrength が "none" の候補は id と matchStrength のみを出力する。他のフィールドは出力しない。
 5. matchStrength が "strong"・"moderate"・"info" の候補は、id・matchStrength に加えて以下も出力する。
@@ -546,6 +546,7 @@ export async function buildDeck(input: {
   count: number;
   exclude?: { urls?: string[]; names?: string[] };
   digests?: Record<string, string>;
+  forceFresh?: boolean; // 真なら「更新なしスキップ」を無効化し取得できた全サイトを抽出する
 }): Promise<BuildResult> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { ok: false, reason: "no_key" };
@@ -617,6 +618,7 @@ export async function buildDeck(input: {
     // Q3: 取得できた各サイトの内容ハッシュを計算し、前回(input.digests)と一致する
     // サイトは「更新なし」とみなして抽出対象から外す(Geminiに渡さない=トークン節約)。
     // digests は今回取得できた全サイトの最新ハッシュを返す(Cronが保存し次回渡す)。
+    const forceFresh = !!input.forceFresh;
     const digests: Record<string, string> = {};
     const unchangedKeys = new Set<string>();
     for (const r of siteFetches) {
@@ -624,7 +626,8 @@ export async function buildDeck(input: {
       const k = normUrl(r.url);
       const h = contentHash(r.md);
       digests[k] = h;
-      if (prevDigests[k] && prevDigests[k] === h) unchangedKeys.add(k);
+      // forceFresh(手動生成)のときは更新なし判定自体をしない=全部抽出する。
+      if (!forceFresh && prevDigests[k] && prevDigests[k] === h) unchangedKeys.add(k);
     }
     const sites: SiteTrace[] = siteFetches.map((r) => ({
       ...r.trace,
@@ -633,14 +636,18 @@ export async function buildDeck(input: {
     const pagesRead: PageReadTrace[] = siteFetches.map((r) => ({ url: r.url, ok: r.fetched }));
 
     // 更新の無いサイト(前回とダイジェスト一致)は抽出対象から外す(Geminiに
-    // 渡さない=トークン節約。ユーザー指定で「更新の無いサイトは抽出しなくてよい」)。
-    const usable = siteFetches.filter((r) => r.fetched && r.md && !unchangedKeys.has(normUrl(r.url)));
+    // 渡さない=トークン節約)。ただし**全サイトが更新なしでも0枚にはしない**:
+    // その場合は取得できた全サイトを抽出対象にフォールバックする(トークンより
+    // 「デッキが空にならない」ことを優先。展覧会・雑誌の一覧は日々ほぼ同内容で、
+    // 更新なしスキップだけだと容易に0枚になっていた=ユーザー報告の主因)。
+    const fetchedSites = siteFetches.filter((r) => r.fetched && r.md);
+    let usable = fetchedSites.filter((r) => !unchangedKeys.has(normUrl(r.url)));
+    if (usable.length === 0) usable = fetchedSites;
     if (usable.length === 0) {
-      const anyFetched = siteFetches.some((r) => r.fetched && r.md);
       return {
         ok: true, cards: [], candidateCount: 0, records: [], sites, pagesRead,
         dropped: ZERO_DROPS, tokens, digests,
-        note: anyFetched ? "取得できた情報源に前回からの更新がありませんでした。" : "情報源ページを取得できませんでした。",
+        note: "情報源ページを取得できませんでした。",
       };
     }
 

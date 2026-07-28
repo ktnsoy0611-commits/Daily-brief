@@ -116,6 +116,10 @@ export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   const provided = new URL(req.url).searchParams.get("secret") ?? req.headers.get("x-cron-secret") ?? "";
   let authorized = !!secret && provided === secret;
+  // 本人がアプリの「今すぐ生成」から叩いた手動実行か(=Bearerトークン認可)を覚えておく。
+  // 手動実行は「更新の有無に関わらず今すぐ出したい」ので、更新なしスキップを無効化する
+  // (forceFresh)。夜間のGitHub Actions(x-cron-secret)は従来どおりトークン節約を優先。
+  let manualRun = false;
   if (!authorized) {
     const authHeader = req.headers.get("authorization") ?? "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -124,7 +128,7 @@ export async function GET(req: Request) {
       try {
         const authClient = createClient(supaUrl, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
         const { data } = await authClient.auth.getUser(token);
-        if (data?.user?.id === ownerId) authorized = true;
+        if (data?.user?.id === ownerId) { authorized = true; manualRun = true; }
       } catch { /* 無効トークンは未認可のまま */ }
     }
   }
@@ -273,6 +277,7 @@ export async function GET(req: Request) {
         taste, sources, count: genCount,
         exclude: { urls: excludeUrls, names: excludeNames },
         digests: prevDigests,
+        forceFresh: manualRun, // 手動「今すぐ生成」は更新なしスキップを無効化して必ず抽出
       });
   if (result && !result.ok) {
     const status = result.reason.startsWith("gemini_") || result.reason === "fetch_failed" ? 502 : 200;

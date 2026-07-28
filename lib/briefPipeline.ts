@@ -44,7 +44,7 @@ export type TasteInput = {
 };
 export type TokenUsage = { promptTokens: number; candidateTokens: number; totalTokens: number; calls: number };
 // unchanged: 前回のダイジェスト(内容ハッシュ)と一致し、抽出をスキップしたサイト。
-export type SiteTrace = { source: string; fetched: boolean; linkCount: number; unchanged?: boolean };
+export type SiteTrace = { source: string; fetched: boolean; linkCount: number; unchanged?: boolean; candidates?: number };
 export type PageReadTrace = { url: string; ok: boolean };
 export type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number };
 export type GeneratedCard = {
@@ -359,7 +359,7 @@ function extractJsonArray<T>(text: string): T[] | null {
 }
 
 // ---- プロンプト -----------------------------------------------------------
-const SYSTEM_CANDIDATES = `あなたは情報抽出パイプラインの候補抽出モジュールです。入力されるページのMarkdown本文だけを情報源として、そこに並ぶ個別の事物を候補レコードとしてJSON配列で出力します。
+const SYSTEM_CANDIDATES = `あなたは情報抽出パイプラインの候補抽出モジュールです。入力されるページのMarkdown本文だけを情報源として、そこに並ぶ個別の事物(催し・作品・記事など)を候補レコードとしてJSON配列で出力します。
 
 # 入力仕様
 <基準日>: 判断の基準となる本日の日付
@@ -368,7 +368,7 @@ const SYSTEM_CANDIDATES = `あなたは情報抽出パイプラインの候補�
 
 # 抽出ルール
 1. レコードの全記述は、そのページ本文に明記された情報のみを根拠とする。本文に無い情報の補完・推測・一般知識の使用は禁止。名称が本文から特定できない事物はレコードにしない。
-2. 1レコードは1つの事物を表す。ページ本文に並ぶ個別の催し・作品を、上限まで拾う。ナビゲーション・サイト案内・広告は事物ではない。
+2. 1レコードは1つの事物を表す。ページ本文に並ぶ個別の事物——催し・展示・上映・作品に加えて、記事・特集・レビュー・インタビュー・作品紹介・エッセイなども含む——を、上限まで拾う。会場や会期の無い記事も、名称(見出し)と要約が本文から取れれば1レコードにする。ナビゲーション・サイト案内・タグ一覧・広告は事物ではない。
 3. <基準日>時点で既に終了している事物はレコードにしない。開始日・終了日が本文から特定できる場合のみ start / end に記す。
 4. sourceUrl は、その事物の個別ページを指す、本文中に実在するリンクのURLをそのまま用いる。URLの生成・改変・補完は禁止。個別リンクが本文に無い事物は、そのページ自体のURLを用いる。
 5. 評価・推薦・誇張はしない。事実の要約のみを記す。
@@ -392,11 +392,10 @@ const SYSTEM_CLASSIFY = `あなたは情報編成パイプラインの候補分�
 # 入力仕様
 <基準日>: 判断の基準となる本日の日付
 <生活圏>: 提案対象とする地理的範囲
-<プロファイル>: ユーザーの関心を表す4つの信号
+<プロファイル>: ユーザーの関心を表す信号
   願望リスト: 具体的な願い。各行は「- (id: 識別子) 内容」または「- (id: 識別子) 内容 [ドメイン: …]」の形式(識別子は紐づけ用、ドメインが分かる場合のみ付与)
-  好み: 比較的安定した、ジャンル・カルチャーの好み
-  興味: 今、関心を持っている物事(時期によって変わる)
-  興味の関連キーワード: 興味から派生する関連・隣接テーマ。網を少し広げてカードを拾うための材料
+  興味・好み: 関心を持ち、好んでいるテーマ(ジャンル・カルチャーの好みと、今の関心をまとめたもの)
+  興味・好みの関連キーワード: 興味・好みから派生する関連・隣接テーマ。網を少し広げてカードを拾うための材料
 <候補一覧>: 候補レコード(JSON配列)。各要素は id を持つ
 
 # ドメインとkindの対応表(願いに応えるカードのkind選択に使う)
@@ -703,6 +702,12 @@ export async function buildDeck(input: {
       seenCandidate.add(k);
       candidates.push({ ...c, site: originSiteFor(su) });
     }
+    // 可観測性: サイト別に抽出できた候補数を各トレースへ入れる。実験カードで
+    // 「取得OKなのに候補0(=抽出の問題)」と「候補は出たが後段で落ちた」を
+    // 切り分けられるようにする(展覧会偏りの原因を実機で特定する鍵)。
+    const candCountBySite = new Map<string, number>();
+    for (const c of candidates) { if (c.site) candCountBySite.set(c.site, (candCountBySite.get(c.site) ?? 0) + 1); }
+    for (const s of sites) { s.candidates = candCountBySite.get(s.source) ?? 0; }
     if (candidates.length === 0) {
       return {
         ok: true, cards: [], candidateCount: 0, records: [], sites, pagesRead, digests,

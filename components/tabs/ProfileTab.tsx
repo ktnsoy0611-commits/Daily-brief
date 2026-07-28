@@ -19,7 +19,7 @@ type GeneratedCard = {
   expiresAt?: string; isDerived?: boolean; sourceWishTitle?: string;
 };
 type SiteTrace = {
-  source: string; fetched: boolean; linkCount: number;
+  source: string; fetched: boolean; linkCount: number; candidates?: number;
 };
 type PageReadTrace = { url: string; ok: boolean };
 type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number };
@@ -773,7 +773,7 @@ export function ProfileTab({ appState, persist, onClose }: {
                   </div>
                   {s.fetched && (
                     <div style={{ paddingLeft: 14 }}>
-                      一覧から直接抽出(単ホップ) ／ Markdown中のリンク:{s.linkCount}
+                      候補<span style={{ color: (s.candidates ?? 0) > 0 ? "#33633F" : RUST, fontWeight: 700 }}>{s.candidates ?? 0}</span>件 ／ Markdown中のリンク:{s.linkCount}
                     </div>
                   )}
                 </div>

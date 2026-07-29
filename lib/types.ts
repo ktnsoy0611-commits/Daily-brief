@@ -204,6 +204,9 @@ export interface AppState {
     editionKey: string;  // 生成した号("YYYY-MM-DD-am"|"-pm")
     cardCount: number;   // この実行で書き込んだカード枚数
     sourceCount: number; // 今晩巡回した情報源数(固定＋抽選)
+    sitesFetched?: number; // 実際に取得できたサイト数(取得成功)
+    candidateCount?: number; // 層Bが抽出した候補レコード数
+    dropped?: { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number }; // 候補が最終カードに残らず落ちた内訳(切り分け用)
     pooled: number;      // content_cacheに新規蓄積した候補数
     totalTokens: number; // Gemini実測トークン合計
     note?: string;       // 補足(更新なし・候補ゼロ等)

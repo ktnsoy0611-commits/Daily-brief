@@ -646,7 +646,20 @@ export function ProfileTab({ appState, persist, onClose }: {
                 {cronStatus.cardCount}枚を生成{cronStatus.cardCount === 0 && cronStatus.note ? `（${cronStatus.note}）` : ""}
               </div>
               <div style={{ fontSize: 10.5, color: "#9A988E", marginTop: 4, lineHeight: 1.7 }}>
-                {cronWhen(cronStatus.at)} ・ {editionJp(cronStatus.editionKey)} ・ 情報源{cronStatus.sourceCount}サイト巡回<br />
+                {cronWhen(cronStatus.at)} ・ {editionJp(cronStatus.editionKey)} ・ 情報源{cronStatus.sourceCount}サイト巡回{typeof cronStatus.sitesFetched === "number" ? `(取得成功${cronStatus.sitesFetched})` : ""}<br />
+                {typeof cronStatus.candidateCount === "number" && <>候補{cronStatus.candidateCount}件<br /></>}
+                {cronStatus.dropped && (() => {
+                  const d = cronStatus.dropped;
+                  const parts = [
+                    d.duplicateCandidate ? `既出で除外${d.duplicateCandidate}` : "",
+                    d.irrelevant ? `無関係${d.irrelevant}` : "",
+                    d.outOfArea ? `圏外${d.outOfArea}` : "",
+                    d.expired ? `終了済み${d.expired}` : "",
+                    d.overQuota ? `枚数超過${d.overQuota}` : "",
+                    d.sourceInvalid ? `出典不一致${d.sourceInvalid}` : "",
+                  ].filter(Boolean);
+                  return parts.length ? <>落ちた内訳: {parts.join(" / ")}<br /></> : null;
+                })()}
                 プール+{cronStatus.pooled} ／ トークン{cronStatus.totalTokens.toLocaleString()}
               </div>
             </>

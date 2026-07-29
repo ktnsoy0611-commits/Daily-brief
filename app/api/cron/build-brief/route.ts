@@ -419,6 +419,11 @@ export async function GET(req: Request) {
         value: {
           at: new Date().toISOString(), editionKey,
           cardCount: cards.length, sourceCount: sources.length,
+          // 切り分け用: 取得できたサイト数・抽出候補数・落ちた内訳。0枚のとき
+          // 「取得できていない/候補が出ていない/既出で除外された」のどれかが分かる。
+          sitesFetched: result?.sites.filter((s) => s.fetched).length,
+          candidateCount: result?.candidateCount,
+          dropped: result?.dropped,
           pooled, totalTokens: result?.tokens.totalTokens ?? 0,
           note: result?.note ?? (skipGen ? `未消化のカードが${undigested}枚あるため、今回は生成を見送りました。` : undefined),
         },

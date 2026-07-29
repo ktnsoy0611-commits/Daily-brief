@@ -31,7 +31,9 @@ import type { BriefCard } from "@/lib/types";
 //   (生成) GEMINI_API_KEY / JINA_API_KEY(任意)
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// 枚数を増やした(GEN_TARGET=16)ぶん、取得+要約に時間がかかる。上限を長めに取る
+// (Vercelのプラン上限まで有効。Hobbyは60秒で頭打ちだが指定しても害はない)。
+export const maxDuration = 300;
 
 const RETENTION_DAYS = 30;   // 生成カード(号)の保持日数。1ヶ月を過ぎた号は削除する
 const POOL_CAP = 60;         // 未消化(keep/skipされていない)カードの上限。これに達したら生成しない(枚数を増やすため30→60)

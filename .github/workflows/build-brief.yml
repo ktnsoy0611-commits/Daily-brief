@@ -36,7 +36,7 @@ jobs:
           # -L: リダイレクト(例: URL末尾のスラッシュ有無による308)を追従する。
           # 追従しないと、実際にはAPIへ届かず「リダイレクト応答」だけを見て
           # 成功したかのように見えてしまう(ジョブが緑でも中身が空の原因)。
-          body=$(curl -sS -L --max-time 120 -w "\n%{http_code}" \
+          body=$(curl -sS -L --max-time 300 -w "\n%{http_code}" \
             -H "x-cron-secret: $CRON_SECRET" \
             "$APP_BASE_URL/api/cron/build-brief")
           code=$(echo "$body" | tail -n1)

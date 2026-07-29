@@ -440,7 +440,19 @@ export function ProfileTab({ appState, persist, onClose }: {
       const token = sess.session?.access_token;
       if (!token) { setGenNow("error"); setGenNowMsg("ログイン情報を取得できませんでした。一度サインインし直してください。"); return; }
       const res = await fetch("/api/cron/build-brief", { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
+      // 生成は重い(枚数を増やしたぶん時間がかかる)ため、サーバーの処理時間上限を
+      // 超えると本文が空/JSONでない応答が返り、res.json()がSafariで
+      // 「The string did not match the expected pattern.」を投げる。空応答でも
+      // サーバー側は途中まで書けていることがあるので、怖いエラーを出さず
+      // 「時間がかかっています。更新して確認してください」と案内して再読込する。
+      let data: { ok?: boolean; reason?: string; cardCount?: number; note?: string } | null = null;
+      try { data = await res.json(); } catch { data = null; }
+      if (!data) {
+        setGenNow("error");
+        setGenNowMsg("生成に時間がかかっています。しばらく待ってから画面を更新して、生成状況を確認してください。");
+        setTimeout(() => window.location.reload(), 5000);
+        return;
+      }
       if (!res.ok || !data.ok) {
         setGenNow("error");
         const reason: string = data?.reason ?? `${res.status}`;

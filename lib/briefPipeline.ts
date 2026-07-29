@@ -27,7 +27,7 @@ const TOTAL_TEXT_LIMIT = 60000;       // 層Bに渡す本文合計の上限(文�
 const SOURCE_LIMIT = 30;              // buildDeckが読む情報源(一覧)の安全弁。実件数はCronが決める(固定5+お気に入り+抽選10を賄う)
 const SITE_CARD_LIMIT = 6;            // 層Dで1つの情報源から採用するカードの最大数(枚数を増やすため3→6)
 const ENRICH_PAGE_TEXT_LIMIT = 6000;  // 層E(本文詳細化)で1個別ページに使う本文の上限(文字数)
-const ENRICH_CONCURRENCY = 6;         // 層Eで個別ページを同時取得する数
+const ENRICH_CONCURRENCY = 12;        // 層Eで個別ページを同時取得する数(枚数増に合わせ6→12で待ち時間短縮)
 const ENRICH_BATCH = 5;               // 層Eで1回のGemini呼び出しに含めるカード数(出力が8192を超えないよう小分け)
 
 // ---- 型 -------------------------------------------------------------------

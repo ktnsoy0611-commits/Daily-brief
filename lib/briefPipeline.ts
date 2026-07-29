@@ -29,6 +29,7 @@ const SITE_CARD_LIMIT = 6;            // 層Dで1つの情報源から採用す�
 const ENRICH_PAGE_TEXT_LIMIT = 6000;  // 層E(本文詳細化)で1個別ページに使う本文の上限(文字数)
 const ENRICH_CONCURRENCY = 12;        // 層Eで個別ページを同時取得する数(枚数増に合わせ6→12で待ち時間短縮)
 const ENRICH_BATCH = 5;               // 層Eで1回のGemini呼び出しに含めるカード数(出力が8192を超えないよう小分け)
+const SITE_FETCH_CONCURRENCY = 6;     // 情報源(一覧)をJinaで同時取得する数(多すぎると無料枠の429で失敗が増える)
 
 // ---- 型 -------------------------------------------------------------------
 export type InterestSignal = { label: string; weight: number };
@@ -189,19 +190,32 @@ export function markdownUrlMap(md: string, sourceUrl: string): Map<string, strin
 
 // ---- Jina Reader 経由のクリーンMarkdown取得 -------------------------------
 type FetchedPage = { url: string; ok: boolean; md: string };
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function fetchViaJina(url: string): Promise<FetchedPage> {
-  try {
-    const jinaKey = process.env.JINA_API_KEY;
-    const headers: Record<string, string> = { Accept: "text/plain", "X-Return-Format": "markdown" };
-    if (jinaKey) headers["Authorization"] = `Bearer ${jinaKey}`;
-    const res = await fetch(JINA_BASE + url, { headers, signal: AbortSignal.timeout(30000) });
-    if (!res.ok) return { url, ok: false, md: "" };
-    const md = (await res.text()).trim();
-    if (!md) return { url, ok: false, md: "" };
-    return { url, ok: true, md };
-  } catch {
-    return { url, ok: false, md: "" };
+  // Jina無料枠(キー無し)は同時リクエストが多いと429で弾かれやすい。多数サイトを
+  // 一度に取りに行くと取得失敗が増えて候補が激減するため、失敗時は少し待って
+  // 最大2回まで再試行する(特に429/5xx対策)。JINA_API_KEYがあればレート上限が
+  // 上がるので、恒久対策としてはキー設定が望ましい。
+  const jinaKey = process.env.JINA_API_KEY;
+  const headers: Record<string, string> = { Accept: "text/plain", "X-Return-Format": "markdown" };
+  if (jinaKey) headers["Authorization"] = `Bearer ${jinaKey}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(JINA_BASE + url, { headers, signal: AbortSignal.timeout(30000) });
+      if (!res.ok) {
+        // 429(レート超過)・5xx(一時障害)は待って再試行。4xxの他は諦める。
+        if ((res.status === 429 || res.status >= 500) && attempt < 2) { await sleep(1200 * (attempt + 1)); continue; }
+        return { url, ok: false, md: "" };
+      }
+      const md = (await res.text()).trim();
+      if (!md) { if (attempt < 2) { await sleep(1000); continue; } return { url, ok: false, md: "" }; }
+      return { url, ok: true, md };
+    } catch {
+      if (attempt < 2) { await sleep(1000); continue; } // タイムアウト・ネットワークも1回は再試行
+      return { url, ok: false, md: "" };
+    }
   }
+  return { url, ok: false, md: "" };
 }
 
 // ---- OGP画像(og:image)の取得 ---------------------------------------------
@@ -624,7 +638,10 @@ export async function buildDeck(input: {
   const todayJp = `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日`;
 
   try {
-    const siteFetches = await Promise.all(sources.map((s) => fetchSite(s)));
+    // 情報源の取得は同時数を絞る(全部一度に投げるとJina無料枠の429で多数が
+    // 失敗し、候補が激減する)。SITE_FETCH_CONCURRENCY ずつ + fetchViaJinaの再試行で
+    // 取得成功率を上げる。
+    const siteFetches = await mapWithConcurrency(sources, SITE_FETCH_CONCURRENCY, (s) => fetchSite(s));
     let tokens = ZERO_USAGE;
 
     // Q3: 取得できた各サイトの内容ハッシュを計算し、前回(input.digests)と一致する

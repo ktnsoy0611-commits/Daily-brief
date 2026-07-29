@@ -432,15 +432,29 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
             (card.sourceWishTitle
               ? next.wishes.find((w) => w.title === card.sourceWishTitle && w.status === "stock")
               : undefined);
-          next.items.push({
-            id: `brief-${ed}-${card.id}`, kind: card.kind ?? "place",
-            title: card.title, category: card.categoryJp, summary: card.body, detail: card.detail,
-            area: card.area && card.area !== "—" ? card.area : undefined,
-            lat: card.lat, lng: card.lng, placeId: card.placeId,
-            images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
-            status: "candidate", addedAt: new Date().toISOString(), expiresAt: card.expiresAt,
-            origin: wish ? "wish" : "brief", sourceWishId: wish?.id,
-          });
+          const nowIso = new Date().toISOString();
+          // 情報カード(新着記事)は「提案」ではなく「読んで記録するもの」。KEEPしたら
+          // ストック(候補)には出さず、その日の日付バインダーへ done として直接入れる
+          // (別枠の流れ・ユーザー指定 HANDOFF §8.17)。detail に記事の半分要約が入って
+          // おり、アーカイブでもそのまま読める。
+          if (card.isInfo) {
+            next.items.push({
+              id: `brief-${ed}-${card.id}`, kind: card.kind ?? "info",
+              title: card.title, category: card.categoryJp, summary: card.body, detail: card.detail,
+              images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
+              status: "done", addedAt: nowIso, doneAt: nowIso, origin: "info",
+            });
+          } else {
+            next.items.push({
+              id: `brief-${ed}-${card.id}`, kind: card.kind ?? "place",
+              title: card.title, category: card.categoryJp, summary: card.body, detail: card.detail,
+              area: card.area && card.area !== "—" ? card.area : undefined,
+              lat: card.lat, lng: card.lng, placeId: card.placeId,
+              images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
+              status: "candidate", addedAt: nowIso, expiresAt: card.expiresAt,
+              origin: wish ? "wish" : "brief", sourceWishId: wish?.id,
+            });
+          }
         }
       }
 

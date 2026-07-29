@@ -35,7 +35,9 @@ export type ItemDomain = "place" | "experience" | "info" | "thing";
 export type ItemStatus = "candidate" | "planned" | "done";
 // brief=ブリーフのKEEPから / manual=ストックで手動追加 / wish=ウィッシュが
 // ブリーフを経て形になったもの(sourceWishIdで元の願いへ辿れる)
-export type ItemOrigin = "brief" | "manual" | "wish";
+// "info" = 情報カード(新着記事)をKEEPしたもの。ストック(候補)には出さず、
+// その日の日付バインダーに done として直接入れる別枠の流れ(HANDOFF §8.17)。
+export type ItemOrigin = "brief" | "manual" | "wish" | "info";
 
 export interface Item {
   id: string;
@@ -235,6 +237,9 @@ export interface BriefCard {
   fg: string;
   accent?: string;
   serendipity?: boolean;
+  // 情報カード(新着記事)。KEEPするとストックでなくその日の日付バインダーへ
+  // done として入る別枠(§8.17)。detailに記事の半分要約が入り、タップで読める。
+  isInfo?: boolean;
   images?: string[];
   sourceUrl?: string;
   sourceLabel?: string;

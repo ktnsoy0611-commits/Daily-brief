@@ -69,5 +69,6 @@ export function generatedToBriefCard(gc: GeneratedCard, id: number): BriefCard {
     sourceWishTitle: gc.sourceWishTitle,
     expiresAt: gc.expiresAt,
     serendipity: gc.isDerived,
+    isInfo: gc.isInfo,
   };
 }

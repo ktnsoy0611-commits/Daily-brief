@@ -55,6 +55,10 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const doneItems = appState.items
     .filter((i) => i.status === "done")
     .sort((a, b) => new Date(b.doneAt ?? b.addedAt).getTime() - new Date(a.doneAt ?? a.addedAt).getTime());
+  // 情報カード(新着記事)をKEEPしたもの(origin:"info")は、モノ/バショ等のドメイン棚
+  // には出さず、日付ビュー(その日のバインダー)だけに出す別枠(ユーザー指定 §8.17)。
+  // ドメイン棚の集計にはこの shelfItems を使い、日付ビューは doneItems 全体を使う。
+  const shelfItems = doneItems.filter((i) => i.origin !== "info");
   const fulfilledWishes = appState.wishes.filter((w) => w.status === "fulfilled");
   const pendingItems = (appState.pendingReview ?? []).map((id) => appState.items.find((i) => i.id === id)).filter((i): i is Item => !!i);
   const goals = (appState.goals ?? []).slice().sort((a, b) => new Date(b.checkIns?.[0]?.at ?? b.addedAt).getTime() - new Date(a.checkIns?.[0]?.at ?? a.addedAt).getTime());
@@ -121,7 +125,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   // ---- バショ: エリアごとに1冊(domain==="place"のみ。他ドメインが
   // 持つareaはこの棚には出さず、あくまでドメインで分ける) ----
   const areaGroups = new Map<string, Item[]>();
-  doneItems.filter((i) => domainOf(i) === "place").forEach((i) => {
+  shelfItems.filter((i) => domainOf(i) === "place").forEach((i) => {
     const area = i.area && i.area !== "—" ? i.area : "その他";
     if (!areaGroups.has(area)) areaGroups.set(area, []);
     areaGroups.get(area)!.push(i);
@@ -145,7 +149,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   const kindShelvesOf = (domain: "experience" | "info") => {
     const accentMap = domain === "experience" ? EXPERIENCE_ACCENT : MEDIA_ACCENT;
     const groups = new Map<ItemKind, Item[]>();
-    doneItems.filter((i) => domainOf(i) === domain).forEach((i) => {
+    shelfItems.filter((i) => domainOf(i) === domain).forEach((i) => {
       if (!groups.has(i.kind)) groups.set(i.kind, []);
       groups.get(i.kind)!.push(i);
     });
@@ -176,7 +180,7 @@ export function RecordsTab({ appState, persist, goTab, profileButton }: TabProps
   // から色を引く(thingVolumeAccent)。時系列に沿って古い方から巻が
   // 埋まっていくよう昇順に並べ替えてから等分し、表示は他の棚と同じく
   // 新しい巻(直近増えた分)を手前に出すため配列を反転する。 ----
-  const doneThingsAsc = doneItems
+  const doneThingsAsc = shelfItems
     .filter((i) => domainOf(i) === "thing")
     .slice()
     .sort((a, b) => new Date(a.doneAt ?? a.addedAt).getTime() - new Date(b.doneAt ?? b.addedAt).getTime());

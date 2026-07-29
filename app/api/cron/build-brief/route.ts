@@ -35,9 +35,11 @@ export const runtime = "nodejs";
 // (Vercelのプラン上限まで有効。Hobbyは60秒で頭打ちだが指定しても害はない)。
 export const maxDuration = 300;
 
-const RETENTION_DAYS = 30;   // 生成カード(号)の保持日数。1ヶ月を過ぎた号は削除する
-const POOL_CAP = 60;         // 未消化(keep/skipされていない)カードの上限。これに達したら生成しない(枚数を増やすため30→60)
-const GEN_TARGET = 16;       // 1号(朝刊/夕刊)で生成する目標枚数(枚数を増やすため10→16。朝刊16+夕刊16=1日最大32枚)
+// アプリを見ずスキップもキープもしなかった(=未消化の)カードは、この日数だけ
+// ストックし続け、超えたら削除する(ユーザー指定: 3日を限度)。号の日付で判定。
+const RETENTION_DAYS = 3;
+const POOL_CAP = 40;         // 未消化(keep/skipされていない)カードのストック上限。40枚溜まっている間は追加生成しない(ユーザー指定)
+const GEN_TARGET = 10;       // 1号(朝刊/夕刊)で出す目標枚数(ユーザー指定: 各10枚くらい。朝刊10+夕刊10=1日20枚)
 
 function jstEditionKey(): string {
   const jst = new Date(Date.now() + 9 * 3600 * 1000);

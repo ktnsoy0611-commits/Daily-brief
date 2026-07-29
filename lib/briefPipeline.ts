@@ -2,14 +2,16 @@
 // 夜間Cron(app/api/cron/build-brief)の両方がこの buildDeck() を使う。
 //
 // retrieval は Jina Reader(https://r.jina.ai/<URL>)経由のクリーンMarkdown。
-// 単ホップ: 情報源(一覧)ページ1枚のMarkdownから直接レコードを抽出し、各レコードの
-// sourceUrl は一覧中の実在リンク(=個別ページの実URL)を使う。個別ページは取得しない
-// (トークン節約)。段階:
+// 2層構成(§8.19で3層から再構築):
 //   取得(コード): 各情報源をJinaで取得し、実在URLの集合を機械抽出(捏造防止allowlist)。
-//   層B(1回): 一覧Markdownから中立な候補レコードを抽出。sourceUrlはallowlistで検証。
-//   層C(1回): 候補を strong/moderate/none に分類(除外・件数は判断させない)。
-//   層D(コード): 生活圏/期限切れ/重複を検証し、strong→ストレート枠・moderate→派生枠に
-//     コードが枚数を割り当てる。
+//   層1(サイトごとに1回・並列): 一覧Markdownから候補を抽出し、**その場で関連度
+//     (0〜100)を付ける**。抽出と分類を1回に統合。採否は判断させない。
+//   選抜(コード): 出典URLの実在検証・終了済み/圏外/重複の除外・関連度順の
+//     ラウンドロビンで上位N枚を採用。relevance>=50を提案カード、<50を情報カードに。
+//     **AIに「落とす」判断をさせないので、候補が1件でもあれば0枚にならない。**
+//   補充検索(コード＋層1): 候補が少ない日だけ、興味キーワードでJina検索(s.jina.ai)し、
+//     そのSERPを同じ層1プロンプトへ渡して候補を足す。
+//   層2(採用分だけ): 個別ページを取得して本文・詳細を仕上げる(情報カードは記事の半分要約)。
 //
 // GEMINI_API_KEY / JINA_API_KEY は NEXT_PUBLIC_ を付けずサーバー側だけが読む。
 
@@ -21,11 +23,22 @@ const JINA_BASE = "https://r.jina.ai/";
 const DEFAULT_LIVING_AREA = "東京23区(および電車で日常的に行ける範囲)";
 const DERIVED_TRIGGER = "興味の広がり";
 
-const EXTRACT_LIMIT_PER_LISTING = 18; // 層Bが1つの一覧から作る候補レコードの最大数(枚数を増やすため10→18)
-const LISTING_TEXT_LIMIT = 6000;      // 層Bに渡す1つの一覧Markdownの上限(文字数)
-const TOTAL_TEXT_LIMIT = 60000;       // 層Bに渡す本文合計の上限(文字数、固定+ローテーションの~10サイトを賄う)
-const SOURCE_LIMIT = 30;              // buildDeckが読む情報源(一覧)の安全弁。実件数はCronが決める(固定5+お気に入り+抽選10を賄う)
-const SITE_CARD_LIMIT = 6;            // 層Dで1つの情報源から採用するカードの最大数(枚数を増やすため3→6)
+// 層1(サイトごとの抽出＋関連度)の設定。以前は全サイトを1回のGemini呼び出しに
+// まとめており、1サイトあたり約3,300字しか渡せず、18サイトでも候補が10件程度しか
+// 返らない致命的な低歩留まりだった(§8.19)。サイトごとに1回ずつ並列で呼ぶことで、
+// 本文をたっぷり渡し、各サイトから確実にN件拾う。
+const EXTRACT_LIMIT_PER_SITE = 10;    // 1サイトから抽出する候補の最大数
+const LISTING_TEXT_LIMIT = 12000;     // 層1に渡す1サイトのMarkdownの上限(文字数)
+const EXTRACT_CONCURRENCY = 5;        // 層1のGemini呼び出しを同時に走らせる数
+const SOURCE_LIMIT = 30;              // buildDeckが読む情報源(一覧)の安全弁。実件数はCronが決める
+const SITE_CARD_LIMIT = 3;            // 1つの情報源から採用するカードの最大数(1サイトに偏らせない)
+// 関連度(0〜100)の境界。これ以上=提案カード、未満=中立の情報カード。
+const PROPOSAL_MIN_RELEVANCE = 50;
+const STRONG_MIN_RELEVANCE = 80;      // これ以上=直接合致(ストレート)、50〜79=興味の広がり(派生)
+// 補充検索: 候補がこの件数に届かないとき、興味キーワードでJina検索して足す。
+const SEARCH_TOPUP_THRESHOLD = 20;
+const SEARCH_QUERY_LIMIT = 3;         // 1回の生成で投げる検索クエリ数
+const JINA_SEARCH_BASE = "https://s.jina.ai/";
 const ENRICH_PAGE_TEXT_LIMIT = 6000;  // 層E(本文詳細化)で1個別ページに使う本文の上限(文字数)
 const ENRICH_CONCURRENCY = 12;        // 層Eで個別ページを同時取得する数(枚数増に合わせ6→12で待ち時間短縮)
 const ENRICH_BATCH = 5;               // 層Eで1回のGemini呼び出しに含めるカード数(出力が8192を超えないよう小分け)
@@ -62,7 +75,9 @@ export type GeneratedCard = {
 export type CandidateRecord = {
   name: string; summary?: string; venue?: string; area?: string;
   start?: string; end?: string; price?: string; sourceUrl?: string;
-  site?: string; // 由来する情報源(入力sources[]の1つ)。層Dのサイト別上限に使う
+  site?: string; // 由来する情報源(入力sources[]の1つ)。サイト別上限に使う
+  // 層1がその場で付ける関連度(0〜100)とkind。採否はコードがこの点数で決める。
+  relevance?: number; kind?: string; inLivingArea?: boolean; sourceWishId?: string;
 };
 export type BuildResult =
   | {
@@ -75,11 +90,11 @@ export type BuildResult =
       digests: Record<string, string>;
     }
   | { ok: false; reason: string; detail?: string };
-type ClassifiedCandidate = {
-  id?: number; matchStrength?: string; inLivingArea?: boolean;
-  title?: string; body?: string; kind?: string; trigger?: string;
-  sourceWishId?: string; area?: string; sourceLabel?: string;
-  meta?: string[]; expiresAt?: string;
+// 層1(SYSTEM_EXTRACT)が返す生の候補。relevance/kind を含む。
+type ExtractedCandidate = {
+  name?: string; summary?: string; relevance?: number; kind?: string;
+  inLivingArea?: boolean; venue?: string; area?: string;
+  start?: string; end?: string; price?: string; sourceUrl?: string; sourceWishId?: string;
 };
 
 const ZERO_USAGE: TokenUsage = { promptTokens: 0, candidateTokens: 0, totalTokens: 0, calls: 0 };
@@ -374,25 +389,6 @@ function extractJsonArray<T>(text: string): T[] | null {
 }
 
 // ---- プロンプト -----------------------------------------------------------
-const SYSTEM_CANDIDATES = `あなたは情報抽出パイプラインの候補抽出モジュールです。入力されるページのMarkdown本文だけを情報源として、そこに並ぶ個別の事物(催し・作品・記事など)を候補レコードとしてJSON配列で出力します。
-
-# 入力仕様
-<基準日>: 判断の基準となる本日の日付
-<抽出上限>: 1ページから作るレコードの最大件数
-<ページ群>: 各ページのURLとMarkdown本文。本文には個別の催し・作品への [表示文](URL) 形式のリンクが含まれる
-
-# 抽出ルール
-1. レコードの全記述は、そのページ本文に明記された情報のみを根拠とする。本文に無い情報の補完・推測・一般知識の使用は禁止。名称が本文から特定できない事物はレコードにしない。
-2. 1レコードは1つの事物を表す。ページ本文に並ぶ個別の事物——催し・展示・上映・作品に加えて、記事・特集・レビュー・インタビュー・作品紹介・エッセイなども含む——を、上限まで拾う。会場や会期の無い記事も、名称(見出し)と要約が本文から取れれば1レコードにする。ナビゲーション・サイト案内・タグ一覧・広告は事物ではない。
-2-2. 記事の中で具体的な商品・アイテム（ブランドの服・新商品・道具・本・作品など）が紹介・言及されていれば、その商品自体も1レコードにしてよい（name=商品名、summary=何のアイテムか・どのブランドか等）。会場・会期は不要。sourceUrl は記事のURL（本文に商品の実在リンクがあればそれ）。
-3. <基準日>時点で既に終了している事物はレコードにしない。開始日・終了日が本文から特定できる場合のみ start / end に記す。
-4. sourceUrl は、その事物の個別ページを指す、本文中に実在するリンクのURLをそのまま用いる。URLの生成・改変・補完は禁止。個別リンクが本文に無い事物は、そのページ自体のURLを用いる。
-5. 評価・推薦・誇張はしない。事実の要約のみを記す。
-6. 下記スキーマのJSON配列のみを出力する。該当がなければ [] を出力する。
-
-# 出力スキーマ
-name / summary / venue(任意) / area(任意) / start(任意,ISO8601) / end(任意,ISO8601) / price(任意) / sourceUrl`;
-
 // 願望の4ドメイン(Wish.category)→kindの対応表。願いに直接応えるカードの
 // kindを揃えるための固定テーブルで、constants.ts(ITEM_DOMAINS/kindsOfDomain)
 // から動的に生成する(プロンプトとコードのドメイン定義が食い違わないように)。
@@ -403,43 +399,44 @@ const DOMAIN_KIND_TABLE = ITEM_DOMAINS
   })
   .join("\n");
 
-const SYSTEM_CLASSIFY = `あなたは情報編成パイプラインの候補分類モジュールです。候補レコードを1件ずつプロファイルと照合し、分類結果をJSON配列で出力します。候補を残すか除外するか、何件にするかの判断はしません。
+// 層1: 1サイトを読んで候補を抽出し、その場で関連度(0〜100)を付ける。以前は
+// 「抽出(層B)」と「分類(層C)」を別々のGemini呼び出しに分け、しかも全サイトを
+// 1回にまとめていたため、(a)1サイトあたりの本文が足りず候補がごく少数、
+// (b)分類が全候補をnoneにして0枚、という二重の失敗が起きていた(§8.19)。
+// 抽出と関連度付けを1回に統合し、サイトごとに並列で呼ぶ。**採否は判断させない**
+// (点数だけ付けさせ、選抜はコードが行う)ので、構造的に0枚にならない。
+const SYSTEM_EXTRACT = `あなたは情報抽出モジュールです。1つのWebページのMarkdown本文だけを情報源として、そこに並ぶ個別の事物を候補としてJSON配列で出力します。各候補には、渡されたプロファイルとの関連度を0〜100の数値で付けます。採否の判断はしません（低い候補も除外せず、点数を低く付けて出力します）。
 
 # 入力仕様
-<基準日>: 判断の基準となる本日の日付
-<生活圏>: 提案対象とする地理的範囲
-<プロファイル>: ユーザーの関心を表す信号
-  願望リスト: 具体的な願い。各行は「- (id: 識別子) 内容」または「- (id: 識別子) 内容 [ドメイン: …]」の形式(識別子は紐づけ用、ドメインが分かる場合のみ付与)
-  興味・好み: 関心を持ち、好んでいるテーマ(ジャンル・カルチャーの好みと、今の関心をまとめたもの)
-  興味・好みの関連キーワード: 興味・好みから派生する関連・隣接テーマ。網を少し広げてカードを拾うための材料
-<候補一覧>: 候補レコード(JSON配列)。各要素は id を持つ
+<基準日>: 本日の日付
+<生活圏>: 提案の対象とする地理的範囲
+<プロファイル>
+  願望リスト: 具体的な願い。各行は「- (id: 識別子) 内容」または「- (id: 識別子) 内容 [ドメイン: …]」の形式
+  興味・好み: 関心を持ち、好んでいるテーマ
+  興味・好みの関連キーワード: そこから派生する関連・隣接テーマ
+<抽出上限>: このページから作る候補の最大件数
+<ページ>: URLとMarkdown本文
 
-# ドメインとkindの対応表(願いに応えるカードのkind選択に使う)
+# ドメインとkindの対応表(願いに応える候補のkind選択に使う)
 ${DOMAIN_KIND_TABLE}
 
-# 分類ルール
-1. 記述は候補レコードに含まれる情報のみを根拠とする。レコードに無い情報の補完・推測は禁止。
-2. 入力された候補は1件も省略せず、すべてについて分類結果を出力する。
-3. matchStrength は候補とプロファイルとの関係で判定する。合致は文字どおりの一致に限らない。プロファイルの各項目が指す上位概念・下位概念・隣接ジャンルまで含めて考える(例: 特定のブランド名は「ファッション」という上位ジャンルを、ある作家名はその分野を含意する。候補がその上位・隣接の範囲に入るなら合致とみなす)。
-   "strong": 願望リスト・興味・好みのいずれかに、直接またはその上位/下位概念として合致する候補
-   "moderate": 興味・好みの関連キーワードに合致する、または興味・好みと地続きの隣接領域にある候補
-   "info": 上のいずれにも当たらないが、<生活圏>内で、終了しておらず(開催中またはこれから)、読む価値のありそうな新着の物事。提案ではなく中立な「新着情報」として扱う。
-   "none": <生活圏>外、終了済み、または明らかに無関係・読む価値が乏しい候補のみ
-4. matchStrength が "none" の候補は id と matchStrength のみを出力する。他のフィールドは出力しない。
-5. matchStrength が "strong"・"moderate"・"info" の候補は、id・matchStrength に加えて以下も出力する。
-   inLivingArea: 候補の所在地が<生活圏>内かどうか。所在地の記述が無い候補は true とする。
-   title: 事物が分かる短い見出し
-   body: 事物そのものの内容を1〜3文で要約する(何が・どこで・いつ等、候補レコードに書かれた事実に基づく)。概略に留めず、本文にある具体的な要素(固有名・日時・場所など)を最低1つは含める。プロファイルとの合致理由や「〜に関心がある人にとって」等のユーザーへの言及・意義づけは書かない
-   kind: "place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。商品・アイテム（服・道具・新商品など）は kind:"thing" とする（ブランド名が興味・好み、またはその上位ジャンルに合致すれば、そのアイテムを提案カードとして拾う）。sourceWishIdを付ける場合は、その願いに[ドメイン: …]があれば上記対応表に沿ったkindを優先する
-   area・sourceLabel・meta・expiresAt: 候補レコードに情報があれば記す(任意)
-   trigger と sourceWishId は "strong"・"moderate" のときだけ出力する("info" には付けない):
-     trigger: "strong" のとき、時期が理由なら "タイムリー"、興味・好みが理由なら "興味との一致"、場所・地域性が理由なら "ロケーション"。"moderate" のときは "興味の広がり"。
-     sourceWishId: 願望リストのいずれかに直接応える場合のみ、その願いの行頭にある識別子(idの値)だけを記す(任意)。願いの文章ではなく識別子を記すこと。応える願いが無ければ付けない。
-6. matchStrength が "strong" どうし・"moderate" どうし・"info" どうしは、それぞれの集合の中で、合致度(infoは新着性・読む価値)が高い順に並べて出力する。
+# 抽出ルール
+1. 記述はページ本文に明記された事実のみを根拠とする。本文に無い情報の補完・推測・一般知識の使用は禁止。名称が本文から特定できない事物は候補にしない。
+2. 1候補は1つの事物を表す。催し・展示・上映・作品に加えて、記事・特集・レビュー・インタビュー・作品紹介・エッセイ、および記事中で紹介・言及される具体的な商品・アイテム（ブランドの服・新商品・道具など）も候補にする。会場や会期は無くてよい。ナビゲーション・サイト案内・タグ一覧・広告は候補にしない。
+3. <基準日>時点で既に終了している事物は候補にしない。開始日・終了日が本文から読み取れる場合のみ start / end に記す。
+4. sourceUrl は、その事物の個別ページを指す、本文中に実在するリンクのURLをそのまま用いる。URLの生成・改変・補完は禁止。個別リンクが本文に無い事物は、ページ自体のURLを用いる。
+5. <抽出上限>まで、できるだけ多く拾う。関連度の低い候補も省略せず出力する。
+
+# 関連度(relevance)の付け方
+プロファイルとの近さを0〜100の整数で付ける。合致は文字どおりの一致に限らず、上位概念・下位概念・隣接ジャンルまで含めて考える（例: 特定のブランド名は「ファッション」という上位ジャンルを、ある作家名はその分野を含意する）。
+  80〜100: 願望リスト・興味・好みに、直接またはその上位/下位概念として合致する
+  50〜79: 興味・好みの関連キーワードに合致する、または興味・好みと地続きの隣接領域にある
+  20〜49: プロファイルとの直接の関係は薄いが、その分野の新着として読む価値がある
+  0〜19: 関係がなく、読む価値も乏しい
 
 # 出力契約
-下記フィールドのJSON配列のみを出力する。該当候補が無い場合は [] を出力する。
-id / matchStrength / inLivingArea(任意) / title(任意) / body(任意) / kind(任意) / trigger(任意) / sourceWishId(任意) / area(任意) / sourceLabel(任意) / meta(任意,文字列配列) / expiresAt(任意,ISO8601)`;
+下記フィールドのJSON配列のみを出力する。候補が無い場合は [] を出力する。
+name / summary（1〜3文。本文の事実に基づく内容の要約。固有名・日時・場所などの具体を最低1つ含める。プロファイルとの合致理由やユーザーへの言及・勧誘は書かない） / relevance（0〜100の整数） / kind（"place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。商品・アイテムは "thing"） / inLivingArea（任意。所在地の記述がある場合のみ、それが<生活圏>内かどうか） / venue（任意） / area（任意） / start（任意,ISO8601） / end（任意,ISO8601） / price（任意） / sourceUrl / sourceWishId（任意。願望リストのいずれかに直接応える場合のみ、その願いの行頭にある識別子）`;
 
 const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文詳細化モジュールです。既に選ばれたカードごとに、その事物の個別ページ本文を読み、カードの本文(body)と詳細(detail)を書きます。
 
@@ -462,11 +459,10 @@ const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文�
 下記フィールドのJSON配列のみを出力する。入力カードは1件も省略しない。
 id / body / detail`;
 
-function userCandidates(todayJp: string, extractLimit: number, pageBlocks: string): string {
-  return `<基準日>${todayJp}</基準日>\n<抽出上限>${extractLimit}</抽出上限>\n<ページ群>\n${pageBlocks}\n</ページ群>`;
-}
-function userClassify(todayJp: string, livingArea: string, tasteBlock: string, candidatesJson: string): string {
-  return `<基準日>${todayJp}</基準日>\n<生活圏>${livingArea}</生活圏>\n<プロファイル>\n${tasteBlock}\n</プロファイル>\n<候補一覧>\n${candidatesJson}\n</候補一覧>`;
+// 層1のユーザープロンプト(1サイト分)。プロファイルも一緒に渡し、抽出と同時に
+// 関連度を付けさせる。
+function userExtract(todayJp: string, livingArea: string, tasteBlock: string, extractLimit: number, pageUrl: string, pageMd: string): string {
+  return `<基準日>${todayJp}</基準日>\n<生活圏>${livingArea}</生活圏>\n<プロファイル>\n${tasteBlock}\n</プロファイル>\n<抽出上限>${extractLimit}</抽出上限>\n<ページ url="${pageUrl}">\n${pageMd}\n</ページ>`;
 }
 function userEnrich(todayJp: string, profileText: string, blocks: string): string {
   return `<基準日>${todayJp}</基準日>\n<プロファイル>\n${profileText}\n</プロファイル>\n<カード群>\n${blocks}\n</カード群>`;
@@ -559,6 +555,28 @@ async function fetchSite(sourceUrl: string): Promise<SiteFetch> {
   const md = stripMarkdownNoise(page.md);
   const allow = markdownUrlMap(md, page.url);
   return { trace: { source: sourceUrl, fetched: true, linkCount: allow.size }, url: page.url, md, allow, fetched: true };
+}
+
+// ---- 補充検索: Jinaの検索API(s.jina.ai)でSERPをMarkdownとして取得 -----------
+// 登録情報源だけで候補が足りない日に、興味キーワードで新着を拾うための補完
+// (ユーザー指定)。返るのは実在する検索結果(タイトル・URL・抜粋)なので、
+// URLを捏造される心配が無い(Geminiの検索グラウンディングを使わない理由)。
+// 取得できたSERPのMarkdownは、そのまま層1の抽出プロンプトへ渡す。
+async function fetchJinaSearch(query: string): Promise<{ ok: boolean; url: string; md: string; allow: Map<string, string> }> {
+  const jinaKey = process.env.JINA_API_KEY;
+  const headers: Record<string, string> = { Accept: "text/plain", "X-Return-Format": "markdown" };
+  if (jinaKey) headers["Authorization"] = `Bearer ${jinaKey}`;
+  const url = JINA_SEARCH_BASE + encodeURIComponent(query);
+  try {
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(30000) });
+    if (!res.ok) return { ok: false, url, md: "", allow: new Map() };
+    const raw = (await res.text()).trim();
+    if (!raw) return { ok: false, url, md: "", allow: new Map() };
+    const md = stripMarkdownNoise(raw);
+    return { ok: true, url, md, allow: markdownUrlMap(md, url) };
+  } catch {
+    return { ok: false, url, md: "", allow: new Map() };
+  }
 }
 
 // ---- 本体: taste + sources → デッキ ---------------------------------------
@@ -685,151 +703,129 @@ export async function buildDeck(input: {
       validUrlSet.add(normUrl(s.url));
       for (const k of s.allow.keys()) validUrlSet.add(k);
     }
-    // 候補のURLがどの情報源(サイト)に由来するかを調べる(層Dのサイト別上限用)。
-    // 入力sources[]の順にsiteFetchesと対応しているのでインデックスで引ける。
-    function originSiteFor(url: string): string | undefined {
-      const k = normUrl(url);
-      for (let i = 0; i < siteFetches.length; i++) {
-        const s = siteFetches[i];
-        if (!s.fetched) continue;
-        if (normUrl(s.url) === k || s.allow.has(k)) return sources[i];
-      }
-      return undefined;
-    }
-
-    // 層B: 一覧Markdownから直接、候補レコードをまとめて1回で抽出(単ホップ)。
-    // テキスト予算は全 usable サイトへ均等配分する。以前は先頭から
-    // LISTING_TEXT_LIMIT ずつ食っていたため、先頭に並ぶ固定サイトだけで
-    // TOTAL_TEXT_LIMIT を使い切り、後方の発掘プール・お気に入りが0字になって
-    // 候補が1件も出ない不具合があった(issues 1,2)。均等配分で全情報源が
-    // 必ず一定量の本文を持ち、どの情報源からも候補が拾えるようにする。
-    const perSource = Math.min(LISTING_TEXT_LIMIT, Math.max(1500, Math.floor(TOTAL_TEXT_LIMIT / usable.length)));
-    const pageBlocks = usable
-      .map((s) => `<ページ url="${s.url}">\n${s.md.slice(0, perSource)}\n</ページ>`)
-      .join("\n");
-
-    const rB = await callGemini(key, SYSTEM_CANDIDATES, userCandidates(todayJp, EXTRACT_LIMIT_PER_LISTING, pageBlocks), true, 8192);
-    if (!rB.ok) return { ok: false, reason: `gemini_${rB.status}`, detail: rB.detail };
-    tokens = addUsage(tokens, rB.usage);
-    const rawCandidates = extractJsonArray<CandidateRecord>(rB.text) ?? [];
-
+    // ---- 層1: サイトごとに1回ずつ並列で抽出＋関連度付け ----------------------
+    // 1サイトあたり LISTING_TEXT_LIMIT(12,000字)までたっぷり渡し、そのサイトから
+    // EXTRACT_LIMIT_PER_SITE(10)件まで拾わせる。全サイトを1回にまとめていた頃は
+    // 1サイト約3,300字・全体で10件程度しか返らなかった(§8.19)。
     const nowMs = Date.now();
-    const seenCandidate = new Set<string>();
-    let dropSourceInvalid = 0, dropExpired = 0, dropDup = 0;
+    let dropSourceInvalid = 0, dropExpired = 0, dropDup = 0, dropOutOfArea = 0;
     const candidates: CandidateRecord[] = [];
-    for (const c of rawCandidates) {
-      const su = (c.sourceUrl ?? "").trim();
-      if (!su || !validUrlSet.has(normUrl(su))) { dropSourceInvalid++; continue; }
-      if (c.end) {
-        const t = Date.parse(c.end);
-        if (!Number.isNaN(t) && t < nowMs) { dropExpired++; continue; }
+    const seenCandidate = new Set<string>();
+
+    // 抽出した生候補を検証してcandidatesへ入れる(層1の呼び出し元から共通で使う)。
+    // validUrls は「そのページで実在が確認できたURLの集合」(捏造URLを弾く)。
+    const acceptRaw = (raw: ExtractedCandidate[], site: string, validUrls: Set<string>) => {
+      for (const c of raw) {
+        const name = (c.name ?? "").trim();
+        const su = (c.sourceUrl ?? "").trim();
+        if (!name) continue;
+        if (!su || !validUrls.has(normUrl(su))) { dropSourceInvalid++; continue; }
+        if (c.end) {
+          const t = Date.parse(c.end);
+          if (!Number.isNaN(t) && t < nowMs) { dropExpired++; continue; }
+        }
+        if (c.inLivingArea === false) { dropOutOfArea++; continue; }
+        // 既に作った/KEEP済みのカードと同じもの(URL・名称)は作らない。
+        if (excludeUrlSet.has(normUrl(su)) || isExcludedName(name)) { dropDup++; continue; }
+        const k = `${normUrl(su)}|${name.toLowerCase()}`;
+        if (seenCandidate.has(k)) { dropDup++; continue; }
+        // 表記ゆれ(会場・年などの付帯情報の有無)で同じ事物が複数返ることがある。
+        // サイトを跨いでも名称が実質同じなら1件にまとめる。
+        if (candidates.some((x) => x.name && sameEvent(x.name, name))) { dropDup++; continue; }
+        seenCandidate.add(k);
+        candidates.push({
+          name, summary: c.summary, venue: c.venue, area: c.area,
+          start: c.start, end: c.end, price: c.price, sourceUrl: su, site,
+          relevance: typeof c.relevance === "number" ? Math.max(0, Math.min(100, Math.round(c.relevance))) : 0,
+          kind: typeof c.kind === "string" ? c.kind : undefined,
+          inLivingArea: c.inLivingArea,
+          sourceWishId: typeof c.sourceWishId === "string" ? c.sourceWishId : undefined,
+        });
       }
-      // Q2: 前回までに既に作った/KEEP済みのカードと同じもの(同じURL・同じ名称)は
-      // 作らない。dropDup(重複)に集計する。
-      if (excludeUrlSet.has(normUrl(su)) || isExcludedName(c.name)) { dropDup++; continue; }
-      const k = `${normUrl(su)}|${(c.name ?? "").trim().toLowerCase()}`;
-      if (seenCandidate.has(k)) { dropDup++; continue; }
-      // 同じ一覧から同一の事物が名称の表記ゆれ(会場・年などの付帯情報の
-      // 有無)で複数レコードとして抽出されることがある。URLが違っても
-      // 名称が実質同じなら、この段階で1件にまとめておく(そのまま層C・層Dへ
-      // 進むと、Geminiが分類のたびに独自の言い回しでtitleを書き直すため、
-      // 最終的な重複除去(名称の緩い一致)をすり抜けやすくなる)。
-      if (c.name && candidates.some((x) => x.name && sameEvent(x.name, c.name!))) { dropDup++; continue; }
-      seenCandidate.add(k);
-      candidates.push({ ...c, site: originSiteFor(su) });
+    };
+
+    const extractResults = await mapWithConcurrency(usable, EXTRACT_CONCURRENCY, async (s) => {
+      const r = await callGemini(
+        key, SYSTEM_EXTRACT,
+        userExtract(todayJp, livingArea, tasteBlockClassify, EXTRACT_LIMIT_PER_SITE, s.url, s.md.slice(0, LISTING_TEXT_LIMIT)),
+        true, 8192,
+      );
+      if (!r.ok) return { site: s.url, usage: ZERO_USAGE, raw: [] as ExtractedCandidate[], valid: s.allow };
+      return { site: s.url, usage: r.usage, raw: extractJsonArray<ExtractedCandidate>(r.text) ?? [], valid: s.allow };
+    });
+    for (let i = 0; i < extractResults.length; i++) {
+      const res = extractResults[i];
+      tokens = addUsage(tokens, res.usage);
+      // そのサイトのページ自身のURLと、本文中に実在したリンクだけを許す。
+      const valid = new Set<string>([normUrl(usable[i].url), ...res.valid.keys()]);
+      acceptRaw(res.raw, sources.find((x) => normUrl(x) === normUrl(res.site)) ?? res.site, valid);
     }
-    // 可観測性: サイト別に抽出できた候補数を各トレースへ入れる。実験カードで
-    // 「取得OKなのに候補0(=抽出の問題)」と「候補は出たが後段で落ちた」を
-    // 切り分けられるようにする(展覧会偏りの原因を実機で特定する鍵)。
+
+    // ---- 補充検索: 候補が少ない日は興味キーワードでJina検索して足す ----------
+    // 登録情報源が主で、これは足りない時だけの補完(ユーザー指定)。検索結果(SERP)の
+    // Markdownを同じ層1プロンプトへ渡すので、追加のプロンプトは要らない。
+    let searched = 0;
+    if (candidates.length < SEARCH_TOPUP_THRESHOLD && tasteSignals.length) {
+      const queries = tasteSignals.slice(0, SEARCH_QUERY_LIMIT).map((t) => t.label);
+      const serps = await mapWithConcurrency(queries, 2, (q) => fetchJinaSearch(q));
+      const serpUsable = serps.filter((s) => s.ok && s.md);
+      searched = serpUsable.length;
+      const serpResults = await mapWithConcurrency(serpUsable, EXTRACT_CONCURRENCY, async (s) => {
+        const r = await callGemini(
+          key, SYSTEM_EXTRACT,
+          userExtract(todayJp, livingArea, tasteBlockClassify, EXTRACT_LIMIT_PER_SITE, s.url, s.md.slice(0, LISTING_TEXT_LIMIT)),
+          true, 8192,
+        );
+        if (!r.ok) return { usage: ZERO_USAGE, raw: [] as ExtractedCandidate[], allow: s.allow };
+        return { usage: r.usage, raw: extractJsonArray<ExtractedCandidate>(r.text) ?? [], allow: s.allow };
+      });
+      for (const res of serpResults) {
+        tokens = addUsage(tokens, res.usage);
+        acceptRaw(res.raw, "検索", new Set<string>(res.allow.keys()));
+      }
+    }
+
+    // 可観測性: サイト別に抽出できた候補数を各トレースへ入れる。
     const candCountBySite = new Map<string, number>();
     for (const c of candidates) { if (c.site) candCountBySite.set(c.site, (candCountBySite.get(c.site) ?? 0) + 1); }
     for (const s of sites) { s.candidates = candCountBySite.get(s.source) ?? 0; }
     if (candidates.length === 0) {
       return {
         ok: true, cards: [], candidateCount: 0, records: [], sites, pagesRead, digests,
-        dropped: { ...ZERO_DROPS, sourceInvalid: dropSourceInvalid, expired: dropExpired, duplicateCandidate: dropDup },
+        dropped: { ...ZERO_DROPS, sourceInvalid: dropSourceInvalid, expired: dropExpired, duplicateCandidate: dropDup, outOfArea: dropOutOfArea },
         tokens, note: "候補が抽出できませんでした。",
       };
     }
 
-    // 層C: 候補を1件ずつ分類するだけ。
-    const idxCandidates = candidates.map((c, id) => ({ id, ...c }));
-    const rC = await callGemini(key, SYSTEM_CLASSIFY, userClassify(todayJp, livingArea, tasteBlockClassify, JSON.stringify(idxCandidates)), true, 8192);
-    if (!rC.ok) return { ok: false, reason: `gemini_${rC.status}`, detail: rC.detail };
-    tokens = addUsage(tokens, rC.usage);
-    const rawClassified = extractJsonArray<ClassifiedCandidate>(rC.text) ?? [];
-
-    // 層D: コードが「載せる/何件か」を決める。出典URLはidで候補から引く。
-    // geoQuery = 会場名＋エリア(候補レコード由来)。最終採用カードにPlacesで
-    // 実座標を付けるための名寄せ文字列。
-    type PoolItem = { card: GeneratedCard; site?: string; geoQuery?: string };
-    let dropExpired2 = 0, dropOutOfArea = 0, irrelevant = 0;
-    const strongPool: PoolItem[] = [];
-    const moderatePool: PoolItem[] = [];
-    const infoPool: PoolItem[] = [];
-    for (const r of rawClassified) {
-      const src = typeof r.id === "number" ? candidates[r.id] : undefined;
-      if (!src) continue;
-      if (!r.matchStrength || r.matchStrength === "none") { irrelevant++; continue; }
-      if (r.matchStrength !== "strong" && r.matchStrength !== "moderate" && r.matchStrength !== "info") continue;
-      if (r.inLivingArea === false) { dropOutOfArea++; continue; }
-      if (r.expiresAt) {
-        const t = Date.parse(r.expiresAt);
-        if (!Number.isNaN(t) && t < Date.now()) { dropExpired2++; continue; }
-      }
-      if (!r.title || !r.body || !r.kind) continue;
-      const isInfo = r.matchStrength === "info";
-      const isDerived = r.matchStrength === "moderate";
-      const card: GeneratedCard = {
-        title: r.title, body: r.body, kind: r.kind,
-        trigger: r.trigger ?? (isInfo ? "新着" : isDerived ? DERIVED_TRIGGER : "興味との一致"),
-        area: r.area, sourceUrl: src.sourceUrl, sourceLabel: r.sourceLabel,
-        meta: r.meta, expiresAt: r.expiresAt, isDerived, isInfo,
-        // AIが返したidは検証してから採用する(渡した願いのidに一致する時だけ)。
-        // 捏造・言い換えを弾く(§8.12.5「AIの出力するidは信用しない」に沿う)。情報
-        // カードは願いに応えるものではないのでsourceWishIdは付けない。
-        sourceWishId: !isInfo && r.sourceWishId && wishIdSet.has(r.sourceWishId) ? r.sourceWishId : undefined,
-      };
-      const geoParts = [src.venue, r.area ?? src.area].map((s) => (s ?? "").trim()).filter(Boolean);
+    // ---- 選抜(コードのみ): 関連度順・サイト横断のラウンドロビンで上位 count 枚 ----
+    // AIに「落とす」判断はさせない。関連度の高い順に、1サイトから偏らないよう
+    // ラウンドロビンで採る。提案優先(relevance>=50)で埋め、余った枠を情報カード
+    // (<50)で満たす。この構造上、候補が1件でもあれば0枚にはならない。
+    type PoolItem = { card: GeneratedCard; site?: string; geoQuery?: string; relevance: number };
+    const toPoolItem = (c: CandidateRecord): PoolItem => {
+      const relevance = c.relevance ?? 0;
+      const isInfo = relevance < PROPOSAL_MIN_RELEVANCE;
+      const isDerived = !isInfo && relevance < STRONG_MIN_RELEVANCE;
+      const geoParts = [c.venue, c.area].map((s) => (s ?? "").trim()).filter(Boolean);
       const geoQuery = Array.from(new Set(geoParts)).join(" ").trim();
-      (isInfo ? infoPool : isDerived ? moderatePool : strongPool).push({ card, site: src.site, geoQuery: geoQuery || undefined });
-    }
-
-    // サイト横断の重複統合(名称の緩い一致のみ。strong→moderate→info の順で優先)。
-    let dropDupClassified = 0;
-    const acceptedStrong: PoolItem[] = [];
-    const acceptedModerate: PoolItem[] = [];
-    const acceptedInfo: PoolItem[] = [];
-    for (const pool of [
-      { list: strongPool, bucket: acceptedStrong },
-      { list: moderatePool, bucket: acceptedModerate },
-      { list: infoPool, bucket: acceptedInfo },
-    ]) {
-      for (const item of pool.list) {
-        // 層Cがタイトルを言い換えるため、層Bの名称では拾えなかった既出カードとの
-        // 重複を、最終タイトルで改めて弾く(Q2)。
-        if (isExcludedName(item.card.title) || (item.card.sourceUrl && excludeUrlSet.has(normUrl(item.card.sourceUrl)))) {
-          dropDupClassified++; continue;
-        }
-        const dup =
-          acceptedStrong.some((a) => sameEvent(a.card.title, item.card.title)) ||
-          acceptedModerate.some((a) => sameEvent(a.card.title, item.card.title)) ||
-          acceptedInfo.some((a) => sameEvent(a.card.title, item.card.title));
-        if (dup) { dropDupClassified++; continue; }
-        pool.bucket.push(item);
-      }
-    }
-
-    // 枚数配分(コードが決める)。サイト横断のラウンドロビン(各サイトから
-    // 1枚ずつ順に取り、count まで)で詰める。以前は「サイトごとに集めて出現順に
-    // 並べ、count で切る」方式で、先頭に並ぶ固定サイトのカードだけで count を
-    // 食い切り、お気に入り・発掘のカードが切り落とされていた(issues 1,2)。
-    // ラウンドロビンにすることで固定・お気に入り・発掘が均等に乗る。1サイト
-    // からの採用上限は SITE_CARD_LIMIT のまま(グループ化の時点で頭打ち)。
-    // strong を先に count まで詰め、余りがあれば moderate(興味の広がり)で補充。
-    const groupBySite = (pool: PoolItem[]): PoolItem[][] => {
+      return {
+        relevance, site: c.site, geoQuery: geoQuery || undefined,
+        card: {
+          title: c.name, body: c.summary ?? "", kind: c.kind ?? "info",
+          // triggerはコードが関連度から決める(AIに書かせない=ぶれない)。
+          trigger: isInfo ? "新着" : isDerived ? DERIVED_TRIGGER : "興味との一致",
+          area: c.area, sourceUrl: c.sourceUrl, expiresAt: c.end,
+          isDerived, isInfo,
+          // AIが返した願いのidは、渡したidに一致する時だけ採用する(捏造を弾く)。
+          sourceWishId: !isInfo && c.sourceWishId && wishIdSet.has(c.sourceWishId) ? c.sourceWishId : undefined,
+        },
+      };
+    };
+    const byRelevanceDesc = (a: PoolItem, b: PoolItem) => b.relevance - a.relevance;
+    const pool = candidates.filter((c) => c.name && (c.summary ?? "").trim()).map(toPoolItem).sort(byRelevanceDesc);
+    const groupBySite = (items: PoolItem[]): PoolItem[][] => {
       const bySite = new Map<string, PoolItem[]>();
-      for (const item of pool) {
+      for (const item of items) {
         const k = item.site ?? "__unknown__";
         if (!bySite.has(k)) bySite.set(k, []);
         const g = bySite.get(k)!;
@@ -851,18 +847,27 @@ export async function buildDeck(input: {
       }
       return out;
     };
-    let finalItems: PoolItem[] = roundRobin(groupBySite(acceptedStrong), count);
+    const proposals = pool.filter((p) => !p.card.isInfo);
+    const infos = pool.filter((p) => p.card.isInfo);
+    let finalItems: PoolItem[] = roundRobin(groupBySite(proposals), count);
     if (finalItems.length < count) {
-      finalItems = [...finalItems, ...roundRobin(groupBySite(acceptedModerate), count - finalItems.length)];
+      finalItems = [...finalItems, ...roundRobin(groupBySite(infos), count - finalItems.length)];
     }
-    // strong+moderate で埋まらない残り枠は、中立の「新着情報」カード(info)で
-    // 埋める。当たらない日でもデッキが空にならず、スワイプの反応がデータとして
-    // 貯まる(ユーザー方針: 100%当たらなくても情報カードとして出す)。
+    // 提案・情報を合わせてもサイト上限で埋まらない場合は、上限を無視して
+    // 関連度順に足す(枚数を優先。0枚・極端な少数を避けるための最後の手当て)。
     if (finalItems.length < count) {
-      finalItems = [...finalItems, ...roundRobin(groupBySite(acceptedInfo), count - finalItems.length)];
+      const used = new Set(finalItems.map((f) => f.card.sourceUrl ?? f.card.title));
+      for (const p of pool) {
+        if (finalItems.length >= count) break;
+        const k = p.card.sourceUrl ?? p.card.title;
+        if (used.has(k)) continue;
+        used.add(k);
+        finalItems.push(p);
+      }
     }
-    // トレース用: 採用しきれずに落ちた総数(サイト上限＋枚数上限)。
-    const dropOverQuota = Math.max(0, acceptedStrong.length + acceptedModerate.length + acceptedInfo.length - finalItems.length);
+    // トレース用: 採用しきれずに落ちた総数。
+    const dropOverQuota = Math.max(0, pool.length - finalItems.length);
+    const irrelevant = 0; // 関連度で落とす方式に変えたため「無関係で除外」は無い
 
     // 会場/エリアを持つカードにPlacesで実座標を付ける(展覧会など「行く場所」の
     // カードが、AREA_LATLNGに無いエリアでも地図にピンとして出るように)。
@@ -885,13 +890,19 @@ export async function buildDeck(input: {
       sites, pagesRead: [...pagesRead, ...enrich.pagesRead], digests,
       dropped: {
         sourceInvalid: dropSourceInvalid,
-        expired: dropExpired + dropExpired2,
-        duplicateCandidate: dropDup + dropDupClassified,
+        expired: dropExpired,
+        duplicateCandidate: dropDup,
         outOfArea: dropOutOfArea,
         irrelevant,
         overQuota: dropOverQuota,
       },
       tokens,
+      // 補充検索が働いた回・枚数が目標に届かなかった回は、その事実を残す
+      // (実機で「なぜ少ないのか」を状況表示から追えるようにする)。
+      note: [
+        searched ? `補充検索${searched}件を使用` : "",
+        finalItems.length < count ? `候補が足りず${finalItems.length}枚` : "",
+      ].filter(Boolean).join(" / ") || undefined,
     };
   } catch (e) {
     return { ok: false, reason: "fetch_failed", detail: e instanceof Error ? e.message : String(e) };

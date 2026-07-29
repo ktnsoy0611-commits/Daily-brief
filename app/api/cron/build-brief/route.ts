@@ -223,13 +223,14 @@ export async function GET(req: Request) {
         )
       : {};
 
-  // 巡回対象の選択: 固定(FIXED_SOURCES)＋お気に入りは毎晩必ず巡回。発掘プールからは
-  // SOURCE_WINDOW件を「前寄せの重み付き非復元ランダム」で選ぶ(基本ランダム・上位
-  // =打率が高い側がほんの少し出やすい)。淘汰・打率順の並べ替えはCoworkの発掘タスクが
-  // 担うので、ここは並びを尊重して選ぶだけ(統計は持たない)。
-  const SOURCE_WINDOW = 10;
+  // 巡回対象の選択: 1回の巡回は SITES_PER_RUN(10)サイトまでに抑える(Jina無料枠の
+  // 1日上限対策・ユーザー指定)。固定(FIXED_SOURCES)は毎回必ず巡回し、残りの枠を
+  // 「お気に入り＋発掘プール」から前寄せの重み付き非復元ランダムで選ぶ(=日替わりで
+  // ローテーションし、数日かけて全情報源をカバーする)。1サイトあたりの抽出は
+  // 層1で最大10件になったので、10サイトでも候補は最大100件と十分に多い。
+  const SITES_PER_RUN = 10;
   const SELECT_BIAS = 0.6; // 前寄せの強さ(0=完全ランダム)。小さめ=「ほんの少し」。
-  const pinnedSet = new Set([...effectiveFixed, ...appFavoriteSources.map((s) => s.url)].map(normSrc));
+  const pinnedSet = new Set(effectiveFixed.map(normSrc));
   const pinned = allSources.filter((u) => pinnedSet.has(normSrc(u)));
   const rotatePool = allSources.filter((u) => !pinnedSet.has(normSrc(u)));
   // 前寄せ重み付き非復元ランダム抽出。weight = 1 + BIAS*(1 - i/len)。
@@ -246,7 +247,7 @@ export async function GET(req: Request) {
     }
     return picked;
   }
-  const rotatePick = weightedSample(rotatePool, SOURCE_WINDOW);
+  const rotatePick = weightedSample(rotatePool, Math.max(0, SITES_PER_RUN - pinned.length));
   const sources = [...pinned, ...rotatePick];
 
   // Q2: 既に作った/KEEP済みのカードと同じものを作らないための除外リスト。

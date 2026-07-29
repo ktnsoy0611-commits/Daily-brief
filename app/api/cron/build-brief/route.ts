@@ -34,8 +34,8 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const RETENTION_DAYS = 30;   // 生成カード(号)の保持日数。1ヶ月を過ぎた号は削除する
-const POOL_CAP = 30;         // 未消化(keep/skipされていない)カードの上限。これに達したら生成しない
-const GEN_TARGET = 10;       // 1号(朝刊/夕刊)で生成する目標枚数。朝刊10+夕刊10=1日20枚
+const POOL_CAP = 60;         // 未消化(keep/skipされていない)カードの上限。これに達したら生成しない(枚数を増やすため30→60)
+const GEN_TARGET = 16;       // 1号(朝刊/夕刊)で生成する目標枚数(枚数を増やすため10→16。朝刊16+夕刊16=1日最大32枚)
 
 function jstEditionKey(): string {
   const jst = new Date(Date.now() + 9 * 3600 * 1000);

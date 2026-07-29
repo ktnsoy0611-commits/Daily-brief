@@ -28,6 +28,7 @@ const SOURCE_LIMIT = 30;              // buildDeckが読む情報源(一覧)の�
 const SITE_CARD_LIMIT = 6;            // 層Dで1つの情報源から採用するカードの最大数(枚数を増やすため3→6)
 const ENRICH_PAGE_TEXT_LIMIT = 6000;  // 層E(本文詳細化)で1個別ページに使う本文の上限(文字数)
 const ENRICH_CONCURRENCY = 6;         // 層Eで個別ページを同時取得する数
+const ENRICH_BATCH = 5;               // 層Eで1回のGemini呼び出しに含めるカード数(出力が8192を超えないよう小分け)
 
 // ---- 型 -------------------------------------------------------------------
 export type InterestSignal = { label: string; weight: number };
@@ -369,6 +370,7 @@ const SYSTEM_CANDIDATES = `あなたは情報抽出パイプラインの候補�
 # 抽出ルール
 1. レコードの全記述は、そのページ本文に明記された情報のみを根拠とする。本文に無い情報の補完・推測・一般知識の使用は禁止。名称が本文から特定できない事物はレコードにしない。
 2. 1レコードは1つの事物を表す。ページ本文に並ぶ個別の事物——催し・展示・上映・作品に加えて、記事・特集・レビュー・インタビュー・作品紹介・エッセイなども含む——を、上限まで拾う。会場や会期の無い記事も、名称(見出し)と要約が本文から取れれば1レコードにする。ナビゲーション・サイト案内・タグ一覧・広告は事物ではない。
+2-2. 記事の中で具体的な商品・アイテム（ブランドの服・新商品・道具・本・作品など）が紹介・言及されていれば、その商品自体も1レコードにしてよい（name=商品名、summary=何のアイテムか・どのブランドか等）。会場・会期は不要。sourceUrl は記事のURL（本文に商品の実在リンクがあればそれ）。
 3. <基準日>時点で既に終了している事物はレコードにしない。開始日・終了日が本文から特定できる場合のみ start / end に記す。
 4. sourceUrl は、その事物の個別ページを指す、本文中に実在するリンクのURLをそのまま用いる。URLの生成・改変・補完は禁止。個別リンクが本文に無い事物は、そのページ自体のURLを用いる。
 5. 評価・推薦・誇張はしない。事実の要約のみを記す。
@@ -414,7 +416,7 @@ ${DOMAIN_KIND_TABLE}
    inLivingArea: 候補の所在地が<生活圏>内かどうか。所在地の記述が無い候補は true とする。
    title: 事物が分かる短い見出し
    body: 事物そのものの内容を1〜3文で要約する(何が・どこで・いつ等、候補レコードに書かれた事実に基づく)。概略に留めず、本文にある具体的な要素(固有名・日時・場所など)を最低1つは含める。プロファイルとの合致理由や「〜に関心がある人にとって」等のユーザーへの言及・意義づけは書かない
-   kind: "place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。sourceWishIdを付ける場合は、その願いに[ドメイン: …]があれば上記対応表に沿ったkindを優先する
+   kind: "place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。商品・アイテム（服・道具・新商品など）は kind:"thing" とする（ブランド名が興味・好み、またはその上位ジャンルに合致すれば、そのアイテムを提案カードとして拾う）。sourceWishIdを付ける場合は、その願いに[ドメイン: …]があれば上記対応表に沿ったkindを優先する
    area・sourceLabel・meta・expiresAt: 候補レコードに情報があれば記す(任意)
    trigger と sourceWishId は "strong"・"moderate" のときだけ出力する("info" には付けない):
      trigger: "strong" のとき、時期が理由なら "タイムリー"、興味・好みが理由なら "興味との一致"、場所・地域性が理由なら "ロケーション"。"moderate" のときは "興味の広がり"。
@@ -438,7 +440,7 @@ const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文�
    - 要約: 何の展示・作品か、誰によるものか等、本文の要点を簡潔に。概略で終わらせず、本文にある固有名・日時・場所などの具体を最低1つは含める。
    - 誘いの一文: <プロファイル>を踏まえ、なぜ今これを見てほしいかを自然な話し言葉で1文添える。事実と矛盾しないこと。
    - ただし 情報カード="true" のカードは、誘いの一文を付けず、内容の中立な要約（3文程度）だけにする。
-3. detail: タップして開く詳細画面で読む、より詳しい説明。4〜7文（200〜400字程度）。sourcePage 本文から読み取れる具体的な情報——テーマや背景、構成・見どころ、出品作家・出演者・監督などの固有名、会場・会期・時間・料金・アクセスなど——をできるだけ具体的に盛り込む。固有名や数字を省略しない。bodyの単なる繰り返しにしない。
+3. detail: タップして開いて読む、より詳しい説明。通常のカードは4〜7文（200〜400字程度）。sourcePage 本文から読み取れる具体的な情報——テーマや背景、構成・見どころ、出品作家・出演者・監督などの固有名、会場・会期・時間・料金・アクセスなど——をできるだけ具体的に盛り込む。固有名や数字を省略しない。bodyの単なる繰り返しにしない。ただし 情報カード="true" のカードは、元記事のおよそ半分の分量でまとめた要約にする（段落を分けてよい・固有名や数字を省略しない・事実に忠実に・誘い文やユーザーへの言及は入れない）。読み手がその記事の要点を最後まで追えるようにする。
 4. 禁止事項: bodyの誘いの一文で「〜に関心がある人にとって」「〜な機会です」のような定型的な言い回し・ユーザーの属性のラベル貼り・プロファイルに無い決めつけ・本文に無い事実の追加。detailには誘い文やユーザーへの言及を入れず、事実の説明に徹する。評価の誇張・過度な煽りはしない。
 5. title は変更しない。sourcePage から読み取れる情報が乏しい場合は、body は現在の body をそのまま返し、detail は空文字列でよい。
 
@@ -498,29 +500,39 @@ async function enrichCardBodies(
     if (og) out[i] = { ...out[i], images: [og] };
   }
 
-  const blocks = withUrl
-    .map(({ c, i }) => {
-      const page = pageByUrl.get(c.sourceUrl!);
-      if (!page || !page.ok || !page.md) return "";
-      const text = stripMarkdownNoise(page.md).slice(0, ENRICH_PAGE_TEXT_LIMIT);
-      return `<カード id="${i}" title="${c.title}"${c.isInfo ? ' 情報カード="true"' : ""}>\n<現在のbody>${c.body}</現在のbody>\n<個別ページ>\n${text}\n</個別ページ>\n</カード>`;
-    })
-    .filter(Boolean)
-    .join("\n");
-  if (!blocks) return { cards: out, usage: ZERO_USAGE, pagesRead };
-
-  const r = await callGemini(key, SYSTEM_ENRICH_BODY, userEnrich(todayJp, profileText, blocks), true, 8192);
-  if (!r.ok) return { cards: out, usage: ZERO_USAGE, pagesRead };
-
-  const rewritten = extractJsonArray<{ id?: number; body?: string; detail?: string }>(r.text) ?? [];
-  for (const item of rewritten) {
-    if (typeof item.id !== "number" || !out[item.id]) continue;
-    const patch: Partial<GeneratedCard> = {};
-    if (typeof item.body === "string" && item.body.trim()) patch.body = item.body.trim();
-    if (typeof item.detail === "string" && item.detail.trim()) patch.detail = item.detail.trim();
-    if (Object.keys(patch).length) out[item.id] = { ...out[item.id], ...patch };
+  // カードを ENRICH_BATCH 件ずつに分けて並列に書き直す。枚数が増え、情報カードの
+  // detail(記事の半分要約)が長くなると、全カードを1回で書き直すと出力が
+  // maxOutputTokens(8192)を超えて途中で切れJSONが壊れる。小分けにして各回の
+  // 出力を短く保つ(id は out 全体の添字なので分割してもパッチは正しく当たる)。
+  const blockOf = ({ c, i }: { c: GeneratedCard; i: number }) => {
+    const page = pageByUrl.get(c.sourceUrl!);
+    if (!page || !page.ok || !page.md) return "";
+    const text = stripMarkdownNoise(page.md).slice(0, ENRICH_PAGE_TEXT_LIMIT);
+    return `<カード id="${i}" title="${c.title}"${c.isInfo ? ' 情報カード="true"' : ""}>\n<現在のbody>${c.body}</現在のbody>\n<個別ページ>\n${text}\n</個別ページ>\n</カード>`;
+  };
+  const chunks: { c: GeneratedCard; i: number }[][] = [];
+  for (let s = 0; s < withUrl.length; s += ENRICH_BATCH) chunks.push(withUrl.slice(s, s + ENRICH_BATCH));
+  const results = await Promise.all(
+    chunks.map((chunk) => {
+      const blocks = chunk.map(blockOf).filter(Boolean).join("\n");
+      if (!blocks) return Promise.resolve(null);
+      return callGemini(key, SYSTEM_ENRICH_BODY, userEnrich(todayJp, profileText, blocks), true, 8192);
+    }),
+  );
+  let usage = ZERO_USAGE;
+  for (const r of results) {
+    if (!r || !r.ok) continue;
+    usage = addUsage(usage, r.usage);
+    const rewritten = extractJsonArray<{ id?: number; body?: string; detail?: string }>(r.text) ?? [];
+    for (const item of rewritten) {
+      if (typeof item.id !== "number" || !out[item.id]) continue;
+      const patch: Partial<GeneratedCard> = {};
+      if (typeof item.body === "string" && item.body.trim()) patch.body = item.body.trim();
+      if (typeof item.detail === "string" && item.detail.trim()) patch.detail = item.detail.trim();
+      if (Object.keys(patch).length) out[item.id] = { ...out[item.id], ...patch };
+    }
   }
-  return { cards: out, usage: r.usage, pagesRead };
+  return { cards: out, usage, pagesRead };
 }
 
 // ---- 取得: 情報源をJinaで取得し、Markdownと実在URL集合を返す ----------------

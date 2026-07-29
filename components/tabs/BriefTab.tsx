@@ -8,7 +8,7 @@ import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/l
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
 
-function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange, milestoneText, onMilestoneTextChange, milestoneRating, onMilestoneRatingChange, flagged, onFlag }: {
+function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange, milestoneText, onMilestoneTextChange, milestoneRating, onMilestoneRatingChange, flagged, onFlag, onRead }: {
   card: DeckCard;
   dx: number;
   isTop: boolean;
@@ -21,6 +21,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
   onMilestoneRatingChange: (r: 1 | 2 | 3) => void;
   flagged?: boolean;
   onFlag?: () => void;
+  onRead?: () => void;
 }) {
   const keepOpacity = isTop ? Math.min(Math.max(dx / SWIPE_THRESHOLD, 0), 1) : 0;
   const skipOpacity = isTop ? Math.min(Math.max(-dx / SWIPE_THRESHOLD, 0), 1) : 0;
@@ -152,6 +153,15 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             <Flag size={13} strokeWidth={2} color={flagged ? RUST : "#C8C6BC"} fill={flagged ? RUST : "none"} />
           </button>
         )}
+        {/* 情報カード(新着記事)は、タップすると記事の半分要約を全画面で読める。
+            スワイプ(keep/skip)と衝突しないよう、pointerdownは親へ伝播させない。 */}
+        {isTop && onRead && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRead(); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{ position: "absolute", bottom: 11, left: HOLE_CLEAR, background: INK, color: PAPER, border: "none", cursor: "pointer", borderRadius: 999, padding: "5px 13px", fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.04em" }}
+          >記事を読む →</button>
+        )}
       </div>
       <div style={{ position: "absolute", top: 20, left: 18, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: "0.15em", padding: "3px 12px", borderRadius: 6, background: "rgba(251,250,247,0.85)", pointerEvents: "none" }}>KEEP</div>
       <div style={{ position: "absolute", top: 20, right: 18, transform: "rotate(12deg)", opacity: skipOpacity, border: "3px solid #8A8A82", color: "#8A8A82", fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: "0.15em", padding: "3px 12px", borderRadius: 6, background: "rgba(251,250,247,0.85)", pointerEvents: "none" }}>SKIP</div>
@@ -177,6 +187,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const [drag, setDrag] = useState({ dx: 0, dy: 0, active: false });
   const [exit, setExit] = useState<"keep" | "skip" | null>(null);
   const [binderItem, setBinderItem] = useState<BriefCard | null>(null);
+  const [readItem, setReadItem] = useState<BriefCard | null>(null);
   const [checkinAnswer, setCheckinAnswer] = useState("");
   const [milestoneText, setMilestoneText] = useState("");
   const [milestoneRating, setMilestoneRating] = useState<1 | 2 | 3 | null>(null);
@@ -585,7 +596,8 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
                     checkinValue={isTop ? checkinAnswer : ""} onCheckinChange={isTop ? setCheckinAnswer : () => {}}
                     milestoneText={isTop ? milestoneText : ""} onMilestoneTextChange={isTop ? setMilestoneText : () => {}}
                     milestoneRating={isTop ? milestoneRating : null} onMilestoneRatingChange={isTop ? setMilestoneRating : () => {}}
-                    flagged={isTop ? !!allFeedback[card.id] : undefined} onFlag={isTop ? () => toggleFlag(card.id) : undefined} />
+                    flagged={isTop ? !!allFeedback[card.id] : undefined} onFlag={isTop ? () => toggleFlag(card.id) : undefined}
+                    onRead={isTop && !isGrowthCard(card) && (card as BriefCard).isInfo ? () => setReadItem(card as BriefCard) : undefined} />
                 </div>
               ))}
             </main>
@@ -666,6 +678,36 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         </main>
       )}
       <BinderModal item={binderItem} onClose={() => setBinderItem(null)} />
+      {readItem && (
+        // 情報カードの「記事を読む」全画面ビュー。detail(記事の半分要約)を読む。
+        // 生成時に作った要約なので、その場で取得せず即表示・オフラインでも読める。
+        <div
+          onClick={() => setReadItem(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(23,23,21,0.55)", display: "flex", justifyContent: "center", alignItems: "flex-end" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 640, maxHeight: "88vh", background: PAPER, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "22px 22px calc(28px + env(safe-area-inset-bottom))" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
+              <span style={{ fontSize: 9.5, color: "#8A8A82", fontWeight: 700, letterSpacing: "0.06em", paddingTop: 4 }}>{readItem.category}{readItem.trigger ? ` ・ ${readItem.trigger}` : ""}</span>
+              <button onClick={() => setReadItem(null)} aria-label="閉じる" style={{ background: "rgba(23,23,21,0.06)", border: "none", borderRadius: 999, width: 30, height: 30, cursor: "pointer", fontSize: 15, color: INK, flexShrink: 0 }}>✕</button>
+            </div>
+            <h2 style={{ margin: "0 0 14px", fontFamily: SERIF, fontWeight: 700, fontSize: 22, lineHeight: 1.35, color: INK }}>{readItem.title}</h2>
+            {(readItem.detail && readItem.detail.trim() ? readItem.detail : readItem.body)
+              .split(/\n{2,}|\n/).filter((p) => p.trim())
+              .map((para, i) => (
+                <p key={i} style={{ margin: "0 0 14px", fontFamily: SERIF, fontSize: 15.5, lineHeight: 1.85, color: "#33322E" }}>{para.trim()}</p>
+              ))}
+            {readItem.sourceUrl && (
+              <a href={readItem.sourceUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                style={{ display: "inline-block", marginTop: 4, fontFamily: SANS, fontSize: 12, fontWeight: 700, color: BLUE, textDecoration: "none" }}>
+                元の記事を開く →{readItem.sourceLabel ? ` (${readItem.sourceLabel})` : ""}
+              </a>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -19,6 +19,10 @@ export const KIND_ICON: Record<ItemKind, IconType> = {
 // ルーズリーフの穴+切り取り線が小さすぎるカードだと窮屈に見えるため、
 // スタック表示時の1枚幅を広めに確保する。
 const STACK_CARD_WIDTH = 132;
+// 1行に重ねる枚数(ユーザー指定で10枚)。CardStackの既定(5)より深く重なるため、
+// 1枚あたり見えるのは端の細い帯だけになるが、束としての厚みが出て行数も減る。
+// これを超えたぶんは次の行へ折り返す。
+const STACK_ROW_CAP = 10;
 
 // GoogleマップのURLかどうか(表示ラベルの出し分け用の軽い判定)。座標・名前の
 // 実際の解決はサーバー関数(/api/resolve-place)が担う。
@@ -245,7 +249,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         {ITEM_DOMAINS.map((d) => (
           <StackSection key={d.id} title={d.label} count={domainItems[d.id].length}>
-            <CardStack cardWidth={STACK_CARD_WIDTH}
+            <CardStack cardWidth={STACK_CARD_WIDTH} rowCap={STACK_ROW_CAP}
               items={domainItems[d.id].slice().reverse().map((i) => ({ key: i.id, node: itemCard(i, STACK_CARD_WIDTH) }))}
               onOpen={() => setOpenDomain(d.id)}
               onAdd={() => { haptic(); setAdding(d.id); }}

@@ -1,15 +1,16 @@
 "use client";
 
-import { ArrowLeft, Bookmark, Check, Maximize2, Minimize2, Plus, X } from "lucide-react";
+import { ArrowLeft, Bookmark, Check, ChevronUp, Map as MapIcon, Maximize2, Minimize2, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { COVER_RADIUS, placeAccent } from "@/components/Binder";
-import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
+import { COVER_RADIUS } from "@/components/Binder";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SelectablePosterCard } from "@/components/common";
 import { LeafletMap } from "@/components/LeafletMap";
+import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
-import { dayInfo, domainOf, hasPlace, haptic, img, mapsUrl, mostRecentThursday, originBadge, pinPosition, shade } from "@/lib/helpers";
+import { GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
+import { dayInfo, domainOf, hasPlace, haptic, img, mapsUrl, originBadge } from "@/lib/helpers";
+import type { GeneratedPlan } from "@/lib/planPipeline";
 import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
 
 // ドック表示の地図。stuck(=下の棚のスクロールでsticky状態に入った)の
@@ -24,12 +25,13 @@ import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
 // なる感じにしてほしい」という指定を受け、CSSトランジションを撤去して
 // スクロール位置に直接連動する連続値にした(下のsentinelRef参照)。
 const MAP_MIN_WIDTH_RATIO = 0.72;
-function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen }: {
+function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen, onCollapse }: {
   items: Item[];
   selectedIds: string[];
   onOpenPin: (item: Item) => void;
   shrink: number;
   onOpenFullscreen: () => void;
+  onCollapse: () => void;
 }) {
   const widthPct = 100 - shrink * (100 - MAP_MIN_WIDTH_RATIO * 100);
   return (
@@ -47,6 +49,16 @@ function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen }: 
         boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
       }}>
         <Maximize2 size={15} strokeWidth={2} />
+      </button>
+      {/* 地図をたたむ。地図が要らない日(棚から直接選ぶ・プランを生成するだけ)に
+          画面の大半を占有し続けないよう、その場で閉じられるようにする。
+          zIndexは全画面ボタンと同じくLeafletのpane(400番台)より上。 */}
+      <button onClick={onCollapse} aria-label="地図をたたむ" style={{
+        position: "absolute", right: 12, top: 12, width: 34, height: 34, borderRadius: "50%",
+        background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+        boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
+      }}>
+        <ChevronUp size={16} strokeWidth={2.2} />
       </button>
     </div>
   );
@@ -94,12 +106,11 @@ function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }:
   );
 }
 
-function HorizontalShelf({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
+function HorizontalShelf({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 22 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E" }}>{title}</span>
-        {badge && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: BLUE, borderRadius: 999, padding: "2px 7px" }}>{badge}</span>}
       </div>
       <div className="no-scrollbar" style={{ display: "flex", gap: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
         {children}
@@ -108,241 +119,36 @@ function HorizontalShelf({ title, badge, children }: { title: string; badge?: st
   );
 }
 
-// 「今週のおすすめ」は1件1件のカードではなく、地図上で近い距離にある
-// 場所が絡むItem(ドメインを問わない。位置情報の有無はドメインとは別軸)
-// 同士をGemini風にまとめた「モデルプラン」の提案。pinPositionが返す地図
-// 座標(AREA_COORDSベース)同士の距離が近いものだけを束ねることで、実際に
-// 徒歩圏内でまとめて回れる組み合わせになるようにしている。場所を持たない
-// Itemは地図上の位置が無いため、この距離ベースの束ねには含めない。
-interface RecommendedPlan {
-  key: string;
-  itemIds: string[];
-  label: string;
-  accent: string;
-  items: { id: string; title: string; image?: string; color?: string; kind: ItemKind; area?: string }[];
-}
-const RECOMMENDED_COUNT = 5;
-// 地図座標(0〜100のパーセント単位)上でこの距離以内なら「近い」とみなす。
-const PLAN_CLUSTER_DIST = 16;
-const PLAN_MAX_ITEMS = 4;
-
-function buildRecommendedPlans(pool: Item[]): RecommendedPlan[] {
-  const withPos = pool.map((item) => ({ item, pos: pinPosition(item) }));
-  // 直近にストックしたものを優先的にプランの起点(種)にする。
-  const sorted = withPos.slice().sort((a, b) => new Date(b.item.addedAt).getTime() - new Date(a.item.addedAt).getTime());
-  const used = new Set<string>();
-  const clusters: (typeof withPos)[] = [];
-  for (const seed of sorted) {
-    if (used.has(seed.item.id) || clusters.length >= RECOMMENDED_COUNT) continue;
-    const group = [seed];
-    used.add(seed.item.id);
-    for (const other of sorted) {
-      if (group.length >= PLAN_MAX_ITEMS) break;
-      if (used.has(other.item.id)) continue;
-      const d = Math.hypot(seed.pos.x - other.pos.x, seed.pos.y - other.pos.y);
-      if (d <= PLAN_CLUSTER_DIST) { group.push(other); used.add(other.item.id); }
-    }
-    // 単体では「組み合わせたプラン」にならないため、2件以上まとまった
-    // 種だけを採用する(近くに何も無い1件だけの候補は諦めて捨てる)。
-    if (group.length >= 2) clusters.push(group);
-  }
-  return clusters.slice(0, RECOMMENDED_COUNT).map((group) => {
-    const areaCounts = new Map<string, number>();
-    group.forEach((g) => {
-      const a = g.item.area && g.item.area !== "—" ? g.item.area : null;
-      if (a) areaCounts.set(a, (areaCounts.get(a) ?? 0) + 1);
-    });
-    const areas = Array.from(areaCounts.entries()).sort((a, b) => b[1] - a[1]).map(([a]) => a);
-    const label = areas.length === 0 ? "近場でめぐるプラン" : areas.length === 1 ? `${areas[0]}で過ごす` : `${areas[0]}・${areas[1]}をめぐる`;
-    return {
-      key: group.map((g) => g.item.id).join("-"),
-      itemIds: group.map((g) => g.item.id),
-      label,
-      accent: group[0].item.color ?? placeAccent(areas[0] ?? group[0].item.id).color,
-      items: group.map((g) => ({ id: g.item.id, title: g.item.title, image: g.item.images?.[0], color: g.item.color, kind: g.item.kind, area: g.item.area })),
-    };
-  });
-}
-
-// 封をしたエンベロープの見た目。以前は束ねた場所カードの小さな端を
-// フラップの下から覗かせていたが、「カードは中に入っている体なので
-// 表示しない、エンベロープだけを見せる」という指摘を受けて中身を透か
-// さない設計にやり直した。フラップは封をした三角のまま(下地より暗い
-// 色)残し、その上にモデルプランの中身(件数・テーマ・行き先の名前)を
-// 直接印字するのはこれまでと同じ。タップすると、フラップが少しだけ
-// 持ち上がって開く簡単なアニメーション(perspective+rotateX)を挟んで
-// から、詳細をオーバーレイ(PlanDetailSheet)で開く。選択のON/OFF自体は
-// このカード上ではなく、オーバーレイ内の「これにする」ボタンへ移した
-// (エンベロープの役目は「開いて中身を見る」ことだけにする)。選択済み
-// かどうかは枠線の色だけで示す。
-const ENVELOPE_WIDTH = 240;
-const ENVELOPE_HEIGHT = 212;
-// 三角のフラップは「封をした証」がわかる程度の控えめな高さにとどめる。
-// 以前は58%と大きく、下の文字(件数・テーマ・行き先名)と被ったり、
-// 表示領域そのものを圧迫していた。
-const ENVELOPE_FLAP_PCT = 34;
-// フラップが開くふりをしてからオーバーレイを開くまでの遅延。短すぎると
-// 「開いた」実感がなく、長すぎるとタップへの反応が鈍く感じる。
-const ENVELOPE_OPEN_MS = 200;
-
-function PlanEnvelope({ plan, selected, onOpen, onToggle }: { plan: RecommendedPlan; selected: boolean; onOpen: () => void; onToggle: () => void }) {
-  const dark = shade(plan.accent, -24);
-  const [opening, setOpening] = useState(false);
-
-  const handleTap = () => {
-    if (opening) return;
-    haptic(6);
-    setOpening(true);
-    setTimeout(() => {
-      onOpen();
-      setOpening(false);
-    }, ENVELOPE_OPEN_MS);
-  };
-
-  return (
-    // ★+ボタンは、エンベロープ本体(perspective+フラップの3D transformを持つ
-    // 3Dコンテキスト)の「外側」の素のラッパーに置く。以前は本体の中にzIndex:4で
-    // 入れていたが、フラップがrotateXで3D変形されると実機Safariでは合成レイヤーが
-    // z-indexを無視してフラップを+ボタンより手前に描画してしまい、ボタンが
-    // フラップの下に隠れていた(Chromiumでは再現しない)。3Dコンテキストの外の
-    // 兄弟要素にすることで、この合成順の影響を受けず確実に最前面に出る。
-    <div style={{ position: "relative", flexShrink: 0, width: ENVELOPE_WIDTH, height: ENVELOPE_HEIGHT }}>
-      {/* ボタンの中にトグル用の丸ボタンをもう1つ入れ子にしたいため、外枠は
-          <button>ではなくrole="button"のdivにする(HTML仕様上、button要素は
-          インタラクティブな子要素を持てない)。キーボード操作もEnter/Spaceで
-          同じタップ扱いにして、実質的にボタンと同じ振る舞いにしている。 */}
-      <div
-        role="button" tabIndex={0} aria-label={plan.label}
-        onClick={handleTap}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleTap(); } }}
-        style={{
-          position: "absolute", inset: 0, padding: 0, border: "none", cursor: "pointer",
-          borderRadius: COVER_RADIUS, overflow: "hidden", background: plan.accent, boxShadow: SOFT_SHADOW_LG, perspective: 500,
-          outline: selected ? `2.5px solid ${BLUE}` : "none", outlineOffset: selected ? -2.5 : 0,
-        }}>
-        {/* 封をした三角のフラップ。タップすると上端(蝶番)を軸にわずかに
-            持ち上がって奥へ開き、封を切ったことを一瞬だけ見せてから
-            オーバーレイに引き継ぐ。下の文字と被らないよう、フラップは
-            「封をした証」がわかる程度の控えめな高さにとどめる。 */}
-        <div style={{
-          position: "absolute", top: 0, left: 0, right: 0, height: `${ENVELOPE_FLAP_PCT}%`, background: dark,
-          clipPath: "polygon(0 0, 100% 0, 50% 100%)", zIndex: 2, transformOrigin: "50% 0%",
-          transform: opening ? "rotateX(-70deg)" : "rotateX(0deg)",
-          transition: `transform ${ENVELOPE_OPEN_MS}ms cubic-bezier(0.45,0,0.2,1)`,
-        }} />
-        <div style={{ position: "absolute", left: 16, right: 16, bottom: 14, zIndex: 1 }}>
-          <div style={{ fontSize: 9, letterSpacing: "0.16em", color: "rgba(255,255,255,0.72)", fontWeight: 700, marginBottom: 5 }}>MODEL PLAN ・ {plan.items.length}件</div>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 15, color: PAPER, lineHeight: 1.3, marginBottom: 8, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{plan.label}</div>
-          {/* フラップの下からここまでの間が空きすぎないよう、要約文の代わりに
-              行き先を1件1行の箇条書きで並べて、増えた表示領域ぶんの情報量を
-              実際に埋める。 */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {plan.items.map((it) => (
-              <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(255,255,255,0.55)", flexShrink: 0 }} />
-                <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.85)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      {/* 開かなくてもその場で選べるよう、タップ即トグルの丸ボタン(右上・大きめ)。
-          カード本体のタップ=開く、この丸だけ=選ぶ。エンベロープ本体の3D
-          コンテキストの外にあるので、フラップに隠れず常に最前面。 */}
-      <button onClick={(e) => { e.stopPropagation(); haptic(6); onToggle(); }} aria-label={selected ? "選択から外す" : "このプランを追加"} style={{
-        position: "absolute", right: 10, top: 10, width: 34, height: 34, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
-        background: selected ? BLUE : "rgba(255,255,255,0.95)", color: selected ? PAPER : INK,
-        display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(23,23,21,0.28)",
-      }}>
-        {selected ? <Check size={18} strokeWidth={3} /> : <Plus size={19} strokeWidth={2.6} />}
-      </button>
-    </div>
-  );
-}
-
-// エンベロープをタップして開いたときに出す、プラン詳細のオーバーレイ。
-// 中身のカードは表示せず(封筒の中に入っている体のため)、行き先の名前
-// だけをサムネイル付きのリストとして見せる。qol-app-v19.jsx時代の
-// 「モデルプラン」バンドルカード(ラベル・小さな一言・件名の箇条書き・
-// 「これにする」ボタン)の構成を、封筒を開けた先の詳細としてそのまま
-// 踏襲している。
-function PlanDetailSheet({ plan, selected, onToggle, onClose }: {
-  plan: RecommendedPlan | null;
-  selected: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-}) {
-  if (!plan) return null;
-  return (
-    <BottomSheet onClose={onClose}>
-      {(requestClose) => (
-        <OverlayCard>
-          <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>MODEL PLAN ・ {plan.items.length}件</div>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, marginBottom: 14 }}>{plan.label}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, margin: "0 0 18px" }}>
-            {plan.items.map((it, idx) => {
-              const IconComp = KIND_ICON[it.kind];
-              const hasArea = it.area && it.area !== "—";
-              return (
-                <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {/* 徒歩でめぐる順番の目安として、束ねた順に番号を振る。 */}
-                  <div style={{ width: 16, flexShrink: 0, fontFamily: SANS, fontWeight: 700, fontSize: 11, color: "#B8B4A6", textAlign: "center" }}>{idx + 1}</div>
-                  <div style={{ position: "relative", width: 46, height: 46, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: it.color ?? "#5A5A54" }}>
-                    {it.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={img(it.image, 100, 100)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                    ) : (
-                      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <IconComp size="46%" strokeWidth={1} color="rgba(255,255,255,0.85)" />
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, color: INK, fontFamily: SANS, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</div>
-                    <div style={{ fontSize: 10, color: "#9A988E", marginTop: 2 }}>{itemKindOf(it.kind).label}{hasArea ? ` ・ ${it.area}` : ""}</div>
-                  </div>
-                  {hasArea && (
-                    <a href={mapsUrl(`${it.area} ${it.title}`)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{
-                      flexShrink: 0, padding: "6px 10px", borderRadius: 999, background: INK, color: PAPER, textDecoration: "none",
-                      fontSize: 9.5, fontWeight: 700, fontFamily: SANS,
-                    }}>地図</a>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <button onClick={() => { onToggle(); requestClose(); }} style={{
-            width: "100%", padding: "13px 0", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
-            background: selected ? "transparent" : INK,
-            color: selected ? RUST : PAPER,
-            border: selected ? `1.5px solid ${RUST}` : "none",
-          }}>{selected ? "選択を外す" : "これにする"}</button>
-        </OverlayCard>
-      )}
-    </BottomSheet>
-  );
-}
+// プラン生成(AIによる3案)のUIは components/PlanGenerateSheet.tsx に分けている。
+// 以前ここにあった「今週のおすすめ」(地図座標の近接クラスタリングで束ねた
+// モデルプランのエンベロープ)は、AIによるプラン生成に役割を譲って撤去した。
 
 // プランタブの選択画面。地図(場所が絡むItemのピン。ドメインを問わない)+
-// 「今週のおすすめ・モノ・バショ・タイケン・ジョウホウ」の棚。棚の区分と
+// 「プランを生成」+「モノ・バショ・タイケン・ジョウホウ」の棚。棚の区分と
 // 名称はストックタブ・アーカイブと共通の語彙(domainOf)にしている。
-function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onTogglePlan, bundlesAreNew }: {
+function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onApplyPlan }: {
   stocked: Item[];
   draftSelection: string[];
   onOpenPin: (item: Item) => void;
   onToggleItem: (item: Item) => void;
-  onTogglePlan: (itemIds: string[]) => void;
-  bundlesAreNew: boolean;
+  onApplyPlan: (itemIds: string[]) => void;
 }) {
   const byNewest = (a: Item, b: Item) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
   // 地図に出るのは場所が絡むItemだけ(ドメインを問わない。位置情報の
-  // 有無はドメインとは別軸)。
+  // 有無はドメインとは別軸)。プラン生成の材料も同じプール(回る順序と距離を
+  // 扱うため、位置を持たない候補は組み込めない)。
   const mapPool = stocked.filter(hasPlace);
   const byDomain = (d: ItemDomain) => stocked.filter((i) => domainOf(i) === d).slice().sort(byNewest);
-  const plans = buildRecommendedPlans(mapPool);
-  const [openPlanKey, setOpenPlanKey] = useState<string | null>(null);
-  const openPlan = plans.find((p) => p.key === openPlanKey) ?? null;
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  // 地図の開閉。地図が要らない日のために閉じられるようにする(ユーザー指定)。
+  // 閉じている間はsticky枠・センチネルごと描画しないので、縮小の計測処理も
+  // 自動的に止まる(センチネルのcallback refがnullで呼ばれてクリーンアップされる)。
+  const [mapOpen, setMapOpen] = useState(true);
+  // AIが生成した3案。シートを閉じても保持し、「生成した3案を見る」から
+  // 開き直せるようにする(生成のたびに課金・待ち時間が発生するため)。
+  const [planSheet, setPlanSheet] = useState(false);
+  const [plans, setPlans] = useState<GeneratedPlan[] | null>(null);
+  const [planArea, setPlanArea] = useState<string | null>(null);
   // 地図の縮小度合いを、地図の直前に置いた高さ0のセンチネル要素の
   // スクロール位置から連続値(0〜1)で求める。以前はIntersectionObserverで
   // 「センチネルが見えているか否か」の二値だけを見てCSSトランジションで
@@ -447,6 +253,8 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
           非表示にする(sticky自身が新しい重なりコンテキストを作るため、
           中でposition:fixedにしてもnav(25)より手前に出せず、閉じる
           ボタンがnavに押されてクリックできなくなる不具合になっていた)。 */}
+      {mapOpen ? (
+        <>
       <div ref={sentinelRef} style={{ height: 0 }} aria-hidden />
       {/* ★フルサイズ高さで固定した枠(zone)+その中でsticky固定+縮小するマップ、
           の二段sticky構成。
@@ -466,7 +274,8 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
             justifyContent:flex-endにするだけで済む(幅が縮むほど余った分だけ
             自動的に右へ寄る)。 */}
         <div style={{ position: "sticky", top: 0, visibility: mapFullscreen ? "hidden" : "visible", display: "flex", justifyContent: "flex-end" }}>
-          <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} shrink={mapShrink} onOpenFullscreen={() => setMapFullscreen(true)} />
+          <MapCanvas items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} shrink={mapShrink}
+            onOpenFullscreen={() => setMapFullscreen(true)} onCollapse={() => { haptic(6); setMapOpen(false); }} />
         </div>
       </div>
       {/* 全画面表示はAppShellの外(document.body直下)へPortalで描画し、
@@ -477,17 +286,38 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
         <MapFullscreenOverlay items={mapPool} selectedIds={draftSelection} onOpenPin={onOpenPin} onRequestClose={() => setMapFullscreen(false)} />,
         document.body
       )}
-      <div style={{ height: 22 }} />
-      {plans.length > 0 && (
-        <HorizontalShelf title="今週のおすすめ" badge={bundlesAreNew ? "NEW" : undefined}>
-          {plans.map((plan) => (
-            <PlanEnvelope key={plan.key} plan={plan}
-              selected={plan.itemIds.every((id) => draftSelection.includes(id))}
-              onOpen={() => setOpenPlanKey(plan.key)}
-              onToggle={() => onTogglePlan(plan.itemIds)} />
-          ))}
-        </HorizontalShelf>
+        </>
+      ) : (
+        // たたんだ状態。開く手がかりとして、地図があった場所に同じ幅の
+        // チップを1本置く(nav・戻るチップと同じ「PAPER地+SOFT_SHADOWで浮く
+        // 丸チップ」の語彙)。
+        <button onClick={() => { haptic(6); setMapOpen(true); }} style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+          background: PAPER, border: "none", borderRadius: 999, padding: "11px 0", cursor: "pointer",
+          fontFamily: SANS, fontSize: 11.5, fontWeight: 700, color: INK, boxShadow: SOFT_SHADOW,
+        }}>
+          <MapIcon size={14} strokeWidth={2.2} />
+          地図をひらく
+        </button>
       )}
+      <div style={{ height: 22 }} />
+      {/* ★プランを生成。プランタブを開いたとき画面の中ほどに来る位置(地図の
+          すぐ下、棚の手前)に、単独で大きく置く。地図と棚のあいだが、
+          「ここから何をするか」を決める場所として一番自然なため。 */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 9, padding: "6px 0 26px" }}>
+        <button onClick={() => { haptic(10); setPlanSheet(true); }} style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: "15px 30px", borderRadius: 999, border: "none", cursor: "pointer",
+          background: INK, color: PAPER, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.08em",
+          boxShadow: SOFT_SHADOW_LG,
+        }}>
+          <Sparkles size={15} strokeWidth={2.4} />
+          プランを生成
+        </button>
+        <span style={{ fontSize: 10.5, color: "#9A988E", letterSpacing: "0.04em" }}>
+          {plans ? "3つの案ができています" : "ストックの候補から、3つの案をつくります"}
+        </span>
+      </div>
       {ITEM_DOMAINS.map((d) => {
         const items = byDomain(d.id);
         return items.length > 0 && (
@@ -496,12 +326,16 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onToggle
           </HorizontalShelf>
         );
       })}
-      <PlanDetailSheet
-        plan={openPlan}
-        selected={openPlan ? openPlan.itemIds.every((id) => draftSelection.includes(id)) : false}
-        onToggle={() => openPlan && onTogglePlan(openPlan.itemIds)}
-        onClose={() => setOpenPlanKey(null)}
-      />
+      {planSheet && (
+        <PlanGenerateSheet
+          pool={mapPool}
+          plans={plans}
+          area={planArea}
+          onGenerated={(next, area) => { setPlans(next); setPlanArea(area); }}
+          onApply={onApplyPlan}
+          onClose={() => setPlanSheet(false)}
+        />
+      )}
     </main>
   );
 }
@@ -1010,7 +844,7 @@ function ConfirmedStack({ items, onMarkDone, onDrop, onRegister, onFallingChange
   );
 }
 
-export function ExecuteTab({ appState, persist, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection, execMapMode: mapMode, setExecMapMode: setMapMode }: TabProps) {
+export function ExecuteTab({ appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection, execMapMode: mapMode, setExecMapMode: setMapMode }: TabProps) {
   const magazine = appState.magazine;
   // mapMode(バインダー確定後でも地図に戻って選び直すときtrue)はAppShellへ
   // 引き上げた(execMapMode)。外側のタブスクロールコンテナをロックすべきか
@@ -1078,31 +912,14 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
     })
     .filter((x): x is ExecItem => !!x) : [];
 
-  const currentBundleWeek = mostRecentThursday();
-  const bundlesAreNew = (appState.weekendMeta?.lastSeenBundleWeek ?? null) !== currentBundleWeek;
-
-  useEffect(() => {
-    if (!showMap || !bundlesAreNew || stocked.length === 0) return;
-    const t = setTimeout(() => {
-      const next = structuredClone(appState);
-      next.weekendMeta = { ...(next.weekendMeta ?? {}), lastSeenBundleWeek: currentBundleWeek };
-      persist(next);
-    }, 1200);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showMap, bundlesAreNew, currentBundleWeek, stocked.length]);
-
   const toggleDraftItem = (item: Item) => toggleItemSelection(item.id);
-  // モデルプラン(複数の行き先をまとめたエンベロープ)は、中の全件がすでに
-  // 選択済みなら丸ごと外し、そうでなければ丸ごと追加する。1件ずつの
-  // toggleItemSelectionではなく「全部入り/全部無し」の2状態だけを扱う。
-  const toggleDraftPlan = (itemIds: string[]) => {
-    const allSelected = itemIds.every((id) => draftSelection.includes(id));
-    if (allSelected) {
-      setSelection({ itemIds: draftSelection.filter((id) => !itemIds.includes(id)) });
-    } else {
-      addItemIds(itemIds);
-    }
+  // AIが生成したプランを採用する = その行き先をまとめて選択に足す。既に
+  // 手で選んでいたものは外さない(追加のみ)。確定はこれまでどおり
+  // PlanSelectionBarの「バインダーへ」で行う。
+  const applyGeneratedPlan = (itemIds: string[]) => {
+    haptic(12);
+    addItemIds(itemIds);
+    showToast(`${itemIds.length}件をプランに追加しました`);
   };
 
   const removeFromMagazine = (id: string) => {
@@ -1227,8 +1044,7 @@ export function ExecuteTab({ appState, persist, goTab, profileButton, selection,
         <>
           <MapPlanner
             stocked={stocked} draftSelection={draftSelection}
-            onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onTogglePlan={toggleDraftPlan}
-            bundlesAreNew={bundlesAreNew}
+            onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onApplyPlan={applyGeneratedPlan}
           />
           {/* 選択中のカードを確定する操作は、タブを跨いで共有するAppShellの
               フローティングUI(画面右下、スタックアイコン+取り消し+

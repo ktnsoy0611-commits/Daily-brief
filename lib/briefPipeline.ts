@@ -357,7 +357,9 @@ function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
     calls: a.calls + b.calls,
   };
 }
-async function callGemini(
+// モデル解決(404時のフォールバック含む)・使用トークンの集計をまとめた唯一の
+// Gemini呼び出し口。プラン生成(lib/planPipeline.ts)からも使うためexportする。
+export async function callGemini(
   key: string, systemText: string, userText: string, jsonMode: boolean, maxOutputTokens = 3072,
 ): Promise<{ ok: true; text: string; usage: TokenUsage } | { ok: false; status: number; detail: string }> {
   const reqBody = JSON.stringify({
@@ -385,7 +387,7 @@ async function callGemini(
     usage: { promptTokens: um.promptTokenCount ?? 0, candidateTokens: um.candidatesTokenCount ?? 0, totalTokens: um.totalTokenCount ?? 0, calls: 1 },
   };
 }
-function extractJsonArray<T>(text: string): T[] | null {
+export function extractJsonArray<T>(text: string): T[] | null {
   let t = text.trim();
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) t = fence[1].trim();

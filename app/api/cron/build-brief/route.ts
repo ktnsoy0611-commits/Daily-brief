@@ -5,6 +5,7 @@ import { loadMyBrain } from "@/lib/myBrain";
 import { deleteMyBrainFile, readMyBrainFile, syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
 import { buildLogLines, groupByMonth, mergeMonthFile, oldLogPaths } from "@/lib/feedbackLog";
 import { buildSourceStats, renderSourceStatsMd, type SourceStatRow } from "@/lib/sourceStats";
+import { renderGoalsMd } from "@/lib/goalsExport";
 import { generatedToBriefCard } from "@/lib/deckStyle";
 import { FIXED_SOURCES } from "@/lib/constants";
 import type { BriefCard } from "@/lib/types";
@@ -41,6 +42,7 @@ export const maxDuration = 300;
 const RETENTION_DAYS = 3;
 const POOL_CAP = 40;         // 未消化(keep/skipされていない)カードのストック上限。40枚溜まっている間は追加生成しない(ユーザー指定)
 const GEN_TARGET = 10;       // 1号(朝刊/夕刊)で出す目標枚数(ユーザー指定: 各10枚くらい。朝刊10+夕刊10=1日20枚)
+const GOAL_CARDS_PER_WEEK = 2; // ゴール関連カードは週に1〜2枚まで(ユーザー指定・§8.21)
 
 function jstEditionKey(): string {
   const jst = new Date(Date.now() + 9 * 3600 * 1000);
@@ -148,7 +150,7 @@ export async function GET(req: Request) {
 
   // 1. taste(好み・興味)は app_state(アプリの設定画面)とmy-brain(他アプリが
   // 直接書き足す可能性がある方)をラベル単位で合わせて使う。
-  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items", "crawlState", "fixedSources", "sourceStats"]);
+  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items", "crawlState", "fixedSources", "sourceStats", "goals"]);
   const byKey: Record<string, unknown> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
   const rawSources = Array.isArray(byKey.sources) ? (byKey.sources as unknown[]) : [];
   const appFavoriteSources: { url: string; label?: string }[] = rawSources
@@ -209,7 +211,22 @@ export async function GET(req: Request) {
   // 「興味・好みの関連キーワード」は分析タスク(Cowork)が taste-state.md に書く、
   // 興味・好みから派生する関連・隣接テーマで、アプリ側(app_state)には入力欄が
   // 無い。my-brain のものをそのまま使う(moderate=興味の広がり判定の材料)。
-  const taste: TasteInput = { taste: mergedTaste, related: brain.taste.related, wishes, livingArea: brain.taste.livingArea };
+  // ゴール(§8.21): 本体は app_state にあり、達成に効くキーワードは Cowork の週次分析が
+  // taste-state.md の「## ゴールに効くキーワード」へ書く。ここでゴール名を突き合わせて
+  // idを付け、生成へ渡す(層1が goalId を返せるようにするため)。キーワードがまだ無い
+  // ゴールも、タイトルだけで渡して拾える可能性を残す。
+  const rawGoals = Array.isArray(byKey.goals) ? (byKey.goals as unknown[]) : [];
+  const appGoals = rawGoals
+    .filter((g): g is { id?: string; title: string } => !!g && typeof g === "object" && typeof (g as { title?: unknown }).title === "string")
+    .map((g) => ({ id: typeof g.id === "string" ? g.id : undefined, title: g.title }));
+  const normTitle = (s: string) => s.trim().toLowerCase().replace(/\s+/g, "");
+  const kwByTitle = new Map((brain.taste.goalKeywords ?? []).map((g) => [normTitle(g.title), g.keywords]));
+  const goalsForGen = appGoals.map((g) => ({ id: g.id, title: g.title, keywords: kwByTitle.get(normTitle(g.title)) ?? [] }));
+
+  const taste: TasteInput = {
+    taste: mergedTaste, related: brain.taste.related, wishes,
+    goals: goalsForGen, livingArea: brain.taste.livingArea,
+  };
 
   if (!allSources.length) return NextResponse.json({ ok: false, reason: "no_sources", brainFiles: brain.filesRead });
 
@@ -275,6 +292,24 @@ export async function GET(req: Request) {
   const genCount = Math.max(0, Math.min(GEN_TARGET, POOL_CAP - undigested));
   const skipGen = genCount === 0;
 
+  // ゴール関連カードは「週に1〜2枚」(ユーザー指定)。直近7日の号に出したゴール
+  // カードを数え、GOAL_CARDS_PER_WEEK に足りない分だけ今回の枠として渡す。
+  // 1号ごとに枠を確保すると週14枚になってしまうため、この数え方にしている。
+  const goalQuota = (() => {
+    if (!goalsForGen.length) return 0;
+    const decks = (byKey.generatedDecks ?? {}) as Record<string, { goalId?: unknown }[]>;
+    const cutoff = Date.now() - 7 * 86400000;
+    let recent = 0;
+    for (const [ek, deck] of Object.entries(decks)) {
+      const m = ek.match(/^(\d{4})-(\d{2})-(\d{2})-/);
+      if (!m) continue;
+      const t = Date.parse(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
+      if (Number.isNaN(t) || t < cutoff) continue;
+      for (const c of deck ?? []) if (typeof c?.goalId === "string" && c.goalId) recent++;
+    }
+    return Math.max(0, GOAL_CARDS_PER_WEEK - recent);
+  })();
+
   // 3. 生成。countは「この号で最大何枚まで」(目標GEN_TARGET=10、ただし残り
   // 容量まで)。バックログが上限ならbuildDeckを呼ばない=トークンを使わない。
   const result = skipGen
@@ -284,6 +319,7 @@ export async function GET(req: Request) {
         exclude: { urls: excludeUrls, names: excludeNames },
         digests: prevDigests,
         forceFresh: manualRun, // 手動「今すぐ生成」は更新なしスキップを無効化して必ず抽出
+        goalQuota,             // ゴール関連カードは週に1〜2枚だけ(§8.21)
       });
   if (result && !result.ok) {
     const status = result.reason.startsWith("gemini_") || result.reason === "fetch_failed" ? 502 : 200;
@@ -488,6 +524,16 @@ export async function GET(req: Request) {
     }
   } catch {
     /* 打率集計の失敗はデッキ生成を止めない */
+  }
+
+  // 5.6 ゴール(と、そこに書き溜めたチェックインの記録)を goals.md へ書き出す。
+  // ゴールは app_state にしか無くCoworkから見えないため、週次の分析タスクが
+  // 「ゴールを分析して達成に効くキーワードを出す」ために共有する(§8.21)。
+  // 記録(日付・本文・節目・満足度)は分析の主材料なのですべて載せる(ユーザー指定)。非致命。
+  try {
+    await writeMyBrainFile("goals.md", renderGoalsMd(byKey.goals), "ゴールと記録を同期");
+  } catch {
+    /* ゴール同期の失敗はデッキ生成を止めない */
   }
 
   // 6. アプリで削除した情報源を sources-user.md へ書き出す(発掘タスクが尊重する)。

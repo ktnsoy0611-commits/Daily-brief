@@ -22,6 +22,7 @@ const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const JINA_BASE = "https://r.jina.ai/";
 const DEFAULT_LIVING_AREA = "東京23区(および電車で日常的に行ける範囲)";
 const DERIVED_TRIGGER = "興味の広がり";
+const GOAL_TRIGGER = "ゴールに向けて";
 
 // 層1(サイトごとの抽出＋関連度)の設定。以前は全サイトを1回のGemini呼び出しに
 // まとめており、1サイトあたり約3,300字しか渡せず、18サイトでも候補が10件程度しか
@@ -51,10 +52,17 @@ export type InterestSignal = { label: string; weight: number };
 // 応えるカードのkindを、対応するドメインに沿った値へ優先的に揃える
 // (HANDOFF-CURRENT.md §8.14 Issue 3)。
 export type WishInput = { title: string; domain?: string; id?: string };
+// ゴール(目標)の達成に効くキーワード。Coworkの週次分析が taste-state.md の
+// 「## ゴールに効くキーワード」に書き、Cronがゴール本体(app_state)のidと突き合わせて
+// ここへ渡す。層1がこれを見て「この候補はどのゴールに効くか」をgoalIdで返す。
+export type GoalInput = { id?: string; title: string; keywords: string[] };
 export type TasteInput = {
   wishes?: (string | WishInput)[];
   taste?: InterestSignal[];   // 興味・好み(関心を持ち好んでいるテーマ。好み/興味を統合した1リスト)
   related?: InterestSignal[]; // 興味・好みの関連キーワード(そこから派生する関連・隣接テーマ。カード生成の網を少し広げる材料)
+  goals?: GoalInput[];        // ゴールと、その達成に効くキーワード
+  // Coworkが書いた「ゴール名→キーワード」の生データ(myBrainが読み、Cronがidを付ける)。
+  goalKeywords?: { title: string; keywords: string[] }[];
   livingArea?: string;
 };
 export type TokenUsage = { promptTokens: number; candidateTokens: number; totalTokens: number; calls: number };
@@ -69,6 +77,8 @@ export type GeneratedCard = {
   isInfo?: boolean;         // 好み/興味に強く当たらない中立の「新着情報」カード
   sourceWishId?: string;    // 応えた願いのid(id化・言い換えに強い)
   sourceWishTitle?: string; // 旧: 文字一致用(後方互換のため残す)
+  goalId?: string;          // 達成に役立つゴールのid(検証済み)
+  goalTitle?: string;       // 表示用のゴール名(コードが引く)
   images?: string[]; // OGP画像(og:image)。無ければ未設定=色ベタ表示
   lat?: number; lng?: number; placeId?: string; // 会場/エリアをPlacesで名寄せした実座標
 };
@@ -78,6 +88,7 @@ export type CandidateRecord = {
   site?: string; // 由来する情報源(入力sources[]の1つ)。サイト別上限に使う
   // 層1がその場で付ける関連度(0〜100)とkind。採否はコードがこの点数で決める。
   relevance?: number; kind?: string; inLivingArea?: boolean; sourceWishId?: string;
+  goalId?: string; // 検証済み(渡したゴールのidに一致した)場合だけ入る
 };
 export type BuildResult =
   | {
@@ -95,6 +106,7 @@ type ExtractedCandidate = {
   name?: string; summary?: string; relevance?: number; kind?: string;
   inLivingArea?: boolean; venue?: string; area?: string;
   start?: string; end?: string; price?: string; sourceUrl?: string; sourceWishId?: string;
+  goalId?: string; // そのゴールの達成に直接役立つ候補(検証してから採用する)
 };
 
 const ZERO_USAGE: TokenUsage = { promptTokens: 0, candidateTokens: 0, totalTokens: 0, calls: 0 };
@@ -414,6 +426,7 @@ const SYSTEM_EXTRACT = `あなたは情報抽出モジュールです。1つのW
   願望リスト: 具体的な願い。各行は「- (id: 識別子) 内容」または「- (id: 識別子) 内容 [ドメイン: …]」の形式
   興味・好み: 関心を持ち、好んでいるテーマ
   興味・好みの関連キーワード: そこから派生する関連・隣接テーマ
+  ゴール: 達成したい目標。各行は「- (id: 識別子) 目標 ／ 効くキーワード: …」の形式
 <抽出上限>: このページから作る候補の最大件数
 <ページ>: URLとMarkdown本文
 
@@ -426,6 +439,7 @@ ${DOMAIN_KIND_TABLE}
 3. <基準日>時点で既に終了している事物は候補にしない。開始日・終了日が本文から読み取れる場合のみ start / end に記す。
 4. sourceUrl は、その事物の個別ページを指す、本文中に実在するリンクのURLをそのまま用いる。URLの生成・改変・補完は禁止。個別リンクが本文に無い事物は、ページ自体のURLを用いる。
 5. <抽出上限>まで、できるだけ多く拾う。関連度の低い候補も省略せず出力する。
+6. <プロファイル>の「ゴール」に挙がった目標の達成に直接役立つ候補（その目標のための場所・道具・講座・体験・記事など）には goalId にその目標の識別子を記す。役立たない候補には付けない。目標に役立つかどうかは relevance とは別の判断で、relevance は従来どおり興味・好みとの近さで付ける。
 
 # 関連度(relevance)の付け方
 プロファイルとの近さを0〜100の整数で付ける。合致は文字どおりの一致に限らず、上位概念・下位概念・隣接ジャンルまで含めて考える（例: 特定のブランド名は「ファッション」という上位ジャンルを、ある作家名はその分野を含意する）。
@@ -436,7 +450,7 @@ ${DOMAIN_KIND_TABLE}
 
 # 出力契約
 下記フィールドのJSON配列のみを出力する。候補が無い場合は [] を出力する。
-name / summary（1〜3文。本文の事実に基づく内容の要約。固有名・日時・場所などの具体を最低1つ含める。プロファイルとの合致理由やユーザーへの言及・勧誘は書かない） / relevance（0〜100の整数） / kind（"place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。商品・アイテムは "thing"） / inLivingArea（任意。所在地の記述がある場合のみ、それが<生活圏>内かどうか） / venue（任意） / area（任意） / start（任意,ISO8601） / end（任意,ISO8601） / price（任意） / sourceUrl / sourceWishId（任意。願望リストのいずれかに直接応える場合のみ、その願いの行頭にある識別子）`;
+name / summary（1〜3文。本文の事実に基づく内容の要約。固有名・日時・場所などの具体を最低1つ含める。プロファイルとの合致理由やユーザーへの言及・勧誘は書かない） / relevance（0〜100の整数） / kind（"place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。商品・アイテムは "thing"） / inLivingArea（任意。所在地の記述がある場合のみ、それが<生活圏>内かどうか） / venue（任意） / area（任意） / start（任意,ISO8601） / end（任意,ISO8601） / price（任意） / sourceUrl / sourceWishId（任意。願望リストのいずれかに直接応える場合のみ、その願いの行頭にある識別子） / goalId（任意。上記ゴールの達成に直接役立つ場合のみ、その目標の行頭にある識別子）`;
 
 const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文詳細化モジュールです。既に選ばれたカードごとに、その事物の個別ページ本文を読み、カードの本文(body)と詳細(detail)を書きます。
 
@@ -591,6 +605,9 @@ export async function buildDeck(input: {
   exclude?: { urls?: string[]; names?: string[] };
   digests?: Record<string, string>;
   forceFresh?: boolean; // 真なら「更新なしスキップ」を無効化し取得できた全サイトを抽出する
+  // ゴール関連カードを今回いくつまで入れてよいか(ユーザー方針: 週に1〜2枚)。
+  // 直近7日に出した枚数から呼び出し側(Cron)が算出して渡す。既定0=入れない。
+  goalQuota?: number;
 }): Promise<BuildResult> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { ok: false, reason: "no_key" };
@@ -648,7 +665,17 @@ export async function buildDeck(input: {
     : "願望リスト: なし";
   const tasteLine = `興味・好み: ${tasteSignals.length ? tasteSignals.map((i) => i.label).join(" / ") : "なし"}`;
   const relatedLine = `興味・好みの関連キーワード: ${relatedSignals.length ? relatedSignals.map((i) => i.label).join(" / ") : "なし"}`;
-  const tasteBlockClassify = `${wishesLine}\n${tasteLine}\n${relatedLine}`;
+  // ゴール(と達成に効くキーワード)。層1はこれを見て goalId を返す。願いと同じく
+  // 行頭にidを添え、返ってきたidは渡したidに一致する時だけ採用する(捏造を弾く)。
+  const goals = (input.taste.goals ?? []).filter((g) => g && typeof g.title === "string" && g.title.trim()).slice(0, 10);
+  const goalIdSet = new Set(goals.map((g) => g.id).filter((x): x is string => !!x));
+  const goalTitleById = new Map(goals.filter((g) => g.id).map((g) => [g.id as string, g.title]));
+  const goalsLine = goals.length
+    ? `ゴール:\n${goals
+        .map((g) => `- ${g.id ? `(id: ${g.id}) ` : ""}${g.title}${g.keywords.length ? ` ／ 効くキーワード: ${g.keywords.join(" / ")}` : ""}`)
+        .join("\n")}`
+    : "ゴール: なし";
+  const tasteBlockClassify = `${wishesLine}\n${tasteLine}\n${relatedLine}\n${goalsLine}`;
   // 層E(本文詳細化)の「誘い1文」の根拠に使う。ウィッシュは含めず興味・好み・関連キーワードだけ。
   const tasteBlockEnrich = `${tasteLine}\n${relatedLine}`;
 
@@ -740,6 +767,8 @@ export async function buildDeck(input: {
           kind: typeof c.kind === "string" ? c.kind : undefined,
           inLivingArea: c.inLivingArea,
           sourceWishId: typeof c.sourceWishId === "string" ? c.sourceWishId : undefined,
+          // AIが返したゴールidは、渡したidに一致する時だけ採用する(捏造を弾く)。
+          goalId: typeof c.goalId === "string" && goalIdSet.has(c.goalId) ? c.goalId : undefined,
         });
       }
     };
@@ -804,20 +833,26 @@ export async function buildDeck(input: {
     type PoolItem = { card: GeneratedCard; site?: string; geoQuery?: string; relevance: number };
     const toPoolItem = (c: CandidateRecord): PoolItem => {
       const relevance = c.relevance ?? 0;
-      const isInfo = relevance < PROPOSAL_MIN_RELEVANCE;
-      const isDerived = !isInfo && relevance < STRONG_MIN_RELEVANCE;
+      // ゴールに効く候補は「提案カード」として扱う(関連度が低くても情報カードには
+      // しない。目標の達成に役立つこと自体が提案の理由になるため)。
+      const isGoal = !!c.goalId;
+      const isInfo = !isGoal && relevance < PROPOSAL_MIN_RELEVANCE;
+      const isDerived = !isGoal && !isInfo && relevance < STRONG_MIN_RELEVANCE;
       const geoParts = [c.venue, c.area].map((s) => (s ?? "").trim()).filter(Boolean);
       const geoQuery = Array.from(new Set(geoParts)).join(" ").trim();
       return {
         relevance, site: c.site, geoQuery: geoQuery || undefined,
         card: {
           title: c.name, body: c.summary ?? "", kind: c.kind ?? "info",
-          // triggerはコードが関連度から決める(AIに書かせない=ぶれない)。
-          trigger: isInfo ? "新着" : isDerived ? DERIVED_TRIGGER : "興味との一致",
+          // triggerはコードが決める(AIに書かせない=ぶれない)。
+          trigger: isGoal ? GOAL_TRIGGER : isInfo ? "新着" : isDerived ? DERIVED_TRIGGER : "興味との一致",
           area: c.area, sourceUrl: c.sourceUrl, expiresAt: c.end,
           isDerived, isInfo,
           // AIが返した願いのidは、渡したidに一致する時だけ採用する(捏造を弾く)。
           sourceWishId: !isInfo && c.sourceWishId && wishIdSet.has(c.sourceWishId) ? c.sourceWishId : undefined,
+          // ゴールidは検証済み。表示用のゴール名はコード側で引く(AIに書かせない)。
+          goalId: c.goalId,
+          goalTitle: c.goalId ? goalTitleById.get(c.goalId) : undefined,
         },
       };
     };
@@ -847,9 +882,29 @@ export async function buildDeck(input: {
       }
       return out;
     };
-    const proposals = pool.filter((p) => !p.card.isInfo);
-    const infos = pool.filter((p) => p.card.isInfo);
-    let finalItems: PoolItem[] = roundRobin(groupBySite(proposals), count);
+    // ゴール関連カードは「週に1〜2枚」の方針(ユーザー指定)。呼び出し側が直近7日の
+    // 実績から算出した goalQuota の枚数だけ、他と競争させずに先に確保する。
+    // 1ゴールにつき1枚まで(同じゴールのカードで枠を埋めない)。
+    const goalQuota = Math.max(0, Math.min(input.goalQuota ?? 0, count));
+    const goalItems: PoolItem[] = [];
+    if (goalQuota > 0) {
+      const usedGoals = new Set<string>();
+      for (const p of pool) {
+        if (goalItems.length >= goalQuota) break;
+        const gid = p.card.goalId;
+        if (!gid || usedGoals.has(gid)) continue;
+        usedGoals.add(gid);
+        goalItems.push(p);
+      }
+    }
+    const goalPicked = new Set(goalItems);
+    const rest = pool.filter((p) => !goalPicked.has(p));
+    const proposals = rest.filter((p) => !p.card.isInfo);
+    const infos = rest.filter((p) => p.card.isInfo);
+    let finalItems: PoolItem[] = [...goalItems];
+    if (finalItems.length < count) {
+      finalItems = [...finalItems, ...roundRobin(groupBySite(proposals), count - finalItems.length)];
+    }
     if (finalItems.length < count) {
       finalItems = [...finalItems, ...roundRobin(groupBySite(infos), count - finalItems.length)];
     }

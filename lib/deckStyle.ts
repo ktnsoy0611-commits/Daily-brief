@@ -70,5 +70,7 @@ export function generatedToBriefCard(gc: GeneratedCard, id: number): BriefCard {
     expiresAt: gc.expiresAt,
     serendipity: gc.isDerived,
     isInfo: gc.isInfo,
+    goalId: gc.goalId,
+    goalTitle: gc.goalTitle,
   };
 }

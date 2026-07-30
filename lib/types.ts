@@ -76,6 +76,9 @@ export interface Item {
   good?: boolean;
   origin: ItemOrigin;
   sourceWishId?: string;
+  // このItemがどのゴールの達成に役立つか(ゴール由来の提案カードをKEEPした場合)。
+  // ストックの候補として入りつつ、どのゴールのためかを保持する(HANDOFF §8.21)。
+  goalId?: string;
 }
 
 // ウィッシュ = まだ形のない自由文の願い。タブバー横の＋から、アプリの
@@ -243,6 +246,9 @@ export interface BriefCard {
   // 情報カード(新着記事)。KEEPするとストックでなくその日の日付バインダーへ
   // done として入る別枠(§8.17)。detailに記事の半分要約が入り、タップで読める。
   isInfo?: boolean;
+  // ゴール由来の提案カード(§8.21)。goalTitleを表示し、KEEPでItem.goalIdへ引き継ぐ。
+  goalId?: string;
+  goalTitle?: string;
   images?: string[];
   sourceUrl?: string;
   sourceLabel?: string;

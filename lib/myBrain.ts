@@ -167,11 +167,25 @@ function tasteFromMarkdown(md: string): TasteInput {
     new Set(sections.filter((s) => isTasteInterest(s.heading)).flatMap((s) => bulletsOf(s.lines))),
   ).filter((l) => !dismissedSet.has(l));
   const wishBullets = bulletsOf(sections.find((s) => /願い|ウィッシュ/.test(s.heading))?.lines ?? []);
+  // 「## ゴールに効くキーワード」= Coworkの週次分析が各ゴールについて書く、達成に
+  // 直接つながる検索語(HANDOFF §8.21)。各行は「- ゴール名: 語 ／ 語 ／ 語」。
+  // この見出しは「好み/興味/関心」も「関連」も含まないので、上の判定には拾われない。
+  const goalBullets = bulletsOf(sections.find((s) => /ゴール|目標/.test(s.heading))?.lines ?? []);
+  const goalKeywords = goalBullets
+    .map((b) => {
+      const m = b.match(/^(.+?)\s*[:：]\s*(.+)$/);
+      if (!m) return null;
+      const title = m[1].trim();
+      const keywords = m[2].split(/[／\/、,]/).map((k) => k.trim()).filter(Boolean);
+      return title && keywords.length ? { title, keywords } : null;
+    })
+    .filter((x): x is { title: string; keywords: string[] } => x !== null);
   return {
     livingArea,
     taste: tasteBullets.length ? interestsFromBullets(tasteBullets) : undefined,
     related: relatedBullets.length ? interestsFromBullets(relatedBullets) : undefined,
     wishes: wishBullets.length ? wishBullets : undefined,
+    goalKeywords: goalKeywords.length ? goalKeywords : undefined,
   };
 }
 
@@ -236,6 +250,7 @@ export async function loadMyBrain(): Promise<MyBrain> {
     if (!taste.taste?.length) taste.taste = md.taste;
     if (!taste.related?.length) taste.related = md.related;
     if (!taste.wishes?.length) taste.wishes = md.wishes;
+    if (!taste.goalKeywords?.length) taste.goalKeywords = md.goalKeywords;
   }
   if (sourcesMd) {
     filesRead.push("sources.md");

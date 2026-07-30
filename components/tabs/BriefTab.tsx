@@ -127,7 +127,8 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#5A5A54", flexShrink: 0 }} />
             {/* セレンディピティのカードは「セレンディピティ」の語を出さず、
                 カテゴリだけ表示して他カードと同じ見た目にする。 */}
-            <span style={{ fontSize: 9, color: "#5A5A54", fontWeight: 700, letterSpacing: "0.05em" }}>{card.category}{card.trigger && card.trigger !== "セレンディピティ" ? ` ・ ${card.trigger}` : ""}</span>
+            {/* ゴール由来のカードは、どのゴールのための提案かを添える(§8.21)。 */}
+            <span style={{ fontSize: 9, color: "#5A5A54", fontWeight: 700, letterSpacing: "0.05em" }}>{card.category}{card.trigger && card.trigger !== "セレンディピティ" ? ` ・ ${card.trigger}` : ""}{card.goalTitle ? `（${card.goalTitle}）` : ""}</span>
           </span>
         </div>
         <h2 style={{ margin: "0 0 7px", fontFamily: SERIF, fontWeight: 700, fontSize: 19, lineHeight: 1.35, color: INK }}>{card.title}</h2>
@@ -464,6 +465,9 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
               status: "candidate", addedAt: nowIso, expiresAt: card.expiresAt,
               origin: wish ? "wish" : "brief", sourceWishId: wish?.id,
+              // ゴール由来のカードは、どのゴールのためかを保持したままストックへ入る
+              // (実在するゴールに限る・§8.21)。
+              goalId: card.goalId && next.goals.some((g) => g.id === card.goalId) ? card.goalId : undefined,
             });
           }
         }

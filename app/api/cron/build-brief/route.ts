@@ -4,6 +4,7 @@ import { buildDeck, type InterestSignal, type TasteInput } from "@/lib/briefPipe
 import { loadMyBrain } from "@/lib/myBrain";
 import { deleteMyBrainFile, readMyBrainFile, syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
 import { buildLogLines, groupByMonth, mergeMonthFile, oldLogPaths } from "@/lib/feedbackLog";
+import { buildSourceStats, renderSourceStatsMd, type SourceStatRow } from "@/lib/sourceStats";
 import { generatedToBriefCard } from "@/lib/deckStyle";
 import { FIXED_SOURCES } from "@/lib/constants";
 import type { BriefCard } from "@/lib/types";
@@ -147,7 +148,7 @@ export async function GET(req: Request) {
 
   // 1. taste(好み・興味)は app_state(アプリの設定画面)とmy-brain(他アプリが
   // 直接書き足す可能性がある方)をラベル単位で合わせて使う。
-  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items", "crawlState", "fixedSources"]);
+  const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items", "crawlState", "fixedSources", "sourceStats"]);
   const byKey: Record<string, unknown> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
   const rawSources = Array.isArray(byKey.sources) ? (byKey.sources as unknown[]) : [];
   const appFavoriteSources: { url: string; label?: string }[] = rawSources
@@ -461,6 +462,32 @@ export async function GET(req: Request) {
     }
   } catch {
     /* 反応ログの失敗はデッキ生成を止めない */
+  }
+
+  // 5.5 情報源ごとの打率(出した数・残した数)を集計して my-brain へ書く。
+  // 反応ログは前向きな反応だけを残す方針なので、打率の分母(=見せた数)がログから
+  // 出せない。個別のスキップ記録を作らずに打率を出すため、**集計値だけ**をここで
+  // 積み上げる(HANDOFF §8.20)。Coworkの発掘タスクがこれを読んで cowork:discovered の
+  // 並べ替え・淘汰を行う。カードは3日でデッキから消えるので毎晩少しずつ積算し、
+  // 既に数えたカードidを countedIds で持って二重計上を防ぐ。非致命。
+  try {
+    const prevStats = (byKey.sourceStats ?? {}) as { rows?: unknown; countedIds?: unknown };
+    const prevRows = Array.isArray(prevStats.rows) ? (prevStats.rows as SourceStatRow[]) : [];
+    const prevCounted = Array.isArray(prevStats.countedIds)
+      ? (prevStats.countedIds as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    const { rows, newlyCounted } = buildSourceStats(byKey.generatedDecks, byKey.briefs, prevRows, prevCounted);
+    if (newlyCounted.length || prevRows.length) {
+      // countedIds は「デッキに残っている間の二重計上」を防ぐだけなので直近ぶんで足りる。
+      const nextCounted = [...prevCounted, ...newlyCounted].slice(-2000);
+      await supa.from("app_state").upsert(
+        { user_id: ownerId, key: "sourceStats", value: { rows, countedIds: nextCounted }, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,key" },
+      );
+      await writeMyBrainFile("source-stats.md", renderSourceStatsMd(rows), "情報源ごとの打率を更新");
+    }
+  } catch {
+    /* 打率集計の失敗はデッキ生成を止めない */
   }
 
   // 6. アプリで削除した情報源を sources-user.md へ書き出す(発掘タスクが尊重する)。

@@ -31,13 +31,31 @@ function parseCandidates(v: unknown): PlanCandidate[] {
         lat: typeof o.lat === "number" ? o.lat : undefined,
         lng: typeof o.lng === "number" ? o.lng : undefined,
         summary: typeof o.summary === "string" ? o.summary.slice(0, 200) : undefined,
+        expiresAt: typeof o.expiresAt === "string" ? o.expiresAt : undefined,
       };
     })
     .filter((c): c is PlanCandidate => c !== null);
 }
 
+// 興味・好み。ブリーフ生成と同じく重みの強い順で渡す(ラベルだけ・上限10件)。
+function parseInterests(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((raw) => {
+      if (typeof raw === "string") return { label: raw.trim(), weight: 0 };
+      if (!raw || typeof raw !== "object") return null;
+      const o = raw as Record<string, unknown>;
+      const label = typeof o.label === "string" ? o.label.trim() : "";
+      return label ? { label: label.slice(0, 40), weight: typeof o.weight === "number" ? o.weight : 0 } : null;
+    })
+    .filter((x): x is { label: string; weight: number } => !!x && !!x.label)
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 10)
+    .map((x) => x.label);
+}
+
 export async function POST(req: Request) {
-  let body: { items?: unknown; area?: unknown };
+  let body: { items?: unknown; area?: unknown; interests?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -47,7 +65,7 @@ export async function POST(req: Request) {
   const candidates = parseCandidates(body.items);
   const area = typeof body.area === "string" && body.area.trim() ? body.area.trim() : null;
 
-  const result = await buildPlans({ candidates, area });
+  const result = await buildPlans({ candidates, area, interests: parseInterests(body.interests) });
   const status = result.ok || !result.reason.startsWith("gemini_") ? 200 : 502;
   return NextResponse.json(result, { status });
 }

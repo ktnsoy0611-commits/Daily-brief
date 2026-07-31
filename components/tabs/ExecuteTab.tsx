@@ -126,9 +126,11 @@ function HorizontalShelf({ title, children }: { title: string; children: React.R
 // プランタブの選択画面。地図(場所が絡むItemのピン。ドメインを問わない)+
 // 「プランを生成」+「モノ・バショ・タイケン・ジョウホウ」の棚。棚の区分と
 // 名称はストックタブ・アーカイブと共通の語彙(domainOf)にしている。
-function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onApplyPlan, savedPlans, onSavePlans }: {
+function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleItem, onApplyPlan, savedPlans, onSavePlans }: {
   stocked: Item[];
   draftSelection: string[];
+  // 興味・好み(設定画面のチップ)。プラン生成でAIへ渡す。
+  interests: { label: string; weight: number }[];
   onOpenPin: (item: Item) => void;
   onToggleItem: (item: Item) => void;
   onApplyPlan: (itemIds: string[]) => void;
@@ -337,6 +339,7 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onApplyP
           pool={mapPool}
           plans={plans}
           area={planArea}
+          interests={interests}
           onGenerated={(next, area) => onSavePlans(next ? { plans: next, area, at: new Date().toISOString() } : null)}
           onApply={onApplyPlan}
           onClose={() => setPlanSheet(false)}
@@ -1059,6 +1062,7 @@ export function ExecuteTab({ appState, persist, showToast, goTab, profileButton,
           <MapPlanner
             stocked={stocked} draftSelection={draftSelection}
             onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onApplyPlan={applyGeneratedPlan}
+            interests={appState.profile.interests}
             savedPlans={appState.generatedPlans ?? null} onSavePlans={saveGeneratedPlans}
           />
           {/* 選択中のカードを確定する操作は、タブを跨いで共有するAppShellの

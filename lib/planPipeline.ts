@@ -37,6 +37,9 @@ export type PlanCandidate = {
   lat?: number;
   lng?: number;
   summary?: string;
+  // 会期・開催の終わり(ISO8601)。終わった候補はプロンプトへ渡す前にコードで
+  // 落とす(AIの日付判断に委ねない。briefPipelineと同じ方針)。
+  expiresAt?: string;
 };
 
 export type PlanResult =
@@ -162,8 +165,10 @@ const SYSTEM_PLAN = `あなたは外出プランを編成するモジュール�
 # 入力仕様
 <基準日>: 本日の日付
 <エリア指定>: 利用者が指定したエリア。「指定なし」のときは候補全体から選ぶ
-<候補一覧>: 1行1件。書式は [id] 名称 ｜ 種類 ｜ エリア ｜ 近さ:記号 ｜ メモ
+<興味・好み>: 利用者が関心を持ち、好んでいるテーマ。強い順
+<候補一覧>: 1行1件。書式は [id] 名称 ｜ 種類 ｜ エリア ｜ 近さ:記号 ｜ 期限:日付 ｜ メモ
   近さ:記号 は地理的な近さを表す。同じ記号の候補どうしは徒歩圏内にある。「?」は位置が不明
+  期限:日付 は会期・開催の終わり。無い候補には付かない
 
 # 編成ルール
 1. 候補一覧に無いものを登場させない。名称・場所・期間・料金を創作しない。id は一覧のものを一字一句そのまま使う。
@@ -173,10 +178,15 @@ const SYSTEM_PLAN = `あなたは外出プランを編成するモジュール�
    light: 1〜2時間で済ませる。1〜2件
 3. 1つのプランの中では、近さの記号が同じ候補を優先して組み合わせる。別の記号をまたぐ場合は、移動が必要であることを summary に書く。
 4. <エリア指定>があるときは、そのエリアの候補を中心に組む。
-5. stops は実際に回る順に並べる。移動の効率と、時間帯として自然な流れ(食事は昼か夜、屋内と屋外の並び)で順序を決める。
-6. 同じ候補を1つのプランの中で2回使わない。プランをまたいで同じ候補を使うのは構わない。
-7. 利用者の予定・移動手段・同行者・予算を推測して書かない。候補一覧に無い情報を補わない。
-8. title は10〜18字程度。summary は1〜2文で、その組み合わせを勧める理由が分かるようにする。note は各候補について15字程度の一言(不要なら省略)。
+5. 期限が<基準日>より前の候補は使わない。期限が近い候補を含めたときは、その旨を summary か note に書く。
+6. 3つのプランは、重さだけでなく中身でも違いを出す。同じ候補の組み合わせを重さ違いで繰り返さず、それぞれ別の切り口(テーマ・エリア・過ごし方)になるようにする。
+7. 1つのプランの中で同じ種類ばかりを並べない。食事は原則1件までとし、屋内と屋外、見るものと買うもの、静かな時間と賑やかな時間が混ざるようにする。
+8. stops は実際に回る順に並べる。移動の効率と、時間帯として自然な流れ(食事は昼か夜、屋内と屋外の並び)で順序を決める。
+9. 同じ候補を1つのプランの中で2回使わない。プランをまたいで同じ候補を使うのは構わない。
+10. 利用者の予定・移動手段・同行者・予算を推測して書かない。候補一覧に無い情報を補わない。営業時間・定休日・料金は、候補一覧のメモに書かれていない限り触れない。
+11. title は10〜18字程度。その日をひとことで言い表す言葉にし、「〇〇プラン」のような型どおりの名前にしない。
+12. summary は2〜3文。(a)どういう一日になるか (b)なぜこの組み合わせなのか(<興味・好み>との関係や、候補どうしのつながり) (c)移動や時間帯の注意、が読み取れるようにする。
+13. note は各候補について20〜30字。名称を繰り返さず、その場所でどう過ごすか・なぜこの順番なのかを具体的に書く。候補一覧のメモに書かれた内容の範囲で書く。
 
 # 出力契約
 下記フィールドのJSON配列のみを出力する。要素は3つ(full・half・light を各1つ)。
@@ -185,33 +195,59 @@ title: 文字列
 summary: 文字列
 stops: [{ id: 文字列, note: 文字列(任意) }]`;
 
+// 日付は「終わりの日」だけを渡す(時刻は不要)。読めない値は付けない。
+const expiryLabel = (iso?: string): string | null => {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 10);
+};
+
 function candidateLine(c: PlanCandidate, group: string): string {
   const kind = itemKindOf(c.kind).label;
   const area = c.area && c.area !== "—" ? c.area : "エリア不明";
   const memo = (c.summary ?? "").replace(/\s+/g, " ").slice(0, 60);
-  return `[${c.id}] ${c.title} ｜ ${kind} ｜ ${area} ｜ 近さ:${group}${memo ? ` ｜ ${memo}` : ""}`;
+  const until = expiryLabel(c.expiresAt);
+  return `[${c.id}] ${c.title} ｜ ${kind} ｜ ${area} ｜ 近さ:${group}${until ? ` ｜ 期限:${until}` : ""}${memo ? ` ｜ ${memo}` : ""}`;
 }
 
-export function buildPlanUserPrompt(candidates: PlanCandidate[], area: string | null, todayJp: string): string {
+// 会期の終わった候補はプロンプトへ渡す前に落とす(AIの日付判断に委ねない)。
+export function dropExpired(candidates: PlanCandidate[], todayJp: string): PlanCandidate[] {
+  return candidates.filter((c) => {
+    const until = expiryLabel(c.expiresAt);
+    return !until || until >= todayJp;
+  });
+}
+
+export function buildPlanUserPrompt(
+  candidates: PlanCandidate[],
+  area: string | null,
+  todayJp: string,
+  interests: string[] = [],
+): string {
   const groups = groupByProximity(candidates);
   const lines = candidates.map((c) => candidateLine(c, groups.get(c.id) ?? "?")).join("\n");
   return `<基準日>${todayJp}</基準日>
 <エリア指定>${area && area.trim() ? area.trim() : "指定なし"}</エリア指定>
+<興味・好み>${interests.length ? interests.join("、") : "情報なし"}</興味・好み>
 <候補一覧>
 ${lines}
 </候補一覧>`;
 }
 
 // ---- 本体 -----------------------------------------------------------------
-export async function buildPlans(input: { candidates: PlanCandidate[]; area?: string | null }): Promise<PlanResult> {
+export async function buildPlans(input: {
+  candidates: PlanCandidate[];
+  area?: string | null;
+  interests?: string[];
+}): Promise<PlanResult> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { ok: false, reason: "no_key" };
-  const candidates = input.candidates.slice(0, CANDIDATE_LIMIT);
+  const todayJp = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  const candidates = dropExpired(input.candidates, todayJp).slice(0, CANDIDATE_LIMIT);
   if (candidates.length === 0) return { ok: false, reason: "no_candidates" };
 
-  const todayJp = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-  const user = buildPlanUserPrompt(candidates, input.area ?? null, todayJp);
-  const res = await callGemini(key, SYSTEM_PLAN, user, true, 2048);
+  const user = buildPlanUserPrompt(candidates, input.area ?? null, todayJp, input.interests ?? []);
+  const res = await callGemini(key, SYSTEM_PLAN, user, true, 3072);
   if (!res.ok) return { ok: false, reason: `gemini_${res.status}`, detail: res.detail };
 
   const raw = extractJsonArray<RawPlan>(res.text);

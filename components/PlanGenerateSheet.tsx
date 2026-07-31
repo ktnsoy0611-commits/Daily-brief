@@ -24,6 +24,8 @@ export function planCandidatePayload(items: Item[]) {
     area: i.area && i.area !== "—" ? i.area : undefined,
     lat: i.lat, lng: i.lng,
     summary: i.summary,
+    // 会期の終わり。終わった候補はサーバー側(dropExpired)で落とす。
+    expiresAt: i.expiresAt,
   }));
 }
 
@@ -120,10 +122,13 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
 // まで完結させる(画面遷移を挟まない)。3案は重さ(1日/半日/さくっと)のチップで
 // 切り替えて1案ずつ詳しく見る形にした。3枚を同時に並べると1案あたりの情報量が
 // 削られ、どれも似て見えて選べなくなるため。
-export function PlanGenerateSheet({ pool, plans, area, onGenerated, onApply, onClose }: {
+export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, onApply, onClose }: {
   pool: Item[];
   plans: GeneratedPlan[] | null;
   area: string | null;
+  // 興味・好み(設定画面のチップ)。「なぜこの組み合わせか」をAIが書けるよう、
+  // 候補一覧だけでなくこれも渡す(ブリーフ生成と同じ信号)。
+  interests: { label: string; weight: number }[];
   onGenerated: (plans: GeneratedPlan[] | null, area: string | null) => void;
   onApply: (ids: string[]) => void;
   onClose: () => void;
@@ -155,7 +160,7 @@ export function PlanGenerateSheet({ pool, plans, area, onGenerated, onApply, onC
       const res = await fetch("/api/generate-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: planCandidatePayload(target), area: selectedArea }),
+        body: JSON.stringify({ items: planCandidatePayload(target), area: selectedArea, interests }),
       });
       const data = await res.json();
       if (data?.ok && Array.isArray(data.plans) && data.plans.length > 0) {

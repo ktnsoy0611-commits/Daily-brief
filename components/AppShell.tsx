@@ -1,30 +1,26 @@
 "use client";
 
-import { Heart, LayoutGrid, Map as MapIcon, Newspaper, Settings, Sparkles, Sprout } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ComponentType, type CSSProperties } from "react";
+import { PenLine, Plus, Settings, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
-import { PlanSelectionBar } from "@/components/PlanSelectionBar";
+import { Dashboard } from "@/components/Dashboard";
+import { SelectionMarker } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { GoalsTab } from "@/components/tabs/GoalsTab";
+import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
+import { TasksTab } from "@/components/tabs/TasksTab";
+import { APPS, DEFAULT_TAB, appDef, cycleApp } from "@/lib/apps";
 import { BG, BLUE, GOLD, GREEN, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
-import { buildMagazine, haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
-import type { AppState, ItemDomain, PlanSelection, TabId, TabProps } from "@/lib/types";
-
-const TABS: { id: TabId; label: string; Icon: ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }> }[] = [
-  { id: "records", label: "アーカイブ", Icon: LayoutGrid },
-  { id: "brief", label: "ブリーフ", Icon: Newspaper },
-  { id: "goals", label: "ゴール", Icon: Sprout },
-  { id: "stock", label: "ストック", Icon: Heart },
-  { id: "execute", label: "プラン", Icon: MapIcon },
-];
+import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
+import type { AppId, AppState, ItemDomain, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId } from "@/lib/types";
 
 // 読み込み待機画面。デザインコード(§5)の幾何学図形が左から右へ転がって
 // 横断する(globals.cssの brief-roll)。図形ごとに開始を少しずつ遅らせて、
@@ -46,7 +42,18 @@ function LoadingScreen() {
 
 export function AppShell() {
   const [appState, setAppState] = useState<AppState | null>(null);
-  const [tab, setTab] = useState<TabId>("records");
+  // ★いま開いているアプリ(タスク / 今のアプリ / ジャーナル)。タブバーの上を
+  // 左右にスワイプすると APPS の順に循環して切り替わる。アプリごとに最後に
+  // 見ていたタブを覚えておき、戻ってきたときそこへ帰れるようにする。
+  const [appId, setAppId] = useState<AppId>("life");
+  const [tabByApp, setTabByApp] = useState<Record<AppId, TabId>>({ ...DEFAULT_TAB });
+  const tab = tabByApp[appId];
+  // ★ダッシュボード(画面下から引き上げる引き出し)。3つのアプリのどこからでも
+  // 開ける共通のUIなので、タブではなくここに持つ。
+  const [dashOpen, setDashOpen] = useState(false);
+  // タブバーを横に引いている量(px)。切り替わる方向へピルが少しだけ動いて、
+  // 「引けている」ことを手で分かるようにするためだけの見た目の値。
+  const [navDragX, setNavDragX] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [storageMode, setStorageMode] = useState(DataStore.mode);
   // 認証状態。Supabase未構成(環境変数なし)のときは認証ゲートを一切出さず、
@@ -63,11 +70,6 @@ export function AppShell() {
   // だけ)、ここに置くだけでストックタブ⇄プランタブを跨いで選択が
   // 保持される。
   const [selection, setSelection] = useState<PlanSelection>({ itemIds: [] });
-  // プランタブが地図(選択)画面と確定ビュー(バインダー)のどちらを見せて
-  // いるか。以前はExecuteTabのローカルstateだったが、外側のタブスクロール
-  // コンテナ(scrollLocked)をロックすべきかどうかの判断にAppShell側でも
-  // 必要になったため、selectionと同じ理由でここへ引き上げた。
-  const [execMapMode, setExecMapMode] = useState(false);
 
   // 認証状態の監視(Supabase構成済みのときだけ)。初回セッションを確認して
   // authReady を立て、以後 onAuthStateChange でサインイン/アウトを追う。
@@ -189,7 +191,75 @@ export function AppShell() {
       }
     }).catch(() => {});
   }, [appState, persist]);
-  const goTab = useCallback((id: TabId) => setTab(id), []);
+  const goTab = useCallback((id: TabId) => {
+    // どのアプリのタブかは APPS の定義から引く(他アプリのタブを指定された
+    // 場合はそのアプリごと切り替わる)。
+    const owner = APPS.find((a) => a.tabs.some((t) => t.id === id));
+    setAppId(owner?.id ?? "life");
+    setTabByApp((prev) => ({ ...prev, [owner?.id ?? "life"]: id }));
+  }, []);
+  // アプリの切り替え(タブバーの左右スワイプ)。端まで行くと反対の端へ回る。
+  const switchApp = useCallback((dir: 1 | -1) => {
+    haptic(10);
+    setAppId((cur) => cycleApp(cur, dir));
+  }, []);
+
+  // ★タブバーのジェスチャー。横に払えばアプリの切り替え、上へ引き上げれば
+  // ダッシュボード。最初の10pxでどちらの軸かを決め、決まった軸だけを見る
+  // (斜めの動きで両方が中途半端に反応するのを防ぐ)。指を離すまでに一度でも
+  // 動いていたら、ジェスチャーの終わりに合成されるclick(タブの切り替え)は
+  // 無視する(navDraggedRef)。
+  //
+  // 追従は要素のReactハンドラではなく **windowへ直接張ったリスナー** で行う。
+  // 指がタブバーの外(上方向へのドラッグでは必ず外へ出る)へ移動した瞬間に
+  // 要素側のonPointerMoveは呼ばれなくなり、ジェスチャーが途中で死ぬため
+  // (アーカイブの長押しドラッグで同じ罠を踏んでいる。HANDOFF §7.26)。
+  const navPressRef = useRef<{ id: number; x: number; y: number; axis: "" | "x" | "y" } | null>(null);
+  const navDraggedRef = useRef(false);
+  const onNavPointerDown = useCallback((e: ReactPointerEvent) => {
+    const NAV_SWITCH_PX = 56;   // 横: これ以上払ったらアプリを切り替える
+    const NAV_DASH_PX = 44;     // 縦: これ以上引き上げたらダッシュボードを開く
+    navPressRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
+    navDraggedRef.current = false;
+    const finish = () => {
+      navPressRef.current = null;
+      setNavDragX(0);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", finish);
+    };
+    function move(ev: PointerEvent) {
+      const pr = navPressRef.current;
+      if (!pr || pr.id !== ev.pointerId) return;
+      const dx = ev.clientX - pr.x;
+      const dy = ev.clientY - pr.y;
+      if (!pr.axis) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        pr.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        navDraggedRef.current = true;
+      }
+      if (pr.axis === "x") {
+        // 指の動きの4割だけピルを動かす(手応えを出すためだけの値)。
+        setNavDragX(dx * 0.4);
+        return;
+      }
+      if (dy <= -NAV_DASH_PX) {
+        finish();
+        haptic(12);
+        setDashOpen(true);
+      }
+    }
+    function up(ev: PointerEvent) {
+      const pr = navPressRef.current;
+      const dx = pr ? ev.clientX - pr.x : 0;
+      const axis = pr?.axis;
+      finish();
+      if (axis === "x" && Math.abs(dx) >= NAV_SWITCH_PX) switchApp(dx < 0 ? 1 : -1);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", finish);
+  }, [switchApp]);
   const toggleItemSelection = useCallback((id: string) => {
     haptic(8);
     setSelection((s) => ({ itemIds: s.itemIds.includes(id) ? s.itemIds.filter((x) => x !== id) : [...s.itemIds, id] }));
@@ -198,19 +268,54 @@ export function AppShell() {
     haptic(10);
     setSelection((s) => ({ itemIds: Array.from(new Set([...s.itemIds, ...ids])) }));
   }, []);
-  // フローティングUIの「バインド！」。ストックタブから押した場合でも、
-  // プランタブの地図の「作る」ボタンと全く同じ組み立てロジック
-  // (buildMagazine)で今日のマガジンを確定し、結果を確認できるよう
-  // プランタブへ連れて行く。useCallbackで包まずレンダーのたびに作り
-  // 直しているのは、appState/selectionを常に最新のクロージャで参照
-  // したいため(このボタンはクリックハンドラとして渡すだけで、深い
-  // メモ化の対象にはならない)。
-  const bindSelection = () => {
-    if (!appState || selection.itemIds.length === 0) return;
-    haptic(16);
-    persist(buildMagazine(appState, selection.itemIds));
+  // ★1日を締める操作(ダッシュボードの「今日を終える」)。
+  // 選んでいたカードは実行済み(done)としてアーカイブのバインダーへまとめて
+  // 移り、その日に済ませたタスクも同じ記録に添える。以前はこれを2段階
+  // (プランの「バインダーへ」→確定ビューの「バインド！」)に分けていたが、
+  // 確定ビューごと撤去してこの1操作に集約した(HANDOFF §8.25)。
+  const finishDay = () => {
+    if (!appState) return;
+    const next = structuredClone(appState);
+    const boundAt = new Date().toISOString();
+    // 実際にdoneへ変わったItemだけを記録する(設定画面から確認・元に戻せる
+    // ようにするため)。タイトル等をスナップショットしておくので、後でItem
+    // 自体が消えてもログの表示は壊れない。
+    const boundItems: typeof next.bindLog[number]["items"] = [];
+    selection.itemIds.forEach((id) => {
+      const item = next.items.find((x) => x.id === id);
+      if (item && item.status !== "done") {
+        item.status = "done";
+        item.doneAt = boundAt;
+        boundItems.push({ id: item.id, title: item.title, kind: item.kind, color: item.color, images: item.images });
+      }
+    });
+    // その日のうちに済ませたタスクも同じ記録へ添える(タスクの状態自体は
+    // 変えない。まだ終わっていないタスクを締めの操作で勝手に完了扱いに
+    // すると、記録が事実と食い違うため)。
+    const today = todayKey();
+    const doneTasks = (next.tasks ?? [])
+      .filter((t) => t.dueDate === today && t.done)
+      .map((t) => ({ id: t.id, title: t.title }));
+    if (boundItems.length > 0 || doneTasks.length > 0) {
+      next.bindLog = next.bindLog ?? [];
+      next.bindLog.unshift({ id: `bindlog-${Date.now()}`, boundAt, items: boundItems, tasks: doneTasks.length > 0 ? doneTasks : undefined, undone: false });
+    }
+    persist(next);
     setSelection({ itemIds: [] });
-    setTab("execute");
+    setDashOpen(false);
+    showToast(boundItems.length > 0 ? `${boundItems.length}件をアーカイブへ綴じました` : "今日を終えました");
+    if (boundItems.length > 0) goTab("records");
+  };
+  // ダッシュボードからのタスクのチェック。
+  const toggleTask = (id: string) => {
+    if (!appState) return;
+    haptic(8);
+    const next = structuredClone(appState);
+    const t = next.tasks.find((x) => x.id === id);
+    if (!t) return;
+    t.done = !t.done;
+    t.doneAt = t.done ? new Date().toISOString() : undefined;
+    persist(next);
   };
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 1600); };
   // ウィッシュの追加。ストックには入らず(ウィッシュはカテゴリーではない)、
@@ -260,7 +365,8 @@ export function AppShell() {
       )}
     </button>
   );
-  const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection, execMapMode, setExecMapMode };
+  const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection };
+  const currentApp = appDef(appId);
 
   // 実行タブなどをスクロールした状態で別タブ(特にブリーフタブ)へ切り替えると
   // ヘッダーが見切れる不具合が繰り返し再発していた。原因は「ウィンドウ/body
@@ -303,7 +409,14 @@ export function AppShell() {
   // 自体はExecuteTab内で引き続き必要)。
   const scrollLocked = !showProfile && tab === "brief";
   return (
-    <div style={{ height: "100svh", overflow: "hidden", background: BG, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK }}>
+    <div style={{
+      height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center",
+      fontFamily: SANS, color: INK,
+      // ★地の色はアプリごとに変わる(タスク=グレージュ / 今のアプリ=生成りの
+      // クリーム / ジャーナル=くすんだ淡いグリーン)。切り替えは色が滑らかに
+      // 移るだけにして、画面全体が飛ぶような動きは付けない。
+      background: currentApp.bg, transition: "background 0.42s ease",
+    }}>
       <div data-tab-scroll-root style={{
         width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
         overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
@@ -345,6 +458,8 @@ export function AppShell() {
               {tab === "goals" && <GoalsTab {...tabProps} />}
               {tab === "records" && <RecordsTab {...tabProps} />}
               {tab === "execute" && <ExecuteTab {...tabProps} />}
+              {(tab === "tasks-today" || tab === "tasks-all") && <TasksTab {...tabProps} tab={tab as TasksTabId} />}
+              {(tab === "journal-log" || tab === "journal-archive") && <JournalTab {...tabProps} tab={tab as JournalTabId} />}
             </div>
           </>
         )}
@@ -358,15 +473,11 @@ export function AppShell() {
         }}>{toast}</div>
       )}
 
-      {/* タブを跨いで持ち回すバインド候補の確定UI。プロフィール画面を
-          開いている間だけは他の浮遊UIと同じく隠す。 */}
-      {!showProfile && (
-        <PlanSelectionBar
-          appState={appState} selection={selection}
-          toggleItemSelection={toggleItemSelection}
-          onClear={() => setSelection({ itemIds: [] })}
-          onBind={bindSelection}
-        />
+      {/* タブ・アプリを跨いで持ち回す選択の目印。件数だけを示し、タップで
+          ダッシュボードが開く(確定の操作はダッシュボードに集約した)。
+          プロフィール画面・ダッシュボードを開いている間は隠す。 */}
+      {!showProfile && !dashOpen && (
+        <SelectionMarker appState={appState} selection={selection} onOpen={() => setDashOpen(true)} />
       )}
 
       {/* ヘッダーのプロフィール丸アイコン/件数ピルと同じ「PAPERの丸背景+
@@ -392,20 +503,44 @@ export function AppShell() {
               位置(=下)へ寄せた。以前の44pxは表示領域を必要以上に狭めて
               いた、という指摘によるもの。 */}
           <div aria-hidden style={{ position: "sticky", bottom: 0, width: "100%", height: 0, zIndex: 15, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", left: 0, right: 0, top: -26, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 26px, ${BG} 100%)` }} />
+            <div style={{ position: "absolute", left: 0, right: 0, top: -26, bottom: 0, background: `linear-gradient(to bottom, ${currentApp.bg}00 0, ${currentApp.bg} 26px, ${currentApp.bg} 100%)` }} />
           </div>
-          <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
+          <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", flexDirection: "column", alignItems: "center", padding: "0 16px", pointerEvents: "none" }}>
+            {/* いま3つのアプリのどこにいるか。文字は出さず、点だけの控えめな
+                目印にしている(左右スワイプで動く)。 */}
+            <div style={{ display: "flex", gap: 5, paddingBottom: 7 }}>
+              {APPS.map((a) => (
+                <span key={a.id} style={{
+                  width: a.id === appId ? 14 : 5, height: 5, borderRadius: 999,
+                  background: a.id === appId ? INK : "rgba(26,23,18,0.22)",
+                  transition: "width 0.28s ease, background 0.28s ease",
+                }} />
+              ))}
+            </div>
             {/* SOFT_SHADOW_LG(ぼかし32px)をそのまま使うと、NAV_BOTTOM_GAPで
                 画面下端ぎりぎりまで詰めたこのピルの下側は、影が滲みきる前に
                 画面の外(=物理的な限界)へ突き当たり、途中でスパッと切れた
                 ような不自然な見た目になっていた。ピルだけは控えめな専用の
                 影に差し替え、余白が数pxしか無くても中で滲み切るようにする。 */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 - 32, pointerEvents: "auto" }}>
+            {/* ★タブバーの上の左右スワイプで、3つのアプリ(タスク / 今のアプリ /
+                ジャーナル)を循環して切り替える。上へ引き上げるとダッシュボードが
+                開く。判定をこのタブバーの帯だけに閉じ込めているのは、タブの
+                中身(ブリーフのカードのスワイプ、アーカイブの棚の横スクロール、
+                地図のパン)と一切ぶつからないようにするため。 */}
+            <div
+              onPointerDown={onNavPointerDown}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 - 32, pointerEvents: "auto",
+                touchAction: "none",
+                transform: `translateX(${navDragX}px)`,
+                transition: navDragX === 0 ? "transform 0.26s cubic-bezier(0.22,0.61,0.36,1)" : "none",
+              }}
+            >
               <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(28,28,30,0.16)", padding: 6, marginBottom: NAV_BOTTOM_GAP }}>
-                {TABS.map((t) => {
+                {currentApp.tabs.map((t) => {
                   const active = tab === t.id;
                   return (
-                    <button key={t.id} onClick={() => { haptic(5); goTab(t.id); }} style={{ flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                    <button key={t.id} onClick={() => { if (navDraggedRef.current) return; haptic(5); goTab(t.id); }} style={{ flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                       <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
                         <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
                       </div>
@@ -414,14 +549,16 @@ export function AppShell() {
                   );
                 })}
               </div>
-              {/* ウィッシュは特定のタブの持ち物ではなく、どこにいても書ける
-                  「受信箱」への入り口であることを見た目でも伝えるため、
-                  タブのピルからは意図的に切り離した独立の丸ボタンにしている。 */}
-              <button onClick={() => { haptic(5); setAddingWish(true); }} aria-label="ウィッシュを書く" style={{
+              {/* 右の丸ボタンはアプリごとの「書く」入口。今のアプリでは
+                  ウィッシュ(どのタブからでも書ける受信箱)。タスク・ジャーナルの
+                  中身は後で作るため、今は場所だけ確保してある。 */}
+              <button onClick={() => { if (navDraggedRef.current) return; haptic(5); if (appId === "life") setAddingWish(true); else showToast("この機能はこれから作ります"); }} aria-label={appId === "life" ? "ウィッシュを書く" : appId === "tasks" ? "タスクを足す" : "ジャーナルを書く"} style={{
                 flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(28,28,30,0.16)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
               }}>
-                <Sparkles size={19} strokeWidth={1.8} color={PAPER} />
+                {appId === "life" ? <Sparkles size={19} strokeWidth={1.8} color={PAPER} />
+                  : appId === "tasks" ? <Plus size={20} strokeWidth={2.2} color={PAPER} />
+                  : <PenLine size={18} strokeWidth={1.9} color={PAPER} />}
               </button>
             </div>
           </nav>
@@ -429,6 +566,21 @@ export function AppShell() {
       )}
 
       {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}
+
+      {/* ★ダッシュボード。タブバーを上へ引き上げる(または選択の目印をタップ
+          する)と、3つのアプリのどこからでも開く共通の引き出し。選んでいる
+          カードとその日のタスクを1枚で見渡し、「今日を終える」で1日を締める。 */}
+      {dashOpen && (
+        <Dashboard
+          appState={appState}
+          selection={selection}
+          onToggleItem={toggleItemSelection}
+          onClearSelection={() => setSelection({ itemIds: [] })}
+          onToggleTask={toggleTask}
+          onFinishDay={finishDay}
+          onClose={() => setDashOpen(false)}
+        />
+      )}
     </div>
   );
 }

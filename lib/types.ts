@@ -158,6 +158,9 @@ export interface BindLogEntry {
   id: string;
   boundAt: string;
   items: { id: string; title: string; kind: ItemKind; color?: string; images?: string[] }[];
+  // その日のうちに済ませたタスク(ダッシュボードの「今日を終える」で
+  // カードと一緒に記録に添える)。カードだけの記録もあるので任意。
+  tasks?: { id: string; title: string }[];
   undone: boolean;
   undoneAt?: string;
 }
@@ -187,6 +190,28 @@ export interface GeneratedPlan {
   spanKm: number | null;
 }
 
+// ★タスク(タスクアプリ)。中身の仕様は後で詰めるため、今は最小限の器。
+// 「その日のタスク」はダッシュボードにもカードと並べて出る。
+export interface Task {
+  id: string;
+  title: string;
+  // 予定日(YYYY-MM-DD)。無いものは「いつか」扱いで今日の一覧には出ない。
+  dueDate?: string;
+  done: boolean;
+  doneAt?: string;
+  createdAt: string;
+  note?: string;
+}
+
+// ★ジャーナルの1件。日付ごとに書き足していくログ。
+export interface JournalEntry {
+  id: string;
+  // 書いた日(YYYY-MM-DD)。1日に複数書ける。
+  date: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface AppState {
   wishes: Wish[];
   items: Item[];
@@ -208,6 +233,10 @@ export interface AppState {
   // 並べ替えた結果。棚の識別子(例: "place","experience")をキーに、その棚の
   // BinderShelfItem.keyを並び順どおりに並べた配列を持つ。
   shelfOrder: Record<string, string[]>;
+  // ★タスクアプリ・ジャーナルアプリのデータ。今はUIの器だけを作っている
+  // 段階なので、どちらも空配列から始まる。
+  tasks: Task[];
+  journal: JournalEntry[];
   // 「プランを生成」で作ったAIの3案。**次に生成し直すまで残す**(シートを閉じても・
   // タブを切り替えても・アプリを開き直しても見返せる)。以前はコンポーネントの
   // ローカルstateだったため、閉じると二度と見られなかった(ユーザー報告)。
@@ -302,7 +331,15 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
   return (card as GrowthCard).type === "checkin" || (card as GrowthCard).type === "milestone";
 }
 
-export type TabId = "records" | "brief" | "stock" | "goals" | "execute";
+// ★アプリは3つ(タスク / 今のアプリ / ジャーナル)。タブバーの上を左右に
+// スワイプすると、この順で循環して切り替わる。3つとも同じデザイン言語
+// (紙色・墨色・影・角丸・カードの語彙)を共有し、違うのは背景色と中身だけ。
+export type AppId = "tasks" | "life" | "journal";
+
+export type LifeTabId = "records" | "brief" | "stock" | "goals" | "execute";
+export type TasksTabId = "tasks-today" | "tasks-all";
+export type JournalTabId = "journal-log" | "journal-archive";
+export type TabId = LifeTabId | TasksTabId | JournalTabId;
 
 // プラン(実行タブ)へバインドする候補の選択。タブを跨いで持ち回せるよう
 // AppShellへ状態を引き上げ、ストックタブ・プランタブどちらからも同じ
@@ -321,10 +358,4 @@ export interface TabProps {
   toggleItemSelection: (id: string) => void;
   addItemIds: (ids: string[]) => void;
   setSelection: (next: PlanSelection) => void;
-  // プラン(実行)タブが地図(選択)画面と確定ビューのどちらを表示しているか。
-  // AppShellが「確定ビュー表示中は外側のタブスクロールを止める」判断に
-  // 使うため、selectionと同じ理由でここへ引き上げている(詳細はAppShell.tsxの
-  // scrollLocked定義のコメント参照)。
-  execMapMode: boolean;
-  setExecMapMode: (v: boolean) => void;
 }

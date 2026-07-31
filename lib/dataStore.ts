@@ -119,6 +119,8 @@ function migrate(s: any): AppState {
   merged.items = merged.items ?? [];
   merged.bindLog = merged.bindLog ?? [];
   merged.generatedPlans = merged.generatedPlans ?? null;
+  merged.tasks = merged.tasks ?? [];
+  merged.journal = merged.journal ?? [];
   merged.generatedDecks = merged.generatedDecks ?? {};
 
   // ---- 場所(keeps)+作品(records.media)の2コンテナ → Item統一への移行 ----

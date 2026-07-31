@@ -14,6 +14,8 @@ export const DEFAULT_STATE: AppState = {
   sources: [],
   bindLog: [],
   shelfOrder: {},
+  tasks: [],
+  journal: [],
   generatedDecks: {},
   generatedPlans: null,
 };
@@ -51,6 +53,12 @@ export const DISPLAY = SANS;
 export const INK = "#1A1712";
 export const PAPER = "#FBF6E9";
 export const BG = "#F2EADA";
+// ★アプリごとの地の色。今のアプリ(life)=生成りのクリーム、タスク=グレージュ
+// (灰みのベージュ)、ジャーナル=くすんだ淡いグリーン。カードの紙色(PAPER)・
+// 墨色(INK)・影・角丸といったデザイン言語は3アプリで共通にし、地の色だけで
+// 「別のアプリにいる」ことを伝える。
+export const TASKS_BG = "#E4E0D6";
+export const JOURNAL_BG = "#DCE3D7";
 export const BLUE = "#2C6E8A";
 export const RUST = "#C1502E";
 export const GREEN = "#33633F";

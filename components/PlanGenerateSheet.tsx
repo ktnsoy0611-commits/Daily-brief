@@ -1,7 +1,7 @@
 "use client";
 
 import { Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
 import { BLUE, GOLD, GREEN, INK, PAPER, RUST, SANS, itemKindOf } from "@/lib/constants";
@@ -104,6 +104,14 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
           );
         })}
       </div>
+      {/* 3案は次に生成し直すまで残るので、あいだにバインドされて
+          ストックから消えた行き先がありうる。その分は静かに落とし、
+          全部消えた案だけはその旨を出す(空白のまま置かない)。 */}
+      {plan.stops.every((s) => !byId.has(s.id)) && (
+        <p style={{ fontSize: 11.5, lineHeight: 1.8, color: "#9A988E", marginBottom: 16 }}>
+          この案の行き先は、もうストックにありません。作り直してください。
+        </p>
+      )}
     </div>
   );
 }
@@ -124,6 +132,10 @@ export function PlanGenerateSheet({ pool, plans, area, onGenerated, onApply, onC
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeWeight, setActiveWeight] = useState<PlanWeight>("full");
+  // 横スワイプで案を切り替えるためのドラッグ量(px)。指を離すと0へ戻す。
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const swipeRef = useRef<{ id: number; x: number; y: number; axis: "" | "x" | "y" } | null>(null);
 
   const byId = new Map(pool.map((i) => [i.id, i]));
   // エリアの選択肢は候補が実際に持っているエリアだけ(件数の多い順)。
@@ -161,6 +173,47 @@ export function PlanGenerateSheet({ pool, plans, area, onGenerated, onApply, onC
   };
 
   const active = plans?.find((p) => p.weight === activeWeight) ?? plans?.[0] ?? null;
+  // 実際に返ってきた案だけを、重さの順(1日→半日→さくっと)に並べたもの。
+  // チップの並びとスワイプの順序はこれを共通の軸にする。
+  const weights = plans ? PLAN_WEIGHTS.filter((w) => plans.some((p) => p.weight === w)) : [];
+  const activeIdx = active ? weights.indexOf(active.weight) : -1;
+  const goTo = (idx: number) => {
+    if (idx < 0 || idx >= weights.length) return;
+    haptic(6);
+    setActiveWeight(weights[idx]);
+  };
+
+  // 横スワイプでの案の切り替え。縦スクロール(シートの中身は縦に長い)と
+  // 取り合いにならないよう、最初の数pxでどちらの軸のジェスチャーかを判定し、
+  // 縦だと分かった時点でこの要素は一切追従しない(touchAction:"pan-y"で
+  // ブラウザ側の縦スクロールも生かしたまま)。
+  const SWIPE_COMMIT = 52;
+  const onSwipeDown = (e: ReactPointerEvent) => {
+    if (weights.length < 2) return;
+    swipeRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
+  };
+  const onSwipeMove = (e: ReactPointerEvent) => {
+    const p = swipeRef.current;
+    if (!p || p.id !== e.pointerId) return;
+    const dx = e.clientX - p.x;
+    const dy = e.clientY - p.y;
+    if (!p.axis) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      p.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      if (p.axis === "y") { swipeRef.current = null; return; }
+      setDragging(true);
+    }
+    // 端(最初/最後の案)では引っぱりを1/3に弱め、これ以上先が無いことを体で示す。
+    const atEdge = (dx > 0 && activeIdx <= 0) || (dx < 0 && activeIdx >= weights.length - 1);
+    setDragX(atEdge ? dx / 3 : dx);
+  };
+  const endSwipe = () => {
+    const p = swipeRef.current;
+    swipeRef.current = null;
+    setDragging(false);
+    if (p?.axis === "x" && Math.abs(dragX) >= SWIPE_COMMIT) goTo(activeIdx + (dragX < 0 ? 1 : -1));
+    setDragX(0);
+  };
 
   return (
     <BottomSheet onClose={onClose}>
@@ -184,17 +237,43 @@ export function PlanGenerateSheet({ pool, plans, area, onGenerated, onApply, onC
               {/* 重さで切り替えるセグメント。3案の違いはここだけなので、
                   軸そのものを操作子にしている。 */}
               <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-                {PLAN_WEIGHTS.filter((w) => plans.some((p) => p.weight === w)).map((w) => (
+                {weights.map((w) => (
                   <button key={w} onClick={() => { haptic(6); setActiveWeight(w); }} style={chipStyle(active.weight === w)}>
                     {WEIGHT_DEF[w].label}
                   </button>
                 ))}
               </div>
-              <PlanDetail plan={active} byId={byId} />
-              <button onClick={() => { haptic(12); onApply(active.stops.map((s) => s.id)); requestClose(); }} style={{
-                width: "100%", padding: "13px 0", borderRadius: 999, border: "none", cursor: "pointer",
-                fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", background: INK, color: PAPER,
-              }}>このプランを選ぶ</button>
+              {/* 案の中身は横スワイプでも切り替えられる(チップはその軸を示す
+                  操作子として残す)。縦スクロールはブラウザに任せたいので
+                  touchAction は "pan-y"。 */}
+              <div
+                onPointerDown={onSwipeDown}
+                onPointerMove={onSwipeMove}
+                onPointerUp={endSwipe}
+                onPointerCancel={endSwipe}
+                style={{
+                  touchAction: "pan-y",
+                  transform: `translateX(${dragX}px)`,
+                  transition: dragging ? "none" : "transform 0.22s cubic-bezier(0.22,0.61,0.36,1)",
+                }}
+              >
+                <PlanDetail key={active.weight} plan={active} byId={byId} />
+              </div>
+              {(() => {
+                const liveIds = active.stops.map((s) => s.id).filter((id) => byId.has(id));
+                return (
+                  <button
+                    onClick={() => { if (liveIds.length === 0) return; haptic(12); onApply(liveIds); requestClose(); }}
+                    disabled={liveIds.length === 0}
+                    style={{
+                      width: "100%", padding: "13px 0", borderRadius: 999, border: "none",
+                      cursor: liveIds.length === 0 ? "default" : "pointer",
+                      fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
+                      background: liveIds.length === 0 ? "rgba(23,23,21,0.2)" : INK, color: PAPER,
+                    }}
+                  >このプランを選ぶ</button>
+                );
+              })()}
             </>
           ) : (
             <>

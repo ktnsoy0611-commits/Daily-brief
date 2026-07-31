@@ -172,6 +172,21 @@ export interface WeekendMeta {
   lastSeenBundleWeek: string | null;
 }
 
+// ---- プラン生成(プランタブの「プランを生成」)の型 --------------------------
+// データモデルの正はこのファイル(CLAUDE.md)。lib/planPipeline.ts はこれを
+// import して使い、互換のため同名で re-export している。
+export type PlanWeight = "full" | "half" | "light";
+export type PlanStop = { id: string; note?: string };
+export interface GeneratedPlan {
+  weight: PlanWeight;
+  title: string;
+  summary: string;
+  stops: PlanStop[];
+  // コードが再計算する事実(AIの申告ではない)。
+  areas: string[];
+  spanKm: number | null;
+}
+
 export interface AppState {
   wishes: Wish[];
   items: Item[];
@@ -193,6 +208,10 @@ export interface AppState {
   // 並べ替えた結果。棚の識別子(例: "place","experience")をキーに、その棚の
   // BinderShelfItem.keyを並び順どおりに並べた配列を持つ。
   shelfOrder: Record<string, string[]>;
+  // 「プランを生成」で作ったAIの3案。**次に生成し直すまで残す**(シートを閉じても・
+  // タブを切り替えても・アプリを開き直しても見返せる)。以前はコンポーネントの
+  // ローカルstateだったため、閉じると二度と見られなかった(ユーザー報告)。
+  generatedPlans?: { plans: GeneratedPlan[]; area: string | null; at: string } | null;
   // 夜間Cron(アプリ側Gemini)が生成したブリーフのデッキ。editionKey
   // ("YYYY-MM-DD-am"|"-pm")をキーに、その号のカード配列を持つ。サーバーが
   // 所有するキー(dataStoreのSERVER_OWNED_KEYS)で、クライアントは読むが

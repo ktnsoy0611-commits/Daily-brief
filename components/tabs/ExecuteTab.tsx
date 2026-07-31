@@ -11,7 +11,7 @@ import { KIND_ICON } from "@/components/tabs/StockTab";
 import { GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, ITEM_DOMAINS, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
 import { dayInfo, domainOf, hasPlace, haptic, img, mapsUrl, originBadge } from "@/lib/helpers";
 import type { GeneratedPlan } from "@/lib/planPipeline";
-import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
+import type { AppState, Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
 
 // ドック表示の地図。stuck(=下の棚のスクロールでsticky状態に入った)の
 // 間は幅を縮めるアニメーションを付ける。widthはレイアウトに実際に効く
@@ -126,12 +126,16 @@ function HorizontalShelf({ title, children }: { title: string; children: React.R
 // プランタブの選択画面。地図(場所が絡むItemのピン。ドメインを問わない)+
 // 「プランを生成」+「モノ・バショ・タイケン・ジョウホウ」の棚。棚の区分と
 // 名称はストックタブ・アーカイブと共通の語彙(domainOf)にしている。
-function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onApplyPlan }: {
+function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onApplyPlan, savedPlans, onSavePlans }: {
   stocked: Item[];
   draftSelection: string[];
   onOpenPin: (item: Item) => void;
   onToggleItem: (item: Item) => void;
   onApplyPlan: (itemIds: string[]) => void;
+  // 生成した3案は appState に持たせて永続化する(シートを閉じても・タブを
+  // 切り替えても・アプリを開き直しても、次に生成し直すまで残る)。
+  savedPlans: { plans: GeneratedPlan[]; area: string | null; at: string } | null;
+  onSavePlans: (next: { plans: GeneratedPlan[]; area: string | null; at: string } | null) => void;
 }) {
   const byNewest = (a: Item, b: Item) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
   // 地図に出るのは場所が絡むItemだけ(ドメインを問わない。位置情報の
@@ -144,11 +148,13 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onApplyP
   // 閉じている間はsticky枠・センチネルごと描画しないので、縮小の計測処理も
   // 自動的に止まる(センチネルのcallback refがnullで呼ばれてクリーンアップされる)。
   const [mapOpen, setMapOpen] = useState(true);
-  // AIが生成した3案。シートを閉じても保持し、「生成した3案を見る」から
-  // 開き直せるようにする(生成のたびに課金・待ち時間が発生するため)。
+  // AIが生成した3案。以前はここのローカルstateに置いていたため、シートを
+  // 閉じる・タブを切り替える(AppShellがkey={tab}で作り直す)だけで消えて
+  // 二度と見られなかった(ユーザー報告)。appStateへ持ち上げ、次に生成し直す
+  // まで残るようにしてある。
   const [planSheet, setPlanSheet] = useState(false);
-  const [plans, setPlans] = useState<GeneratedPlan[] | null>(null);
-  const [planArea, setPlanArea] = useState<string | null>(null);
+  const plans = savedPlans?.plans ?? null;
+  const planArea = savedPlans?.area ?? null;
   // 地図の縮小度合いを、地図の直前に置いた高さ0のセンチネル要素の
   // スクロール位置から連続値(0〜1)で求める。以前はIntersectionObserverで
   // 「センチネルが見えているか否か」の二値だけを見てCSSトランジションで
@@ -331,7 +337,7 @@ function MapPlanner({ stocked, draftSelection, onOpenPin, onToggleItem, onApplyP
           pool={mapPool}
           plans={plans}
           area={planArea}
-          onGenerated={(next, area) => { setPlans(next); setPlanArea(area); }}
+          onGenerated={(next, area) => onSavePlans(next ? { plans: next, area, at: new Date().toISOString() } : null)}
           onApply={onApplyPlan}
           onClose={() => setPlanSheet(false)}
         />
@@ -921,6 +927,14 @@ export function ExecuteTab({ appState, persist, showToast, goTab, profileButton,
     addItemIds(itemIds);
     showToast(`${itemIds.length}件をプランに追加しました`);
   };
+  // 生成した3案の保存先はappState(=永続化される)。生成のたびに待ち時間と
+  // コストがかかるので、シートを閉じてもタブを移っても、次に生成し直すまで
+  // そのまま残す。
+  const saveGeneratedPlans = (next: AppState["generatedPlans"]) => {
+    const s = structuredClone(appState);
+    s.generatedPlans = next;
+    persist(s);
+  };
 
   const removeFromMagazine = (id: string) => {
     const next = structuredClone(appState);
@@ -1045,6 +1059,7 @@ export function ExecuteTab({ appState, persist, showToast, goTab, profileButton,
           <MapPlanner
             stocked={stocked} draftSelection={draftSelection}
             onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onApplyPlan={applyGeneratedPlan}
+            savedPlans={appState.generatedPlans ?? null} onSavePlans={saveGeneratedPlans}
           />
           {/* 選択中のカードを確定する操作は、タブを跨いで共有するAppShellの
               フローティングUI(画面右下、スタックアイコン+取り消し+

@@ -15,6 +15,7 @@ export const DEFAULT_STATE: AppState = {
   bindLog: [],
   shelfOrder: {},
   generatedDecks: {},
+  generatedPlans: null,
 };
 
 // 目標への「最近どうですか？」を投げかける間隔

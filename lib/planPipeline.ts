@@ -14,7 +14,10 @@
 
 import { callGemini, extractJsonArray, type TokenUsage } from "./briefPipeline";
 import { itemKindOf } from "./constants";
-import type { ItemKind } from "./types";
+import type { GeneratedPlan, ItemKind, PlanStop, PlanWeight } from "./types";
+
+// データモデルの正は lib/types.ts。ここは使う側の入口として re-export する。
+export type { GeneratedPlan, PlanStop, PlanWeight };
 
 // 同じ「近さグループ」とみなす半径(km)。徒歩〜ひと駅の感覚。
 const CLUSTER_RADIUS_KM = 1.2;
@@ -24,7 +27,6 @@ export const PLAN_STOP_CAP: Record<PlanWeight, number> = { full: 5, half: 3, lig
 // プロンプトへ渡す候補の上限(トークンと編成の見通しのため)。
 const CANDIDATE_LIMIT = 60;
 
-export type PlanWeight = "full" | "half" | "light";
 export const PLAN_WEIGHTS: PlanWeight[] = ["full", "half", "light"];
 
 export type PlanCandidate = {
@@ -35,17 +37,6 @@ export type PlanCandidate = {
   lat?: number;
   lng?: number;
   summary?: string;
-};
-
-export type PlanStop = { id: string; note?: string };
-export type GeneratedPlan = {
-  weight: PlanWeight;
-  title: string;
-  summary: string;
-  stops: PlanStop[];
-  // コードが再計算する事実(AIの申告ではない)。
-  areas: string[];
-  spanKm: number | null;
 };
 
 export type PlanResult =

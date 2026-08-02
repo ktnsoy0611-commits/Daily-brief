@@ -1,4 +1,4 @@
-// 前向きな反応だけの生ログを my-brain の logs/feedback-YYYY-MM.md へ
+// 前向きな反応だけの生ログを my-brain の days/YYYY-MM/feedback.md へ
 // エクスポートするための純粋関数。夜間Cronがこれを使い、カード内容が
 // generatedDecks(app_stateで14日保持)から消える前に、月ごとのログへ焼き付ける。
 // 分析はしない(それは別のCoworkタスクが logs/ を読んで推論する)。
@@ -10,6 +10,7 @@
 // ※これによりドメイン別のKEEP率淘汰は分母(SKIP)を失うため、発掘の淘汰
 //   ロジックは別途見直しが要る。
 
+import { dayPath } from "./myBrainPaths";
 import type { BriefCard } from "./types";
 
 export type LogLine = { month: string; line: string };
@@ -119,7 +120,7 @@ export function oldLogPaths(now: Date, retentionMonths = 12, span = 6): string[]
   for (let back = retentionMonths + 1; back < retentionMonths + 1 + span; back++) {
     const d = new Date(now.getFullYear(), now.getMonth() - back, 1);
     const p = (n: number) => String(n).padStart(2, "0");
-    paths.push(`logs/feedback-${d.getFullYear()}-${p(d.getMonth() + 1)}.md`);
+    paths.push(dayPath(`${d.getFullYear()}-${p(d.getMonth() + 1)}`, "feedback"));
   }
   return paths;
 }

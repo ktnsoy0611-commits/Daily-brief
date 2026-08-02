@@ -966,7 +966,7 @@ export async function buildDeck(input: {
   }
 }
 
-// (KEEP/SKIP分析はGeminiでなく Cowork の週次タスクが logs/feedback-*.md を読んで
+// (KEEP/SKIP分析はGeminiでなく Cowork の週次タスクが days/*/feedback.md を読んで
 //  推論込みで行う(精度が要る分析はCowork側・ユーザー指定)。以前ここに置いた
 //  夜間Gemini分析(analyzeTaste)は撤回した。夜間Cronは分析せず、Coworkが書いた
 //  taste-state.md をチップへ毎晩コピーするだけ。)

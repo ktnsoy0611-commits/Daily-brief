@@ -1,3 +1,4 @@
+import { PATHS, dayPath } from "@/lib/myBrainPaths";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildDeck, type InterestSignal, type TasteInput } from "@/lib/briefPipeline";
@@ -377,12 +378,12 @@ export async function GET(req: Request) {
   // 情報源カード(§7-5): 新しいカードを生成した号でだけ、Coworkが発掘してプールに
   // 入った情報源のうち、まだ提案していない・お気に入りでも除外でもないものを
   // 1件だけ「新しい情報源」カードとしてデッキ先頭に混ぜ、KEEP/SKIPで採否を
-  // 確認できるようにする。提案済みURLは sources-proposed.md に記録して二度
+  // 確認できるようにする。提案済みURLは sources/proposed.md に記録して二度
   // 提案しない。非致命。生成を見送った号(cards空)では提案しない。
   if (cards.length > 0) {
     try {
       const favSet = new Set(appFavoriteSources.map((s) => normSrc(s.url)));
-      const proposedRaw = (await readMyBrainFile("sources-proposed.md")) ?? "";
+      const proposedRaw = (await readMyBrainFile(PATHS.proposed)) ?? "";
       const proposedSet = new Set(
         proposedRaw.split(/\r?\n/).map((l) => l.match(/^-\s*(\S+)/)?.[1]).filter((u): u is string => !!u).map(normSrc),
       );
@@ -401,8 +402,8 @@ export async function GET(req: Request) {
         });
         proposedSource = candidate;
         const prevLines = proposedRaw.split(/\r?\n/).filter((l) => l.startsWith("- "));
-        const nextProposed = `# sources-proposed（提案済みの情報源URL。二度提案しないための記録）\n\n${[...prevLines, `- ${candidate}`].join("\n")}\n`;
-        await writeMyBrainFile("sources-proposed.md", nextProposed, "提案した情報源を記録");
+        const nextProposed = `# 提案済みの情報源URL（二度提案しないための記録）\n\n${[...prevLines, `- ${candidate}`].join("\n")}\n`;
+        await writeMyBrainFile(PATHS.proposed, nextProposed, "提案した情報源を記録");
       }
     } catch {
       /* 情報源カードの失敗はデッキ生成を止めない */
@@ -473,7 +474,7 @@ export async function GET(req: Request) {
     /* 生成サマリの保存失敗はデッキ生成を止めない */
   }
 
-  // 5. 反応の生ログを my-brain の logs/feedback-YYYY-MM.md へエクスポート。
+  // 5. 反応の生ログを my-brain の days/YYYY-MM/feedback.md へエクスポート。
   // briefs(決定)×generatedDecks(カード)＋items(KEEP後の実行・星)を、カードが
   // 14日でgeneratedDecksから消える前に月ごとのログへ焼き付ける(機械的・分析なし)。
   // これで恒久履歴は app_state でなく my-brain 側に貯まり(=stateを太らせない)、
@@ -485,7 +486,7 @@ export async function GET(req: Request) {
     const itemsVal = Array.isArray(byKey.items) ? (byKey.items as Parameters<typeof buildLogLines>[2]) : [];
     const lines = buildLogLines(briefsVal, decksVal, itemsVal);
     for (const [month, monthLines] of groupByMonth(lines)) {
-      const path = `logs/feedback-${month}.md`;
+      const path = dayPath(month, "feedback");
       const existing = await readMyBrainFile(path);
       const content = mergeMonthFile(existing, monthLines);
       if (content !== (existing ?? "")) {
@@ -520,35 +521,35 @@ export async function GET(req: Request) {
         { user_id: ownerId, key: "sourceStats", value: { rows, countedIds: nextCounted }, updated_at: new Date().toISOString() },
         { onConflict: "user_id,key" },
       );
-      await writeMyBrainFile("source-stats.md", renderSourceStatsMd(rows), "情報源ごとの打率を更新");
+      await writeMyBrainFile(PATHS.stats, renderSourceStatsMd(rows), "情報源ごとの打率を更新");
     }
   } catch {
     /* 打率集計の失敗はデッキ生成を止めない */
   }
 
-  // 5.6 ゴール(と、そこに書き溜めたチェックインの記録)を goals.md へ書き出す。
+  // 5.6 ゴール(と、そこに書き溜めたチェックインの記録)を me/goals.md へ書き出す。
   // ゴールは app_state にしか無くCoworkから見えないため、週次の分析タスクが
   // 「ゴールを分析して達成に効くキーワードを出す」ために共有する(§8.21)。
   // 記録(日付・本文・節目・満足度)は分析の主材料なのですべて載せる(ユーザー指定)。非致命。
   try {
-    await writeMyBrainFile("goals.md", renderGoalsMd(byKey.goals), "ゴールと記録を同期");
+    await writeMyBrainFile(PATHS.goals, renderGoalsMd(byKey.goals), "ゴールと記録を同期");
   } catch {
     /* ゴール同期の失敗はデッキ生成を止めない */
   }
 
-  // 6. アプリで削除した情報源を sources-user.md へ書き出す(発掘タスクが尊重する)。
+  // 6. アプリで削除した情報源を sources/dismissed.md へ書き出す(発掘タスクが尊重する)。
   // ※ユーザーの手編集(手動追加した興味・好み＝source:"user"、除外＝dismissed)は
-  // taste-state.md の app-managed ゾーンへ統合したので、下の syncMyBrain がまとめて
+  // me/taste.md の app-managed ゾーンへ統合したので、下の syncMyBrain がまとめて
   // 書く(旧 taste-user.md は廃止・HANDOFF §8.16)。非致命。
   try {
     const srcMd = [
-      "# sources-user（アプリで削除した情報源。発掘タスクはこれを尊重する）",
+      "# アプリで削除した情報源（発掘タスクはこれを尊重する）",
       "",
       "## 除外（プールに入れない・cowork:discoveredから外す）",
       dismissedSources.length ? dismissedSources.map((u) => `- ${u}`).join("\n") : "（なし）",
       "",
     ].join("\n");
-    await writeMyBrainFile("sources-user.md", srcMd, "削除した情報源を同期");
+    await writeMyBrainFile(PATHS.dismissed, srcMd, "削除した情報源を同期");
   } catch {
     /* sources-user.mdの失敗はデッキ生成を止めない */
   }
@@ -572,7 +573,7 @@ export async function GET(req: Request) {
       chipsSynced = { ok: true, counts: { taste: tasteSigs.length } };
     } else {
       // taste-state.md がまだ空(Coworkが未実行)なら、既存チップを消さないよう触らない。
-      chipsSynced = { ok: false, note: "taste-state が空(Cowork分析待ち)" };
+      chipsSynced = { ok: false, note: "me/taste.md が空(Cowork分析待ち)" };
     }
   } catch (e) {
     chipsSynced = { ok: false, note: e instanceof Error ? e.message : String(e) };

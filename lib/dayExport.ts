@@ -2,9 +2,9 @@ import { itemKindOf } from "./constants";
 import type { DayRecord } from "./dayRecords";
 
 // ★その日の記録を my-brain へ同期するためのMarkdown。
-// アプリが書き、Coworkが読む。Coworkはこれと声のメモを材料に、その日の
-// 「まとめ(自動生成のジャーナル)」を journal/summary-YYYY-MM.md へ書く
-// (書くファイルを分けてあるので、アプリの上書きとCoworkの追記がぶつからない)。
+// アプリが days/YYYY-MM/facts.md へ書く。Coworkは同じフォルダの summary.md へ
+// その日のまとめを書く(ファイルを分けてあるので、アプリの上書きとCoworkの
+// 追記がぶつからない)。
 //
 // 記録はアプリの中でも見られるが、my-brain側にも同じものが揃っていて
 // いつでも読めるようにする、というユーザーの指定による(HANDOFF §12)。
@@ -49,7 +49,7 @@ export function renderMonthMd(month: string, days: DayRecord[]): string {
     `# 記録（${y}年${Number(m)}月）`,
     "",
     "アプリ（デイリーブリーフ）が書き出したその日の事実。行った場所・実行したカード・済ませたタスク・自分で書いた記録。",
-    "この内容と声のメモをもとに、その日のまとめを `journal/summary-" + month + ".md` へ書く。",
+    "この内容と声のメモをもとに、その日のまとめを同じフォルダの `summary.md` へ書く。",
     "",
   ].join("\n");
   return head + days.map(renderDayBlock).join("\n");

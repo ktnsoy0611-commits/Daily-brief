@@ -22,6 +22,8 @@ export type SyncTasteInput = {
   dismissed?: string[];                  // 設定画面で手動削除した(復活させない)
   sources?: { url: string; label?: string }[];
 };
+import { PATHS, legacyOf } from "./myBrainPaths";
+
 export type SyncResult = { ok: true; wrote: string[] } | { ok: false; reason: string };
 
 const FAV_BEGIN = "<!-- BEGIN app-managed:favorites -->";
@@ -162,9 +164,23 @@ async function deleteFile(repo: string, path: string, sha: string, token: string
 }
 
 // 単一ファイルを my-brain のデフォルトブランチへ書く汎用関数。夜間Cronが
-// 反応ログ(logs/feedback-*.md)・taste-user.md・sources-proposed.md 等を書き出す
+// 反応ログ(days/*/feedback.md)・情報源の記録(sources/*.md)等を書き出す
 // のに使う(既存と同じ内容なら書かない=無駄なコミットを避ける)。env未設定/失敗時は
 // ok:false を返すだけ(呼び出し側は非致命)。
+// 移行期のためのヘルパー。ゾーン方式で共同編集するファイル(me/taste.md ・
+// sources/list.md)は、新しい置き場にまだ無くても旧パスに中身がある場合が
+// ある。その中身を土台にして新パスへ書かないと、ゾーンの外(Coworkが書いた
+// 分析・発掘した情報源)を空のまま作り直してしまう。shaは新パスのものだけ
+// (旧パスのshaで新パスへ書くことはできない)。
+async function metaForMerge(repo: string, path: string, token: string, ref?: string): Promise<{ content: string | null; sha?: string }> {
+  const meta = await getFileMeta(repo, path, token, ref);
+  if (meta) return { content: meta.content, sha: meta.sha };
+  const legacy = legacyOf(path);
+  if (!legacy) return { content: null };
+  const old = await getFileMeta(repo, legacy, token, ref);
+  return { content: old?.content ?? null };
+}
+
 export async function writeMyBrainFile(path: string, content: string, message: string): Promise<SyncResult> {
   const repo = process.env.MYBRAIN_REPO;
   const token = process.env.GITHUB_TOKEN;
@@ -183,17 +199,27 @@ export async function writeMyBrainFile(path: string, content: string, message: s
 
 // my-brain の1ファイルを読む(無ければnull)。夜間Cronがログの月ファイルを
 // 追記(既存に足す)するために、まず既存本文を読むのに使う。
+//
+// ★ファイル配置を「役割 × 日付」で整理し直した(lib/myBrainPaths.ts)ので、
+// 新しい置き場に無ければ **旧パスも見る**。移行(Coworkが一度だけ実行)が
+// 済むまでの取りこぼしを防ぐための橋渡しで、書き込みは常に新パスのみ。
 export async function readMyBrainFile(path: string): Promise<string | null> {
   const repo = process.env.MYBRAIN_REPO;
   const token = process.env.GITHUB_TOKEN;
   if (!repo || !/^[^/]+\/[^/]+$/.test(repo)) return null;
   const ref = process.env.MYBRAIN_REF || undefined;
-  try {
-    const meta = await getFileMeta(repo, path, token ?? "", ref);
-    return meta?.content ?? null;
-  } catch {
-    return null;
-  }
+  const read = async (target: string) => {
+    try {
+      const meta = await getFileMeta(repo, target, token ?? "", ref);
+      return meta?.content ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const found = await read(path);
+  if (found !== null) return found;
+  const legacy = legacyOf(path);
+  return legacy ? await read(legacy) : null;
 }
 
 // my-brain の1ファイルを削除(無ければ何もしない)。ログの保持期間切れ月の掃除用。
@@ -226,18 +252,18 @@ export async function syncMyBrain(input: SyncTasteInput): Promise<SyncResult> {
     // Coworkの分析(興味・好み本体・関連キーワード)はゾーンの外に書き、アプリは
     // app-managed ゾーン(手動追加・除外)だけを差し替える。同じファイルを衝突なく
     // 共同編集する(以前は taste-user.md へ別ファイルで書き出していたのを廃止)。
-    const tasteMeta = await getFileMeta(repo, "taste-state.md", token, ref);
-    const tasteContent = mergeTasteStateMd(tasteMeta?.content ?? null, input.manualInterests ?? [], input.dismissed ?? []);
-    if (tasteMeta === null || tasteMeta.content !== tasteContent) {
-      await putFile(repo, "taste-state.md", tasteContent, tasteMeta?.sha, token, ref, "手動の興味・好み(追加・除外)を同期");
-      wrote.push("taste-state.md");
+    const tasteMeta = await metaForMerge(repo, PATHS.taste, token, ref);
+    const tasteContent = mergeTasteStateMd(tasteMeta.content, input.manualInterests ?? [], input.dismissed ?? []);
+    if (tasteMeta.content !== tasteContent || tasteMeta.sha === undefined) {
+      await putFile(repo, PATHS.taste, tasteContent, tasteMeta.sha, token, ref, "手動の興味・好み(追加・除外)を同期");
+      wrote.push(PATHS.taste);
     }
 
-    const sourcesMeta = await getFileMeta(repo, "sources.md", token, ref);
-    const sourcesContent = mergeSourcesMd(sourcesMeta?.content ?? null, input.sources ?? []);
-    if (sourcesMeta === null || sourcesMeta.content !== sourcesContent) {
-      await putFile(repo, "sources.md", sourcesContent, sourcesMeta?.sha, token, ref, "お気に入りの情報源を同期");
-      wrote.push("sources.md");
+    const sourcesMeta = await metaForMerge(repo, PATHS.sources, token, ref);
+    const sourcesContent = mergeSourcesMd(sourcesMeta.content, input.sources ?? []);
+    if (sourcesMeta.content !== sourcesContent || sourcesMeta.sha === undefined) {
+      await putFile(repo, PATHS.sources, sourcesContent, sourcesMeta.sha, token, ref, "お気に入りの情報源を同期");
+      wrote.push(PATHS.sources);
     }
 
     // 孤児ファイルの掃除(ベストエフォート・失敗しても本体を止めない):

@@ -21,6 +21,7 @@
 // env: MYBRAIN_REPO="owner/repo"(必須) / GITHUB_TOKEN(private リポジトリ用・任意) /
 //      MYBRAIN_REF(ブランチ。既定 main)。未設定/取得失敗時は静かに空を返す。
 
+import { PATHS, legacyOf } from "./myBrainPaths";
 import yaml from "js-yaml";
 import type { InterestSignal, TasteInput } from "@/lib/briefPipeline";
 
@@ -219,16 +220,24 @@ export async function loadMyBrain(): Promise<MyBrain> {
 
   // taste(好み/興味/関連キーワード/生活圏)の源は taste-state.md のみ。profile.md は
   // 「ほぼ固定の基礎情報」としてユーザーが手で管理する領域なので、ここでは読まない。
+  // ファイルの置き場は lib/myBrainPaths.ts が唯一の正。移行が済むまでは
+  // 旧パスへもフォールバックする(fetchEither)。
+  const fetchEither = async (path: string) => {
+    const found = await fetchFile(repo, path, token, ref);
+    if (found) return found;
+    const legacy = legacyOf(path);
+    return legacy ? await fetchFile(repo, legacy, token, ref) : null;
+  };
   const [tasteMd, sourcesMd] = await Promise.all([
-    fetchFile(repo, "taste-state.md", token, ref),
-    fetchFile(repo, "sources.md", token, ref),
+    fetchEither(PATHS.taste),
+    fetchEither(PATHS.sources),
   ]);
   const filesRead: string[] = [];
   const taste: TasteInput = {};
   let sources: SourceEntry[] = [];
 
   if (tasteMd) {
-    filesRead.push("taste-state.md");
+    filesRead.push(PATHS.taste);
     const fm = parseFrontMatter(tasteMd);
     taste.livingArea = asString(fm.living_area ?? fm.livingArea);
     // 好み/興味は1リストへ統合。front-matterに旧 taste / interest が別々にあっても
@@ -253,7 +262,7 @@ export async function loadMyBrain(): Promise<MyBrain> {
     if (!taste.goalKeywords?.length) taste.goalKeywords = md.goalKeywords;
   }
   if (sourcesMd) {
-    filesRead.push("sources.md");
+    filesRead.push(PATHS.sources);
     const fm = parseFrontMatter(sourcesMd);
     let s = parseSources(fm.sources);
     if (!s.length) s = parseSourceBullets(bulletsOf(sourcesMd.split(/\r?\n/)));

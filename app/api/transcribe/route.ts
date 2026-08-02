@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { dayPath, monthKey } from "@/lib/myBrainPaths";
 import { writeMyBrainFile, readMyBrainFile } from "@/lib/myBrainWrite";
 
 // ★声のメモの文字起こし。タブバー右の丸ボタンを長押しして録音した音声を
 // 受け取り、テキストにして返す。あわせて my-brain の受信箱
-// (inbox/voice-YYYY-MM.md)へ追記し、夜間のCoworkがそれを読んで
+// (days/YYYY-MM/voice.md)へ追記し、夜間のCoworkがそれを読んで
 // タスク・ジャーナル・ウィッシュなどの候補へ分類できるようにする。
 //
 // 文字起こしの実体は2通り。OPENAI_API_KEY があれば OpenAI の音声API
@@ -69,10 +70,10 @@ async function viaGemini(key: string, file: File): Promise<{ ok: true; text: str
   }
 }
 
-// my-brain の受信箱へ追記する(月ごとの1ファイル)。Coworkはこれを読んで
+// my-brain の受信箱へ追記する(その月のフォルダの voice.md)。Coworkはこれを読んで
 // 候補を作る。失敗しても文字起こし自体は返す(ベストエフォート)。
 async function appendToMyBrain(text: string, at: Date): Promise<boolean> {
-  const path = `inbox/voice-${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}.md`;
+  const path = dayPath(monthKey(at), "voice");
   const stamp = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")} ${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
   const existing = await readMyBrainFile(path);
   const head = `# 声のメモ（${at.getFullYear()}年${at.getMonth() + 1}月）\n\nアプリで録音し、文字起こししたもの。分類前の生のテキスト。\n`;

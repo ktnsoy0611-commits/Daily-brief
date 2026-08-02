@@ -170,12 +170,15 @@ inbox/candidates.md はそのまま
 profile.md、inbox/journal-*.md は使わなくなったので削除
 移した後、空になった logs/ journal/ は削除する
 
-# 各ファイルの先頭に付ける
+# 所有者を書く
+あなたが書くファイルだけ、先頭に次の front-matter を付ける:
 ---
-owner: app（アプリが書く） / cowork（あなたが書く） / human（私が手で書く）
+owner: cowork
 updated: 移した日
 ---
-owner は上の表のとおり: me/taste.md は cowork（アプリはこの中の app-managed ゾーンだけを書く）、me/patterns.md と analysis/taste.md と days/*/summary.md と inbox/candidates.md は cowork、それ以外の days/* と me/goals.md と sources/* は app。
+対象は me/taste.md（アプリはこの中の app-managed ゾーンだけを書くので、front-matter は消えない）、me/patterns.md、analysis/taste.md、days/*/summary.md、inbox/candidates.md の5つ。
+
+それ以外（me/goals.md、sources/list.md 以外の sources/*、days/*/facts.md、days/*/feedback.md、days/*/voice.md）はアプリが毎回まるごと書き直すファイルなので、front-matter を付けても次の同期で消える。付けないこと。所有者は README.md の表に書く。sources/list.md はアプリがゾーンの外を残すので、付けたければ付けてよい。
 
 # me/patterns.md がまだ無ければ作る
 ---
@@ -187,12 +190,13 @@ updated: （今日）
 （まだ記録がありません。毎晩の仕分けで少しずつ増やす）
 
 # README.md を書く
-上の構造と、次の規約を人が読んで分かるように書く:
+上の構造と、次の規約を人が読んで分かるように書く。あわせて「ファイル → 所有者（app / cowork）」の表も載せる:
 - 恒久的なものは主題ごとに1ファイル（me/ sources/ analysis/ inbox/）
 - 日付で増えるものは days/YYYY-MM/ の中だけ。種類は4つで増やさない
 - owner の違うファイルは互いに上書きしない
 - 1ファイルを共同編集するのは me/taste.md と sources/list.md だけで、
   アプリは <!-- BEGIN/END app-managed:... --> の内側だけを書き換える
+- owner が app のファイルはアプリが毎回まるごと書き直すので、手で編集しない
 
 # 守ること
 - 中身の文章は書き換えない。場所と front-matter だけ。

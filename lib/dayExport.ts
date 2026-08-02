@@ -49,7 +49,8 @@ export function renderMonthMd(month: string, days: DayRecord[]): string {
     `# 記録（${y}年${Number(m)}月）`,
     "",
     "アプリ（デイリーブリーフ）が書き出したその日の事実。行った場所・実行したカード・済ませたタスク・自分で書いた記録。",
-    "この内容と声のメモをもとに、その日のまとめを同じフォルダの `summary.md` へ書く。",
+    "owner: app（このファイルはアプリが毎回まるごと書き直す。手で編集しても次の同期で消える）",
+    "毎晩の仕分けはこのファイルを読まない（その日のまとめは `voice.md` から書く）。人が読み返すための控え。",
     "",
   ].join("\n");
   return head + days.map(renderDayBlock).join("\n");

@@ -1,4 +1,4 @@
-import { BookOpen, CalendarCheck, CheckSquare, Heart, Map as MapIcon, Newspaper, PenLine, Sprout } from "lucide-react";
+import { BookOpen, CalendarCheck, CheckSquare, Heart, Inbox, Map as MapIcon, Newspaper, PenLine, Sprout } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
 import { BG, JOURNAL_BG, TASKS_BG } from "./constants";
 import type { AppId, TabId } from "./types";
@@ -32,6 +32,7 @@ export const APPS: AppDef[] = [
     label: "タスク",
     bg: TASKS_BG,
     tabs: [
+      { id: "tasks-inbox", label: "インボックス", Icon: Inbox },
       { id: "tasks-today", label: "今日", Icon: CheckSquare },
       { id: "tasks-all", label: "すべて", Icon: CalendarCheck },
     ],
@@ -69,7 +70,7 @@ export function cycleApp(id: AppId, dir: 1 | -1): AppId {
 
 // 各アプリを開いたとき最初に見せるタブ。
 export const DEFAULT_TAB: Record<AppId, TabId> = {
-  tasks: "tasks-today",
+  tasks: "tasks-inbox",
   life: "brief",
   journal: "journal-today",
 };

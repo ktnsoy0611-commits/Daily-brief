@@ -16,6 +16,8 @@ export const DEFAULT_STATE: AppState = {
   shelfOrder: {},
   tasks: [],
   journal: [],
+  voiceNotes: [],
+  inbox: [],
   generatedDecks: {},
   generatedPlans: null,
 };

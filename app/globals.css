@@ -105,3 +105,23 @@ button:active {
 @media (prefers-reduced-motion: reduce) {
   .brief-roll-shape { animation: none; opacity: 0.9; }
 }
+
+/* 録音中のマイクの脈。声のメモ(VoiceRecorder)の幕で使う。 */
+@keyframes voice-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(193, 80, 46, 0.45); }
+  50% { transform: scale(1.06); box-shadow: 0 0 0 18px rgba(193, 80, 46, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes voice-pulse { 0%, 100% { transform: none; box-shadow: none; } }
+}
+
+/* インボックスの候補がふわふわ漂う動き。上下にゆっくり揺れるだけの
+   控えめなもの(飛び回ると読めなくなるため)。 */
+@keyframes inbox-drift {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(10px, -12px); }
+  66% { transform: translate(-8px, 8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes inbox-drift { 0%, 100% { transform: none; } }
+}

@@ -212,6 +212,39 @@ export interface JournalEntry {
   createdAt: string;
 }
 
+// ★声のメモ。どこからでもタブバー右の丸ボタンを長押しして語り、文字起こし
+// されたテキストがここに溜まる。夜間にCoworkが読んで、タスク・ジャーナル・
+// ウィッシュなどの候補(InboxCandidate)へ分類する(HANDOFF §11)。
+export interface VoiceNote {
+  id: string;
+  at: string;          // 録音した時刻(ISO)
+  text: string;        // 文字起こしの結果
+  durationMs?: number;
+  // "new" = まだ分類されていない / "classified" = Coworkが候補にした /
+  // "kept" = 候補から実際に何かを登録した
+  status: "new" | "classified" | "kept";
+}
+
+// ★インボックスの候補。声のメモをCoworkが読んで作る「これはタスクに
+// した方がいいのでは?」という提案。承認するまで本登録されない。
+// 5W1Hは分かった分だけ埋まり、空欄はユーザーがその場で足せる。
+export interface InboxCandidate {
+  id: string;
+  kind: "task" | "journal" | "wish" | "item";
+  title: string;
+  // 5W1H。分からないものは省く(埋まっていないことが手がかりになる)。
+  when?: string;
+  where?: string;
+  who?: string;
+  what?: string;
+  why?: string;
+  how?: string;
+  // 元になった声のメモ(その場で原文を確かめられるように)。
+  sourceNoteId?: string;
+  sourceText?: string;
+  createdAt: string;
+}
+
 export interface AppState {
   wishes: Wish[];
   items: Item[];
@@ -237,6 +270,9 @@ export interface AppState {
   // 段階なので、どちらも空配列から始まる。
   tasks: Task[];
   journal: JournalEntry[];
+  // 声のメモと、そこからCoworkが作ったインボックスの候補。
+  voiceNotes: VoiceNote[];
+  inbox: InboxCandidate[];
   // 「プランを生成」で作ったAIの3案。**次に生成し直すまで残す**(シートを閉じても・
   // タブを切り替えても・アプリを開き直しても見返せる)。以前はコンポーネントの
   // ローカルstateだったため、閉じると二度と見られなかった(ユーザー報告)。
@@ -337,7 +373,7 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
 export type AppId = "tasks" | "life" | "journal";
 
 export type LifeTabId = "brief" | "stock" | "goals" | "execute";
-export type TasksTabId = "tasks-today" | "tasks-all";
+export type TasksTabId = "tasks-inbox" | "tasks-today" | "tasks-all";
 // アーカイブ(旧・独立タブ)はジャーナルへ統合した。「今日」=その日の記録、
 // 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10)。
 export type JournalTabId = "journal-today" | "journal-archive";

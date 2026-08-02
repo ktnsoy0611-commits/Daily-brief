@@ -6,12 +6,14 @@ import { AddWishSheet } from "@/components/AddWishSheet";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
+import { HOLD_MS, RecordingOverlay, useVoiceRecorder } from "@/components/VoiceRecorder";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { StockTab } from "@/components/tabs/StockTab";
+import { InboxView } from "@/components/tabs/InboxView";
 import { TasksTab } from "@/components/tabs/TasksTab";
 import { APPS, DEFAULT_TAB, appDef, cycleApp } from "@/lib/apps";
 import { BG, BLUE, GOLD, GREEN, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
@@ -305,6 +307,33 @@ export function AppShell() {
     showToast(boundItems.length > 0 ? `${boundItems.length}件をアーカイブへ綴じました` : "今日を終えました");
     if (boundItems.length > 0) goTab("journal-archive");
   };
+  // ★声のメモ。タブバー右の丸ボタンを長押ししている間だけ録音し、離すと
+  // 文字起こしへ送る。結果はここへ溜まり、夜間にCoworkが読んで
+  // インボックスの候補(タスク・ジャーナル・ウィッシュ等)へ分類する。
+  const addVoiceNote = (r: { text: string; at: string; durationMs: number }) => {
+    if (!appState) return;
+    const next = structuredClone(appState);
+    next.voiceNotes = next.voiceNotes ?? [];
+    next.voiceNotes.unshift({ id: `voice-${Date.now()}`, at: r.at, text: r.text, durationMs: r.durationMs, status: "new" });
+    persist(next);
+    showToast("声のメモを保存しました");
+  };
+  const recorder = useVoiceRecorder({ onDone: addVoiceNote, onError: (m) => showToast(m) });
+  // 長押しの判定。押しっぱなしがHOLD_MSを超えたら録音を始め、離した時点で
+  // 録音していたなら確定(=タップとしては扱わない)。
+  const holdTimerRef = useRef<number | null>(null);
+  const heldRef = useRef(false);
+  const beginHold = () => {
+    heldRef.current = false;
+    if (holdTimerRef.current != null) window.clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = window.setTimeout(() => { heldRef.current = true; recorder.start(); }, HOLD_MS);
+  };
+  const endHold = () => {
+    if (holdTimerRef.current != null) window.clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+    if (heldRef.current) recorder.stop();
+  };
+
   // ダッシュボードからのタスクのチェック。
   const toggleTask = (id: string) => {
     if (!appState) return;
@@ -456,6 +485,7 @@ export function AppShell() {
               {tab === "stock" && <StockTab {...tabProps} />}
               {tab === "goals" && <GoalsTab {...tabProps} />}
               {tab === "execute" && <ExecuteTab {...tabProps} />}
+              {tab === "tasks-inbox" && <InboxView appState={appState} persist={persist} showToast={showToast} />}
               {(tab === "tasks-today" || tab === "tasks-all") && <TasksTab {...tabProps} tab={tab as TasksTabId} />}
               {(tab === "journal-today" || tab === "journal-archive") && <JournalTab {...tabProps} tab={tab as JournalTabId} />}
             </div>
@@ -550,7 +580,13 @@ export function AppShell() {
               {/* 右の丸ボタンはアプリごとの「書く」入口。今のアプリでは
                   ウィッシュ(どのタブからでも書ける受信箱)。タスク・ジャーナルの
                   中身は後で作るため、今は場所だけ確保してある。 */}
-              <button onClick={() => { if (navDraggedRef.current) return; haptic(5); if (appId === "life") setAddingWish(true); else showToast("この機能はこれから作ります"); }} aria-label={appId === "life" ? "ウィッシュを書く" : appId === "tasks" ? "タスクを足す" : "ジャーナルを書く"} style={{
+              <button
+                onPointerDown={beginHold}
+                onPointerUp={endHold}
+                onPointerCancel={endHold}
+                onPointerLeave={endHold}
+                onContextMenu={(e) => e.preventDefault()}
+                onClick={() => { if (navDraggedRef.current || heldRef.current) return; haptic(5); if (appId === "life") setAddingWish(true); else showToast("この機能はこれから作ります"); }} aria-label={appId === "life" ? "ウィッシュを書く" : appId === "tasks" ? "タスクを足す" : "ジャーナルを書く"} style={{
                 flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(28,28,30,0.16)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
               }}>
@@ -564,6 +600,9 @@ export function AppShell() {
       )}
 
       {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}
+
+      {/* 録音中/文字起こし中の幕。 */}
+      <RecordingOverlay state={recorder.state} elapsed={recorder.elapsed} />
 
       {/* ★ダッシュボード。タブバーを上へ引き上げる(または選択の目印をタップ
           する)と、3つのアプリのどこからでも開く共通の引き出し。選んでいる

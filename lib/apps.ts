@@ -1,4 +1,4 @@
-import { BookOpen, CalendarCheck, CheckSquare, Heart, LayoutGrid, Map as MapIcon, Newspaper, PenLine, Sprout } from "lucide-react";
+import { BookOpen, CalendarCheck, CheckSquare, Heart, Map as MapIcon, Newspaper, PenLine, Sprout } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
 import { BG, JOURNAL_BG, TASKS_BG } from "./constants";
 import type { AppId, TabId } from "./types";
@@ -41,7 +41,6 @@ export const APPS: AppDef[] = [
     label: "ブリーフ",
     bg: BG,
     tabs: [
-      { id: "records", label: "アーカイブ", Icon: LayoutGrid },
       { id: "brief", label: "ブリーフ", Icon: Newspaper },
       { id: "goals", label: "ゴール", Icon: Sprout },
       { id: "stock", label: "ストック", Icon: Heart },
@@ -53,7 +52,7 @@ export const APPS: AppDef[] = [
     label: "ジャーナル",
     bg: JOURNAL_BG,
     tabs: [
-      { id: "journal-log", label: "ログ", Icon: PenLine },
+      { id: "journal-today", label: "今日", Icon: PenLine },
       { id: "journal-archive", label: "アーカイブ", Icon: BookOpen },
     ],
   },
@@ -71,6 +70,6 @@ export function cycleApp(id: AppId, dir: 1 | -1): AppId {
 // 各アプリを開いたとき最初に見せるタブ。
 export const DEFAULT_TAB: Record<AppId, TabId> = {
   tasks: "tasks-today",
-  life: "records",
-  journal: "journal-log",
+  life: "brief",
+  journal: "journal-today",
 };

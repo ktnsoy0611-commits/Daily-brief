@@ -57,8 +57,11 @@ export const BG = "#F2EADA";
 // (灰みのベージュ)、ジャーナル=くすんだ淡いグリーン。カードの紙色(PAPER)・
 // 墨色(INK)・影・角丸といったデザイン言語は3アプリで共通にし、地の色だけで
 // 「別のアプリにいる」ことを伝える。
-export const TASKS_BG = "#E4E0D6";
-export const JOURNAL_BG = "#DCE3D7";
+// 3色とも明度をそろえ(L≈86%)、彩度だけで性格を分けている。クリームは
+// 既存のまま、タスクは彩度を大きく落として「灰」に、ジャーナルは色相を
+// 緑へ寄せて彩度を上げ「緑」とはっきり分かるようにした(ユーザー指定)。
+export const TASKS_BG = "#DFDDD7";
+export const JOURNAL_BG = "#D3DFCE";
 export const BLUE = "#2C6E8A";
 export const RUST = "#C1502E";
 export const GREEN = "#33633F";

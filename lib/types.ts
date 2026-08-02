@@ -336,9 +336,11 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
 // (紙色・墨色・影・角丸・カードの語彙)を共有し、違うのは背景色と中身だけ。
 export type AppId = "tasks" | "life" | "journal";
 
-export type LifeTabId = "records" | "brief" | "stock" | "goals" | "execute";
+export type LifeTabId = "brief" | "stock" | "goals" | "execute";
 export type TasksTabId = "tasks-today" | "tasks-all";
-export type JournalTabId = "journal-log" | "journal-archive";
+// アーカイブ(旧・独立タブ)はジャーナルへ統合した。「今日」=その日の記録、
+// 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10)。
+export type JournalTabId = "journal-today" | "journal-archive";
 export type TabId = LifeTabId | TasksTabId | JournalTabId;
 
 // プラン(実行タブ)へバインドする候補の選択。タブを跨いで持ち回せるよう

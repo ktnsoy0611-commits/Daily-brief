@@ -1,12 +1,12 @@
 "use client";
 
-import { Activity, BookOpen, Film, MapPin, Music, Music2, Newspaper, Package, Palette, UtensilsCrossed } from "lucide-react";
+import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Package, Palette, UtensilsCrossed } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
-import { BLUE, INK, ITEM_DOMAINS, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
-import { domainOf, hashStr, haptic, originBadge, shortDate } from "@/lib/helpers";
-import type { Item, ItemDomain, ItemKind, TabProps } from "@/lib/types";
+import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
+import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
+import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
 
 // 種類ごとのアイコン。Itemの全kindをここで引ける。
 export const KIND_ICON: Record<ItemKind, IconType> = {
@@ -191,6 +191,10 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
   const [openDomain, setOpenDomain] = useState<ItemDomain | null>(null);
   const [adding, setAdding] = useState<ItemDomain | null>(null);
   const [itemDetail, setItemDetail] = useState<Item | null>(null);
+  // ★ウィッシュの一覧。以前はアーカイブタブの最下部にあったが、アーカイブを
+  // ジャーナルへ統合(1日=1枚の記録)した際に居場所が無くなったため、同じ
+  // 「まだ叶えていない願い」を扱うストックの末尾へ移した(HANDOFF §10)。
+  const [wishDetail, setWishDetail] = useState<Wish | null>(null);
 
   // plannedは既に今日のプラン(バインド済み)に入っているItem。ここでは
   // 「これから選べる候補」だけを見せたいので、doneだけでなくplannedも除く。
@@ -202,12 +206,34 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
     thing: byDomain("thing"), place: byDomain("place"), experience: byDomain("experience"), info: byDomain("info"),
   };
 
+  const allWishesDesc = appState.wishes.slice().sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
+  const wishChildren = wishDetail ? appState.items.filter((i) => i.sourceWishId === wishDetail.id) : [];
+  const wishDetailBound = wishDetail ? isWishBound(wishDetail, appState.items) : false;
+
   const addItem = (item: Item, toast: string) => {
     haptic();
     const next = structuredClone(appState);
     next.items.unshift(item);
     persist(next);
     showToast(toast);
+  };
+  const updateWish = (id: string, patch: Partial<Wish>) => {
+    const next = structuredClone(appState);
+    const w = next.wishes.find((x) => x.id === id);
+    if (w) Object.assign(w, patch);
+    persist(next);
+  };
+  const removeWish = (id: string) => {
+    const next = structuredClone(appState);
+    next.wishes = next.wishes.filter((x) => x.id !== id);
+    persist(next);
+  };
+  const makeGoal = (w: Wish) => {
+    const next = structuredClone(appState);
+    next.goals.unshift({ id: `goal-${Date.now()}`, title: w.title, addedAt: new Date().toISOString(), checkIns: [] });
+    next.wishes = next.wishes.filter((x) => x.id !== w.id);
+    persist(next);
+    showToast("ゴールにしました");
   };
   const removeItem = (id: string) => {
     const next = structuredClone(appState);
@@ -256,6 +282,37 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
               addLabel={`${d.label}を追加`} />
           </StackSection>
         ))}
+
+        {/* ★ウィッシュ。棚(4ドメイン)の下に、書いたものすべてを新しい順に
+            並べる平たいリスト。左のチェックは「派生カードが実際に実行された
+            か」の自動判定(isWishBound)で、タップでの手動トグルは持たない。 */}
+        {allWishesDesc.length > 0 && (
+          <section style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>ウィッシュ</div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {allWishesDesc.map((w) => {
+                const bound = isWishBound(w, appState.items);
+                return (
+                  <button key={w.id} onClick={() => setWishDetail(w)} style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px 2px",
+                    background: "none", border: "none", borderTop: `1px solid ${HAIRLINE}`, cursor: "pointer", textAlign: "left", width: "100%",
+                  }}>
+                    <span style={{
+                      flexShrink: 0, width: 19, height: 19, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                      background: bound ? GOLD : "transparent", border: `1.5px solid ${bound ? GOLD : "rgba(23,23,21,0.25)"}`,
+                    }}>
+                      {bound && <Check size={11} strokeWidth={3} color={PAPER} />}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: SANS, fontSize: 12.5, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.title}</div>
+                      <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 1 }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </main>
 
       {openDomain && (
@@ -311,6 +368,24 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
             </div>
           );
         }} />
+
+      <BinderModal
+        item={wishDetail ? {
+          title: wishDetail.title, category: `ウィッシュ ・ ${domainDefOf(wishDetail.category).label}`,
+          meta: wishChildren.length > 0 ? wishChildren.map((c) => `→ ${c.title}${c.status === "done" ? "（実行済み）" : ""}`) : undefined,
+        } : null}
+        onClose={() => setWishDetail(null)}
+        actionSlot={(close) => (
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            {!wishDetailBound && wishDetail?.status !== "fulfilled" && (
+              <button onClick={() => { updateWish(wishDetail!.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() }); close(); }} style={rowBtn(INK, PAPER)}>叶えた！</button>
+            )}
+            {!wishDetailBound && (
+              <button onClick={() => { makeGoal(wishDetail!); close(); }} style={rowBtn("transparent", GREEN, GREEN)}>ゴールにする</button>
+            )}
+            <button onClick={() => { removeWish(wishDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+          </div>
+        )} />
     </>
   );
 }

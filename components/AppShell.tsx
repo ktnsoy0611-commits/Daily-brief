@@ -11,7 +11,6 @@ import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
-import { RecordsTab } from "@/components/tabs/RecordsTab";
 import { StockTab } from "@/components/tabs/StockTab";
 import { TasksTab } from "@/components/tabs/TasksTab";
 import { APPS, DEFAULT_TAB, appDef, cycleApp } from "@/lib/apps";
@@ -304,7 +303,7 @@ export function AppShell() {
     setSelection({ itemIds: [] });
     setDashOpen(false);
     showToast(boundItems.length > 0 ? `${boundItems.length}件をアーカイブへ綴じました` : "今日を終えました");
-    if (boundItems.length > 0) goTab("records");
+    if (boundItems.length > 0) goTab("journal-archive");
   };
   // ダッシュボードからのタスクのチェック。
   const toggleTask = (id: string) => {
@@ -456,10 +455,9 @@ export function AppShell() {
               {tab === "brief" && <BriefTab {...tabProps} />}
               {tab === "stock" && <StockTab {...tabProps} />}
               {tab === "goals" && <GoalsTab {...tabProps} />}
-              {tab === "records" && <RecordsTab {...tabProps} />}
               {tab === "execute" && <ExecuteTab {...tabProps} />}
               {(tab === "tasks-today" || tab === "tasks-all") && <TasksTab {...tabProps} tab={tab as TasksTabId} />}
-              {(tab === "journal-log" || tab === "journal-archive") && <JournalTab {...tabProps} tab={tab as JournalTabId} />}
+              {(tab === "journal-today" || tab === "journal-archive") && <JournalTab {...tabProps} tab={tab as JournalTabId} />}
             </div>
           </>
         )}

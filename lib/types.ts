@@ -193,8 +193,27 @@ export interface GeneratedPlan {
   spanKm: number | null;
 }
 
-// ★タスク(タスクアプリ)。中身の仕様は後で詰めるため、今は最小限の器。
-// 「その日のタスク」はダッシュボードにもカードと並べて出る。
+// タスクの中の小さな手順。AIの提案を採用するとここへ入る(fromSuggestion)。
+export interface SubTask {
+  id: string;
+  title: string;
+  done: boolean;
+  doneAt?: string;
+  fromSuggestion?: boolean;
+}
+
+// ★AIが出す「付随タスクの提案」。タスクを開くと本体の周りに漂い、
+// タップで採用するとサブタスクになる。却下すると消える。
+// ユーザーの言葉: 「旅行に行くというタスクを登録した時に、新幹線はとった？
+// とか、朝何時に出るか確認した？とか、そういうことを提案してサポートして
+// 欲しい」(HANDOFF §12)。
+export interface TaskSuggestion {
+  id: string;
+  title: string;
+  why?: string;   // なぜ今それを確認するのか(1文)
+}
+
+// ★タスク(タスクアプリ)。
 export interface Task {
   id: string;
   title: string;
@@ -204,6 +223,11 @@ export interface Task {
   doneAt?: string;
   createdAt: string;
   note?: string;
+  subtasks?: SubTask[];
+  // 未採用の提案。採用・却下すると消える。
+  suggestions?: TaskSuggestion[];
+  // 提案を作った時刻。未設定なら「まだ一度も作っていない」= 開いたときに作る。
+  suggestedAt?: string;
 }
 
 // ★ジャーナルの1件。日付ごとに書き足していくログ。

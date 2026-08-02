@@ -3,8 +3,9 @@
 import { Check, Mic, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { BLUE, GOLD, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
-import { haptic, hashStr, todayKey } from "@/lib/helpers";
+import { BLUE, GOLD, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { FloatingBubble, floatStyle } from "@/components/FloatingBubble";
+import { haptic, todayKey } from "@/lib/helpers";
 import type { AppState, InboxCandidate, VoiceNote } from "@/lib/types";
 
 // ★インボックス。夜のうちに語った声のメモをCoworkが読んで作った
@@ -30,39 +31,6 @@ const FIVE_W: { key: keyof Pick<InboxCandidate, "when" | "where" | "who" | "what
   { key: "why", label: "なぜ", hint: "そうしたい理由" },
   { key: "how", label: "どうやって", hint: "手段・段取り" },
 ];
-
-// 漂う位置と速さは候補のidから決める(毎回同じ場所に落ち着き、再描画で
-// 飛び回らない)。同じ場所に重ならないよう、縦は順番で配る。
-function floatStyle(c: InboxCandidate, index: number, total: number): React.CSSProperties {
-  const h = hashStr(c.id);
-  const left = 8 + (h % 34);                 // 8〜42%
-  const top = (index + 0.5) * (100 / Math.max(total, 1));
-  const dur = 5.5 + (h % 20) / 10;           // 5.5〜7.4秒
-  const delay = -((h >> 3) % 40) / 10;       // 位相をずらす
-  return {
-    position: "absolute",
-    left: `${left}%`,
-    top: `calc(${top}% - 26px)`,
-    animation: `inbox-drift ${dur}s ease-in-out ${delay}s infinite`,
-  };
-}
-
-function Bubble({ c, onOpen, style }: { c: InboxCandidate; onOpen: () => void; style: React.CSSProperties }) {
-  return (
-    <button onClick={() => { haptic(8); onOpen(); }} style={{
-      ...style,
-      maxWidth: "62%", textAlign: "left", cursor: "pointer", border: "none",
-      background: PAPER, borderRadius: 999, padding: "10px 16px 10px 12px", boxShadow: SOFT_SHADOW_LG,
-      display: "flex", alignItems: "center", gap: 9,
-    }}>
-      <span style={{ width: 8, height: 8, borderRadius: "50%", background: KIND_COLOR[c.kind], flexShrink: 0 }} />
-      <span style={{
-        fontFamily: SANS, fontSize: 12.5, fontWeight: 600, color: INK,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>{c.title}</span>
-    </button>
-  );
-}
 
 // 中央に候補、周りに5W1Hの雲。雲をタップするとその場で書き込める。
 function CandidateEditor({ candidate, onChange, onApprove, onDismiss, onClose }: {
@@ -206,7 +174,7 @@ export function InboxView({ appState, persist, showToast }: {
   const candidates = useMemo(() => inbox ?? [], [inbox]);
   const notes = (appState.voiceNotes ?? []).filter((n) => n.status === "new");
   const open = candidates.find((c) => c.id === openId) ?? null;
-  const bubbles = useMemo(() => candidates.map((c, i) => ({ c, style: floatStyle(c, i, candidates.length) })), [candidates]);
+  const bubbles = useMemo(() => candidates.map((c, i) => ({ c, style: floatStyle(c.id, i, candidates.length) })), [candidates]);
 
   const patch = (id: string, p: Partial<InboxCandidate>) => {
     const next = structuredClone(appState);
@@ -224,15 +192,37 @@ export function InboxView({ appState, persist, showToast }: {
     persist(next);
     setOpenId(null);
   };
+  // 登録したタスクの付随提案を作る。結果が返ったら、そのタスクへ書き込む。
+  const askSuggestions = async (taskId: string, title: string, when: string | undefined, base: AppState) => {
+    try {
+      const { findSimilarTasks } = await import("@/lib/taskSuggest");
+      const res = await fetch("/api/suggest-subtasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, dueDate: when, pastSimilar: findSimilarTasks(title, base.tasks ?? []) }),
+      });
+      const data = await res.json().catch(() => null);
+      const next = structuredClone(base);
+      const t = next.tasks.find((x) => x.id === taskId);
+      if (!t) return;
+      t.suggestedAt = new Date().toISOString();
+      if (data?.ok && Array.isArray(data.suggestions)) t.suggestions = data.suggestions;
+      persist(next);
+    } catch {
+      /* 提案が作れなくてもタスクの登録は済んでいる */
+    }
+  };
+
   // 承認 = その種類の本体へ登録し、候補は消す。
   const approve = (c: InboxCandidate) => {
     const next = structuredClone(appState);
     const now = new Date().toISOString();
     const detail = [c.where && `どこで: ${c.where}`, c.who && `だれと: ${c.who}`, c.how && `どうやって: ${c.how}`, c.why && `なぜ: ${c.why}`]
       .filter(Boolean).join(" ・ ") || undefined;
+    const taskId = `task-${Date.now()}`;
     if (c.kind === "task") {
       next.tasks.unshift({
-        id: `task-${Date.now()}`, title: c.title,
+        id: taskId, title: c.title,
         dueDate: /^\d{4}-\d{2}-\d{2}$/.test(c.when ?? "") ? c.when : undefined,
         note: [c.when && !/^\d{4}-\d{2}-\d{2}$/.test(c.when) ? c.when : null, detail].filter(Boolean).join(" ・ ") || undefined,
         done: false, createdAt: now,
@@ -252,6 +242,11 @@ export function InboxView({ appState, persist, showToast }: {
     persist(next);
     setOpenId(null);
     showToast(`${KIND_LABEL[c.kind]}に登録しました`);
+    // ★タスクにしたものは、登録した瞬間に付随タスクの提案を作りに行く
+    // (「新幹線は取った?」「会議室は取った?」)。開いたときには既に周りに
+    // 漂っている、という体験にするため(ユーザー指定: 即時)。失敗しても
+    // タスク自体の登録は済んでいるので、静かに諦める(開いたときに作り直す)。
+    if (c.kind === "task") askSuggestions(taskId, c.title, c.when, next);
   };
 
   return (
@@ -278,7 +273,7 @@ export function InboxView({ appState, persist, showToast }: {
         // 漂う候補。高さは画面いっぱいに取り、そこに散らして浮かべる。
         <div style={{ position: "relative", flex: 1, minHeight: 380, marginTop: 6 }}>
           {bubbles.map(({ c, style }) => (
-            <Bubble key={c.id} c={c} style={style} onOpen={() => setOpenId(c.id)} />
+            <FloatingBubble key={c.id} label={c.title} dotColor={KIND_COLOR[c.kind]} style={style} onTap={() => setOpenId(c.id)} />
           ))}
         </div>
       )}

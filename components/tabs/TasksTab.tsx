@@ -1,8 +1,10 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { Masthead } from "@/components/common";
-import { HAIRLINE, INK, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { TaskDetail } from "@/components/TaskDetail";
+import { GOLD, HAIRLINE, INK, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { haptic, todayKey } from "@/lib/helpers";
 import type { Task, TabProps, TasksTabId } from "@/lib/types";
 
@@ -18,15 +20,23 @@ const sortTasks = (a: Task, b: Task) => {
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 };
 
-// 1件の行。タップでチェックの入り切りだけができる。
-export function TaskRow({ task, onToggle }: { task: Task; onToggle: (id: string) => void }) {
+// 1件の行。左のチェックで済ませ、行そのものをタップすると中身(手順と
+// AIの提案)が開く。onOpenを渡さなければチェックだけの行になる
+// (ダッシュボードはこの形で使う)。
+export function TaskRow({ task, onToggle, onOpen }: { task: Task; onToggle: (id: string) => void; onOpen?: (id: string) => void }) {
+  const subtasks = task.subtasks ?? [];
+  const doneSubs = subtasks.filter((s) => s.done).length;
+  const pending = (task.suggestions ?? []).length;
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 11, background: PAPER, borderRadius: 14,
-      padding: "12px 14px", boxShadow: SOFT_SHADOW, opacity: task.done ? 0.55 : 1,
-    }}>
+    <div
+      onClick={onOpen ? () => onOpen(task.id) : undefined}
+      style={{
+        display: "flex", alignItems: "center", gap: 11, background: PAPER, borderRadius: 14,
+        padding: "12px 14px", boxShadow: SOFT_SHADOW, opacity: task.done ? 0.55 : 1,
+        cursor: onOpen ? "pointer" : "default",
+      }}>
       <button
-        onClick={() => { haptic(8); onToggle(task.id); }}
+        onClick={(e) => { e.stopPropagation(); haptic(8); onToggle(task.id); }}
         aria-label={task.done ? `${task.title}のチェックを外す` : `${task.title}を完了にする`}
         style={{
           width: 22, height: 22, borderRadius: "50%", flexShrink: 0, cursor: "pointer", padding: 0,
@@ -43,12 +53,23 @@ export function TaskRow({ task, onToggle }: { task: Task; onToggle: (id: string)
           textDecoration: task.done ? "line-through" : "none",
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>{task.title}</div>
-        {(task.note || task.dueDate) && (
+        {(task.note || task.dueDate || subtasks.length > 0) && (
           <div style={{ fontSize: 10, color: "#9A988E", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {[task.dueDate, task.note].filter(Boolean).join(" ・ ")}
+            {[task.dueDate, subtasks.length > 0 ? `手順 ${doneSubs}/${subtasks.length}` : null, task.note].filter(Boolean).join(" ・ ")}
           </div>
         )}
       </div>
+      {/* まだ見ていない提案がある印。開かなくても気づけるように行にも出す。 */}
+      {pending > 0 && !task.done && (
+        <span style={{
+          display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0,
+          background: "rgba(199,148,51,0.16)", color: GOLD, borderRadius: 999, padding: "3px 8px",
+          fontSize: 10, fontWeight: 700,
+        }}>
+          <Sparkles size={10} strokeWidth={2.4} />
+          {pending}
+        </span>
+      )}
     </div>
   );
 }
@@ -63,13 +84,28 @@ function EmptyNote({ title, body }: { title: string; body: string }) {
 }
 
 export function TasksTab({ appState, persist, profileButton, tab }: TabProps & { tab: TasksTabId }) {
+  const [openId, setOpenId] = useState<string | null>(null);
   const tasks = appState.tasks ?? [];
   const today = todayKey();
   const todays = tasks.filter((t) => t.dueDate === today).sort(sortTasks);
   const all = tasks.slice().sort(sortTasks);
   const shown = tab === "tasks-today" ? todays : all;
+  const open = tasks.find((t) => t.id === openId) ?? null;
   const remaining = todays.filter((t) => !t.done).length;
 
+  const patchTask = (id: string, patch: Partial<Task>) => {
+    const next = structuredClone(appState);
+    const t = next.tasks.find((x) => x.id === id);
+    if (!t) return;
+    Object.assign(t, patch);
+    persist(next);
+  };
+  const removeTask = (id: string) => {
+    const next = structuredClone(appState);
+    next.tasks = next.tasks.filter((x) => x.id !== id);
+    persist(next);
+    setOpenId(null);
+  };
   const toggle = (id: string) => {
     const next = structuredClone(appState);
     const t = next.tasks.find((x) => x.id === id);
@@ -94,8 +130,17 @@ export function TasksTab({ appState, persist, profileButton, tab }: TabProps & {
         />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {shown.map((t) => <TaskRow key={t.id} task={t} onToggle={toggle} />)}
+          {shown.map((t) => <TaskRow key={t.id} task={t} onToggle={toggle} onOpen={setOpenId} />)}
         </div>
+      )}
+      {open && (
+        <TaskDetail
+          task={open}
+          allTasks={tasks}
+          onChange={(patch) => patchTask(open.id, patch)}
+          onDelete={() => removeTask(open.id)}
+          onClose={() => setOpenId(null)}
+        />
       )}
     </main>
   );

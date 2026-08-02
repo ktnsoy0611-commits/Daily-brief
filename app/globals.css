@@ -125,3 +125,7 @@ button:active {
 @media (prefers-reduced-motion: reduce) {
   @keyframes inbox-drift { 0%, 100% { transform: none; } }
 }
+
+/* 提案を考えている間のくるくる。タスク詳細の「手配を確認する」で使う。 */
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { @keyframes spin { to { transform: none; } } }

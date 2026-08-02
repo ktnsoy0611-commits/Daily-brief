@@ -1,15 +1,16 @@
 import { BookOpen, CalendarCheck, CheckSquare, Heart, Inbox, Map as MapIcon, Newspaper, PenLine, Sprout } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
-import { BG, JOURNAL_BG, TASKS_BG } from "./constants";
+import type { PlaneShape } from "@/components/Binder";
 import type { AppId, TabId } from "./types";
 
 // ★3つのアプリの定義。タブバーの上を左右にスワイプすると、この配列の順に
 // 循環して切り替わる(端まで行くと反対の端へ回る)。今のアプリ(life)を
 // 真ん中に置いてあるので、タスク・ジャーナルのどちらへも1回で行ける。
 //
-// 3アプリはデザイン言語(PAPER/INK/影/角丸/カードの語彙)をすべて共有し、
-// 違うのは地の色(bg)と中身だけ。タブバー・ヘッダー・シートの作りも共通の
-// ものをそのまま使う。
+// 3アプリはデザイン言語(PAPER/INK/影/角丸/カードの語彙)も**地の色(BG)**も
+// すべて共有する。違うのは、背景に置いた大きな図形ひとつ(symbol)と中身だけ。
+// 以前はアプリごとに地の色を変えていたが、ネオバウハウス化(2026-08-02)で
+// 地はほんとに薄いグレー1色へ統一し、識別は図形が担うことにした。
 
 export type TabIcon = ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }>;
 
@@ -19,10 +20,22 @@ export interface AppTabDef {
   Icon: TabIcon;
 }
 
+// 背景の透かし図形。図形の語彙はバインダー(components/Binder.tsx の
+// PlaneShape)をそのまま使い、新しい形を増やさない。置き場所も、バインダーが
+// 「帯の位置で種別を分ける」のと同じ考えを画面に写している。
+export interface AppSymbol {
+  shape: PlaneShape;
+  // 図形の一辺(画面幅に対する割合)。1を超えると画面外へはみ出す。
+  size: number;
+  // 中心の位置(画面に対する割合)。0.5が中央、負や1超で画面外へ。
+  x: number;
+  y: number;
+}
+
 export interface AppDef {
   id: AppId;
   label: string;
-  bg: string;
+  symbol: AppSymbol;
   tabs: AppTabDef[];
 }
 
@@ -30,7 +43,8 @@ export const APPS: AppDef[] = [
   {
     id: "tasks",
     label: "タスク",
-    bg: TASKS_BG,
+    // 左上から差し込む四半円(バインダーの side = 左端の帯に対応)。
+    symbol: { shape: "quarterTL", size: 1.15, x: 0.02, y: 0.2 },
     tabs: [
       { id: "tasks-inbox", label: "インボックス", Icon: Inbox },
       { id: "tasks-today", label: "今日", Icon: CheckSquare },
@@ -40,7 +54,8 @@ export const APPS: AppDef[] = [
   {
     id: "life",
     label: "ブリーフ",
-    bg: BG,
+    // 右上からはみ出す円(バインダーの target = 上端中央からはみ出す円に対応)。
+    symbol: { shape: "circle", size: 1.05, x: 0.86, y: 0.16 },
     tabs: [
       { id: "brief", label: "ブリーフ", Icon: Newspaper },
       { id: "goals", label: "ゴール", Icon: Sprout },
@@ -51,7 +66,8 @@ export const APPS: AppDef[] = [
   {
     id: "journal",
     label: "ジャーナル",
-    bg: JOURNAL_BG,
+    // 下端中央から立ち上がる半円(バインダーの stamp = 下端の帯に対応)。
+    symbol: { shape: "semicircleUp", size: 1.3, x: 0.5, y: 0.98 },
     tabs: [
       { id: "journal-today", label: "今日", Icon: PenLine },
       { id: "journal-archive", label: "アーカイブ", Icon: BookOpen },

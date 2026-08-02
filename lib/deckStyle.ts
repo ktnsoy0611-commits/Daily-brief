@@ -17,7 +17,7 @@ const KIND_STYLE: Record<ItemKind, { category: string; categoryJp: string; glyph
   live:       { category: "LIVE",        categoryJp: "ライブ", glyph: "演", color: "#2A4A3A" },
   activity:   { category: "ACTIVITY",    categoryJp: "体験",   glyph: "体", color: "#7A4432" },
   food:       { category: "FOOD",        categoryJp: "食",     glyph: "食", color: "#8A3C2A" },
-  movie:      { category: "CINEMA",      categoryJp: "映画",   glyph: "映", color: "#1A1712" },
+  movie:      { category: "CINEMA",      categoryJp: "映画",   glyph: "映", color: "#1A1A18" },
   book:       { category: "BOOK",        categoryJp: "本",     glyph: "本", color: "#6B4A2E" },
   album:      { category: "MUSIC",       categoryJp: "音楽",   glyph: "音", color: "#A67A2E" },
   info:       { category: "INFO",        categoryJp: "情報",   glyph: "報", color: "#3E5468" },

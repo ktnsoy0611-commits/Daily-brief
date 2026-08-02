@@ -3,7 +3,7 @@
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
-import { BG, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, BLUE, DISPLAY } from "@/lib/constants";
+import { BG, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
@@ -39,7 +39,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             <span style={{ fontSize: 9, letterSpacing: "0.26em", opacity: 0.8 }}>CHECK-IN</span>
           </div>
           <div style={{ flex: 1, padding: "18px 20px 20px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E", marginBottom: 8 }}>{card.goalTitle}</div>
+            <div style={{ fontSize: 9, letterSpacing: "0.15em", color: MUTED, marginBottom: 8 }}>{card.goalTitle}</div>
             <h2 style={{ margin: "0 0 12px", fontFamily: SERIF, fontWeight: 700, fontSize: 18, lineHeight: 1.4, color: INK }}>最近は、どうですか？</h2>
             <textarea
               value={checkinValue}
@@ -65,7 +65,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           <span style={{ fontSize: 9, letterSpacing: "0.26em", opacity: 0.85 }}>MILESTONE</span>
         </div>
         <div style={{ flex: 1, padding: "16px 20px 20px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E", marginBottom: 8 }}>{card.goalTitle}</div>
+          <div style={{ fontSize: 9, letterSpacing: "0.15em", color: MUTED, marginBottom: 8 }}>{card.goalTitle}</div>
           <h2 style={{ margin: "0 0 10px", fontFamily: SERIF, fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: INK }}>できるようになったこと、ありますか？</h2>
           <textarea
             value={milestoneText}
@@ -79,7 +79,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
               <button key={r} onClick={() => onMilestoneRatingChange(r)} style={{
                 flex: 1, padding: "9px 4px", borderRadius: 10, cursor: "pointer", fontFamily: SANS, fontSize: 10.5, fontWeight: 700,
                 background: milestoneRating === r ? RUST : "transparent", color: milestoneRating === r ? PAPER : "#5A5A54",
-                border: `1.5px solid ${milestoneRating === r ? RUST : "rgba(23,23,21,0.2)"}`,
+                border: `1.5px solid ${milestoneRating === r ? RUST : "rgba(26,26,24,0.2)"}`,
               }}>{ratingLabel(r)}</button>
             ))}
           </div>
@@ -116,7 +116,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
         {isTop && hasPhotos && (
           <span style={{
             position: "absolute", bottom: 12, right: 14, display: "flex", alignItems: "center", gap: 5,
-            background: "rgba(23,23,21,0.5)", color: "#fff", borderRadius: 999, padding: "5px 11px 5px 9px",
+            background: "rgba(26,26,24,0.5)", color: "#fff", borderRadius: 999, padding: "5px 11px 5px 9px",
             fontSize: 10, fontFamily: SANS, fontWeight: 700, pointerEvents: "none",
           }}>写真 {card.images!.length} を見る ⤢</span>
         )}
@@ -164,8 +164,8 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           >記事を読む →</button>
         )}
       </div>
-      <div style={{ position: "absolute", top: 20, left: 18, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: "0.15em", padding: "3px 12px", borderRadius: 6, background: "rgba(251,250,247,0.85)", pointerEvents: "none" }}>KEEP</div>
-      <div style={{ position: "absolute", top: 20, right: 18, transform: "rotate(12deg)", opacity: skipOpacity, border: "3px solid #8A8A82", color: "#8A8A82", fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: "0.15em", padding: "3px 12px", borderRadius: 6, background: "rgba(251,250,247,0.85)", pointerEvents: "none" }}>SKIP</div>
+      <div style={{ position: "absolute", top: 20, left: 18, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: "0.15em", padding: "3px 12px", borderRadius: 6, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>KEEP</div>
+      <div style={{ position: "absolute", top: 20, right: 18, transform: "rotate(12deg)", opacity: skipOpacity, border: "3px solid #8A8A82", color: "#8A8A82", fontFamily: SANS, fontWeight: 700, fontSize: 24, letterSpacing: "0.15em", padding: "3px 12px", borderRadius: 6, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>SKIP</div>
       <PunchHoles />
     </div>
   );
@@ -559,7 +559,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
       <Masthead title="ブリーフ" statValue={deck.length === 0 ? "" : done ? keptCards.length : index + 1} statLabel={deck.length === 0 ? "休刊" : done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
       <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
         {deck.map((c, i) => (
-          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(23,23,21,0.1)", transition: "background 0.3s" }} />
+          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background 0.3s" }} />
         ))}
       </div>
 
@@ -647,7 +647,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
           }}>
             {isGrowth && (
               <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => commit("skip")} style={{ flex: 1, padding: "13px 0", background: "transparent", border: "1.5px solid rgba(23,23,21,0.3)", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: "#5A5A54", cursor: "pointer" }}>あとで</button>
+                <button onClick={() => commit("skip")} style={{ flex: 1, padding: "13px 0", background: "transparent", border: "1.5px solid rgba(26,26,24,0.3)", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: "#5A5A54", cursor: "pointer" }}>あとで</button>
                 <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: "13px 0", background: isMilestone ? RUST : GREEN, border: "none", borderRadius: 999, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: PAPER, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
               </div>
             )}
@@ -660,16 +660,16 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         // クライアントには「生成中/失敗」を判別する信号が無い(Cronはサーバー側)
         // ため、両方を正直に包む「まだ届いていません」に寄せる。
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
-          <div style={{ fontSize: 10, letterSpacing: "0.28em", color: "#9A988E" }}>NO ISSUE YET</div>
+          <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED }}>NO ISSUE YET</div>
           <h2 style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 26, lineHeight: 1.4, margin: "10px 0 20px" }}>{editionLabel}は、まだ<br />届いていません。</h2>
-          <p style={{ fontSize: 11.5, color: "#9A988E", lineHeight: 1.8, margin: "0 0 8px" }}>新しいブリーフは夜間に用意されます。しばらくすると、ここに提案が並びます。</p>
-          <p style={{ fontSize: 11.5, color: "#9A988E", lineHeight: 1.8, margin: 0 }}>右上の設定から、情報源や興味・好みを増やすと、提案が見つかりやすくなります。</p>
+          <p style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8, margin: "0 0 8px" }}>新しいブリーフは夜間に用意されます。しばらくすると、ここに提案が並びます。</p>
+          <p style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8, margin: 0 }}>右上の設定から、情報源や興味・好みを増やすと、提案が見つかりやすくなります。</p>
         </main>
       ) : (
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
-          <div style={{ fontSize: 10, letterSpacing: "0.28em", color: "#9A988E" }}>END OF ISSUE</div>
+          <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED }}>END OF ISSUE</div>
           <h2 style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 26, lineHeight: 1.4, margin: "10px 0 20px" }}>{editionLabel}は、<br />ここまで。</h2>
-          <p style={{ fontSize: 11.5, color: "#9A988E", lineHeight: 1.8, margin: "0 0 20px" }}>{edition === "am" ? "夕刊は、正午にお届けします。" : "明日の朝刊で、また。"}</p>
+          <p style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8, margin: "0 0 20px" }}>{edition === "am" ? "夕刊は、正午にお届けします。" : "明日の朝刊で、また。"}</p>
           {keptCards.map((c, i) => (
             <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "12px 2px", borderTop: `1px solid ${HAIRLINE}` }}>
               <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
@@ -687,7 +687,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         // 生成時に作った要約なので、その場で取得せず即表示・オフラインでも読める。
         <div
           onClick={() => setReadItem(null)}
-          style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(23,23,21,0.55)", display: "flex", justifyContent: "center", alignItems: "flex-end" }}
+          style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(26,26,24,0.55)", display: "flex", justifyContent: "center", alignItems: "flex-end" }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -695,7 +695,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
               <span style={{ fontSize: 9.5, color: "#8A8A82", fontWeight: 700, letterSpacing: "0.06em", paddingTop: 4 }}>{readItem.category}{readItem.trigger ? ` ・ ${readItem.trigger}` : ""}</span>
-              <button onClick={() => setReadItem(null)} aria-label="閉じる" style={{ background: "rgba(23,23,21,0.06)", border: "none", borderRadius: 999, width: 30, height: 30, cursor: "pointer", fontSize: 15, color: INK, flexShrink: 0 }}>✕</button>
+              <button onClick={() => setReadItem(null)} aria-label="閉じる" style={{ background: "rgba(26,26,24,0.06)", border: "none", borderRadius: 999, width: 30, height: 30, cursor: "pointer", fontSize: 15, color: INK, flexShrink: 0 }}>✕</button>
             </div>
             <h2 style={{ margin: "0 0 14px", fontFamily: SERIF, fontWeight: 700, fontSize: 22, lineHeight: 1.35, color: INK }}>{readItem.title}</h2>
             {(readItem.detail && readItem.detail.trim() ? readItem.detail : readItem.body)

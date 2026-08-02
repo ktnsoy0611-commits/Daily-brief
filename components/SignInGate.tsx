@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { BG, INK, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BG, INK, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 
 // サインイン画面(Supabase Auth、メール確認コード方式)。
 // AppShellが「構成済み(環境変数あり)かつ未ログイン」のときだけ描画する。
@@ -74,7 +74,7 @@ export function SignInGate() {
 
         {phase === "sent" || phase === "verifying" ? (
           <>
-            <p style={{ fontSize: 12.5, color: "#9A988E", lineHeight: 1.7, margin: "0 0 16px" }}>
+            <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.7, margin: "0 0 16px" }}>
               <strong style={{ color: INK }}>{email.trim()}</strong> に届いた6桁のコードを入力してください。
             </p>
             <input
@@ -92,7 +92,7 @@ export function SignInGate() {
             <button
               onClick={verify} disabled={!code.trim() || phase === "verifying"}
               style={{
-                width: "100%", padding: "13px 0", background: code.trim() && phase !== "verifying" ? INK : "rgba(23,23,21,0.2)",
+                width: "100%", padding: "13px 0", background: code.trim() && phase !== "verifying" ? INK : "rgba(26,26,24,0.2)",
                 color: PAPER, border: "none", borderRadius: 999, cursor: code.trim() && phase !== "verifying" ? "pointer" : "default",
                 fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 10,
               }}
@@ -102,7 +102,7 @@ export function SignInGate() {
             <button
               onClick={() => { setPhase("idle"); setCode(""); setError(""); }}
               style={{
-                width: "100%", padding: "8px 0", background: "transparent", color: "#9A988E",
+                width: "100%", padding: "8px 0", background: "transparent", color: MUTED,
                 border: "none", cursor: "pointer", fontFamily: SANS, fontSize: 11.5,
               }}
             >
@@ -111,7 +111,7 @@ export function SignInGate() {
           </>
         ) : (
           <>
-            <p style={{ fontSize: 12.5, color: "#9A988E", lineHeight: 1.7, margin: "0 0 16px" }}>
+            <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.7, margin: "0 0 16px" }}>
               メールアドレスに確認コードを送ります。パスワードは不要です。
             </p>
             <input
@@ -128,7 +128,7 @@ export function SignInGate() {
             <button
               onClick={send} disabled={!email.trim() || phase === "sending"}
               style={{
-                width: "100%", padding: "13px 0", background: email.trim() && phase !== "sending" ? INK : "rgba(23,23,21,0.2)",
+                width: "100%", padding: "13px 0", background: email.trim() && phase !== "sending" ? INK : "rgba(26,26,24,0.2)",
                 color: PAPER, border: "none", borderRadius: 999, cursor: email.trim() && phase !== "sending" ? "pointer" : "default",
                 fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
               }}

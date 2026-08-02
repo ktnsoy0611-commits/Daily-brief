@@ -2,7 +2,7 @@
 
 import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BLUE, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
@@ -33,13 +33,13 @@ export function Masthead({ title, statValue, statLabel, dateline, right, corner 
           {right ? right : (
             <div style={{ display: "flex", alignItems: "center", gap: 5, height: HEADER_CHIP_SIZE, background: PAPER, borderRadius: 999, padding: "0 16px", boxShadow: SOFT_SHADOW }}>
               <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16, lineHeight: 1, color: INK }}>{statValue}</span>
-              <span style={{ fontSize: 10, color: "#9A988E", lineHeight: 1 }}>{statLabel}</span>
+              <span style={{ fontSize: 10, color: MUTED, lineHeight: 1 }}>{statLabel}</span>
             </div>
           )}
           {corner}
         </div>
       </div>
-      {dateline && <div style={{ fontSize: 12, color: "#9A988E", marginTop: 10 }}>{dateline}</div>}
+      {dateline && <div style={{ fontSize: 12, color: MUTED, marginTop: 10 }}>{dateline}</div>}
     </header>
   );
 }
@@ -59,7 +59,7 @@ export function rowBtn(bg: string, color: string, border?: string): CSSPropertie
 
 export function keepStatus(k: { status: string }) {
   if (k.status === "planned") return { label: "マガジン掲載中", color: BLUE };
-  if (k.status === "done") return { label: "実行済み", color: "#9A988E" };
+  if (k.status === "done") return { label: "実行済み", color: MUTED };
   return { label: "候補", color: GREEN };
 }
 
@@ -79,7 +79,7 @@ export function PunchHoles() {
       {HOLE_YS.map((y) => (
         <div key={y} style={{
           position: "absolute", left: 12, top: y, transform: "translateY(-50%)", width: 10, height: 10, borderRadius: "50%",
-          background: "rgba(253,251,245,0.92)",
+          background: "rgba(250,250,249,0.92)",
           boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.38), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 1px rgba(255,255,255,0.3)",
           pointerEvents: "none",
         }} />
@@ -165,7 +165,7 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
             <button onClick={(e) => { e.stopPropagation(); onTogglePlanSelect(); }} aria-label={planSelected ? "プランの選択から外す" : "プランの候補に選ぶ"} style={{
               width: 20, height: 20, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0,
               background: planSelected ? BLUE : "rgba(255,255,255,0.94)", color: planSelected ? PAPER : INK,
-              display: "flex", alignItems: "center", justifyContent: "center", padding: 0, boxShadow: "0 2px 6px rgba(23,23,21,0.3)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 0, boxShadow: "0 2px 6px rgba(26,26,24,0.3)",
             }}>
               {planSelected ? <Check size={11} strokeWidth={3} /> : <Plus size={12} strokeWidth={2.6} />}
             </button>
@@ -173,7 +173,7 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
           {onToggleGood && (
             <button onClick={(e) => { e.stopPropagation(); onToggleGood(); }} aria-label="良かった" style={{
               width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0,
-              background: good ? "#D9A441" : "rgba(23,23,21,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+              background: good ? "#D9A441" : "rgba(26,26,24,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
             }}>
               <Star size={14} fill={good ? "#fff" : "none"} color="#fff" strokeWidth={2} />
             </button>
@@ -214,7 +214,7 @@ export function SelectablePosterCard({ selected, onToggle, size = 132, ...cardPr
       <PosterCard {...cardProps} size={size} onClick={onToggle} />
       {selected && (
         <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "rgba(43,63,191,0.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-          <div style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(23,23,21,0.3)" }}>
+          <div style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(26,26,24,0.3)" }}>
             <Check size={16} color={PAPER} strokeWidth={3} />
           </div>
         </div>
@@ -233,7 +233,7 @@ export function AddCardTile({ onClick, aspect = ITEM_CARD_ASPECT, size, label }:
   return (
     <button onClick={onClick} aria-label={label} style={{
       width: size ?? "100%", aspectRatio: aspect, flexShrink: 0, borderRadius: 18, cursor: "pointer",
-      border: "1.5px dashed rgba(23,23,21,0.22)", background: PAPER,
+      border: "1.5px dashed rgba(26,26,24,0.22)", background: PAPER,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
     }}>
       <Plus size={26} strokeWidth={1.6} color="#8A8A82" />
@@ -442,18 +442,18 @@ export function BinderModal({ item, onClose, actionSlot }: {
               <img
                 src={img(item.images![0], 720, 450)} alt=""
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                style={{ width: "100%", aspectRatio: "16 / 10", objectFit: "cover", borderRadius: 14, boxShadow: "0 10px 26px rgba(23,23,21,0.18)", display: "block" }}
+                style={{ width: "100%", aspectRatio: "16 / 10", objectFit: "cover", borderRadius: 14, boxShadow: "0 10px 26px rgba(26,26,24,0.18)", display: "block" }}
               />
             </div>
           ) : (item.images ?? []).length > 1 ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 18px" }}>
               {(item.images ?? []).map((seed, i) => (
-                <img key={seed} src={img(seed, 300, 380)} alt="" style={{ width: "40%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 8, border: "4px solid #fff", boxShadow: "0 8px 20px rgba(23,23,21,0.3)", transform: `rotate(${rotations[i % 3]}deg)`, marginLeft: i === 0 ? 0 : -22, position: "relative", zIndex: i }} />
+                <img key={seed} src={img(seed, 300, 380)} alt="" style={{ width: "40%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 8, border: "4px solid #fff", boxShadow: "0 8px 20px rgba(26,26,24,0.3)", transform: `rotate(${rotations[i % 3]}deg)`, marginLeft: i === 0 ? 0 : -22, position: "relative", zIndex: i }} />
               ))}
             </div>
           ) : null}
           <OverlayCard>
-            <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
+            <div style={{ fontSize: 9, letterSpacing: "0.2em", color: MUTED, marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
             <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: (item.detail ?? item.body ?? item.summary) ? 10 : actionSlot ? 12 : 16 }}>{item.title}</div>
             {(item.detail ?? item.body ?? item.summary) && (
               <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.85, color: "#4A4A44", margin: `0 0 ${actionSlot ? 12 : 16}px`, whiteSpace: "pre-wrap" }}>{item.detail ?? item.body ?? item.summary}</p>

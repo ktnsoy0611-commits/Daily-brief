@@ -4,7 +4,7 @@ import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Pack
 import { useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
-import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
+import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
 import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
 
@@ -29,7 +29,7 @@ const STACK_ROW_CAP = 10;
 const isMapsUrl = (url: string) => /google\.[^/]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/.test(url);
 
 // 追加シートの入力欄スタイル(4ドメインで統一)。
-const FIELD_LABEL: CSSProperties = { fontSize: 9, letterSpacing: "0.15em", color: "#9A988E", display: "block", marginBottom: 3 };
+const FIELD_LABEL: CSSProperties = { fontSize: 9, letterSpacing: "0.15em", color: MUTED, display: "block", marginBottom: 3 };
 const FIELD_INPUT: CSSProperties = { width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 13, outline: "none", background: "transparent" };
 
 // サーバー関数に座標解決を依頼する。url(マップURLからの抽出+名前補完)と
@@ -126,7 +126,7 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
                 <button key={k.id} onClick={() => setKind(k.id)} style={{
                   flex: "1 1 40%", padding: "9px 0", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700,
                   background: kind === k.id ? INK : "transparent", color: kind === k.id ? PAPER : "#5A5A54",
-                  border: `1.5px solid ${kind === k.id ? INK : "rgba(23,23,21,0.2)"}`,
+                  border: `1.5px solid ${kind === k.id ? INK : "rgba(26,26,24,0.2)"}`,
                 }}>{k.label}</button>
               ))}
             </div>
@@ -142,7 +142,7 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
               style={{ ...FIELD_INPUT, flex: 1 }} />
             <button onClick={loadPlace} disabled={!mapUrl.trim() || resolving} style={{
               flexShrink: 0, padding: "8px 14px", borderRadius: 999, border: `1.5px solid ${INK}`,
-              background: mapUrl.trim() && !resolving ? INK : "transparent", color: mapUrl.trim() && !resolving ? PAPER : "#9A988E",
+              background: mapUrl.trim() && !resolving ? INK : "transparent", color: mapUrl.trim() && !resolving ? PAPER : MUTED,
               fontFamily: SANS, fontSize: 11, fontWeight: 700, cursor: mapUrl.trim() && !resolving ? "pointer" : "default", whiteSpace: "nowrap",
             }}>{resolving ? "読込中…" : "読み込む"}</button>
           </div>
@@ -156,10 +156,10 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
 
           <label style={FIELD_LABEL}>自由記述（任意）</label>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="メモ・作者・価格の目安など"
-            style={{ width: "100%", boxSizing: "border-box", border: "1.5px solid rgba(23,23,21,0.2)", borderRadius: 10, padding: "10px 12px", fontFamily: SANS, fontSize: 13, outline: "none", resize: "none", lineHeight: 1.6, background: "transparent", marginBottom: 20 }} />
+            style={{ width: "100%", boxSizing: "border-box", border: "1.5px solid rgba(26,26,24,0.2)", borderRadius: 10, padding: "10px 12px", fontFamily: SANS, fontSize: 13, outline: "none", resize: "none", lineHeight: 1.6, background: "transparent", marginBottom: 20 }} />
 
           <button onClick={() => commit(requestClose)} disabled={!title.trim() || saving} style={{
-            width: "100%", padding: "13px 0", background: title.trim() && !saving ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none",
+            width: "100%", padding: "13px 0", background: title.trim() && !saving ? INK : "rgba(26,26,24,0.2)", color: PAPER, border: "none",
             borderRadius: 999, cursor: title.trim() && !saving ? "pointer" : "default", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
           }}>{saving ? "追加中…" : "ストックする"}</button>
         </OverlayCard>
@@ -172,8 +172,8 @@ function StackSection({ title, count, children }: { title: string; count: number
   return (
     <section style={{ marginBottom: 34 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
-        <span style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E" }}>{title}</span>
-        <span style={{ fontSize: 10, color: "#9A988E" }}>{count}件</span>
+        <span style={{ fontSize: 11, letterSpacing: "0.22em", color: MUTED }}>{title}</span>
+        <span style={{ fontSize: 10, color: MUTED }}>{count}件</span>
       </div>
       {children}
     </section>
@@ -288,7 +288,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
             か」の自動判定(isWishBound)で、タップでの手動トグルは持たない。 */}
         {allWishesDesc.length > 0 && (
           <section style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E", marginBottom: 10 }}>ウィッシュ</div>
+            <div style={{ fontSize: 11, letterSpacing: "0.22em", color: MUTED, marginBottom: 10 }}>ウィッシュ</div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               {allWishesDesc.map((w) => {
                 const bound = isWishBound(w, appState.items);
@@ -299,13 +299,13 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
                   }}>
                     <span style={{
                       flexShrink: 0, width: 19, height: 19, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                      background: bound ? GOLD : "transparent", border: `1.5px solid ${bound ? GOLD : "rgba(23,23,21,0.25)"}`,
+                      background: bound ? GOLD : "transparent", border: `1.5px solid ${bound ? GOLD : "rgba(26,26,24,0.25)"}`,
                     }}>
                       {bound && <Check size={11} strokeWidth={3} color={PAPER} />}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: SANS, fontSize: 12.5, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.title}</div>
-                      <div style={{ fontSize: 9.5, color: "#9A988E", marginTop: 1 }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
+                      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 1 }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
                     </div>
                   </button>
                 );
@@ -363,7 +363,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
               <button onClick={() => toggleItemSelection(itemDetail!.id)} style={selected ? rowBtn("transparent", BLUE, BLUE) : rowBtn(INK, PAPER)}>
                 {selected ? "＋ 追加済み" : "＋ プランに追加"}
               </button>
-              <button onClick={() => { markItemDone(itemDetail!.id); close(); }} style={rowBtn("transparent", INK, "rgba(23,23,21,0.3)")}>{itemKindOf(itemDetail!.kind).doneActionLabel}</button>
+              <button onClick={() => { markItemDone(itemDetail!.id); close(); }} style={rowBtn("transparent", INK, "rgba(26,26,24,0.3)")}>{itemKindOf(itemDetail!.kind).doneActionLabel}</button>
               <button onClick={() => { removeItem(itemDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
             </div>
           );

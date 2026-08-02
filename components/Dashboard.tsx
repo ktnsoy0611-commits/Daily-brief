@@ -4,7 +4,7 @@ import { Check, X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { TaskRow } from "@/components/tabs/TasksTab";
-import { BG, HAIRLINE, INK, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
+import { BG, HAIRLINE, INK, MUTED, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
 import { haptic, img, todayKey, todayLabel } from "@/lib/helpers";
 import type { AppState, PlanSelection } from "@/lib/types";
 
@@ -29,7 +29,7 @@ const ANIM_MS = 300;
 function SectionLabel({ children, count }: { children: React.ReactNode; count?: number }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 8, margin: "0 4px 10px" }}>
-      <span style={{ fontFamily: SANS, fontSize: 11, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700 }}>{children}</span>
+      <span style={{ fontFamily: SANS, fontSize: 11, letterSpacing: "0.16em", color: MUTED, fontWeight: 700 }}>{children}</span>
       {typeof count === "number" && (
         <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: INK }}>{count}</span>
       )}
@@ -143,10 +143,10 @@ export function Dashboard({ appState, selection, onToggleItem, onClearSelection,
           {/* つまみ+見出し(ここを下へ引くと閉じる) */}
           <div onPointerDown={onGrabDown} onPointerMove={onGrabMove} onPointerUp={endGrab} onPointerCancel={endGrab}
             style={{ padding: "10px 20px 6px", flexShrink: 0, touchAction: "none", cursor: "grab" }}>
-            <div style={{ width: 40, height: 4, borderRadius: 999, background: "rgba(26,23,18,0.18)", margin: "0 auto 14px" }} />
+            <div style={{ width: 40, height: 4, borderRadius: 999, background: "rgba(26,26,24,0.18)", margin: "0 auto 14px" }} />
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
               <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, color: INK }}>ダッシュボード</div>
-              <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "#9A988E", fontWeight: 700 }}>{todayLabel()}</div>
+              <div style={{ fontSize: 11, letterSpacing: "0.1em", color: MUTED, fontWeight: 700 }}>{todayLabel()}</div>
             </div>
           </div>
 
@@ -158,12 +158,12 @@ export function Dashboard({ appState, selection, onToggleItem, onClearSelection,
                 {entries.length > 0 && (
                   <button onClick={() => { haptic(6); onClearSelection(); }} style={{
                     border: "none", background: "transparent", cursor: "pointer", fontFamily: SANS,
-                    fontSize: 11, fontWeight: 700, color: "#9A988E", padding: "0 4px 10px",
+                    fontSize: 11, fontWeight: 700, color: MUTED, padding: "0 4px 10px",
                   }}>すべて外す</button>
                 )}
               </div>
               {entries.length === 0 ? (
-                <p style={{ fontSize: 11.5, lineHeight: 1.9, color: "#9A988E", margin: "0 4px" }}>
+                <p style={{ fontSize: 11.5, lineHeight: 1.9, color: MUTED, margin: "0 4px" }}>
                   ストックやプランでカードを選ぶと、ここに集まります。
                 </p>
               ) : (
@@ -178,7 +178,7 @@ export function Dashboard({ appState, selection, onToggleItem, onClearSelection,
             <section>
               <SectionLabel count={todaysTasks.length}>今日のタスク</SectionLabel>
               {todaysTasks.length === 0 ? (
-                <p style={{ fontSize: 11.5, lineHeight: 1.9, color: "#9A988E", margin: "0 4px" }}>
+                <p style={{ fontSize: 11.5, lineHeight: 1.9, color: MUTED, margin: "0 4px" }}>
                   今日のタスクはありません。
                 </p>
               ) : (
@@ -197,7 +197,7 @@ export function Dashboard({ appState, selection, onToggleItem, onClearSelection,
               style={{
                 width: "100%", padding: "15px 0", borderRadius: 999, border: "none",
                 cursor: canFinish ? "pointer" : "default",
-                background: canFinish ? INK : "rgba(26,23,18,0.18)", color: PAPER,
+                background: canFinish ? INK : "rgba(26,26,24,0.18)", color: PAPER,
                 fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.1em",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               }}

@@ -27,7 +27,7 @@ body {
      アプリの背景色をhtml/bodyそのものにも敷いておく。lib/constants.tsの
      BGと必ず同じ値にすること(以前ここだけ更新し忘れて色が合わず、
      画面下端に別色の帯が見える不具合があった)。 */
-  background-color: #F2EADA;
+  background-color: #F0F0EE;
   /* 上のoverflow:hiddenが主となる防御線だが、iOS実機ではまれに慣性
      スクロールがoverflow切り替え後も一瞬続くケースがあるため、境界での
      バウンス連鎖もあわせて止めておく(多重の防御)。 */

@@ -4,7 +4,7 @@ import { Check, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Masthead } from "@/components/common";
 import { TaskDetail } from "@/components/TaskDetail";
-import { GOLD, HAIRLINE, INK, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { haptic, todayKey } from "@/lib/helpers";
 import type { Task, TabProps, TasksTabId } from "@/lib/types";
 
@@ -54,7 +54,7 @@ export function TaskRow({ task, onToggle, onOpen }: { task: Task; onToggle: (id:
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>{task.title}</div>
         {(task.note || task.dueDate || subtasks.length > 0) && (
-          <div style={{ fontSize: 10, color: "#9A988E", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 10, color: MUTED, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {[task.dueDate, subtasks.length > 0 ? `手順 ${doneSubs}/${subtasks.length}` : null, task.note].filter(Boolean).join(" ・ ")}
           </div>
         )}
@@ -78,7 +78,7 @@ function EmptyNote({ title, body }: { title: string; body: string }) {
   return (
     <div style={{ padding: "56px 12px", textAlign: "center" }}>
       <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 17, color: INK, marginBottom: 10 }}>{title}</div>
-      <p style={{ fontSize: 11.5, lineHeight: 1.9, color: "#9A988E" }}>{body}</p>
+      <p style={{ fontSize: 11.5, lineHeight: 1.9, color: MUTED }}>{body}</p>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { GoalBinderCard, goalAccent, GOAL_BASE } from "@/components/Binder";
 import { AddCardTile, Masthead, rowBtn } from "@/components/common";
-import { GOAL_CARD_ASPECT, HAIRLINE, INK, PAPER, RUST, SANS } from "@/lib/constants";
+import { GOAL_CARD_ASPECT, HAIRLINE, INK, MUTED, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
 import type { Goal, TabProps } from "@/lib/types";
 
@@ -19,7 +19,7 @@ function AddGoalSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onCl
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="終わりのないゴールを"
             style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: 15, outline: "none", marginBottom: 20, background: "transparent" }} />
           <button onClick={() => { if (!title.trim()) return; onAdd(title.trim()); requestClose(); }} disabled={!title.trim()} style={{
-            width: "100%", padding: "13px 0", background: title.trim() ? INK : "rgba(23,23,21,0.2)", color: PAPER, border: "none",
+            width: "100%", padding: "13px 0", background: title.trim() ? INK : "rgba(26,26,24,0.2)", color: PAPER, border: "none",
             borderRadius: 999, cursor: title.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
           }}>追加する</button>
         </OverlayCard>
@@ -36,17 +36,17 @@ function GoalDetailSheet({ goal, draft, onDraftChange, onManualAdd, onRemove, on
       <OverlayCard>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, lineHeight: 1.4 }}>{goal.title}</div>
-          <button onClick={onRemove} aria-label="削除" style={{ flexShrink: 0, background: "none", border: "none", color: "#9A988E", cursor: "pointer", padding: 4, display: "flex" }}><Trash2 size={16} /></button>
+          <button onClick={onRemove} aria-label="削除" style={{ flexShrink: 0, background: "none", border: "none", color: MUTED, cursor: "pointer", padding: 4, display: "flex" }}><Trash2 size={16} /></button>
         </div>
-        <div style={{ fontSize: 9, letterSpacing: "0.2em", color: "#9A988E", marginBottom: 10 }}>記録（{goal.checkIns?.length ?? 0}）</div>
+        <div style={{ fontSize: 9, letterSpacing: "0.2em", color: MUTED, marginBottom: 10 }}>記録（{goal.checkIns?.length ?? 0}）</div>
         {(goal.checkIns ?? []).length === 0 ? (
-          <p style={{ fontSize: 11.5, color: "#9A988E", marginBottom: 16 }}>まだ記録がありません</p>
+          <p style={{ fontSize: 11.5, color: MUTED, marginBottom: 16 }}>まだ記録がありません</p>
         ) : (
           <div style={{ marginBottom: 16, maxHeight: "40vh", overflowY: "auto" }}>
             {goal.checkIns.map((ci) => (
               <div key={ci.id} style={{ padding: "8px 0", borderTop: `1px solid ${HAIRLINE}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                  <span style={{ fontSize: 9.5, color: "#9A988E" }}>{shortDate(ci.at)}{ci.source === "prompted" && " ・ ブリーフより"}</span>
+                  <span style={{ fontSize: 9.5, color: MUTED }}>{shortDate(ci.at)}{ci.source === "prompted" && " ・ ブリーフより"}</span>
                   {ci.kind === "milestone" && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: RUST, borderRadius: 999, padding: "2px 7px" }}>{ratingLabel(ci.rating)}</span>}
                 </div>
                 <div style={{ fontSize: 12, color: "#4A4A44", lineHeight: 1.6 }}>{ci.text}</div>
@@ -145,7 +145,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
                 // タイトルが長いカードでは表紙の限られた高さの中でGOALラベル
                 // と文字が被る原因になっていた。件数だけのシンプルな1行に絞る。
                 footer={
-                  <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(253,251,245,0.7)", borderTop: "1px solid rgba(253,251,245,0.3)", paddingTop: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(250,250,249,0.7)", borderTop: "1px solid rgba(250,250,249,0.3)", paddingTop: 6 }}>
                     {count > 0 ? `記録 ${count}件` : "まだ記録がありません"}
                   </div>
                 }

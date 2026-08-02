@@ -22,7 +22,7 @@ function pinHtml(color: string, selected: boolean): string {
   const border = selected ? BLUE : color;
   const bg = selected ? BLUE : PAPER;
   const dot = selected ? PAPER : color;
-  return `<div style="width:24px;height:24px;transform:rotate(-45deg);border-radius:50% 50% 50% 0;background:${bg};border:2px solid ${border};box-shadow:0 3px 7px rgba(23,23,21,0.3);position:relative;">
+  return `<div style="width:24px;height:24px;transform:rotate(-45deg);border-radius:50% 50% 50% 0;background:${bg};border:2px solid ${border};box-shadow:0 3px 7px rgba(26,26,24,0.3);position:relative;">
     <span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(45deg);width:7px;height:7px;border-radius:50%;background:${dot};"></span>
   </div>`;
 }

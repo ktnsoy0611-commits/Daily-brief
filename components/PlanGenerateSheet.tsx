@@ -4,7 +4,7 @@ import { Sparkles } from "lucide-react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { BLUE, GOLD, GREEN, INK, PAPER, RUST, SANS, itemKindOf } from "@/lib/constants";
+import { BLUE, GOLD, GREEN, INK, MUTED, PAPER, RUST, SANS, itemKindOf } from "@/lib/constants";
 import { haptic, img } from "@/lib/helpers";
 import type { GeneratedPlan, PlanWeight } from "@/lib/planPipeline";
 import { PLAN_WEIGHTS } from "@/lib/planPipeline";
@@ -44,7 +44,7 @@ function chipStyle(active: boolean): React.CSSProperties {
   return {
     flex: 1, padding: "9px 0", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700,
     background: active ? INK : "transparent", color: active ? PAPER : "#5A5A54",
-    border: `1.5px solid ${active ? INK : "rgba(23,23,21,0.2)"}`,
+    border: `1.5px solid ${active ? INK : "rgba(26,26,24,0.2)"}`,
   };
 }
 
@@ -60,7 +60,7 @@ function GeneratingIndicator() {
         <span className="brief-roll-shape" style={{ ...base, marginTop: -7, width: 0, height: 0, borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `14px solid ${GOLD}`, animationDelay: "1.2s" }} />
         <span className="brief-roll-shape" style={{ ...base, marginTop: -5, width: 20, height: 10, borderRadius: 2, background: GREEN, animationDelay: "1.8s" }} />
       </div>
-      <div style={{ color: "#9A988E", fontSize: 11.5, letterSpacing: "0.08em" }}>プランを考えています…</div>
+      <div style={{ color: MUTED, fontSize: 11.5, letterSpacing: "0.08em" }}>プランを考えています…</div>
     </div>
   );
 }
@@ -72,7 +72,7 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
   return (
     <div>
       <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, lineHeight: 1.35, marginBottom: 6 }}>{plan.title}</div>
-      <div style={{ fontSize: 9.5, letterSpacing: "0.14em", color: "#9A988E", fontWeight: 700, marginBottom: 10 }}>{metaBits.join(" ・ ")}</div>
+      <div style={{ fontSize: 9.5, letterSpacing: "0.14em", color: MUTED, fontWeight: 700, marginBottom: 10 }}>{metaBits.join(" ・ ")}</div>
       {plan.summary && (
         <p style={{ fontSize: 12.5, lineHeight: 1.85, color: "#5A5A54", marginBottom: 16 }}>{plan.summary}</p>
       )}
@@ -98,7 +98,7 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, color: INK, fontFamily: SANS, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
-                <div style={{ fontSize: 10, color: "#9A988E", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: 10, color: MUTED, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {stop.note ? stop.note : `${itemKindOf(item.kind).label}${hasArea ? ` ・ ${item.area}` : ""}`}
                 </div>
               </div>
@@ -110,7 +110,7 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
           ストックから消えた行き先がありうる。その分は静かに落とし、
           全部消えた案だけはその旨を出す(空白のまま置かない)。 */}
       {plan.stops.every((s) => !byId.has(s.id)) && (
-        <p style={{ fontSize: 11.5, lineHeight: 1.8, color: "#9A988E", marginBottom: 16 }}>
+        <p style={{ fontSize: 11.5, lineHeight: 1.8, color: MUTED, marginBottom: 16 }}>
           この案の行き先は、もうストックにありません。作り直してください。
         </p>
       )}
@@ -236,7 +236,7 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
                   3つの案{selectedArea ? `（${selectedArea}）` : ""}
                 </div>
                 <button onClick={() => { onGenerated(null, selectedArea); }} style={{
-                  border: "none", background: "transparent", cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#9A988E", padding: 0,
+                  border: "none", background: "transparent", cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: MUTED, padding: 0,
                 }}>作り直す</button>
               </div>
               {/* 重さで切り替えるセグメント。3案の違いはここだけなので、
@@ -274,7 +274,7 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
                       width: "100%", padding: "13px 0", borderRadius: 999, border: "none",
                       cursor: liveIds.length === 0 ? "default" : "pointer",
                       fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
-                      background: liveIds.length === 0 ? "rgba(23,23,21,0.2)" : INK, color: PAPER,
+                      background: liveIds.length === 0 ? "rgba(26,26,24,0.2)" : INK, color: PAPER,
                     }}
                   >このプランを選ぶ</button>
                 );
@@ -283,10 +283,10 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
           ) : (
             <>
               <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 6 }}>プランを生成</div>
-              <p style={{ fontSize: 11.5, lineHeight: 1.8, color: "#9A988E", marginBottom: 16 }}>
+              <p style={{ fontSize: 11.5, lineHeight: 1.8, color: MUTED, marginBottom: 16 }}>
                 ストックの候補から、重さの違う3つの案をつくります。エリアは選ばなくても大丈夫です。
               </p>
-              <div style={{ fontSize: 9, letterSpacing: "0.15em", color: "#9A988E", marginBottom: 8 }}>エリア（任意）</div>
+              <div style={{ fontSize: 9, letterSpacing: "0.15em", color: MUTED, marginBottom: 8 }}>エリア（任意）</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
                 <button onClick={() => setSelectedArea(null)} style={{ ...chipStyle(selectedArea === null), flex: "0 0 auto", padding: "8px 14px" }}>すべて</button>
                 {areas.map((a) => (
@@ -303,7 +303,7 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
                 width: "100%", padding: "13px 0", borderRadius: 999, border: "none",
                 cursor: target.length === 0 ? "default" : "pointer",
                 fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
-                background: target.length === 0 ? "rgba(23,23,21,0.2)" : INK, color: PAPER,
+                background: target.length === 0 ? "rgba(26,26,24,0.2)" : INK, color: PAPER,
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
               }}>
                 <Sparkles size={14} strokeWidth={2.4} />

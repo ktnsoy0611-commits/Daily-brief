@@ -38,7 +38,7 @@ export function SelectionMarker({ appState, selection, onOpen }: {
         {shown.map((it, i) => (
           <span key={it.id} style={{
             position: "absolute", top: 0, left: 0, width: 22, height: 22, borderRadius: 6, overflow: "hidden",
-            border: "2px solid #fff", boxShadow: "0 2px 5px rgba(23,23,21,0.24)",
+            border: "2px solid #fff", boxShadow: "0 2px 5px rgba(26,26,24,0.24)",
             transform: `rotate(${i === 0 ? -7 : 5}deg) translate(${i * 6}px, ${i * -1}px)`, zIndex: i,
             background: it.color ?? "#5A5A54",
           }}>

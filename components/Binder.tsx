@@ -91,7 +91,7 @@ export type PlaneShape =
 // 楕円になってしまうため、半円・四半円は固定pxの大きな半径を指定して
 // 箱の短辺いっぱいでクランプさせることで、箱の縦横比によらず常に真円
 // ベースの弧になるようにしている)。
-function PlaneFill({ shape, color }: { shape: PlaneShape; color: string }) {
+export function PlaneFill({ shape, color }: { shape: PlaneShape; color: string }) {
   switch (shape) {
     case "circle":
       return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: "50%" }} />;
@@ -484,7 +484,7 @@ export function BinderCoverFace({ eyebrowLabel, title, footer, accent }: CoverCo
     // 語彙を一切使わない全面べた塗りのシンプルな1枚として伝える。以前は
     // 白い内側パネルを額装するように重ねていたが、二重の箱が「ダサい」
     // という指摘につながっていたため撤廃し、最も単純な1枚の色面にした。
-    const light = "rgba(253,251,245,0.85)";
+    const light = "rgba(250,250,249,0.85)";
     return (
       <div style={{
         position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: accent.color, overflow: "hidden",

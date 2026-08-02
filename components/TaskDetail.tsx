@@ -4,7 +4,7 @@ import { Check, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FloatingBubble, floatStyle } from "@/components/FloatingBubble";
-import { GOLD, HAIRLINE, INK, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { GOLD, HAIRLINE, INK, MUTED, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import type { SubTask, Task, TaskSuggestion } from "@/lib/types";
 
@@ -155,7 +155,7 @@ export function TaskDetail({ task, allTasks, onChange, onDelete, onClose }: {
                   role="button" aria-label={`${s.title}を消す`}
                   onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); dismiss(s); }}
                   style={{
-                    width: 18, height: 18, borderRadius: "50%", background: "rgba(26,23,18,0.07)", color: "#9A988E",
+                    width: 18, height: 18, borderRadius: "50%", background: "rgba(26,26,24,0.07)", color: MUTED,
                     display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginLeft: 2,
                   }}
                 >

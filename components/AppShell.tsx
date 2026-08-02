@@ -3,6 +3,7 @@
 import { PenLine, Plus, Settings, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
+import { AppBackdrop } from "@/components/AppBackdrop";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
@@ -15,8 +16,8 @@ import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { StockTab } from "@/components/tabs/StockTab";
 import { InboxView } from "@/components/tabs/InboxView";
 import { TasksTab } from "@/components/tabs/TasksTab";
-import { APPS, DEFAULT_TAB, appDef, cycleApp } from "@/lib/apps";
-import { BG, BLUE, GOLD, GREEN, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { APPS, DEFAULT_TAB } from "@/lib/apps";
+import { BG, BLUE, GOLD, GREEN, HEADER_CHIP_SIZE, INK, MUTED, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -36,8 +37,21 @@ function LoadingScreen() {
         <span className="brief-roll-shape" style={{ ...base, marginTop: -9, width: 0, height: 0, borderLeft: "10px solid transparent", borderRight: "10px solid transparent", borderBottom: `18px solid ${GOLD}`, animationDelay: "1.2s" }} />
         <span className="brief-roll-shape" style={{ ...base, marginTop: -6, width: 24, height: 12, borderRadius: 2, background: GREEN, animationDelay: "1.8s" }} />
       </div>
-      <div style={{ color: "#9A988E", fontSize: 12, letterSpacing: "0.08em" }}>読み込んでいます…</div>
+      <div style={{ color: MUTED, fontSize: 12, letterSpacing: "0.08em" }}>読み込んでいます…</div>
     </div>
+  );
+}
+
+// 指を離したあと、隣のアプリへ落ち着くまでの時間。
+const SETTLE_MS = 380;
+
+function Toast({ text }: { text: string }) {
+  return (
+    <div key={text} style={{
+      position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: 999,
+      fontSize: 11, letterSpacing: "0.06em", padding: "8px 18px", boxShadow: "0 8px 24px rgba(26,26,24,0.25)", zIndex: 50,
+      animation: "toast-in 0.3s cubic-bezier(0.32,0.72,0,1)",
+    }}>{text}</div>
   );
 }
 
@@ -48,13 +62,29 @@ export function AppShell() {
   // 見ていたタブを覚えておき、戻ってきたときそこへ帰れるようにする。
   const [appId, setAppId] = useState<AppId>("life");
   const [tabByApp, setTabByApp] = useState<Record<AppId, TabId>>({ ...DEFAULT_TAB });
-  const tab = tabByApp[appId];
   // ★ダッシュボード(画面下から引き上げる引き出し)。3つのアプリのどこからでも
   // 開ける共通のUIなので、タブではなくここに持つ。
   const [dashOpen, setDashOpen] = useState(false);
-  // タブバーを横に引いている量(px)。切り替わる方向へピルが少しだけ動いて、
-  // 「引けている」ことを手で分かるようにするためだけの見た目の値。
+  // ★アプリを横に引いている量(px)。3アプリを横一列に並べたトラックごと、
+  // 指の動きに1:1で追従させる(タブバーも中身も背景の図形も一緒に流れる)。
   const [navDragX, setNavDragX] = useState(0);
+  const [navDragging, setNavDragging] = useState(false);
+  // ジェスチャーのハンドラはwindowへ張る都合で作り直したくない(useCallbackの
+  // 依存を空にしてある)ため、いま何番目のアプリかはrefで読む。
+  const appIndex = Math.max(0, APPS.findIndex((a) => a.id === appId));
+  const appIndexRef = useRef(appIndex);
+  appIndexRef.current = appIndex;
+  // 背景の視差に「画面幅に対してどれだけ引いたか」を渡すために実測する。
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [shellW, setShellW] = useState(0);
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setShellW(el.getBoundingClientRect().width));
+    ro.observe(el);
+    setShellW(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, [appState]);
   const [showProfile, setShowProfile] = useState(false);
   const [storageMode, setStorageMode] = useState(DataStore.mode);
   // 認証状態。Supabase未構成(環境変数なし)のときは認証ゲートを一切出さず、
@@ -230,12 +260,6 @@ export function AppShell() {
     setAppId(owner?.id ?? "life");
     setTabByApp((prev) => ({ ...prev, [owner?.id ?? "life"]: id }));
   }, []);
-  // アプリの切り替え(タブバーの左右スワイプ)。端まで行くと反対の端へ回る。
-  const switchApp = useCallback((dir: 1 | -1) => {
-    haptic(10);
-    setAppId((cur) => cycleApp(cur, dir));
-  }, []);
-
   // ★タブバーのジェスチャー。横に払えばアプリの切り替え、上へ引き上げれば
   // ダッシュボード。最初の10pxでどちらの軸かを決め、決まった軸だけを見る
   // (斜めの動きで両方が中途半端に反応するのを防ぐ)。指を離すまでに一度でも
@@ -246,19 +270,48 @@ export function AppShell() {
   // 指がタブバーの外(上方向へのドラッグでは必ず外へ出る)へ移動した瞬間に
   // 要素側のonPointerMoveは呼ばれなくなり、ジェスチャーが途中で死ぬため
   // (アーカイブの長押しドラッグで同じ罠を踏んでいる。HANDOFF §7.26)。
+  //
+  // ★横は「中身ごと横スライド」(ページング)になった。3アプリを横一列の
+  // トラックに並べ、指の動きに1:1で追従させる。以前は地の色が変わるだけで
+  // 何も動かず、タブバーだけが4割の量で申し訳程度にずれていた。
+  // 端(タスク/ジャーナル)では循環をやめ、ゴムのように抵抗して戻る
+  // (ページングで端から反対の端へ飛ぶと、2画面ぶん逆走する見た目になり
+  // 「スワイプしている」感覚と矛盾するため。lifeが真ん中なので、どのアプリへも
+  // 最大2回で行ける)。
   const navPressRef = useRef<{ id: number; x: number; y: number; axis: "" | "x" | "y" } | null>(null);
   const navDraggedRef = useRef(false);
+  // ★静止しているときは、いま見ているアプリの中身だけをマウントする。
+  // 3アプリぶんを常に生かしておくと、プランタブのLeafletの地図やブリーフの
+  // デッキが同時に3つ動き続けることになる。代わりに **タブバーに指が触れた
+  // 瞬間(pointerdown)に両隣をマウントする**: 指はまだ止まっているので、
+  // マウントのひと仕事が動き出しに乗らない。落ち着いたらまた外す。
+  const [neighborsMounted, setNeighborsMounted] = useState(false);
+  const unmountTimerRef = useRef<number | null>(null);
+  useEffect(() => () => { if (unmountTimerRef.current != null) window.clearTimeout(unmountTimerRef.current); }, []);
   const onNavPointerDown = useCallback((e: ReactPointerEvent) => {
-    const NAV_SWITCH_PX = 56;   // 横: これ以上払ったらアプリを切り替える
-    const NAV_DASH_PX = 44;     // 縦: これ以上引き上げたらダッシュボードを開く
+    const NAV_DASH_PX = 44;      // 縦: これ以上引き上げたらダッシュボードを開く
+    const COMMIT_RATIO = 0.18;   // 横: 画面幅のこの割合を超えたら隣へ送る
+    const FLICK_PX_PER_MS = 0.5; // 短く速く払ったときは距離が足りなくても送る
+    const EDGE_RESIST = 0.32;    // 端でのゴムの効き
+    const width = window.innerWidth || 390;
     navPressRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
     navDraggedRef.current = false;
+    // 指が触れたこの瞬間に両隣を用意する(まだ動いていないので間に合う)。
+    if (unmountTimerRef.current != null) { window.clearTimeout(unmountTimerRef.current); unmountTimerRef.current = null; }
+    setNeighborsMounted(true);
+    // 速度の見積り用に直近の位置と時刻を持つ。
+    let lastX = e.clientX;
+    let lastT = performance.now();
+    let velocity = 0;
     const finish = () => {
       navPressRef.current = null;
       setNavDragX(0);
+      setNavDragging(false);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", finish);
+      // 落ち着き(SETTLE_MS)を待ってから両隣を外す。
+      unmountTimerRef.current = window.setTimeout(() => { unmountTimerRef.current = null; setNeighborsMounted(false); }, SETTLE_MS + 80);
     };
     function move(ev: PointerEvent) {
       const pr = navPressRef.current;
@@ -269,10 +322,17 @@ export function AppShell() {
         if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
         pr.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
         navDraggedRef.current = true;
+        if (pr.axis === "x") setNavDragging(true);
       }
       if (pr.axis === "x") {
-        // 指の動きの4割だけピルを動かす(手応えを出すためだけの値)。
-        setNavDragX(dx * 0.4);
+        const now = performance.now();
+        const dt = now - lastT;
+        if (dt > 0) velocity = (ev.clientX - lastX) / dt;
+        lastX = ev.clientX; lastT = now;
+        // 隣が無い向き(端)へは、ゴムのように抵抗させる。
+        const i = appIndexRef.current;
+        const atEdge = (dx > 0 && i === 0) || (dx < 0 && i === APPS.length - 1);
+        setNavDragX(atEdge ? dx * EDGE_RESIST : dx);
         return;
       }
       if (dy <= -NAV_DASH_PX) {
@@ -286,12 +346,21 @@ export function AppShell() {
       const dx = pr ? ev.clientX - pr.x : 0;
       const axis = pr?.axis;
       finish();
-      if (axis === "x" && Math.abs(dx) >= NAV_SWITCH_PX) switchApp(dx < 0 ? 1 : -1);
+      if (axis !== "x") return;
+      const far = Math.abs(dx) >= width * COMMIT_RATIO;
+      // 速さで送るのは、指の向きと払った向きが一致しているときだけ。
+      const flick = Math.abs(velocity) >= FLICK_PX_PER_MS && Math.sign(velocity) === Math.sign(dx);
+      if (!far && !flick) return;
+      const i = appIndexRef.current;
+      const next = dx < 0 ? i + 1 : i - 1;
+      if (next < 0 || next >= APPS.length) return;
+      haptic(10);
+      setAppId(APPS[next].id);
     }
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", finish);
-  }, [switchApp]);
+  }, []);
   const toggleItemSelection = useCallback((id: string) => {
     haptic(8);
     setSelection((s) => ({ itemIds: s.itemIds.includes(id) ? s.itemIds.filter((x) => x !== id) : [...s.itemIds, id] }));
@@ -428,7 +497,6 @@ export function AppShell() {
     </button>
   );
   const tabProps: TabProps = { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection };
-  const currentApp = appDef(appId);
 
   // 実行タブなどをスクロールした状態で別タブ(特にブリーフタブ)へ切り替えると
   // ヘッダーが見切れる不具合が繰り返し再発していた。原因は「ウィンドウ/body
@@ -469,31 +537,66 @@ export function AppShell() {
   // に統一し、Mastheadも他タブ同様にスクロールで流れるようにする
   // (execMapModeはロックの判定にはもう使わないが、選択編集の状態管理
   // 自体はExecuteTab内で引き続き必要)。
-  const scrollLocked = !showProfile && tab === "brief";
-  return (
-    <div style={{
-      height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center",
-      fontFamily: SANS, color: INK,
-      // ★地の色はアプリごとに変わる(タスク=グレージュ / 今のアプリ=生成りの
-      // クリーム / ジャーナル=くすんだ淡いグリーン)。切り替えは色が滑らかに
-      // 移るだけにして、画面全体が飛ぶような動きは付けない。
-      background: currentApp.bg, transition: "background 0.42s ease",
-    }}>
-      <div data-tab-scroll-root style={{
-        width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
-        overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
-        // ★スクロール中に要素がサイズ変化(プランタブの地図の縮小など)しても、
-        // ブラウザのスクロールアンカリングがscrollTopを勝手に補正して
-        // 「グイッと引っ張られる」ジャンプを起こさないよう無効化する。
-        overflowAnchor: "none",
-        padding: `max(16px, env(safe-area-inset-top)) 16px ${showProfile ? "24px" : "16px"}`,
-      }}>
-        {storageMode === "memory" && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
-
-        {showProfile ? (
+  // 設定画面は3アプリ共通の1枚なので、横スライドのトラックとは別に出す。
+  if (showProfile) {
+    return (
+      <div style={{ height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK, background: BG, position: "relative" }}>
+        <div data-tab-scroll-root style={{
+          width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+          overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain", overflowAnchor: "none",
+          padding: "max(16px, env(safe-area-inset-top)) 16px 24px",
+        }}>
+          {storageMode === "memory" && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
           <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)} />
-        ) : (
-          <>
+        </div>
+        {toast && <Toast text={toast} />}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={shellRef} style={{
+      height: "100svh", overflow: "hidden",
+      fontFamily: SANS, color: INK,
+      // ★地の色は3アプリとも同じ(BG=ほんとに薄いグレー)。アプリの違いは
+      // 背景に置いた大きな図形ひとつ(AppBackdrop)だけで伝える。
+      background: BG, position: "relative",
+    }}>
+      {/* 背景の透かし図形。中身より遅い速さ(視差)で流れる。 */}
+      <AppBackdrop index={appIndex} dragRatio={shellW ? navDragX / shellW : 0} animate={!navDragging} />
+
+      {/* ★3アプリを横一列に並べたトラック。タブバーも中身も、この1枚が
+          まとめて動く(=「タブバーごとスワイプされる」)。各列が自分の
+          スクロールルートと自分のタブバーを持つので、タブの数が3/4/2と
+          違っても隣のタブバーがそのまま流れ込んで見える。 */}
+      <div style={{
+        position: "absolute", inset: 0, display: "flex", width: `${APPS.length * 100}%`,
+        // 単位に注意: %はこの要素自身の幅(=画面幅×3)に対する割合なので、
+        // 1画面ぶん動かすには 100/3 % になる。
+        transform: `translateX(calc(${(-appIndex * 100) / APPS.length}% + ${navDragX}px))`,
+        transition: navDragging ? "none" : `transform ${SETTLE_MS}ms cubic-bezier(0.32,0.72,0,1)`,
+        willChange: "transform",
+      }}>
+      {APPS.map((a) => {
+        const aTab = tabByApp[a.id];
+        // 静止しているときは、いま見ているアプリの中身だけを実際に描く。
+        // 両隣はタブバーだけ描いておき、指が触れた瞬間に中身も用意する。
+        const showBody = a.id === appId || neighborsMounted;
+        const scrollLocked = aTab === "brief";
+        return (
+        <div key={a.id} style={{ width: `${100 / APPS.length}%`, height: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div data-tab-scroll-root style={{
+            width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+            overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
+            // ★スクロール中に要素がサイズ変化(プランタブの地図の縮小など)しても、
+            // ブラウザのスクロールアンカリングがscrollTopを勝手に補正して
+            // 「グイッと引っ張られる」ジャンプを起こさないよう無効化する。
+            overflowAnchor: "none",
+            padding: "max(16px, env(safe-area-inset-top)) 16px 16px",
+          }}>
+            {a.id === appId && storageMode === "memory" && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
+
+            <>
             {/* minHeight:0が無いと、flexアイテムのデフォルトのmin-height:auto
                 (=中身の実サイズより縮められない)により、実行タブの確定
                 ビューのような「自分の内側だけがoverflow-y:autoでスクロール
@@ -514,33 +617,19 @@ export function AppShell() {
                 原因になっていた(zIndexは同じ重なりコンテキストの中でしか
                 比較されないため)。フェードインの見た目より、フローティング
                 ボタンが常に正しく最前面に出ることを優先する。 */}
-            <div key={tab} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-              {tab === "brief" && <BriefTab {...tabProps} />}
-              {tab === "stock" && <StockTab {...tabProps} />}
-              {tab === "goals" && <GoalsTab {...tabProps} />}
-              {tab === "execute" && <ExecuteTab {...tabProps} />}
-              {tab === "tasks-inbox" && <InboxView appState={appState} persist={persist} showToast={showToast} />}
-              {(tab === "tasks-today" || tab === "tasks-all") && <TasksTab {...tabProps} tab={tab as TasksTabId} />}
-              {(tab === "journal-today" || tab === "journal-archive") && <JournalTab {...tabProps} tab={tab as JournalTabId} />}
-            </div>
+            {showBody && (
+              <div key={aTab} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+                {aTab === "brief" && <BriefTab {...tabProps} />}
+                {aTab === "stock" && <StockTab {...tabProps} />}
+                {aTab === "goals" && <GoalsTab {...tabProps} />}
+                {aTab === "execute" && <ExecuteTab {...tabProps} />}
+                {aTab === "tasks-inbox" && <InboxView appState={appState} persist={persist} showToast={showToast} />}
+                {(aTab === "tasks-today" || aTab === "tasks-all") && <TasksTab {...tabProps} tab={aTab as TasksTabId} />}
+                {(aTab === "journal-today" || aTab === "journal-archive") && <JournalTab {...tabProps} tab={aTab as JournalTabId} />}
+              </div>
+            )}
           </>
-        )}
       </div>
-
-      {toast && (
-        <div key={toast} style={{
-          position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: 999,
-          fontSize: 11, letterSpacing: "0.06em", padding: "8px 18px", boxShadow: "0 8px 24px rgba(23,23,21,0.25)", zIndex: 50,
-          animation: "toast-in 0.3s cubic-bezier(0.32,0.72,0,1)",
-        }}>{toast}</div>
-      )}
-
-      {/* タブ・アプリを跨いで持ち回す選択の目印。件数だけを示し、タップで
-          ダッシュボードが開く(確定の操作はダッシュボードに集約した)。
-          プロフィール画面・ダッシュボードを開いている間は隠す。 */}
-      {!showProfile && !dashOpen && (
-        <SelectionMarker appState={appState} selection={selection} onOpen={() => setDashOpen(true)} />
-      )}
 
       {/* ヘッダーのプロフィール丸アイコン/件数ピルと同じ「PAPERの丸背景+
           SOFT_SHADOWで浮く」語彙に揃えたフローティングタブバー。position:
@@ -559,23 +648,22 @@ export function AppShell() {
           別レイヤー(zIndex=15)に分離している。バインド！系のボタンは
           さらにnavのピルの影の滲みでうっすら覆われて見える不具合もあった
           ため、両方ともnavより高いzIndex=26にして常に手前に出している。 */}
-      {!showProfile && (
-        <>
           {/* グラデーションの高さを44pxから26pxへ縮め、上端をnavに近い
               位置(=下)へ寄せた。以前の44pxは表示領域を必要以上に狭めて
               いた、という指摘によるもの。 */}
           <div aria-hidden style={{ position: "sticky", bottom: 0, width: "100%", height: 0, zIndex: 15, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", left: 0, right: 0, top: -26, bottom: 0, background: `linear-gradient(to bottom, ${currentApp.bg}00 0, ${currentApp.bg} 26px, ${currentApp.bg} 100%)` }} />
+            <div style={{ position: "absolute", left: 0, right: 0, top: -26, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 26px, ${BG} 100%)` }} />
           </div>
           <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", flexDirection: "column", alignItems: "center", padding: "0 16px", pointerEvents: "none" }}>
             {/* いま3つのアプリのどこにいるか。文字は出さず、点だけの控えめな
-                目印にしている(左右スワイプで動く)。 */}
+                目印にしている。この目印もトラックに乗っているので、指で
+                引いている最中に「次のアプリの目印」が一緒に流れ込んでくる
+                (だから遷移のアニメーションを別に付ける必要が無い)。 */}
             <div style={{ display: "flex", gap: 5, paddingBottom: 7 }}>
-              {APPS.map((a) => (
-                <span key={a.id} style={{
-                  width: a.id === appId ? 14 : 5, height: 5, borderRadius: 999,
-                  background: a.id === appId ? INK : "rgba(26,23,18,0.22)",
-                  transition: "width 0.28s ease, background 0.28s ease",
+              {APPS.map((d) => (
+                <span key={d.id} style={{
+                  width: d.id === a.id ? 14 : 5, height: 5, borderRadius: 999,
+                  background: d.id === a.id ? INK : "rgba(26,26,24,0.22)",
                 }} />
               ))}
             </div>
@@ -584,29 +672,27 @@ export function AppShell() {
                 画面の外(=物理的な限界)へ突き当たり、途中でスパッと切れた
                 ような不自然な見た目になっていた。ピルだけは控えめな専用の
                 影に差し替え、余白が数pxしか無くても中で滲み切るようにする。 */}
-            {/* ★タブバーの上の左右スワイプで、3つのアプリ(タスク / 今のアプリ /
-                ジャーナル)を循環して切り替える。上へ引き上げるとダッシュボードが
-                開く。判定をこのタブバーの帯だけに閉じ込めているのは、タブの
-                中身(ブリーフのカードのスワイプ、アーカイブの棚の横スクロール、
-                地図のパン)と一切ぶつからないようにするため。 */}
+            {/* ★タブバーの上を左右に払うと、この帯ごと(=中身も背景の図形も)
+                横へスライドして隣のアプリへ移る。上へ引き上げるとダッシュ
+                ボードが開く。判定をこのタブバーの帯だけに閉じ込めているのは、
+                タブの中身(ブリーフのカードのスワイプ、アーカイブの棚の横
+                スクロール、地図のパン)と一切ぶつからないようにするため。 */}
             <div
               onPointerDown={onNavPointerDown}
               style={{
                 display: "flex", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 - 32, pointerEvents: "auto",
                 touchAction: "none",
-                transform: `translateX(${navDragX}px)`,
-                transition: navDragX === 0 ? "transform 0.26s cubic-bezier(0.22,0.61,0.36,1)" : "none",
               }}
             >
-              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(28,28,30,0.16)", padding: 6, marginBottom: NAV_BOTTOM_GAP }}>
-                {currentApp.tabs.map((t) => {
-                  const active = tab === t.id;
+              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: 6, marginBottom: NAV_BOTTOM_GAP }}>
+                {a.tabs.map((t) => {
+                  const active = aTab === t.id;
                   return (
                     <button key={t.id} onClick={() => { if (navDraggedRef.current) return; haptic(5); goTab(t.id); }} style={{ flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                       <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
-                        <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(23,23,21,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
+                        <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(26,26,24,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
                       </div>
-                      <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(23,23,21,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
+                      <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(26,26,24,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
                     </button>
                   );
                 })}
@@ -620,17 +706,27 @@ export function AppShell() {
                 onPointerCancel={endHold}
                 onPointerLeave={endHold}
                 onContextMenu={(e) => e.preventDefault()}
-                onClick={() => { if (navDraggedRef.current || heldRef.current) return; haptic(5); if (appId === "life") setAddingWish(true); else showToast("この機能はこれから作ります"); }} aria-label={appId === "life" ? "ウィッシュを書く" : appId === "tasks" ? "タスクを足す" : "ジャーナルを書く"} style={{
+                onClick={() => { if (navDraggedRef.current || heldRef.current) return; haptic(5); if (a.id === "life") setAddingWish(true); else showToast("この機能はこれから作ります"); }} aria-label={a.id === "life" ? "ウィッシュを書く" : a.id === "tasks" ? "タスクを足す" : "ジャーナルを書く"} style={{
                 flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(28,28,30,0.16)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
+                display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
               }}>
-                {appId === "life" ? <Sparkles size={19} strokeWidth={1.8} color={PAPER} />
-                  : appId === "tasks" ? <Plus size={20} strokeWidth={2.2} color={PAPER} />
+                {a.id === "life" ? <Sparkles size={19} strokeWidth={1.8} color={PAPER} />
+                  : a.id === "tasks" ? <Plus size={20} strokeWidth={2.2} color={PAPER} />
                   : <PenLine size={18} strokeWidth={1.9} color={PAPER} />}
               </button>
             </div>
           </nav>
-        </>
+        </div>
+        );
+      })}
+      </div>
+
+      {toast && <Toast text={toast} />}
+
+      {/* タブ・アプリを跨いで持ち回す選択の目印。件数だけを示し、タップで
+          ダッシュボードが開く(確定の操作はダッシュボードに集約した)。 */}
+      {!dashOpen && (
+        <SelectionMarker appState={appState} selection={selection} onOpen={() => setDashOpen(true)} />
       )}
 
       {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}

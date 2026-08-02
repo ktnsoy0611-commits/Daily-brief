@@ -3,7 +3,7 @@
 import { Check, Mic, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { BLUE, GOLD, GREEN, HAIRLINE, INK, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BLUE, GOLD, GREEN, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { FloatingBubble, floatStyle } from "@/components/FloatingBubble";
 import { haptic, todayKey } from "@/lib/helpers";
 import type { AppState, InboxCandidate, VoiceNote } from "@/lib/types";
@@ -99,7 +99,7 @@ function CandidateEditor({ candidate, onChange, onApprove, onDismiss, onClose }:
             if (open) {
               return (
                 <div key={f.key} style={{ width: "100%", background: PAPER, borderRadius: 18, padding: "12px 14px", boxShadow: SOFT_SHADOW }}>
-                  <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, marginBottom: 6 }}>{f.label}</div>
+                  <div style={{ fontSize: 9.5, letterSpacing: "0.16em", color: MUTED, fontWeight: 700, marginBottom: 6 }}>{f.label}</div>
                   <input
                     autoFocus value={draft} placeholder={f.hint}
                     onChange={(e) => setDraft(e.target.value)}
@@ -119,7 +119,7 @@ function CandidateEditor({ candidate, onChange, onApprove, onDismiss, onClose }:
                 background: value ? PAPER : "transparent", borderRadius: 999, padding: value ? "9px 14px" : "9px 14px",
                 display: "flex", alignItems: "baseline", gap: 7, maxWidth: "100%",
               }}>
-                <span style={{ fontSize: 9.5, letterSpacing: "0.14em", fontWeight: 700, color: value ? "#9A988E" : "rgba(255,255,255,0.7)" }}>{f.label}</span>
+                <span style={{ fontSize: 9.5, letterSpacing: "0.14em", fontWeight: 700, color: value ? MUTED : "rgba(255,255,255,0.7)" }}>{f.label}</span>
                 <span style={{
                   fontFamily: SANS, fontSize: 12.5, fontWeight: 600, color: value ? INK : "rgba(255,255,255,0.5)",
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -253,18 +253,18 @@ export function InboxView({ appState, persist, showToast }: {
     <main style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "10px 4px 6px" }}>
         <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 28, letterSpacing: "-0.01em", color: INK }}>インボックス</span>
-        <span style={{ fontSize: 10.5, letterSpacing: "0.12em", color: "#9A988E", fontWeight: 700 }}>{candidates.length}件</span>
+        <span style={{ fontSize: 10.5, letterSpacing: "0.12em", color: MUTED, fontWeight: 700 }}>{candidates.length}件</span>
       </div>
 
       {candidates.length === 0 ? (
         <div style={{ padding: "60px 12px", textAlign: "center" }}>
           <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 17, color: INK, marginBottom: 10 }}>候補はありません。</div>
-          <p style={{ fontSize: 11.5, lineHeight: 1.9, color: "#9A988E" }}>
+          <p style={{ fontSize: 11.5, lineHeight: 1.9, color: MUTED }}>
             タブバー右のボタンを長押しして語ると、その声が夜のうちに読まれて、
             ここに「タスクにしますか？」という候補が漂います。
           </p>
           {notes.length > 0 && (
-            <p style={{ fontSize: 11, lineHeight: 1.9, color: "#9A988E", marginTop: 14 }}>
+            <p style={{ fontSize: 11, lineHeight: 1.9, color: MUTED, marginTop: 14 }}>
               まだ読まれていない声のメモが{notes.length}件あります。
             </p>
           )}
@@ -279,7 +279,7 @@ export function InboxView({ appState, persist, showToast }: {
       )}
 
       {notes.length > 0 && candidates.length > 0 && (
-        <div style={{ borderTop: `1px solid ${HAIRLINE}`, marginTop: 10, paddingTop: 10, fontSize: 10.5, color: "#9A988E", textAlign: "center" }}>
+        <div style={{ borderTop: `1px solid ${HAIRLINE}`, marginTop: 10, paddingTop: 10, fontSize: 10.5, color: MUTED, textAlign: "center" }}>
           まだ読まれていない声のメモが{notes.length}件
         </div>
       )}

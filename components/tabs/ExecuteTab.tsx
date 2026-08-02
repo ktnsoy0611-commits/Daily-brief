@@ -7,7 +7,7 @@ import { BinderModal, Masthead, SelectablePosterCard } from "@/components/common
 import { LeafletMap } from "@/components/LeafletMap";
 import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { HAIRLINE, INK, ITEM_DOMAINS, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
+import { HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
 import { domainOf, hasPlace, haptic, originBadge } from "@/lib/helpers";
 import type { GeneratedPlan } from "@/lib/planPipeline";
 import type { AppState, Item, ItemDomain, TabProps } from "@/lib/types";
@@ -109,7 +109,7 @@ function HorizontalShelf({ title, children }: { title: string; children: React.R
   return (
     <section style={{ marginBottom: 22 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 11, letterSpacing: "0.22em", color: "#9A988E" }}>{title}</span>
+        <span style={{ fontSize: 11, letterSpacing: "0.22em", color: MUTED }}>{title}</span>
       </div>
       <div className="no-scrollbar" style={{ display: "flex", gap: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
         {children}
@@ -199,7 +199,12 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
     mapShrinkCleanupRef.current?.();
     mapShrinkCleanupRef.current = null;
     if (!el) return;
-    const root = document.querySelector<HTMLElement>("[data-tab-scroll-root]");
+    // ★closest で「自分が乗っているスクロールルート」を引く。
+    // アプリ切替が横スライドになり、指で引いている間は3アプリぶんの
+    // [data-tab-scroll-root] が同時に存在する。document.querySelector だと
+    // 先頭(=タスクの列)を掴んでしまい、地図の縮小計算が別の列の寸法で
+    // 走って壊れる。
+    const root = el.closest<HTMLElement>("[data-tab-scroll-root]");
     if (!root) return;
     const measure = () => {
       mapShrinkRafRef.current = null;
@@ -234,7 +239,7 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
     return (
       <main style={{ padding: "48px 4px", textAlign: "center" }}>
         <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 19, marginBottom: 10 }}>Keepが、まだありません。</div>
-        <p style={{ fontSize: 12, color: "#9A988E", lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepするか、ストックタブの「モノ」「バショ」「タイケン」「ジョウホウ」から追加すると、ここに集まります。</p>
+        <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepするか、ストックタブの「モノ」「バショ」「タイケン」「ジョウホウ」から追加すると、ここに集まります。</p>
       </main>
     );
   }
@@ -321,7 +326,7 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
           <Sparkles size={15} strokeWidth={2.4} />
           プランを生成
         </button>
-        <span style={{ fontSize: 10.5, color: "#9A988E", letterSpacing: "0.04em" }}>
+        <span style={{ fontSize: 10.5, color: MUTED, letterSpacing: "0.04em" }}>
           {plans ? "3つの案ができています" : "ストックの候補から、3つの案をつくります"}
         </span>
       </div>

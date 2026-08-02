@@ -49,26 +49,28 @@ export const SWIPE_THRESHOLD = 90;
 export const SANS = "var(--font-zen-kaku-gothic-new), sans-serif";
 export const SERIF = SANS;
 export const DISPLAY = SANS;
-// 添付のバウハウス風ポスター(生成りのクリーム地に黒・マスタード・
-// コーラル・ティール・深緑)を基準に、アプリ全体(UI・カード・バインダー)の
-// 色味を寒色寄りの白黒基調から、この暖色のクリーム地+アースカラーへ寄せた。
-export const INK = "#1A1712";
-export const PAPER = "#FBF6E9";
-export const BG = "#F2EADA";
-// ★アプリごとの地の色。今のアプリ(life)=生成りのクリーム、タスク=グレージュ
-// (灰みのベージュ)、ジャーナル=くすんだ淡いグリーン。カードの紙色(PAPER)・
-// 墨色(INK)・影・角丸といったデザイン言語は3アプリで共通にし、地の色だけで
-// 「別のアプリにいる」ことを伝える。
-// 3色とも明度をそろえ(L≈86%)、彩度だけで性格を分けている。クリームは
-// 既存のまま、タスクは彩度を大きく落として「灰」に、ジャーナルは色相を
-// 緑へ寄せて彩度を上げ「緑」とはっきり分かるようにした(ユーザー指定)。
-export const TASKS_BG = "#DFDDD7";
-export const JOURNAL_BG = "#D3DFCE";
+// ★ネオバウハウス化(2026-08-02)。それまでは暖色のクリーム地(BG #F2EADA /
+// PAPER #FBF6E9)に、アプリごとに違う地の色(グレージュ・緑)を敷いて「別の
+// アプリにいる」ことを伝えていた。ユーザー指定により、地は**3アプリとも
+// 同じほんとに薄いグレー**へ統一し、アプリの違いは背景に置いた大きな図形
+// (AppBackdrop)ひとつだけで伝える。クリームは廃止し、紙・墨とも色味を
+// 抜いた中性のグレースケールにする。
+//
+// 色を捨てたぶん、残したアクセント(下のBLUE/RUST/GREEN/GOLDと、バインダー
+// のアクセント各種)がはっきり効くようになる = 「遊び心」はそちらが担う。
+export const INK = "#1A1A18";
+export const PAPER = "#FAFAF9";
+export const BG = "#F0F0EE";
+// 背景の図形(AppBackdrop)専用。地との明度差だけで見せる「地に溶ける透かし」
+// なので、BGのすぐ隣の値にする。ここを濃くすると主張が強くなりすぎる。
+export const SHADE = "#E7E7E4";
+// 補助の文字色。以前は各所で "#9A988E" を直書きしていたものをここへ集約した。
+export const MUTED = "#8E8E88";
 export const BLUE = "#2C6E8A";
 export const RUST = "#C1502E";
 export const GREEN = "#33633F";
 export const GOLD = "#C79433";
-export const HAIRLINE = "rgba(26,23,18,0.1)";
+export const HAIRLINE = "rgba(26,26,24,0.08)";
 // カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
 export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";
 export const SOFT_SHADOW_LG = "0 12px 32px rgba(28,28,30,0.12)";

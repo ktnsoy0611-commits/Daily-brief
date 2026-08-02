@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { parseCandidates, parseJournal } from "@/lib/inboxImport";
+import { parseCandidates, parseDaySummaries, parseJournal } from "@/lib/inboxImport";
 import { readMyBrainFile } from "@/lib/myBrainWrite";
 
 // 夜間のCoworkが my-brain へ書いた「インボックスの候補」と「その日の
@@ -10,18 +10,24 @@ import { readMyBrainFile } from "@/lib/myBrainWrite";
 export const runtime = "nodejs";
 export const maxDuration = 15;
 
-const monthPath = (d: Date) => `inbox/journal-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}.md`;
+const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+const monthPath = (d: Date) => `inbox/journal-${ym(d)}.md`;
+const summaryPath = (d: Date) => `journal/summary-${ym(d)}.md`;
 
 export async function GET() {
   const now = new Date();
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   // 月をまたいだ直後も取りこぼさないよう、今月と先月を読む。
-  const [candMd, thisMonth, lastMonth] = await Promise.all([
+  const [candMd, thisMonth, lastMonth, sumThis, sumLast] = await Promise.all([
     readMyBrainFile("inbox/candidates.md"),
     readMyBrainFile(monthPath(now)),
     readMyBrainFile(monthPath(prev)),
+    readMyBrainFile(summaryPath(now)),
+    readMyBrainFile(summaryPath(prev)),
   ]);
   const candidates = parseCandidates(candMd);
   const journal = [...parseJournal(thisMonth), ...parseJournal(lastMonth)];
-  return NextResponse.json({ ok: true, candidates, journal });
+  // その日のまとめ(Coworkが自動生成した日記)。
+  const summaries = { ...parseDaySummaries(sumLast), ...parseDaySummaries(sumThis) };
+  return NextResponse.json({ ok: true, candidates, journal, summaries });
 }

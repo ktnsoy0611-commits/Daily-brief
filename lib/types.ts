@@ -276,6 +276,10 @@ export interface AppState {
   // 声のメモと、そこからCoworkが作ったインボックスの候補。
   voiceNotes: VoiceNote[];
   inbox: InboxCandidate[];
+  // ★その日のまとめ(Coworkが自動生成した日記)。キーは日付(YYYY-MM-DD)。
+  // その日の声のメモ・実行したカード・行った場所・済ませたタスクをまとめて
+  // 書かれたもので、アプリの記録の一番上に出る(HANDOFF §12)。
+  daySummaries?: Record<string, { text: string; at: string }>;
   // 「プランを生成」で作ったAIの3案。**次に生成し直すまで残す**(シートを閉じても・
   // タブを切り替えても・アプリを開き直しても見返せる)。以前はコンポーネントの
   // ローカルstateだったため、閉じると二度と見られなかった(ユーザー報告)。

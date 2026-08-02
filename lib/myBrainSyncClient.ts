@@ -26,3 +26,27 @@ export async function syncTasteToMyBrain(appState: AppState): Promise<MyBrainSyn
     return { ok: false, reason: e instanceof Error ? e.message : "network_error" };
   }
 }
+
+// ★その日の記録(やったこと・済ませたタスク・自分で書いた記録)を my-brain へ
+// 同期する。1日を終えたとき・記録が増えたときに呼ぶ。直近3か月ぶんだけを
+// 送る(古い月は既に同期済みで変化しないため)。
+export async function syncDayRecordsToMyBrain(appState: AppState): Promise<MyBrainSyncResult | null> {
+  const { buildDayRecords } = await import("@/lib/dayRecords");
+  const { byMonth, renderMonthMd } = await import("@/lib/dayExport");
+  const days = buildDayRecords(appState);
+  if (days.length === 0) return null;
+  const months = Array.from(byMonth(days).entries())
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .slice(0, 3)
+    .map(([month, list]) => ({ month, content: renderMonthMd(month, list) }));
+  try {
+    const res = await fetch("/api/mybrain/day-records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ files: months }),
+    });
+    return (await res.json()) as MyBrainSyncResult;
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "network_error" };
+  }
+}

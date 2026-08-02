@@ -68,9 +68,12 @@ function DoneList({ day }: { day: DayRecord }) {
 
 // アーカイブの1日=1枚。中身の要約(サムネイル・済ませたこと・記録の抜粋)を
 // 1枚の紙にまとめ、タップでその日の全体を開く。
-function DayCard({ day, onOpen }: { day: DayRecord; onOpen: () => void }) {
+function DayCard({ day, summary, onOpen }: { day: DayRecord; summary?: string; onOpen: () => void }) {
   const thumbs = day.items.slice(0, 4);
-  const excerpt = day.entries[0]?.body.replace(/\s+/g, " ").slice(0, 46);
+  // まとめがあればそれを見せる(自分で書いた記録の抜粋より、その日の全体が
+  // 分かるまとめの方が手がかりとして強い)。
+  const source = summary ?? day.entries[0]?.body;
+  const excerpt = source?.replace(/\s+/g, " ").slice(0, 46);
   return (
     <button onClick={onOpen} style={{
       display: "block", width: "100%", textAlign: "left", cursor: "pointer",
@@ -109,7 +112,7 @@ function DayCard({ day, onOpen }: { day: DayRecord; onOpen: () => void }) {
       )}
       {excerpt && (
         <p style={{ fontSize: 11.5, lineHeight: 1.8, color: "#9A988E", overflow: "hidden" }}>
-          「{excerpt}{(day.entries[0]?.body.length ?? 0) > 46 ? "…" : ""}」
+          {summary ? excerpt : `「${excerpt}`}{(source?.length ?? 0) > 46 ? "…" : ""}{summary ? "" : "」"}
         </p>
       )}
     </button>
@@ -117,7 +120,7 @@ function DayCard({ day, onOpen }: { day: DayRecord; onOpen: () => void }) {
 }
 
 // その日の全体。カード・タスク・記録をすべて出す。
-function DaySheet({ day, onClose }: { day: DayRecord; onClose: () => void }) {
+function DaySheet({ day, summary, onClose }: { day: DayRecord; summary?: string; onClose: () => void }) {
   return (
     <BottomSheet onClose={onClose} maxHeight="80vh">
       {() => (
@@ -126,6 +129,7 @@ function DaySheet({ day, onClose }: { day: DayRecord; onClose: () => void }) {
             <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 19, color: INK }}>{day.label}</span>
             <span style={{ fontSize: 10, letterSpacing: "0.12em", color: "#9A988E", fontWeight: 700 }}>{dayRecordCount(day)}件</span>
           </div>
+          {summary && <SummaryBlock text={summary} />}
           {(day.items.length > 0 || day.tasks.length > 0) && (
             <section style={{ marginBottom: day.entries.length > 0 ? 22 : 0 }}>
               <div style={{ fontSize: 10, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, marginBottom: 10 }}>やったこと</div>
@@ -153,6 +157,24 @@ function DaySheet({ day, onClose }: { day: DayRecord; onClose: () => void }) {
   );
 }
 
+// ★その日のまとめ。夜のうちにCoworkが、その日の声のメモ・実行したカード・
+// 行った場所・済ませたタスクをまとめて書いた日記。事実の一覧より前に、
+// 一番読みたいものとして最初に置く。
+function SummaryBlock({ text, compact }: { text: string; compact?: boolean }) {
+  return (
+    <div style={{
+      background: PAPER, borderRadius: 16, padding: compact ? "12px 14px" : "16px 18px 18px",
+      boxShadow: SOFT_SHADOW, marginBottom: compact ? 10 : 22,
+    }}>
+      <div style={{ fontSize: 9, letterSpacing: "0.18em", color: "#9A988E", fontWeight: 700, marginBottom: 9 }}>その日のまとめ</div>
+      <p style={{
+        fontFamily: SANS, fontSize: compact ? 12 : 13, lineHeight: 1.95, color: INK, whiteSpace: "pre-wrap",
+        ...(compact ? { display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical" as const, overflow: "hidden" } : {}),
+      }}>{text}</p>
+    </div>
+  );
+}
+
 function EmptyNote({ title, body }: { title: string; body: string }) {
   return (
     <div style={{ padding: "56px 12px", textAlign: "center" }}>
@@ -165,6 +187,7 @@ function EmptyNote({ title, body }: { title: string; body: string }) {
 export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: JournalTabId }) {
   const [openDay, setOpenDay] = useState<DayRecord | null>(null);
   const days = buildDayRecords(appState);
+  const summaries = appState.daySummaries ?? {};
   const today = todayKey();
   const todayRec = days.find((d) => d.dateKey === today)
     ?? { dateKey: today, label: dayInfo(new Date().toISOString()).label, items: [], tasks: [], entries: [] };
@@ -172,7 +195,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
   const months = groupByMonth(past);
 
   if (tab === "journal-today") {
-    const empty = dayRecordCount(todayRec) === 0;
+    const empty = dayRecordCount(todayRec) === 0 && !summaries[todayRec.dateKey];
     return (
       <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
         <Masthead title="今日" statValue={dayRecordCount(todayRec)} statLabel="件の記録" corner={profileButton} />
@@ -183,6 +206,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
           />
         ) : (
           <>
+            {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
             {(todayRec.items.length > 0 || todayRec.tasks.length > 0) && (
               <section style={{ marginBottom: 26 }}>
                 <div style={{ fontSize: 11, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "0 4px 10px" }}>やったこと</div>
@@ -214,13 +238,13 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
             <section key={m.month}>
               <div style={{ fontSize: 11, letterSpacing: "0.16em", color: "#9A988E", fontWeight: 700, margin: "0 4px 10px", borderTop: `1px solid ${HAIRLINE}`, paddingTop: 12 }}>{m.label}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {m.days.map((d) => <DayCard key={d.dateKey} day={d} onOpen={() => setOpenDay(d)} />)}
+                {m.days.map((d) => <DayCard key={d.dateKey} day={d} summary={summaries[d.dateKey]?.text} onOpen={() => setOpenDay(d)} />)}
               </div>
             </section>
           ))}
         </div>
       )}
-      {openDay && <DaySheet day={openDay} onClose={() => setOpenDay(null)} />}
+      {openDay && <DaySheet day={openDay} summary={summaries[openDay.dateKey]?.text} onClose={() => setOpenDay(null)} />}
     </main>
   );
 }

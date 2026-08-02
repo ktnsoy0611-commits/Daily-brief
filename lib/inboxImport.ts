@@ -81,3 +81,16 @@ export function parseJournal(md: string | null): JournalEntry[] {
     })
     .filter((e): e is JournalEntry => !!e);
 }
+
+// Coworkが書いた「その日のまとめ」。見出しは YYYY-MM-DD、本文がまとめ。
+export function parseDaySummaries(md: string | null): Record<string, { text: string; at: string }> {
+  if (!md) return {};
+  const out: Record<string, { text: string; at: string }> = {};
+  blocks(md).forEach(({ head, body }) => {
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(head.trim());
+    const text = body.trim();
+    if (!m || !text) return;
+    out[m[1]] = { text, at: new Date().toISOString() };
+  });
+  return out;
+}

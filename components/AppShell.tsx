@@ -19,7 +19,7 @@ import { APPS, DEFAULT_TAB, appDef, cycleApp } from "@/lib/apps";
 import { BG, BLUE, GOLD, GREEN, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
-import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
+import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
 import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId } from "@/lib/types";
 
@@ -203,7 +203,8 @@ export function AppShell() {
       if (!data?.ok) return;
       const cands: InboxCandidate[] = Array.isArray(data.candidates) ? data.candidates : [];
       const entries: JournalEntry[] = Array.isArray(data.journal) ? data.journal : [];
-      if (cands.length === 0 && entries.length === 0) return;
+      const summaries: Record<string, { text: string; at: string }> = data.summaries && typeof data.summaries === "object" ? data.summaries : {};
+      if (cands.length === 0 && entries.length === 0 && Object.keys(summaries).length === 0) return;
       const next = structuredClone(appState);
       next.inbox = next.inbox ?? [];
       next.journal = next.journal ?? [];
@@ -211,9 +212,13 @@ export function AppShell() {
       const seenEntry = new Set(next.journal.map((e) => e.id));
       const addedC = cands.filter((c) => c.id && !seenCand.has(c.id));
       const addedE = entries.filter((e) => !seenEntry.has(e.id));
-      if (addedC.length === 0 && addedE.length === 0) return;
+      // その日のまとめ(Coworkが自動生成した日記)は、常に最新の内容で置き換える。
+      const curSum = next.daySummaries ?? {};
+      const sumChanged = Object.entries(summaries).some(([k, v]) => curSum[k]?.text !== v?.text);
+      if (addedC.length === 0 && addedE.length === 0 && !sumChanged) return;
       next.inbox = [...addedC, ...next.inbox];
       next.journal = [...addedE, ...next.journal];
+      if (sumChanged) next.daySummaries = { ...curSum, ...summaries };
       persist(next);
     }).catch(() => {});
   }, [appState, persist]);
@@ -328,6 +333,9 @@ export function AppShell() {
       next.bindLog.unshift({ id: `bindlog-${Date.now()}`, boundAt, items: boundItems, tasks: doneTasks.length > 0 ? doneTasks : undefined, undone: false });
     }
     persist(next);
+    // 記録はアプリの中だけでなく my-brain 側にも揃えて、いつでも読めるように
+    // する(ユーザー指定)。Coworkはこれと声のメモを材料に、その日のまとめを書く。
+    syncDayRecordsToMyBrain(next);
     setSelection({ itemIds: [] });
     setDashOpen(false);
     showToast(boundItems.length > 0 ? `${boundItems.length}件をアーカイブへ綴じました` : "今日を終えました");

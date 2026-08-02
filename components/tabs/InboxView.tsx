@@ -4,6 +4,7 @@ import { Check, Mic, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { BLUE, GOLD, GREEN, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { EmptyMark } from "@/components/common";
 import { FloatingBubble, floatStyle } from "@/components/FloatingBubble";
 import { haptic, todayKey } from "@/lib/helpers";
 import type { AppState, InboxCandidate, VoiceNote } from "@/lib/types";
@@ -251,24 +252,14 @@ export function InboxView({ appState, persist, showToast }: {
 
   return (
     <main style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "10px 4px 6px" }}>
-        <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 28, letterSpacing: "-0.01em", color: INK }}>インボックス</span>
-        <span style={{ fontSize: 10.5, letterSpacing: "0.12em", color: MUTED, fontWeight: 700 }}>{candidates.length}件</span>
+      {/* 他のタブのMastheadと同じ並び(小さなラベルの下に大きな数字)。 */}
+      <div style={{ padding: "10px 4px 18px" }}>
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 11, letterSpacing: "0.22em", lineHeight: 1, color: MUTED }}>インボックス</div>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 42, lineHeight: 0.9, letterSpacing: "-0.03em", color: candidates.length ? INK : MUTED, marginTop: 10 }}>{candidates.length}</div>
       </div>
 
       {candidates.length === 0 ? (
-        <div style={{ padding: "60px 12px", textAlign: "center" }}>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 17, color: INK, marginBottom: 10 }}>候補はありません。</div>
-          <p style={{ fontSize: 11.5, lineHeight: 1.9, color: MUTED }}>
-            タブバー右のボタンを長押しして語ると、その声が夜のうちに読まれて、
-            ここに「タスクにしますか？」という候補が漂います。
-          </p>
-          {notes.length > 0 && (
-            <p style={{ fontSize: 11, lineHeight: 1.9, color: MUTED, marginTop: 14 }}>
-              まだ読まれていない声のメモが{notes.length}件あります。
-            </p>
-          )}
-        </div>
+        <EmptyMark shape="quarterTL" label={notes.length > 0 ? `声 ${notes.length}` : undefined} />
       ) : (
         // 漂う候補。高さは画面いっぱいに取り、そこに散らして浮かべる。
         <div style={{ position: "relative", flex: 1, minHeight: 380, marginTop: 6 }}>

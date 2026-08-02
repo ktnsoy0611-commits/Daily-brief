@@ -67,7 +67,9 @@ export const APPS: AppDef[] = [
     id: "journal",
     label: "ジャーナル",
     // 下端中央から立ち上がる半円(バインダーの stamp = 下端の帯に対応)。
-    symbol: { shape: "semicircleUp", size: 1.3, x: 0.5, y: 0.98 },
+    // semicircleUp は箱の「下半分」に描かれるので、箱の中心を画面の3/4あたりに
+    // 置くと、ドームが画面の下端から立ち上がる形になる。
+    symbol: { shape: "semicircleUp", size: 1.6, x: 0.5, y: 0.75 },
     tabs: [
       { id: "journal-today", label: "今日", Icon: PenLine },
       { id: "journal-archive", label: "アーカイブ", Icon: BookOpen },

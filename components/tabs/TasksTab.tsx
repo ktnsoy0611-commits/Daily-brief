@@ -2,7 +2,7 @@
 
 import { Check, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { Masthead } from "@/components/common";
+import { EmptyMark, Masthead } from "@/components/common";
 import { TaskDetail } from "@/components/TaskDetail";
 import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { haptic, todayKey } from "@/lib/helpers";
@@ -74,15 +74,6 @@ export function TaskRow({ task, onToggle, onOpen }: { task: Task; onToggle: (id:
   );
 }
 
-function EmptyNote({ title, body }: { title: string; body: string }) {
-  return (
-    <div style={{ padding: "56px 12px", textAlign: "center" }}>
-      <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 17, color: INK, marginBottom: 10 }}>{title}</div>
-      <p style={{ fontSize: 11.5, lineHeight: 1.9, color: MUTED }}>{body}</p>
-    </div>
-  );
-}
-
 export function TasksTab({ appState, persist, profileButton, tab }: TabProps & { tab: TasksTabId }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const tasks = appState.tasks ?? [];
@@ -124,10 +115,7 @@ export function TasksTab({ appState, persist, profileButton, tab }: TabProps & {
         corner={profileButton}
       />
       {shown.length === 0 ? (
-        <EmptyNote
-          title={tab === "tasks-today" ? "今日のタスクはありません。" : "タスクがありません。"}
-          body="やることを書くと、ここに並びます。ダッシュボードを引き上げると、その日のタスクとカードをまとめて見られます。"
-        />
+<EmptyMark shape="quarterTL" />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {shown.map((t) => <TaskRow key={t.id} task={t} onToggle={toggle} onOpen={setOpenId} />)}

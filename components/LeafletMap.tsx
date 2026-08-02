@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import "leaflet/dist/leaflet.css";
-import { BLUE, INK, PAPER } from "@/lib/constants";
+import { BG, BLUE, INK, PAPER } from "@/lib/constants";
 import { itemLatLng } from "@/lib/helpers";
 import type { Item } from "@/lib/types";
 
@@ -117,5 +117,5 @@ export function LeafletMap({ items, selectedIds, onOpenPin, style }: {
   // items/selectionが変わったらマーカーを貼り直す。
   useEffect(() => { renderMarkers(false); }, [items, selectedIds, renderMarkers]);
 
-  return <div ref={containerRef} style={{ width: "100%", height: "100%", background: "#EDE7DA", ...style }} />;
+  return <div ref={containerRef} style={{ width: "100%", height: "100%", background: BG, ...style }} />;
 }

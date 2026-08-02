@@ -2,15 +2,19 @@
 
 import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, GREEN, HAIRLINE, HEADER_CHIP_SIZE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SHADE, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
+import { PlaneFill, type PlaneShape } from "./Binder";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
 export type IconType = ComponentType<{ size?: number | string; strokeWidth?: number; color?: string }>;
 
-// 「My Trails」参考のような、太いサンセリフの大見出し+柔らかいグレーの
-// サブテキストという構成。以前は新聞の輪転罫線(2px罫線)で下線を引いて
-// いたが、ミニマルなデザインへの刷新でその区切り線は撤廃した。
+// ★全画面が通るヘッダー。2026-08-02のネオバウハウス化で、視覚の主役を
+// 「見出しの文字」から「数字」へ移した(参照したミニマルなラジオアプリの
+// 「094.4」の扱い)。以前は28pxの太い大見出しが画面の顔で、件数はその横の
+// 小さなチップだった。いまは見出しを11px・字間広めの小さなラベルへ落とし、
+// 件数を42pxの数字にして、単位(件・のこり等)は数字の足元へ小さく添える。
+// 言葉を減らしてデザインで語る、という方針の中心にあたる変更。
 export function Masthead({ title, statValue, statLabel, dateline, right, corner }: {
   title: string;
   statValue?: ReactNode;
@@ -20,27 +24,42 @@ export function Masthead({ title, statValue, statLabel, dateline, right, corner 
   corner?: ReactNode;
 }) {
   return (
-    <header style={{ padding: "10px 4px 16px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+    <header style={{ padding: "10px 4px 18px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 28, letterSpacing: "-0.01em", lineHeight: 1.15, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          {/* 件数チップを左、設定(corner)を右端に固定する。以前はcornerを
-              件数チップより先(左)に置いており、設定アイコンが常に画面の
-              最も右端ではなかった。設定を常に一番右に置くことで、全タブで
-              位置を固定する。 */}
-          {right ? right : (
-            <div style={{ display: "flex", alignItems: "center", gap: 5, height: HEADER_CHIP_SIZE, background: PAPER, borderRadius: 999, padding: "0 16px", boxShadow: SOFT_SHADOW }}>
-              <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 16, lineHeight: 1, color: INK }}>{statValue}</span>
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 11, letterSpacing: "0.22em", lineHeight: 1, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+          {right ? null : (
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 10 }}>
+              <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 42, lineHeight: 0.9, letterSpacing: "-0.03em", color: INK }}>{statValue}</span>
               <span style={{ fontSize: 10, color: MUTED, lineHeight: 1 }}>{statLabel}</span>
             </div>
           )}
+          {dateline && <div style={{ fontSize: 11, color: MUTED, marginTop: 8 }}>{dateline}</div>}
+        </div>
+        {/* 設定(corner)は常に画面の右端。rightを渡された画面(切替UI等)は
+            数字の代わりにそれを右上へ置く。 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {right}
           {corner}
         </div>
       </div>
-      {dateline && <div style={{ fontSize: 12, color: MUTED, marginTop: 10 }}>{dateline}</div>}
     </header>
+  );
+}
+
+// ★空状態。以前は「やることを書くと、ここに並びます。ダッシュボードを
+// 引き上げると…」のような説明の段落を置いていたが、言葉を減らしてデザインで
+// 語る方針(2026-08-02)で、**地に溶ける図形ひとつ+短い一言**に統一した。
+// 図形はバインダー(PlaneFill)と同じ語彙・同じSHADEで、背景のシンボルとも
+// 地続きに見えるようにしている。
+export function EmptyMark({ shape = "circle", label }: { shape?: PlaneShape; label?: string }) {
+  return (
+    <div style={{ padding: "68px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
+      <div style={{ position: "relative", width: 84, height: 84 }}>
+        <PlaneFill shape={shape} color={SHADE} />
+      </div>
+      {label && <div style={{ fontFamily: SANS, fontSize: 11, letterSpacing: "0.22em", color: MUTED, fontWeight: 700 }}>{label}</div>}
+    </div>
   );
 }
 

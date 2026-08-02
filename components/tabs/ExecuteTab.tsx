@@ -3,11 +3,11 @@
 import { ChevronUp, Map as MapIcon, Maximize2, Minimize2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BinderModal, Masthead, SelectablePosterCard } from "@/components/common";
+import { BinderModal, EmptyMark, Masthead, SelectablePosterCard } from "@/components/common";
 import { LeafletMap } from "@/components/LeafletMap";
 import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
+import { BG, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
 import { domainOf, hasPlace, haptic, originBadge } from "@/lib/helpers";
 import type { GeneratedPlan } from "@/lib/planPipeline";
 import type { AppState, Item, ItemDomain, TabProps } from "@/lib/types";
@@ -91,7 +91,7 @@ function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }:
       transform: entered ? "scale(1)" : "scale(0.4)", transformOrigin: "top center",
       opacity: entered ? 1 : 0,
       transition: `transform ${MAP_FULLSCREEN_MS}ms cubic-bezier(0.32,0.72,0,1), opacity ${MAP_FULLSCREEN_MS - 60}ms ease`,
-      background: "#EDE7DA",
+      background: BG,
     }}>
       <LeafletMap items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
       <button onClick={requestClose} aria-label="地図の全画面表示を閉じる" style={{
@@ -237,9 +237,8 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
 
   if (stocked.length === 0) {
     return (
-      <main style={{ padding: "48px 4px", textAlign: "center" }}>
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 19, marginBottom: 10 }}>Keepが、まだありません。</div>
-        <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.9, marginBottom: 22 }}>ブリーフでKeepするか、ストックタブの「モノ」「バショ」「タイケン」「ジョウホウ」から追加すると、ここに集まります。</p>
+      <main>
+        <EmptyMark shape="circle" />
       </main>
     );
   }
@@ -327,7 +326,7 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
           プランを生成
         </button>
         <span style={{ fontSize: 10.5, color: MUTED, letterSpacing: "0.04em" }}>
-          {plans ? "3つの案ができています" : "ストックの候補から、3つの案をつくります"}
+{plans ? "3案" : ""}
         </span>
       </div>
       {ITEM_DOMAINS.map((d) => {

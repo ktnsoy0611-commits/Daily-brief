@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
@@ -275,8 +275,9 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
                       cursor: liveIds.length === 0 ? "default" : "pointer",
                       fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
                       background: liveIds.length === 0 ? "rgba(26,26,24,0.2)" : INK, color: PAPER,
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                     }}
-                  >このプランを選ぶ</button>
+                  ><Check size={15} strokeWidth={2.6} />選ぶ</button>
                 );
               })()}
             </>
@@ -284,7 +285,7 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
             <>
               <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 6 }}>プランを生成</div>
               <p style={{ fontSize: 11.5, lineHeight: 1.8, color: MUTED, marginBottom: 16 }}>
-                ストックの候補から、重さの違う3つの案をつくります。エリアは選ばなくても大丈夫です。
+                重さの違う3つの案をつくります。
               </p>
               <div style={{ fontSize: 9, letterSpacing: "0.15em", color: MUTED, marginBottom: 8 }}>エリア（任意）</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>

@@ -2,7 +2,7 @@
 
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
+import { BinderModal, EmptyMark, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
 import { BG, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
@@ -661,15 +661,13 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         // ため、両方を正直に包む「まだ届いていません」に寄せる。
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED }}>NO ISSUE YET</div>
-          <h2 style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 26, lineHeight: 1.4, margin: "10px 0 20px" }}>{editionLabel}は、まだ<br />届いていません。</h2>
-          <p style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8, margin: "0 0 8px" }}>新しいブリーフは夜間に用意されます。しばらくすると、ここに提案が並びます。</p>
-          <p style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8, margin: 0 }}>右上の設定から、情報源や興味・好みを増やすと、提案が見つかりやすくなります。</p>
+          <h2 style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, lineHeight: 1.4, margin: "10px 0 0" }}>{editionLabel}は、まだ<br />届いていません。</h2>
+          <EmptyMark shape="circle" />
         </main>
       ) : (
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED }}>END OF ISSUE</div>
-          <h2 style={{ fontFamily: SERIF, fontWeight: 700, fontSize: 26, lineHeight: 1.4, margin: "10px 0 20px" }}>{editionLabel}は、<br />ここまで。</h2>
-          <p style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8, margin: "0 0 20px" }}>{edition === "am" ? "夕刊は、正午にお届けします。" : "明日の朝刊で、また。"}</p>
+          <h2 style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, lineHeight: 1.4, margin: "10px 0 20px" }}>{editionLabel}は、<br />ここまで。</h2>
           {keptCards.map((c, i) => (
             <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "12px 2px", borderTop: `1px solid ${HAIRLINE}` }}>
               <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>

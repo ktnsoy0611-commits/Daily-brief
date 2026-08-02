@@ -3,7 +3,7 @@
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { Masthead } from "@/components/common";
+import { EmptyMark, Masthead } from "@/components/common";
 import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
 import { dayInfo, img, todayKey } from "@/lib/helpers";
@@ -175,15 +175,6 @@ function SummaryBlock({ text, compact }: { text: string; compact?: boolean }) {
   );
 }
 
-function EmptyNote({ title, body }: { title: string; body: string }) {
-  return (
-    <div style={{ padding: "56px 12px", textAlign: "center" }}>
-      <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 17, color: INK, marginBottom: 10 }}>{title}</div>
-      <p style={{ fontSize: 11.5, lineHeight: 1.9, color: MUTED }}>{body}</p>
-    </div>
-  );
-}
-
 export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: JournalTabId }) {
   const [openDay, setOpenDay] = useState<DayRecord | null>(null);
   const days = buildDayRecords(appState);
@@ -200,10 +191,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
       <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
         <Masthead title="今日" statValue={dayRecordCount(todayRec)} statLabel="件の記録" corner={profileButton} />
         {empty ? (
-          <EmptyNote
-            title="今日はまだ何もありません。"
-            body="書いた記録・実行したカード・済ませたタスクが、その日ごとにここへ集まります。"
-          />
+<EmptyMark shape="semicircleUp" />
         ) : (
           <>
             {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
@@ -231,7 +219,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
     <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
       <Masthead title="アーカイブ" statValue={past.length} statLabel="日の記録" corner={profileButton} />
       {past.length === 0 ? (
-        <EmptyNote title="まだ記録がありません。" body="1日を終えると、その日の記録が1枚のカードになってここに積み上がります。" />
+        <EmptyMark shape="semicircleUp" />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {months.map((m) => (

@@ -169,6 +169,7 @@ journal/summary-YYYY-MM.md → days/YYYY-MM/summary.md
 inbox/candidates.md はそのまま
 profile.md、inbox/journal-*.md は使わなくなったので削除
 移した後、空になった logs/ journal/ は削除する
+cowork/rejected.md は動かさない（過去に不合格にしたサイトの記録。移すと同じサイトを再提案してしまう）
 
 # 所有者を書く
 あなたが書くファイルだけ、先頭に次の front-matter を付ける:
@@ -203,9 +204,13 @@ updated: （今日）
 - 終わったらコミットする。
 ```
 
-**注**: `cowork/rejected.md` は移行の対象外(そのままの場所に置く)。発掘タスクが
-「過去に不合格にしたサイト」を引き継ぐためのファイルで、移すと履歴を失って
-同じサイトを再提案してしまう。
+**front-matterを全ファイルに付けない理由**: アプリが所有するファイル
+(`me/goals.md`・`sources/stats.md`・`sources/dismissed.md`・`sources/proposed.md`・
+`days/*/facts.md`・`days/*/feedback.md`)は、夜間Cronが**毎回まるごと書き直す**ため、
+front-matter を付けても次の同期で消える。付けては消えるだけの無駄な差分になるので、
+front-matter は Cowork が所有する5ファイルに限り、アプリ所有ファイルの所有者は
+`README.md` の表で示す。ゾーン方式の `me/taste.md`・`sources/list.md` は、アプリが
+ゾーンの外を必ず残すので front-matter も残る。
 
 ---
 

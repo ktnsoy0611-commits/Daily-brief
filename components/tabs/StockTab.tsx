@@ -168,9 +168,18 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
   );
 }
 
+// 束1つぶんの棚。★content-visibility:auto を付けてある: 画面外にある棚は
+// ブラウザがレイアウトとペイントを丸ごと省く。ストックはカード1枚が
+// グラデーション＋影＋パンチ穴＋アイコンで構成されていて塗りが重く、
+// 4つの棚を一度に全部描くと開くたびに数百msかかっていた(CPUプロファイルでも
+// JSは40ms程度で、残りはすべてスタイル/レイアウト/ペイントだった)。
+// contain-intrinsic-size で画面外の高さを見積もらせ、スクロールバーが
+// 暴れないようにしている。未対応のブラウザでは単に無視されるだけ。
+const SHELF_INTRINSIC = "1px 260px";
+
 function StackSection({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
-    <section style={{ marginBottom: 34 }}>
+    <section style={{ marginBottom: 34, contentVisibility: "auto", containIntrinsicSize: SHELF_INTRINSIC }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
         <span style={{ fontSize: 11, letterSpacing: "0.22em", color: MUTED }}>{title}</span>
         <span style={{ fontSize: 10, color: MUTED }}>{count}件</span>

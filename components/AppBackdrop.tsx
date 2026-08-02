@@ -1,72 +1,73 @@
 "use client";
 
 import { PlaneFill } from "@/components/Binder";
-import { APPS } from "@/lib/apps";
-import { SHADE } from "@/lib/constants";
+import type { AppSymbol } from "@/lib/apps";
+import { SHADE, SHADE_DEEP } from "@/lib/constants";
 
-// ★アプリごとの背景シンボル。3アプリの地の色を「ほんとに薄いグレー」1色へ
-// 統一した代わりに、どのアプリにいるかを **大きな図形ひとつ** で伝える
-// (ネオバウハウス化、2026-08-02のユーザー指定)。
+// ★アプリごとの背景。3アプリの地の色を「ほんとに薄いグレー」1色へ統一した
+// 代わりに、どのアプリにいるかを背景の構図で伝える(2026-08-02)。
 //
-// 設計上の決めごと:
-//   - 図形の語彙は新しく作らず、バインダー(Binder.tsx の PlaneShape /
-//     PlaneFill)をそのまま借りる。置き場所も、バインダーが「帯の位置で種別を
-//     分ける」のと同じ考えを画面に写している(lib/apps.ts の symbol を参照)。
-//   - 色は SHADE 1色だけ。地(BG)との明度差しか持たない「地に溶ける透かし」に
-//     する(ユーザー選択)。ここを濃くすると主張が強くなりすぎるので、
-//     constants.ts の SHADE を触るとき以外はこのファイルで色を作らない。
-//   - 3アプリぶんを横一列のトラックとして並べ、AppShellのページングと同じ
-//     オフセットで動かす。ただし PARALLAX を掛けて中身よりゆっくり流す。
-//     背景が中身と同じ速さで動くと「1枚の板が滑っている」だけに見えるが、
-//     遅らせると奥行きが出る。
-//   - pointerEvents:none。ここは絶対に触れない層。
+// 構図は **アーカイブのバインダーの表紙とまったく同じ文法**(ユーザー指定:
+// 「既存の図形的なモチーフとグリッドは守りなさい。特にアーカイブの
+// バインダーの表紙が良い例なので参考にしなさい」):
+//
+//   無地の下地  ＋  帯(位置が種別の印)  ＋  帯の中の正方形セルに図形
+//
+// 図形は Binder.tsx の PlaneFill をそのまま借り、セルの作り方も同じ
+// 「帯の短辺を1辺とする正方形」にしてグリッドを守る。色はグレーの濃淡2段
+// だけで、アクセント色は使わない。
+//
+// ★配置について: このコンポーネントは **各列(1画面ぶん)の中** に置く。
+// 列は幅ちょうど1画面・overflow:hidden なので、はみ出した図形の切り取り線は
+// 必ず画面の端と一致する = 「スワイプ中に画面の途中で図形が切れて見える」
+// ことが構造的に起こらない。以前は背景だけを別のトラックにして視差でずらし、
+// レイヤーごとに切り取っていたため、切り取り線が画面の真ん中に来ていた。
+// トラックのtransform1つで背景も中身も同時に動くので、アプリ間の動きも繋がる。
+//
+// 奥行きは、レイヤーではなく **帯と図形だけ** をわずかに遅らせて出す
+// (globals.css の .app-backdrop-inner が --drag から算出する)。
 
-// 中身に対する背景の移動比。1で完全に同じ速さ、0で固定。
-const PARALLAX = 0.55;
+// ★セルの一辺の長さ。
+// 素直に「帯の短辺」を一辺にすると、セルを count 個並べたときの合計が帯の
+// 長辺を超えて最後の1個が切れる(実際に一度そうなった。バインダーのタイケンで
+// 同じ轍を踏んだ記録が HANDOFF §7.28 にある)。**短辺と「長辺÷個数」の
+// 小さい方**を採る。列は必ず1画面ぶんの大きさなので、vw/svh でそのまま書ける。
+function cellSide(symbol: AppSymbol): string {
+  const short = symbol.band === "left"
+    ? `${symbol.thickness * 100}vw`   // 縦帯は幅が短辺
+    : `${symbol.thickness * 100}svh`; // 横帯は高さが短辺
+  const perCell = symbol.band === "left"
+    ? `${100 / symbol.count}svh`
+    : `${100 / symbol.count}vw`;
+  return `min(${short}, ${perCell})`;
+}
 
-export function AppBackdrop({ index, dragRatio, animate }: {
-  // いま何番目のアプリを見ているか(APPSの添字)。
-  index: number;
-  // 指で引いている量。画面幅に対する比(右へ引くと正)。
-  dragRatio: number;
-  // 指を離したあとの落ち着きにトランジションを掛けるか(ドラッグ中はfalse)。
-  animate: boolean;
-}) {
+export function AppBackdrop({ symbol }: { symbol: AppSymbol }) {
+  const vertical = symbol.band === "left";
+  const side = cellSide(symbol);
+  const cells = Array.from({ length: symbol.count }, (_, i) => (
+    <div key={i} style={{ position: "relative", flexShrink: 0, width: side, height: side, overflow: "hidden" }}>
+      <PlaneFill shape={symbol.shape} color={SHADE_DEEP} />
+    </div>
+  ));
   return (
     <div aria-hidden style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
-      {APPS.map((a, i) => {
-        // ★視差は「いま何番目か」ではなく **図形どうしの間隔** に掛ける。
-        // (i - index) が0のとき必ず0になるので、静止時は必ず自分のアプリの
-        // 図形がちょうど画面に収まる。隣の図形は PARALLAX ぶんだけ近い位置に
-        // 控えているので、指で引くと中身より遅れて流れてくる。
-        // 以前は (-index + dragRatio) 全体に掛けていたため、静止時に
-        // 別のアプリの図形が画面に居座るバグになっていた。
-        const d = i - index + dragRatio;
-        // 隣の図形は間隔が1画面ぶんより狭い(PARALLAX)ので、位置をずらすだけだと
-        // 静止時にも画面の端へはみ出してくる。中心から離れるほど薄くし、
-        // 1画面ぶん離れたら完全に消えるようにして、視差と溶暗を重ねる。
-        const opacity = Math.max(0, 1 - Math.abs(d));
-        return (
-        <div key={a.id} style={{
-          position: "absolute", inset: 0, overflow: "hidden",
-          transform: `translateX(${d * PARALLAX * 100}%)`,
-          opacity,
-          transition: animate ? "transform 0.38s cubic-bezier(0.32,0.72,0,1), opacity 0.38s ease" : "none",
-          willChange: "transform, opacity",
+      <div className="app-backdrop-inner" style={{ position: "absolute", inset: 0 }}>
+        <div style={{
+          position: "absolute", background: SHADE, overflow: "hidden",
+          display: "flex", flexDirection: vertical ? "column" : "row",
+          // 帯の中でセルを均等に散らす(バインダーの side が総柄を
+          // space-between で並べているのと同じ)。
+          // 交差方向は flex-start = 帯の「内側の縁」に揃える。下端の帯
+          // (ジャーナル)はこれでタブバーに隠れない位置に図形が並ぶ。
+          justifyContent: "space-between", alignItems: "flex-start",
+          ...(symbol.band === "left" ? { left: 0, top: 0, bottom: 0, width: `${symbol.thickness * 100}%` }
+            : symbol.band === "top" ? { left: 0, right: 0, top: 0, height: `${symbol.thickness * 100}%` }
+            : { left: 0, right: 0, bottom: 0, height: `${symbol.thickness * 100}%` }),
         }}>
-          {/* 一辺を画面幅基準の正方形にして、円・四半円・半円が常に真円
-              ベースになるようにする(PlaneFillの前提。Binder.tsxの
-              SquareCellと同じ理由)。 */}
-          <div style={{
-            position: "absolute", width: `${a.symbol.size * 100}%`, aspectRatio: "1 / 1",
-            left: `${a.symbol.x * 100}%`, top: `${a.symbol.y * 100}%`,
-            transform: "translate(-50%, -50%)",
-          }}>
-            <PlaneFill shape={a.symbol.shape} color={SHADE} />
-          </div>
+          {cells}
         </div>
-        );
-      })}
+      </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { EmptyMark, Masthead } from "@/components/common";
+import { Masthead } from "@/components/common";
 import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
 import { dayInfo, img, todayKey } from "@/lib/helpers";
@@ -190,9 +190,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
     return (
       <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
         <Masthead title="今日" statValue={dayRecordCount(todayRec)} statLabel="件の記録" corner={profileButton} />
-        {empty ? (
-<EmptyMark shape="semicircleUp" />
-        ) : (
+        {empty ? null : (
           <>
             {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
             {(todayRec.items.length > 0 || todayRec.tasks.length > 0) && (
@@ -218,9 +216,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
   return (
     <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
       <Masthead title="アーカイブ" statValue={past.length} statLabel="日の記録" corner={profileButton} />
-      {past.length === 0 ? (
-        <EmptyMark shape="semicircleUp" />
-      ) : (
+      {past.length === 0 ? null : (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {months.map((m) => (
             <section key={m.month}>

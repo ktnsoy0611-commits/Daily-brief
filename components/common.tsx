@@ -1,10 +1,9 @@
 "use client";
 
 import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-react";
-import { useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SHADE, SOFT_SHADOW } from "@/lib/constants";
+import { memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
-import { PlaneFill, type PlaneShape } from "./Binder";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
 export type IconType = ComponentType<{ size?: number | string; strokeWidth?: number; color?: string }>;
@@ -47,21 +46,9 @@ export function Masthead({ title, statValue, statLabel, dateline, right, corner 
   );
 }
 
-// ★空状態。以前は「やることを書くと、ここに並びます。ダッシュボードを
-// 引き上げると…」のような説明の段落を置いていたが、言葉を減らしてデザインで
-// 語る方針(2026-08-02)で、**地に溶ける図形ひとつ+短い一言**に統一した。
-// 図形はバインダー(PlaneFill)と同じ語彙・同じSHADEで、背景のシンボルとも
-// 地続きに見えるようにしている。
-export function EmptyMark({ shape = "circle", label }: { shape?: PlaneShape; label?: string }) {
-  return (
-    <div style={{ padding: "68px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
-      <div style={{ position: "relative", width: 84, height: 84 }}>
-        <PlaneFill shape={shape} color={SHADE} />
-      </div>
-      {label && <div style={{ fontFamily: SANS, fontSize: 11, letterSpacing: "0.22em", color: MUTED, fontWeight: 700 }}>{label}</div>}
-    </div>
-  );
-}
+// ★空状態には何も置かない(2026-08-02)。第1弾では地に溶ける図形ひとつ(84px)を
+// 中央に置いていたが、実機で「背景の小さい図形が画面の中央に残っている」と
+// 指摘され撤去した。Mastheadの大きな数字(0)が既に空であることを語っている。
 
 export function Dot({ color, label }: { color: string; label: string }) {
   return (
@@ -113,7 +100,9 @@ export function PunchHoles() {
 // 写真ありのときと同じ下部キャプション(グラデーション+タイトル)を
 // 乗せることで、どちらも同じ見た目のリズムになるようにしている。
 // sizeを省略すると親グリッドに合わせて広がる。
-export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph, badge, good, onToggleGood, action, onClick, size, planSelected, onTogglePlanSelect }: {
+// ★memo化してある: ストックタブは最大40枚のPosterCardを並べるので、親が
+// 再レンダーされるたびに全部を作り直すと実機で目に見えて重くなる(2026-08-02)。
+export const PosterCard = memo(function PosterCard({ image, color, title, sub, label, icon: Icon, glyph, badge, good, onToggleGood, action, onClick, size, planSelected, onTogglePlanSelect }: {
   image?: string | null;
   color?: string;
   title: string;
@@ -206,7 +195,7 @@ export function PosterCard({ image, color, title, sub, label, icon: Icon, glyph,
       </div>
     </div>
   );
-}
+});
 
 // PosterCardに選択状態のオーバーレイを乗せたもの。プランタブの地図/一覧
 // (KEEP一覧・メディア)と、ストックタブの「作品」「場所」オーバーレイの
@@ -320,7 +309,13 @@ function StackRow({ items, aspect, cardWidth, cardHeight, onOpen, onAdd, addLabe
   const neighborSpread = Math.round(cardWidth * 0.34);
 
   return (
-    <div ref={containerRef} style={{ position: "relative", height: Math.round(cardHeight * 1.16) + 8, width: "100%" }}>
+    // ★幅を実測するまでは描かない(visibility:hidden)。ResizeObserverが幅を
+    // 返すまで offsetStep が0で、全カードが左端に重なった「まだ正しくない
+    // 配置」を一度描いてから、測り終えて正しい位置へ描き直すことになる。
+    // 束が10枚あるとこの捨てレイアウトの塗りだけで無視できない時間になり、
+    // ストックタブを開くたびに効いていた。レイアウトは保ったまま塗りだけ
+    // 飛ばすので、位置がガクッと直る見え方も同時に消える。
+    <div ref={containerRef} style={{ position: "relative", height: Math.round(cardHeight * 1.16) + 8, width: "100%", visibility: containerWidth > 0 ? "visible" : "hidden" }}>
       {shown.map((it, i) => {
         const seed = hashStr(it.key);
         const rotation = ((seed % 9) - 4) * 1.3;

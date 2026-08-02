@@ -2,7 +2,7 @@
 
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { BinderModal, EmptyMark, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
+import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
 import { BG, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
@@ -662,7 +662,6 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED }}>NO ISSUE YET</div>
           <h2 style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, lineHeight: 1.4, margin: "10px 0 0" }}>{editionLabel}は、まだ<br />届いていません。</h2>
-          <EmptyMark shape="circle" />
         </main>
       ) : (
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>

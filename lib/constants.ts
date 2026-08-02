@@ -61,9 +61,12 @@ export const DISPLAY = SANS;
 export const INK = "#1A1A18";
 export const PAPER = "#FAFAF9";
 export const BG = "#F0F0EE";
-// 背景の図形(AppBackdrop)専用。地との明度差だけで見せる「地に溶ける透かし」
-// なので、BGのすぐ隣の値にする。ここを濃くすると主張が強くなりすぎる。
-export const SHADE = "#E7E7E4";
+// 背景(AppBackdrop)専用の2段。バインダーの表紙と同じ「下地(=BG) / 帯(SHADE) /
+// 図形(SHADE_DEEP)」の3層を、グレーの濃淡だけで作るための値。
+// 地に溶ける透かしの調子は保ちたいので、いちばん濃いSHADE_DEEPでも地との差は
+// 16程度に留めてある。ここを触ると背景の主張の強さが変わる。
+export const SHADE = "#E9E9E6";
+export const SHADE_DEEP = "#E0E0DC";
 // 補助の文字色。以前は各所で "#9A988E" を直書きしていたものをここへ集約した。
 export const MUTED = "#8E8E88";
 export const BLUE = "#2C6E8A";

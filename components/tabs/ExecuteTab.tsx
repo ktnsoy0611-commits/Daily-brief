@@ -3,7 +3,7 @@
 import { ChevronUp, Map as MapIcon, Maximize2, Minimize2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BinderModal, EmptyMark, Masthead, SelectablePosterCard } from "@/components/common";
+import { BinderModal, Masthead, SelectablePosterCard } from "@/components/common";
 import { LeafletMap } from "@/components/LeafletMap";
 import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
@@ -235,13 +235,9 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
     };
   }, []);
 
-  if (stocked.length === 0) {
-    return (
-      <main>
-        <EmptyMark shape="circle" />
-      </main>
-    );
-  }
+  // 候補が1件も無いときは何も置かない(説明文も図形も出さない。ネオバウハウス化で
+  // 空状態の言葉を削った、2026-08-02)。
+  if (stocked.length === 0) return <main />;
 
   const bottomPadding = draftSelection.length > 0 ? 96 : 24;
   const selectableCard = (i: Item) => (

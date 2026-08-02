@@ -2,7 +2,7 @@
 
 import { Check, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { EmptyMark, Masthead } from "@/components/common";
+import { Masthead } from "@/components/common";
 import { TaskDetail } from "@/components/TaskDetail";
 import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { haptic, todayKey } from "@/lib/helpers";
@@ -114,9 +114,7 @@ export function TasksTab({ appState, persist, profileButton, tab }: TabProps & {
         statLabel="件のこり"
         corner={profileButton}
       />
-      {shown.length === 0 ? (
-<EmptyMark shape="quarterTL" />
-      ) : (
+      {shown.length === 0 ? null : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {shown.map((t) => <TaskRow key={t.id} task={t} onToggle={toggle} onOpen={setOpenId} />)}
         </div>

@@ -4,7 +4,6 @@ import { Check, Mic, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { BLUE, GOLD, GREEN, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
-import { EmptyMark } from "@/components/common";
 import { FloatingBubble, floatStyle } from "@/components/FloatingBubble";
 import { haptic, todayKey } from "@/lib/helpers";
 import type { AppState, InboxCandidate, VoiceNote } from "@/lib/types";
@@ -258,9 +257,7 @@ export function InboxView({ appState, persist, showToast }: {
         <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 42, lineHeight: 0.9, letterSpacing: "-0.03em", color: candidates.length ? INK : MUTED, marginTop: 10 }}>{candidates.length}</div>
       </div>
 
-      {candidates.length === 0 ? (
-        <EmptyMark shape="quarterTL" label={notes.length > 0 ? `声 ${notes.length}` : undefined} />
-      ) : (
+      {candidates.length === 0 ? null : (
         // 漂う候補。高さは画面いっぱいに取り、そこに散らして浮かべる。
         <div style={{ position: "relative", flex: 1, minHeight: 380, marginTop: 6 }}>
           {bubbles.map(({ c, style }) => (

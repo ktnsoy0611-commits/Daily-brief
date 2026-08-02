@@ -20,16 +20,25 @@ export interface AppTabDef {
   Icon: TabIcon;
 }
 
-// 背景の透かし図形。図形の語彙はバインダー(components/Binder.tsx の
-// PlaneShape)をそのまま使い、新しい形を増やさない。置き場所も、バインダーが
-// 「帯の位置で種別を分ける」のと同じ考えを画面に写している。
+// ★背景の構図。バインダーの表紙とまったく同じ文法にしてある:
+// **無地の下地 ＋ 帯(位置が種別の印) ＋ 帯の中の正方形セルに図形**。
+// 図形の語彙はバインダー(components/Binder.tsx の PlaneShape)をそのまま使い、
+// 新しい形は増やさない。セルの作り方(帯の短辺を1辺とする正方形)も
+// Binder.tsx の SquareCell と同じで、グリッドを守っている。
+//
+// アプリの識別は「帯の位置」が担う: 左端(タスク)/ 上端(ブリーフ)/ 下端
+// (ジャーナル)と直交しているので、ひと目で違う画面だと分かる。
+// 色は使わない(グレーの濃淡2段だけ)——ユーザー指定。
 export interface AppSymbol {
+  // 帯の位置。バインダーの side / geo / stamp に対応する。
+  band: "left" | "top" | "bottom";
+  // 帯の太さ。縦帯(left)なら画面の幅に対する割合、横帯(top/bottom)なら高さに
+  // 対する割合。**セルの一辺はこの太さと「帯の長辺÷count」の小さい方**になる
+  // (AppBackdrop の cellSide 参照。片方だけで決めると最後の1個がはみ出す)。
+  thickness: number;
+  // 帯の中に置く図形と、その数。「大きく少なく」の指定により2〜3個。
   shape: PlaneShape;
-  // 図形の一辺(画面幅に対する割合)。1を超えると画面外へはみ出す。
-  size: number;
-  // 中心の位置(画面に対する割合)。0.5が中央、負や1超で画面外へ。
-  x: number;
-  y: number;
+  count: number;
 }
 
 export interface AppDef {
@@ -43,8 +52,8 @@ export const APPS: AppDef[] = [
   {
     id: "tasks",
     label: "タスク",
-    // 左上から差し込む四半円(バインダーの side = 左端の帯に対応)。
-    symbol: { shape: "quarterTL", size: 1.15, x: 0.02, y: 0.2 },
+    // 左端の縦帯 + 四半円を縦に3つ(バインダーの side = タイケンの構図)。
+    symbol: { band: "left", thickness: 0.4, shape: "quarterTL", count: 3 },
     tabs: [
       { id: "tasks-inbox", label: "インボックス", Icon: Inbox },
       { id: "tasks-today", label: "今日", Icon: CheckSquare },
@@ -54,8 +63,8 @@ export const APPS: AppDef[] = [
   {
     id: "life",
     label: "ブリーフ",
-    // 右上からはみ出す円(バインダーの target = 上端中央からはみ出す円に対応)。
-    symbol: { shape: "circle", size: 1.05, x: 0.86, y: 0.16 },
+    // 上端の帯 + 円を横に2つ(バインダーの geo = バショの構図)。
+    symbol: { band: "top", thickness: 0.23, shape: "circle", count: 2 },
     tabs: [
       { id: "brief", label: "ブリーフ", Icon: Newspaper },
       { id: "goals", label: "ゴール", Icon: Sprout },
@@ -66,10 +75,11 @@ export const APPS: AppDef[] = [
   {
     id: "journal",
     label: "ジャーナル",
-    // 下端中央から立ち上がる半円(バインダーの stamp = 下端の帯に対応)。
-    // semicircleUp は箱の「下半分」に描かれるので、箱の中心を画面の3/4あたりに
-    // 置くと、ドームが画面の下端から立ち上がる形になる。
-    symbol: { shape: "semicircleUp", size: 1.6, x: 0.5, y: 0.75 },
+    // 下端の帯 + 半円を横に3つ連ねる(バインダーの stamp/media = モノ・
+    // ジョウホウの構図。タイケンのグルメと同じ「半円が連なる」見え方)。
+    // 帯は画面の下端まで伸ばすが、図形は帯の上の縁に揃えてタブバーに
+    // 隠れないようにしてある(AppBackdrop の alignItems)。
+    symbol: { band: "bottom", thickness: 0.26, shape: "semicircleUp", count: 3 },
     tabs: [
       { id: "journal-today", label: "今日", Icon: PenLine },
       { id: "journal-archive", label: "アーカイブ", Icon: BookOpen },

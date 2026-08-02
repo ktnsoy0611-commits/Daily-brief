@@ -16,7 +16,7 @@ import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { StockTab } from "@/components/tabs/StockTab";
 import { InboxView } from "@/components/tabs/InboxView";
 import { TasksTab } from "@/components/tabs/TasksTab";
-import { APPS, DEFAULT_TAB } from "@/lib/apps";
+import { APPS, DEFAULT_TAB, appDef } from "@/lib/apps";
 import { BG, BLUE, GOLD, GREEN, HEADER_CHIP_SIZE, INK, MUTED, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -64,7 +64,14 @@ export function AppShell() {
   const [tabByApp, setTabByApp] = useState<Record<AppId, TabId>>({ ...DEFAULT_TAB });
   // ★ダッシュボード(画面下から引き上げる引き出し)。3つのアプリのどこからでも
   // 開ける共通のUIなので、タブではなくここに持つ。
-  const [dashOpen, setDashOpen] = useState(false);
+  // 開き具合は 0..1 の連続値で、**指の位置と1対1で繋がっている**(タブバーの
+  // 上ドラッグとシートの取手の下ドラッグが同じ値を動かす)。以前は「44px引いたら
+  // 開く」という離散的なしきい値だったため、カクついて見えていた。
+  const [dashP, setDashP] = useState(0);
+  const [dashDragging, setDashDragging] = useState(false);
+  const dashPRef = useRef(0);
+  dashPRef.current = dashP;
+  const settleDash = useCallback((open: boolean) => { setDashDragging(false); setDashP(open ? 1 : 0); }, []);
   // ★アプリを横に引いている量(px)。3アプリを横一列に並べたトラックごと、
   // 指の動きに1:1で追従させる(タブバーも中身も背景の図形も一緒に流れる)。
   const [navDragX, setNavDragX] = useState(0);
@@ -289,7 +296,6 @@ export function AppShell() {
   const unmountTimerRef = useRef<number | null>(null);
   useEffect(() => () => { if (unmountTimerRef.current != null) window.clearTimeout(unmountTimerRef.current); }, []);
   const onNavPointerDown = useCallback((e: ReactPointerEvent) => {
-    const NAV_DASH_PX = 44;      // 縦: これ以上引き上げたらダッシュボードを開く
     const COMMIT_RATIO = 0.18;   // 横: 画面幅のこの割合を超えたら隣へ送る
     const FLICK_PX_PER_MS = 0.5; // 短く速く払ったときは距離が足りなくても送る
     const EDGE_RESIST = 0.32;    // 端でのゴムの効き
@@ -335,17 +341,26 @@ export function AppShell() {
         setNavDragX(atEdge ? dx * EDGE_RESIST : dx);
         return;
       }
-      if (dy <= -NAV_DASH_PX) {
-        finish();
-        haptic(12);
-        setDashOpen(true);
-      }
+      // 縦: 引き上げた量をそのまま開き具合にする(1対1)。シートの上端が
+      // 指についてくるので、travelは「シートの上端が動く距離」に合わせる。
+      // シートの高さ(88svh)そのものが、シート上端=掴んでいるピルの移動距離。
+      // ここを実際の移動距離と合わせておかないと、指より速く/遅く動く。
+      const travel = Math.max(200, (window.innerHeight || 844) * 0.88);
+      setDashDragging(true);
+      setDashP(Math.min(1, Math.max(0, -dy / travel)));
     }
     function up(ev: PointerEvent) {
       const pr = navPressRef.current;
       const dx = pr ? ev.clientX - pr.x : 0;
       const axis = pr?.axis;
       finish();
+      if (axis === "y") {
+        const open = dashPRef.current >= 0.35;
+        if (open) haptic(12);
+        setDashDragging(false);
+        setDashP(open ? 1 : 0);
+        return;
+      }
       if (axis !== "x") return;
       const far = Math.abs(dx) >= width * COMMIT_RATIO;
       // 速さで送るのは、指の向きと払った向きが一致しているときだけ。
@@ -406,7 +421,7 @@ export function AppShell() {
     // する(ユーザー指定)。Coworkはこれと声のメモを材料に、その日のまとめを書く。
     syncDayRecordsToMyBrain(next);
     setSelection({ itemIds: [] });
-    setDashOpen(false);
+    settleDash(false);
     showToast(boundItems.length > 0 ? `${boundItems.length}件をアーカイブへ綴じました` : "今日を終えました");
     if (boundItems.length > 0) goTab("journal-archive");
   };
@@ -654,7 +669,11 @@ export function AppShell() {
           <div aria-hidden style={{ position: "sticky", bottom: 0, width: "100%", height: 0, zIndex: 15, pointerEvents: "none" }}>
             <div style={{ position: "absolute", left: 0, right: 0, top: -26, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 26px, ${BG} 100%)` }} />
           </div>
-          <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", flexDirection: "column", alignItems: "center", padding: "0 16px", pointerEvents: "none" }}>
+          <nav style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", flexDirection: "column", alignItems: "center", padding: "0 16px", pointerEvents: "none",
+            // ダッシュボードを引き上げている間は、こちらは消えてportal側の
+            // モーフ用ピルへ役目を渡す(見た目が同一の p≒0 で入れ替わるので
+            // 継ぎ目は出ない)。
+            opacity: dashP > 0 ? 0 : 1 }}>
             {/* いま3つのアプリのどこにいるか。文字は出さず、点だけの控えめな
                 目印にしている。この目印もトラックに乗っているので、指で
                 引いている最中に「次のアプリの目印」が一緒に流れ込んでくる
@@ -725,8 +744,8 @@ export function AppShell() {
 
       {/* タブ・アプリを跨いで持ち回す選択の目印。件数だけを示し、タップで
           ダッシュボードが開く(確定の操作はダッシュボードに集約した)。 */}
-      {!dashOpen && (
-        <SelectionMarker appState={appState} selection={selection} onOpen={() => setDashOpen(true)} />
+      {dashP === 0 && (
+        <SelectionMarker appState={appState} selection={selection} onOpen={() => settleDash(true)} />
       )}
 
       {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}
@@ -737,15 +756,20 @@ export function AppShell() {
       {/* ★ダッシュボード。タブバーを上へ引き上げる(または選択の目印をタップ
           する)と、3つのアプリのどこからでも開く共通の引き出し。選んでいる
           カードとその日のタスクを1枚で見渡し、「今日を終える」で1日を締める。 */}
-      {dashOpen && (
+      {dashP > 0 && (
         <Dashboard
           appState={appState}
           selection={selection}
+          app={appDef(appId)}
+          tab={tabByApp[appId]}
+          progress={dashP}
+          dragging={dashDragging}
+          onDrag={(v) => { setDashDragging(true); setDashP(v); }}
+          onSettle={settleDash}
           onToggleItem={toggleItemSelection}
           onClearSelection={() => setSelection({ itemIds: [] })}
           onToggleTask={toggleTask}
           onFinishDay={finishDay}
-          onClose={() => setDashOpen(false)}
         />
       )}
     </div>

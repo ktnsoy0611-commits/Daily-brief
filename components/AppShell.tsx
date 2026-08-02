@@ -85,7 +85,7 @@ interface AppColumnProps {
 const AppColumn = memo(function AppColumn({ a, tab, active, mounted, memoryMode, tabProps, appState, persist, showToast, goTab, onNavPointerDown, onWrite, beginHold, endHold, navDragged, held }: AppColumnProps) {
   const scrollLocked = tab === "brief";
   return (
-        <div style={{ position: "relative", width: `${100 / APPS.length}%`, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden" }}>
+        <div style={{ position: "relative", isolation: "isolate", width: `${100 / APPS.length}%`, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden" }}>
           {/* 背景(帯+図形)は列の中に置く。列は幅ちょうど1画面・overflow:hidden
               なので、はみ出した図形の切り取り線は必ず画面の端と一致する
               (=スワイプ中に画面の途中で図形が切れて見えない)。 */}
@@ -265,9 +265,10 @@ export function AppShell() {
   const shellRef = useRef<HTMLDivElement>(null);
   // ★横スライドの位置もCSS変数で持つ。--app-offset は appId が変わったときだけ、
   // --drag は指が動いている間だけ書く(どちらもReactのレンダーを起こさない)。
-  useEffect(() => {
-    document.documentElement.style.setProperty("--app-offset", `${(-appIndex * 100) / APPS.length}%`);
-  }, [appIndex]);
+  const setAppOffsetVar = useCallback((index: number) => {
+    document.documentElement.style.setProperty("--app-offset", `${(-index * 100) / APPS.length}%`);
+  }, []);
+  useEffect(() => { setAppOffsetVar(appIndex); }, [appIndex, setAppOffsetVar]);
   const setDragVar = useCallback((px: number, dragging: boolean) => {
     const root = document.documentElement;
     root.style.setProperty("--drag", `${px}px`);
@@ -514,7 +515,14 @@ export function AppShell() {
       setDragVar(0, false);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", finish);
+      window.removeEventListener("pointercancel", cancel);
+    };
+    // ポインタを取り上げられたとき。縦に引きかけていたなら、開き具合も
+    // 必ず閉じ切ってから終わる(上のaddEventListenerのコメント参照)。
+    const cancel = () => {
+      const axis = navPressRef.current?.axis;
+      finish();
+      if (axis === "y") settleDash(false);
     };
     function move(ev: PointerEvent) {
       const pr = navPressRef.current;
@@ -566,13 +574,24 @@ export function AppShell() {
       const next = dx < 0 ? i + 1 : i - 1;
       if (next < 0 || next >= APPS.length) return;
       haptic(10);
+      // ★--drag(0へ)と--app-offset(隣のアプリへ)は必ず同じ同期の書き込みで
+      // 揃える。offsetをReactのuseEffect任せにすると、「dragは0に戻ったが
+      // offsetはまだ元のアプリ」という中途半端な状態が1フレーム描かれ得る
+      // (＝一瞬だけ元の画面へ戻ってから隣へ動く)。
+      setAppOffsetVar(next);
       setAppId(APPS[next].id);
       mountApp(APPS[next].id);
     }
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", finish);
-  }, [setDragVar, setDashVar, settleDash, mountApp]);
+    // ★pointercancelでも finish() だけでは足りない。縦(ダッシュボード)を
+    // 引いている最中にiOSがポインタを取り上げると、--dash が途中の値のまま
+    // 残り、data-dash-active="1" が効いたまま = **タブバーが opacity:0 で
+    // 消え、画面全体を覆うscrimがタップを飲み続ける**という壊れた状態に
+    // なっていた(pointerupが来ないので settleDash が呼ばれないため)。
+    // 取り上げられたら必ず閉じ切る。
+    window.addEventListener("pointercancel", cancel);
+  }, [setDragVar, setDashVar, settleDash, mountApp, setAppOffsetVar]);
   // トースト。他のコールバックが依存するので先に定義しておく。
   const showToast = useCallback((msg: string) => { setToast(msg); window.setTimeout(() => setToast(""), 1600); }, []);
   const toggleItemSelection = useCallback((id: string) => {

@@ -32,6 +32,13 @@ body {
      スクロールがoverflow切り替え後も一瞬続くケースがあるため、境界での
      バウンス連鎖もあわせて止めておく(多重の防御)。 */
   overscroll-behavior-y: none;
+  /* ★iOS Safariは<button>等をタップした瞬間、その要素の**矩形**に半透明の
+     グレーを重ねる(タップハイライト)。タブバーのボタンはflex:1の横長の箱
+     なので、実際に見えている丸いアイコンよりずっと大きい四角が浮かび
+     上がり、「四角い当たり判定が見えてしまう」という見た目になっていた。
+     このプロパティは継承するので、ここで一度切れば全体に効く。押した
+     ことのフィードバックは、アイコンの色とhapticが担っている。 */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ★アプリの横スライドとダッシュボードの引き上げは、Reactのstateではなく
@@ -76,6 +83,20 @@ body {
 [data-dash-dragging="1"] .dash-pill,
 [data-dash-dragging="1"] .dash-pill-paper,
 [data-dash-dragging="1"] .dash-write { transition: none; }
+
+/* ★閉じている間の背景(scrim)を完全に無力化する。この要素は画面全体を覆う
+   position:fixedで、opacity:0でも**タップは受け取ってしまう**ため、
+   一度ダッシュボードを開いて閉じたあと、実際にアンマウントされるまでの
+   340msの間ずっと下のUIへのタップを飲み込んでいた(BottomSheetで同じ
+   不具合を踏んだ記録が §7.7/§7.30 にある)。あわせてbackdrop-filterも
+   切る: 画面全体を覆うぼかしのレイヤーが生き続けると、アプリを横へ
+   スライドさせるtransformのたびに合成をやり直すことになり、実機で
+   描画が乱れる余地を残すため。 */
+[data-dash-active="0"] .dash-scrim {
+  pointer-events: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 
 /* オーバーレイのスクロール領域でOS標準のスクロールバーを隠すための
    ユーティリティ。スクロール自体は無効化しない。 */

@@ -20,25 +20,40 @@ export interface AppTabDef {
   Icon: TabIcon;
 }
 
-// ★背景の構図。バインダーの表紙とまったく同じ文法にしてある:
-// **無地の下地 ＋ 帯(位置が種別の印) ＋ 帯の中の正方形セルに図形**。
-// 図形の語彙はバインダー(components/Binder.tsx の PlaneShape)をそのまま使い、
-// 新しい形は増やさない。セルの作り方(帯の短辺を1辺とする正方形)も
-// Binder.tsx の SquareCell と同じで、グリッドを守っている。
+// ★背景の構図。バインダーの表紙の中でも **geo(バショ)の grid2x2**
+// (components/Binder.tsx)と同じ文法にしてある:
 //
-// アプリの識別は「帯の位置」が担う: 左端(タスク)/ 上端(ブリーフ)/ 下端
-// (ジャーナル)と直交しているので、ひと目で違う画面だと分かる。
-// 色は使わない(グレーの濃淡2段だけ)——ユーザー指定。
+//   正方形のブロックを真の2x2の正方形セルに割り、
+//   セルごとに明度の段と、三角・円・扇形(四半円)・半円をひとつ置く
+//
+// 図形の語彙は Binder.tsx の PlaneShape をそのまま使い、新しい形は
+// 増やさない。バインダーは色相を持つがこちらはグレーの明度差だけで、
+// 地に溶ける透かしとして敷く。
+//
+// アプリの識別は「ブロックの位置(上/中央/下)」と「セルの組み方」が担う。
+// 色では区別しない——ユーザー指定。
+// 明度の段。SHADE を基準に shade() で振る(AppBackdrop)。地(BG)との差が
+// 小さい淡いグレーの範囲に収め、透かしとして読ませる。
+export type AppTone = "pale" | "mid" | "deep";
+
+export interface AppCell {
+  // セルの下地。
+  bg: AppTone;
+  // セルいっぱいに敷く図形と、その色。null なら下地だけの色面
+  // (バインダーの units 構図が「図形入りのセル」と「無地の色面」を
+  // 混ぜているのと同じ。全セルを図形で埋める必要はない)。
+  shape: PlaneShape | null;
+  fg?: AppTone;
+}
+
 export interface AppSymbol {
-  // 帯の位置。バインダーの side / geo / stamp に対応する。
-  band: "left" | "top" | "bottom";
-  // 帯の太さ。縦帯(left)なら画面の幅に対する割合、横帯(top/bottom)なら高さに
-  // 対する割合。**セルの一辺はこの太さと「帯の長辺÷count」の小さい方**になる
-  // (AppBackdrop の cellSide 参照。片方だけで決めると最後の1個がはみ出す)。
-  thickness: number;
-  // 帯の中に置く図形と、その数。「大きく少なく」の指定により2〜3個。
-  shape: PlaneShape;
-  count: number;
+  // 正方形のブロックを画面のどこに置くか。バインダーで「帯の位置」が
+  // 種別の印だったのと同じ役割を、ここではブロックの位置が担う。
+  anchor: "top" | "center" | "bottom";
+  // 2x2 のグリッド。左上・右上・左下・右下の順。null は下地のまま
+  // (＝グリッドに穴を空ける)。ブロックは画面幅ちょうどなので、各セルは
+  // 常に「画面幅の半分」を1辺とする真の正方形になる。
+  cells: (AppCell | null)[];
 }
 
 export interface AppDef {
@@ -52,8 +67,17 @@ export const APPS: AppDef[] = [
   {
     id: "tasks",
     label: "タスク",
-    // 左端の縦帯 + 四半円を縦に3つ(バインダーの side = タイケンの構図)。
-    symbol: { band: "left", thickness: 0.4, shape: "quarterTL", count: 3 },
+    // 上に寄せたブロック。角のある図形(三角・扇形)を主にして、下2つの
+    // アプリと図形の系統でも見分けられるようにしている。
+    symbol: {
+      anchor: "top",
+      cells: [
+        { bg: "mid", shape: "quarterBR", fg: "deep" },
+        { bg: "pale", shape: "triangleDown", fg: "mid" },
+        null,
+        { bg: "deep", shape: "circle", fg: "pale" },
+      ],
+    },
     tabs: [
       { id: "tasks-inbox", label: "インボックス", Icon: Inbox },
       { id: "tasks-today", label: "今日", Icon: CheckSquare },
@@ -63,8 +87,16 @@ export const APPS: AppDef[] = [
   {
     id: "life",
     label: "ブリーフ",
-    // 上端の帯 + 円を横に2つ(バインダーの geo = バショの構図)。
-    symbol: { band: "top", thickness: 0.23, shape: "circle", count: 2 },
+    // 画面の中央に据えたブロック。円系(円・半円)を主にする。
+    symbol: {
+      anchor: "center",
+      cells: [
+        { bg: "pale", shape: "circle", fg: "deep" },
+        { bg: "deep", shape: null },
+        { bg: "mid", shape: "semicircleDown", fg: "pale" },
+        { bg: "pale", shape: "quarterTL", fg: "mid" },
+      ],
+    },
     tabs: [
       { id: "brief", label: "ブリーフ", Icon: Newspaper },
       { id: "goals", label: "ゴール", Icon: Sprout },
@@ -75,11 +107,17 @@ export const APPS: AppDef[] = [
   {
     id: "journal",
     label: "ジャーナル",
-    // 下端の帯 + 半円を横に3つ連ねる(バインダーの stamp/media = モノ・
-    // ジョウホウの構図。タイケンのグルメと同じ「半円が連なる」見え方)。
-    // 帯は画面の下端まで伸ばすが、図形は帯の上の縁に揃えてタブバーに
-    // 隠れないようにしてある(AppBackdrop の alignItems)。
-    symbol: { band: "bottom", thickness: 0.26, shape: "semicircleUp", count: 3 },
+    // 下に寄せたブロック。扇形(四半円)を主にする。下段はタブバーに
+    // 重なるので、読ませたい図形は上段に置いてある。
+    symbol: {
+      anchor: "bottom",
+      cells: [
+        { bg: "deep", shape: "quarterTR", fg: "pale" },
+        { bg: "mid", shape: "triangleUp", fg: "deep" },
+        { bg: "pale", shape: "quarterBL", fg: "mid" },
+        null,
+      ],
+    },
     tabs: [
       { id: "journal-today", label: "今日", Icon: PenLine },
       { id: "journal-archive", label: "アーカイブ", Icon: BookOpen },

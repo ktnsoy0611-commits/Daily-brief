@@ -4266,3 +4266,152 @@ Chromiumで、(1)タブバーの横スワイプで3アプリが循環し地の�
    候補をCoworkが再提案しないための印も要る。
 3. 録音の実機確認(iOS SafariのMediaRecorder・マイク権限)。
 4. タスク/ジャーナルの中身(追加・編集UI、繰り返し、書式)。
+
+## 12. ★my-brainをデータベースとして再設計・タスクの付随提案(AIエージェント化)(2026-08-02)
+
+§11の続き。ユーザーの指示は2つあった。
+
+> タスクは、私の過去の失敗なども振り返りによって蓄積し、それによって、私が
+> 見えていなかったような、タスクに付随するタスクなどもAIエージェントとして
+> 提案して欲しい。私は非常に物忘れが多かったり、気が利かなかったり、計画を
+> あらかじめ立てるのが面倒だったり、と言った性質があります。例えば、旅行に
+> 行くというタスクを登録した時に(した後でも)、新幹線はとった？とか、朝何時に
+> 出るか確認した？とか。会議をするというタスクなら、会議室は取ったか？とか、
+> リマインドメールはしたかとか。
+
+> my-brainにまとめますが、ちゃんとデータベースとして構造を考えて欲しい。謎に
+> たくさんファイルが乱立していくのではなく、今後それらが増減しても対応できる
+> ようにデータを整理して欲しい。
+
+土台に2つ問題があった。(1)my-brainが15ファイルもルート直下と `logs/` `inbox/`
+`journal/` に散らばり、命名も主題(taste/sources/goals)と所有者(-user/-proposed/
+-stats)と日付が混ざっていた。(2)`Task` が id/title/dueDate/done/note だけで、
+提案を出す器そのものが無かった。A(構造)→B(タスク)→C(Coworkのプロンプト)の順で
+解いた。
+
+### 12.1 my-brainの構造: 「役割 × 日付」の2軸
+
+**恒久的なものは主題ごとに1ファイル、日付で増えるものは `days/YYYY-MM/` の中だけ**
+(種類は4つに固定・これ以上増やさない)。月フォルダを開けばその月のすべてが揃う。
+
+```
+my-brain/
+  README.md                 地図と規約(人が読む)
+  me/taste.md               興味・好み・関連キーワード・生活圏・願い・ゴールに効くキーワード
+  me/patterns.md            ★新: 手配漏れ・物忘れ・後回しの傾向(毎晩の仕分けが育てる)
+  me/goals.md               ゴールとチェックインの記録
+  days/YYYY-MM/facts.md     その日の事実(アプリ)
+  days/YYYY-MM/voice.md     声のメモの文字起こし(アプリ)
+  days/YYYY-MM/summary.md   その日のまとめ＝自動生成の日記(Cowork)
+  days/YYYY-MM/feedback.md  カードへの反応ログ(アプリ)
+  inbox/candidates.md       タスク・ウィッシュの候補(Coworkが書き、アプリが取り込む)
+  sources/list.md / stats.md / proposed.md / dismissed.md
+  analysis/taste.md         嗜好の分析レポート(Cowork週次・人が読む)
+  cowork/rejected.md        審査で不合格にしたサイト(発掘タスク所有・移行対象外)
+```
+
+旧→新の対応(移行はCoworkに一度だけ実行させる。プロンプトは
+`COWORK-ROUTINES.md` §「① 一度だけの移行タスク」):
+`taste-state.md`→`me/taste.md` / `taste-analysis.md`→`analysis/taste.md` /
+`goals.md`→`me/goals.md` / `sources.md`→`sources/list.md` /
+`source-stats.md`→`sources/stats.md` / `sources-proposed.md`→`sources/proposed.md` /
+`sources-user.md`→`sources/dismissed.md` /
+`logs/feedback-YYYY-MM.md`→`days/YYYY-MM/feedback.md` /
+`inbox/voice-YYYY-MM.md`→`days/YYYY-MM/voice.md` /
+`journal/YYYY-MM.md`→`days/YYYY-MM/facts.md` /
+`journal/summary-YYYY-MM.md`→`days/YYYY-MM/summary.md`。
+`profile.md`・`inbox/journal-*.md` は廃止(未使用)。
+
+**規約**: 各ファイルの先頭の front-matter に `owner: app | cowork | human` を書き、
+所有者の違うファイルは互いに上書きしない。1ファイルを共同編集するのは
+`me/taste.md` と `sources/list.md` だけで、これは既存のゾーン方式
+(`<!-- BEGIN/END app-managed:... -->`、`lib/myBrainWrite.ts` の
+`mergeTasteStateMd`/`mergeSourcesMd`)をそのまま使う。
+
+**実装(commit `f1d3868`)**: `lib/myBrainPaths.ts` を新設し、**パスを知っている
+場所をこの1ファイルだけにした**(乱立の再発防止。以後どのコードもここ経由でしか
+パスを書かない)。`PATHS.*` と `dayPath(month, kind)` / `monthKey(date)` を持ち、
+`LEGACY`/`legacyOf()` が旧パスへの対応表を持つ。**読み取りは新パス→旧パスの
+フォールバック**(`readMyBrainFile`)なので、移行が済んでいなくてもアプリは動く
+(順序を問わない)。ゾーンを持つファイルは `metaForMerge()` が旧ファイルの内容を
+種にして新パスを作るので、Coworkがゾーンの外に書いた内容を失わない。
+差し替えた呼び出し元: `lib/myBrain.ts` / `lib/myBrainWrite.ts` / `lib/feedbackLog.ts` /
+`lib/dayExport.ts` / `app/api/cron/build-brief/route.ts` / `app/api/transcribe/route.ts` /
+`app/api/mybrain/inbox/route.ts` / `app/api/mybrain/day-records/route.ts`。
+Node単体テスト10項目PASS。
+
+### 12.2 タスクの付随提案(commit `22fd72d`)
+
+**データモデル(`lib/types.ts`)**: `SubTask{id,title,done,doneAt?,fromSuggestion?}` /
+`TaskSuggestion{id,title,why?}` / `Task.subtasks?/suggestions?/suggestedAt?`
+(`suggestedAt` が未設定なら「まだ提案を作っていない」)。
+
+**生成(`lib/taskSuggest.ts` + `app/api/suggest-subtasks/route.ts`)**: 材料は3つ——
+タスク本体 / `me/patterns.md` の傾向(Coworkが育てる) / **過去に済ませた似たタスクと
+その手順**。モデルは `gemini-flash-lite-latest`(`callGemini` を再利用・JSONモード)。
+**AIが出すのは文面だけで、件数の上限(6)・既存との重複・空・長すぎの排除はコード側で
+切る**(briefPipelineと同じ分担)。プロンプトはユーザー承認済みで、要点は
+「タスクに書かれていない固有名を作らない(ただし『新幹線』『会議室』のような、その
+タスクなら誰でも思いつく一般的な手配は書いてよい)」「その場で済んだ/まだを答えられる
+粒度」「タスク本体そのものは書かない」「傾向に当たるものを先に置く」。
+
+**★似たタスクの探し方**: 文字の2-gramの **Jaccard係数**(しきい値0.3)で測る。
+最初は「一致した2-gramの数」で書いたところ、「歯医者に行く」と「金沢へ旅行に行く」が
+**「に行く」という助詞まじりの共通部分だけで似ている**ことになってしまい、無関係な
+過去タスクの手順を提案の材料に渡していた。両方の長さで割った比率にして解決
+(`similarity`/`findSimilarTasks`)。
+
+**画面(`components/TaskDetail.tsx`)**: 中央にタスク(題は直接編集)、その周りに提案が
+ふわふわ漂う。タップ=採用してサブタスクへ、×=却下。下にサブタスクのチェックリスト
+(チェック・削除・手で追加)、「ほかの手配も見る」で作り直し。漂う表現はインボックスと
+共通化した(`components/FloatingBubble.tsx` の `floatStyle(id,index,total)` +
+CSSの `inbox-drift`。位置と揺れはidのハッシュから決まるので再描画で飛び回らない)。
+`TasksTab` の行はタップで開き、行自体にも `手順 2/5` と未確認の提案数(GOLDの✨バッジ)を
+出す。提案を頼むのは(1)インボックスで候補を承認した直後、(2)タスクを開いたとき
+`suggestedAt` が無ければその場で、(3)「ほかの手配も見る」。
+
+単体テスト17項目PASS。Chromiumで、タスクを開く→提案が漂う→タップで採用→サブタスクに
+入る→チェック→リロードしても残る、承認直後に提案が作られる、を確認
+(この環境に `GEMINI_API_KEY` は無いのでAPIはスタブして経路を確認した。
+**実キーでの提案の質は本番デプロイでユーザーが確認する**)。
+
+### 12.3 Coworkのタスクを3本に(`COWORK-ROUTINES.md`)
+
+`COWORK-ROUTINES.md` を新構造に合わせて全面的に更新した。
+
+- **① 一度だけの移行タスク**(新規): 旧パス→新パスへ移し、front-matter を付け、
+  `me/patterns.md` の雛形と `README.md`(構造と規約)を作る。中身の文章は変えない。
+- **② 毎晩のタスク「1日を仕分ける」**(新規): `days/YYYY-MM/voice.md` を読み、
+  (a)その日のまとめ→`days/YYYY-MM/summary.md`、(b)タスク・ウィッシュの候補→
+  `inbox/candidates.md`、(c)手配漏れ・物忘れの傾向→`me/patterns.md`、へ仕分ける。
+  **`days/*/facts.md` は読まない**(完了タスクの集計はアプリが自分でやる。ユーザー指定)。
+  (c)が §12.2 の提案の材料になり、(a)(b)はアプリが起動時に取り込む。
+- **週1の発掘・分析**(既存): 中の旧パスをすべて新パスへ差し替えた(文面の意味は不変)。
+- **廃止済みの「フル版」プロンプト(約68行)を削除**。§8.22 で「使わない」と明記
+  していた古いプロンプトで、旧ログ形式と撤回済みの禁止を含んでおり、残すと旧パスが
+  混在してCoworkが誤って参照する危険があった。経緯は §8.22 に残っている。
+- Supabaseのキーはもうどのタスクにも要らない(必要なデータはすべて my-brain 側にある)。
+
+### 12.4 ユーザー側で必要なこと
+
+1. Coworkに **①の移行タスクを一度だけ**実行させる(アプリは移行前でも動くので急がない)。
+2. **②を毎晩のタスク**として設置する(例: 02:00 JST)。
+3. 任意: `OPENAI_API_KEY` をVercelに登録すると、文字起こしがWhisper系になる
+   (無ければ既存の `GEMINI_API_KEY` でGeminiの音声入力を使う)。
+4. 実機で、翌朝まとめがジャーナルの一番上に出るか・候補がインボックスに漂うか・
+   タスクを登録すると付随提案が出るかを確認する。
+
+### 12.5 次にやること(未着手)
+
+- **★デザインの立て直し**(ユーザー明言「変更を加えた部分のフォントが統一されて
+  いなかったり、デザインがイマイチな部分がある。全体的にもっとデザインを良くしたい。
+  その辺りも後ほどやりたい」)。分かっている不統一:
+  - 今回足した画面(`TasksTab`/`JournalTab`/`Dashboard`/`InboxView`/`TaskDetail`)は
+    見出しのサイズ・字間・余白をその場で決めており、既存の `Masthead`・`PosterCard` の
+    体系と揃っていない。見出しに `Masthead` を使う画面と自前で組んでいる画面(InboxView)が
+    混在している。
+  - 文字サイズが 9 / 9.5 / 10 / 10.5 / 11 / 11.5 / 12 / 12.5 / 13 と刻み過ぎ。段階を
+    4〜5個に決め直して `lib/constants.ts` に置くのが筋。
+- タスク・ジャーナルの中身(手での追加・編集UI、タスクの繰り返し・期日、ジャーナルの書式)。
+- 録音の実機確認(iOS SafariのMediaRecorder・マイク権限)。
+- 「今日を終える」の演出(いまは素直に閉じるだけ。§9.4)。

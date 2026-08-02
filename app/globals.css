@@ -67,18 +67,58 @@ body {
    各図形の top/left/width/height/border-radius は、この2つを使った1本の
    calc() で書いてある(components/AppBackdrop.tsx)。JSは毎フレーム何も
    計算せず、CSS変数を書くだけ。 */
+/* ★アプリは一周ループするので、補間も輪にする。0=ジャーナル 1=タスク
+   2=ブリーフ 3=またジャーナル、の**3区間**だけで一周ぶんを覆う:
+     u1: 0→1 / u2: 1→2 / u3: 2→3
+   --p がこの 0〜3 に必ず収まるよう、横へ払う向きが決まった瞬間に AppShell が
+   --appi を選び直す(左へ払うなら 0〜2 から、右へ払うなら 1〜3 から)。
+   区間を最小限にしてあるのは性能のため: 指を動かすたびに全マスの
+   transform / border-radius が再計算されるので、式に出てくる変数が1つ増える
+   だけで横スワイプの long task がはっきり増える。 */
 .app-backdrop-grid {
-  --p: calc(var(--appi, 1) - var(--dragn, 0));
-  --t1: clamp(0, var(--p), 1);
-  --t2: clamp(0, calc(var(--p) - 1), 1);
+  --p: calc(var(--appi, 0) - var(--dragn, 0));
+  --u1: clamp(0, var(--p), 1);
+  --u2: clamp(0, calc(var(--p) - 1), 1);
+  --u3: clamp(0, calc(var(--p) - 2), 1);
 }
 /* 指を離した瞬間は --p が目的地へ飛ぶので、ここでトラックのスライドと
    同じ時間・同じイージングで追いつかせる。動かすのは transform と
    border-radius だけ(レイアウトを起こさないため)。 */
 .app-backdrop-cell {
+  position: absolute;
+  width: 25vw;
+  height: 25vw;
+  /* ★左上を軸に伸縮する。だからマスの左辺・上辺は動かず、右辺と下辺
+     (＝グリッドの境目)だけが滑っていく。中心を軸にすると、育つときに
+     マスがその場から外へはみ出して見え、グリッドから浮いてしまう。 */
+  transform-origin: 0 0;
+  /* このマスは中身を持たない色面なので、外のレイアウトにも描画にも影響しない。
+     そう宣言しておくと、48枚ぶんの再計算をブラウザが切り詰められる。 */
+  contain: layout paint style;
   transition-duration: 520ms;
   transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
   transition-property: transform, border-radius;
+}
+
+/* ★マスの振る舞いは3種類しかないので、48枚ぶんの calc() を書かずに
+   ここへ畳んである(components/AppBackdrop.tsx の説明を参照)。
+   大きさは アプリ0(ジャーナル) / 1(タスク) / 2(ブリーフ) の順に:
+     a = 1 / 1 / 4   … 左の列で、粗いマスの左上にあたるマス
+     b = 1 / 1 / 0   … 左の列のそれ以外
+     c = 1 / 0 / 0   … 左の列以外
+   下の式は、その3点を上の5区間で繋いだものを展開しただけ。 */
+.bd-a { transform: scale(calc(1 + 3 * var(--u2) - 3 * var(--u3))); }
+.bd-b { transform: scale(calc(1 - var(--u2) + var(--u3))); }
+.bd-c { transform: scale(calc(1 - var(--u1) + var(--u3))); }
+
+/* 角の丸めが動くのは左の列だけ(円 → 左下が角の扇形 → 円)。残りは常に真円で、
+   毎フレームの計算がまるごと要らない。左の列も、実際に違う式は2本しかない
+   ので、変数へ入れて使い回す(4回とも計算し直さない)。 */
+.bd-round { border-radius: 50%; }
+.bd-fan {
+  --rc: calc(50% - 50% * var(--u1) + 50% * var(--u2));
+  --rt: calc(50% + 50% * var(--u1) - 50% * var(--u2));
+  border-radius: var(--rc) var(--rt) var(--rc) var(--rc);
 }
 /* 指で引いている間は、追従を1:1にするためtransitionを切る。 */
 [data-dragging="1"] .app-track,
@@ -174,17 +214,37 @@ button:active {
 /* ロード画面: デザインコード(§5 バウハウス調)の小さな幾何学図形が、
    左から右へ転がって(translate+rotate)横断していく待機アニメーション。
    図形ごとに開始を少しずつ遅らせ、色は定数(BLUE/RUST/GREEN/GOLD)に合わせる。 */
-@keyframes brief-roll {
-  0%   { transform: translateX(-32px) rotate(0deg); opacity: 0; }
-  12%  { opacity: 1; }
-  88%  { opacity: 1; }
-  100% { transform: translateX(232px) rotate(360deg); opacity: 0; }
+/* 読み込み待機画面の2x2グリッド。角の丸め方だけを動かして、円・半円・
+   四半円・正方形を行き来する(背景と同じ語彙)。4マスに開始をずらしてあるので、
+   組み合わせが絶えず変わり続ける。 */
+@keyframes load-cell {
+  0%   { border-radius: 100% 0 0 0; }
+  20%  { border-radius: 0 100% 0 0; }
+  40%  { border-radius: 50%; }
+  60%  { border-radius: 0 0 100% 0; }
+  80%  { border-radius: 0 0 0 100%; }
+  100% { border-radius: 100% 0 0 0; }
 }
-.brief-roll-shape {
-  animation: brief-roll 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+.load-cell {
+  animation: load-cell 3.6s cubic-bezier(0.32, 0.72, 0, 1) infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .brief-roll-shape { animation: none; opacity: 0.9; }
+  .load-cell { animation: none; border-radius: 50%; }
+}
+
+/* タブを切り替えたときの入場。中身がほんの少し下から起き上がる。
+   ★この枠は一時的に新しい重なりコンテキストを作るため、内側にzIndexで
+   前へ出したい要素があるタブ(ブリーフの育成カードのフッター)では、
+   枠自体にzIndexを与えて帯より手前へ出している(AppShell.tsx のコメント)。 */
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: none; }
+}
+.tab-in {
+  animation: tab-in 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-in { animation: none; }
 }
 
 /* 録音中のマイクの脈。声のメモ(VoiceRecorder)の幕で使う。 */

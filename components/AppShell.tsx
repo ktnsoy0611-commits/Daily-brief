@@ -17,27 +17,26 @@ import { StockTab } from "@/components/tabs/StockTab";
 import { InboxView } from "@/components/tabs/InboxView";
 import { TasksTab } from "@/components/tabs/TasksTab";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
-import { BG, BLUE, GOLD, GREEN, HEADER_CHIP_SIZE, INK, MUTED, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
 import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId } from "@/lib/types";
 
-// 読み込み待機画面。デザインコード(§5)の幾何学図形が左から右へ転がって
-// 横断する(globals.cssの brief-roll)。図形ごとに開始を少しずつ遅らせて、
-// 円・正方形・三角・長方形が続いて流れる。
+// 読み込み待機画面。2x2のグリッドの中で、黒い幾何学が次々に切り替わる
+// (globals.css の load-cell)。背景と同じ語彙で、角の丸め方だけを動かして
+// 円・半円・四半円・正方形を行き来する。文字は出さない。
+// 4マスに少しずつ開始をずらしてあるので、組み合わせが絶えず変わり続ける。
+const LOAD_CELL = 46;
 function LoadingScreen() {
-  const base: React.CSSProperties = { position: "absolute", top: "50%", left: 0, willChange: "transform" };
   return (
-    <div style={{ height: "100svh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, fontFamily: SANS }}>
-      <div style={{ position: "relative", width: 200, height: 34, overflow: "hidden" }}>
-        <span className="brief-roll-shape" style={{ ...base, marginTop: -10, width: 20, height: 20, borderRadius: "50%", background: RUST, animationDelay: "0s" }} />
-        <span className="brief-roll-shape" style={{ ...base, marginTop: -10, width: 20, height: 20, background: BLUE, animationDelay: "0.6s" }} />
-        <span className="brief-roll-shape" style={{ ...base, marginTop: -9, width: 0, height: 0, borderLeft: "10px solid transparent", borderRight: "10px solid transparent", borderBottom: `18px solid ${GOLD}`, animationDelay: "1.2s" }} />
-        <span className="brief-roll-shape" style={{ ...base, marginTop: -6, width: 24, height: 12, borderRadius: 2, background: GREEN, animationDelay: "1.8s" }} />
+    <div style={{ height: "100svh", background: BG, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(2, ${LOAD_CELL}px)`, gridTemplateRows: `repeat(2, ${LOAD_CELL}px)` }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="load-cell" style={{ background: INK, animationDelay: `${i * 0.45}s` }} />
+        ))}
       </div>
-      <div style={{ color: MUTED, fontSize: 12, letterSpacing: "0.08em" }}>読み込んでいます…</div>
     </div>
   );
 }
@@ -47,6 +46,19 @@ function LoadingScreen() {
 // components/Dashboard.tsx / globals.css と揃えること。
 const DASH_SHEET_RATIO = 0.84;
 const DASH_MS = 340;
+
+// ★一周ループのための折り返し量(列の幅の倍数)。
+// 列 j は本来トラックの j 番目に居るが、いまの通し番号 pos から見て
+// 「いちばん近い、同じ余りの位置」へ置き直す。たとえば pos が末尾(2)のとき、
+// 先頭の列(0)は右隣(位置3)へ回り込む。これで列を増やさずに、どちらの向きへ
+// 払っても必ず隣に列がいる状態が作れる。
+function wrapOf(j: number, pos: number): number {
+  const n = APPS.length;
+  const cur = ((pos % n) + n) % n;
+  // -1(左隣) / 0(自分) / 1(右隣) のどれか。
+  const d = ((j - cur + n + 1) % n) - 1;
+  return pos + d - j;
+}
 
 function Toast({ text }: { text: string }) {
   return (
@@ -68,6 +80,8 @@ interface AppColumnProps {
   tab: TabId;
   active: boolean;
   mounted: boolean;
+  /** 一周ループのための折り返し量(列の幅の倍数)。0なら本来の場所。 */
+  wrap: number;
   memoryMode: boolean;
   tabProps: TabProps;
   appState: AppState;
@@ -82,10 +96,19 @@ interface AppColumnProps {
   held: React.MutableRefObject<boolean>;
 }
 
-const AppColumn = memo(function AppColumn({ a, tab, active, mounted, memoryMode, tabProps, appState, persist, showToast, goTab, onNavPointerDown, onWrite, beginHold, endHold, navDragged, held }: AppColumnProps) {
+const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, appState, persist, showToast, goTab, onNavPointerDown, onWrite, beginHold, endHold, navDragged, held }: AppColumnProps) {
   const scrollLocked = tab === "brief";
   return (
-        <div style={{ position: "relative", isolation: "isolate", width: `${100 / APPS.length}%`, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden" }}>
+        <div style={{
+          position: "relative", isolation: "isolate", width: `${100 / APPS.length}%`, height: "100%",
+          display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden",
+          // ★一周ループのための折り返し。列は本来トラックの中の自分の場所に
+          // 並んでいるが、通し番号が端を越えたときは、この列を1周ぶん(±300%)
+          // ずらして反対側へ回り込ませる。こうすると、どちらの向きへ払っても
+          // 必ず隣に列がいる状態を、列を増やさずに作れる。値が変わるのは
+          // アプリが切り替わった瞬間だけなので、ドラッグ中は静止している。
+          transform: wrap ? `translateX(${wrap * 100}%)` : undefined,
+        }}>
           {/* 背景はここではなくシェル直下に1枚だけ置いてある(3アプリを貫く
               一続きの帆布にするため)。列は透明で、その帆布が透けて見える。 */}
           <div data-tab-scroll-root style={{
@@ -111,17 +134,22 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, memoryMode,
                 scrollTopを操作していたため、実際にスクロールしていたのが
                 外側だったこの状態では効かず、「直したはずなのに直って
                 いない」という不具合の実際の原因になっていた。 */}
-            {/* animation(tab-in)は廃止した。opacityを0→1でアニメーションする
-                要素はCSS仕様上その間(場合によってはアニメーション終了後も
-                実機Safariでは)新しい重なりコンテキストを作ってしまい、この
-                内側にあるzIndexを持つ要素(実行タブの確定バインド！ボタン、
-                ブリーフの育成カードのフッター等)が、外側にあるnav手前の
-                グラデーション(zIndex:15)より手前に出せなくなる不具合の
-                原因になっていた(zIndexは同じ重なりコンテキストの中でしか
-                比較されないため)。フェードインの見た目より、フローティング
-                ボタンが常に正しく最前面に出ることを優先する。 */}
+            {/* ★タブを切り替えたときの入場アニメーション(globals.css の
+                tab-in)。以前これを廃止したのは、opacity/transformを
+                アニメーションする要素が新しい重なりコンテキストを作り、
+                内側のzIndexを持つ要素(ブリーフの育成カードのフッター、
+                zIndex:26)が、外側のnav手前の帯(zIndex:15)より手前に
+                出せなくなったため。
+                いまは**そのフッターを持つブリーフタブだけ**、この枠自体に
+                zIndex:16を与えて帯より手前へ出している。ブリーフは中身を
+                スクロールしない(scrollLocked)ので、帯のぼかしが効かなく
+                なっても失うものが無い。他のタブは枠にzIndexを付けないため、
+                従来どおり帯の下に潜り、ぼかしが正しく効く。 */}
             {mounted && (
-              <div key={tab} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+              <div key={tab} className="tab-in" style={{
+                display: "flex", flexDirection: "column", flex: 1, minHeight: 0,
+                ...(scrollLocked ? { position: "relative" as const, zIndex: 16 } : null),
+              }}>
                 {tab === "brief" && <BriefTab {...tabProps} />}
                 {tab === "stock" && <StockTab {...tabProps} />}
                 {tab === "goals" && <GoalsTab {...tabProps} />}
@@ -205,11 +233,25 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, memoryMode,
               }}
             >
               <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: 6, marginBottom: NAV_BOTTOM_GAP }}>
+                {/* ★選択中の印。以前は各ボタンの背景を出し入れしていたので、
+                    タブを変えると黒い枠が「消えて別の場所に現れる」だけだった。
+                    1枚だけ置いて隣のタブへ**滑らせる**ようにしてある。
+                    ボタンより先に描かれるよう、ボタン側に zIndex:1 を与えて
+                    アイコンと文字がこの印の上に乗るようにしている。 */}
+                <div aria-hidden style={{
+                  position: "absolute", top: 6, bottom: 6, left: 6,
+                  width: `calc((100% - 12px) / ${a.tabs.length})`,
+                  transform: `translateX(${Math.max(0, a.tabs.findIndex((t) => t.id === tab)) * 100}%)`,
+                  transition: "transform 320ms cubic-bezier(0.32, 0.72, 0, 1)",
+                  display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
+                }}>
+                  <div style={{ width: 44, height: 28, borderRadius: 14, background: INK }} />
+                </div>
                 {a.tabs.map((t) => {
                   const active = tab === t.id;
                   return (
-                    <button key={t.id} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                      <div style={{ width: 44, height: 28, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: active ? INK : "transparent", transition: "background 0.2s" }}>
+                    <button key={t.id} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                      <div style={{ width: 44, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(26,26,24,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
                       </div>
                       <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(26,26,24,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
@@ -245,7 +287,22 @@ export function AppShell() {
   // ★いま開いているアプリ(タスク / 今のアプリ / ジャーナル)。タブバーの上を
   // 左右にスワイプすると APPS の順に循環して切り替わる。アプリごとに最後に
   // 見ていたタブを覚えておき、戻ってきたときそこへ帰れるようにする。
-  const [appId, setAppId] = useState<AppId>("life");
+  // ★いま何番目にいるかは、0〜2に丸めない**通し番号**で持つ。右端からさらに
+  // 右へ払うと3, 4… と増え、左へ払うと -1, -2… と減る。丸めてしまうと端で
+  // 位置が飛んでしまい、一周ループのアニメーションが繋がらない。
+  // 実際のアプリは pos を3で割った余りで決まる(下の appId)。
+  const [pos, setPos] = useState(() => APPS.findIndex((a) => a.id === "life"));
+  const appId = APPS[((pos % APPS.length) + APPS.length) % APPS.length].id;
+  const setAppId = useCallback((id: AppId) => {
+    setPos((prev) => {
+      const cur = ((prev % APPS.length) + APPS.length) % APPS.length;
+      const next = APPS.findIndex((a) => a.id === id);
+      if (next < 0 || next === cur) return prev;
+      // いまの通し番号から、いちばん近い同じ余りの位置へ動かす。
+      const d = ((next - cur + APPS.length + 1) % APPS.length) - 1;
+      return prev + (d === 0 ? APPS.length : d);
+    });
+  }, []);
   const [tabByApp, setTabByApp] = useState<Record<AppId, TabId>>({ ...DEFAULT_TAB });
   // ★ダッシュボード(画面下から引き上げる引き出し)。3つのアプリのどこからでも
   // 開ける共通のUIなので、タブではなくここに持つ。
@@ -270,21 +327,22 @@ export function AppShell() {
   }, [setDashVar]);
   // ジェスチャーのハンドラはwindowへ張る都合で作り直したくない(useCallbackの
   // 依存を空にしてある)ため、いま何番目のアプリかはrefで読む。
-  const appIndex = Math.max(0, APPS.findIndex((a) => a.id === appId));
-  const appIndexRef = useRef(appIndex);
-  appIndexRef.current = appIndex;
+  const posRef = useRef(pos);
+  posRef.current = pos;
   const shellRef = useRef<HTMLDivElement>(null);
-  // ★横スライドの位置もCSS変数で持つ。--app-offset は appId が変わったときだけ、
+  // ★横スライドの位置もCSS変数で持つ。--app-offset は通し番号が変わったときだけ、
   // --drag は指が動いている間だけ書く(どちらもReactのレンダーを起こさない)。
-  const setAppOffsetVar = useCallback((index: number) => {
+  // トラックの位置は通し番号(丸めない)から、背景の進み具合はそれを3で
+  // 割った余り(丸める)から決まる。★背景の補間は -1〜4 の範囲しか覆って
+  // いないので(globals.css の .app-backdrop-grid)、--appi は丸めた値を
+  // 使う。丸めても図形は同じなので、見た目は変わらない。
+  const normPos = useCallback((p: number) => ((p % APPS.length) + APPS.length) % APPS.length, []);
+  const setTrackVars = useCallback((p: number, appi: number) => {
     const root = document.documentElement;
-    root.style.setProperty("--app-offset", `${(-index * 100) / APPS.length}%`);
-    // 背景のグリッドは動かず、図形がその場で次の形へ変形する。その進み
-    // 具合はこの番号と下の --dragn だけで決まる(globals.css の
-    // .app-backdrop-grid 参照)。
-    root.style.setProperty("--appi", String(index));
+    root.style.setProperty("--app-offset", `${(-p * 100) / APPS.length}%`);
+    root.style.setProperty("--appi", String(appi));
   }, []);
-  useEffect(() => { setAppOffsetVar(appIndex); }, [appIndex, setAppOffsetVar]);
+  useEffect(() => { setTrackVars(pos, normPos(pos)); }, [pos, setTrackVars, normPos]);
   const setDragVar = useCallback((px: number, dragging: boolean) => {
     const root = document.documentElement;
     root.style.setProperty("--drag", `${px}px`);
@@ -468,7 +526,7 @@ export function AppShell() {
     const owner = APPS.find((a) => a.tabs.some((t) => t.id === id));
     setAppId(owner?.id ?? "life");
     setTabByApp((prev) => ({ ...prev, [owner?.id ?? "life"]: id }));
-  }, []);
+  }, [setAppId]);
   // ★タブバーのジェスチャー。横に払えばアプリの切り替え、上へ引き上げれば
   // ダッシュボード。最初の10pxでどちらの軸かを決め、決まった軸だけを見る
   // (斜めの動きで両方が中途半端に反応するのを防ぐ)。指を離すまでに一度でも
@@ -511,10 +569,12 @@ export function AppShell() {
   const onNavPointerDown = useCallback((e: ReactPointerEvent) => {
     const COMMIT_RATIO = 0.18;   // 横: 画面幅のこの割合を超えたら隣へ送る
     const FLICK_PX_PER_MS = 0.5; // 短く速く払ったときは距離が足りなくても送る
-    const EDGE_RESIST = 0.32;    // 端でのゴムの効き
     const width = window.innerWidth || 390;
     navPressRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
     navDraggedRef.current = false;
+    // 背景の補間は 0〜3 の3区間しか持たない(性能のため最小限にしてある)。
+    // 横へ払う向きが決まった瞬間に、--p がその範囲へ収まる基準を選ぶ。
+    let baseAppi = normPos(posRef.current);
     // 速度の見積り用に直近の位置と時刻を持つ。
     let lastX = e.clientX;
     let lastY = e.clientY;
@@ -559,12 +619,16 @@ export function AppShell() {
         navDraggedRef.current = true;
         // 縦だと決まった瞬間にダッシュボードを用意する(1回だけのstate更新)。
         if (pr.axis === "y") setDashMounted(true);
+        if (pr.axis === "x") {
+          // 左へ払うと --p は増える(0〜2 が基準でよい)。右へ払うと減るので、
+          // 先頭に居るときだけ1周ぶん先(3)を基準にして 0 を下回らないようにする。
+          baseAppi = dx > 0 && baseAppi === 0 ? APPS.length : baseAppi;
+          setTrackVars(posRef.current, baseAppi);
+        }
       }
       if (pr.axis === "x") {
-        // 隣が無い向き(端)へは、ゴムのように抵抗させる。
-        const i = appIndexRef.current;
-        const atEdge = (dx > 0 && i === 0) || (dx < 0 && i === APPS.length - 1);
-        schedule(() => setDragVar(atEdge ? dx * EDGE_RESIST : dx, true));
+        // 一周ループするので、どちらの向きにも必ず隣がいる(端のゴムは無い)。
+        schedule(() => setDragVar(dx, true));
         return;
       }
       // 縦: 引き上げた量をそのまま開き具合にする(1対1)。シートの上端が
@@ -590,17 +654,18 @@ export function AppShell() {
       // 速さで送るのは、指の向きと払った向きが一致しているときだけ。
       const flick = Math.abs(vx) >= FLICK_PX_PER_MS && Math.sign(vx) === Math.sign(dx);
       if (!far && !flick) return;
-      const i = appIndexRef.current;
-      const next = dx < 0 ? i + 1 : i - 1;
-      if (next < 0 || next >= APPS.length) return;
+      // 通し番号を素直に±1する。丸めないので端が無く、そのまま一周する。
+      const step = dx < 0 ? 1 : -1;
+      const next = posRef.current + step;
       haptic(10);
       // ★--drag(0へ)と--app-offset(隣のアプリへ)は必ず同じ同期の書き込みで
       // 揃える。offsetをReactのuseEffect任せにすると、「dragは0に戻ったが
       // offsetはまだ元のアプリ」という中途半端な状態が1フレーム描かれ得る
       // (＝一瞬だけ元の画面へ戻ってから隣へ動く)。
-      setAppOffsetVar(next);
-      setAppId(APPS[next].id);
-      mountApp(APPS[next].id);
+      setTrackVars(next, baseAppi + step);
+      posRef.current = next;
+      setPos(next);
+      mountApp(APPS[((next % APPS.length) + APPS.length) % APPS.length].id);
     }
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -611,7 +676,7 @@ export function AppShell() {
     // なっていた(pointerupが来ないので settleDash が呼ばれないため)。
     // 取り上げられたら必ず閉じ切る。
     window.addEventListener("pointercancel", cancel);
-  }, [setDragVar, setDashVar, settleDash, mountApp, setAppOffsetVar]);
+  }, [setDragVar, setDashVar, settleDash, mountApp, setTrackVars, normPos]);
   // トースト。他のコールバックが依存するので先に定義しておく。
   const showToast = useCallback((msg: string) => { setToast(msg); window.setTimeout(() => setToast(""), 1600); }, []);
   const toggleItemSelection = useCallback((id: string) => {
@@ -829,9 +894,9 @@ export function AppShell() {
       // 単位にして、外へ抜け落ちないようにする。
       background: BG, position: "relative", isolation: "isolate",
     }}>
-      {/* ★背景は3アプリぶんを貫く1枚の帆布。列の中ではなくここ(シェル直下)に
-          1つだけ置き、トラックより少し速く動かす。だからアプリを移るとき
-          背景は途切れずに流れ、境目をまたぐ図形はそのまま隣の画面へ続く。 */}
+      {/* ★背景は3アプリ共通の1枚のグリッド。列の中ではなくここ(シェル直下)に
+          1つだけ置く。グリッド自体は動かず、アプリを移ると各マスの大きさが
+          変わって図形が切り替わる。 */}
       <AppBackdrop />
       {/* ★3アプリを横一列に並べたトラック。タブバーも中身も、この1枚が
           まとめて動く(=「タブバーごとスワイプされる」)。各列が自分の
@@ -843,13 +908,14 @@ export function AppShell() {
       <div className="app-track" style={{
         position: "absolute", inset: 0, display: "flex", width: `${APPS.length * 100}%`,
       }}>
-      {APPS.map((a) => (
+      {APPS.map((a, j) => (
         <AppColumn
           key={a.id}
           a={a}
           tab={tabByApp[a.id]}
           active={a.id === appId}
           mounted={mountedApps.includes(a.id)}
+          wrap={wrapOf(j, pos)}
           memoryMode={storageMode === "memory"}
           tabProps={tabProps}
           appState={appState}

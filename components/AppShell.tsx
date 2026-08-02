@@ -86,10 +86,8 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, memoryMode,
   const scrollLocked = tab === "brief";
   return (
         <div style={{ position: "relative", isolation: "isolate", width: `${100 / APPS.length}%`, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden" }}>
-          {/* 背景(帯+図形)は列の中に置く。列は幅ちょうど1画面・overflow:hidden
-              なので、はみ出した図形の切り取り線は必ず画面の端と一致する
-              (=スワイプ中に画面の途中で図形が切れて見えない)。 */}
-          <AppBackdrop symbol={a.symbol} />
+          {/* 背景はここではなくシェル直下に1枚だけ置いてある(3アプリを貫く
+              一続きの帆布にするため)。列は透明で、その帆布が透けて見える。 */}
           <div data-tab-scroll-root style={{
             width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
             overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
@@ -266,12 +264,21 @@ export function AppShell() {
   // ★横スライドの位置もCSS変数で持つ。--app-offset は appId が変わったときだけ、
   // --drag は指が動いている間だけ書く(どちらもReactのレンダーを起こさない)。
   const setAppOffsetVar = useCallback((index: number) => {
-    document.documentElement.style.setProperty("--app-offset", `${(-index * 100) / APPS.length}%`);
+    const root = document.documentElement;
+    root.style.setProperty("--app-offset", `${(-index * 100) / APPS.length}%`);
+    // 背景のグリッドは動かず、図形がその場で次の形へ変形する。その進み
+    // 具合はこの番号と下の --dragn だけで決まる(globals.css の
+    // .app-backdrop-grid 参照)。
+    root.style.setProperty("--appi", String(index));
   }, []);
   useEffect(() => { setAppOffsetVar(appIndex); }, [appIndex, setAppOffsetVar]);
   const setDragVar = useCallback((px: number, dragging: boolean) => {
     const root = document.documentElement;
     root.style.setProperty("--drag", `${px}px`);
+    // 背景のモーフィング用に、画面幅で割った無次元の値も一緒に書く。
+    // CSSのcalc()は「長さ ÷ 長さ」ができないので、割り算はここで済ませる
+    // (書くのはこの1回だけで、毎フレームの計算はしていない)。
+    root.style.setProperty("--dragn", String(px / (window.innerWidth || 390)));
     root.dataset.dragging = dragging ? "1" : "0";
   }, []);
   const [showProfile, setShowProfile] = useState(false);
@@ -805,10 +812,14 @@ export function AppShell() {
     <div ref={shellRef} style={{
       height: "100svh", overflow: "hidden",
       fontFamily: SANS, color: INK,
-      // ★地の色は3アプリとも同じ(BG=ほんとに薄いグレー)。アプリの違いは
-      // 背景に置いた大きな図形ひとつ(AppBackdrop)だけで伝える。
-      background: BG, position: "relative",
+      // 背景(AppBackdrop)はzIndex:-1で敷くので、シェルを独立した重なりの
+      // 単位にして、外へ抜け落ちないようにする。
+      background: BG, position: "relative", isolation: "isolate",
     }}>
+      {/* ★背景は3アプリぶんを貫く1枚の帆布。列の中ではなくここ(シェル直下)に
+          1つだけ置き、トラックより少し速く動かす。だからアプリを移るとき
+          背景は途切れずに流れ、境目をまたぐ図形はそのまま隣の画面へ続く。 */}
+      <AppBackdrop />
       {/* ★3アプリを横一列に並べたトラック。タブバーも中身も、この1枚が
           まとめて動く(=「タブバーごとスワイプされる」)。各列が自分の
           スクロールルートと自分のタブバーを持つので、タブの数が3/4/2と

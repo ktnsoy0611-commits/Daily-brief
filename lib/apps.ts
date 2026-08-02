@@ -1,6 +1,5 @@
 import { BookOpen, CalendarCheck, CheckSquare, Heart, Inbox, Map as MapIcon, Newspaper, PenLine, Sprout } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
-import type { PlaneShape } from "@/components/Binder";
 import type { AppId, TabId } from "./types";
 
 // ★3つのアプリの定義。タブバーの上を左右にスワイプすると、この配列の順に
@@ -8,9 +7,8 @@ import type { AppId, TabId } from "./types";
 // 真ん中に置いてあるので、タスク・ジャーナルのどちらへも1回で行ける。
 //
 // 3アプリはデザイン言語(PAPER/INK/影/角丸/カードの語彙)も**地の色(BG)**も
-// すべて共有する。違うのは、背景に置いた大きな図形ひとつ(symbol)と中身だけ。
-// 以前はアプリごとに地の色を変えていたが、ネオバウハウス化(2026-08-02)で
-// 地はほんとに薄いグレー1色へ統一し、識別は図形が担うことにした。
+// すべて共有する。背景(components/AppBackdrop.tsx)は下の BACKDROP_MODE で
+// アプリごとの「並べ方」だけを切り替える。
 
 export type TabIcon = ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }>;
 
@@ -20,46 +18,9 @@ export interface AppTabDef {
   Icon: TabIcon;
 }
 
-// ★背景の構図。バインダーの表紙の中でも **geo(バショ)の grid2x2**
-// (components/Binder.tsx)と同じ文法にしてある:
-//
-//   正方形のブロックを真の2x2の正方形セルに割り、
-//   セルごとに明度の段と、三角・円・扇形(四半円)・半円をひとつ置く
-//
-// 図形の語彙は Binder.tsx の PlaneShape をそのまま使い、新しい形は
-// 増やさない。バインダーは色相を持つがこちらはグレーの明度差だけで、
-// 地に溶ける透かしとして敷く。
-//
-// アプリの識別は「ブロックの位置(上/中央/下)」と「セルの組み方」が担う。
-// 色では区別しない——ユーザー指定。
-// 明度の段。SHADE を基準に shade() で振る(AppBackdrop)。地(BG)との差が
-// 小さい淡いグレーの範囲に収め、透かしとして読ませる。
-export type AppTone = "pale" | "mid" | "deep";
-
-export interface AppCell {
-  // セルの下地。
-  bg: AppTone;
-  // セルいっぱいに敷く図形と、その色。null なら下地だけの色面
-  // (バインダーの units 構図が「図形入りのセル」と「無地の色面」を
-  // 混ぜているのと同じ。全セルを図形で埋める必要はない)。
-  shape: PlaneShape | null;
-  fg?: AppTone;
-}
-
-export interface AppSymbol {
-  // 正方形のブロックを画面のどこに置くか。バインダーで「帯の位置」が
-  // 種別の印だったのと同じ役割を、ここではブロックの位置が担う。
-  anchor: "top" | "center" | "bottom";
-  // 2x2 のグリッド。左上・右上・左下・右下の順。null は下地のまま
-  // (＝グリッドに穴を空ける)。ブロックは画面幅ちょうどなので、各セルは
-  // 常に「画面幅の半分」を1辺とする真の正方形になる。
-  cells: (AppCell | null)[];
-}
-
 export interface AppDef {
   id: AppId;
   label: string;
-  symbol: AppSymbol;
   tabs: AppTabDef[];
 }
 
@@ -67,17 +28,6 @@ export const APPS: AppDef[] = [
   {
     id: "tasks",
     label: "タスク",
-    // 上に寄せたブロック。角のある図形(三角・扇形)を主にして、下2つの
-    // アプリと図形の系統でも見分けられるようにしている。
-    symbol: {
-      anchor: "top",
-      cells: [
-        { bg: "mid", shape: "quarterBR", fg: "deep" },
-        { bg: "pale", shape: "triangleDown", fg: "mid" },
-        null,
-        { bg: "deep", shape: "circle", fg: "pale" },
-      ],
-    },
     tabs: [
       { id: "tasks-inbox", label: "インボックス", Icon: Inbox },
       { id: "tasks-today", label: "今日", Icon: CheckSquare },
@@ -87,16 +37,6 @@ export const APPS: AppDef[] = [
   {
     id: "life",
     label: "ブリーフ",
-    // 画面の中央に据えたブロック。円系(円・半円)を主にする。
-    symbol: {
-      anchor: "center",
-      cells: [
-        { bg: "pale", shape: "circle", fg: "deep" },
-        { bg: "deep", shape: null },
-        { bg: "mid", shape: "semicircleDown", fg: "pale" },
-        { bg: "pale", shape: "quarterTL", fg: "mid" },
-      ],
-    },
     tabs: [
       { id: "brief", label: "ブリーフ", Icon: Newspaper },
       { id: "goals", label: "ゴール", Icon: Sprout },
@@ -107,17 +47,6 @@ export const APPS: AppDef[] = [
   {
     id: "journal",
     label: "ジャーナル",
-    // 下に寄せたブロック。扇形(四半円)を主にする。下段はタブバーに
-    // 重なるので、読ませたい図形は上段に置いてある。
-    symbol: {
-      anchor: "bottom",
-      cells: [
-        { bg: "deep", shape: "quarterTR", fg: "pale" },
-        { bg: "mid", shape: "triangleUp", fg: "deep" },
-        { bg: "pale", shape: "quarterBL", fg: "mid" },
-        null,
-      ],
-    },
     tabs: [
       { id: "journal-today", label: "今日", Icon: PenLine },
       { id: "journal-archive", label: "アーカイブ", Icon: BookOpen },
@@ -126,6 +55,26 @@ export const APPS: AppDef[] = [
 ];
 
 export const appDef = (id: AppId): AppDef => APPS.find((a) => a.id === id) ?? APPS[1];
+
+// ---- 背景の並べ方 -------------------------------------------------------
+// 実際の寸法・座標の計算は components/AppBackdrop.tsx。ここは「どのアプリが
+// どの並べ方か」だけを持つ。
+//
+//   merged  … 画面幅いっぱいを1辺とする正方形のグリッドを画面中心から
+//             上下へ展開し、その各マスに内接する正円を置く(上下ははみ出す)。
+//   leftFans… 上のグリッドをさらに四分割した細かいグリッドで、画面左の
+//             一列だけに「左下が角の扇形」を置く。他のマスは空。
+//   dots    … leftFans と同じ細かいグリッドの、すべてのマスに円を置く。
+//
+// 3つは同じ土台(細かいグリッドのマス)を共有していて、merged はそのマスが
+// 4倍に育って重なり合った結果として大きな円になる。だからアプリを移るときは
+// 「グリッドが細かく割れる/大きくまとまる」という一続きの動きになる。
+export type BackdropMode = "merged" | "leftFans" | "dots";
+export const BACKDROP_MODE: Record<AppId, BackdropMode> = {
+  tasks: "leftFans",
+  life: "merged",
+  journal: "dots",
+};
 
 // 左右スワイプでの循環。dir=1で右隣、-1で左隣。端は反対の端へ回る。
 export function cycleApp(id: AppId, dir: 1 | -1): AppId {

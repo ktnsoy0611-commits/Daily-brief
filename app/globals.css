@@ -57,15 +57,32 @@ body {
   transform: translateX(calc(var(--app-offset, 0%) + var(--drag, 0px)));
   transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1);
 }
-/* 背景の帯と図形は、中身よりわずかに遅れて動いて奥行きを出す。列の中に
-   置いてあるので、はみ出しても切り取り線は必ず画面の端と一致する。 */
-.app-backdrop-inner {
-  transform: translateX(calc(var(--drag, 0px) * -0.16));
-  transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1);
+/* ★背景のグリッドは3アプリで共有していて動かない。アプリを移るときは
+   各セルの図形が「その場で次の形へ変形する」。進み具合は、指の動きから
+   作った連続値ひとつ(--p)だけで決まる:
+     --appi  … いま何番目のアプリか(整数)。AppShellが書く。
+     --dragn … 指の移動量 ÷ 画面幅(符号は左へ払うと負)。AppShellが書く。
+     --p     … その2つを足した小数。0=タスク 1=ブリーフ 2=ジャーナル。
+     --t1/--t2 … 隣り合うアプリ間の進み具合(0〜1)。
+   各図形の top/left/width/height/border-radius は、この2つを使った1本の
+   calc() で書いてある(components/AppBackdrop.tsx)。JSは毎フレーム何も
+   計算せず、CSS変数を書くだけ。 */
+.app-backdrop-grid {
+  --p: calc(var(--appi, 1) - var(--dragn, 0));
+  --t1: clamp(0, var(--p), 1);
+  --t2: clamp(0, calc(var(--p) - 1), 1);
+}
+/* 指を離した瞬間は --p が目的地へ飛ぶので、ここでトラックのスライドと
+   同じ時間・同じイージングで追いつかせる。動かすのは transform と
+   border-radius だけ(レイアウトを起こさないため)。 */
+.app-backdrop-cell {
+  transition-duration: 520ms;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  transition-property: transform, border-radius;
 }
 /* 指で引いている間は、追従を1:1にするためtransitionを切る。 */
 [data-dragging="1"] .app-track,
-[data-dragging="1"] .app-backdrop-inner { transition: none; }
+[data-dragging="1"] .app-backdrop-cell { transition: none; }
 
 /* ダッシュボードを引き上げている間は、本物のタブバーを消して
    portal側のモーフ用ピルへ役目を渡す(見た目が同一の位置で入れ替わる)。 */

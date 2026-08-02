@@ -124,7 +124,11 @@ const PLANE_SHAPES: PlaneShape[] = [...ROUND_SHAPES, "triangleUp", "triangleDown
 // グリッドの最小単位。高さを常に100%(＝帯の高さ、または親の正方形
 // ブロックの1辺)にし、aspect-ratio:1/1で幅を追従させることで、帯や
 // ブロックが横長でも真の正方形になる。円系の図形はこの中でのみ使う。
-function SquareCell({ shape, color }: { shape: PlaneShape; color: string }) {
+// exportしているのは、アプリの背景(components/AppBackdrop.tsx)がこの
+// グリッドの最小単位をそのまま流用するため。似せて再実装すると比率や
+// 挙動がじわじわズレて「デザインコードを破っている」状態になるので、
+// 実体を共有する。
+export function SquareCell({ shape, color }: { shape: PlaneShape; color: string }) {
   return (
     <div style={{ position: "relative", height: "100%", aspectRatio: "1 / 1", flexShrink: 0, overflow: "hidden" }}>
       <PlaneFill shape={shape} color={color} />

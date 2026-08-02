@@ -214,9 +214,13 @@ export function InboxView({ appState, persist, showToast }: {
     if (c) Object.assign(c, p);
     persist(next);
   };
+  const remember = (next: AppState, id: string) => {
+    next.profile.handledInbox = Array.from(new Set([...(next.profile.handledInbox ?? []), id])).slice(-500);
+  };
   const drop = (id: string) => {
     const next = structuredClone(appState);
     next.inbox = next.inbox.filter((x) => x.id !== id);
+    remember(next, id);
     persist(next);
     setOpenId(null);
   };
@@ -244,6 +248,7 @@ export function InboxView({ appState, persist, showToast }: {
       });
     }
     next.inbox = next.inbox.filter((x) => x.id !== c.id);
+    remember(next, c.id);
     persist(next);
     setOpenId(null);
     showToast(`${KIND_LABEL[c.kind]}に登録しました`);

@@ -130,6 +130,9 @@ export interface Profile {
   // これらを二度と好み/興味へ復活させないための除外リスト(tombstone)。
   // 同じラベルを手動で追加し直すと解除される。
   dismissedInterests?: string[];
+  // インボックスで承認・却下した候補のid。Coworkが同じ候補を書き続けても
+  // 二度と戻ってこないようにするための覚え書き。
+  handledInbox?: string[];
   // ユーザーが設定画面で削除した情報源URL(Coworkが発掘してプールに入れたもの
   // を含む)。生成の巡回対象から外し、次の更新でプールからも除く。
   dismissedSources?: string[];

@@ -21,7 +21,7 @@ import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
-import type { AppId, AppState, ItemDomain, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId } from "@/lib/types";
+import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId } from "@/lib/types";
 
 // 読み込み待機画面。デザインコード(§5)の幾何学図形が左から右へ転がって
 // 横断する(globals.cssの brief-roll)。図形ごとに開始を少しずつ遅らせて、
@@ -192,6 +192,32 @@ export function AppShell() {
       }
     }).catch(() => {});
   }, [appState, persist]);
+  // ★夜間のCoworkが my-brain へ書いた「インボックスの候補」と「その日の
+  // ジャーナル」を、起動時に1回だけ取り込む。既に持っているid・承認済み/
+  // 却下済みのものは無視する(同じ候補が何度も戻ってこないように)。
+  const pulledInboxRef = useRef(false);
+  useEffect(() => {
+    if (!appState || pulledInboxRef.current) return;
+    pulledInboxRef.current = true;
+    fetch("/api/mybrain/inbox").then((r) => r.json()).then((data) => {
+      if (!data?.ok) return;
+      const cands: InboxCandidate[] = Array.isArray(data.candidates) ? data.candidates : [];
+      const entries: JournalEntry[] = Array.isArray(data.journal) ? data.journal : [];
+      if (cands.length === 0 && entries.length === 0) return;
+      const next = structuredClone(appState);
+      next.inbox = next.inbox ?? [];
+      next.journal = next.journal ?? [];
+      const seenCand = new Set([...next.inbox.map((c) => c.id), ...(next.profile.handledInbox ?? [])]);
+      const seenEntry = new Set(next.journal.map((e) => e.id));
+      const addedC = cands.filter((c) => c.id && !seenCand.has(c.id));
+      const addedE = entries.filter((e) => !seenEntry.has(e.id));
+      if (addedC.length === 0 && addedE.length === 0) return;
+      next.inbox = [...addedC, ...next.inbox];
+      next.journal = [...addedE, ...next.journal];
+      persist(next);
+    }).catch(() => {});
+  }, [appState, persist]);
+
   const goTab = useCallback((id: TabId) => {
     // どのアプリのタブかは APPS の定義から引く(他アプリのタブを指定された
     // 場合はそのアプリごと切り替わる)。

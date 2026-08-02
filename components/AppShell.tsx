@@ -151,11 +151,24 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, memoryMode,
           別レイヤー(zIndex=15)に分離している。バインド！系のボタンは
           さらにnavのピルの影の滲みでうっすら覆われて見える不具合もあった
           ため、両方ともnavより高いzIndex=26にして常に手前に出している。 */}
-          {/* グラデーションの高さを44pxから26pxへ縮め、上端をnavに近い
-              位置(=下)へ寄せた。以前の44pxは表示領域を必要以上に狭めて
-              いた、という指摘によるもの。 */}
+          {/* ★以前ここは「透明→BGへのグラデーション」で、タブバーの手前を
+              **不透明なBGで塗りつぶして**いた。背景が無地だった頃はそれで
+              良かったが、背景が図形のパターンになったいまは、その帯が
+              パターンを横一直線に切り取ってしまい、しかも塗る色(BG)が背景の
+              地の色と違うため、タブバーの上に継ぎ目がはっきり出ていた
+              (ユーザー報告「タブ周りが背景と干渉している」)。
+              色を塗るのをやめ、**背後をぼかすだけ**に変えた。ぼけるのは
+              その上を流れていくタブの中身で、背景のパターンはそのまま
+              透ける(パターンはこのトラックの外＝背後の別レイヤーにあるため、
+              backdrop-filterの対象に入らない)。マスクで下へ向かって効きを
+              強めているので、境目も出ない。 */}
           <div aria-hidden style={{ position: "sticky", bottom: 0, width: "100%", height: 0, zIndex: 15, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", left: 0, right: 0, top: -26, bottom: 0, background: `linear-gradient(to bottom, ${BG}00 0, ${BG} 26px, ${BG} 100%)` }} />
+            <div style={{
+              position: "absolute", left: 0, right: 0, top: -44, bottom: 0,
+              backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+              maskImage: "linear-gradient(to bottom, transparent 0, #000 34px)",
+              WebkitMaskImage: "linear-gradient(to bottom, transparent 0, #000 34px)",
+            }} />
           </div>
           {/* ダッシュボードを引き上げている間は、globals.css の
               [data-dash-active="1"] .app-nav がこれを消し、portal側の

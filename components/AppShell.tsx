@@ -24,35 +24,19 @@ import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncCl
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
 import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId } from "@/lib/types";
 
-// 読み込み待機画面。2x2の窓の中を、黒い幾何学が次々に通り過ぎていく
-// (globals.css の load-v / load-h)。背景と同じ考え方で、図形そのものは
-// 変形せず、窓の外へはけて次の図形が外から入ってくる。文字は出さない。
-// マスごとに動く向きと図形の並びをずらしてあるので、組み合わせが
-// 絶えず変わり続ける。
-const LOAD_CELL = 54;
-// 正方形・円・半円(左)・扇形(左下が角)。最後にもう一度先頭を置くと、
-// 一周したところで図形が一致して繋ぎ目が出ない。
-const LOAD_FORMS = ["0", "50%", "100% 0 0 100%", "0 100% 0 0"];
+// 読み込み待機画面。2x2のグリッドの上を、黒い幾何学が動き回る
+// (globals.css の load-rect / load-dot / load-fan)。背景と同じ語彙で、
+// 1マスの中で完結させず、2x1・2x2の長方形へ伸びたり、グリッドを横断して
+// 移動したり、回転したりする。半円は使わない。文字も出さない。
+const LOAD_CELL = 56;
 function LoadingScreen() {
   return (
     <div style={{ height: "100svh", background: BG, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(2, ${LOAD_CELL}px)`, gridTemplateRows: `repeat(2, ${LOAD_CELL}px)` }}>
-        {[0, 1, 2, 3].map((i) => {
-          // マスごとに図形の並びを回す。向きは市松に縦・横。
-          const forms = [...LOAD_FORMS.slice(i), ...LOAD_FORMS.slice(0, i)];
-          const vertical = i === 0 || i === 3;
-          return (
-            <div key={i} className={`load-cell ${vertical ? "lv" : "lh"}`}>
-              <div className="load-strip" style={{ animationDelay: `${i * 0.28}s` }}>
-                {[...forms, forms[0]].map((radius, j) => (
-                  <div key={j} className="load-pane" style={{ [vertical ? "top" : "left"]: `${j * 100}%` }}>
-                    <div style={{ position: "absolute", inset: 6, background: INK, borderRadius: radius }} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+      <div className="load-grid" style={{ width: LOAD_CELL * 2, height: LOAD_CELL * 2, ["--u" as string]: `${LOAD_CELL}px` }}>
+        {/* 重なり順: 円・扇形が下、長方形が上(2x2に伸びたとき全部を覆う)。 */}
+        <div className="load-shape load-dot" style={{ background: INK }} />
+        <div className="load-shape load-fan" style={{ background: INK }} />
+        <div className="load-shape load-rect" style={{ background: INK }} />
       </div>
     </div>
   );
@@ -351,26 +335,17 @@ export function AppShell() {
   const posRef = useRef(pos);
   posRef.current = pos;
   const shellRef = useRef<HTMLDivElement>(null);
-  // ★横スライドの位置もCSS変数で持つ。--app-offset は通し番号が変わったときだけ、
+  // ★横スライドの位置はCSS変数で持つ。--app-offset は通し番号が変わったときだけ、
   // --drag は指が動いている間だけ書く(どちらもReactのレンダーを起こさない)。
-  // トラックの位置は通し番号(丸めない)から、背景の進み具合はそれを3で
-  // 割った余り(丸める)から決まる。★背景の補間は -1〜4 の範囲しか覆って
-  // いないので(globals.css の .app-backdrop-grid)、--appi は丸めた値を
-  // 使う。丸めても図形は同じなので、見た目は変わらない。
-  const normPos = useCallback((p: number) => ((p % APPS.length) + APPS.length) % APPS.length, []);
-  const setTrackVars = useCallback((p: number, appi: number) => {
-    const root = document.documentElement;
-    root.style.setProperty("--app-offset", `${(-p * 100) / APPS.length}%`);
-    root.style.setProperty("--appi", String(appi));
+  // ★背景はこの2つを一切見ない。指の動きから切り離し、アプリが確定した
+  // 瞬間に自分のアニメーションを流す(components/AppBackdrop.tsx)。
+  const setTrackVars = useCallback((p: number) => {
+    document.documentElement.style.setProperty("--app-offset", `${(-p * 100) / APPS.length}%`);
   }, []);
-  useEffect(() => { setTrackVars(pos, normPos(pos)); }, [pos, setTrackVars, normPos]);
+  useEffect(() => { setTrackVars(pos); }, [pos, setTrackVars]);
   const setDragVar = useCallback((px: number, dragging: boolean) => {
     const root = document.documentElement;
     root.style.setProperty("--drag", `${px}px`);
-    // 背景のモーフィング用に、画面幅で割った無次元の値も一緒に書く。
-    // CSSのcalc()は「長さ ÷ 長さ」ができないので、割り算はここで済ませる
-    // (書くのはこの1回だけで、毎フレームの計算はしていない)。
-    root.style.setProperty("--dragn", String(px / (window.innerWidth || 390)));
     root.dataset.dragging = dragging ? "1" : "0";
   }, []);
   const [showProfile, setShowProfile] = useState(false);
@@ -593,9 +568,6 @@ export function AppShell() {
     const width = window.innerWidth || 390;
     navPressRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
     navDraggedRef.current = false;
-    // 背景の補間は 0〜3 の3区間しか持たない(性能のため最小限にしてある)。
-    // 横へ払う向きが決まった瞬間に、--p がその範囲へ収まる基準を選ぶ。
-    let baseAppi = normPos(posRef.current);
     // 速度の見積り用に直近の位置と時刻を持つ。
     let lastX = e.clientX;
     let lastY = e.clientY;
@@ -643,8 +615,6 @@ export function AppShell() {
         if (pr.axis === "x") {
           // 左へ払うと --p は増える(0〜2 が基準でよい)。右へ払うと減るので、
           // 先頭に居るときだけ1周ぶん先(3)を基準にして 0 を下回らないようにする。
-          baseAppi = dx > 0 && baseAppi === 0 ? APPS.length : baseAppi;
-          setTrackVars(posRef.current, baseAppi);
         }
       }
       if (pr.axis === "x") {
@@ -683,7 +653,7 @@ export function AppShell() {
       // 揃える。offsetをReactのuseEffect任せにすると、「dragは0に戻ったが
       // offsetはまだ元のアプリ」という中途半端な状態が1フレーム描かれ得る
       // (＝一瞬だけ元の画面へ戻ってから隣へ動く)。
-      setTrackVars(next, baseAppi + step);
+      setTrackVars(next);
       posRef.current = next;
       setPos(next);
       mountApp(APPS[((next % APPS.length) + APPS.length) % APPS.length].id);
@@ -697,7 +667,7 @@ export function AppShell() {
     // なっていた(pointerupが来ないので settleDash が呼ばれないため)。
     // 取り上げられたら必ず閉じ切る。
     window.addEventListener("pointercancel", cancel);
-  }, [setDragVar, setDashVar, settleDash, mountApp, setTrackVars, normPos]);
+  }, [setDragVar, setDashVar, settleDash, mountApp, setTrackVars]);
   // トースト。他のコールバックが依存するので先に定義しておく。
   const showToast = useCallback((msg: string) => { setToast(msg); window.setTimeout(() => setToast(""), 1600); }, []);
   const toggleItemSelection = useCallback((id: string) => {
@@ -918,7 +888,7 @@ export function AppShell() {
       {/* ★背景は3アプリ共通の1枚のグリッド。列の中ではなくここ(シェル直下)に
           1つだけ置く。グリッド自体は動かず、アプリを移ると各マスの大きさが
           変わって図形が切り替わる。 */}
-      <AppBackdrop />
+      <AppBackdrop appId={appId} />
       {/* ★3アプリを横一列に並べたトラック。タブバーも中身も、この1枚が
           まとめて動く(=「タブバーごとスワイプされる」)。各列が自分の
           スクロールルートと自分のタブバーを持つので、タブの数が3/4/2と

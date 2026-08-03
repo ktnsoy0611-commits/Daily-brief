@@ -67,47 +67,66 @@ body {
    各図形の top/left/width/height/border-radius は、この2つを使った1本の
    calc() で書いてある(components/AppBackdrop.tsx)。JSは毎フレーム何も
    計算せず、CSS変数を書くだけ。 */
-/* ★背景。--p は 0=ジャーナル 1=タスク 2=ブリーフ 3=またジャーナル、という
-   一周ぶんの連続値。--p がこの 0〜3 に必ず収まるよう、横へ払う向きが決まった
-   瞬間に AppShell が --appi を選び直す(左へ払うなら 0〜2 から、右へ払うなら
-   1〜3 から)。 */
-.app-backdrop-grid {
-  --p: calc(var(--appi, 0) - var(--dragn, 0));
+/* ★背景。指の動きとは完全に切り離してある。アプリが確定した瞬間に、
+   ここのアニメーションが1本だけ走って終わる(components/AppBackdrop.tsx)。
+   3拍で組んである:
+     1拍目(0〜500ms)  … いま出ている図形が、来た道を戻るように順にはけていく
+     2拍目(180〜560ms) … 新しい地の色が上から下りてきて画面を塗り替える
+     3拍目(360ms〜)   … 新しい図形が1つずつ時間差で入ってくる
+   図形ごとに入り方が違う(帯は上から伸びる/半円は右から差し込む/扇形は角から
+   開く/円は中心から立ち上がる)。ひと息の1つの動きに全部を乗せない。
+   入りと去りの遅れは、図形ごとにインラインで --din / --dout として渡す。 */
+.bd-layer { position: absolute; inset: 0; overflow: hidden; }
+.bd-piece {
+  position: absolute;
+  animation-duration: 460ms;
+  animation-delay: var(--din, 0ms);
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  animation-fill-mode: both;
 }
 
-/* マスは**窓**。中身(帯)がこの窓の外へはけ、次の面が外から入ってくる。 */
-.app-backdrop-cell {
-  position: absolute;
-  width: 50vw;
-  height: 50vw;
-  overflow: hidden;
-  /* このマスは色面しか持たず、外のレイアウトにも描画にも影響しない。
-     そう宣言しておくと、ブラウザが再計算を切り詰められる。 */
-  contain: layout paint style;
-}
-
-/* 3アプリぶん(＋一周ぶん)の面を並べた帯。動かすのはこの1枚だけで、
-   中の図形は一切変形しない(モーフィングをやめた)。 */
-.app-backdrop-strip {
-  position: absolute;
+/* 地の色。上から下りてきて画面を塗り替える。去る図形が見えるよう、
+   すこし待ってから動き出す。 */
+.bd-ground {
   inset: 0;
-  transition: transform 520ms cubic-bezier(0.32, 0.72, 0, 1);
-  transition-delay: var(--d, 0ms);
-}
-.bd-v .app-backdrop-strip { transform: translateY(calc(var(--p) * -100%)); }
-.bd-h .app-backdrop-strip { transform: translateX(calc(var(--p) * -100%)); }
-
-/* 1アプリぶんの面。地の色そのものがこの長方形で、これが動くから
-   「長方形が伸びてきて塗りつぶす」ように見える。 */
-.app-backdrop-pane {
-  position: absolute;
-  width: 100%;
-  height: 100%;
+  transform-origin: 50% 0%;
+  animation-name: bd-band;
+  animation-duration: 380ms;
+  animation-delay: 180ms;
 }
 
-/* 指で引いている間は、追従を1:1にするためtransitionを切る(遅延も含めて)。 */
-[data-dragging="1"] .app-track,
-[data-dragging="1"] .app-backdrop-strip { transition: none; }
+/* 帯: 上から伸びてくる(縦にグリッドを横断する長方形)。 */
+@keyframes bd-band { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.bd-band { transform-origin: 50% 0%; animation-name: bd-band; animation-duration: 420ms; }
+
+/* 右端の半円: 画面の外から左へ差し込む。 */
+@keyframes bd-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.bd-right { animation-name: bd-right; }
+
+/* 扇形: その角(左下)を軸に開く。 */
+@keyframes bd-corner { from { transform: scale(0); } to { transform: scale(1); } }
+.bd-corner { transform-origin: 0% 100%; animation-name: bd-corner; }
+
+/* 円: 中心から立ち上がる。 */
+@keyframes bd-pop { from { transform: scale(0); } to { transform: scale(1); } }
+.bd-pop { transform-origin: 50% 50%; animation-name: bd-pop; }
+
+/* 去る層は同じアニメーションを**逆再生**する(来た道をそのまま戻る)。
+   入るときより速く、上から順に。地はそのまま置いておく(新しい地に
+   塗り替えられるまでの下敷きなので、動かすと二重になる)。 */
+.bd-leaving .bd-piece {
+  animation-direction: reverse;
+  animation-delay: var(--dout, 0ms);
+  animation-duration: 300ms;
+}
+.bd-leaving .bd-ground { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bd-piece { animation: none; }
+}
+
+/* 指で引いている間は、追従を1:1にするためtransitionを切る。 */
+[data-dragging="1"] .app-track { transition: none; }
 
 /* ダッシュボードを引き上げている間は、本物のタブバーを消して
    portal側のモーフ用ピルへ役目を渡す(見た目が同一の位置で入れ替わる)。 */
@@ -202,40 +221,56 @@ button:active {
 /* 読み込み待機画面の2x2グリッド。角の丸め方だけを動かして、円・半円・
    四半円・正方形を行き来する(背景と同じ語彙)。4マスに開始をずらしてあるので、
    組み合わせが絶えず変わり続ける。 */
-/* ★読み込み待機画面。背景と同じ考え方で、2x2の窓それぞれの中を図形が
-   通り過ぎていく。図形そのものは一切変形せず、外へはけて次が入ってくる。
-   面が入りきったところで少し止まる(0→止まる→次へ)ので、モーションが
-   刻まれて読める。最後の面は最初と同じ図形なので、繋ぎ目なく回り続ける。 */
-@keyframes load-v {
-  0%,   16%  { transform: translateY(0); }
-  24%,  41%  { transform: translateY(-100%); }
-  49%,  66%  { transform: translateY(-200%); }
-  74%,  91%  { transform: translateY(-300%); }
-  100%       { transform: translateY(-400%); }
-}
-@keyframes load-h {
-  0%,   16%  { transform: translateX(0); }
-  24%,  41%  { transform: translateX(-100%); }
-  49%,  66%  { transform: translateX(-200%); }
-  74%,  91%  { transform: translateX(-300%); }
-  100%       { transform: translateX(-400%); }
-}
-.load-cell {
-  position: relative;
-  overflow: hidden;
-}
-.load-strip {
+/* ★読み込み待機画面(2026-08-03 作り直し)。背景と同じ語彙で、2x2のグリッドの
+   上を黒い幾何学が動き回る。1マスの中で図形が入れ替わるだけにせず、
+   **2x1・2x2の長方形へ伸びる / グリッドを横断して移動する / 回転する**を
+   入れてある。半円は使わない。
+   1マス = --u。3枚の図形がそれぞれ別のリズムで動く。 */
+.load-grid { position: relative; }
+.load-shape {
   position: absolute;
-  inset: 0;
-  animation-duration: 4.4s;
+  top: 0;
+  left: 0;
+  width: var(--u);
+  height: var(--u);
+  animation-duration: 3.6s;
   animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
   animation-iteration-count: infinite;
 }
-.load-cell.lv .load-strip { animation-name: load-v; }
-.load-cell.lh .load-strip { animation-name: load-h; }
-.load-pane { position: absolute; width: 100%; height: 100%; }
+
+/* 長方形: 1x1 → 2x1(上の行を横断) → 下の行へ移動 → 2x2(全面) → 1x1。
+   transform-origin が左上なので、scale がそのままグリッドの升目に乗る。 */
+@keyframes load-rect {
+  0%,   9%  { transform: translate(0, 0) scale(1, 1); }
+  22%, 31%  { transform: translate(0, 0) scale(2, 1); }
+  44%, 53%  { transform: translate(0, var(--u)) scale(2, 1); }
+  66%, 75%  { transform: translate(0, 0) scale(2, 2); }
+  88%, 100% { transform: translate(0, 0) scale(1, 1); }
+}
+.load-rect { transform-origin: 0 0; animation-name: load-rect; }
+
+/* 円: グリッドの角から角へ渡り歩く。潰れないよう縦横同じ倍率だけ。 */
+@keyframes load-dot {
+  0%,   9%  { transform: translate(var(--u), 0) scale(1); }
+  22%, 31%  { transform: translate(var(--u), var(--u)) scale(1); }
+  44%, 53%  { transform: translate(0, 0) scale(1); }
+  66%, 75%  { transform: translate(var(--u), 0) scale(0); }
+  88%, 100% { transform: translate(var(--u), 0) scale(1); }
+}
+.load-dot { border-radius: 50%; transform-origin: 50% 50%; animation-name: load-dot; }
+
+/* 扇形: 90度ずつ回りながらマスを移っていく。 */
+@keyframes load-fan {
+  0%,   9%  { transform: translate(var(--u), var(--u)) rotate(0deg); }
+  22%, 31%  { transform: translate(0, var(--u)) rotate(90deg); }
+  44%, 53%  { transform: translate(var(--u), 0) rotate(180deg); }
+  66%, 75%  { transform: translate(var(--u), var(--u)) rotate(270deg); }
+  88%, 100% { transform: translate(var(--u), var(--u)) rotate(360deg); }
+}
+.load-fan { border-radius: 100% 0 0 0; transform-origin: 50% 50%; animation-name: load-fan; }
+
 @media (prefers-reduced-motion: reduce) {
-  .load-strip { animation: none; }
+  .load-shape { animation: none; }
 }
 
 /* タブを切り替えたときの入場。中身がほんの少し下から起き上がる。

@@ -1,117 +1,149 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BG } from "@/lib/constants";
 import { shade } from "@/lib/helpers";
+import type { AppId } from "@/lib/types";
 
-// ★アプリ全体の背景(2026-08-03 作り直し)。
+// ★アプリ全体の背景(2026-08-03 作り直し・3度目)。
 //
-// ■ 1枚のグリッドを3アプリで共有する
-// 基準は**画面幅の半分(50vw)を1辺とする正方形**。画面はこれで縦に2列へ
-// 割れ、その分かれ目がちょうど画面の中央線になる。行は画面中心を軸に
-// 上下へ展開する(端は画面からはみ出して切れる)。
+// ■ 何を変えたか
+// これまでは背景を指の動き(--dragn)に1:1で溶接し、マスの中の図形を連続的に
+// 変形させていた。だから「白い図形が動くだけ」に見えていた。
+// **指の動きから完全に切り離した**。スワイプで画面(トラック)が先に移り、
+// アプリが確定したところで、背景は**自分のアニメーションを1本流す**:
+//   去るほう … いま出ている図形が、来た道を戻るように順にはけていく
+//   来るほう … 新しい地の色が上から下りてきて、その後に図形が
+//                1つずつ時間差で入ってくる
+// 図形ごとに入り方が違う(帯は上から伸びる/半円は右から差し込む/扇形は角から
+// 開く/円は中心から立ち上がる)。動画の参考どおり、1つの動きに全部を
+// 乗せるのではなく、それぞれの figure が自分の動きを持つ。
 //
-//   ジャーナル … 左の列は**塗りつぶしの長方形**(6マスを縦に貫く1本の帯)。
+// ■ 構図(グリッドは3アプリ共通・50vw)
+// 基準は画面幅の半分(50vw)を1辺とする正方形。画面はこれで縦に2列へ割れ、
+// 分かれ目がちょうど画面の中央線に来る。行は画面中心を軸に上下へ展開する。
+//   ジャーナル … 左半分は**1枚の長い長方形**(グリッドを縦に横断する)。
 //                 右の列は、直線部分を画面右端に置いて左へふくらむ半円。
-//   タスク    … 左の列にだけ「左下が角の扇形」を縦一列に並べる。右は地。
-//   ブリーフ  … 2x2マス(=画面幅いっぱい)の正方形に内接する円。1マスには
-//                 その四半分が入るので、4マスが集まって1つの円になる。
+//   タスク    … 左の列にだけ「左下が角の扇形」を縦一列。右は地のまま。
+//   ブリーフ  … 2x2マス(=画面幅いっぱい)に内接する円。
 //
-// ■ ★図形と地は同格(どちらも図形として扱う)
-// 「薄い図形 / 濃い地」で固定しない。ジャーナルだけは**地が薄く、図形が
-// グレー**で、タスク・ブリーフとは明暗が逆になる。アプリを移るとその
-// 地の色ごと入れ替わる。
+// ■ 図形と地は同格
+// ジャーナルだけは地が薄く図形がグレーで、タスク・ブリーフとは明暗が逆。
 //
-// ■ ★動きはモーフィングではなく「はけて、入ってくる」
-// 各マスは**窓(overflow:hidden)**で、その中に3アプリぶん(＋一周ぶん)の
-// 面を縦一列/横一列に並べた帯が入っている。アプリを移ると帯ごと1マス分
-// スライドするので、いまの図形は窓の外へはけ、次の図形が窓の外から
-// 入ってくる。**地の色を持つ面そのものが動く**ため、塗りつぶしの部分は
-// 「長方形が伸びてきて塗りつぶす」ように見える。
-// 左の列は縦、右の列は横に動かして、ただの視差に見えないようにしてある。
-// 行ごとに少しずつ遅らせてあるので、帯は段々に塗り替わる。
-//
-// ■ 指の動きと直結
-// 進み具合は AppShell が書く2つのCSS変数(--appi / --dragn)から作った連続値
-// ひとつ(--p)だけで決まる。JSは毎フレーム何も計算せず、Reactのレンダーも
-// 1回も走らない。マスあたりの変形は1つ(帯のtranslateだけ)。
+// ■ 性能
+// 指で引いている間、背景は**一切動かない**(計算もしない)。アプリが確定した
+// 瞬間に、要素13枚以下のCSSアニメーションが1本走って終わる。以前のように
+// 毎フレーム全マスの transform を calc し直すことがなくなった。
 
-const COLS = 2;
-const ROWS = 6;
-const U = "50vw";
-
-// 明度は2値だけ。どちらが地でどちらが図形かはアプリによって入れ替わる。
 const LIGHT = shade(BG, 3);
 const GREY = shade(BG, -4);
 
-interface Pane {
-  /** この面の地の色(=マスいっぱいに広がる長方形そのもの)。 */
-  ground: string;
-  /** 地の上に乗る図形。無ければ地だけの面。 */
-  shape?: CSSProperties;
+// 50vw のマスが縦に何行ぶん並ぶか(画面外へはみ出す分を含む)。
+const ROWS = 6;
+const U = "50vw";
+// ブリーフの円(画面幅いっぱい)は何段か。ROWS のちょうど半分にすると、
+// 2つのグリッドの境目が完全に重なる。
+const BIG_ROWS = ROWS / 2;
+
+// 去る側を画面に残しておく時間。いちばん遅い図形が消え、かつ新しい地が
+// 完全に塗り終わるまで(globals.css の3拍のタイムラインを参照)。
+const LEAVE_MS = 700;
+// 入ってくるときの遅れ。地(180ms〜)が下りきってから figure が動き出す。
+const IN_BAND = 340;
+const IN_FIGURE = 420;
+const IN_STEP = 60;
+// 去るときの遅れ。上から順に、入るときより詰めて。
+const OUT_STEP = 40;
+
+interface Piece {
+  cls: string;
+  /** 入ってくるときの遅れ(ms)。 */
+  din: number;
+  /** 去るときの遅れ(ms)。上から順にはけるので行の順そのまま。 */
+  dout: number;
+  style: CSSProperties;
 }
 
-// p の順に並べた面。0=ジャーナル 1=タスク 2=ブリーフ 3=ジャーナル(一周ぶん)。
-function panesFor(c: number, r: number): Pane[] {
-  const sub = r % 2; // 2x2の大きなマスの中で上半分か下半分か(ブリーフ用)。
+// 行 i(50vwのマス)の上端。画面中心を軸に上下へ展開する。
+const rowTop = (i: number) => `calc(50svh - ${U} * ${ROWS / 2 - i})`;
 
-  // ジャーナル: 地が薄く、図形がグレー。
-  const journal: Pane = c === 0
-    // 左の列は塗りつぶし。6マスが縦に繋がって1本の長方形になる。
-    ? { ground: LIGHT, shape: { inset: 0, background: GREY } }
-    // 右の列は半円。マスと同じ直径の円を右へ半分ずらし、窓で切って
-    // 直線部分を画面右端に出す(左へふくらむ)。
-    : { ground: LIGHT, shape: { left: "50%", top: 0, width: "100%", height: "100%", borderRadius: "50%", background: GREY } };
-
-  // タスク: 地がグレー、図形が薄い。左の列にだけ「左下が角の扇形」。
-  const tasks: Pane = c === 0
-    ? { ground: GREY, shape: { inset: 0, borderRadius: "0 100% 0 0", background: LIGHT } }
-    : { ground: GREY };
-
-  // ブリーフ: 2x2マスに内接する円の、このマスに入る四半分。角の丸めは
-  // 「大きなマスの中心から遠いほうの角」を落とす向きにする。
-  const radius = c === 0
-    ? (sub === 0 ? "100% 0 0 0" : "0 0 0 100%")
-    : (sub === 0 ? "0 100% 0 0" : "0 0 100% 0");
-  const brief: Pane = { ground: GREY, shape: { inset: 0, borderRadius: radius, background: LIGHT } };
-
-  return [journal, tasks, brief, journal];
+function groundOf(app: AppId): string {
+  return app === "journal" ? LIGHT : GREY;
 }
 
-export function AppBackdrop() {
-  const cells = [];
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const panes = panesFor(c, r);
-      // 左の列は縦、右の列は横へ動かす。
-      const vertical = c === 0;
-      cells.push(
-        <div
-          key={`${c}-${r}`}
-          className={`app-backdrop-cell ${vertical ? "bd-v" : "bd-h"}`}
-          style={{
-            left: `calc(${U} * ${c})`,
-            // 行は画面中心を軸に上下へ展開する(はみ出して構わない)。
-            top: `calc(50svh - ${U} * ${ROWS / 2 - r})`,
-            // 落ち着くときだけ行ごとに少し遅らせる(指で動かしている間は
-            // トランジション自体が切ってあるので1:1で追従する)。
-            ["--d" as string]: `${r * 34}ms`,
-          }}
-        >
-          <div className="app-backdrop-strip">
-            {panes.map((pane, i) => (
-              <div key={i} className="app-backdrop-pane" style={{
-                background: pane.ground,
-                [vertical ? "top" : "left"]: `calc(100% * ${i})`,
-              }}>
-                {pane.shape && <div style={{ position: "absolute", ...pane.shape }} />}
-              </div>
-            ))}
-          </div>
-        </div>
-      );
+function piecesFor(app: AppId): Piece[] {
+  if (app === "journal") {
+    const pieces: Piece[] = [
+      // 左半分は1枚の長方形。グリッドを縦に横断するので、マスに割らずに
+      // 1要素で持つ。上から下へ伸びてくる。
+      { cls: "bd-band", din: IN_BAND, dout: 0, style: { left: 0, top: 0, width: U, height: "100%", background: GREY } },
+    ];
+    for (let i = 0; i < ROWS; i++) {
+      // 半円は「半円の形の要素」を作らない。マスと同じ直径の円を画面の右端に
+      // 中心が来るよう置き、外へはみ出した右半分を層の overflow で切る。
+      // こうすると楕円にならず、直線部分が必ず画面の端に一致する。
+      pieces.push({
+        cls: "bd-right", din: IN_FIGURE + i * IN_STEP, dout: i * OUT_STEP,
+        style: { left: `calc(100vw - ${U} / 2)`, top: rowTop(i), width: U, height: U, borderRadius: "50%", background: GREY },
+      });
     }
+    return pieces;
   }
+  if (app === "tasks") {
+    const pieces: Piece[] = [];
+    for (let i = 0; i < ROWS; i++) {
+      // 左下が角の扇形。その角(左下)を軸に開く。
+      pieces.push({
+        cls: "bd-corner", din: IN_FIGURE + i * IN_STEP, dout: i * OUT_STEP,
+        style: { left: 0, top: rowTop(i), width: U, height: U, borderRadius: "0 100% 0 0", background: LIGHT },
+      });
+    }
+    return pieces;
+  }
+  // ブリーフ: 画面幅いっぱいの円。中心から立ち上がる。
+  const pieces: Piece[] = [];
+  for (let k = 0; k < BIG_ROWS; k++) {
+    pieces.push({
+      cls: "bd-pop", din: IN_FIGURE + k * IN_STEP * 1.6, dout: k * OUT_STEP * 1.6,
+      style: { left: 0, top: `calc(50svh - 100vw * ${BIG_ROWS / 2 - k})`, width: "100vw", height: "100vw", borderRadius: "50%", background: LIGHT },
+    });
+  }
+  return pieces;
+}
+
+function Layer({ app, leaving }: { app: AppId; leaving?: boolean }) {
+  return (
+    // 去る層は、来る層と同じアニメーションを**逆再生**する(bd-leaving)。
+    // 来た道をそのまま戻るので、動きの語彙が増えず、記述も半分で済む。
+    <div className={`bd-layer${leaving ? " bd-leaving" : ""}`}>
+      <div className="bd-piece bd-ground" style={{ background: groundOf(app) }} />
+      {piecesFor(app).map((p, i) => (
+        <div key={i} className={`bd-piece ${p.cls}`} style={{ ...p.style, ["--din" as string]: `${p.din}ms`, ["--dout" as string]: `${p.dout}ms` }} />
+      ))}
+    </div>
+  );
+}
+
+export function AppBackdrop({ appId }: { appId: AppId }) {
+  const [cur, setCur] = useState(appId);
+  const [leaving, setLeaving] = useState<AppId | null>(null);
+  // ★同じアプリへ戻ってきたときもアニメーションを必ず出し直すため、
+  // 「何回目の切り替えか」を key に混ぜる(値の一致でReactが再利用するのを
+  // 避ける。ゴールのシートで同じ問題を踏んだのと同じ対処・HANDOFF §7.29)。
+  const [turn, setTurn] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (appId === cur) return;
+    setLeaving(cur);
+    setCur(appId);
+    setTurn((n) => n + 1);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setLeaving(null), LEAVE_MS);
+  }, [appId, cur]);
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
   return (
     <div aria-hidden style={{
       position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none",
@@ -120,7 +152,8 @@ export function AppBackdrop() {
       // 通常フローの中身(タブの本文)より後に描かれて文字を覆ってしまう。
       zIndex: -1, background: GREY,
     }}>
-      <div className="app-backdrop-grid" style={{ position: "absolute", inset: 0 }}>{cells}</div>
+      {leaving && <Layer key={`out-${turn}`} app={leaving} leaving />}
+      <Layer key={`in-${turn}`} app={cur} />
     </div>
   );
 }

@@ -109,7 +109,7 @@ function HorizontalShelf({ title, children }: { title: string; children: React.R
   return (
     <section style={{ marginBottom: 22 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <GeoTag text={title} size={13} color={MUTED} />
+        <GeoTag text={title} size={16} color={MUTED} />
       </div>
       <div className="no-scrollbar" style={{ display: "flex", gap: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
         {children}

@@ -182,7 +182,7 @@ function StackSection({ title, children }: { title: string; children: React.Reac
     <section style={{ marginBottom: 34, contentVisibility: "auto", containIntrinsicSize: SHELF_INTRINSIC }}>
       {/* 棚の見出しも幾何アルファベット。件数は情報として意味が薄いので出さない。 */}
       <div style={{ marginBottom: 12 }}>
-        <GeoTag text={title} size={13} color={MUTED} />
+        <GeoTag text={title} size={16} color={MUTED} />
       </div>
       {children}
     </section>
@@ -296,7 +296,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
             か」の自動判定(isWishBound)で、タップでの手動トグルは持たない。 */}
         {allWishesDesc.length > 0 && (
           <section style={{ marginTop: 10 }}>
-            <div style={{ marginBottom: 10 }}><GeoTag text="WISHES" size={13} color={MUTED} /></div>
+            <div style={{ marginBottom: 10 }}><GeoTag text="WISHES" size={16} color={MUTED} /></div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               {allWishesDesc.map((w) => {
                 const bound = isWishBound(w, appState.items);

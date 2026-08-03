@@ -195,13 +195,13 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
             {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
             {(todayRec.items.length > 0 || todayRec.tasks.length > 0) && (
               <section style={{ marginBottom: 26 }}>
-                <div style={{ margin: "0 4px 10px" }}><GeoTag text="DONE" size={12} color={MUTED} /></div>
+                <div style={{ margin: "0 4px 10px" }}><GeoTag text="DONE" size={15} color={MUTED} /></div>
                 <DoneList day={todayRec} />
               </section>
             )}
             {todayRec.entries.length > 0 && (
               <section>
-                <div style={{ margin: "0 4px 10px" }}><GeoTag text="NOTES" size={12} color={MUTED} /></div>
+                <div style={{ margin: "0 4px 10px" }}><GeoTag text="NOTES" size={15} color={MUTED} /></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {todayRec.entries.map((e) => <EntryCard key={e.id} entry={e} />)}
                 </div>

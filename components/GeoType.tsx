@@ -1,236 +1,165 @@
 "use client";
 
-import { useId } from "react";
-
-// ★幾何アルファベット(2026-08-03)。ユーザー提供の見本(FullSizeRender.jpeg)の
-// 作りに倣って、長方形・円・半円・四半円・45度の面だけで組んだ書体。
+// ★幾何アルファベット(2026-08-03・作り直し)。ユーザー提供の見本
+// (FullSizeRender.jpeg)を**画像解析して1文字ずつ転写**したもの。
 // 見出し(各タブの名前)とタグに使う。本文は従来どおり Zen Kaku Gothic New。
 //
-// ■ 組み方
-// 1文字は**高さ3ユニット**の箱に収める。幅は文字ごとに違う(I は細く、O は広い)。
-// 縦棒の太さ S=0.75 は全文字で共通。曲線の半径は 0.3 / 0.45 / 0.9 / 1.05 / 1.2 の
-// いずれかで、すべて S の倍数か半径差が S になるよう取ってある(線の太さが
-// どこでも S に揃う)。
+// ■ 見本の組み方(実測して分かったこと)
+// 1文字は**正方形を2x2に割ったグリッド**。実寸はセル78px・溝6px・全体162px。
+// 4つのセルそれぞれに、たった3種類の形のどれかが入るだけ:
+//   full  … 正方形をそのまま塗る
+//   q◇   … 正方形の指定した角を、セルの一辺を半径にして丸く落とす(四半円)
+//   rr◇  … 帯の指定した側の端を、セルの半分を半径にして丸くする
+//   empty … 空
+// そして**セルとセルの間の溝(4本)は、繋がっている所だけ塗る**。
+// たとえば A は「上段の2セル(左上を丸く/右上を丸く)＋縦の溝を塗る」でアーチに
+// なり、下段は正方形2つのまま=溝を塗らないので脚の間の隙間になる。
+// O は4隅を丸めた4セルだが縦の溝を塗らないので、円の真ん中に縦線が入る。
 //
-// ■ 穴(カウンター)は mask で抜く
-// A・B・D・O・P・R などの内側の穴は、塗り足し(add)と塗り抜き(sub)を
-// **順番に**重ねる mask で作る。1本のパスに畳んで fill-rule で抜く手もあるが、
-// E のように塗り足し同士が重なる文字があるため、evenodd では重なりが穴に
-// なってしまう。nonzero + 巻き方向の制御は間違えやすいので mask を選んだ。
-// 文字数はたかが知れているので描画の負担は問題にならない。
+// この作りなので**塗り足しだけで済み、穴(カウンター)も mask も要らない**。
+// 1文字＝図形の和を1本のパスにまとめて塗るだけ。
+//
+// ■ 等幅
+// 見本は全文字が同じ162x162の正方形。字送りも溝1本ぶん(6px)。等幅で組む。
+//
+// ■ ★検証の要点
+// scratchpad/analyze.py で、見本の各セルを15種類のテンプレートと突き合わせて
+// IoUで分類した(全104セルが 0.97〜1.00 で一致)。**目視で写すと必ず取り違える**
+// (最初の版では C の右上を丸いと誤読していたし、そもそも「2x2のセル」という
+// 組み方自体に気づかず、ただの幾何サンセリフを自作してしまっていた)。
 
-const H = 3;      // 文字の高さ(ユニット)
-const S = 0.75;   // 線の太さ
-const GAP = 0.34; // 字間
-// ★継ぎ目消しの重ね量。maskの中で曲線と直線がちょうど接すると、
-// アンチエイリアスで髪の毛のような線が残る。ほんの少し重ねて消す。
-const BL = 0.02;
+const CELL = 1;              // セル1辺
+const GUT = 6 / 78;          // 溝(見本の実寸比)
+const BOX = CELL * 2 + GUT;  // 1文字の外形(正方形)
+// 溝を塗るとき、両隣のセルへほんの少し食い込ませる。ちょうど接するだけだと
+// アンチエイリアスで髪の毛のような継ぎ目が残る。
+const BLEED = 0.012;
 
-type Op = { d: string; on: boolean };
-
-const on = (d: string): Op => ({ d, on: true });
-const off = (d: string): Op => ({ d, on: false });
-
-const n = (v: number) => Math.round(v * 1000) / 1000;
-// 長方形
-const R = (x: number, y: number, w: number, h: number) =>
+const n = (v: number) => Math.round(v * 10000) / 10000;
+const rect = (x: number, y: number, w: number, h: number) =>
   `M${n(x)} ${n(y)}H${n(x + w)}V${n(y + h)}H${n(x)}Z`;
-// 円
-const C = (cx: number, cy: number, r: number) =>
-  `M${n(cx - r)} ${n(cy)}A${n(r)} ${n(r)} 0 1 1 ${n(cx + r)} ${n(cy)}A${n(r)} ${n(r)} 0 1 1 ${n(cx - r)} ${n(cy)}Z`;
-// 半円。上へふくらむ(下辺が直線): 左端(x,y)から右へ 2r
-const HU = (x: number, y: number, r: number) =>
-  `M${n(x)} ${n(y)}A${n(r)} ${n(r)} 0 0 1 ${n(x + 2 * r)} ${n(y)}Z`;
-// 半円。下へふくらむ
-const HD = (x: number, y: number, r: number) =>
-  `M${n(x)} ${n(y)}A${n(r)} ${n(r)} 0 0 0 ${n(x + 2 * r)} ${n(y)}Z`;
-// 半円。右へふくらむ(左辺が直線): 上端(x,y)から下へ 2r
-const HR = (x: number, y: number, r: number) =>
-  `M${n(x)} ${n(y)}A${n(r)} ${n(r)} 0 0 1 ${n(x)} ${n(y + 2 * r)}Z`;
-// 四半円。角(cx,cy)を中心に、dx/dy(±1)の向きの象限を埋める
-const Q = (cx: number, cy: number, r: number, dx: 1 | -1, dy: 1 | -1) =>
-  `M${n(cx)} ${n(cy)}L${n(cx + dx * r)} ${n(cy)}A${n(r)} ${n(r)} 0 0 ${dx * dy > 0 ? 1 : 0} ${n(cx)} ${n(cy + dy * r)}Z`;
-// 45度の面(多角形)
-const P = (pts: [number, number][]) =>
-  `M${pts.map(([x, y]) => `${n(x)} ${n(y)}`).join("L")}Z`;
 
-interface Glyph { w: number; ops: Op[] }
+type Cell = "full" | "empty" | "qTL" | "qTR" | "qBL" | "qBR" | "rrL" | "rrR" | "rrU" | "rrD";
 
-// 丸い文字(O/C/G/Q)に共通の外形: 上下が半円、中が直線の「丸ゴシックのO」。
-// 真円にすると幅が高さと同じ3になり、他の文字と並べたとき広すぎるため。
-const OUTER = (w: number): Op[] => {
-  const r = w / 2;
-  return [
-    on(R(0, r - BL, w, H - 2 * r + 2 * BL)), on(HU(0, r, r)), on(HD(0, H - r, r)),
-    off(R(S, r - BL, w - 2 * S, H - 2 * r + 2 * BL)), off(HU(S, r, r - S)), off(HD(S, H - r, r - S)),
-  ];
-};
+// セル(x,y,s)の中身を1つのパスにする。
+function cellPath(kind: Cell, x: number, y: number, s: number): string {
+  // ★部分パスはすべて**時計回り**で書くこと。rect と逆向きの部分があると、
+  // 溝と重ねた所の巻き数が 0 になり、nonzero塗りで髪の毛のような穴が開く。
+  const r = n(s), h = n(s / 2);
+  switch (kind) {
+    case "empty": return "";
+    case "full": return rect(x, y, s, s);
+    // 指定の角をセルの一辺を半径にして丸く落とす(=反対の角を中心とする四半円)。
+    case "qTL": return `M${n(x + s)} ${n(y)}V${n(y + s)}H${n(x)}A${r} ${r} 0 0 1 ${n(x + s)} ${n(y)}Z`;
+    case "qTR": return `M${n(x)} ${n(y)}A${r} ${r} 0 0 1 ${n(x + s)} ${n(y + s)}H${n(x)}Z`;
+    case "qBL": return `M${n(x)} ${n(y)}H${n(x + s)}V${n(y + s)}A${r} ${r} 0 0 0 ${n(x)} ${n(y)}Z`;
+    case "qBR": return `M${n(x)} ${n(y)}H${n(x + s)}A${r} ${r} 0 0 1 ${n(x)} ${n(y + s)}Z`;
+    // 帯の片端をセルの半分を半径にして丸くする。
+    case "rrR": return `M${n(x)} ${n(y)}H${n(x + s / 2)}A${h} ${h} 0 0 1 ${n(x + s / 2)} ${n(y + s)}H${n(x)}Z`;
+    case "rrL": return `M${n(x + s)} ${n(y + s)}H${n(x + s / 2)}A${h} ${h} 0 0 1 ${n(x + s / 2)} ${n(y)}H${n(x + s)}Z`;
+    case "rrU": return `M${n(x)} ${n(y + s)}V${n(y + s / 2)}A${h} ${h} 0 0 1 ${n(x + s)} ${n(y + s / 2)}V${n(y + s)}Z`;
+    case "rrD": return `M${n(x + s)} ${n(y)}V${n(y + s / 2)}A${h} ${h} 0 0 1 ${n(x)} ${n(y + s / 2)}V${n(y)}Z`;
+  }
+}
 
+/** 4セル(左上・右上・左下・右下)と、4本の溝を塗るかどうか。
+ *  溝の順は [縦(上段) 縦(下段) 横(左列) 横(右列)]。 */
+type Glyph = [Cell, Cell, Cell, Cell, string];
+
+// ★見本からの転写(scratchpad/analyze.py の出力そのまま)。
 const GLYPHS: Record<string, Glyph> = {
-  " ": { w: 1.0, ops: [] },
+  A: ["qTL", "qTR", "full", "full", "1011"],
+  B: ["full", "rrR", "full", "rrR", "0010"],
+  C: ["qTL", "full", "qBL", "qBR", "1110"],
+  D: ["full", "qTR", "full", "qBR", "0011"],
+  E: ["rrL", "full", "rrL", "full", "1100"],
+  F: ["qBL", "full", "full", "empty", "1000"],
+  G: ["qTL", "full", "qBL", "rrU", "1010"],
+  H: ["full", "full", "full", "full", "0011"],
+  I: ["full", "full", "full", "full", "1100"],
+  J: ["empty", "full", "qTR", "qBR", "0001"],
+  K: ["full", "qBR", "full", "qTR", "0010"],
+  L: ["full", "empty", "full", "qTL", "0010"],
+  M: ["rrU", "rrU", "full", "full", "0011"],
+  N: ["qTR", "full", "full", "qBL", "0011"],
+  O: ["qTL", "qTR", "qBL", "qBR", "0011"],
+  P: ["full", "rrR", "full", "empty", "0010"],
+  Q: ["qTL", "qTR", "qBL", "rrL", "1010"],
+  R: ["full", "rrR", "full", "qTR", "0010"],
+  S: ["rrL", "full", "full", "rrR", "1100"],
+  T: ["full", "full", "qTL", "qTR", "1100"],
+  U: ["full", "full", "qBL", "qBR", "0111"],
+  V: ["full", "full", "qBL", "qBR", "0011"],
+  W: ["full", "full", "rrD", "rrD", "0011"],
+  X: ["qBL", "qBR", "qTL", "qTR", "0000"],
+  Y: ["qBL", "full", "full", "qBR", "0101"],
+  Z: ["full", "qBR", "qTL", "full", "1100"],
 
-  // 上がアーチ、下が2本の脚。中の穴とアーチの内側は繋がっている。
-  A: { w: 2.4, ops: [
-    on(R(0, 1.2, 2.4, 1.8)), on(HU(0, 1.2, 1.2)),
-    off(HU(S, 1.2, 1.2 - S)), off(R(S, 1.2, 2.4 - 2 * S, 0.55)),
-    off(R(S, 2.25, 2.4 - 2 * S, 0.75)),
-  ] },
-  // 縦棒＋右向きの半円が2つ。それぞれに丸い穴。
-  B: { w: 1.5, ops: [
-    on(R(0, 0, S, H)), on(HR(S - BL, 0, 0.75)), on(HR(S - BL, 1.5, 0.75)),
-    off(C(S + 0.34, 0.75, 0.3)), off(C(S + 0.34, 2.25, 0.3)),
-  ] },
-  C: { w: 2.4, ops: [...OUTER(2.4), off(R(1.15, 0.98, 1.4, 1.04))] },
-  // 縦棒＋全高の右向き半円。
-  D: { w: 2.25, ops: [
-    on(R(0, 0, S, H)), on(HR(S - BL, 0, 1.5)), off(HR(S, S, 1.5 - S)),
-  ] },
-  E: { w: 2.1, ops: [
-    on(R(0, 0, S, H)), on(R(0, 0, 2.1, S)), on(R(0, 1.125, 1.7, S)), on(R(0, H - S, 2.1, S)),
-  ] },
-  F: { w: 2.1, ops: [
-    on(R(0, 0, S, H)), on(R(0, 0, 2.1, S)), on(R(0, 1.125, 1.7, S)),
-  ] },
-  G: { w: 2.4, ops: [...OUTER(2.4), off(R(1.15, 0.98, 1.4, 1.04)), on(R(1.35, 1.5, 1.05, S * 0.6))] },
-  H: { w: 2.4, ops: [
-    on(R(0, 0, S, H)), on(R(2.4 - S, 0, S, H)), on(R(0, 1.125, 2.4, S)),
-  ] },
-  I: { w: S, ops: [on(R(0, 0, S, H))] },
-  // 縦棒＋左下へ回り込む四半円。
-  J: { w: 2.1, ops: [
-    on(R(2.1 - S, 0, S, 1.95 + BL)), on(HD(0, 1.95, 1.05)), off(HD(S, 1.95, 1.05 - S)),
-  ] },
-  // 縦棒に、上下から弧が寄り添う。
-  K: { w: 2.2, ops: [
-    on(R(0, 0, S, H)),
-    on(P([[S, 1.06], [1.3, 0], [2.2, 0], [S, 1.94]])),
-    on(P([[S, 1.94], [1.3, H], [2.2, H], [S, 1.06]])),
-  ] },
-  L: { w: 1.8, ops: [on(R(0, 0, S, 1.95 + BL)), on(Q(S - BL, H, 1.05, 1, -1))] },
-  // 2本の縦棒＋中央の上向きアーチ。
-  M: { w: 3.3, ops: [
-    on(R(0, 0, S, H)), on(R(3.3 - S, 0, S, H)),
-    on(P([[S, 0], [S + 0.8, 0], [1.85, 1.95], [1.45, 1.95]])),
-    on(P([[3.3 - S - 0.8, 0], [3.3 - S, 0], [1.85, 1.95], [1.45, 1.95]])),
-  ] },
-  N: { w: 2.7, ops: [
-    on(R(0, 0, S, H)), on(R(2.7 - S, 0, S, H)),
-    on(P([[S - BL, 0], [S + 0.6, 0], [2.7 - S + BL, H], [2.7 - S - 0.6, H]])),
-  ] },
-  O: { w: 2.4, ops: OUTER(2.4) },
-  // 縦棒＋上半分の右向き半円。
-  P: { w: 1.8, ops: [
-    on(R(0, 0, S, H)), on(HR(S - BL, 0, 1.05)), off(HR(S, S, 1.05 - S)),
-  ] },
-  Q: { w: 2.4, ops: [...OUTER(2.4), on(R(1.65, 2.1, 0.75, 0.9))] },
-  // P に右下へ伸びる45度の脚。
-  R: { w: 2.0, ops: [
-    on(R(0, 0, S, H)), on(HR(S - BL, 0, 1.05)), off(HR(S, S, 1.05 - S)),
-    on(P([[S, 1.8], [S + 0.6, 1.8], [2.0, H], [1.4, H]])),
-  ] },
-  // 3本の横棒を、上は左・下は右の縦棒で繋ぐ。
-  S: { w: 2.1, ops: [
-    on(R(0, 0, 2.1, S)), on(R(0, 1.125, 2.1, S)), on(R(0, H - S, 2.1, S)),
-    on(R(0, 0, S, 1.125 + S)), on(R(2.1 - S, 1.125, S, 1.125 + S)),
-  ] },
-  T: { w: 2.4, ops: [on(R(0, 0, 2.4, S)), on(R(1.2 - S / 2, 0, S, H))] },
-  U: { w: 2.1, ops: [
-    on(R(0, 0, S, 1.95 + BL)), on(R(2.1 - S, 0, S, 1.95 + BL)),
-    on(HD(0, 1.95, 1.05)), off(HD(S, 1.95, 1.05 - S)),
-  ] },
-  V: { w: 2.4, ops: [on(P([[0, 0], [0.85, 0], [1.2, 1.95], [1.55, 0], [2.4, 0], [1.5, H], [0.9, H]]))] },
-  // U を2つ並べた形(見本と同じ)。
-  W: { w: 3.15, ops: [
-    on(R(0, 0, S, 1.95 + BL)), on(R(1.2, 0, S, 1.95 + BL)), on(R(2.4, 0, S, 1.95 + BL)),
-    on(HD(0, 1.95, 0.975)), off(HD(S, 1.95, 0.975 - S)),
-    on(HD(1.2, 1.95, 0.975)), off(HD(1.95, 1.95, 0.975 - S)),
-  ] },
-  X: { w: 2.4, ops: [
-    on(P([[0, 0], [0.8, 0], [2.4, H], [1.6, H]])),
-    on(P([[1.6, 0], [2.4, 0], [0.8, H], [0, H]])),
-  ] },
-  Y: { w: 2.4, ops: [
-    on(P([[0, 0], [0.85, 0], [1.2, 1.2], [1.55, 0], [2.4, 0], [1.5, 1.8], [0.9, 1.8]])),
-    on(R(1.2 - S / 2, 1.5, S, 1.5)),
-  ] },
-  Z: { w: 2.4, ops: [
-    on(R(0, 0, 2.4, S)), on(R(0, H - S, 2.4, S)),
-    on(P([[1.55, S], [2.4, S], [0.85, H - S], [0, H - S]])),
-  ] },
-
-  "0": { w: 2.4, ops: OUTER(2.4) },
-  "1": { w: 1.5, ops: [on(R(0.75, 0, S, H)), on(Q(0.75, 0, 0.75, -1, 1))] },
-  "2": { w: 2.1, ops: [
-    on(HU(0, 1.05, 1.05)), off(HU(S, 1.05, 1.05 - S)), off(R(0, 1.05, 1.05, 0.6)),
-    on(R(0, H - S, 2.1, S)), on(P([[1.35, 1.05], [2.1, 1.05], [0.85, H - S], [0, H - S]])),
-  ] },
-  "3": { w: 2.1, ops: [
-    on(R(0, 0, 2.1, S)), on(R(0.6, 1.125, 1.5, S)), on(R(0, H - S, 2.1, S)),
-    on(R(2.1 - S, 0, S, H)),
-  ] },
-  "4": { w: 2.4, ops: [on(R(0, 0, S, 1.8)), on(R(0, 1.8, 2.4, S)), on(R(2.4 - S, 0, S, H))] },
-  "5": { w: 2.1, ops: [
-    on(R(0, 0, 2.1, S)), on(R(0, 0, S, 1.125 + S)), on(R(0, 1.125, 2.1, S)),
-    on(R(2.1 - S, 1.125, S, 1.125 + S)), on(R(0, H - S, 2.1, S)),
-  ] },
-  "6": { w: 2.1, ops: [...OUTER(2.1), off(R(2.1 - S, 0, S, 1.125))] },
-  "7": { w: 2.4, ops: [on(R(0, 0, 2.4, S)), on(P([[1.55, S], [2.4, S], [1.5, H], [0.65, H]]))] },
-  "8": { w: 2.1, ops: [...OUTER(2.1), on(R(0, 1.125, 2.1, S))] },
-  "9": { w: 2.1, ops: [...OUTER(2.1), off(R(0, 1.125 + S, S, H - 1.125 - S))] },
+  // ★数字は見本に無いので、同じ規則(2x2のセル＋溝)で足したもの。
+  "0": ["qTL", "qTR", "qBL", "qBR", "1111"],
+  "1": ["empty", "full", "empty", "full", "0001"],
+  "2": ["qTL", "qTR", "full", "full", "1101"],
+  "3": ["full", "full", "full", "full", "1101"],
+  "4": ["full", "full", "empty", "full", "0101"],
+  "5": ["full", "full", "full", "rrR", "1100"],
+  "6": ["qTL", "full", "qBL", "qBR", "1011"],
+  "7": ["full", "full", "empty", "full", "1001"],
+  "8": ["qTL", "qTR", "qBL", "qBR", "1111"],
+  "9": ["qTL", "qTR", "qBL", "full", "1101"],
+  " ": ["empty", "empty", "empty", "empty", "0000"],
 };
+
+function glyphPath(g: Glyph): string {
+  const [tl, tr, bl, br, gut] = g;
+  const o = CELL + GUT; // 2列目・2行目の原点
+  let d = "";
+  d += cellPath(tl, 0, 0, CELL);
+  d += cellPath(tr, o, 0, CELL);
+  d += cellPath(bl, 0, o, CELL);
+  d += cellPath(br, o, o, CELL);
+  // 溝。塗る所だけ、両隣へわずかに食い込ませて継ぎ目を消す。
+  if (gut[0] === "1") d += rect(CELL - BLEED, 0, GUT + BLEED * 2, CELL);
+  if (gut[1] === "1") d += rect(CELL - BLEED, o, GUT + BLEED * 2, CELL);
+  if (gut[2] === "1") d += rect(0, CELL - BLEED, CELL, GUT + BLEED * 2);
+  if (gut[3] === "1") d += rect(o, CELL - BLEED, CELL, GUT + BLEED * 2);
+  return d;
+}
+
+// 字送り。見本の文字ピッチ(168px)−文字幅(162px)=6px=溝1本ぶん。
+const TRACK = GUT;
 
 export function geoTextWidth(text: string): number {
   const chars = [...text.toUpperCase()].filter((ch) => GLYPHS[ch]);
   if (chars.length === 0) return 0;
-  return chars.reduce((a, ch) => a + GLYPHS[ch].w, 0) + GAP * (chars.length - 1);
+  return chars.length * BOX + TRACK * (chars.length - 1);
 }
 
 /**
- * 幾何アルファベットで文字列を描く。
- * @param size 文字の高さ(px)。3ユニット＝この高さになる。
+ * 幾何アルファベットで文字列を描く。等幅。
+ * @param size 文字の高さ(px)。1文字の正方形の一辺がこの高さになる。
  */
-export function GeoText({ text, size = 20, color, tracking = GAP, style }: {
+export function GeoText({ text, size = 20, color, tracking = TRACK, style }: {
   text: string;
   size?: number;
   color: string;
-  /** 字間(ユニット)。既定 0.34。 */
+  /** 字送りの隙間(セル基準)。既定は溝1本ぶん。 */
   tracking?: number;
   style?: React.CSSProperties;
 }) {
-  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const chars = [...text.toUpperCase()].filter((ch) => GLYPHS[ch]);
   if (chars.length === 0) return null;
-  const total = chars.reduce((a, ch) => a + GLYPHS[ch].w, 0) + tracking * (chars.length - 1);
-  let x = 0;
-  const placed = chars.map((ch, i) => {
-    const g = GLYPHS[ch];
-    const at = x;
-    x += g.w + tracking;
-    return { g, at, i };
-  });
+  const total = chars.length * BOX + tracking * (chars.length - 1);
   return (
     <svg
-      viewBox={`0 0 ${n(total)} ${H}`}
+      viewBox={`0 0 ${n(total)} ${n(BOX)}`}
       height={size}
-      width={(size * total) / H}
+      width={(size * total) / BOX}
       role="img"
       aria-label={text}
-      style={{ display: "block", overflow: "visible", ...style }}
+      style={{ display: "block", ...style }}
     >
-      <defs>
-        {placed.map(({ g, i }) => (
-          // 塗り足し(白)と塗り抜き(黒)を順番に重ねる。あとから描いたものが勝つ。
-          <mask key={i} id={`${uid}-${i}`} maskUnits="userSpaceOnUse" x={0} y={0} width={g.w} height={H}>
-            {g.ops.map((op, k) => (
-              <path key={k} d={op.d} fill={op.on ? "#fff" : "#000"} />
-            ))}
-          </mask>
-        ))}
-      </defs>
-      {placed.map(({ g, at, i }) => (
-        <g key={i} transform={`translate(${n(at)} 0)`}>
-          <rect x={0} y={0} width={g.w} height={H} fill={color} mask={`url(#${uid}-${i})`} />
-        </g>
+      {chars.map((ch, i) => (
+        <path key={i} d={glyphPath(GLYPHS[ch])} fill={color} transform={`translate(${n(i * (BOX + tracking))} 0)`} />
       ))}
     </svg>
   );

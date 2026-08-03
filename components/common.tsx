@@ -38,10 +38,11 @@ export function Masthead({ title, dateline, right, corner }: {
 
 // ★タグ(2026-08-03)。KEEP/WISH のバッジや棚の見出しなど、要所の短い語は
 // 見出しと同じ幾何アルファベットで置く。英語の短い語だけを渡すこと。
-export function GeoTag({ text, size = 9, color = INK, style }: {
+export function GeoTag({ text, size = 10, color = INK, style }: {
   text: string; size?: number; color?: string; style?: CSSProperties;
 }) {
-  return <GeoText text={text} size={size} color={color} tracking={0.42} style={style} />;
+  // 字送りは見出しより少し広め(小さい字は詰まって見えるため)。
+  return <GeoText text={text} size={size} color={color} tracking={0.16} style={style} />;
 }
 
 // ★空状態には何も置かない(2026-08-02)。第1弾では地に溶ける図形ひとつ(84px)を
@@ -157,7 +158,7 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
           {badge && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 7.5, fontWeight: 800, letterSpacing: "0.02em", borderRadius: 999, padding: "3px 7px 3px 5px", flexShrink: 0 }}>
               {badge === "wish" ? <Sparkles size={8} color={INK} strokeWidth={2.4} /> : <Bookmark size={8} fill={INK} strokeWidth={0} />}
-              <GeoTag text={badge === "wish" ? "WISH" : "KEEP"} size={7} />
+              <GeoTag text={badge === "wish" ? "WISH" : "KEEP"} size={11} />
             </span>
           )}
           {action && (

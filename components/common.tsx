@@ -4,20 +4,17 @@ import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-reac
 import { memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
+import { GeoText } from "./GeoType";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
 export type IconType = ComponentType<{ size?: number | string; strokeWidth?: number; color?: string }>;
 
-// ★全画面が通るヘッダー。2026-08-02のネオバウハウス化で、視覚の主役を
-// 「見出しの文字」から「数字」へ移した(参照したミニマルなラジオアプリの
-// 「094.4」の扱い)。以前は28pxの太い大見出しが画面の顔で、件数はその横の
-// 小さなチップだった。いまは見出しを11px・字間広めの小さなラベルへ落とし、
-// 件数を42pxの数字にして、単位(件・のこり等)は数字の足元へ小さく添える。
-// 言葉を減らしてデザインで語る、という方針の中心にあたる変更。
-export function Masthead({ title, statValue, statLabel, dateline, right, corner }: {
+// ★各タブの見出し(2026-08-03)。名前は**英語＋幾何アルファベット**
+// (components/GeoType.tsx)で大きく置く。以前ここに出していた「〇件」の
+// 数字は、情報としてほとんど意味を成していなかったので撤去した。
+export function Masthead({ title, dateline, right, corner }: {
+  /** 見出しの英語表記。幾何アルファベットで描くのでA-Z・0-9のみ。 */
   title: string;
-  statValue?: ReactNode;
-  statLabel?: ReactNode;
   dateline?: ReactNode;
   right?: ReactNode;
   corner?: ReactNode;
@@ -26,17 +23,10 @@ export function Masthead({ title, statValue, statLabel, dateline, right, corner 
     <header style={{ padding: "10px 4px 18px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 11, letterSpacing: "0.22em", lineHeight: 1, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-          {right ? null : (
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 10 }}>
-              <span style={{ fontFamily: SANS, fontWeight: 800, fontSize: 42, lineHeight: 0.9, letterSpacing: "-0.03em", color: INK }}>{statValue}</span>
-              <span style={{ fontSize: 10, color: MUTED, lineHeight: 1 }}>{statLabel}</span>
-            </div>
-          )}
-          {dateline && <div style={{ fontSize: 11, color: MUTED, marginTop: 8 }}>{dateline}</div>}
+          <GeoText text={title} size={30} color={INK} />
+          {dateline && <div style={{ fontSize: 11, color: MUTED, marginTop: 10 }}>{dateline}</div>}
         </div>
-        {/* 設定(corner)は常に画面の右端。rightを渡された画面(切替UI等)は
-            数字の代わりにそれを右上へ置く。 */}
+        {/* 設定(corner)は常に画面の右端。 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {right}
           {corner}
@@ -46,9 +36,17 @@ export function Masthead({ title, statValue, statLabel, dateline, right, corner 
   );
 }
 
+// ★タグ(2026-08-03)。KEEP/WISH のバッジや棚の見出しなど、要所の短い語は
+// 見出しと同じ幾何アルファベットで置く。英語の短い語だけを渡すこと。
+export function GeoTag({ text, size = 9, color = INK, style }: {
+  text: string; size?: number; color?: string; style?: CSSProperties;
+}) {
+  return <GeoText text={text} size={size} color={color} tracking={0.42} style={style} />;
+}
+
 // ★空状態には何も置かない(2026-08-02)。第1弾では地に溶ける図形ひとつ(84px)を
 // 中央に置いていたが、実機で「背景の小さい図形が画面の中央に残っている」と
-// 指摘され撤去した。Mastheadの大きな数字(0)が既に空であることを語っている。
+// 指摘され撤去した。
 
 export function Dot({ color, label }: { color: string; label: string }) {
   return (
@@ -158,7 +156,8 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
         <div style={{ position: "absolute", top: 8, left: 8, right: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
           {badge && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 7.5, fontWeight: 800, letterSpacing: "0.02em", borderRadius: 999, padding: "3px 7px 3px 5px", flexShrink: 0 }}>
-              {badge === "wish" ? <Sparkles size={8} color={INK} strokeWidth={2.4} /> : <Bookmark size={8} fill={INK} strokeWidth={0} />} {badge === "wish" ? "WISH" : "KEEP"}
+              {badge === "wish" ? <Sparkles size={8} color={INK} strokeWidth={2.4} /> : <Bookmark size={8} fill={INK} strokeWidth={0} />}
+              <GeoTag text={badge === "wish" ? "WISH" : "KEEP"} size={7} />
             </span>
           )}
           {action && (

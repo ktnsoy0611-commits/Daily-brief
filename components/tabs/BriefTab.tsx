@@ -556,7 +556,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
   return (
     <>
-      <Masthead title="ブリーフ" statValue={deck.length === 0 ? "" : done ? keptCards.length : index + 1} statLabel={deck.length === 0 ? "休刊" : done ? "件Keep" : `／ ${deck.length} 件目`} dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
+      <Masthead title="BRIEF" dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
       <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
         {deck.map((c, i) => (
           <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background 0.3s" }} />

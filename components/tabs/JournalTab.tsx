@@ -3,7 +3,7 @@
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { Masthead } from "@/components/common";
+import { GeoTag, Masthead } from "@/components/common";
 import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
 import { dayInfo, img, todayKey } from "@/lib/helpers";
@@ -189,19 +189,19 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
     const empty = dayRecordCount(todayRec) === 0 && !summaries[todayRec.dateKey];
     return (
       <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-        <Masthead title="今日" statValue={dayRecordCount(todayRec)} statLabel="件の記録" corner={profileButton} />
+        <Masthead title="TODAY" corner={profileButton} />
         {empty ? null : (
           <>
             {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
             {(todayRec.items.length > 0 || todayRec.tasks.length > 0) && (
               <section style={{ marginBottom: 26 }}>
-                <div style={{ fontSize: 11, letterSpacing: "0.16em", color: MUTED, fontWeight: 700, margin: "0 4px 10px" }}>やったこと</div>
+                <div style={{ margin: "0 4px 10px" }}><GeoTag text="DONE" size={12} color={MUTED} /></div>
                 <DoneList day={todayRec} />
               </section>
             )}
             {todayRec.entries.length > 0 && (
               <section>
-                <div style={{ fontSize: 11, letterSpacing: "0.16em", color: MUTED, fontWeight: 700, margin: "0 4px 10px" }}>記録</div>
+                <div style={{ margin: "0 4px 10px" }}><GeoTag text="NOTES" size={12} color={MUTED} /></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {todayRec.entries.map((e) => <EntryCard key={e.id} entry={e} />)}
                 </div>
@@ -215,7 +215,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
 
   return (
     <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-      <Masthead title="アーカイブ" statValue={past.length} statLabel="日の記録" corner={profileButton} />
+      <Masthead title="ARCHIVE" corner={profileButton} />
       {past.length === 0 ? null : (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {months.map((m) => (

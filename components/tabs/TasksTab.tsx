@@ -82,7 +82,6 @@ export function TasksTab({ appState, persist, profileButton, tab }: TabProps & {
   const all = tasks.slice().sort(sortTasks);
   const shown = tab === "tasks-today" ? todays : all;
   const open = tasks.find((t) => t.id === openId) ?? null;
-  const remaining = todays.filter((t) => !t.done).length;
 
   const patchTask = (id: string, patch: Partial<Task>) => {
     const next = structuredClone(appState);
@@ -108,12 +107,7 @@ export function TasksTab({ appState, persist, profileButton, tab }: TabProps & {
 
   return (
     <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-      <Masthead
-        title={tab === "tasks-today" ? "今日" : "すべて"}
-        statValue={tab === "tasks-today" ? remaining : all.filter((t) => !t.done).length}
-        statLabel="件のこり"
-        corner={profileButton}
-      />
+      <Masthead title={tab === "tasks-today" ? "TODAY" : "ALL"} corner={profileButton} />
       {shown.length === 0 ? null : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {shown.map((t) => <TaskRow key={t.id} task={t} onToggle={toggle} onOpen={setOpenId} />)}

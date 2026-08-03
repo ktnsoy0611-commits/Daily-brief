@@ -3,7 +3,7 @@
 import { ChevronUp, Map as MapIcon, Maximize2, Minimize2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BinderModal, Masthead, SelectablePosterCard } from "@/components/common";
+import { BinderModal, GeoTag, Masthead, SelectablePosterCard } from "@/components/common";
 import { LeafletMap } from "@/components/LeafletMap";
 import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
@@ -109,7 +109,7 @@ function HorizontalShelf({ title, children }: { title: string; children: React.R
   return (
     <section style={{ marginBottom: 22 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 11, letterSpacing: "0.22em", color: MUTED }}>{title}</span>
+        <GeoTag text={title} size={13} color={MUTED} />
       </div>
       <div className="no-scrollbar" style={{ display: "flex", gap: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
         {children}
@@ -328,7 +328,7 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
       {ITEM_DOMAINS.map((d) => {
         const items = byDomain(d.id);
         return items.length > 0 && (
-          <HorizontalShelf key={d.id} title={d.label}>
+          <HorizontalShelf key={d.id} title={d.en}>
             {items.map(selectableCard)}
           </HorizontalShelf>
         );
@@ -385,7 +385,7 @@ export function ExecuteTab({ appState, persist, showToast, profileButton, select
 
   return (
     <>
-      <Masthead title="プラン" statValue={stocked.length} statLabel="件の候補" corner={profileButton} />
+      <Masthead title="PLAN" corner={profileButton} />
       <MapPlanner
         stocked={stocked} draftSelection={draftSelection}
         onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onApplyPlan={applyGeneratedPlan}

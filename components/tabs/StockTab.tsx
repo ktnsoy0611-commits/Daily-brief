@@ -3,7 +3,7 @@
 import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Package, Palette, UtensilsCrossed } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
-import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
+import { BinderModal, CardStack, GeoTag, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
 import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
 import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
@@ -177,12 +177,12 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
 // 暴れないようにしている。未対応のブラウザでは単に無視されるだけ。
 const SHELF_INTRINSIC = "1px 260px";
 
-function StackSection({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+function StackSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 34, contentVisibility: "auto", containIntrinsicSize: SHELF_INTRINSIC }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
-        <span style={{ fontSize: 11, letterSpacing: "0.22em", color: MUTED }}>{title}</span>
-        <span style={{ fontSize: 10, color: MUTED }}>{count}件</span>
+      {/* 棚の見出しも幾何アルファベット。件数は情報として意味が薄いので出さない。 */}
+      <div style={{ marginBottom: 12 }}>
+        <GeoTag text={title} size={13} color={MUTED} />
       </div>
       {children}
     </section>
@@ -274,16 +274,15 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
       onTogglePlanSelect={size ? undefined : () => toggleItemSelection(i.id)} />
   );
 
-  const totalCount = stocked.length;
   const openItems = openDomain ? domainItems[openDomain] : [];
 
   return (
     <>
-      <Masthead title="ストック" statValue={totalCount} statLabel="件" corner={profileButton} />
+      <Masthead title="STOCK" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         {ITEM_DOMAINS.map((d) => (
-          <StackSection key={d.id} title={d.label} count={domainItems[d.id].length}>
+          <StackSection key={d.id} title={d.en}>
             <CardStack cardWidth={STACK_CARD_WIDTH} rowCap={STACK_ROW_CAP}
               items={domainItems[d.id].slice().reverse().map((i) => ({ key: i.id, node: itemCard(i, STACK_CARD_WIDTH) }))}
               onOpen={() => setOpenDomain(d.id)}
@@ -297,7 +296,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
             か」の自動判定(isWishBound)で、タップでの手動トグルは持たない。 */}
         {allWishesDesc.length > 0 && (
           <section style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.22em", color: MUTED, marginBottom: 10 }}>ウィッシュ</div>
+            <div style={{ marginBottom: 10 }}><GeoTag text="WISHES" size={13} color={MUTED} /></div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               {allWishesDesc.map((w) => {
                 const bound = isWishBound(w, appState.items);

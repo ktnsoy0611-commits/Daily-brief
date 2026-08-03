@@ -125,7 +125,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
 
   return (
     <>
-      <Masthead title="ゴール" statValue={goalItems.length} statLabel="件" corner={profileButton} />
+      <Masthead title="GOALS" corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32, paddingLeft: 8, paddingRight: 8 }}>
         {/* ゴールはGoalBinderCard(Binder.tsx参照)で表示する。表紙は左端の

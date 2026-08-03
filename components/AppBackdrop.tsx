@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { BG } from "@/lib/constants";
-import { shade } from "@/lib/helpers";
+import { BD_GREY, BD_LIGHT } from "@/lib/constants";
 import type { AppId } from "@/lib/types";
 
 // ★アプリ全体の背景(2026-08-03 作り直し・3度目)。
@@ -15,7 +14,7 @@ import type { AppId } from "@/lib/types";
 //   去るほう … いま出ている図形が、来た道を戻るように順にはけていく
 //   来るほう … 新しい地の色が上から下りてきて、その後に図形が
 //                1つずつ時間差で入ってくる
-// 図形ごとに入り方が違う(帯は上から伸びる/半円は右から差し込む/扇形は角から
+// 図形ごとに入り方が違う(帯は上から伸びる/三角は右から差し込む/扇形は角から
 // 開く/円は中心から立ち上がる)。動画の参考どおり、1つの動きに全部を
 // 乗せるのではなく、それぞれの figure が自分の動きを持つ。
 //
@@ -23,7 +22,8 @@ import type { AppId } from "@/lib/types";
 // 基準は画面幅の半分(50vw)を1辺とする正方形。画面はこれで縦に2列へ割れ、
 // 分かれ目がちょうど画面の中央線に来る。行は画面中心を軸に上下へ展開する。
 //   ジャーナル … 左半分は**1枚の長い長方形**(グリッドを縦に横断する)。
-//                 右の列は、直線部分を画面右端に置いて左へふくらむ半円。
+//                 右の列は、1マスにぴったり収まる三角形(右辺が画面の端、
+//                 頂点が左を向く)。
 //   タスク    … 左の列にだけ「左下が角の扇形」を縦一列。右は地のまま。
 //   ブリーフ  … 2x2マス(=画面幅いっぱい)に内接する円。
 //
@@ -35,8 +35,8 @@ import type { AppId } from "@/lib/types";
 // 瞬間に、要素13枚以下のCSSアニメーションが1本走って終わる。以前のように
 // 毎フレーム全マスの transform を calc し直すことがなくなった。
 
-const LIGHT = shade(BG, 3);
-const GREY = shade(BG, -4);
+const LIGHT = BD_LIGHT;
+const GREY = BD_GREY;
 
 // 50vw のマスが縦に何行ぶん並ぶか(画面外へはみ出す分を含む)。
 const ROWS = 6;
@@ -79,12 +79,12 @@ function piecesFor(app: AppId): Piece[] {
       { cls: "bd-band", din: IN_BAND, dout: 0, style: { left: 0, top: 0, width: U, height: "100%", background: GREY } },
     ];
     for (let i = 0; i < ROWS; i++) {
-      // 半円は「半円の形の要素」を作らない。マスと同じ直径の円を画面の右端に
-      // 中心が来るよう置き、外へはみ出した右半分を層の overflow で切る。
-      // こうすると楕円にならず、直線部分が必ず画面の端に一致する。
+      // 1マスにぴったり収まる三角形。右辺が画面の端に重なり、頂点が左を向く。
+      // clip-path はこの要素が2D変形(translateX)しか受けないので安全
+      // (3D変形されたレイヤーに掛けると Safari で崩れる・HANDOFF §7.14)。
       pieces.push({
         cls: "bd-right", din: IN_FIGURE + i * IN_STEP, dout: i * OUT_STEP,
-        style: { left: `calc(100vw - ${U} / 2)`, top: rowTop(i), width: U, height: U, borderRadius: "50%", background: GREY },
+        style: { left: U, top: rowTop(i), width: U, height: U, clipPath: "polygon(100% 0, 100% 100%, 0 50%)", background: GREY },
       });
     }
     return pieces;
@@ -143,6 +143,16 @@ export function AppBackdrop({ appId }: { appId: AppId }) {
   }, [appId, cur]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  // ★いまの地の色を body にも書く。シェルの高さは 100svh 固定なので、
+  // iOSでツールバーが引っ込んで表示領域が広がると、その差の帯が背景に
+  // 覆われず body の色のまま残る。地の色と違うと、そこが「画面の端」の
+  // 線として見えてしまう(実機で報告された症状)。
+  useEffect(() => {
+    const c = groundOf(cur);
+    document.body.style.backgroundColor = c;
+    document.documentElement.style.backgroundColor = c;
+  }, [cur]);
 
   return (
     <div aria-hidden style={{

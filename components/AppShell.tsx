@@ -1,9 +1,10 @@
 "use client";
 
-import { PenLine, Plus, Settings, Sparkles } from "lucide-react";
+import { Settings } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop } from "@/components/AppBackdrop";
+import { TAB_ICON_OFF, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
@@ -17,7 +18,7 @@ import { StockTab } from "@/components/tabs/StockTab";
 import { InboxView } from "@/components/tabs/InboxView";
 import { TasksTab } from "@/components/tabs/TasksTab";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
-import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK_H, TAB_MARK_W } from "@/lib/constants";
+import { BD_GREY, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -31,7 +32,7 @@ import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, Journal
 const LOAD_CELL = 56;
 function LoadingScreen() {
   return (
-    <div style={{ height: "100svh", background: BG, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ height: "100svh", background: BD_GREY, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div className="load-grid" style={{ width: LOAD_CELL * 2, height: LOAD_CELL * 2, ["--u" as string]: `${LOAD_CELL}px` }}>
         {/* 重なり順: 円・扇形が下、長方形が上(2x2に伸びたとき全部を覆う)。 */}
         <div className="load-shape load-dot" style={{ background: INK }} />
@@ -180,31 +181,14 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
           別レイヤー(zIndex=15)に分離している。バインド！系のボタンは
           さらにnavのピルの影の滲みでうっすら覆われて見える不具合もあった
           ため、両方ともnavより高いzIndex=26にして常に手前に出している。 */}
-          {/* ★以前ここは「透明→BGへのグラデーション」で、タブバーの手前を
-              **不透明なBGで塗りつぶして**いた。背景が無地だった頃はそれで
-              良かったが、背景が図形のパターンになったいまは、その帯が
-              パターンを横一直線に切り取ってしまい、しかも塗る色(BG)が背景の
-              地の色と違うため、タブバーの上に継ぎ目がはっきり出ていた
-              (ユーザー報告「タブ周りが背景と干渉している」)。
-              色を塗るのをやめ、**背後をぼかすだけ**に変えた。ぼけるのは
-              その上を流れていくタブの中身で、背景のパターンはそのまま
-              透ける(パターンはこのトラックの外＝背後の別レイヤーにあるため、
-              backdrop-filterの対象に入らない)。マスクで下へ向かって効きを
-              強めているので、境目も出ない。 */}
-          {/* ★帯は**列の幅いっぱい**に広げる。この枠はスクロールルートの中に
-              あり、その左右16pxのpaddingの内側にしか広がっていなかったため、
-              左右に素通しの隙間ができ、しかも帯の左右の端が硬い直線なので
-              そこでUIが途切れて見えていた(ユーザー報告「タブの一定範囲内で
-              ブラーがかからない・不自然にUIが途切れる」)。paddingを打ち消して
-              画面の端まで届かせると、硬い端が画面の外へ出て継ぎ目が消える。 */}
-          <div aria-hidden style={{ position: "sticky", bottom: 0, width: "100%", height: 0, zIndex: 15, pointerEvents: "none" }}>
-            <div style={{
-              position: "absolute", left: -16, right: -16, top: -44, bottom: 0,
-              backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
-              maskImage: "linear-gradient(to bottom, transparent 0, #000 34px)",
-              WebkitMaskImage: "linear-gradient(to bottom, transparent 0, #000 34px)",
-            }} />
-          </div>
+          {/* ★nav手前のぼかしの帯は**撤去した**(2026-08-03)。
+              backdrop-filter + mask-image の組み合わせは Safari がマスクを
+              無視することがあり、その場合ぼかしが矩形いっぱいに効いて硬い
+              境目が出る。実機で「タブバーのあたりの画面が途切れて見える・
+              タブバー下部に画面の端が見える」と報告されたのがこれ。
+              画面全体を覆うぼかし層は、スクロールのたびに合成をやり直すため
+              ちらつきの原因にもなる。ピル自体が不透明な紙色で影も持っている
+              ので、帯が無くても下を流れる中身とは十分に見分けが付く。 */}
           {/* ダッシュボードを引き上げている間は、globals.css の
               [data-dash-active="1"] .app-nav がこれを消し、portal側の
               モーフ用ピルへ役目を渡す(見た目が同一の位置で入れ替わる)。
@@ -239,27 +223,26 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 touchAction: "none",
               }}
             >
-              {/* タブバーは以前の見た目(角丸の印がタブからタブへ滑る)のまま。
-                  違うのは**文字を出さないこと**と、そのぶんアイコンを少し
-                  大きくしたことだけ。読み上げ用のラベルは aria-label に残す。 */}
-              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: 6, marginBottom: NAV_BOTTOM_GAP }}>
+              {/* ★ピルの高さは以前と同じ64px(内側 TAB_MARK=52 + 上下の余白6)。
+                  選択中の印はその内側にぴったり収まる**正円**で、直径が
+                  そのままピルの内側の高さになる。文字は出さず、読み上げ用の
+                  ラベルは aria-label に残す。 */}
+              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: NAV_PILL_PAD, marginBottom: NAV_BOTTOM_GAP }}>
                 {/* 選択中の印。1枚だけ置いて隣のタブへ滑らせる。 */}
                 <div aria-hidden style={{
-                  position: "absolute", top: 6, bottom: 6, left: 6,
-                  width: `calc((100% - 12px) / ${a.tabs.length})`,
+                  position: "absolute", top: NAV_PILL_PAD, left: NAV_PILL_PAD, height: TAB_MARK,
+                  width: `calc((100% - ${NAV_PILL_PAD * 2}px) / ${a.tabs.length})`,
                   transform: `translateX(${Math.max(0, a.tabs.findIndex((t) => t.id === tab)) * 100}%)`,
                   transition: "transform 320ms cubic-bezier(0.32, 0.72, 0, 1)",
                   display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
                 }}>
-                  <div style={{ width: TAB_MARK_W, height: TAB_MARK_H, borderRadius: TAB_MARK_H / 2, background: INK }} />
+                  <div style={{ width: TAB_MARK, height: TAB_MARK, borderRadius: "50%", background: INK }} />
                 </div>
                 {a.tabs.map((t) => {
                   const active = tab === t.id;
                   return (
-                    <button key={t.id} aria-label={t.label} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <div style={{ width: TAB_MARK_W, height: TAB_MARK_H, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <t.Icon size={22} strokeWidth={1.8} color={active ? PAPER : "rgba(26,26,24,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
-                      </div>
+                    <button key={t.id} aria-label={t.label} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, height: TAB_MARK, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <TabIcon name={t.icon} color={active ? PAPER : TAB_ICON_OFF} size={24} />
                     </button>
                   );
                 })}
@@ -277,9 +260,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
               }}>
-                {a.id === "life" ? <Sparkles size={21} strokeWidth={1.8} color={PAPER} />
-                  : a.id === "tasks" ? <Plus size={22} strokeWidth={2.2} color={PAPER} />
-                  : <PenLine size={20} strokeWidth={1.9} color={PAPER} />}
+                <TabIcon name={a.id === "life" ? "sparkle" : a.id === "tasks" ? "plus" : "pen"} color={PAPER} size={22} />
               </button>
             </div>
           </nav>
@@ -863,7 +844,7 @@ export function AppShell() {
   // 設定画面は3アプリ共通の1枚なので、横スライドのトラックとは別に出す。
   if (showProfile) {
     return (
-      <div style={{ height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK, background: BG, position: "relative" }}>
+      <div style={{ height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK, background: BD_GREY, position: "relative" }}>
         <div data-tab-scroll-root style={{
           width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
           overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain", overflowAnchor: "none",
@@ -883,7 +864,7 @@ export function AppShell() {
       fontFamily: SANS, color: INK,
       // 背景(AppBackdrop)はzIndex:-1で敷くので、シェルを独立した重なりの
       // 単位にして、外へ抜け落ちないようにする。
-      background: BG, position: "relative", isolation: "isolate",
+      background: BD_GREY, position: "relative", isolation: "isolate",
     }}>
       {/* ★背景は3アプリ共通の1枚のグリッド。列の中ではなくここ(シェル直下)に
           1つだけ置く。グリッド自体は動かず、アプリを移ると各マスの大きさが

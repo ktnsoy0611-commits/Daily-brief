@@ -27,7 +27,11 @@ body {
      アプリの背景色をhtml/bodyそのものにも敷いておく。lib/constants.tsの
      BGと必ず同じ値にすること(以前ここだけ更新し忘れて色が合わず、
      画面下端に別色の帯が見える不具合があった)。 */
-  background-color: #F0F0EE;
+  /* ★背景(AppBackdrop)の地と同じ色にする。シェルの高さは 100svh 固定なので、
+     iOSでツールバーが引っ込んで表示領域が広がると、その差の帯がここの色の
+     まま残る。違う色だと「画面の端」の線に見える。実際の色は
+     AppBackdrop がアプリごとに body へ書き直す(ここは初期値)。 */
+  background-color: #ECECEA;
   /* 上のoverflow:hiddenが主となる防御線だが、iOS実機ではまれに慣性
      スクロールがoverflow切り替え後も一瞬続くケースがあるため、境界での
      バウンス連鎖もあわせて止めておく(多重の防御)。 */
@@ -99,7 +103,7 @@ body {
 @keyframes bd-band { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 .bd-band { transform-origin: 50% 0%; animation-name: bd-band; animation-duration: 420ms; }
 
-/* 右端の半円: 画面の外から左へ差し込む。 */
+/* 右端の三角: 画面の外から左へ差し込む。 */
 @keyframes bd-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
 .bd-right { animation-name: bd-right; }
 

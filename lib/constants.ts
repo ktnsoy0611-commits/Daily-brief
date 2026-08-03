@@ -95,11 +95,17 @@ export const GOAL_CARD_ASPECT = ITEM_CARD_ASPECT;
 // ティール・深緑)の家族に揃えている。
 export const POSTER_PALETTE = ["#2C4E74", GOLD, RUST, GREEN];
 
-// タブ1つぶんの印(選択中の黒い角丸)の大きさ。タブバー(AppShell)と
-// ダッシュボードのモーフ用ピル(Dashboard)の両方が使う。開閉の途中で
-// この2つが入れ替わるので、必ず同じ値を見ること。
-export const TAB_MARK_W = 44;
-export const TAB_MARK_H = 34;
+// ★タブバーの寸法。選択中の印は**正円**で、その直径がそのまま
+// ピルの内側の高さになる(ピルの高さ = TAB_MARK + NAV_PILL_PAD * 2 = 64)。
+// タブバー(AppShell)とダッシュボードのモーフ用ピル(Dashboard)の両方が
+// 使う。開閉の途中でこの2つが入れ替わるので、必ず同じ値を見ること。
+export const TAB_MARK = 52;
+export const NAV_PILL_PAD = 6;
+
+// 背景(AppBackdrop)の地と図形。画面より下(iOSでツールバーが引っ込んだ
+// ときに現れる帯)にも同じ色が要るので、ここに置いて body へも書く。
+export const BD_GREY = "#ECECEA";
+export const BD_LIGHT = "#F3F3F1";
 
 // navのピル自体を画面下端からどれだけ浮かせるか。ホーム画面に追加した
 // PWA(スタンドアロン)起動時、env(safe-area-inset-bottom)をそのまま

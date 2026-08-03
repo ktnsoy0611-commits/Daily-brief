@@ -3,7 +3,7 @@
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
-import { BG, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD } from "@/lib/constants";
+import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
@@ -643,7 +643,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               いるため、もやを隙間から通す構造的な穴は生まれない。 */}
           <footer style={{
             position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, paddingBottom: isGrowth ? 8 : 0, flexShrink: 0,
-            background: isGrowth ? `linear-gradient(to bottom, ${BG}00 0, ${BG} 20px, ${BG} 100%)` : "transparent",
+            background: isGrowth ? `linear-gradient(to bottom, ${BD_GREY}00 0, ${BD_GREY} 20px, ${BD_GREY} 100%)` : "transparent",
           }}>
             {isGrowth && (
               <div style={{ display: "flex", gap: 10 }}>

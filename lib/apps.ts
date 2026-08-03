@@ -1,5 +1,4 @@
-import { BookOpen, CalendarCheck, CheckSquare, Heart, Inbox, Map as MapIcon, Newspaper, PenLine, Sprout } from "lucide-react";
-import type { ComponentType, CSSProperties } from "react";
+import type { TabIconName } from "@/components/TabIcons";
 import type { AppId, TabId } from "./types";
 
 // ★3つのアプリの定義。タブバーの上を左右にスワイプすると、この配列の順に
@@ -10,12 +9,11 @@ import type { AppId, TabId } from "./types";
 // すべて共有する。背景(components/AppBackdrop.tsx)は3アプリで1枚のグリッドを
 // 共有し、アプリを移るとマスの大きさだけが変わる。
 
-export type TabIcon = ComponentType<{ size?: number; strokeWidth?: number; color?: string; style?: CSSProperties }>;
-
 export interface AppTabDef {
   id: TabId;
+  /** 読み上げ・押した時のトースト用。タブバーには文字を出さない。 */
   label: string;
-  Icon: TabIcon;
+  icon: TabIconName;
 }
 
 export interface AppDef {
@@ -29,27 +27,27 @@ export const APPS: AppDef[] = [
     id: "journal",
     label: "ジャーナル",
     tabs: [
-      { id: "journal-today", label: "今日", Icon: PenLine },
-      { id: "journal-archive", label: "アーカイブ", Icon: BookOpen },
+      { id: "journal-today", label: "今日", icon: "pen" },
+      { id: "journal-archive", label: "アーカイブ", icon: "book" },
     ],
   },
   {
     id: "tasks",
     label: "タスク",
     tabs: [
-      { id: "tasks-inbox", label: "インボックス", Icon: Inbox },
-      { id: "tasks-today", label: "今日", Icon: CheckSquare },
-      { id: "tasks-all", label: "すべて", Icon: CalendarCheck },
+      { id: "tasks-inbox", label: "インボックス", icon: "inbox" },
+      { id: "tasks-today", label: "今日", icon: "check" },
+      { id: "tasks-all", label: "すべて", icon: "calendar" },
     ],
   },
   {
     id: "life",
     label: "ブリーフ",
     tabs: [
-      { id: "brief", label: "ブリーフ", Icon: Newspaper },
-      { id: "goals", label: "ゴール", Icon: Sprout },
-      { id: "stock", label: "ストック", Icon: Heart },
-      { id: "execute", label: "プラン", Icon: MapIcon },
+      { id: "brief", label: "ブリーフ", icon: "brief" },
+      { id: "goals", label: "ゴール", icon: "goals" },
+      { id: "stock", label: "ストック", icon: "stock" },
+      { id: "execute", label: "プラン", icon: "plan" },
     ],
   },
 ];

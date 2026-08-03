@@ -1,9 +1,10 @@
 "use client";
 
-import { PenLine, Plus, Settings, Sparkles } from "lucide-react";
+import { Settings } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop } from "@/components/AppBackdrop";
+import { TAB_ICON_OFF, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
@@ -46,6 +47,11 @@ function LoadingScreen() {
 // components/Dashboard.tsx / globals.css と揃えること。
 const DASH_SHEET_RATIO = 0.84;
 const DASH_MS = 340;
+
+// ★タブ1つぶんの枠は正方形、選択中の印はそれに内接する正円。
+// components/Dashboard.tsx のモーフ用ピル(PILL_H)と高さを揃えること。
+export const TAB_SQUARE = 44;
+export const NAV_PILL_PAD = 6;
 
 // ★一周ループのための折り返し量(列の幅の倍数)。
 // 列 j は本来トラックの j 番目に居るが、いまの通し番号 pos から見て
@@ -190,9 +196,15 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
               透ける(パターンはこのトラックの外＝背後の別レイヤーにあるため、
               backdrop-filterの対象に入らない)。マスクで下へ向かって効きを
               強めているので、境目も出ない。 */}
+          {/* ★帯は**列の幅いっぱい**に広げる。この枠はスクロールルートの中に
+              あり、その左右16pxのpaddingの内側にしか広がっていなかったため、
+              左右に素通しの隙間ができ、しかも帯の左右の端が硬い直線なので
+              そこでUIが途切れて見えていた(ユーザー報告「タブの一定範囲内で
+              ブラーがかからない・不自然にUIが途切れる」)。paddingを打ち消して
+              画面の端まで届かせると、硬い端が画面の外へ出て継ぎ目が消える。 */}
           <div aria-hidden style={{ position: "sticky", bottom: 0, width: "100%", height: 0, zIndex: 15, pointerEvents: "none" }}>
             <div style={{
-              position: "absolute", left: 0, right: 0, top: -44, bottom: 0,
+              position: "absolute", left: -16, right: -16, top: -44, bottom: 0,
               backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
               maskImage: "linear-gradient(to bottom, transparent 0, #000 34px)",
               WebkitMaskImage: "linear-gradient(to bottom, transparent 0, #000 34px)",
@@ -232,29 +244,33 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 touchAction: "none",
               }}
             >
-              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: 6, marginBottom: NAV_BOTTOM_GAP }}>
-                {/* ★選択中の印。以前は各ボタンの背景を出し入れしていたので、
+              {/* ★タブバーには文字を出さない。1タブぶんの枠は**正方形**で、
+                  選択中の印はその正方形に内接する**正円**(どちらも一辺
+                  TAB_SQUARE)。アプリ全体の幾何学の語彙をここでも守っている。 */}
+              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: NAV_PILL_PAD, marginBottom: NAV_BOTTOM_GAP }}>
+                {/* 選択中の印。以前は各ボタンの背景を出し入れしていたので、
                     タブを変えると黒い枠が「消えて別の場所に現れる」だけだった。
                     1枚だけ置いて隣のタブへ**滑らせる**ようにしてある。
-                    ボタンより先に描かれるよう、ボタン側に zIndex:1 を与えて
-                    アイコンと文字がこの印の上に乗るようにしている。 */}
+                    ★高さは正方形ぶんに固定する(top/bottomで引き伸ばさない)。
+                    以前はボタン全体(アイコン+文字)の縦中央に置いていたため、
+                    印がアイコンではなく文字の位置に来てずれていた。 */}
                 <div aria-hidden style={{
-                  position: "absolute", top: 6, bottom: 6, left: 6,
-                  width: `calc((100% - 12px) / ${a.tabs.length})`,
+                  position: "absolute", top: NAV_PILL_PAD, left: NAV_PILL_PAD, height: TAB_SQUARE,
+                  width: `calc((100% - ${NAV_PILL_PAD * 2}px) / ${a.tabs.length})`,
                   transform: `translateX(${Math.max(0, a.tabs.findIndex((t) => t.id === tab)) * 100}%)`,
                   transition: "transform 320ms cubic-bezier(0.32, 0.72, 0, 1)",
                   display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
                 }}>
-                  <div style={{ width: 44, height: 28, borderRadius: 14, background: INK }} />
+                  <div style={{ width: TAB_SQUARE, height: TAB_SQUARE, borderRadius: "50%", background: INK }} />
                 </div>
                 {a.tabs.map((t) => {
                   const active = tab === t.id;
                   return (
-                    <button key={t.id} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, padding: "7px 0 6px", background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                      <div style={{ width: 44, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <t.Icon size={19} strokeWidth={1.8} color={active ? PAPER : "rgba(26,26,24,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
+                    <button key={t.id} aria-label={t.label} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, height: TAB_SQUARE, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {/* アイコンの枠は正方形。印の正円がちょうどこれに内接する。 */}
+                      <div style={{ width: TAB_SQUARE, height: TAB_SQUARE, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <TabIcon name={t.icon} color={active ? PAPER : TAB_ICON_OFF} hole={active ? INK : PAPER} />
                       </div>
-                      <span style={{ fontFamily: SANS, fontSize: 9.5, color: active ? INK : "rgba(26,26,24,0.38)", fontWeight: active ? 700 : 400, transition: "color 0.2s" }}>{t.label}</span>
                     </button>
                   );
                 })}
@@ -272,9 +288,10 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
               }}>
-                {a.id === "life" ? <Sparkles size={19} strokeWidth={1.8} color={PAPER} />
-                  : a.id === "tasks" ? <Plus size={20} strokeWidth={2.2} color={PAPER} />
-                  : <PenLine size={18} strokeWidth={1.9} color={PAPER} />}
+                {/* 「書く」入口のアイコンもタブと同じ面の語彙で描く(lucideの線画をやめた)。 */}
+                <div style={{ width: 21, height: 21 }}>
+                  <TabIcon name={a.id === "life" ? "wish" : a.id === "tasks" ? "plus" : "pen"} color={PAPER} hole={INK} size={21} />
+                </div>
               </button>
             </div>
           </nav>

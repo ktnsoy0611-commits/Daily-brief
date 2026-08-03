@@ -308,7 +308,7 @@ export interface AppState {
   // タブを切り替えても・アプリを開き直しても見返せる)。以前はコンポーネントの
   // ローカルstateだったため、閉じると二度と見られなかった(ユーザー報告)。
   generatedPlans?: { plans: GeneratedPlan[]; area: string | null; at: string } | null;
-  // 夜間Cron(アプリ側Gemini)が生成したブリーフのデッキ。editionKey
+  // 夜間Cron(アプリ側Gemini)が生成したブリーフのデッキ。日付(YYYY-MM-DD)
   // ("YYYY-MM-DD-am"|"-pm")をキーに、その号のカード配列を持つ。サーバーが
   // 所有するキー(dataStoreのSERVER_OWNED_KEYS)で、クライアントは読むが
   // 上書きしない。無い号は休刊表示。
@@ -319,7 +319,7 @@ export interface AppState {
   // クライアントは読むが上書きしない。
   cronStatus?: {
     at: string;          // 実行時刻(ISO)
-    editionKey: string;  // 生成した号("YYYY-MM-DD-am"|"-pm")
+    editionKey: string;  // 生成した日("YYYY-MM-DD")
     cardCount: number;   // この実行で書き込んだカード枚数
     sourceCount: number; // 今晩巡回した情報源数(固定＋抽選)
     sitesFetched?: number; // 実際に取得できたサイト数(取得成功)

@@ -2,9 +2,9 @@
 
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
+import { BinderModal, GeoTag, HOLE_CLEAR, Masthead, PunchHoles } from "@/components/common";
 import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD } from "@/lib/constants";
-import { daysBetween, haptic, img, ratingLabel, todayKey, todayLabel } from "@/lib/helpers";
+import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
 
@@ -173,7 +173,27 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
 
 type Decision = "keep" | "skip" | "answered" | "skipped";
 
-// 未消化カードのプール上限。号(朝刊/夕刊)を横断して、まだ消化していない
+// ★デッキが空のときに置く幾何学のしるし。背景・バインダーと同じ語彙
+// (正方形のグリッドに四半円と円)で、2x2のマスに図形を並べただけのもの。
+// 文字で説明を足さずに「まだ何も無い」ことを示す。
+function WaitingMark() {
+  const U = 34;
+  const cells: React.CSSProperties[] = [
+    { borderRadius: "0 0 100% 0" },   // 左上: 右下が丸い四半円
+    { borderRadius: "50%" },          // 右上: 円
+    { borderRadius: "50%" },          // 左下: 円
+    { borderRadius: "100% 0 0 0" },   // 右下: 左上が丸い四半円
+  ];
+  return (
+    <div aria-hidden style={{ display: "grid", gridTemplateColumns: `repeat(2, ${U}px)`, gridTemplateRows: `repeat(2, ${U}px)`, gap: 3 }}>
+      {cells.map((c, i) => (
+        <div key={i} style={{ ...c, background: i % 3 === 0 ? shade(BD_GREY, -16) : shade(BD_GREY, -8) }} />
+      ))}
+    </div>
+  );
+}
+
+// 未消化カードのプール上限。日をまたいで、まだ消化していない
 // カードを1ヶ月ぶん最大この枚数まで表示する(生成側=CronのPOOL_CAPと同じ値。
 // Cronは30枚に達すると新規生成を止める)。
 const POOL_CAP = 30;
@@ -228,16 +248,13 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   }, []);
 
 
-  const dateKey = todayKey();
-  // ブリーフは1日2回更新される: 正午を境に「朝刊」と「夕刊」。
-  // エディションごとに独立したキーを持つため、午後になるとデッキが再び届く。
-  const edition = new Date().getHours() < 12 ? "am" : "pm";
-  const editionKey = `${dateKey}-${edition}`;
-  const editionLabel = edition === "am" ? "朝刊" : "夕刊";
+  // ★「朝刊/夕刊」という区切りは廃止した(2026-08-03)。キーは日付だけで、
+  // 1日に何度生成しても同じ日のデッキに積まれる。
+  const editionKey = todayKey();
   const decisions: Record<string, Decision> = (appState.briefs?.[editionKey]?.decisions as Record<string, Decision>) ?? {};
-  // ★未消化カードは号(朝刊/夕刊)を横断して1ヶ月ぶん最大30枚まで貯まる(§req4)。
-  // 決定(keep/skip)・旗は号ごとの briefs[*] に散って記録されるが、カードidは
-  // 生成実行ごとにDate.nowベースで一意なので、全号ぶんをマージして引ける。
+  // ★未消化カードは日をまたいで貯まる。決定(keep/skip)・旗は日ごとの
+  // briefs[*] に散って記録されるが、カードidは生成実行ごとにDate.nowベースで
+  // 一意なので、全日ぶんをマージして引ける。
   const allDecisions: Record<string, Decision> = useMemo(() => {
     const m: Record<string, Decision> = {};
     for (const b of Object.values(appState.briefs ?? {})) {
@@ -252,10 +269,10 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
     }
     return m;
   }, [appState.briefs]);
-  // カードidから、それが属する号(editionKey)を引く。決定・旗をそのカードの
-  // 元の号に記録するため(未消化プールは号横断のため、今の号に記録すると
-  // ログ焼き付け(号ごとにカードと決定を突き合わせる)が壊れる)。見つからない
-  // 育成カード等は今の号。
+  // カードidから、それが属する日(editionKey)を引く。決定・旗をそのカードの
+  // 元の日に記録するため(未消化プールは日をまたぐので、今日に記録すると
+  // ログ焼き付け(日ごとにカードと決定を突き合わせる)が壊れる)。見つからない
+  // 育成カード等は今日。
   const editionOfCard = (id: string | number): string => {
     const decks = appState.generatedDecks ?? {};
     for (const [ek, cards] of Object.entries(decks)) {
@@ -299,7 +316,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   // いたが、ダミーのカードid(1〜14)をスワイプするとその決定が残り、生成カードの
   // idと衝突して「もう見た」と誤判定される不具合の原因になっていたため撤去した
   // (SYSTEM-DESIGN §8 のサンプルデータ撤去にも沿う)。
-  // この号で既に育成カード(checkin/milestone)を1枚さばいたか。育成カードの
+  // 今日すでに育成カード(checkin/milestone)を1枚さばいたか。育成カードの
   // 決定キーは "checkin-..."/"milestone-..." で始まる。
   const growthDecidedThisEdition = Object.keys(decisions).some(
     (k) => k.startsWith("checkin-") || k.startsWith("milestone-"),
@@ -316,9 +333,9 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   }
 
   const deck: DeckCard[] = useMemo(() => {
-    // デッキ=号(朝刊/夕刊)を横断した「未消化カードのプール」。新しい号から順に、
+    // デッキ=日をまたいだ「未消化カードのプール」。新しい日から順に、
     // 会期切れ・マウント時点で消化済みのものを除いて集め、最大 POOL_CAP(30)枚。
-    // editionKey("YYYY-MM-DD-am|pm")は文字列比較で新しい順に並ぶ(同日ならpm>am)。
+    // キー("YYYY-MM-DD")は文字列比較で新しい順に並ぶ。
     const nowMs = Date.now();
     const decks = appState.generatedDecks ?? {};
     const edKeys = Object.keys(decks).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
@@ -556,7 +573,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
   return (
     <>
-      <Masthead title="BRIEF" dateline={`${todayLabel()} ・ ${editionLabel}`} corner={profileButton} />
+      <Masthead title="BRIEF" corner={profileButton} />
       <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
         {deck.map((c, i) => (
           <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background 0.3s" }} />
@@ -654,19 +671,18 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
           </footer>
         </div>
       ) : deck.length === 0 ? (
-        // その号のデッキがまだ無い(夜間Cronが未生成、または候補ゼロ)状態。
-        // 以前はここも「ここまで。」と、スワイプし終えたかのような表示になって
-        // いたが、実際にはまだ届いていない/休刊なので、それが分かる別表示にする。
-        // クライアントには「生成中/失敗」を判別する信号が無い(Cronはサーバー側)
-        // ため、両方を正直に包む「まだ届いていません」に寄せる。
-        <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
-          <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED }}>NO ISSUE YET</div>
-          <h2 style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, lineHeight: 1.4, margin: "10px 0 0" }}>{editionLabel}は、まだ<br />届いていません。</h2>
+        // デッキがまだ無い(夜間Cronが未生成、または候補ゼロ)状態。クライアントには
+        // 「生成中/失敗」を判別する信号が無い(Cronはサーバー側)ため、両方を
+        // 正直に包む文言にし、幾何学のしるしを添える。
+        <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22 }}>
+          <WaitingMark />
+          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 15, lineHeight: 1.8, color: MUTED, textAlign: "center" }}>
+            まだ何も集まっていません。<br />見つかったらここに並びます。
+          </div>
         </main>
       ) : (
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "28px 4px" }}>
-          <div style={{ fontSize: 10, letterSpacing: "0.28em", color: MUTED }}>END OF ISSUE</div>
-          <h2 style={{ fontFamily: SANS, fontWeight: 800, fontSize: 22, lineHeight: 1.4, margin: "10px 0 20px" }}>{editionLabel}は、<br />ここまで。</h2>
+          <div style={{ marginBottom: 14 }}><GeoTag text="ALL SEEN" size={13} color={MUTED} /></div>
           {keptCards.map((c, i) => (
             <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "12px 2px", borderTop: `1px solid ${HAIRLINE}` }}>
               <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>

@@ -52,7 +52,7 @@ function cellPath(kind: Cell, x: number, y: number, s: number): string {
     // 指定の角をセルの一辺を半径にして丸く落とす(=反対の角を中心とする四半円)。
     case "qTL": return `M${n(x + s)} ${n(y)}V${n(y + s)}H${n(x)}A${r} ${r} 0 0 1 ${n(x + s)} ${n(y)}Z`;
     case "qTR": return `M${n(x)} ${n(y)}A${r} ${r} 0 0 1 ${n(x + s)} ${n(y + s)}H${n(x)}Z`;
-    case "qBL": return `M${n(x)} ${n(y)}H${n(x + s)}V${n(y + s)}A${r} ${r} 0 0 0 ${n(x)} ${n(y)}Z`;
+    case "qBL": return `M${n(x)} ${n(y)}H${n(x + s)}V${n(y + s)}A${r} ${r} 0 0 1 ${n(x)} ${n(y)}Z`;
     case "qBR": return `M${n(x)} ${n(y)}H${n(x + s)}A${r} ${r} 0 0 1 ${n(x)} ${n(y + s)}Z`;
     // 帯の片端をセルの半分を半径にして丸くする。
     case "rrR": return `M${n(x)} ${n(y)}H${n(x + s / 2)}A${h} ${h} 0 0 1 ${n(x + s / 2)} ${n(y + s)}H${n(x)}Z`;

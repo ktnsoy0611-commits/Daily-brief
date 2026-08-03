@@ -123,15 +123,16 @@ export function isExpiredItem(item: Item) {
   return daysBetween(item.addedAt) > KEEP_MAX_AGE_DAYS;
 }
 
-// ブリーフの号(editionKey = "YYYY-MM-DD-am"/"YYYY-MM-DD-pm")は当日限りしか
+// ブリーフの記録(briefs[日付])は当日限りしか
 // 参照されない(BriefTabは常にtodayKey()ベースのキーだけを読む)ため、
-// 一定日数を過ぎた号は死重として削除する。日付部分だけ取り出せない
+// 一定日数を過ぎたものは死重として削除する。日付部分だけ取り出せない
 // キー(不正な形式)は判定できないため安全側で残す。
+// キーは日付("YYYY-MM-DD")。旧形式("...-am"/"-pm")も読めるようにしてある。
 export function pruneOldBriefs(briefs: Record<string, BriefState>): { pruned: Record<string, BriefState>; changed: boolean } {
   const pruned: Record<string, BriefState> = {};
   let changed = false;
   Object.entries(briefs).forEach(([key, value]) => {
-    const m = key.match(/^(\d{4}-\d{2}-\d{2})-(am|pm)$/);
+    const m = key.match(/^(\d{4}-\d{2}-\d{2})/);
     if (m && daysBetween(m[1]) > BRIEF_RETENTION_DAYS) {
       changed = true;
       return;

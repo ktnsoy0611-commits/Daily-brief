@@ -20,7 +20,7 @@ import type { BriefCard } from "@/lib/types";
 //      対等に合わせて使う。
 //   2. buildDeck() で単ホップ抽出→分類→編成(アプリ側Gemini無料枠)
 //   3. 抽出レコードを content_cache へ蓄積(url重複は除外・非致命)
-//   4. デッキ(BriefCard[])を app_state.generatedDecks[editionKey] へ書く
+//   4. デッキ(BriefCard[])を app_state.generatedDecks[日付] へ積み増す
 //   5. 合わせた結果をmy-brainへ書き戻す(鏡を最新化)。app_stateへの書き戻しは
 //      ここでは行わない(クライアントが所有するキーなので、同時に編集された
 //      場合に上書きし合う競合を避けるため)。my-brain側の更新をアプリ画面へ
@@ -42,20 +42,21 @@ export const maxDuration = 300;
 // ストックし続け、超えたら削除する(ユーザー指定: 3日を限度)。号の日付で判定。
 const RETENTION_DAYS = 3;
 const POOL_CAP = 40;         // 未消化(keep/skipされていない)カードのストック上限。40枚溜まっている間は追加生成しない(ユーザー指定)
-const GEN_TARGET = 10;       // 1号(朝刊/夕刊)で出す目標枚数(ユーザー指定: 各10枚くらい。朝刊10+夕刊10=1日20枚)
+const GEN_TARGET = 10;       // 1回の生成で出す目標枚数(ユーザー指定: 10枚くらい。1日2回走るので合計20枚くらい)
 const GOAL_CARDS_PER_WEEK = 2; // ゴール関連カードは週に1〜2枚まで(ユーザー指定・§8.21)
 
+// ★「朝刊/夕刊」という区切りは廃止した(2026-08-03)。キーは日付だけで、
+// 1日に何度走っても同じ日のデッキに**積み増す**(下の書き込み参照)。
 function jstEditionKey(): string {
   const jst = new Date(Date.now() + 9 * 3600 * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
-  const dateKey = `${jst.getUTCFullYear()}-${pad(jst.getUTCMonth() + 1)}-${pad(jst.getUTCDate())}`;
-  const edition = jst.getUTCHours() < 12 ? "am" : "pm";
-  return `${dateKey}-${edition}`;
+  return `${jst.getUTCFullYear()}-${pad(jst.getUTCMonth() + 1)}-${pad(jst.getUTCDate())}`;
 }
 
-// editionKey("YYYY-MM-DD-am|pm")の日付が保持期間より古ければ true。
+// デッキのキー(日付)が保持期間より古ければ true。
+// 旧形式("YYYY-MM-DD-am|pm")のキーもそのまま判定できる。
 function isOldEdition(editionKey: string, cutoffMs: number): boolean {
-  const m = editionKey.match(/^(\d{4})-(\d{2})-(\d{2})-/);
+  const m = editionKey.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return false; // 読めないキーは安全側で残す
   const t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
   return t < cutoffMs;
@@ -354,7 +355,7 @@ export async function GET(req: Request) {
     /* プール書き込みの失敗はデッキ生成を止めない */
   }
 
-  // 4. デッキを generatedDecks[editionKey] へ(既存を読み、当該号を更新、古い号を掃除)
+  // 4. デッキを generatedDecks[日付] へ(既存を読み、その日へ積み増し、古い日を掃除)
   const editionKey = jstEditionKey();
   // ★idは「生成の実行ごとに」重複しない値でなければならない。以前は固定値
   // (100000)を毎回のベースにしていたため、同じeditionKeyに対して生成が
@@ -420,7 +421,15 @@ export async function GET(req: Request) {
     const cutoff = Date.now() - RETENTION_DAYS * 24 * 3600 * 1000;
     let mutated = false;
     for (const k of Object.keys(decks)) if (isOldEdition(k, cutoff)) { delete decks[k]; mutated = true; }
-    if (cards.length > 0) { decks[editionKey] = cards; mutated = true; }
+    // ★同じ日に2回走る(朝・昼)ので、置き換えではなく**積み増す**。
+    // 号で分けていた頃はキーが別だったので置き換えでよかったが、キーが
+    // 日付だけになったため、置き換えると午前ぶんが消えてしまう。
+    if (cards.length > 0) {
+      const prev = decks[editionKey] ?? [];
+      const seen = new Set(prev.map((c) => String(c.id)));
+      decks[editionKey] = [...prev, ...cards.filter((c) => !seen.has(String(c.id)))];
+      mutated = true;
+    }
     if (mutated) {
       const { error: writeErr } = await supa.from("app_state").upsert(
         { user_id: ownerId, key: "generatedDecks", value: decks, updated_at: new Date().toISOString() },

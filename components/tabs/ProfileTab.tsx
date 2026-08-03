@@ -250,7 +250,7 @@ export function ProfileTab({ appState, persist, onClose }: {
   const reactionCounts = (() => {
     let kept = 0, skipped = 0, done = 0, starred = 0;
     for (const [ek, b] of Object.entries(appState.briefs ?? {})) {
-      if (ek.slice(0, 7) !== nowYm) continue; // editionKey = YYYY-MM-DD-am|pm
+      if (ek.slice(0, 7) !== nowYm) continue; // デッキのキー = YYYY-MM-DD
       const fb = (b as { feedback?: Record<string, boolean> }).feedback ?? {};
       const decisions = (b as { decisions?: Record<string, string> }).decisions ?? {};
       for (const [cid, dec] of Object.entries(decisions)) {
@@ -265,7 +265,6 @@ export function ProfileTab({ appState, persist, onClose }: {
     return { kept, skipped, done, starred };
   })();
 
-  const editionJp = (k: string) => (k.endsWith("-am") ? "朝刊" : k.endsWith("-pm") ? "夕刊" : "");
   const cronWhen = (iso: string) => {
     try { return new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
     catch { return iso; }
@@ -646,7 +645,7 @@ export function ProfileTab({ appState, persist, onClose }: {
                 {cronStatus.cardCount}枚を生成{cronStatus.cardCount === 0 && cronStatus.note ? `（${cronStatus.note}）` : ""}
               </div>
               <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4, lineHeight: 1.7 }}>
-                {cronWhen(cronStatus.at)} ・ {editionJp(cronStatus.editionKey)} ・ 情報源{cronStatus.sourceCount}サイト巡回{typeof cronStatus.sitesFetched === "number" ? `(取得成功${cronStatus.sitesFetched})` : ""}<br />
+                {cronWhen(cronStatus.at)} ・ 情報源{cronStatus.sourceCount}サイト巡回{typeof cronStatus.sitesFetched === "number" ? `(取得成功${cronStatus.sitesFetched})` : ""}<br />
                 {typeof cronStatus.candidateCount === "number" && <>候補{cronStatus.candidateCount}件<br /></>}
                 {cronStatus.dropped && (() => {
                   const d = cronStatus.dropped;

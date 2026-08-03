@@ -28,8 +28,8 @@ export const CHECKIN_INTERVAL_DAYS = 14;
 export const MILESTONE_INTERVAL_DAYS = 45;
 // 場所を持つItemの自動失効: expiresAtがなければaddedAtからこの日数で削除
 export const KEEP_MAX_AGE_DAYS = 30;
-// ブリーフの号(briefs[editionKey])はその日を過ぎたら二度と参照されない
-// (BriefTabは常にtodayKey()ベースのeditionKeyしか読まない)ため、無期限に
+// ブリーフの記録(briefs[日付])はその日を過ぎたら二度と参照されない
+// (BriefTabは常にtodayKey()しか読まない)ため、無期限に
 // 溜まり続けるだけの死重になる。この日数を過ぎた号はAppShellの起動時
 // クリーンアップで削除する。
 // ★カード本体(generatedDecks)は30日保持(Cronの RETENTION_DAYS)。決定

@@ -25,11 +25,12 @@ function ymd(iso: string | undefined): string | null {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// editionKey "YYYY-MM-DD-am|pm" から日付(YYYY-MM-DD)と朝刊/夕刊を取り出す。
-function parseEdition(editionKey: string): { date: string; edition: string } | null {
-  const m = editionKey.match(/^(\d{4}-\d{2}-\d{2})-(am|pm)$/);
+// デッキのキーから日付(YYYY-MM-DD)を取り出す。「朝刊/夕刊」の区切りは
+// 廃止したのでキーは日付だけだが、旧形式("...-am"/"-pm")も読めるようにする。
+function parseEdition(editionKey: string): { date: string } | null {
+  const m = editionKey.match(/^(\d{4}-\d{2}-\d{2})/);
   if (!m) return null;
-  return { date: m[1], edition: m[2] === "am" ? "朝刊" : "夕刊" };
+  return { date: m[1] };
 }
 
 function clean(s: string | undefined): string {

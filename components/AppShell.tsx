@@ -1,10 +1,9 @@
 "use client";
 
-import { Settings } from "lucide-react";
+import { PenLine, Plus, Settings, Sparkles } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop } from "@/components/AppBackdrop";
-import { TAB_ICON_OFF, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
@@ -18,25 +17,42 @@ import { StockTab } from "@/components/tabs/StockTab";
 import { InboxView } from "@/components/tabs/InboxView";
 import { TasksTab } from "@/components/tabs/TasksTab";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
-import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BG, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK_H, TAB_MARK_W } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
 import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId } from "@/lib/types";
 
-// 読み込み待機画面。2x2のグリッドの中で、黒い幾何学が次々に切り替わる
-// (globals.css の load-cell)。背景と同じ語彙で、角の丸め方だけを動かして
-// 円・半円・四半円・正方形を行き来する。文字は出さない。
-// 4マスに少しずつ開始をずらしてあるので、組み合わせが絶えず変わり続ける。
-const LOAD_CELL = 46;
+// 読み込み待機画面。2x2の窓の中を、黒い幾何学が次々に通り過ぎていく
+// (globals.css の load-v / load-h)。背景と同じ考え方で、図形そのものは
+// 変形せず、窓の外へはけて次の図形が外から入ってくる。文字は出さない。
+// マスごとに動く向きと図形の並びをずらしてあるので、組み合わせが
+// 絶えず変わり続ける。
+const LOAD_CELL = 54;
+// 正方形・円・半円(左)・扇形(左下が角)。最後にもう一度先頭を置くと、
+// 一周したところで図形が一致して繋ぎ目が出ない。
+const LOAD_FORMS = ["0", "50%", "100% 0 0 100%", "0 100% 0 0"];
 function LoadingScreen() {
   return (
     <div style={{ height: "100svh", background: BG, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(2, ${LOAD_CELL}px)`, gridTemplateRows: `repeat(2, ${LOAD_CELL}px)` }}>
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="load-cell" style={{ background: INK, animationDelay: `${i * 0.45}s` }} />
-        ))}
+        {[0, 1, 2, 3].map((i) => {
+          // マスごとに図形の並びを回す。向きは市松に縦・横。
+          const forms = [...LOAD_FORMS.slice(i), ...LOAD_FORMS.slice(0, i)];
+          const vertical = i === 0 || i === 3;
+          return (
+            <div key={i} className={`load-cell ${vertical ? "lv" : "lh"}`}>
+              <div className="load-strip" style={{ animationDelay: `${i * 0.28}s` }}>
+                {[...forms, forms[0]].map((radius, j) => (
+                  <div key={j} className="load-pane" style={{ [vertical ? "top" : "left"]: `${j * 100}%` }}>
+                    <div style={{ position: "absolute", inset: 6, background: INK, borderRadius: radius }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -47,11 +63,6 @@ function LoadingScreen() {
 // components/Dashboard.tsx / globals.css と揃えること。
 const DASH_SHEET_RATIO = 0.84;
 const DASH_MS = 340;
-
-// ★タブ1つぶんの枠は正方形、選択中の印はそれに内接する正円。
-// components/Dashboard.tsx のモーフ用ピル(PILL_H)と高さを揃えること。
-export const TAB_SQUARE = 44;
-export const NAV_PILL_PAD = 6;
 
 // ★一周ループのための折り返し量(列の幅の倍数)。
 // 列 j は本来トラックの j 番目に居るが、いまの通し番号 pos から見て
@@ -244,32 +255,26 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 touchAction: "none",
               }}
             >
-              {/* ★タブバーには文字を出さない。1タブぶんの枠は**正方形**で、
-                  選択中の印はその正方形に内接する**正円**(どちらも一辺
-                  TAB_SQUARE)。アプリ全体の幾何学の語彙をここでも守っている。 */}
-              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: NAV_PILL_PAD, marginBottom: NAV_BOTTOM_GAP }}>
-                {/* 選択中の印。以前は各ボタンの背景を出し入れしていたので、
-                    タブを変えると黒い枠が「消えて別の場所に現れる」だけだった。
-                    1枚だけ置いて隣のタブへ**滑らせる**ようにしてある。
-                    ★高さは正方形ぶんに固定する(top/bottomで引き伸ばさない)。
-                    以前はボタン全体(アイコン+文字)の縦中央に置いていたため、
-                    印がアイコンではなく文字の位置に来てずれていた。 */}
+              {/* タブバーは以前の見た目(角丸の印がタブからタブへ滑る)のまま。
+                  違うのは**文字を出さないこと**と、そのぶんアイコンを少し
+                  大きくしたことだけ。読み上げ用のラベルは aria-label に残す。 */}
+              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: 6, marginBottom: NAV_BOTTOM_GAP }}>
+                {/* 選択中の印。1枚だけ置いて隣のタブへ滑らせる。 */}
                 <div aria-hidden style={{
-                  position: "absolute", top: NAV_PILL_PAD, left: NAV_PILL_PAD, height: TAB_SQUARE,
-                  width: `calc((100% - ${NAV_PILL_PAD * 2}px) / ${a.tabs.length})`,
+                  position: "absolute", top: 6, bottom: 6, left: 6,
+                  width: `calc((100% - 12px) / ${a.tabs.length})`,
                   transform: `translateX(${Math.max(0, a.tabs.findIndex((t) => t.id === tab)) * 100}%)`,
                   transition: "transform 320ms cubic-bezier(0.32, 0.72, 0, 1)",
                   display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
                 }}>
-                  <div style={{ width: TAB_SQUARE, height: TAB_SQUARE, borderRadius: "50%", background: INK }} />
+                  <div style={{ width: TAB_MARK_W, height: TAB_MARK_H, borderRadius: TAB_MARK_H / 2, background: INK }} />
                 </div>
                 {a.tabs.map((t) => {
                   const active = tab === t.id;
                   return (
-                    <button key={t.id} aria-label={t.label} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, height: TAB_SQUARE, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {/* アイコンの枠は正方形。印の正円がちょうどこれに内接する。 */}
-                      <div style={{ width: TAB_SQUARE, height: TAB_SQUARE, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <TabIcon name={t.icon} color={active ? PAPER : TAB_ICON_OFF} hole={active ? INK : PAPER} />
+                    <button key={t.id} aria-label={t.label} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ width: TAB_MARK_W, height: TAB_MARK_H, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <t.Icon size={22} strokeWidth={1.8} color={active ? PAPER : "rgba(26,26,24,0.38)"} style={{ transition: "color 0.2s, stroke 0.2s" }} />
                       </div>
                     </button>
                   );
@@ -288,10 +293,9 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
               }}>
-                {/* 「書く」入口のアイコンもタブと同じ面の語彙で描く(lucideの線画をやめた)。 */}
-                <div style={{ width: 21, height: 21 }}>
-                  <TabIcon name={a.id === "life" ? "wish" : a.id === "tasks" ? "plus" : "pen"} color={PAPER} hole={INK} size={21} />
-                </div>
+                {a.id === "life" ? <Sparkles size={21} strokeWidth={1.8} color={PAPER} />
+                  : a.id === "tasks" ? <Plus size={22} strokeWidth={2.2} color={PAPER} />
+                  : <PenLine size={20} strokeWidth={1.9} color={PAPER} />}
               </button>
             </div>
           </nav>

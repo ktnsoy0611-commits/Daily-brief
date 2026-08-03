@@ -67,62 +67,47 @@ body {
    各図形の top/left/width/height/border-radius は、この2つを使った1本の
    calc() で書いてある(components/AppBackdrop.tsx)。JSは毎フレーム何も
    計算せず、CSS変数を書くだけ。 */
-/* ★アプリは一周ループするので、補間も輪にする。0=ジャーナル 1=タスク
-   2=ブリーフ 3=またジャーナル、の**3区間**だけで一周ぶんを覆う:
-     u1: 0→1 / u2: 1→2 / u3: 2→3
-   --p がこの 0〜3 に必ず収まるよう、横へ払う向きが決まった瞬間に AppShell が
-   --appi を選び直す(左へ払うなら 0〜2 から、右へ払うなら 1〜3 から)。
-   区間を最小限にしてあるのは性能のため: 指を動かすたびに全マスの
-   transform / border-radius が再計算されるので、式に出てくる変数が1つ増える
-   だけで横スワイプの long task がはっきり増える。 */
+/* ★背景。--p は 0=ジャーナル 1=タスク 2=ブリーフ 3=またジャーナル、という
+   一周ぶんの連続値。--p がこの 0〜3 に必ず収まるよう、横へ払う向きが決まった
+   瞬間に AppShell が --appi を選び直す(左へ払うなら 0〜2 から、右へ払うなら
+   1〜3 から)。 */
 .app-backdrop-grid {
   --p: calc(var(--appi, 0) - var(--dragn, 0));
-  --u1: clamp(0, var(--p), 1);
-  --u2: clamp(0, calc(var(--p) - 1), 1);
-  --u3: clamp(0, calc(var(--p) - 2), 1);
 }
-/* 指を離した瞬間は --p が目的地へ飛ぶので、ここでトラックのスライドと
-   同じ時間・同じイージングで追いつかせる。動かすのは transform と
-   border-radius だけ(レイアウトを起こさないため)。 */
+
+/* マスは**窓**。中身(帯)がこの窓の外へはけ、次の面が外から入ってくる。 */
 .app-backdrop-cell {
   position: absolute;
-  width: 25vw;
-  height: 25vw;
-  /* ★左上を軸に伸縮する。だからマスの左辺・上辺は動かず、右辺と下辺
-     (＝グリッドの境目)だけが滑っていく。中心を軸にすると、育つときに
-     マスがその場から外へはみ出して見え、グリッドから浮いてしまう。 */
-  transform-origin: 0 0;
-  /* このマスは中身を持たない色面なので、外のレイアウトにも描画にも影響しない。
-     そう宣言しておくと、48枚ぶんの再計算をブラウザが切り詰められる。 */
+  width: 50vw;
+  height: 50vw;
+  overflow: hidden;
+  /* このマスは色面しか持たず、外のレイアウトにも描画にも影響しない。
+     そう宣言しておくと、ブラウザが再計算を切り詰められる。 */
   contain: layout paint style;
-  transition-duration: 520ms;
-  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-  transition-property: transform, border-radius;
 }
 
-/* ★マスの振る舞いは3種類しかないので、48枚ぶんの calc() を書かずに
-   ここへ畳んである(components/AppBackdrop.tsx の説明を参照)。
-   大きさは アプリ0(ジャーナル) / 1(タスク) / 2(ブリーフ) の順に:
-     a = 1 / 1 / 4   … 左の列で、粗いマスの左上にあたるマス
-     b = 1 / 1 / 0   … 左の列のそれ以外
-     c = 1 / 0 / 0   … 左の列以外
-   下の式は、その3点を上の5区間で繋いだものを展開しただけ。 */
-.bd-a { transform: scale(calc(1 + 3 * var(--u2) - 3 * var(--u3))); }
-.bd-b { transform: scale(calc(1 - var(--u2) + var(--u3))); }
-.bd-c { transform: scale(calc(1 - var(--u1) + var(--u3))); }
-
-/* 角の丸めが動くのは左の列だけ(円 → 左下が角の扇形 → 円)。残りは常に真円で、
-   毎フレームの計算がまるごと要らない。左の列も、実際に違う式は2本しかない
-   ので、変数へ入れて使い回す(4回とも計算し直さない)。 */
-.bd-round { border-radius: 50%; }
-.bd-fan {
-  --rc: calc(50% - 50% * var(--u1) + 50% * var(--u2));
-  --rt: calc(50% + 50% * var(--u1) - 50% * var(--u2));
-  border-radius: var(--rc) var(--rt) var(--rc) var(--rc);
+/* 3アプリぶん(＋一周ぶん)の面を並べた帯。動かすのはこの1枚だけで、
+   中の図形は一切変形しない(モーフィングをやめた)。 */
+.app-backdrop-strip {
+  position: absolute;
+  inset: 0;
+  transition: transform 520ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition-delay: var(--d, 0ms);
 }
-/* 指で引いている間は、追従を1:1にするためtransitionを切る。 */
+.bd-v .app-backdrop-strip { transform: translateY(calc(var(--p) * -100%)); }
+.bd-h .app-backdrop-strip { transform: translateX(calc(var(--p) * -100%)); }
+
+/* 1アプリぶんの面。地の色そのものがこの長方形で、これが動くから
+   「長方形が伸びてきて塗りつぶす」ように見える。 */
+.app-backdrop-pane {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+/* 指で引いている間は、追従を1:1にするためtransitionを切る(遅延も含めて)。 */
 [data-dragging="1"] .app-track,
-[data-dragging="1"] .app-backdrop-cell { transition: none; }
+[data-dragging="1"] .app-backdrop-strip { transition: none; }
 
 /* ダッシュボードを引き上げている間は、本物のタブバーを消して
    portal側のモーフ用ピルへ役目を渡す(見た目が同一の位置で入れ替わる)。 */
@@ -217,19 +202,40 @@ button:active {
 /* 読み込み待機画面の2x2グリッド。角の丸め方だけを動かして、円・半円・
    四半円・正方形を行き来する(背景と同じ語彙)。4マスに開始をずらしてあるので、
    組み合わせが絶えず変わり続ける。 */
-@keyframes load-cell {
-  0%   { border-radius: 100% 0 0 0; }
-  20%  { border-radius: 0 100% 0 0; }
-  40%  { border-radius: 50%; }
-  60%  { border-radius: 0 0 100% 0; }
-  80%  { border-radius: 0 0 0 100%; }
-  100% { border-radius: 100% 0 0 0; }
+/* ★読み込み待機画面。背景と同じ考え方で、2x2の窓それぞれの中を図形が
+   通り過ぎていく。図形そのものは一切変形せず、外へはけて次が入ってくる。
+   面が入りきったところで少し止まる(0→止まる→次へ)ので、モーションが
+   刻まれて読める。最後の面は最初と同じ図形なので、繋ぎ目なく回り続ける。 */
+@keyframes load-v {
+  0%,   16%  { transform: translateY(0); }
+  24%,  41%  { transform: translateY(-100%); }
+  49%,  66%  { transform: translateY(-200%); }
+  74%,  91%  { transform: translateY(-300%); }
+  100%       { transform: translateY(-400%); }
+}
+@keyframes load-h {
+  0%,   16%  { transform: translateX(0); }
+  24%,  41%  { transform: translateX(-100%); }
+  49%,  66%  { transform: translateX(-200%); }
+  74%,  91%  { transform: translateX(-300%); }
+  100%       { transform: translateX(-400%); }
 }
 .load-cell {
-  animation: load-cell 3.6s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+  position: relative;
+  overflow: hidden;
 }
+.load-strip {
+  position: absolute;
+  inset: 0;
+  animation-duration: 4.4s;
+  animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  animation-iteration-count: infinite;
+}
+.load-cell.lv .load-strip { animation-name: load-v; }
+.load-cell.lh .load-strip { animation-name: load-h; }
+.load-pane { position: absolute; width: 100%; height: 100%; }
 @media (prefers-reduced-motion: reduce) {
-  .load-cell { animation: none; border-radius: 50%; }
+  .load-strip { animation: none; }
 }
 
 /* タブを切り替えたときの入場。中身がほんの少し下から起き上がる。

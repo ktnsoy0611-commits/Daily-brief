@@ -3,10 +3,9 @@
 import { Bookmark, Check, X } from "lucide-react";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { TAB_ICON_OFF, TabIcon } from "@/components/TabIcons";
 import { TaskRow } from "@/components/tabs/TasksTab";
 import type { AppDef } from "@/lib/apps";
-import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG } from "@/lib/constants";
+import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, TAB_MARK_H, TAB_MARK_W } from "@/lib/constants";
 import { haptic, img, todayKey, todayLabel } from "@/lib/helpers";
 import type { AppState, PlanSelection, TabId } from "@/lib/types";
 
@@ -44,7 +43,7 @@ const SHEET_HEIGHT = `${SHEET_RATIO * 100}svh`;
 // 掴み代の高さ。取手そのものは40x5だが、この帯のどこを掴んでも引ける。
 const GRIP_H = 56;
 // タブバーのピルの高さ。AppShell の TAB_SQUARE + 上下の余白と必ず揃える。
-const PILL_H = 44 + 6 * 2;
+const PILL_H = TAB_MARK_H + 6 * 2;
 const HANDLE_W = 40;
 const HANDLE_H = 5;
 // 下へこの速さで払ったら、距離に関わらず閉じる(px/ms)。
@@ -257,9 +256,9 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
           }}>
             {/* 本物のタブバーと同じ「正方形の枠 + 内接する正円」。 */}
             {app.tabs.map((t) => (
-              <div key={t.id} style={{ flex: 1, height: 44, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
-                <div style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: tab === t.id ? INK : "transparent", flexShrink: 0 }}>
-                  <TabIcon name={t.icon} color={tab === t.id ? PAPER : TAB_ICON_OFF} hole={tab === t.id ? INK : PAPER} />
+              <div key={t.id} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
+                <div style={{ width: TAB_MARK_W, height: TAB_MARK_H, borderRadius: TAB_MARK_H / 2, display: "flex", alignItems: "center", justifyContent: "center", background: tab === t.id ? INK : "transparent", flexShrink: 0 }}>
+                  <t.Icon size={22} strokeWidth={1.8} color={tab === t.id ? PAPER : "rgba(26,26,24,0.38)"} />
                 </div>
               </div>
             ))}

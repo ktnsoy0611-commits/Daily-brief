@@ -95,6 +95,12 @@ export const GOAL_CARD_ASPECT = ITEM_CARD_ASPECT;
 // ティール・深緑)の家族に揃えている。
 export const POSTER_PALETTE = ["#2C4E74", GOLD, RUST, GREEN];
 
+// タブ1つぶんの印(選択中の黒い角丸)の大きさ。タブバー(AppShell)と
+// ダッシュボードのモーフ用ピル(Dashboard)の両方が使う。開閉の途中で
+// この2つが入れ替わるので、必ず同じ値を見ること。
+export const TAB_MARK_W = 44;
+export const TAB_MARK_H = 34;
+
 // navのピル自体を画面下端からどれだけ浮かせるか。ホーム画面に追加した
 // PWA(スタンドアロン)起動時、env(safe-area-inset-bottom)をそのまま
 // marginBottomに使うと、実機では表示領域が想定より狭く感じられるほど

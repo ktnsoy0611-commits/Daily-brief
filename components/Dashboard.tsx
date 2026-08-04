@@ -53,6 +53,11 @@ const FLICK = 0.45;
 const EDGE_W = 22;
 // シートの上端の掴み代(余白と日付しか無い範囲)。
 const TOP_GRAB_H = 46;
+// 本物のタブバー(AppShellのnav)の行の最大幅と、右の「書く」ボタンが
+// 占める幅(ボタン52 + gap 10)。モーフ用のピルを本物と同じ寸法にするために
+// 使う。AppShell側を変えたらここも必ず合わせること。
+const NAV_ROW_MAX = 420 - 32;
+const WRITE_SLOT = 62;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -129,6 +134,52 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
     onSettle(readDash() >= 0.55, g.v);
   };
 
+  // ★シートのどこを下へスワイプしても閉じられるようにする(ユーザー指定、
+  // 2026-08-04)。取手・右端・上端の掴み代と違い、ここは**タップやスクロール
+  // と共存させる**必要があるので、掴んだ瞬間には何もせず、
+  //   ・縦に8px以上動いた   ・下向き   ・中身のスクロールが一番上にある
+  // の3つが揃って初めてドラッグとして引き取る。ボタンのタップ(動かない)や、
+  // 中身を上へスクロールする操作は今までどおり通る。
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const onSheetPointerDown = (e: ReactPointerEvent) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const id = e.pointerId;
+    const x0 = e.clientX, y0 = e.clientY;
+    let taken = false;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return;
+      const dy = ev.clientY - y0;
+      const dx = ev.clientX - x0;
+      if (!taken) {
+        if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+        const atTop = (scrollRef.current?.scrollTop ?? 0) <= 0;
+        if (dy <= 0 || Math.abs(dx) > Math.abs(dy) || !atTop) { done(); return; }
+        taken = true;
+        grabRef.current = {
+          id, y: ev.clientY, t: performance.now(), from: readDash(),
+          travel: Math.max(200, window.innerHeight * SHEET_RATIO),
+          last: ev.clientY, lastT: performance.now(), v: 0,
+        };
+        return;
+      }
+      const g = grabRef.current;
+      if (!g) return;
+      const now = performance.now();
+      if (now > g.lastT) g.v = (ev.clientY - g.last) / (now - g.lastT);
+      g.last = ev.clientY; g.lastT = now;
+      onDrag(clamp01(g.from - (ev.clientY - g.y) / g.travel), true);
+    };
+    const up = () => { if (taken) endGrab(); done(); };
+    function done() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+
   const entries = selection.itemIds
     .map((id) => appState.items.find((x) => x.id === id))
     .filter((x): x is NonNullable<typeof x> => !!x);
@@ -152,7 +203,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
         }}
       />
       {/* 引き出し本体。下端に貼り付き、上端だけ角丸。--dashで下から出る。 */}
-      <div className="dash-sheet" style={{
+      <div className="dash-sheet" onPointerDown={onSheetPointerDown} style={{
         position: "absolute", left: 0, right: 0, bottom: 0, height: SHEET_HEIGHT,
         display: "flex", flexDirection: "column", alignItems: "center",
         transform: "translateY(calc(100% - var(--dash, 0) * 100%))",
@@ -194,7 +245,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
           </div>
 
           {/* 中身(スクロール) */}
-          <div className="no-scrollbar dash-stagger" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "10px 16px 8px" }}>
+          <div ref={scrollRef} className="no-scrollbar dash-stagger" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "10px 16px 8px" }}>
             <section style={{ marginBottom: 26 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 4px 10px" }}>
                 {/* 見出しの言葉は置かず、アイコン＋数字だけで何の集まりかを示す。 */}
@@ -262,7 +313,13 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
         onPointerUp={endGrab}
         onPointerCancel={endGrab}
         style={{
-          position: "absolute", left: "50%", marginLeft: -210, width: 420, maxWidth: "100vw",
+          // ★本物のタブバー(AppShellのnav)とまったく同じ箱にすること。
+          // 以前は left:50% / marginLeft:-210 / width:420 で、本物より
+          // 左へ9px・幅で56px大きい箱になっており、引き始めた瞬間に
+          // 「ピルが元より一回り大きくなる」ように見えていた(実機報告)。
+          // nav は padding:"0 16px" の中に maxWidth:388 の行を持ち、
+          // その行が「ピル(flex:1) + gap 10 + 書くボタン52」で埋まる。
+          position: "absolute", left: 0, right: 0,
           // 定位置(navの高さ)より下には行かない。開くほどシートの上端へ登る。
           bottom: `max(${NAV_BOTTOM_GAP}, calc(var(--dash, 0) * ${SHEET_HEIGHT} - ${PILL_H_EXPR} - 12px))`,
           height: `max(${GRIP_H}px, ${PILL_H_EXPR})`,
@@ -270,10 +327,13 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
           padding: "0 16px", touchAction: "none", cursor: "grab",
         }}
       >
-        {/* ピル本体。--dash が進むほど幅と高さが縮み、紙色が取手の灰色へ移る。 */}
+       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", maxWidth: NAV_ROW_MAX }}>
+        {/* ピル本体。--dash が進むほど幅と高さが縮み、紙色が取手の灰色へ移る。
+            ★開き具合0のときの幅は、本物のピルとぴったり同じ
+            「行の幅 −(書くボタン52 + gap 10)」。 */}
         <div className="dash-pill" style={{
           position: "relative", display: "flex", overflow: "hidden", flexShrink: 0,
-          width: `calc(100% - var(--dash, 0) * (100% - ${HANDLE_W}px))`,
+          width: `calc((100% - ${WRITE_SLOT}px) - var(--dash, 0) * (100% - ${WRITE_SLOT}px - ${HANDLE_W}px))`,
           height: PILL_H_EXPR,
           background: "rgba(26,26,24,0.18)",
           borderRadius: 999,
@@ -308,6 +368,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
           marginLeft: "max(0px, calc(10px - var(--dash, 0) * 62px))",
           opacity: "calc(1 - var(--dash, 0) * 6.25)",
         }} />
+       </div>
       </div>
     </div>
   );

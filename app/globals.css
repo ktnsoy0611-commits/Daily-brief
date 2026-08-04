@@ -126,15 +126,26 @@ body {
 @keyframes bd-pop { from { transform: scale(0); } to { transform: scale(1); } }
 .bd-pop { transform-origin: 50% 50%; animation-name: bd-pop; }
 
-/* 去る層は同じアニメーションを**逆再生**する(来た道をそのまま戻る)。
-   入るときより速く、上から順に。地はそのまま置いておく(新しい地に
-   塗り替えられるまでの下敷きなので、動かすと二重になる)。 */
-.bd-leaving .bd-piece {
-  animation-direction: reverse;
+/* ★去るとき(.bd-out)。**別名のキーフレーム**に差し替える。
+   animation-direction だけを reverse に変えても、既に再生し終わっている
+   アニメーションは再生し直されず、値がその場で飛ぶだけになる。
+   animation-name が変わったときだけ確実に頭から再生される。
+   クラスを外せば名前が元(入場)に戻るので、払うのをやめたときの
+   「戻ってくる」も同じ仕組みで済む。
+   地はそのまま置いておく(新しい地に塗り替えられるまでの下敷き)。 */
+.bd-out .bd-piece {
   animation-delay: var(--dout, 0ms);
   animation-duration: 380ms;
 }
-.bd-leaving .bd-ground { animation: none; }
+@keyframes bd-band-out { from { transform: scaleY(1); } to { transform: scaleY(0); } }
+@keyframes bd-right-out { from { transform: translateX(0); } to { transform: translateX(100%); } }
+@keyframes bd-corner-out { from { transform: scale(1); } to { transform: scale(0); } }
+@keyframes bd-pop-out { from { transform: scale(1); } to { transform: scale(0); } }
+.bd-out .bd-band { animation-name: bd-band-out; }
+.bd-out .bd-right { animation-name: bd-right-out; }
+.bd-out .bd-corner { animation-name: bd-corner-out; }
+.bd-out .bd-pop { animation-name: bd-pop-out; }
+.bd-out .bd-ground { animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .bd-piece { animation: none; }

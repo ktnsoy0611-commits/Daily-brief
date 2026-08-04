@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
-import { AppBackdrop } from "@/components/AppBackdrop";
+import { AppBackdrop, beginBackdropExit, cancelBackdropExit } from "@/components/AppBackdrop";
 import { TAB_ICON_OFF, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
@@ -545,11 +545,6 @@ export function AppShell() {
   // 実機ではそこで1秒以上メインスレッドが止まっていた(ユーザー報告「タップ
   // しても切り替わらない」の直接の原因)。一度用意したら以後ずっと使い回す。
   const [mountedApps, setMountedApps] = useState<AppId[]>(["life"]);
-  // ★横に払っている最中かどうか。背景の「去る」アニメーションを、アプリが
-  // 確定した時ではなく**払い始めた瞬間**に走らせるための合図(ユーザー指定、
-  // 2026-08-04)。1ジェスチャーにつき始めと終わりの2回しかstateを更新しない
-  // ので、指を動かしている間のレンダーは従来どおり0回のまま。
-  const [swipingAway, setSwipingAway] = useState(false);
   const mountApp = useCallback((id: AppId) => {
     setMountedApps((prev) => (prev.includes(id) ? prev : [...prev, id]));
   }, []);
@@ -585,7 +580,6 @@ export function AppShell() {
     };
     const finish = () => {
       navPressRef.current = null;
-      setSwipingAway(false);
       if (raf) { cancelAnimationFrame(raf); raf = 0; pending = null; }
       setDragVar(0, false);
       window.removeEventListener("pointermove", move);
@@ -598,6 +592,8 @@ export function AppShell() {
       const axis = navPressRef.current?.axis;
       finish();
       if (axis === "y") settleDash(false);
+      // 払うのをやめたので、去りかけた背景を戻す。
+      if (axis === "x") cancelBackdropExit();
     };
     function move(ev: PointerEvent) {
       const pr = navPressRef.current;
@@ -614,8 +610,11 @@ export function AppShell() {
         navDraggedRef.current = true;
         // 縦だと決まった瞬間にダッシュボードを用意する(1回だけのstate更新)。
         if (pr.axis === "y") setDashMounted(true);
-        // 横だと決まった瞬間に、背景の figure を去らせ始める。
-        if (pr.axis === "x") setSwipingAway(true);
+        // ★横だと決まった瞬間に、背景の figure を去らせ始める。Reactを
+        // 通さずDOMへ直接クラスを付ける(stateにすると、実機ではシェルの
+        // 再レンダーを待つあいだに払い終わってしまい「スワイプが終わって
+        // からアニメーションが始まる」と報告された)。
+        if (pr.axis === "x") beginBackdropExit();
         if (pr.axis === "x") {
           // 左へ払うと --p は増える(0〜2 が基準でよい)。右へ払うと減るので、
           // 先頭に居るときだけ1周ぶん先(3)を基準にして 0 を下回らないようにする。
@@ -654,7 +653,9 @@ export function AppShell() {
       const far = Math.abs(dx) >= width * COMMIT_RATIO;
       // 速さで送るのは、指の向きと払った向きが一致しているときだけ。
       const flick = Math.abs(vx) >= FLICK_PX_PER_MS && Math.sign(vx) === Math.sign(dx);
-      if (!far && !flick) return;
+      // 送らないなら、去りかけた背景を戻す(送る場合は、次のアプリの層が
+      // まるごと差し替わるので何もしなくてよい)。
+      if (!far && !flick) { cancelBackdropExit(); return; }
       // 通し番号を素直に±1する。丸めないので端が無く、そのまま一周する。
       const step = dx < 0 ? 1 : -1;
       const next = posRef.current + step;
@@ -895,7 +896,7 @@ export function AppShell() {
       {/* ★背景は3アプリ共通の1枚のグリッド。列の中ではなくここ(シェル直下)に
           1つだけ置く。グリッド自体は動かず、アプリを移ると各マスの大きさが
           変わって図形が切り替わる。 */}
-      <AppBackdrop appId={appId} swiping={swipingAway} />
+      <AppBackdrop appId={appId} />
       {/* ★3アプリを横一列に並べたトラック。タブバーも中身も、この1枚が
           まとめて動く(=「タブバーごとスワイプされる」)。各列が自分の
           スクロールルートと自分のタブバーを持つので、タブの数が3/4/2と

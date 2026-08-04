@@ -161,7 +161,7 @@ export function RecordingOverlay({ state, origin, elapsed }: { state: RecordStat
       background: "rgba(16,16,20,0.42)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 26,
     }}>
-      <CassettePlayer width={width} mode={state === "recording" ? "recording" : "sending"} />
+      <CassettePlayer width={width} mode={state === "recording" ? "recording" : "sending"} eager />
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
         <div style={{ fontFamily: SANS, fontSize: 20, fontWeight: 800, color: PAPER, letterSpacing: "0.08em" }}>
           {state === "recording" ? mmss : "…"}

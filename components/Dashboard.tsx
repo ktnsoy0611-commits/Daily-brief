@@ -49,6 +49,10 @@ const HANDLE_W = 40;
 const HANDLE_H = 5;
 // 下へこの速さで払ったら、距離に関わらず閉じる(px/ms)。
 const FLICK = 0.45;
+// 右端の掴み代の幅。中身の行の×ボタン(右端から12〜38px)を避ける幅にすること。
+const EDGE_W = 22;
+// シートの上端の掴み代(余白と日付しか無い範囲)。
+const TOP_GRAB_H = 46;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -85,7 +89,8 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
   tab: TabId;
   // 進捗(0〜1)をCSS変数へ書く。Reactのstateは経由しない。
   onDrag: (p: number, dragging: boolean) => void;
-  onSettle: (open: boolean) => void;
+  /** 開き切る/閉じ切る。第2引数は離した瞬間の指の速さ(px/ms・下向きが正)。 */
+  onSettle: (open: boolean, velocity?: number) => void;
   onToggleItem: (id: string) => void;
   onClearSelection: () => void;
   onToggleTask: (id: string) => void;
@@ -113,10 +118,15 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
     const g = grabRef.current;
     if (!g) return;
     grabRef.current = null;
+    // 指を止めてから離したときは速さ0として扱う(AppShell側と同じ理由。
+    // 速さはpointermoveでしか更新されないので、止まっている間は最後の
+    // 値が残り続ける)。
+    if (performance.now() - g.lastT > 70) g.v = 0;
     // 下へ速く払ったら距離に関わらず閉じる。上へ払ったら開く。
-    if (g.v >= FLICK) { onSettle(false); return; }
-    if (g.v <= -FLICK) { onSettle(true); return; }
-    onSettle(readDash() >= 0.55);
+    // 速さはそのまま渡し、離したあとの動きへ引き継ぐ(慣性)。
+    if (g.v >= FLICK) { onSettle(false, g.v); return; }
+    if (g.v <= -FLICK) { onSettle(true, g.v); return; }
+    onSettle(readDash() >= 0.55, g.v);
   };
 
   const entries = selection.itemIds
@@ -147,6 +157,31 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
         display: "flex", flexDirection: "column", alignItems: "center",
         transform: "translateY(calc(100% - var(--dash, 0) * 100%))",
       }}>
+        {/* ★右端の掴み代(2026-08-04・ユーザー指定「取手を触らなくても画面
+            右端側を下にスワイプすれば閉じれるように」)。シートの右端に
+            細い帯を重ね、上端の取手と同じハンドラで --dash を動かす。
+            幅は EDGE_W(22px)。中身の行の×ボタン(右端から12〜38px)には
+            重ならないので、誤って閉じてしまうことはない。 */}
+        <div
+          data-dash-edge
+          onPointerDown={onGrabDown}
+          onPointerMove={onGrabMove}
+          onPointerUp={endGrab}
+          onPointerCancel={endGrab}
+          style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: EDGE_W, touchAction: "none", zIndex: 2 }}
+        />
+        {/* シートの上端そのものも掴める。取手(.dash-grip)はシートの少し上に
+            浮いているので、「シートの縁を掴んで下げる」という自然な操作が
+            そのままでは効かなかった。ここは余白と日付しか無いので、
+            掴み代にしても押せなくなるものは無い。 */}
+        <div
+          data-dash-top
+          onPointerDown={onGrabDown}
+          onPointerMove={onGrabMove}
+          onPointerUp={endGrab}
+          onPointerCancel={endGrab}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, height: TOP_GRAB_H, touchAction: "none", zIndex: 2 }}
+        />
         <div style={{
           width: "100%", maxWidth: 420, height: "100%", background: BG,
           borderTopLeftRadius: 26, borderTopRightRadius: 26, boxShadow: SOFT_SHADOW_LG,
@@ -154,12 +189,12 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
         }}>
           {/* 取手が乗るぶんの余白。取手自体は下のモーフ用ピルが担う。 */}
           <div style={{ height: GRIP_H - 24, flexShrink: 0 }} />
-          <div style={{ padding: "0 20px 6px", flexShrink: 0 }}>
+          <div className="dash-rise" style={{ padding: "0 20px 6px", flexShrink: 0 }}>
             <div style={{ fontFamily: SANS, fontSize: 11, letterSpacing: "0.22em", color: MUTED, fontWeight: 700 }}>{todayLabel()}</div>
           </div>
 
           {/* 中身(スクロール) */}
-          <div className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "10px 16px 8px" }}>
+          <div className="no-scrollbar dash-stagger" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "10px 16px 8px" }}>
             <section style={{ marginBottom: 26 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 4px 10px" }}>
                 {/* 見出しの言葉は置かず、アイコン＋数字だけで何の集まりかを示す。 */}
@@ -197,7 +232,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
           </div>
 
           {/* 締めの操作。1日をここで終える。 */}
-          <div style={{ flexShrink: 0, padding: "12px 16px max(16px, env(safe-area-inset-bottom))", borderTop: `1px solid ${HAIRLINE}`, display: "flex", justifyContent: "center" }}>
+          <div className="dash-rise dash-rise-3" style={{ flexShrink: 0, padding: "12px 16px max(16px, env(safe-area-inset-bottom))", borderTop: `1px solid ${HAIRLINE}`, display: "flex", justifyContent: "center" }}>
             <button
               onClick={() => { if (!canFinish) return; haptic(16); onFinishDay(); }}
               disabled={!canFinish}

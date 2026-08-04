@@ -23,6 +23,26 @@ export const TAB_ICON_OFF = "#9C9C9B";
 // 薄いほうの段。
 const PALE = 0.42;
 
+// 歯車の輪郭。歯8つ。歯の頂き(外周R)と谷(内周r)を角度で行き来する多角形を、
+// その場で1本のパスに組む(手で座標を並べると必ず順序を取り違えるため)。
+const GEAR_PATH = (() => {
+  const cx = 12, cy = 12, R = 11, r = 8.2, teeth = 8;
+  const step = 360 / teeth;      // 1歯あたりの角度
+  const half = step * 0.28;      // 歯の頂きの半幅
+  const gap = step * 0.14;       // 頂きから谷へ落ちる角度
+  const pt = (deg: number, rad: number) => {
+    const a = ((deg - 90) * Math.PI) / 180;
+    return `${(cx + Math.cos(a) * rad).toFixed(2)} ${(cy + Math.sin(a) * rad).toFixed(2)}`;
+  };
+  let d = "";
+  for (let i = 0; i < teeth; i++) {
+    const base = i * step;
+    d += `${i === 0 ? "M" : "L"}${pt(base - half, R)}L${pt(base + half, R)}`;
+    d += `L${pt(base + half + gap, r)}L${pt(base + step - half - gap, r)}`;
+  }
+  return `${d}Z`;
+})();
+
 function shapes(name: TabIconName, c: string) {
   switch (name) {
     // ブリーフ = 箇条書き(丸と帯が3段)。
@@ -142,18 +162,15 @@ function shapes(name: TabIconName, c: string) {
           </g>
         </>
       );
-    // 設定 = つまみ(円の下地 ＋ 目盛りを指す面 ＋ 中心の円)。lucideの歯車の
-    // 線画から差し替えた(2026-08-03)。歯車を4つの正方形の歯で表すと、この
-    // 大きさ(17px)では十字キーに見えてしまったため、面だけで確実に読める
-    // 「つまみ」にした。ヘッダーの丸ボタンで使う。
+    // 設定 = 歯車。歯を4つの正方形で表すと十字キーに、円＋つまみで表すと
+    // ダイヤルに見えてしまったので、**歯が8つある本物の歯車の輪郭**を1本の
+    // パスで描いた(GEAR_PATH)。輪郭がぎざぎざしているだけで「設定」と
+    // 読めるので、この大きさ(17px)でも成立する。中心の軸を濃い円で置く。
     case "gear":
       return (
         <>
-          <circle cx="12" cy="12" r="9.6" fill={c} opacity={PALE} />
-          <g fill={c}>
-            <rect x="10.7" y="3.2" width="2.6" height="7" />
-            <circle cx="12" cy="12" r="2.8" />
-          </g>
+          <path d={GEAR_PATH} fill={c} opacity={PALE} />
+          <circle cx="12" cy="12" r="3.4" fill={c} />
         </>
       );
     // 追加 = 直交する2本の面。

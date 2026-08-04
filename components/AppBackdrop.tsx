@@ -145,14 +145,17 @@ export function AppBackdrop({ appId }: { appId: AppId }) {
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  // ★いまの地の色を body にも書く。シェルの高さは 100svh 固定なので、
+  // ★いまの地の色を **html にだけ** 書く。シェルの高さは 100svh 固定なので、
   // iOSでツールバーが引っ込んで表示領域が広がると、その差の帯が背景に
-  // 覆われず body の色のまま残る。地の色と違うと、そこが「画面の端」の
-  // 線として見えてしまう(実機で報告された症状)。
+  // 覆われず地の色のまま残る。違う色だと、そこが「画面の端」の線として
+  // 見えてしまう(実機で報告された症状)。
+  // ★★body には絶対に書かないこと。この背景は body 直下の zIndex:-1 に
+  // あり、CSSの描画順では「負のz-index」は「in-flowの子孫の背景」より先に
+  // 描かれるため、body に不透明な色があるとパターンごと塗りつぶされる
+  // (2026-08-04にこれで背景が丸ごと消えた)。html の色はキャンバスへ
+  // 伝播して最初に描かれるので、正しく下に回る。
   useEffect(() => {
-    const c = groundOf(cur);
-    document.body.style.backgroundColor = c;
-    document.documentElement.style.backgroundColor = c;
+    document.documentElement.style.backgroundColor = groundOf(cur);
   }, [cur]);
 
   // ★★body直下へポータルで描き、高さは 100lvh(表示領域が最大のときの高さ)

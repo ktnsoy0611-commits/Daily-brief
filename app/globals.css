@@ -27,10 +27,15 @@ body {
      アプリの背景色をhtml/bodyそのものにも敷いておく。lib/constants.tsの
      BGと必ず同じ値にすること(以前ここだけ更新し忘れて色が合わず、
      画面下端に別色の帯が見える不具合があった)。 */
-  /* ★背景(AppBackdrop)の地と同じ色にする。シェルの高さは 100svh 固定なので、
-     iOSでツールバーが引っ込んで表示領域が広がると、その差の帯がここの色の
-     まま残る。違う色だと「画面の端」の線に見える。実際の色は
-     AppBackdrop がアプリごとに body へ書き直す(ここは初期値)。 */
+  /* ★★地の色は **html にだけ** 敷く。body には絶対に敷かないこと。
+     背景(AppBackdrop)は body 直下のポータルに zIndex:-1 で置いてあるが、
+     CSSの描画順では「負のz-index(手順2)」は「in-flowの子孫の背景(手順3)」
+     **より先**に描かれる。つまり body に不透明な background-color があると、
+     それが背景のパターンを丸ごと塗りつぶしてしまう(2026-08-04に実際に
+     これで背景が消え、「背景のアニメーションがなくなった」と報告された)。
+     html の背景はキャンバスへ伝播して最初に描かれるので、負のz-indexの
+     下に正しく回る。実際の色はアプリごとに AppBackdrop が html へ
+     書き直す(ここは初期値)。 */
   background-color: #ECECEA;
   /* 上のoverflow:hiddenが主となる防御線だが、iOS実機ではまれに慣性
      スクロールがoverflow切り替え後も一瞬続くケースがあるため、境界での
@@ -43,6 +48,12 @@ body {
      このプロパティは継承するので、ここで一度切れば全体に効く。押した
      ことのフィードバックは、アイコンの色とhapticが担っている。 */
   -webkit-tap-highlight-color: transparent;
+}
+
+/* ★body は必ず透明。理由は上の background-color のコメントを参照
+   (body に色を敷くと、body直下の負のz-indexにある背景が隠れる)。 */
+body {
+  background-color: transparent;
 }
 
 /* ★アプリの横スライドとダッシュボードの引き上げは、Reactのstateではなく
@@ -136,11 +147,34 @@ body {
    portal側のモーフ用ピルへ役目を渡す(見た目が同一の位置で入れ替わる)。 */
 [data-dash-active="1"] .app-nav { opacity: 0; }
 
-/* ダッシュボード。--dash(0〜1)から算出する値にだけtransitionを掛ける。 */
+/* ダッシュボード。--dash(0〜1)から算出する値にだけtransitionを掛ける。
+   ★時間は固定値ではなく --dash-ms(AppShellが離した瞬間の指の速さから
+   計算して書く)。速く払えば短く、そっと離せば長くなり、指の勢いが
+   そのまま続きの動きへ引き継がれる=慣性がある。減速は指数のease-out
+   なので、勢いよく動き出して静かに止まる。 */
 .dash-scrim, .dash-sheet, .dash-grip, .dash-pill, .dash-pill-paper, .dash-write {
-  transition-duration: 340ms;
-  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  transition-duration: var(--dash-ms, 360ms);
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   transition-property: transform, opacity, width, height, bottom, margin-left, backdrop-filter, -webkit-backdrop-filter, background-color;
+}
+
+/* シートの中身は、開くのに合わせて下から少し起き上がる。上から順に
+   ずらしてあるので、1枚の板が出るのではなく、中身が組み上がって見える。
+   マウントは指が縦だと決まった瞬間なので、引き上げている間に進む。 */
+@keyframes dash-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dash-rise, .dash-stagger > * {
+  animation: dash-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.dash-rise { animation-delay: 60ms; }
+.dash-stagger > *:nth-child(1) { animation-delay: 110ms; }
+.dash-stagger > *:nth-child(2) { animation-delay: 170ms; }
+.dash-stagger > *:nth-child(n+3) { animation-delay: 220ms; }
+.dash-rise-3 { animation-delay: 240ms; }
+@media (prefers-reduced-motion: reduce) {
+  .dash-rise, .dash-stagger > * { animation: none; }
 }
 [data-dash-dragging="1"] .dash-scrim,
 [data-dash-dragging="1"] .dash-sheet,

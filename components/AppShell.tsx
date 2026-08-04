@@ -46,7 +46,10 @@ function LoadingScreen() {
 // ダッシュボードのシートの高さ(画面に対する割合)と、落ち着くまでの時間。
 // components/Dashboard.tsx / globals.css と揃えること。
 const DASH_SHEET_RATIO = 0.84;
-const DASH_MS = 340;
+const DASH_MS = 360;
+// 指を離したあとの時間の下限・上限(慣性で伸び縮みする)。
+const DASH_MIN_MS = 190;
+const DASH_MAX_MS = 560;
 
 // ★一周ループのための折り返し量(列の幅の倍数)。
 // 列 j は本来トラックの j 番目に居るが、いまの通し番号 pos から見て
@@ -303,12 +306,25 @@ export function AppShell() {
     root.dataset.dashDragging = dragging ? "1" : "0";
     root.dataset.dashActive = v > 0 ? "1" : "0";
   }, []);
-  const settleDash = useCallback((open: boolean) => {
+  // ★指を離したあとの動きに「慣性」を持たせる(2026-08-04)。以前は速さに
+  // 関わらず必ず340msの一定時間で運んでいたため、勢いよく払っても、そっと
+  // 離しても同じ速さで動き、「ぎこちない・慣性がない」と報告された。
+  // 残りの距離を、離した瞬間の指の速さでそのまま運びきる時間を求めて
+  // --dash-ms に書く(速く払えば短く、そっと離せば長く)。減速の効き方も
+  // 指数のease-out(0.16,1,0.3,1)にして、勢いが自然に収束するようにした。
+  const settleDash = useCallback((open: boolean, vpx = 0) => {
     if (open) setDashMounted(true);
+    const travel = Math.max(200, (window.innerHeight || 844) * DASH_SHEET_RATIO);
+    const distPx = Math.abs((open ? 1 : 0) - dashPRef.current) * travel;
+    const speed = Math.min(3.2, Math.abs(vpx)); // px/ms
+    const ms = speed > 0.12
+      ? Math.round(Math.min(DASH_MAX_MS, Math.max(DASH_MIN_MS, (distPx / speed) * 1.15)))
+      : DASH_MS;
+    document.documentElement.style.setProperty("--dash-ms", `${ms}ms`);
     // 開くときは、マウントされた次のフレームに --dash を1へ動かす
     // (同じフレームで0→1にするとtransitionが発火しない)。
     requestAnimationFrame(() => setDashVar(open ? 1 : 0, false));
-    if (!open) window.setTimeout(() => { if (dashPRef.current === 0) setDashMounted(false); }, DASH_MS + 40);
+    if (!open) window.setTimeout(() => { if (dashPRef.current === 0) setDashMounted(false); }, ms + 60);
   }, [setDashVar]);
   // ジェスチャーのハンドラはwindowへ張る都合で作り直したくない(useCallbackの
   // 依存を空にしてある)ため、いま何番目のアプリかはrefで読む。
@@ -611,13 +627,19 @@ export function AppShell() {
       const pr = navPressRef.current;
       const dx = pr ? ev.clientX - pr.x : 0;
       const axis = pr?.axis;
+      // ★指を止めてから離したときは「速さ0」として扱う。vx/vy は
+      // pointermove でしか更新されないので、止まっている間は最後に動いた
+      // ときの速さが残り続ける。そのまま慣性に使うと、そっと置いたのに
+      // 勢いよく飛んでいくことになる(実測でそうなっていた)。
+      if (performance.now() - lastT > 70) { vx = 0; vy = 0; }
       finish();
       if (axis === "y") {
         // 上向きに速く払ったら、距離が足りなくても開く。
         const flickUp = vy <= -FLICK_PX_PER_MS;
         const open = flickUp || dashPRef.current >= 0.3;
         if (open) haptic(12);
-        settleDash(open);
+        // 離した瞬間の速さをそのまま渡し、続きの動きへ引き継ぐ(慣性)。
+        settleDash(open, vy);
         return;
       }
       if (axis !== "x") return;

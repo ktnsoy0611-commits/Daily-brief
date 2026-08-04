@@ -1,9 +1,9 @@
 "use client";
 
-import { Mic } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { INK, PAPER, RUST, SANS } from "@/lib/constants";
+import { CassettePlayer } from "@/components/CassettePlayer";
+import { PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 
 // ★声のメモの録音。タブバー右の丸ボタンを **長押し** している間だけ録音し、
@@ -25,6 +25,11 @@ export interface VoiceResult {
 
 // 長押しの判定時間。これより短ければ「タップ」として扱い録音しない。
 export const HOLD_MS = 320;
+
+// 送信中(sending)の最短の長さ。文字起こしがすぐ返ってきても、蓋が開いて
+// カセットが飛んでいくまでは幕を出したままにする(app/globals.css の
+// cp-lid 320ms + cp-eject 240ms待ち+760ms とそろえてある)。
+const EJECT_MS = 1040;
 
 export function useVoiceRecorder(opts: {
   onDone: (r: VoiceResult) => void;
@@ -93,6 +98,11 @@ export function useVoiceRecorder(opts: {
       // 短すぎる録音(誤爆・言い直し)は送らない。
       if (cancel || durationMs < 700 || blob.size === 0) { setState("idle"); return; }
       setState("sending");
+      const sendingAt = Date.now();
+      // 結果の通知(トースト)は、蓋が開いてカセットが飛んでいく演出が
+      // 終わってから出す。文字起こしが速く返ってきた場合に演出が途中で
+      // 消えてしまわないよう、ここでは結果を持っておくだけにする。
+      let notify: () => void = () => {};
       try {
         const form = new FormData();
         const ext = (rec.mimeType || "").includes("mp4") ? "m4a" : "webm";
@@ -100,16 +110,20 @@ export function useVoiceRecorder(opts: {
         const res = await fetch("/api/transcribe", { method: "POST", body: form });
         const data = await res.json().catch(() => null);
         if (data?.ok && typeof data.text === "string" && data.text.trim()) {
-          onDone({ text: data.text.trim(), at: data.at ?? new Date().toISOString(), durationMs, savedToMyBrain: !!data.savedToMyBrain });
+          const r: VoiceResult = { text: data.text.trim(), at: data.at ?? new Date().toISOString(), durationMs, savedToMyBrain: !!data.savedToMyBrain };
+          notify = () => onDone(r);
         } else if (data?.reason === "no_key") {
-          onError("文字起こしの設定がまだ有効になっていません");
+          notify = () => onError("文字起こしの設定がまだ有効になっていません");
         } else {
-          onError("うまく聞き取れませんでした");
+          notify = () => onError("うまく聞き取れませんでした");
         }
       } catch {
-        onError("通信に失敗しました");
+        notify = () => onError("通信に失敗しました");
       } finally {
+        const rest = EJECT_MS - (Date.now() - sendingAt);
+        if (rest > 0) await new Promise((r) => window.setTimeout(r, rest));
         setState("idle");
+        notify();
       }
     };
     try { rec.stop(); } catch { setState("idle"); }
@@ -118,29 +132,29 @@ export function useVoiceRecorder(opts: {
   return { state, elapsed, start, stop };
 }
 
-// 録音中/送信中の全画面の幕。
+// 録音中/送信中の全画面の幕。中央にはユーザー本人のカセットプレイヤーを
+// 模した箱(CassettePlayer)が出てきて、録音中はリールが回る。送信すると
+// 蓋が開いてカセットが飛んでいく。
 export function RecordingOverlay({ state, elapsed }: { state: RecordState; elapsed: number }) {
   if (state === "idle" || typeof document === "undefined") return null;
   const sec = Math.floor(elapsed / 1000);
   const mmss = `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+  // 画面の幅に合わせる(基準は300px)。狭い端末でも左右に余白が残るように。
+  const width = Math.min(300, (typeof window === "undefined" ? 390 : window.innerWidth) - 72);
   return createPortal(
     <div style={{
       position: "fixed", inset: 0, zIndex: 58, pointerEvents: "none",
       background: "rgba(16,16,20,0.42)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 26,
     }}>
-      <div style={{
-        width: 84, height: 84, borderRadius: "50%", background: state === "recording" ? RUST : INK,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        animation: state === "recording" ? "voice-pulse 1.4s ease-in-out infinite" : undefined,
-      }}>
-        <Mic size={32} strokeWidth={1.8} color={PAPER} />
-      </div>
-      <div style={{ fontFamily: SANS, fontSize: 20, fontWeight: 800, color: PAPER, letterSpacing: "0.08em" }}>
-        {state === "recording" ? mmss : "…"}
-      </div>
-      <div style={{ fontFamily: SANS, fontSize: 11.5, color: "rgba(255,255,255,0.72)", letterSpacing: "0.06em" }}>
-        {state === "recording" ? "指を離すと保存します" : "文字にしています…"}
+      <CassettePlayer width={width} mode={state === "recording" ? "recording" : "sending"} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        <div style={{ fontFamily: SANS, fontSize: 20, fontWeight: 800, color: PAPER, letterSpacing: "0.08em" }}>
+          {state === "recording" ? mmss : "…"}
+        </div>
+        <div style={{ fontFamily: SANS, fontSize: 11.5, color: "rgba(255,255,255,0.72)", letterSpacing: "0.06em" }}>
+          {state === "recording" ? "指を離すと保存します" : "文字にしています…"}
+        </div>
       </div>
     </div>,
     document.body,

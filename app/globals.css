@@ -347,13 +347,48 @@ button:active {
   .tab-in { animation: none; }
 }
 
-/* 録音中のマイクの脈。声のメモ(VoiceRecorder)の幕で使う。 */
-@keyframes voice-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(193, 80, 46, 0.45); }
-  50% { transform: scale(1.06); box-shadow: 0 0 0 18px rgba(193, 80, 46, 0); }
+/* ★声のメモのカセットプレイヤー(components/CassettePlayer.tsx)。
+   録音中は画面の中央に出てきてリールが回り、送信すると蓋が開いて中の
+   カセットが飛んでいく。 */
+
+/* 出てくるとき。少し下から、ひとまわり小さいところから。 */
+@keyframes cp-enter {
+  from { opacity: 0; transform: translateY(24px) scale(0.86); }
+  to   { opacity: 1; transform: none; }
 }
+.cp-enter { animation: cp-enter 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* リール。持続時間は要素ごとに指定する(animationDuration)。 */
+@keyframes cp-reel { to { transform: rotate(360deg); } }
+.cp-reel { animation-name: cp-reel; animation-timing-function: linear; animation-iteration-count: infinite; }
+
+/* 録音ランプ。 */
+@keyframes cp-rec { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.22; } }
+.cp-rec { animation: cp-rec 1.2s infinite; }
+
+/* 蓋が下端を軸に手前へ開く。★translateZ は 3D の位置そのものなので、
+   回転だけを足せるよう元の値を変数(--cp-lid-z)で受け取る。 */
+@keyframes cp-lid {
+  from { transform: translateZ(var(--cp-lid-z)) rotateX(0deg); }
+  to   { transform: translateZ(var(--cp-lid-z)) rotateX(-74deg); }
+}
+.cp-lid { animation: cp-lid 320ms cubic-bezier(0.22, 0.9, 0.32, 1) forwards; }
+
+/* カセットが少し浮いてから、上へ飛んでいく。蓋が開ききるまで待つので
+   遅らせる(both で待っている間は元の位置に留まる)。 */
+@keyframes cp-eject {
+  0%   { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+  20%  { transform: translate(0, -14px) rotate(0deg) scale(1); opacity: 1; }
+  100% { transform: translate(8px, -340px) rotate(-10deg) scale(0.34); opacity: 0; }
+}
+.cp-eject { animation: cp-eject 760ms cubic-bezier(0.4, 0, 0.2, 1) 240ms both; }
+
 @media (prefers-reduced-motion: reduce) {
-  @keyframes voice-pulse { 0%, 100% { transform: none; box-shadow: none; } }
+  .cp-enter, .cp-reel, .cp-rec { animation: none; }
+  @keyframes cp-eject {
+    0%   { opacity: 1; }
+    100% { opacity: 0; }
+  }
 }
 
 /* インボックスの候補がふわふわ漂う動き。上下にゆっくり揺れるだけの

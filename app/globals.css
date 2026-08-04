@@ -132,7 +132,7 @@ body {
 .bd-leaving .bd-piece {
   animation-direction: reverse;
   animation-delay: var(--dout, 0ms);
-  animation-duration: 300ms;
+  animation-duration: 380ms;
 }
 .bd-leaving .bd-ground { animation: none; }
 

@@ -10,19 +10,20 @@ import type { AppId } from "@/lib/types";
 // ■ 何を変えたか
 // これまでは背景を指の動き(--dragn)に1:1で溶接し、マスの中の図形を連続的に
 // 変形させていた。だから「白い図形が動くだけ」に見えていた。
-// **指の動きから完全に切り離した**。位置を指に溶接するのではなく、
-// 去る側と来る側がそれぞれ自分のアニメーションを持つ:
-//   去るほう … **払い始めた瞬間**に走り出す(2026-08-04・ユーザー指定)。
-//                いま出ている図形が、来た道を戻るように順にはけていく。
-//                ★合図はReactを一切通さない。払い始めた瞬間に、いまの層の
-//                DOM要素へ直接 .bd-out を付けるだけ(beginBackdropExit)。
-//                一度Reactのstateを挟む実装にしたところ、実機では
-//                シェルの再レンダーを待つあいだに払い終わってしまい、
-//                「スワイプが終わってからアニメーションが始まる」と
-//                報告された。指の動きに関わる合図は、このコードベースでは
-//                すべてDOMへ直接書く(--drag / --dash と同じ方針)。
-//   来るほう … スワイプが確定してから。新しい地の色が上から下りてきて、
-//                その後に図形が1つずつ時間差で入ってくる。
+// 位置を指に溶接するのはやめ、去る側と来る側で駆動を分けた:
+//   去るほう … **指の移動量そのもの(--outp)から算出する**(2026-08-04)。
+//                払い始めた最初の1pxから figure が畳まれ始めるので、
+//                「払ってから背景が動き出すまでの遅れ」が原理的に無い。
+//                ★ここは何度も作り直している。合図をReactのstateにしたら
+//                実機ではシェルの再レンダー(数百ms)を待つあいだに払い
+//                終わってしまい、DOMへ直接クラスを付ける方式にしても
+//                なお「遅れる」と報告された。**画面(トラック)を動かして
+//                いるのと同じ変数・同じフレームで動かす**のが唯一の確実な
+//                答えで、いまはそうしてある。払うのをやめれば --outp が
+//                0 へ戻り、figure もそのまま元の位置へ戻ってくる。
+//   来るほう … スワイプが確定してから、時間で組んだアニメーションを流す。
+//                新しい地の色が上から下りてきて、その後に図形が1つずつ
+//                時間差で入ってくる。
 // 図形ごとに入り方が違う(帯は上から伸びる/三角は右から差し込む/扇形は角から
 // 開く/円は中心から立ち上がる)。動画の参考どおり、1つの動きに全部を
 // 乗せるのではなく、それぞれの figure が自分の動きを持つ。
@@ -40,9 +41,9 @@ import type { AppId } from "@/lib/types";
 // ジャーナルだけは地が薄く図形がグレーで、タスク・ブリーフとは明暗が逆。
 //
 // ■ 性能
-// 指で引いている間、背景は**一切動かない**(計算もしない)。アプリが確定した
-// 瞬間に、要素13枚以下のCSSアニメーションが1本走って終わる。以前のように
-// 毎フレーム全マスの transform を calc し直すことがなくなった。
+// 指で引いている間にJSがするのは、AppShellが --outp を1フレームに1回書く
+// ことだけ(--drag と同じ書き込みの中でついでに書く)。Reactのレンダーは
+// 0回。動く要素も最大13枚で、transform しか変わらない。
 
 const LIGHT = BD_LIGHT;
 const GREY = BD_GREY;
@@ -58,14 +59,15 @@ const BIG_ROWS = ROWS / 2;
 const IN_BAND = 340;
 const IN_FIGURE = 420;
 const IN_STEP = 60;
-// 去るときの遅れ。上から順に、入るときより詰めて。
-const OUT_STEP = 52;
+// 去るときの「始まりのずれ」。指の移動量(--outp、0〜1)に対する遅れなので
+// 単位は無い。上から順に少しずつ遅れて畳まれる。
+const OUT_STEP = 0.05;
 
 interface Piece {
   cls: string;
   /** 入ってくるときの遅れ(ms)。 */
   din: number;
-  /** 去るときの遅れ(ms)。上から順にはけるので行の順そのまま。 */
+  /** 去るときの始まりのずれ(0〜1)。上から順にはけるので行の順そのまま。 */
   dout: number;
   style: CSSProperties;
 }
@@ -119,29 +121,15 @@ function piecesFor(app: AppId): Piece[] {
 
 function Layer({ app }: { app: AppId }) {
   return (
-    // 去るときは、この層に .bd-out が付いて「去る」用のキーフレームへ
-    // 切り替わる(来た道をそのまま戻る)。動きの語彙が増えず、記述も半分で済む。
+    // 去るときは、各 figure が --outp(指の移動量)から算出した transform で
+    // 畳まれる(globals.css)。来た道をそのまま戻るので語彙が増えない。
     <div className="bd-layer">
       <div className="bd-piece bd-ground" style={{ background: groundOf(app) }} />
       {piecesFor(app).map((p, i) => (
-        <div key={i} className={`bd-piece ${p.cls}`} style={{ ...p.style, ["--din" as string]: `${p.din}ms`, ["--dout" as string]: `${p.dout}ms` }} />
+        <div key={i} className={`bd-piece ${p.cls}`} style={{ ...p.style, ["--din" as string]: `${p.din}ms`, ["--o" as string]: `${p.dout}` }} />
       ))}
     </div>
   );
-}
-
-/**
- * 払い始めた瞬間に、いま出ている背景の図形を去らせる。**Reactを通さない**。
- * .bd-out を付けるとCSSのanimation-nameが「去る」用へ切り替わり、名前が
- * 変わることでアニメーションが確実に再生される(directionだけを変えても、
- * 既に終わっているアニメーションは再生されず値が飛ぶだけ)。
- */
-export function beginBackdropExit() {
-  document.querySelector(".bd-layer")?.classList.add("bd-out");
-}
-/** 払うのをやめたとき。クラスを外すとanimation-nameが元に戻り、入場が再生される。 */
-export function cancelBackdropExit() {
-  document.querySelector(".bd-layer")?.classList.remove("bd-out");
 }
 
 export function AppBackdrop({ appId }: { appId: AppId }) {

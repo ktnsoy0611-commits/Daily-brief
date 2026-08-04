@@ -72,36 +72,51 @@ body {
   transform: translateX(calc(var(--app-offset, 0%) + var(--drag, 0px)));
   transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1);
 }
-/* ★背景のグリッドは3アプリで共有していて動かない。アプリを移るときは
-   各セルの図形が「その場で次の形へ変形する」。進み具合は、指の動きから
-   作った連続値ひとつ(--p)だけで決まる:
-     --appi  … いま何番目のアプリか(整数)。AppShellが書く。
-     --dragn … 指の移動量 ÷ 画面幅(符号は左へ払うと負)。AppShellが書く。
-     --p     … その2つを足した小数。0=タスク 1=ブリーフ 2=ジャーナル。
-     --t1/--t2 … 隣り合うアプリ間の進み具合(0〜1)。
-   各図形の top/left/width/height/border-radius は、この2つを使った1本の
-   calc() で書いてある(components/AppBackdrop.tsx)。JSは毎フレーム何も
-   計算せず、CSS変数を書くだけ。 */
-/* ★背景。指の動きとは完全に切り離してある。アプリが確定した瞬間に、
-   ここのアニメーションが1本だけ走って終わる(components/AppBackdrop.tsx)。
-   3拍で組んである:
-     1拍目(0〜500ms)  … いま出ている図形が、来た道を戻るように順にはけていく
-     2拍目(180〜560ms) … 新しい地の色が上から下りてきて画面を塗り替える
-     3拍目(360ms〜)   … 新しい図形が1つずつ時間差で入ってくる
-   図形ごとに入り方が違う(帯は上から伸びる/半円は右から差し込む/扇形は角から
-   開く/円は中心から立ち上がる)。ひと息の1つの動きに全部を乗せない。
-   入りと去りの遅れは、図形ごとにインラインで --din / --dout として渡す。 */
+/* ★背景。3つのアプリでそれぞれ違う figure(図形)を置き、アプリを移るときに
+   入れ替える。動きは2つに分かれている:
+     去る … **指の移動量そのもの(--outp)から算出**する。払い始めた最初の
+             1pxから figure が動き出すので、「払ってから背景が動き出すまでの
+             遅れ」が原理的に存在しない(画面=トラックを動かしているのと
+             同じ変数・同じフレームで動く)。払うのをやめれば --outp が 0 へ
+             戻り、figure もそのまま元の位置へ戻ってくる。
+     来る … スワイプが確定してから、時間で組んだアニメーションを流す。
+             新しい地の色が上から下りてきて(180ms〜)、そのあとに figure が
+             1つずつ時間差で入ってくる。figure ごとに入り方が違う
+             (帯は上から伸びる/三角は右から差し込む/扇形は角から開く/
+             円は中心から立ち上がる)。ひと息の1つの動きに全部を乗せない。
+   図形ごとの「入りの遅れ」は --din、「去りの始まりのずれ」は --o として
+   components/AppBackdrop.tsx がインラインで渡す。 */
 .bd-layer { position: absolute; inset: 0; overflow: hidden; }
 .bd-piece {
   position: absolute;
   animation-duration: 460ms;
   animation-delay: var(--din, 0ms);
   animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-  animation-fill-mode: both;
+  /* ★fill-mode は both ではなく backwards。both のままだと、入場が
+     終わったあとも最後のコマの transform が永久に効き続け、下の
+     「去る量(--lp)から算出する transform」を一切上書きしてしまう。
+     backwards なら、遅れている間は from のコマを見せ、終わった時点で
+     普通のCSSの値(=--lp から算出した値)へ素直に戻る。 */
+  animation-fill-mode: backwards;
+  /* ★去る量は指の移動量そのもの(--outp)から算出する。だから「払い始めて
+     から背景が動き出すまでの遅れ」が原理的に存在しない——トラック(画面)を
+     動かしているのと**同じ変数・同じフレーム**で動く。
+     図形ごとに --o(始まりのずれ)を持たせてあるので、上から順にはけていく。
+     払うのをやめれば --outp が 0 に戻り、下の transition が figure を
+     元の位置へ連れ戻す(「切り替えなかったらそのまま戻ってくる」)。 */
+  --lp: clamp(0, calc((var(--outp, 0) - var(--o, 0)) * 2.2), 1);
+  transition: transform 420ms cubic-bezier(0.32, 0.72, 0, 1);
+  /* 図形は半画面ぶんの大きさがあり、指に追従して毎フレーム変形する。
+     合成レイヤーへ上げておかないと、毎フレーム塗り直しになって
+     スワイプ自体が重くなる(実測でフレームあたりのコストが倍以上違った)。 */
+  will-change: transform;
 }
+/* 指で払っている間は1:1で追従させる(トラックと同じ扱い)。 */
+[data-dragging="1"] .bd-piece { transition: none; }
 
 /* 地の色。上から下りてきて画面を塗り替える。去る図形が見えるよう、
-   すこし待ってから動き出す。 */
+   すこし待ってから動き出す。地自体は去らない(次の地に塗り替えられるまでの
+   下敷きなので、動かすと二重になる)。 */
 .bd-ground {
   inset: 0;
   transform-origin: 50% 0%;
@@ -110,42 +125,37 @@ body {
   animation-delay: 180ms;
 }
 
-/* 帯: 上から伸びてくる(縦にグリッドを横断する長方形)。 */
+/* 帯: 上から伸びてくる(縦にグリッドを横断する長方形)。去るときは上へ畳む。 */
 @keyframes bd-band { from { transform: scaleY(0); } to { transform: scaleY(1); } }
-.bd-band { transform-origin: 50% 0%; animation-name: bd-band; animation-duration: 420ms; }
-
-/* 右端の三角: 画面の外から左へ差し込む。 */
-@keyframes bd-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
-.bd-right { animation-name: bd-right; }
-
-/* 扇形: その角(左下)を軸に開く。 */
-@keyframes bd-corner { from { transform: scale(0); } to { transform: scale(1); } }
-.bd-corner { transform-origin: 0% 100%; animation-name: bd-corner; }
-
-/* 円: 中心から立ち上がる。 */
-@keyframes bd-pop { from { transform: scale(0); } to { transform: scale(1); } }
-.bd-pop { transform-origin: 50% 50%; animation-name: bd-pop; }
-
-/* ★去るとき(.bd-out)。**別名のキーフレーム**に差し替える。
-   animation-direction だけを reverse に変えても、既に再生し終わっている
-   アニメーションは再生し直されず、値がその場で飛ぶだけになる。
-   animation-name が変わったときだけ確実に頭から再生される。
-   クラスを外せば名前が元(入場)に戻るので、払うのをやめたときの
-   「戻ってくる」も同じ仕組みで済む。
-   地はそのまま置いておく(新しい地に塗り替えられるまでの下敷き)。 */
-.bd-out .bd-piece {
-  animation-delay: var(--dout, 0ms);
-  animation-duration: 380ms;
+.bd-band {
+  transform-origin: 50% 0%;
+  animation-name: bd-band;
+  animation-duration: 420ms;
+  transform: scaleY(calc(1 - var(--lp)));
 }
-@keyframes bd-band-out { from { transform: scaleY(1); } to { transform: scaleY(0); } }
-@keyframes bd-right-out { from { transform: translateX(0); } to { transform: translateX(100%); } }
-@keyframes bd-corner-out { from { transform: scale(1); } to { transform: scale(0); } }
-@keyframes bd-pop-out { from { transform: scale(1); } to { transform: scale(0); } }
-.bd-out .bd-band { animation-name: bd-band-out; }
-.bd-out .bd-right { animation-name: bd-right-out; }
-.bd-out .bd-corner { animation-name: bd-corner-out; }
-.bd-out .bd-pop { animation-name: bd-pop-out; }
-.bd-out .bd-ground { animation: none; }
+
+/* 右端の三角: 画面の外から左へ差し込む。去るときは右へ戻る。 */
+@keyframes bd-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.bd-right {
+  animation-name: bd-right;
+  transform: translateX(calc(var(--lp) * 100%));
+}
+
+/* 扇形: その角(左下)を軸に開く。去るときは同じ角へ畳む。 */
+@keyframes bd-corner { from { transform: scale(0); } to { transform: scale(1); } }
+.bd-corner {
+  transform-origin: 0% 100%;
+  animation-name: bd-corner;
+  transform: scale(calc(1 - var(--lp)));
+}
+
+/* 円: 中心から立ち上がる。去るときは中心へ縮む。 */
+@keyframes bd-pop { from { transform: scale(0); } to { transform: scale(1); } }
+.bd-pop {
+  transform-origin: 50% 50%;
+  animation-name: bd-pop;
+  transform: scale(calc(1 - var(--lp)));
+}
 
 @media (prefers-reduced-motion: reduce) {
   .bd-piece { animation: none; }

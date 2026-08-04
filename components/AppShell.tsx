@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
-import { AppBackdrop, beginBackdropExit, cancelBackdropExit } from "@/components/AppBackdrop";
+import { AppBackdrop } from "@/components/AppBackdrop";
 import { TAB_ICON_OFF, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
@@ -342,6 +342,12 @@ export function AppShell() {
   const setDragVar = useCallback((px: number, dragging: boolean) => {
     const root = document.documentElement;
     root.style.setProperty("--drag", `${px}px`);
+    // ★背景の figure が「どれだけ去ったか」も、この同じ書き込みで一緒に
+    // 出す(2026-08-04)。画面を動かすのと同じ変数・同じフレームなので、
+    // 「払ってから背景が動き出すまでの遅れ」が構造的に存在しない。
+    // 画面幅の22%ぶん払ったところで完全にはけ切る(送る判定は18%)。
+    const w = window.innerWidth || 390;
+    root.style.setProperty("--outp", String(Math.min(1, Math.abs(px) / (w * 0.22))));
     root.dataset.dragging = dragging ? "1" : "0";
   }, []);
   const [showProfile, setShowProfile] = useState(false);
@@ -592,8 +598,6 @@ export function AppShell() {
       const axis = navPressRef.current?.axis;
       finish();
       if (axis === "y") settleDash(false);
-      // 払うのをやめたので、去りかけた背景を戻す。
-      if (axis === "x") cancelBackdropExit();
     };
     function move(ev: PointerEvent) {
       const pr = navPressRef.current;
@@ -610,11 +614,6 @@ export function AppShell() {
         navDraggedRef.current = true;
         // 縦だと決まった瞬間にダッシュボードを用意する(1回だけのstate更新)。
         if (pr.axis === "y") setDashMounted(true);
-        // ★横だと決まった瞬間に、背景の figure を去らせ始める。Reactを
-        // 通さずDOMへ直接クラスを付ける(stateにすると、実機ではシェルの
-        // 再レンダーを待つあいだに払い終わってしまい「スワイプが終わって
-        // からアニメーションが始まる」と報告された)。
-        if (pr.axis === "x") beginBackdropExit();
         if (pr.axis === "x") {
           // 左へ払うと --p は増える(0〜2 が基準でよい)。右へ払うと減るので、
           // 先頭に居るときだけ1周ぶん先(3)を基準にして 0 を下回らないようにする。
@@ -653,9 +652,9 @@ export function AppShell() {
       const far = Math.abs(dx) >= width * COMMIT_RATIO;
       // 速さで送るのは、指の向きと払った向きが一致しているときだけ。
       const flick = Math.abs(vx) >= FLICK_PX_PER_MS && Math.sign(vx) === Math.sign(dx);
-      // 送らないなら、去りかけた背景を戻す(送る場合は、次のアプリの層が
-      // まるごと差し替わるので何もしなくてよい)。
-      if (!far && !flick) { cancelBackdropExit(); return; }
+      // 送らないときは、--drag が0へ戻るのに合わせて背景の figure も
+      // そのまま戻ってくる(--outp が同じ書き込みで0になる)。
+      if (!far && !flick) return;
       // 通し番号を素直に±1する。丸めないので端が無く、そのまま一周する。
       const step = dx < 0 ? 1 : -1;
       const next = posRef.current + step;

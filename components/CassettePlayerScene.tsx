@@ -30,8 +30,18 @@ import type { PlayerMode } from "@/components/CassettePlayer";
 //   ・上端に VOL/TUNING のギザギザのホイール2つ・PHONES・FUNCTIONのつまみ
 //
 // ■ 開き方(動画のとおり)
-// 蓋は**右端**を蝶番にして、本のように手前へ開く(rotateY)。以前は左端を
-// 軸にしていたが、実機は右開きだった。
+// 蓋は**右端**を蝶番にして、本のように手前へ開く(rotateY)。
+//
+// ■ ★構造(2026-08-04・追加の写真5枚で作り直し)
+// 「側面が全く違う。側面はグレーの範囲が多い」という指摘のとおり、
+// **黄色いのは前面の蓋(プレート)だけで、筐体は全部グレー**だった。
+// 蓋は本体の輪郭より内側に収まっていて、上下左右にグレーの縁が見える。
+//   左の面 … 一番広いグレー。STOP/PLAY/REW/FF の丸ボタン4つが細長い窪みに
+//            並び、ネジ2本。滑り止めの窪み(2列×5段)はここから前面へ回り込む。
+//   上の面 … VOL・TUNING のギザギザのホイール、PHONES、FUNCTION/AVLS、BATT。
+//   右の面 … 蝶番側。細長い窪みが2つ。
+// 文字は **sports WALKMAN だけ**残す(ユーザー指定)。SONY・型番・AM/FMの
+// 目盛りの数字などはすべて削除した。
 //
 // ■ 見た目は**フラットなベクター(アイソメトリック)**(2026-08-04・ユーザー
 // 指定の参考画像に合わせて作り直し)。写実に寄せるのをやめる:
@@ -47,39 +57,25 @@ import type { PlayerMode } from "@/components/CassettePlayer";
 //
 // 単位は 1 ≒ 10cm のつもり。実機 96×116×39mm をそのまま比率にしている。
 
-const W = 0.96;          // 本体の幅
-const H = 1.16;          // 本体の高さ
-const D = 0.39;          // 本体の厚み
-const R = 0.15;          // 本体の角丸
+const W = 0.96;          // 本体(グレーの筐体)の幅
+const H = 1.16;          // 高さ
+const D = 0.39;          // 厚み
+const R = 0.14;          // 筐体の角丸
 
-const BAND = 0.070;      // 右端のグレーの帯(蝶番側)の幅
-const LID_W = W - BAND;  // 蓋の幅
-const LID_X = -BAND / 2; // 蓋の中心(本体の中心より少し左)
-const HINGE_X = LID_X + LID_W / 2; // 蝶番(蓋の右端)
+// ★黄色い蓋は本体より内側。左は滑り止めのグレー、右は蝶番のグレーが見える。
+const LID_L = 0.190;     // 本体の左端から蓋の左端まで(比率)
+const LID_R = 0.927;     // 本体の左端から蓋の右端まで(比率)
+const LID_T = 0.020;     // 上下の縁(比率)
+const LID_W = (LID_R - LID_L) * W;
+const LID_H = (1 - LID_T * 2) * H;
+const LID_X = (-0.5 + (LID_L + LID_R) / 2) * W;
+const HINGE_X = LID_X + LID_W / 2;   // 蝶番(蓋の右端)
+const LID_Z = D / 2;                 // 筐体の前面
+const LID_BEVEL = 0.016;
+const LID_THICK = 0.020;
 
-// 蓋の膨らみ(bevel)。前面の平らな部分はこのぶん内側になる。
-const LID_BEVEL = 0.014;
-const LID_THICK = 0.018;
-
-// 蓋の枠を 0〜1 とした、実測の配置(すべて画像解析で測った値)。
-const F = {
-  latch:  { x0: 0.000, x1: 0.209, y0: 0.110, y1: 0.843 },
-  blue:   { x0: 0.141, x1: 0.850, y0: 0.124, y1: 0.839 },
-  window: { x0: 0.437, x1: 0.812, y0: 0.194, y1: 0.794 },
-  sports: { x0: 0.197, y: 0.752 },
-  walk:   { x0: 0.285, y: 0.815 },
-  sony:   { x0: 0.546, y: 0.062 },
-};
-
-// 窓。蓋の枠を 0〜1 とした比率から、蓋のローカル座標へ直したもの。
-const win = (x0: number, x1: number, y0: number, y1: number) => ({
-  cx: ((x0 + x1) / 2 - 0.5) * LID_W,
-  cy: (0.5 - (y0 + y1) / 2) * H,
-  w: (x1 - x0) * LID_W,
-  h: (y1 - y0) * H,
-});
-// 穴の位置は必ずテクスチャ側(F.window)と同じ値から作る。
-const WIN = { ...win(F.window.x0, F.window.x1, F.window.y0, F.window.y1), r: 0.115 * LID_W };
+// 左の滑り止め(前面へ回り込んだグレー)。
+const GRIP = { x0: 0.000, x1: LID_L, y0: 0.110, y1: 0.843 };
 
 const YELLOW = "#F5B01B";
 const GREY = "#8A8E95";
@@ -89,6 +85,15 @@ const TAPE_BODY = "#26262A";
 const TAPE_DEEP = "#141416";
 const HUB = "#CFCFC8";
 const LABEL_PAPER = "#EFEDE6";
+
+// 窓を蓋のローカル座標へ。
+const WIN = {
+  cx: ((0.212 + 0.752) / 2 - 0.5) * LID_W,
+  cy: (0.5 - (0.181 + 0.806) / 2) * LID_H,
+  w: (0.752 - 0.212) * LID_W,
+  h: (0.806 - 0.181) * LID_H,
+  r: 0.125 * LID_W,
+};
 
 // ---- 前面の絵(実測した比率でそのまま描く)------------------------------------
 
@@ -107,15 +112,28 @@ function roundRectPath(c: CanvasRenderingContext2D, x: number, y: number, w: num
   c.closePath();
 }
 
+// 蓋(黄色いプレート)の枠を 0〜1 とした、実測の配置。写真から測った本体
+// 基準の値を、蓋の枠へ写し直したもの。
+const F = {
+  blue:   { x0: 0.000, x1: 0.812, y0: 0.108, y1: 0.853 },
+  window: { x0: 0.212, x1: 0.752, y0: 0.181, y1: 0.806 },
+  slot:   { x0: 0.135, x1: 0.178, y0: 0.240, y1: 0.575 },
+  sports: { x0: 0.010, y: 0.760 },
+  walk:   { x0: 0.100, y: 0.826 },
+};
+
 // sports / WALKMAN は**窓の上にも刷られている**(実機の写真で確認)。窓は
-// 実際には穴が開いているので、同じ絵を窓のガラスの上にもう一度だけ薄い板で
+// ジオメトリでは穴なので、同じ絵を窓のガラスの上にもう一度だけ薄い板で
 // 重ねる。そのために描画をこの関数へ切り出してある。
+// ★位置の写像(X)と大きさの倍率(S)は必ず分けること。窓用のキャンバスでは
+// X が「窓の左上からの相対位置」になるため、大きさに X を流用すると窓の
+// 外にある値が負になり、文字が一切描かれない。
 function drawLogos(c: CanvasRenderingContext2D, X: (v: number) => number, Y: (v: number) => number, S: (v: number) => number) {
   c.save();
   c.translate(X(F.sports.x0), Y(F.sports.y));
   c.transform(1, 0, -0.20, 1, 0, 0);
   c.fillStyle = "#E4551F";
-  c.font = `italic 900 ${Math.round(S(0.165))}px sans-serif`;
+  c.font = `italic 900 ${Math.round(S(0.185))}px sans-serif`;
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
   c.fillText("sports", 0, 0);
@@ -125,20 +143,20 @@ function drawLogos(c: CanvasRenderingContext2D, X: (v: number) => number, Y: (v:
   c.translate(X(F.walk.x0), Y(F.walk.y));
   c.transform(1, 0, -0.12, 1, 0, 0);
   c.fillStyle = "#F2F4F6";
-  c.font = `900 ${Math.round(S(0.084))}px sans-serif`;
+  c.font = `900 ${Math.round(S(0.094))}px sans-serif`;
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
   c.fillText("WALKMAN", 0, 0);
-  c.font = `700 ${Math.round(S(0.048))}px sans-serif`;
-  c.fillText("FM/AM", S(0.425), S(-0.010));
   c.restore();
 }
 
+// 蓋の表の絵。★文字は sports / WALKMAN だけ(ユーザー指定)。SONY・型番・
+// AM/FMの目盛りの数字などは全部やめた。
 function makeFrontTexture(): THREE.CanvasTexture {
   const PX = 1024;
   const cv = document.createElement("canvas");
   cv.width = PX;
-  cv.height = Math.round((PX * H) / LID_W);
+  cv.height = Math.round((PX * LID_H) / LID_W);
   const c = cv.getContext("2d")!;
   const X = (v: number) => v * cv.width;
   const Y = (v: number) => v * cv.height;
@@ -146,101 +164,30 @@ function makeFrontTexture(): THREE.CanvasTexture {
   c.fillStyle = YELLOW;
   c.fillRect(0, 0, cv.width, cv.height);
 
-  // 青いパネル。左上が大きく丸い独特の輪郭(実測: 左端が上へ行くほど右へ寄る)。
+  // 青いパネル。左上が大きく丸い独特の輪郭。左端は蓋の外(グレーの下)まで
+  // 続いているので、枠の外から描き始める。
   const B = F.blue;
   c.fillStyle = "#3468AE";
-  roundRectPath(c, X(B.x0), Y(B.y0), X(B.x1 - B.x0), Y(B.y1 - B.y0),
-    [X(0.36), X(0.22), X(0.13), X(0.05)]);
+  roundRectPath(c, X(B.x0 - 0.08), Y(B.y0), X(B.x1 - B.x0 + 0.08), Y(B.y1 - B.y0),
+    [X(0.40), X(0.24), X(0.14), X(0.05)]);
   c.fill();
+
   // スモークの窓(ジオメトリでは穴。ここは穴の縁より少し大きめの暗い面)。
   const N = F.window;
   c.fillStyle = "#1B2126";
-  roundRectPath(c, X(N.x0), Y(N.y0), X(N.x1 - N.x0), Y(N.y1 - N.y0), X(0.115));
+  roundRectPath(c, X(N.x0), Y(N.y0), X(N.x1 - N.x0), Y(N.y1 - N.y0), X(0.125));
   c.fill();
 
-  // ラジオの目盛り。
-  c.textBaseline = "middle";
-  c.strokeStyle = "#DCE6EE";
-  c.lineWidth = Math.max(1, X(0.004));
-  c.beginPath();
-  c.ellipse(X(0.268), Y(0.183), X(0.032), Y(0.014), 0, 0, Math.PI * 2);
-  c.stroke();
-  c.fillStyle = "#DCE6EE";
-  c.font = `${Math.round(X(0.030))}px sans-serif`;
-  c.textAlign = "center";
-  c.fillText("AVLS", X(0.268), Y(0.183));
-  c.font = `600 ${Math.round(X(0.054))}px sans-serif`;
-  c.textAlign = "left";
-  c.fillText("WM-FS191", X(0.253), Y(0.213));
-  c.font = `600 ${Math.round(X(0.052))}px sans-serif`;
-  c.fillText("AM", X(0.266), Y(0.245));
-  c.fillText("FM", X(0.392), Y(0.245));
-
-  // つまみが走る縦の溝と、いまの位置。
+  // チューニングの溝と、いまの位置(文字は置かない)。
+  const T = F.slot;
   c.fillStyle = "#141A1F";
-  roundRectPath(c, X(0.328), Y(0.253), X(0.033), Y(0.318), X(0.016));
+  roundRectPath(c, X(T.x0), Y(T.y0), X(T.x1 - T.x0), Y(T.y1 - T.y0), X(0.021));
   c.fill();
   c.fillStyle = "#9FC0AE";
-  roundRectPath(c, X(0.320), Y(0.347), X(0.049), Y(0.017), X(0.006));
+  roundRectPath(c, X(T.x0 - 0.010), Y(0.330), X(T.x1 - T.x0 + 0.020), Y(0.018), X(0.006));
   c.fill();
-
-  // 目盛りの細い線と数字(AMは溝の左・FMは右)。
-  c.fillStyle = "rgba(214,196,224,0.7)";
-  for (let i = 0; i < 6; i++) c.fillRect(X(0.244), Y(0.270 + i * 0.047), X(0.062), Math.max(1, Y(0.0022)));
-  for (let i = 0; i < 6; i++) c.fillRect(X(0.352), Y(0.278 + i * 0.044), X(0.050), Math.max(1, Y(0.0022)));
-  c.fillStyle = "#E4ECF3";
-  c.font = `600 ${Math.round(X(0.052))}px sans-serif`;
-  const am: [string, number][] = [["170", 0.274], ["140", 0.301], ["120", 0.325], ["100", 0.348], ["70", 0.436], ["53", 0.505]];
-  const fm: [string, number][] = [["108", 0.286], ["104", 0.313], ["100", 0.340], ["96", 0.383], ["92", 0.437], ["88", 0.492]];
-  c.textAlign = "right";
-  for (const [t, y] of am) c.fillText(t, X(0.318), Y(y));
-  c.textAlign = "left";
-  for (const [t, y] of fm) c.fillText(t, X(0.350), Y(y));
-  c.fillStyle = "#DCE6EE";
-  c.font = `600 ${Math.round(X(0.044))}px sans-serif`;
-  c.textAlign = "left";
-  c.fillText("×10", X(0.216), Y(0.560));
-  c.fillText("kHz", X(0.216), Y(0.592));
-  c.fillText("MHz", X(0.348), Y(0.576));
-
-  // 窓の左端に沿った小さな刷り文字。
-  c.save();
-  c.translate(X(0.520), Y(0.305));
-  c.rotate(Math.PI / 2);
-  c.fillStyle = "rgba(150,175,195,0.8)";
-  c.font = `${Math.round(X(0.034))}px sans-serif`;
-  c.textAlign = "left";
-  c.fillText("Mastered in New York City", 0, 0);
-  c.restore();
 
   drawLogos(c, X, Y, X);
-
-  // SONY(右上)。字間を広めに。
-  c.fillStyle = "#3C4650";
-  c.font = `700 ${Math.round(X(0.068))}px serif`;
-  c.textAlign = "left";
-  c.textBaseline = "middle";
-  let sx = X(F.sony.x0);
-  for (const ch of "SONY") {
-    c.fillText(ch, sx, Y(F.sony.y));
-    sx += c.measureText(ch).width + X(0.014);
-  }
-
-  // 左のグレーの部品(ジオメトリでも作ってあるが、下地にも同じ形を置いて
-  // 縁がずれて見えないようにする)。
-  const L = F.latch;
-  c.fillStyle = GREY;
-  roundRectPath(c, X(L.x0 - 0.06), Y(L.y0), X(L.x1 - L.x0 + 0.06), Y(L.y1 - L.y0),
-    [X(0.06), X(0.10), X(0.10), X(0.06)]);
-  c.fill();
-  c.fillStyle = "rgba(0,0,0,0.24)";
-  for (let col = 0; col < 2; col++) {
-    for (let row = 0; row < 5; row++) {
-      c.beginPath();
-      c.ellipse(X(0.062 + col * 0.082), Y(0.198 + row * 0.0535), X(0.021), Y(0.0125), 0, 0, Math.PI * 2);
-      c.fill();
-    }
-  }
 
   const tex = new THREE.CanvasTexture(cv);
   tex.anisotropy = 4;
@@ -256,14 +203,10 @@ function makeWindowInkTexture(): THREE.CanvasTexture {
   const wN = N.x1 - N.x0;
   const hN = N.y1 - N.y0;
   cv.width = PX;
-  cv.height = Math.round((PX * hN * H) / (wN * LID_W));
+  cv.height = Math.round((PX * hN * LID_H) / (wN * LID_W));
   const c = cv.getContext("2d")!;
-  // 蓋の枠を基準にした座標へ合わせる(窓の左上ぶんだけずらす)。
   const X = (v: number) => ((v - N.x0) / wN) * cv.width;
   const Y = (v: number) => ((v - N.y0) / hN) * cv.height;
-  // ★大きさは「蓋の幅に対する比率」なので、位置の写像とは別の倍率を使う。
-  // ここをXで代用すると、窓の外にある値(0.165など)が負になり、文字の
-  // 大きさが負になって一切描かれない。
   const S = (v: number) => (v / wN) * cv.width;
   drawLogos(c, X, Y, S);
   const tex = new THREE.CanvasTexture(cv);
@@ -390,11 +333,11 @@ function Tape({ spinning }: { spinning: boolean }) {
 function Lid() {
   const geo = useMemo(() => {
     const g = shellGeometry({
-      w: LID_W, h: H, r: R, depth: 0.02,
+      w: LID_W, h: LID_H, r: 0.11, depth: 0.02,
       bevel: LID_BEVEL, thickness: LID_THICK, segments: 2,
       hole: roundedHole(WIN.cx, WIN.cy, WIN.w, WIN.h, WIN.r),
     });
-    applyPlanarUV(g, LID_W, H);
+    applyPlanarUV(g, LID_W, LID_H);
     return g;
   }, []);
   const tex = useMemo(() => makeFrontTexture(), []);
@@ -407,28 +350,27 @@ function Lid() {
 }
 
 // 左のグレーの部品。一段高い箱＋滑り止めの窪み(沈めた円)。
-function Latch() {
-  const { x0, x1, y0, y1 } = F.latch;
-  const cx = ((x0 - 0.06 + x1) / 2 - 0.5) * LID_W;
-  const cy = (0.5 - (y0 + y1) / 2) * H;
+// 左の滑り止め(前面へ回り込んだグレー)。窪みを10個沈める。
+function Grip() {
+  const cx = ((GRIP.x0 + GRIP.x1) / 2 - 0.5) * W;
+  const cy = (0.5 - (GRIP.y0 + GRIP.y1) / 2) * H;
   const geo = useMemo(() => shellGeometry({
-    w: (F.latch.x1 - F.latch.x0 + 0.06) * LID_W, h: (F.latch.y1 - F.latch.y0) * H, r: 0.055,
+    w: (GRIP.x1 - GRIP.x0) * W, h: (GRIP.y1 - GRIP.y0) * H, r: 0.05,
     depth: 0.012, bevel: 0.006, thickness: 0.008, segments: 2,
   }), []);
   useEffect(() => () => geo.dispose(), [geo]);
   return (
-    <group position={[cx, cy, 0.052]}>
+    <group position={[cx, cy, D / 2 + 0.004]}>
       <mesh geometry={geo}>
         <meshLambertMaterial color={GREY} />
       </mesh>
-      {/* 滑り止め。円を少し沈めて、影で凹んで見えるようにする。 */}
       {Array.from({ length: 10 }, (_, i) => {
         const col = i % 2, row = (i / 2) | 0;
-        const px = (0.062 + col * 0.082 - (x0 - 0.06 + x1) / 2) * LID_W;
-        const py = ((y0 + y1) / 2 - (0.198 + row * 0.0535)) * H;
+        const px = (0.055 + col * 0.070 - (GRIP.x0 + GRIP.x1) / 2) * W;
+        const py = ((GRIP.y0 + GRIP.y1) / 2 - (0.200 + row * 0.052)) * H;
         return (
           <mesh key={i} position={[px, py, 0.016]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.019, 0.019, 0.012, 12]} />
+            <cylinderGeometry args={[0.017, 0.017, 0.012, 10]} />
             <meshLambertMaterial color={GREY_DEEP} />
           </mesh>
         );
@@ -437,24 +379,21 @@ function Latch() {
   );
 }
 
-// 窓のスモーク板。蓋の面より**奥**に沈める(窪みとして読ませる)。実機では
-// sports / WALKMAN のロゴが窓の上にも刷られているので、ガラスの表面に
-// 同じ絵の薄い板を1枚だけ重ねる(穴を開けた蓋のテクスチャでは消えてしまうため)。
+// 窓のスモーク板。蓋の面より奥に沈める。ロゴは窓の上にも刷られているので、
+// ガラスの表面に薄い板を1枚重ねる。
 function WindowGlass() {
   const geo = useMemo(() => shellGeometry({
     w: WIN.w + 0.006, h: WIN.h + 0.006, r: WIN.r + 0.003,
-    depth: 0.016, bevel: 0.005, thickness: 0.006, segments: 2,
+    depth: 0.014, bevel: 0.005, thickness: 0.006, segments: 2,
   }), []);
   const ink = useMemo(() => makeWindowInkTexture(), []);
   useEffect(() => () => { geo.dispose(); ink.dispose(); }, [geo, ink]);
   return (
     <group position={[WIN.cx, WIN.cy, -0.004]}>
       <mesh geometry={geo}>
-        {/* スモークの窓。重い transmission はやめ、暗い半透明の板1枚に
-            する(中のリールがうっすら透ける)。 */}
         <meshBasicMaterial color="#151A1E" transparent opacity={0.72} />
       </mesh>
-      <mesh position={[0, 0, 0.038]}>
+      <mesh position={[0, 0, 0.030]}>
         <planeGeometry args={[WIN.w, WIN.h]} />
         <meshBasicMaterial map={ink} transparent depthWrite={false} />
       </mesh>
@@ -462,30 +401,28 @@ function WindowGlass() {
   );
 }
 
-// ---- 筐体 -------------------------------------------------------------------
+// ---- 筐体(全部グレー)--------------------------------------------------------
 
-// 下端の操作ボタン(STOP / PLAY / REW / FF)。細長い窪みの中に丸ボタンが4つ、
-// 両端にネジ。写真(側面)のとおり。
-function TransportButtons() {
-  const y = -H / 2 + 0.048;
-  const z = -D * 0.42;
+// ★左の面。一番広いグレーで、STOP/PLAY/REW/FF の丸ボタン4つが細長い窪みに
+// 並び、両端にネジ。写真(側面)のとおり。
+function LeftControls() {
+  const x = -W / 2;
   return (
-    <group position={[0, y, z]}>
-      {/* 窪んだ受け皿 */}
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <boxGeometry args={[0.60, 0.10, 0.17]} />
+    <group position={[x, 0.02, -D * 0.16]} rotation={[0, -Math.PI / 2, 0]}>
+      {/* 細長い窪み */}
+      <mesh position={[0, 0, 0.006]}>
+        <boxGeometry args={[D * 0.42, 0.74, 0.02]} />
         <meshLambertMaterial color={GREY_DEEP} />
       </mesh>
       {[0, 1, 2, 3].map((i) => (
-        <mesh key={i} position={[-0.21 + i * 0.14, 0.028, 0]} rotation={[0, 0, 0]}>
-          <cylinderGeometry args={[0.055, 0.055, 0.05, 16]} />
+        <mesh key={i} position={[0, 0.27 - i * 0.18, 0.028]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.062, 0.062, 0.05, 14]} />
           <meshLambertMaterial color="#1B1C1F" />
         </mesh>
       ))}
-      {/* ネジ */}
-      {[-0.33, 0.33].map((x) => (
-        <mesh key={x} position={[x, 0.02, 0]}>
-          <cylinderGeometry args={[0.022, 0.022, 0.03, 10]} />
+      {[0.45, -0.45].map((y) => (
+        <mesh key={y} position={[0, y, 0.014]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.022, 0.022, 0.02, 10]} />
           <meshLambertMaterial color="#9C9C9E" />
         </mesh>
       ))}
@@ -493,49 +430,39 @@ function TransportButtons() {
   );
 }
 
-// 上端のつまみ類(VOL / TUNING のホイール・PHONES・FUNCTION)。
+// 上の面。VOL・TUNING のホイール、FUNCTION、PHONES。
 function TopControls() {
-  const y = H / 2;
-  const z = -D * 0.42;
   return (
-    <group position={[0, y, z]}>
-      {/* ホイールが収まるグレーの受け */}
-      <mesh position={[-0.20, -0.02, 0]}>
-        <boxGeometry args={[0.30, 0.10, 0.20]} />
+    <group position={[0, H / 2, -D * 0.18]}>
+      <mesh position={[-0.20, -0.012, 0]}>
+        <boxGeometry args={[0.30, 0.05, D * 0.5]} />
         <meshLambertMaterial color={GREY_DEEP} />
       </mesh>
-      {/* ギザギザのホイール2つ。円柱の分割数を粗くして刻みを出す。 */}
       {[-0.27, -0.13].map((x) => (
-        <mesh key={x} position={[x, -0.030, 0]} rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.062, 0.062, 0.085, 14]} />
+        <mesh key={x} position={[x, 0.008, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.055, 0.055, 0.075, 12]} />
           <meshLambertMaterial color={GREY} />
         </mesh>
       ))}
-      {/* FUNCTION のつまみ */}
-      <mesh position={[0.06, -0.014, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.05, 0.05, 0.035, 14]} />
+      <mesh position={[0.08, -0.004, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.045, 0.045, 0.03, 12]} />
         <meshLambertMaterial color={GREY_DEEP} />
       </mesh>
-      {/* PHONES の穴 */}
-      <mesh position={[0.26, -0.004, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.045, 0.045, 0.03, 14]} />
+      <mesh position={[0.28, -0.006, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.040, 0.040, 0.024, 12]} />
         <meshLambertMaterial color="#17181A" />
       </mesh>
     </group>
   );
 }
 
-// 右端のグレーの帯(蝶番側)。2か所に窪みがある。
-function HingeBand() {
+// 右の面(蝶番側)。細長い窪みが2つ。
+function RightSide() {
   return (
-    <group position={[W / 2 - BAND / 2, 0, -D * 0.30]}>
-      <mesh>
-        <boxGeometry args={[BAND, H - 0.10, D * 0.72]} />
-        <meshLambertMaterial color={GREY} />
-      </mesh>
+    <group position={[W / 2 - 0.004, 0, -D * 0.10]}>
       {[0.30, -0.30].map((y) => (
-        <mesh key={y} position={[BAND / 2 - 0.004, y * H, 0]}>
-          <boxGeometry args={[0.016, 0.22 * H, D * 0.34]} />
+        <mesh key={y} position={[0, y * H, 0]}>
+          <boxGeometry args={[0.014, 0.24 * H, D * 0.30]} />
           <meshLambertMaterial color={GREY_DARK} />
         </mesh>
       ))}
@@ -543,25 +470,26 @@ function HingeBand() {
   );
 }
 
-function BackShell() {
+// 筐体。★全部グレー。黄色いのは前面の蓋だけ。
+function Chassis() {
   const geo = useMemo(() => shellGeometry({
-    w: W, h: H, r: R, depth: D - 0.06, bevel: 0.014, thickness: 0.018, segments: 2,
-    hole: roundedHole(LID_X, 0, LID_W - 0.20, H - 0.22, 0.07),
+    w: W, h: H, r: R, depth: D - 0.06, bevel: 0.016, thickness: 0.020, segments: 2,
+    hole: roundedHole(LID_X, 0, LID_W - 0.12, H - 0.20, 0.06),
   }), []);
   useEffect(() => () => geo.dispose(), [geo]);
   return (
     <group>
-      <mesh geometry={geo} position={[0, 0, -(D - 0.06) - 0.018]}>
-        <meshLambertMaterial color={YELLOW} />
+      <mesh geometry={geo} position={[0, 0, -(D - 0.06) / 2 - 0.02]}>
+        <meshLambertMaterial color={GREY} />
       </mesh>
       {/* 窪みの底(メカの黒) */}
-      <mesh position={[LID_X, 0, -0.2]}>
-        <boxGeometry args={[LID_W - 0.16, H - 0.18, 0.02]} />
+      <mesh position={[LID_X, 0, -D * 0.34]}>
+        <boxGeometry args={[LID_W - 0.10, H - 0.18, 0.02]} />
         <meshLambertMaterial color={GREY_DARK} />
       </mesh>
-      <HingeBand />
-      <TransportButtons />
+      <LeftControls />
       <TopControls />
+      <RightSide />
     </group>
   );
 }
@@ -591,7 +519,7 @@ function Player({ mode }: { mode: PlayerMode }) {
     t.current = 0;
     if (door.current) door.current.rotation.y = 0;
     if (tape.current) {
-      tape.current.position.set(LID_X, 0, -0.075);
+      tape.current.position.set(LID_X, 0, -0.02);
       tape.current.scale.setScalar(1);
       tape.current.visible = true;
     }
@@ -606,7 +534,7 @@ function Player({ mode }: { mode: PlayerMode }) {
     if (tape.current) {
       const push = easeOut(clamp01((p - PUSH_AT) / PUSH_MS));
       const fly = easeIn(clamp01((p - FLY_AT) / FLY_MS));
-      tape.current.position.set(LID_X, fly * 1.5, -0.075 + push * 0.42);
+      tape.current.position.set(LID_X, fly * 1.5, -0.02 + push * 0.42);
       tape.current.scale.setScalar(1 - fly * 0.55);
       tape.current.visible = fly < 0.999;
     }
@@ -616,21 +544,21 @@ function Player({ mode }: { mode: PlayerMode }) {
     <group rotation={[0, -0.22, 0]}>
       {/* 平らな影。ベクターのイラストが影を「ずらした面」で描くのと同じで、
           光も影の計算も使わない(重い shadowMap を一切持たない)。 */}
-      <mesh position={[0.16, -0.13, -D - 0.12]}>
+      <mesh position={[0.16, -0.13, -D * 0.9]}>
         <planeGeometry args={[W * 1.02, H * 1.02]} />
         <meshBasicMaterial color="#1A1A18" transparent opacity={0.10} />
       </mesh>
-      <BackShell />
-      <group ref={tape} position={[LID_X, 0, -0.075]}>
+      <Chassis />
+      <Grip />
+      <group ref={tape} position={[LID_X, 0, -0.02]}>
         <Tape spinning={mode === "recording"} />
       </group>
       {/* ★蓋。**右端**を軸に回すため、その位置にピボットのGroupを置く。 */}
-      <group ref={door} position={[HINGE_X, 0, 0]}>
+      <group ref={door} position={[HINGE_X, 0, LID_Z]}>
         {/* 蓋のジオメトリは bevelThickness のぶん手前と奥へ張り出すので、
             背面がちょうど z=0(筐体の前面)に載るよう前へずらす。 */}
         <group position={[-LID_W / 2, 0, LID_THICK]}>
           <Lid />
-          <Latch />
           <WindowGlass />
         </group>
       </group>

@@ -405,9 +405,10 @@ export type AppId = "tasks" | "life" | "journal";
 
 export type LifeTabId = "brief" | "stock" | "goals" | "execute";
 export type TasksTabId = "tasks-inbox" | "tasks-today" | "tasks-all";
-// アーカイブ(旧・独立タブ)はジャーナルへ統合した。「今日」=その日の記録、
-// 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10)。
-export type JournalTabId = "journal-today" | "journal-archive";
+// アーカイブ(旧・独立タブ)はジャーナルへ統合した。「レコード」=カセット
+// プレイヤーをタップして声で記録する、「今日」=その日の記録、
+// 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10・§33)。
+export type JournalTabId = "journal-record" | "journal-today" | "journal-archive";
 export type TabId = LifeTabId | TasksTabId | JournalTabId;
 
 // プラン(実行タブ)へバインドする候補の選択。タブを跨いで持ち回せるよう
@@ -417,8 +418,27 @@ export interface PlanSelection {
   itemIds: string[];
 }
 
+// 録音の状態。タブバー右の丸ボタンの長押し(origin:"hold")と、ジャーナルの
+// レコードタブのタップ(origin:"tab")のどちらからでも同じ録音を動かす。
+export type RecordState = "idle" | "recording" | "sending";
+export type RecordOrigin = "hold" | "tab";
+
+export interface VoiceControls {
+  state: RecordState;
+  origin: RecordOrigin;
+  /** 録音を始めた時刻(ms)。0 なら録音していない。
+   *  ★経過時間そのものは持たせない。100msごとに変わる値をタブへ渡すと、
+   *  そのたびに全タブのpropsが作り直されて再レンダーが走る(§14で潰した
+   *  性能の落とし穴)。経過時間の表示が要る側が、この時刻から自分で数える。 */
+  startedAt: number;
+  start: (origin?: RecordOrigin) => void;
+  stop: (cancel?: boolean) => void;
+}
+
 export interface TabProps {
   appState: AppState;
+  /** 声のメモの録音。レコードタブ(ジャーナル)が使う。 */
+  voice: VoiceControls;
   persist: (next: AppState) => void;
   showToast: (msg: string) => void;
   goTab: (tab: TabId) => void;

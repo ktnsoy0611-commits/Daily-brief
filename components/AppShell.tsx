@@ -13,6 +13,7 @@ import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
+import { RecordTab } from "@/components/tabs/RecordTab";
 import { StockTab } from "@/components/tabs/StockTab";
 import { InboxView } from "@/components/tabs/InboxView";
 import { TasksTab } from "@/components/tabs/TasksTab";
@@ -22,7 +23,7 @@ import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
-import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId } from "@/lib/types";
+import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId, VoiceControls } from "@/lib/types";
 
 // 読み込み待機画面。2x2のグリッドの上を、黒い幾何学が動き回る
 // (globals.css の load-rect / load-dot / load-fan)。背景と同じ語彙で、
@@ -160,6 +161,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 {tab === "execute" && <ExecuteTab {...tabProps} />}
                 {tab === "tasks-inbox" && <InboxView appState={appState} persist={persist} showToast={showToast} />}
                 {(tab === "tasks-today" || tab === "tasks-all") && <TasksTab {...tabProps} tab={tab as TasksTabId} />}
+                {tab === "journal-record" && <RecordTab {...tabProps} />}
                 {(tab === "journal-today" || tab === "journal-archive") && <JournalTab {...tabProps} tab={tab as JournalTabId} />}
               </div>
             )}
@@ -750,7 +752,7 @@ export function AppShell() {
   const beginHold = useCallback(() => {
     heldRef.current = false;
     if (holdTimerRef.current != null) window.clearTimeout(holdTimerRef.current);
-    holdTimerRef.current = window.setTimeout(() => { heldRef.current = true; recorderRef.current.start(); }, HOLD_MS);
+    holdTimerRef.current = window.setTimeout(() => { heldRef.current = true; recorderRef.current.start("hold"); }, HOLD_MS);
   }, []);
   const endHold = useCallback(() => {
     if (holdTimerRef.current != null) window.clearTimeout(holdTimerRef.current);
@@ -803,9 +805,16 @@ export function AppShell() {
   // ★props をメモ化する。以前はここで毎レンダー新しいオブジェクトを作って
   // いたため、シェルが再レンダーされるたびにマウント済みの全タブが
   // 作り直されていた(AppColumnのmemoも素通りしてしまう)。
+  // ★録音の操作をタブへ渡す。**経過時間は渡さない**(100msごとに変わる値を
+  // ここへ入れると、そのたびにtabPropsが作り直されて全タブが再レンダー
+  // される)。録音の開始時刻だけを渡し、経過時間は表示する側が自分で数える。
+  const voice = useMemo<VoiceControls>(
+    () => ({ state: recorder.state, origin: recorder.origin, startedAt: recorder.startedAt, start: recorder.start, stop: recorder.stop }),
+    [recorder.state, recorder.origin, recorder.startedAt, recorder.start, recorder.stop],
+  );
   const tabProps = useMemo(
-    () => (appState ? { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection } as TabProps : null),
-    [appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds],
+    () => (appState ? { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection, voice } as TabProps : null),
+    [appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, voice],
   );
   // タブバー右の丸ボタン(アプリごとの「書く」入口)。
   const onWrite = useCallback((id: AppId) => {
@@ -941,7 +950,7 @@ export function AppShell() {
       {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}
 
       {/* 録音中/文字起こし中の幕。 */}
-      <RecordingOverlay state={recorder.state} elapsed={recorder.elapsed} />
+      <RecordingOverlay state={recorder.state} origin={recorder.origin} elapsed={recorder.elapsed} />
 
       {/* ★ダッシュボード。タブバーを上へ引き上げる(または選択の目印をタップ
           する)と、3つのアプリのどこからでも開く共通の引き出し。選んでいる

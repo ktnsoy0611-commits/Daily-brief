@@ -5,16 +5,20 @@ import { createPortal } from "react-dom";
 import { CassettePlayer } from "@/components/CassettePlayer";
 import { PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
+import type { RecordOrigin, RecordState } from "@/lib/types";
 
-// ★声のメモの録音。タブバー右の丸ボタンを **長押し** している間だけ録音し、
-// 指を離すと文字起こしへ送る(トランシーバーと同じ操作感)。タップは従来
-// どおり「書く」入口のまま。
+// ★声のメモの録音。入口は2つ:
+//   - タブバー右の丸ボタンを **長押し** している間だけ録音(origin:"hold")。
+//     指を離すと文字起こしへ送る(トランシーバーと同じ操作感)。このときは
+//     画面全体に幕(RecordingOverlay)を出し、その中央にプレイヤーを見せる。
+//   - ジャーナルの**レコードタブ**でプレイヤーをタップ(origin:"tab")。
+//     もう一度タップで送る。こちらはタブの中にプレイヤーが居るので、
+//     幕は出さない(出すとプレイヤーが二重になる)。
 //
-// 録音中は画面全体に暗い幕と経過時間・波形の目印を出し、「いま録っている」
-// ことが指を離すまで分かるようにする。幕はcreatePortalでbody直下へ描く
-// (nav や sticky が作る重なりコンテキストの影響を受けないため)。
+// 幕はcreatePortalでbody直下へ描く(nav や sticky が作る重なりコンテキストの
+// 影響を受けないため)。
 
-export type RecordState = "idle" | "recording" | "sending";
+export type { RecordState } from "@/lib/types";
 
 export interface VoiceResult {
   text: string;
@@ -27,9 +31,9 @@ export interface VoiceResult {
 export const HOLD_MS = 320;
 
 // 送信中(sending)の最短の長さ。文字起こしがすぐ返ってきても、蓋が開いて
-// カセットが飛んでいくまでは幕を出したままにする(app/globals.css の
-// cp-lid 320ms + cp-eject 240ms待ち+760ms とそろえてある)。
-const EJECT_MS = 1040;
+// カセットが飛んでいくまでは見せ続ける(app/globals.css の
+// cp-door 380ms + cp-eject 300ms待ち+760ms とそろえてある)。
+const EJECT_MS = 1120;
 
 export function useVoiceRecorder(opts: {
   onDone: (r: VoiceResult) => void;
@@ -37,7 +41,10 @@ export function useVoiceRecorder(opts: {
 }) {
   const { onDone, onError } = opts;
   const [state, setState] = useState<RecordState>("idle");
+  const [origin, setOrigin] = useState<RecordOrigin>("hold");
   const [elapsed, setElapsed] = useState(0);
+  // 録音を始めた時刻。タブ側はこれを見て自分で経過時間を数える(上記の理由)。
+  const [startedAt, setStartedAt] = useState(0);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
@@ -55,8 +62,9 @@ export function useVoiceRecorder(opts: {
     recRef.current?.stream.getTracks().forEach((t) => t.stop());
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (from: RecordOrigin = "hold") => {
     if (state !== "idle") return;
+    setOrigin(from);
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       onError("この端末では録音できません");
       return;
@@ -74,6 +82,7 @@ export function useVoiceRecorder(opts: {
       stoppingRef.current = false;
       startedAtRef.current = Date.now();
       setElapsed(0);
+      setStartedAt(startedAtRef.current);
       setState("recording");
       haptic(14);
       clearTimer();
@@ -129,18 +138,23 @@ export function useVoiceRecorder(opts: {
     try { rec.stop(); } catch { setState("idle"); }
   }, [onDone, onError]);
 
-  return { state, elapsed, start, stop };
+  return { state, origin, elapsed, startedAt, start, stop };
 }
 
 // 録音中/送信中の全画面の幕。中央にはユーザー本人のカセットプレイヤーを
 // 模した箱(CassettePlayer)が出てきて、録音中はリールが回る。送信すると
 // 蓋が開いてカセットが飛んでいく。
-export function RecordingOverlay({ state, elapsed }: { state: RecordState; elapsed: number }) {
-  if (state === "idle" || typeof document === "undefined") return null;
+export function RecordingOverlay({ state, origin, elapsed }: { state: RecordState; origin: RecordOrigin; elapsed: number }) {
+  // レコードタブから始めた録音は、タブの中のプレイヤーが状態を見せるので
+  // 幕は出さない。
+  if (state === "idle" || origin === "tab" || typeof document === "undefined") return null;
   const sec = Math.floor(elapsed / 1000);
   const mmss = `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
-  // 画面の幅に合わせる(基準は300px)。狭い端末でも左右に余白が残るように。
-  const width = Math.min(300, (typeof window === "undefined" ? 390 : window.innerWidth) - 72);
+  // 画面に合わせる。プレイヤーは縦長(240×306)なので、幅ではなく高さの方が
+  // 先に詰まる。左右の余白と、下の文字のぶんを引いて決める。
+  const vw = typeof window === "undefined" ? 390 : window.innerWidth;
+  const vh = typeof window === "undefined" ? 844 : window.innerHeight;
+  const width = Math.min(236, vw - 96, (vh - 260) * (240 / 306));
   return createPortal(
     <div style={{
       position: "fixed", inset: 0, zIndex: 58, pointerEvents: "none",

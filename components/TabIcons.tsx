@@ -15,7 +15,7 @@ import { SANS } from "@/lib/constants";
 export type TabIconName =
   | "list" | "pie" | "layers" | "pin"
   | "venn" | "toggle" | "grid"
-  | "pen" | "dots"
+  | "pen" | "dots" | "cassette"
   | "sparkle" | "plus" | "gear";
 
 const S = 24;
@@ -147,6 +147,18 @@ function shapes(name: TabIconName, c: string) {
             <circle cx="12" cy="12" r="1.9" />
             <rect x="3.5" y="16.7" width="3.8" height="3.8" />
             <circle cx="18.6" cy="18.6" r="1.9" />
+          </g>
+        </>
+      );
+    // レコード = カセット(角丸の面に、リールの丸が2つ)。
+    case "cassette":
+      return (
+        <>
+          <rect x="2.4" y="5" width="19.2" height="14" rx="2.6" fill={c} opacity={PALE} />
+          <g fill={c}>
+            <circle cx="8.4" cy="11" r="2.9" />
+            <circle cx="15.6" cy="11" r="2.9" />
+            <rect x="7.2" y="16.2" width="9.6" height="2.8" rx="1.4" />
           </g>
         </>
       );

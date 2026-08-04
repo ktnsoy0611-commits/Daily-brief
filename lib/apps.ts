@@ -34,6 +34,7 @@ export const APPS: AppDef[] = [
     label: "ジャーナル",
     en: "JOURNAL",
     tabs: [
+      { id: "journal-record", label: "レコード", en: "RECORD", icon: "cassette" },
       { id: "journal-today", label: "今日", en: "TODAY", icon: "pen" },
       { id: "journal-archive", label: "アーカイブ", en: "ARCHIVE", icon: "dots" },
     ],
@@ -77,5 +78,5 @@ export function cycleApp(id: AppId, dir: 1 | -1): AppId {
 export const DEFAULT_TAB: Record<AppId, TabId> = {
   tasks: "tasks-inbox",
   life: "brief",
-  journal: "journal-today",
+  journal: "journal-record",
 };

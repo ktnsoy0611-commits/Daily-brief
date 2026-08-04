@@ -3,6 +3,7 @@
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
+import { appTitle } from "@/lib/apps";
 import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
@@ -573,7 +574,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
   return (
     <>
-      <Masthead title="BRIEF" corner={profileButton} />
+      <Masthead title={appTitle("life")} corner={profileButton} />
       <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
         {deck.map((c, i) => (
           <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background 0.3s" }} />

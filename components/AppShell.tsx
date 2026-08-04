@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop } from "@/components/AppBackdrop";
-import { TAB_ICON_OFF, TabIcon } from "@/components/TabIcons";
+import { TAB_ICON_OFF, TabGlyph, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
@@ -244,7 +244,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                   const active = tab === t.id;
                   return (
                     <button key={t.id} aria-label={t.label} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, height: TAB_MARK, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <TabIcon name={t.icon} color={active ? PAPER : TAB_ICON_OFF} size={24} />
+                      <TabGlyph name={t.icon} label={t.en} color={active ? PAPER : TAB_ICON_OFF} />
                     </button>
                   );
                 })}

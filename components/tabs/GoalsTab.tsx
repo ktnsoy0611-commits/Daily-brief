@@ -5,6 +5,7 @@ import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { GoalBinderCard, goalAccent, GOAL_BASE } from "@/components/Binder";
 import { AddCardTile, Masthead, rowBtn } from "@/components/common";
+import { appTitle } from "@/lib/apps";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, MUTED, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
 import type { Goal, TabProps } from "@/lib/types";
@@ -125,7 +126,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
 
   return (
     <>
-      <Masthead title="GOALS" corner={profileButton} />
+      <Masthead title={appTitle("life")} corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32, paddingLeft: 8, paddingRight: 8 }}>
         {/* ゴールはGoalBinderCard(Binder.tsx参照)で表示する。表紙は左端の

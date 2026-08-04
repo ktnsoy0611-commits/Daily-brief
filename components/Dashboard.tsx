@@ -3,7 +3,7 @@
 import { Bookmark, Check, X } from "lucide-react";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { TAB_ICON_OFF, TabIcon } from "@/components/TabIcons";
+import { TAB_ICON_OFF, TabGlyph } from "@/components/TabIcons";
 import { TaskRow } from "@/components/tabs/TasksTab";
 import type { AppDef } from "@/lib/apps";
 import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, TAB_MARK } from "@/lib/constants";
@@ -354,7 +354,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
             {app.tabs.map((t) => (
               <div key={t.id} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
                 <div style={{ width: TAB_MARK, height: TAB_MARK, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: tab === t.id ? INK : "transparent", flexShrink: 0 }}>
-                  <TabIcon name={t.icon} color={tab === t.id ? PAPER : TAB_ICON_OFF} size={24} />
+                  <TabGlyph name={t.icon} label={t.en} color={tab === t.id ? PAPER : TAB_ICON_OFF} />
                 </div>
               </div>
             ))}

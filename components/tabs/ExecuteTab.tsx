@@ -7,6 +7,7 @@ import { BinderModal, Masthead, SectionLabel, SelectablePosterCard } from "@/com
 import { LeafletMap } from "@/components/LeafletMap";
 import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
+import { appTitle } from "@/lib/apps";
 import { BG, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, itemKindOf } from "@/lib/constants";
 import { domainOf, hasPlace, haptic, originBadge } from "@/lib/helpers";
 import type { GeneratedPlan } from "@/lib/planPipeline";
@@ -383,7 +384,7 @@ export function ExecuteTab({ appState, persist, showToast, profileButton, select
 
   return (
     <>
-      <Masthead title="PLAN" corner={profileButton} />
+      <Masthead title={appTitle("life")} corner={profileButton} />
       <MapPlanner
         stocked={stocked} draftSelection={draftSelection}
         onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onApplyPlan={applyGeneratedPlan}

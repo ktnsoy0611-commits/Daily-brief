@@ -4,6 +4,7 @@ import { Check, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Masthead } from "@/components/common";
 import { TaskDetail } from "@/components/TaskDetail";
+import { appTitle } from "@/lib/apps";
 import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { haptic, todayKey } from "@/lib/helpers";
 import type { Task, TabProps, TasksTabId } from "@/lib/types";
@@ -107,7 +108,7 @@ export function TasksTab({ appState, persist, profileButton, tab }: TabProps & {
 
   return (
     <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-      <Masthead title={tab === "tasks-today" ? "TODAY" : "ALL"} corner={profileButton} />
+      <Masthead title={appTitle("tasks")} corner={profileButton} />
       {shown.length === 0 ? null : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {shown.map((t) => <TaskRow key={t.id} task={t} onToggle={toggle} onOpen={setOpenId} />)}

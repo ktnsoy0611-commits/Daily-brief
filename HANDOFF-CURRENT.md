@@ -5910,3 +5910,28 @@ AppShell側は、軸が「横」と決まった瞬間に `setSwipingAway(true)`�
 その機能が入っている版では起こり得ない)。Chromiumでは本物のピル296x64と
 引き始めのモーフ用ピルが一致し、シートの真ん中を下へ払うと閉じることを
 再確認してある。
+
+## 31. 左上をアプリ名に・タブバーにタブ名を入れる(2026-08-04続報)
+
+ユーザー指定: 画面左上(Masthead)は**タブの名前ではなくアプリの名前**にし、
+ブリーフのアプリは **EXPLORE** に改名。タスク=**TASK**、ジャーナル=
+**JOURNAL**。タブバーには**タブ名を英語で**入れ、そのフォントは幾何
+アルファベットではなく普通の書体にする。
+
+- `lib/apps.ts` の `AppDef` に `en`(画面左上に出すアプリ名)、`AppTabDef` に
+  `en`(タブバーに出す短い英語)を追加。`appTitle(appId)` を export。
+  life=EXPLORE / tasks=TASK / journal=JOURNAL。
+  タブは BRIEF・GOALS・STOCK・PLAN / INBOX・TODAY・ALL / TODAY・ARCHIVE。
+- 各タブの `<Masthead title=...>` を `appTitle("life")` 等へ。同じアプリの
+  どのタブでも左上は同じ名前になる(InboxViewの自前ヘッダーも同様)。
+- `components/TabIcons.tsx` に `TabGlyph`(アイコン＋その下に小さいラベル)を
+  新設。ラベルは **SANS 7.5px / 太さ700 / 字間0.06em**。本物のタブバー
+  (AppShell)とダッシュボードのモーフ用ピル(Dashboard)の**両方がこれを使う**
+  ので、引き上げたときの見た目が必ず一致する。アイコンは24→21pxにして、
+  選択中の印(直径52の正円)の中にアイコンとラベルが収まるようにした。
+
+検証: `tsc`/`eslint`(既知の`<img>`警告3件のみ)/`build` 通過。Chromiumで
+3アプリの左上(EXPLORE/TASK/JOURNAL)とタブバー(BRIEF GOALS STOCK PLAN /
+INBOX TODAY ALL / TODAY ARCHIVE)をスクリーンショットで確認。いちばん長い
+ARCHIVE も印の円(52px)の中に収まる。性能は横スワイプ56ms・ストックの縦
+スクロール0msで回帰なし。

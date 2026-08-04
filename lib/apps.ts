@@ -11,14 +11,20 @@ import type { AppId, TabId } from "./types";
 
 export interface AppTabDef {
   id: TabId;
-  /** 読み上げ・押した時のトースト用。タブバーには文字を出さない。 */
+  /** 読み上げ・押した時のトースト用。 */
   label: string;
+  /** タブバーに出す短い英語(本文と同じ書体で小さく置く)。 */
+  en: string;
   icon: TabIconName;
 }
 
 export interface AppDef {
   id: AppId;
   label: string;
+  /** 画面左上(Masthead)に出す**アプリの名前**。幾何アルファベットで描くので
+   *  A-Z・0-9のみ。タブごとではなくアプリごとなのが正(2026-08-04にユーザー
+   *  指定で、左上はタブ名からアプリ名へ変えた)。 */
+  en: string;
   tabs: AppTabDef[];
 }
 
@@ -26,33 +32,39 @@ export const APPS: AppDef[] = [
   {
     id: "journal",
     label: "ジャーナル",
+    en: "JOURNAL",
     tabs: [
-      { id: "journal-today", label: "今日", icon: "pen" },
-      { id: "journal-archive", label: "アーカイブ", icon: "dots" },
+      { id: "journal-today", label: "今日", en: "TODAY", icon: "pen" },
+      { id: "journal-archive", label: "アーカイブ", en: "ARCHIVE", icon: "dots" },
     ],
   },
   {
     id: "tasks",
     label: "タスク",
+    en: "TASK",
     tabs: [
-      { id: "tasks-inbox", label: "インボックス", icon: "venn" },
-      { id: "tasks-today", label: "今日", icon: "toggle" },
-      { id: "tasks-all", label: "すべて", icon: "grid" },
+      { id: "tasks-inbox", label: "インボックス", en: "INBOX", icon: "venn" },
+      { id: "tasks-today", label: "今日", en: "TODAY", icon: "toggle" },
+      { id: "tasks-all", label: "すべて", en: "ALL", icon: "grid" },
     ],
   },
   {
     id: "life",
     label: "ブリーフ",
+    en: "EXPLORE",
     tabs: [
-      { id: "brief", label: "ブリーフ", icon: "list" },
-      { id: "goals", label: "ゴール", icon: "pie" },
-      { id: "stock", label: "ストック", icon: "layers" },
-      { id: "execute", label: "プラン", icon: "pin" },
+      { id: "brief", label: "ブリーフ", en: "BRIEF", icon: "list" },
+      { id: "goals", label: "ゴール", en: "GOALS", icon: "pie" },
+      { id: "stock", label: "ストック", en: "STOCK", icon: "layers" },
+      { id: "execute", label: "プラン", en: "PLAN", icon: "pin" },
     ],
   },
 ];
 
 export const appDef = (id: AppId): AppDef => APPS.find((a) => a.id === id) ?? APPS[2];
+
+/** 画面左上に出すアプリの名前。どのタブでもアプリ名を出す。 */
+export const appTitle = (id: AppId): string => appDef(id).en;
 
 // 左右スワイプでの循環。dir=1で右隣、-1で左隣。端は反対の端へ回る。
 export function cycleApp(id: AppId, dir: 1 | -1): AppId {

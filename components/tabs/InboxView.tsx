@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { BLUE, GOLD, GREEN, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, RUST, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { FloatingBubble, floatStyle } from "@/components/FloatingBubble";
 import { GeoText } from "@/components/GeoType";
+import { appTitle } from "@/lib/apps";
 import { haptic, todayKey } from "@/lib/helpers";
 import type { AppState, InboxCandidate, VoiceNote } from "@/lib/types";
 
@@ -254,7 +255,7 @@ export function InboxView({ appState, persist, showToast }: {
     <main style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
       {/* 見出しは他のタブと同じ Masthead(幾何アルファベットの英語表記)。 */}
       <div style={{ padding: "10px 4px 18px" }}>
-        <GeoText text="INBOX" size={30} color={INK} />
+        <GeoText text={appTitle("tasks")} size={30} color={INK} />
       </div>
 
       {candidates.length === 0 ? null : (

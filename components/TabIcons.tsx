@@ -1,5 +1,7 @@
 "use client";
 
+import { SANS } from "@/lib/constants";
+
 // ★タブバーのアイコン(2026-08-03)。ユーザー提供の幾何アイコン集
 // (IMG_1660.JPG)の図形をそのまま写したもの。線ではなく**面**だけで描き、
 // アプリ全体の幾何学の語彙(円・四半円・三角・長方形・45度の菱形)を守る。
@@ -189,5 +191,21 @@ export function TabIcon({ name, color, size = S }: { name: TabIconName; color: s
     <svg width={size} height={size} viewBox={`0 0 ${S} ${S}`} aria-hidden focusable="false" style={{ display: "block" }}>
       {shapes(name, color)}
     </svg>
+  );
+}
+
+/** タブバーの1タブぶん。アイコンの下に短い英語のラベルを置く。
+ *  ラベルは幾何アルファベットではなく**本文と同じ書体**(ユーザー指定、
+ *  2026-08-04)。本物のタブバー(AppShell)とダッシュボードのモーフ用ピル
+ *  (Dashboard)の両方がこれを使うので、見た目が必ず一致する。 */
+export function TabGlyph({ name, label, color }: { name: TabIconName; label: string; color: string }) {
+  return (
+    <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, lineHeight: 1 }}>
+      <TabIcon name={name} color={color} size={21} />
+      <span style={{
+        fontFamily: SANS, fontSize: 7.5, fontWeight: 700, letterSpacing: "0.06em",
+        color, marginRight: "-0.06em", whiteSpace: "nowrap",
+      }}>{label}</span>
+    </span>
   );
 }

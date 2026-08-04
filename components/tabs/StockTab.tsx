@@ -4,6 +4,7 @@ import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Pack
 import { useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn, SectionLabel } from "@/components/common";
+import { appTitle } from "@/lib/apps";
 import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
 import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
@@ -276,7 +277,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
 
   return (
     <>
-      <Masthead title="STOCK" corner={profileButton} />
+      <Masthead title={appTitle("life")} corner={profileButton} />
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         {ITEM_DOMAINS.map((d) => (

@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { Masthead, SectionLabel } from "@/components/common";
+import { appTitle } from "@/lib/apps";
 import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
 import { dayInfo, img, todayKey } from "@/lib/helpers";
@@ -189,7 +190,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
     const empty = dayRecordCount(todayRec) === 0 && !summaries[todayRec.dateKey];
     return (
       <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-        <Masthead title="TODAY" corner={profileButton} />
+        <Masthead title={appTitle("journal")} corner={profileButton} />
         {empty ? null : (
           <>
             {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
@@ -215,7 +216,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
 
   return (
     <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-      <Masthead title="ARCHIVE" corner={profileButton} />
+      <Masthead title={appTitle("journal")} corner={profileButton} />
       {past.length === 0 ? null : (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {months.map((m) => (

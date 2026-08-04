@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { BD_GREY, BD_LIGHT } from "@/lib/constants";
 import type { AppId } from "@/lib/types";
 
@@ -154,16 +155,21 @@ export function AppBackdrop({ appId }: { appId: AppId }) {
     document.documentElement.style.backgroundColor = c;
   }, [cur]);
 
-  return (
+  // ★★body直下へポータルで描き、高さは 100lvh(表示領域が最大のときの高さ)
+  // にする(2026-08-03)。シェルは 100svh 固定 + overflow:hidden なので、
+  // これまで背景もそこで切られていた。iOSでツールバーが引っ込んで表示領域が
+  // 広がると、その差の帯だけ**図形が続かず地の色で途切れて**見えていた
+  // (実機報告「タブの下部あたりで背景が途切れている」)。body直下なら
+  // シェルのクリップを受けず、lvhで最大の高さまで図形が続く。
+  // zIndex:-1 でアプリ本体より奥に敷く(シェルの背景は透明にしてある)。
+  if (typeof document === "undefined") return null;
+  return createPortal((
     <div aria-hidden style={{
-      position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none",
-      // 呼び出し元(シェル)に isolation:isolate を与えてあるので、-1にしても
-      // シェルの外へ抜け落ちない。0のままだと、CSSの描画順の規則により
-      // 通常フローの中身(タブの本文)より後に描かれて文字を覆ってしまう。
-      zIndex: -1, background: GREY,
+      position: "fixed", left: 0, top: 0, width: "100vw", height: "100lvh",
+      overflow: "hidden", pointerEvents: "none", zIndex: -1, background: GREY,
     }}>
       {leaving && <Layer key={`out-${turn}`} app={leaving} leaving />}
       <Layer key={`in-${turn}`} app={cur} />
     </div>
-  );
+  ), document.body);
 }

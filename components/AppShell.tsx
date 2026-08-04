@@ -1,6 +1,5 @@
 "use client";
 
-import { Settings } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop } from "@/components/AppBackdrop";
@@ -18,7 +17,7 @@ import { StockTab } from "@/components/tabs/StockTab";
 import { InboxView } from "@/components/tabs/InboxView";
 import { TasksTab } from "@/components/tabs/TasksTab";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
-import { BD_GREY, BLUE, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK } from "@/lib/constants";
+import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -759,22 +758,18 @@ export function AppShell() {
   // ユーザーの手編集(設定画面での追加・2段階削除)は引き続き可能で、
   // syncTasteToMyBrainでmy-brainへ反映される。
 
-  const interestCount = (appState?.profile?.interests ?? []).length;
+  // 設定ボタン。アイコンは幾何アイコン(TabIcons の gear)。以前ここに出して
+  // いた興味の件数バッジは、情報として意味を成していないので撤去した
+  // (2026-08-03)。
   const profileButton = useMemo(() => (
     <button onClick={() => { haptic(5); setShowProfile(true); }} aria-label="設定" style={{
-      position: "relative", width: HEADER_CHIP_SIZE, height: HEADER_CHIP_SIZE, borderRadius: "50%",
+      width: HEADER_CHIP_SIZE, height: HEADER_CHIP_SIZE, borderRadius: "50%",
       background: PAPER, border: "none", display: "flex", alignItems: "center", justifyContent: "center",
       cursor: "pointer", color: INK, boxShadow: SOFT_SHADOW, padding: 0, flexShrink: 0,
     }}>
-      <Settings size={17} strokeWidth={1.75} />
-      {interestCount > 0 && (
-        <span style={{
-          position: "absolute", top: -3, right: -3, minWidth: 15, height: 15, borderRadius: 999, background: BLUE,
-          color: PAPER, fontSize: 8, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
-        }}>{interestCount}</span>
-      )}
+      <TabIcon name="gear" color={INK} size={17} />
     </button>
-  ), [interestCount]);
+  ), []);
   // ★props をメモ化する。以前はここで毎レンダー新しいオブジェクトを作って
   // いたため、シェルが再レンダーされるたびにマウント済みの全タブが
   // 作り直されていた(AppColumnのmemoも素通りしてしまう)。
@@ -844,7 +839,7 @@ export function AppShell() {
   // 設定画面は3アプリ共通の1枚なので、横スライドのトラックとは別に出す。
   if (showProfile) {
     return (
-      <div style={{ height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK, background: BD_GREY, position: "relative" }}>
+      <div style={{ height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK, position: "relative" }}>
         <div data-tab-scroll-root style={{
           width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
           overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain", overflowAnchor: "none",
@@ -864,7 +859,8 @@ export function AppShell() {
       fontFamily: SANS, color: INK,
       // 背景(AppBackdrop)はzIndex:-1で敷くので、シェルを独立した重なりの
       // 単位にして、外へ抜け落ちないようにする。
-      background: BD_GREY, position: "relative", isolation: "isolate",
+      // 背景(AppBackdrop)はbody直下へポータルで敷いてあるので、ここは透明。
+      position: "relative",
     }}>
       {/* ★背景は3アプリ共通の1枚のグリッド。列の中ではなくここ(シェル直下)に
           1つだけ置く。グリッド自体は動かず、アプリを移ると各マスの大きさが

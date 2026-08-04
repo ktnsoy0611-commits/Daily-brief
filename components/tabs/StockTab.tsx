@@ -3,7 +3,7 @@
 import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Package, Palette, UtensilsCrossed } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
-import { BinderModal, CardStack, GeoTag, type IconType, Masthead, PosterCard, rowBtn } from "@/components/common";
+import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn, SectionLabel } from "@/components/common";
 import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
 import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
@@ -180,10 +180,8 @@ const SHELF_INTRINSIC = "1px 260px";
 function StackSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 34, contentVisibility: "auto", containIntrinsicSize: SHELF_INTRINSIC }}>
-      {/* 棚の見出しも幾何アルファベット。件数は情報として意味が薄いので出さない。 */}
-      <div style={{ marginBottom: 12 }}>
-        <GeoTag text={title} size={16} color={MUTED} />
-      </div>
+      {/* 棚の見出し。件数は情報として意味が薄いので出さない。 */}
+      <SectionLabel text={title} style={{ marginBottom: 12 }} />
       {children}
     </section>
   );
@@ -282,7 +280,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
 
       <main style={{ flex: 1, paddingTop: 18, paddingBottom: 32 }}>
         {ITEM_DOMAINS.map((d) => (
-          <StackSection key={d.id} title={d.en}>
+          <StackSection key={d.id} title={d.label}>
             <CardStack cardWidth={STACK_CARD_WIDTH} rowCap={STACK_ROW_CAP}
               items={domainItems[d.id].slice().reverse().map((i) => ({ key: i.id, node: itemCard(i, STACK_CARD_WIDTH) }))}
               onOpen={() => setOpenDomain(d.id)}
@@ -296,7 +294,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
             か」の自動判定(isWishBound)で、タップでの手動トグルは持たない。 */}
         {allWishesDesc.length > 0 && (
           <section style={{ marginTop: 10 }}>
-            <div style={{ marginBottom: 10 }}><GeoTag text="WISHES" size={16} color={MUTED} /></div>
+            <SectionLabel text="ウィッシュ" style={{ marginBottom: 10 }} />
             <div style={{ display: "flex", flexDirection: "column" }}>
               {allWishesDesc.map((w) => {
                 const bound = isWishBound(w, appState.items);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { PAPER, SOFT_SHADOW_LG } from "@/lib/constants";
 
 interface BottomSheetProps {
@@ -133,7 +134,19 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
     requestClose();
   };
 
-  return (
+  // ★★document.body直下へポータルで描く(2026-08-03)。
+  // アプリ切替の横スライドを入れた際、シェルの中に**transformを持つトラック**
+  // (.app-track)ができた。CSSの規則により、transformを持つ要素はその子孫の
+  // `position:fixed` の**包含ブロックになる**。そのためこのオーバーレイの
+  // fixed が画面ではなくトラック(幅300%・translateされている)を基準に解決され、
+  // ブラー(inset:0)はトラック全体=1170x844に広がって一見それらしく見える一方、
+  // **中のパネルが画面外(実測 x=-385)へ飛んでいた**。
+  // 症状は「ブリーフのカードをタップしても何も出てこない(ブラーだけかかる)」
+  // 「ブラーのときタブ周りの表示がおかしい」。ポータルでbody直下へ出せば、
+  // fixedの基準が画面に戻り、祖先のtransformにも重なり順にも左右されない。
+  // ExecuteTabのバインドボタン・ダッシュボード・地図の全画面と同じ対処。
+  if (typeof document === "undefined") return null;
+  return createPortal((
     // ブラー+暗転の背景は常に画面いっぱいに固定する。以前はこの背景自体を
     // visualViewportの高さに合わせて縮めていたが、キーボードが開くと
     // レイアウト上のビューポートはそのまま(縮まない)なのに背景だけ縮む
@@ -176,7 +189,7 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 // BottomSheetの中に置くグリッドなど、独自の入れ物(div)を挟む場合に、

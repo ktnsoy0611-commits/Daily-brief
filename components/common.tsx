@@ -36,13 +36,19 @@ export function Masthead({ title, dateline, right, corner }: {
   );
 }
 
-// ★タグ(2026-08-03)。KEEP/WISH のバッジや棚の見出しなど、要所の短い語は
-// 見出しと同じ幾何アルファベットで置く。英語の短い語だけを渡すこと。
-export function GeoTag({ text, size = 10, color = INK, style }: {
-  text: string; size?: number; color?: string; style?: CSSProperties;
-}) {
-  // 字送りは見出しより少し広め(小さい字は詰まって見えるため)。
-  return <GeoText text={text} size={size} color={color} tracking={0.16} style={style} />;
+// ★セクションの見出し(2026-08-03)。棚の名前(バショ/モノ/…)・やったこと・
+// 記録など、要所の短いラベル。一度これも幾何アルファベットで置いたが、
+// 「下の文字に戻して、デザインに調和するよう大きさとフォントを調節して」という
+// 指定で本文と同じ書体へ戻した。幾何アルファベットで残すのは Masthead の
+// 見出し(各タブの名前)だけ。
+// 大きさ・字間・太さはここ1箇所で決め、全タブ・全アプリで揃える
+// (以前は 9/10/11px と字間がタブごとにばらばらだった)。
+export function SectionLabel({ text, style }: { text: string; style?: CSSProperties }) {
+  return (
+    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.2em", color: MUTED, lineHeight: 1.2, ...style }}>
+      {text}
+    </div>
+  );
 }
 
 // ★空状態には何も置かない(2026-08-02)。第1弾では地に溶ける図形ひとつ(84px)を
@@ -155,10 +161,12 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
           描画されて衝突する)。 */}
       {(badge || action || onTogglePlanSelect || onToggleGood) && (
         <div style={{ position: "absolute", top: 8, left: 8, right: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
+          {/* カードのタグは本文と同じ書体(2026-08-03に幾何アルファベットから
+              戻した)。棚の見出し(SectionLabel)と同じ字間で揃えている。 */}
           {badge && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 7.5, fontWeight: 800, letterSpacing: "0.02em", borderRadius: 999, padding: "3px 7px 3px 5px", flexShrink: 0 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.14em", borderRadius: 999, padding: "3px 7px 3px 6px", flexShrink: 0 }}>
               {badge === "wish" ? <Sparkles size={8} color={INK} strokeWidth={2.4} /> : <Bookmark size={8} fill={INK} strokeWidth={0} />}
-              <GeoTag text={badge === "wish" ? "WISH" : "KEEP"} size={11} />
+              <span style={{ marginRight: "-0.14em" }}>{badge === "wish" ? "WISH" : "KEEP"}</span>
             </span>
           )}
           {action && (

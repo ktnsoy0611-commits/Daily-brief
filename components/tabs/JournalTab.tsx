@@ -3,7 +3,7 @@
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { GeoTag, Masthead } from "@/components/common";
+import { Masthead, SectionLabel } from "@/components/common";
 import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
 import { dayInfo, img, todayKey } from "@/lib/helpers";
@@ -132,13 +132,13 @@ function DaySheet({ day, summary, onClose }: { day: DayRecord; summary?: string;
           {summary && <SummaryBlock text={summary} />}
           {(day.items.length > 0 || day.tasks.length > 0) && (
             <section style={{ marginBottom: day.entries.length > 0 ? 22 : 0 }}>
-              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: MUTED, fontWeight: 700, marginBottom: 10 }}>やったこと</div>
+              <SectionLabel text="やったこと" style={{ marginBottom: 10 }} />
               <DoneList day={day} />
             </section>
           )}
           {day.entries.length > 0 && (
             <section>
-              <div style={{ fontSize: 10, letterSpacing: "0.16em", color: MUTED, fontWeight: 700, marginBottom: 10 }}>記録</div>
+              <SectionLabel text="記録" style={{ marginBottom: 10 }} />
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {day.entries.map((e) => (
                   <div key={e.id}>
@@ -195,13 +195,13 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
             {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
             {(todayRec.items.length > 0 || todayRec.tasks.length > 0) && (
               <section style={{ marginBottom: 26 }}>
-                <div style={{ margin: "0 4px 10px" }}><GeoTag text="DONE" size={15} color={MUTED} /></div>
+                <SectionLabel text="やったこと" style={{ margin: "0 4px 10px" }} />
                 <DoneList day={todayRec} />
               </section>
             )}
             {todayRec.entries.length > 0 && (
               <section>
-                <div style={{ margin: "0 4px 10px" }}><GeoTag text="NOTES" size={15} color={MUTED} /></div>
+                <SectionLabel text="記録" style={{ margin: "0 4px 10px" }} />
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {todayRec.entries.map((e) => <EntryCard key={e.id} entry={e} />)}
                 </div>

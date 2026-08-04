@@ -3,7 +3,7 @@
 import { ChevronUp, Map as MapIcon, Maximize2, Minimize2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BinderModal, GeoTag, Masthead, SelectablePosterCard } from "@/components/common";
+import { BinderModal, Masthead, SectionLabel, SelectablePosterCard } from "@/components/common";
 import { LeafletMap } from "@/components/LeafletMap";
 import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
@@ -108,9 +108,7 @@ function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }:
 function HorizontalShelf({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={{ marginBottom: 22 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <GeoTag text={title} size={16} color={MUTED} />
-      </div>
+      <SectionLabel text={title} style={{ marginBottom: 10 }} />
       <div className="no-scrollbar" style={{ display: "flex", gap: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
         {children}
       </div>
@@ -328,7 +326,7 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
       {ITEM_DOMAINS.map((d) => {
         const items = byDomain(d.id);
         return items.length > 0 && (
-          <HorizontalShelf key={d.id} title={d.en}>
+          <HorizontalShelf key={d.id} title={d.label}>
             {items.map(selectableCard)}
           </HorizontalShelf>
         );

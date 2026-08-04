@@ -14,7 +14,7 @@ export type TabIconName =
   | "list" | "pie" | "layers" | "pin"
   | "venn" | "toggle" | "grid"
   | "pen" | "dots"
-  | "sparkle" | "plus";
+  | "sparkle" | "plus" | "gear";
 
 const S = 24;
 // 未選択のアイコンの色。**不透明**にすること(半透明にすると上記の
@@ -139,6 +139,20 @@ function shapes(name: TabIconName, c: string) {
           <g fill={c}>
             <path d="M16.8 3 L21 7.2 L16.8 11.4 L12.6 7.2 Z" />
             <path d="M7.2 12.6 L11.4 16.8 L7.2 21 L3 16.8 Z" />
+          </g>
+        </>
+      );
+    // 設定 = つまみ(円の下地 ＋ 目盛りを指す面 ＋ 中心の円)。lucideの歯車の
+    // 線画から差し替えた(2026-08-03)。歯車を4つの正方形の歯で表すと、この
+    // 大きさ(17px)では十字キーに見えてしまったため、面だけで確実に読める
+    // 「つまみ」にした。ヘッダーの丸ボタンで使う。
+    case "gear":
+      return (
+        <>
+          <circle cx="12" cy="12" r="9.6" fill={c} opacity={PALE} />
+          <g fill={c}>
+            <rect x="10.7" y="3.2" width="2.6" height="7" />
+            <circle cx="12" cy="12" r="2.8" />
           </g>
         </>
       );

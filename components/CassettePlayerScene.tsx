@@ -1,6 +1,5 @@
 "use client";
 
-import { Environment, Lightformer } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -34,6 +33,18 @@ import type { PlayerMode } from "@/components/CassettePlayer";
 // 蓋は**右端**を蝶番にして、本のように手前へ開く(rotateY)。以前は左端を
 // 軸にしていたが、実機は右開きだった。
 //
+// ■ 見た目は**フラットなベクター(アイソメトリック)**(2026-08-04・ユーザー
+// 指定の参考画像に合わせて作り直し)。写実に寄せるのをやめる:
+//   ・カメラは**平行投影(orthographic)**。遠近で歪まないので、面が素直な
+//     色面として読める(参考画像はすべてこの投影)。
+//   ・材質は MeshLambertMaterial + 平行光1本＋環境光。反射も映り込みも
+//     持たせない。面の向きごとに明るさが1段変わるだけの、塗り分けになる。
+//   ・面取り(bevel)は輪郭が丸まらない程度まで小さくして、縁を立てる。
+//   ・窓は透過ガラス(transmission)をやめ、暗い半透明の板1枚。中のリールが
+//     うっすら透ける。重い材質を1つも使わない。
+//   ・影は落とさず、本体の後ろにずらした平らな面を1枚置くだけ(ベクターの
+//     イラストが影を面で描くのと同じやり方)。
+//
 // 単位は 1 ≒ 10cm のつもり。実機 96×116×39mm をそのまま比率にしている。
 
 const W = 0.96;          // 本体の幅
@@ -47,14 +58,14 @@ const LID_X = -BAND / 2; // 蓋の中心(本体の中心より少し左)
 const HINGE_X = LID_X + LID_W / 2; // 蝶番(蓋の右端)
 
 // 蓋の膨らみ(bevel)。前面の平らな部分はこのぶん内側になる。
-const LID_BEVEL = 0.055;
-const LID_THICK = 0.062;
+const LID_BEVEL = 0.014;
+const LID_THICK = 0.018;
 
 // 蓋の枠を 0〜1 とした、実測の配置(すべて画像解析で測った値)。
 const F = {
   latch:  { x0: 0.000, x1: 0.209, y0: 0.110, y1: 0.843 },
   blue:   { x0: 0.141, x1: 0.850, y0: 0.124, y1: 0.839 },
-  window: { x0: 0.402, x1: 0.803, y0: 0.194, y1: 0.794 },
+  window: { x0: 0.437, x1: 0.812, y0: 0.194, y1: 0.794 },
   sports: { x0: 0.197, y: 0.752 },
   walk:   { x0: 0.285, y: 0.815 },
   sony:   { x0: 0.546, y: 0.062 },
@@ -70,9 +81,9 @@ const win = (x0: number, x1: number, y0: number, y1: number) => ({
 // 穴の位置は必ずテクスチャ側(F.window)と同じ値から作る。
 const WIN = { ...win(F.window.x0, F.window.x1, F.window.y0, F.window.y1), r: 0.115 * LID_W };
 
-const YELLOW = "#E8A00F";
-const GREY = "#6E7176";
-const GREY_DEEP = "#5C5C61";
+const YELLOW = "#F5B01B";
+const GREY = "#8A8E95";
+const GREY_DEEP = "#6A6E75";
 const GREY_DARK = "#3A3A3D";
 const TAPE_BODY = "#26262A";
 const TAPE_DEEP = "#141416";
@@ -137,17 +148,10 @@ function makeFrontTexture(): THREE.CanvasTexture {
 
   // 青いパネル。左上が大きく丸い独特の輪郭(実測: 左端が上へ行くほど右へ寄る)。
   const B = F.blue;
-  c.fillStyle = "#2C5D9B";
+  c.fillStyle = "#3468AE";
   roundRectPath(c, X(B.x0), Y(B.y0), X(B.x1 - B.x0), Y(B.y1 - B.y0),
     [X(0.36), X(0.22), X(0.13), X(0.05)]);
   c.fill();
-  const g = c.createLinearGradient(0, Y(B.y0), 0, Y(B.y1));
-  g.addColorStop(0, "rgba(255,255,255,0.14)");
-  g.addColorStop(0.45, "rgba(255,255,255,0.02)");
-  g.addColorStop(1, "rgba(0,0,0,0.12)");
-  c.fillStyle = g;
-  c.fill();
-
   // スモークの窓(ジオメトリでは穴。ここは穴の縁より少し大きめの暗い面)。
   const N = F.window;
   c.fillStyle = "#1B2126";
@@ -170,7 +174,7 @@ function makeFrontTexture(): THREE.CanvasTexture {
   c.fillText("WM-FS191", X(0.253), Y(0.213));
   c.font = `600 ${Math.round(X(0.052))}px sans-serif`;
   c.fillText("AM", X(0.266), Y(0.245));
-  c.fillText("FM", X(0.404), Y(0.245));
+  c.fillText("FM", X(0.392), Y(0.245));
 
   // つまみが走る縦の溝と、いまの位置。
   c.fillStyle = "#141A1F";
@@ -183,7 +187,7 @@ function makeFrontTexture(): THREE.CanvasTexture {
   // 目盛りの細い線と数字(AMは溝の左・FMは右)。
   c.fillStyle = "rgba(214,196,224,0.7)";
   for (let i = 0; i < 6; i++) c.fillRect(X(0.244), Y(0.270 + i * 0.047), X(0.062), Math.max(1, Y(0.0022)));
-  for (let i = 0; i < 6; i++) c.fillRect(X(0.366), Y(0.278 + i * 0.044), X(0.052), Math.max(1, Y(0.0022)));
+  for (let i = 0; i < 6; i++) c.fillRect(X(0.352), Y(0.278 + i * 0.044), X(0.050), Math.max(1, Y(0.0022)));
   c.fillStyle = "#E4ECF3";
   c.font = `600 ${Math.round(X(0.052))}px sans-serif`;
   const am: [string, number][] = [["170", 0.274], ["140", 0.301], ["120", 0.325], ["100", 0.348], ["70", 0.436], ["53", 0.505]];
@@ -191,13 +195,13 @@ function makeFrontTexture(): THREE.CanvasTexture {
   c.textAlign = "right";
   for (const [t, y] of am) c.fillText(t, X(0.318), Y(y));
   c.textAlign = "left";
-  for (const [t, y] of fm) c.fillText(t, X(0.362), Y(y));
+  for (const [t, y] of fm) c.fillText(t, X(0.350), Y(y));
   c.fillStyle = "#DCE6EE";
   c.font = `600 ${Math.round(X(0.044))}px sans-serif`;
   c.textAlign = "left";
   c.fillText("×10", X(0.216), Y(0.560));
   c.fillText("kHz", X(0.216), Y(0.592));
-  c.fillText("MHz", X(0.356), Y(0.576));
+  c.fillText("MHz", X(0.348), Y(0.576));
 
   // 窓の左端に沿った小さな刷り文字。
   c.save();
@@ -345,34 +349,34 @@ function Reel({ y, spinning }: { y: number; spinning: boolean }) {
   return (
     <group ref={ref} position={[0.07, y, 0.031]}>
       <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.115, 0.115, 0.012, 20]} />
-        <meshStandardMaterial color={HUB} roughness={0.7} />
+        <cylinderGeometry args={[0.088, 0.088, 0.012, 20]} />
+        <meshLambertMaterial color={HUB} />
       </mesh>
       {[0, 1, 2].map((i) => (
         <mesh key={i} rotation={[0, 0, (i * Math.PI) / 3]} position={[0, 0, 0.008]}>
-          <boxGeometry args={[0.085, 0.010, 0.008]} />
-          <meshStandardMaterial color={TAPE_DEEP} roughness={0.8} />
+          <boxGeometry args={[0.062, 0.009, 0.008]} />
+          <meshLambertMaterial color={TAPE_DEEP} />
         </mesh>
       ))}
       <mesh position={[0, 0, 0.012]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.034, 0.034, 0.014, 12]} />
-        <meshStandardMaterial color={TAPE_DEEP} roughness={0.8} />
+        <cylinderGeometry args={[0.028, 0.028, 0.014, 12]} />
+        <meshLambertMaterial color={TAPE_DEEP} />
       </mesh>
     </group>
   );
 }
 
 function Tape({ spinning }: { spinning: boolean }) {
-  const geo = useMemo(() => shellGeometry({ w: 0.62, h: 0.86, r: 0.03, depth: 0.03, bevel: 0.008, thickness: 0.008, segments: 2 }), []);
+  const geo = useMemo(() => shellGeometry({ w: 0.62, h: 0.86, r: 0.03, depth: 0.03, bevel: 0.005, thickness: 0.005, segments: 1 }), []);
   useEffect(() => () => geo.dispose(), [geo]);
   return (
     <group>
       <mesh geometry={geo}>
-        <meshStandardMaterial color={TAPE_BODY} roughness={0.62} />
+        <meshLambertMaterial color={TAPE_BODY} />
       </mesh>
       <mesh position={[-0.19, 0, 0.042]}>
         <boxGeometry args={[0.15, 0.74, 0.006]} />
-        <meshStandardMaterial color={LABEL_PAPER} roughness={0.9} />
+        <meshLambertMaterial color={LABEL_PAPER} />
       </mesh>
       <Reel y={0.21} spinning={spinning} />
       <Reel y={-0.21} spinning={spinning} />
@@ -387,7 +391,7 @@ function Lid() {
   const geo = useMemo(() => {
     const g = shellGeometry({
       w: LID_W, h: H, r: R, depth: 0.02,
-      bevel: LID_BEVEL, thickness: LID_THICK, segments: 4,
+      bevel: LID_BEVEL, thickness: LID_THICK, segments: 2,
       hole: roundedHole(WIN.cx, WIN.cy, WIN.w, WIN.h, WIN.r),
     });
     applyPlanarUV(g, LID_W, H);
@@ -397,7 +401,7 @@ function Lid() {
   useEffect(() => () => { geo.dispose(); tex.dispose(); }, [geo, tex]);
   return (
     <mesh geometry={geo} castShadow>
-      <meshStandardMaterial map={tex} roughness={0.42} metalness={0.02} />
+      <meshLambertMaterial map={tex} />
     </mesh>
   );
 }
@@ -409,13 +413,13 @@ function Latch() {
   const cy = (0.5 - (y0 + y1) / 2) * H;
   const geo = useMemo(() => shellGeometry({
     w: (F.latch.x1 - F.latch.x0 + 0.06) * LID_W, h: (F.latch.y1 - F.latch.y0) * H, r: 0.055,
-    depth: 0.010, bevel: 0.014, thickness: 0.016, segments: 3,
+    depth: 0.012, bevel: 0.006, thickness: 0.008, segments: 2,
   }), []);
   useEffect(() => () => geo.dispose(), [geo]);
   return (
     <group position={[cx, cy, 0.052]}>
       <mesh geometry={geo}>
-        <meshStandardMaterial color={GREY} roughness={0.86} />
+        <meshLambertMaterial color={GREY} />
       </mesh>
       {/* 滑り止め。円を少し沈めて、影で凹んで見えるようにする。 */}
       {Array.from({ length: 10 }, (_, i) => {
@@ -425,7 +429,7 @@ function Latch() {
         return (
           <mesh key={i} position={[px, py, 0.016]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.019, 0.019, 0.012, 12]} />
-            <meshStandardMaterial color={GREY_DEEP} roughness={0.95} />
+            <meshLambertMaterial color={GREY_DEEP} />
           </mesh>
         );
       })}
@@ -439,25 +443,16 @@ function Latch() {
 function WindowGlass() {
   const geo = useMemo(() => shellGeometry({
     w: WIN.w + 0.006, h: WIN.h + 0.006, r: WIN.r + 0.003,
-    depth: 0.020, bevel: 0.008, thickness: 0.010, segments: 3,
+    depth: 0.016, bevel: 0.005, thickness: 0.006, segments: 2,
   }), []);
   const ink = useMemo(() => makeWindowInkTexture(), []);
   useEffect(() => () => { geo.dispose(); ink.dispose(); }, [geo, ink]);
   return (
     <group position={[WIN.cx, WIN.cy, -0.004]}>
       <mesh geometry={geo}>
-        <meshPhysicalMaterial
-          color="#B9CEDF"
-          transmission={1}
-          thickness={0.04}
-          roughness={0.12}
-          ior={1.5}
-          metalness={0}
-          clearcoat={0.3}
-          clearcoatRoughness={0.2}
-          attenuationColor="#4E7EA8"
-          attenuationDistance={2.4}
-        />
+        {/* スモークの窓。重い transmission はやめ、暗い半透明の板1枚に
+            する(中のリールがうっすら透ける)。 */}
+        <meshBasicMaterial color="#151A1E" transparent opacity={0.72} />
       </mesh>
       <mesh position={[0, 0, 0.038]}>
         <planeGeometry args={[WIN.w, WIN.h]} />
@@ -472,26 +467,26 @@ function WindowGlass() {
 // 下端の操作ボタン(STOP / PLAY / REW / FF)。細長い窪みの中に丸ボタンが4つ、
 // 両端にネジ。写真(側面)のとおり。
 function TransportButtons() {
-  const y = -H / 2 + 0.012;
+  const y = -H / 2 + 0.048;
   const z = -D * 0.42;
   return (
     <group position={[0, y, z]}>
       {/* 窪んだ受け皿 */}
       <mesh rotation={[Math.PI / 2, 0, 0]}>
         <boxGeometry args={[0.60, 0.10, 0.17]} />
-        <meshStandardMaterial color={GREY_DEEP} roughness={0.9} />
+        <meshLambertMaterial color={GREY_DEEP} />
       </mesh>
       {[0, 1, 2, 3].map((i) => (
         <mesh key={i} position={[-0.21 + i * 0.14, 0.028, 0]} rotation={[0, 0, 0]}>
           <cylinderGeometry args={[0.055, 0.055, 0.05, 16]} />
-          <meshStandardMaterial color="#191A1C" roughness={0.5} />
+          <meshLambertMaterial color="#1B1C1F" />
         </mesh>
       ))}
       {/* ネジ */}
       {[-0.33, 0.33].map((x) => (
         <mesh key={x} position={[x, 0.02, 0]}>
           <cylinderGeometry args={[0.022, 0.022, 0.03, 10]} />
-          <meshStandardMaterial color="#9C9C9E" roughness={0.45} metalness={0.5} />
+          <meshLambertMaterial color="#9C9C9E" />
         </mesh>
       ))}
     </group>
@@ -507,24 +502,24 @@ function TopControls() {
       {/* ホイールが収まるグレーの受け */}
       <mesh position={[-0.20, -0.02, 0]}>
         <boxGeometry args={[0.30, 0.10, 0.20]} />
-        <meshStandardMaterial color={GREY_DEEP} roughness={0.88} />
+        <meshLambertMaterial color={GREY_DEEP} />
       </mesh>
       {/* ギザギザのホイール2つ。円柱の分割数を粗くして刻みを出す。 */}
       {[-0.27, -0.13].map((x) => (
         <mesh key={x} position={[x, -0.030, 0]} rotation={[0, 0, Math.PI / 2]}>
           <cylinderGeometry args={[0.062, 0.062, 0.085, 14]} />
-          <meshStandardMaterial color={GREY} roughness={0.75} />
+          <meshLambertMaterial color={GREY} />
         </mesh>
       ))}
       {/* FUNCTION のつまみ */}
       <mesh position={[0.06, -0.014, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.05, 0.05, 0.035, 14]} />
-        <meshStandardMaterial color={GREY_DEEP} roughness={0.8} />
+        <meshLambertMaterial color={GREY_DEEP} />
       </mesh>
       {/* PHONES の穴 */}
       <mesh position={[0.26, -0.004, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.045, 0.045, 0.03, 14]} />
-        <meshStandardMaterial color="#17181A" roughness={0.6} />
+        <meshLambertMaterial color="#17181A" />
       </mesh>
     </group>
   );
@@ -536,12 +531,12 @@ function HingeBand() {
     <group position={[W / 2 - BAND / 2, 0, -D * 0.30]}>
       <mesh>
         <boxGeometry args={[BAND, H - 0.10, D * 0.72]} />
-        <meshStandardMaterial color={GREY} roughness={0.85} />
+        <meshLambertMaterial color={GREY} />
       </mesh>
       {[0.30, -0.30].map((y) => (
         <mesh key={y} position={[BAND / 2 - 0.004, y * H, 0]}>
           <boxGeometry args={[0.016, 0.22 * H, D * 0.34]} />
-          <meshStandardMaterial color={GREY_DARK} roughness={0.95} />
+          <meshLambertMaterial color={GREY_DARK} />
         </mesh>
       ))}
     </group>
@@ -550,19 +545,19 @@ function HingeBand() {
 
 function BackShell() {
   const geo = useMemo(() => shellGeometry({
-    w: W, h: H, r: R, depth: D - 0.16, bevel: 0.05, thickness: 0.055, segments: 4,
+    w: W, h: H, r: R, depth: D - 0.06, bevel: 0.014, thickness: 0.018, segments: 2,
     hole: roundedHole(LID_X, 0, LID_W - 0.20, H - 0.22, 0.07),
   }), []);
   useEffect(() => () => geo.dispose(), [geo]);
   return (
     <group>
-      <mesh geometry={geo} position={[0, 0, -(D - 0.16) - 0.055]}>
-        <meshStandardMaterial color={YELLOW} roughness={0.5} metalness={0.02} />
+      <mesh geometry={geo} position={[0, 0, -(D - 0.06) - 0.018]}>
+        <meshLambertMaterial color={YELLOW} />
       </mesh>
       {/* 窪みの底(メカの黒) */}
       <mesh position={[LID_X, 0, -0.2]}>
         <boxGeometry args={[LID_W - 0.16, H - 0.18, 0.02]} />
-        <meshStandardMaterial color={GREY_DARK} roughness={0.95} />
+        <meshLambertMaterial color={GREY_DARK} />
       </mesh>
       <HingeBand />
       <TransportButtons />
@@ -619,6 +614,12 @@ function Player({ mode }: { mode: PlayerMode }) {
 
   return (
     <group rotation={[0, -0.22, 0]}>
+      {/* 平らな影。ベクターのイラストが影を「ずらした面」で描くのと同じで、
+          光も影の計算も使わない(重い shadowMap を一切持たない)。 */}
+      <mesh position={[0.16, -0.13, -D - 0.12]}>
+        <planeGeometry args={[W * 1.02, H * 1.02]} />
+        <meshBasicMaterial color="#1A1A18" transparent opacity={0.10} />
+      </mesh>
       <BackShell />
       <group ref={tape} position={[LID_X, 0, -0.075]}>
         <Tape spinning={mode === "recording"} />
@@ -640,24 +641,31 @@ function Player({ mode }: { mode: PlayerMode }) {
 export default function CassettePlayerScene({ mode, active = true }: { mode: PlayerMode; active?: boolean }) {
   return (
     <Canvas
+      // ★平行投影(orthographic)。参考にしたベクターのイラストと同じで、
+      // 遠近で歪まないぶん、面が素直な色面として読める。
+      orthographic
       flat
       dpr={[1, 2]}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      camera={{ position: [0.66, 0.60, 3.25], fov: 26 }}
+      // ★トーンマッピングを**明示的に切る**。有効なままだと色が圧縮されて、
+      // 黄色はくすんだオリーブに、青は白っぽく寝てしまう(実測: テクスチャの
+      // (245,176,27) が画面では (170,121,15) になっていた)。ベタ塗りの色を
+      // そのまま出したいので、ここは必ず NoToneMapping。
+      gl={{ antialias: true, alpha: true, powerPreference: "high-performance", toneMapping: THREE.NoToneMapping }}
+      camera={{ position: [0.92, 0.62, 3.0], zoom: 150, near: -10, far: 20 }}
       onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
       frameloop={!active ? "never" : mode === "idle" ? "demand" : "always"}
       style={{ width: "100%", height: "100%", touchAction: "manipulation" }}
     >
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[2.4, 3.2, 3.0]} intensity={1.5} />
-      <directionalLight position={[-2.6, 0.6, 1.2]} intensity={0.5} />
-      <pointLight position={[0.16, 0.05, -0.16]} intensity={0.35} distance={1.1} decay={2} />
-      <Environment resolution={64} frames={1}>
-        <Lightformer intensity={2.6} position={[0, 2.4, 1.4]} scale={[3, 1.4, 1]} />
-        <Lightformer intensity={1.1} position={[-2.2, 0.4, 1.0]} scale={[1.4, 3, 1]} />
-        <Lightformer intensity={0.7} position={[2.4, -0.6, 0.6]} scale={[1.4, 3, 1]} />
-        <Lightformer intensity={0.5} form="ring" position={[0, 0, -3]} scale={4} />
-      </Environment>
+      {/* 光は2本だけ。環境マップ(映り込み)は持たせない——面の向きごとに
+          明るさが1段変わるだけの、塗り分けにするため。
+          ★three r155以降は光の強さが物理単位(1/πが掛かる)になっている。
+          実測で、合計 1.09 のつもりが画面では 0.37 倍(=1.09/π)になっていて、
+          黄色がくすんだオリーブに見えていた。**π倍のオーダーで指定する**こと。
+          いまは正面の面が およそ (2.2 + 1.7×0.66)/π ≒ 1.06 倍になり、
+          テクスチャの色がほぼそのまま出る。 */}
+      <ambientLight intensity={2.2} />
+      <directionalLight position={[-1.0, 2.6, 2.4]} intensity={1.7} />
+      <directionalLight position={[2.6, 0.2, 1.2]} intensity={0.45} />
       <Player mode={mode} />
     </Canvas>
   );

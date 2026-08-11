@@ -43,9 +43,16 @@ const NOTCH = (15 * Math.PI) / 180;
 const MIN_SPAN = 0.04;
 /** 最下部のバーの高さ。 */
 const BAR_H = 74;
-/** 円の半径と中心(器の幅に対する比)。参考画像の腰のくびれ(幅の約16%)に合わせた。 */
-const R_RATIO = 0.97;
-const CX_RATIO = 0.55;
+/** ダイヤルの直径・中心(器の幅に対する比)。★親指が届く高さに置くこと。
+ *  以前は画面の縦中央に、画面いっぱいの大きさで置いていたが、「操作するには
+ *  上に寄りすぎている」という指摘を受けて小さく・下へ動かした。 */
+const DIAL_RATIO = 0.86;
+/** 中心のx。左右へはみ出させる。 */
+const DIAL_CX = 0.06;
+/** 中心のyを、器の下端からどれだけ上に置くか(直径に対する比)。 */
+const DIAL_CY_UP = 0.30;
+/** 縁の目盛りの本数。回転が読めるように、短く太い線を等間隔で置く。 */
+const TICKS = 5;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -81,6 +88,8 @@ export function VoiceStudio({ voice, dim, onClose }: {
   const figure = dim ? "#3A3A37" : JOURNAL_FIG;
   const fg = dim ? PAPER : INK;
   const mute = dim ? "rgba(255,255,255,0.46)" : JOURNAL_MUTED;
+  // ダイヤルの縁の目盛り。地より濃く、文字よりは弱い。
+  const tick = dim ? "rgba(255,255,255,0.40)" : "rgba(26,26,24,0.38)";
 
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -120,11 +129,12 @@ export function VoiceStudio({ voice, dim, onClose }: {
   // ---- 円の配置 --------------------------------------------------------------
   const w = size.w || 390;
   const h = size.h || 620;
-  const RD = w * R_RATIO * 2;          // 直径
-  const stageH = h - BAR_H;            // 円が乗る舞台(バーの上まで)
-  const cy = stageH / 2;
-  const cxL = -w * CX_RATIO;
-  const cxR = w * (1 + CX_RATIO);
+  const RD = w * DIAL_RATIO;                 // 直径
+  const cy = h - RD * DIAL_CY_UP;            // 下端寄り。親指が届く高さ。
+  const cxL = -w * DIAL_CX;
+  const cxR = w * (1 + DIAL_CX);
+  // 文字と波形は、ダイヤルより上の空間の真ん中に置く。
+  const dialTop = cy - RD / 2;
 
   // ---- 波形を描く ------------------------------------------------------------
   const draw = useCallback(() => {
@@ -262,8 +272,12 @@ export function VoiceStudio({ voice, dim, onClose }: {
     <div ref={boxRef} style={{
       position: "relative", width: "100%", height: "100%", overflow: "hidden", background: ground,
     }}>
-      {/* 巨大な円ふたつ。ただの塗り面。録音中はゆっくり回り、止めると
-          切り出しのダイヤルになる。 */}
+      {/* ダイヤルふたつ。録音中はゆっくり回り、止めると切り出しのダイヤルに
+          なる。縁の目盛り(短く太い線)で回転が読める。
+          ★重なり順とポインタの通し方に注意: 舞台(タップで録音)はこの上に
+          あるので、review のときは舞台をポインタに対して透明にして、
+          こちらが指を受け取る。これを忘れると円が一切操作できない
+          (実機で「円が操作できません」と報告された原因そのもの)。 */}
       {(["L", "R"] as const).map((side) => (
         <div
           key={side}
@@ -274,27 +288,39 @@ export function VoiceStudio({ voice, dim, onClose }: {
           style={{
             position: "absolute", width: RD, height: RD, borderRadius: "50%", background: figure,
             left: (side === "L" ? cxL : cxR) - RD / 2, top: cy - RD / 2,
-            touchAction: "none", cursor: review ? "grab" : "default",
+            zIndex: 1, touchAction: "none",
+            pointerEvents: review ? "auto" : "none",
+            cursor: review ? "grab" : "default",
           }}
         >
-          {/* 回転が読めるようにする、ただ1つの小さな点。 */}
-          <div style={{
-            position: "absolute", left: "50%", top: RD * 0.09, width: RD * 0.022, height: RD * 0.022,
-            marginLeft: -RD * 0.011, borderRadius: "50%", background: mute,
-          }} />
+          {/* 縁の目盛り。等間隔に TICKS 本。短く、細くない線。角は丸めない
+              (バウハウス調の語彙に合わせる)。回っているのがこれで読める。 */}
+          {Array.from({ length: TICKS }, (_, i) => (
+            <div key={i} style={{
+              position: "absolute", left: "50%", top: 0, width: 0, height: "50%",
+              transformOrigin: "50% 100%", transform: `rotate(${(i * 360) / TICKS}deg)`,
+            }}>
+              <div style={{
+                position: "absolute", left: -RD * 0.021, top: RD * 0.052,
+                width: RD * 0.042, height: RD * 0.130, background: tick,
+              }} />
+            </div>
+          ))}
         </div>
       ))}
 
-      {/* 舞台。タップで録音の開始/停止。 */}
+      {/* 舞台。タップで録音の開始/停止。文字と波形はダイヤルより上に置く。 */}
       <div
         onClick={() => { if (canToggle) voice.toggle(); }}
         role={canToggle ? "button" : undefined}
         aria-label={recording ? "録音を停止" : "録音を開始"}
         style={{
-          position: "absolute", left: 0, right: 0, top: 0, height: stageH,
+          position: "absolute", inset: 0, zIndex: 2,
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          padding: "0 26px", gap: 22,
+          padding: "0 26px", paddingTop: 84, paddingBottom: Math.max(0, h - dialTop), gap: 22,
           cursor: canToggle ? "pointer" : "default",
+          // ★review のときは指を素通りさせ、下のダイヤルに渡す。
+          pointerEvents: canToggle ? "auto" : "none",
           userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
         }}
       >
@@ -313,7 +339,7 @@ export function VoiceStudio({ voice, dim, onClose }: {
 
       {/* 最下部のバー。左に破棄、中央にラベル、右に確定。参考画像と同じ構え。 */}
       <div style={{
-        position: "absolute", left: 0, right: 0, bottom: 0, height: BAR_H,
+        position: "absolute", left: 0, right: 0, bottom: 0, height: BAR_H, zIndex: 3,
         display: "flex", alignItems: "center", padding: "0 22px", gap: 12,
       }}>
         <div style={{ width: 46, display: "flex", justifyContent: "flex-start" }}>

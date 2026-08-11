@@ -299,6 +299,27 @@ button:active {
 }
 .vs-dial-in-r.vs-reel-spin { animation-name: vs-dial-in-r, vs-spin; }
 
+/* ★円が左右へ出ていく(入場の逆)。オーバーレイを CANCEL で閉じるときに流す。
+   `animation-direction: reverse` では再生し直されない(名前が変わったときだけ
+   頭から走る)ので、専用のキーフレームを別名で用意している。
+   fill-mode は **forwards**。閉じ切って実際にアンマウントされるまで、
+   円が画面の外に留まっている必要があるため。 */
+@keyframes vs-dial-out-l {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(-46%); opacity: 0; }
+}
+@keyframes vs-dial-out-r {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(46%); opacity: 0; }
+}
+.vs-dial-out-l, .vs-dial-out-r {
+  animation-duration: 380ms;
+  animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
+  animation-fill-mode: forwards;
+}
+.vs-dial-out-l { animation-name: vs-dial-out-l; }
+.vs-dial-out-r { animation-name: vs-dial-out-r; }
+
 /* テープの帯。縞は repeating-linear-gradient(直線だけ)で、録音中は
    背景の位置を動かして流れて見せる。 */
 .vs-tape {
@@ -322,7 +343,8 @@ button:active {
 
 @media (prefers-reduced-motion: reduce) {
   .vs-reel-spin, .vs-tape-run, .vs-blink, .vs-in,
-  .vs-dial-in-l, .vs-dial-in-r { animation: none; }
+  .vs-dial-in-l, .vs-dial-in-r,
+  .vs-dial-out-l, .vs-dial-out-r { animation: none; }
 }
 
 /* インボックスの候補がふわふわ漂う動き。上下にゆっくり揺れるだけの

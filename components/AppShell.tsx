@@ -749,16 +749,10 @@ export function AppShell() {
     if (recorderRef.current.state === "recording" || recorderRef.current.state === "review") recorderRef.current.cancel();
     setStudioOpen(false);
   }, []);
-  // ★送信が**終わったとき**だけオーバーレイを閉じる。
-  // 「いま idle なら閉じる」と書くと、開いた瞬間(まだ録音していない=idle)に
-  // 閉じてしまい、オーバーレイが一度も出ない。sending → idle という
-  // 「遷移」を見ること。
-  const prevRecStateRef = useRef(recorder.state);
-  useEffect(() => {
-    const prev = prevRecStateRef.current;
-    prevRecStateRef.current = recorder.state;
-    if (prev === "sending" && recorder.state === "idle") setStudioOpen(false);
-  }, [recorder.state]);
+  // ★「送信が終わったら閉じる」の判断は **VoiceStudio 側が持つ**
+  // (2026-08-11に移した)。ここで即座に setStudioOpen(false) してしまうと、
+  // オーバーレイが一瞬で消え、円が左右へ出ていくアニメーションが
+  // 一度も見えないため。VoiceStudio が演出を終えてから onClose を呼ぶ。
 
   // ダッシュボードからのタスクのチェック。
   const toggleTask = useCallback((id: string) => {

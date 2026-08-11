@@ -34,8 +34,9 @@ export interface VoiceResult {
   savedToMyBrain: boolean;
 }
 
-/** 波形を測る間隔(ms)。 */
-const LEVEL_MS = 45;
+/** 波形を測る間隔(ms)。★描く側(VoiceStudio)が、この間隔と経過時間から
+ *  「次の1本までの端数」を出して波形を滑らかに流すので、export する。 */
+export const LEVEL_MS = 45;
 /** 短すぎる録音(誤爆・言い直し)は送らない。 */
 const MIN_MS = 700;
 
@@ -47,23 +48,61 @@ export function useVoiceRecorder(opts: {
   const [state, setState] = useState<RecordState>("idle");
   const [startedAt, setStartedAt] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
+  const [paused, setPaused] = useState(false);
 
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const blobRef = useRef<Blob | null>(null);
   const startedAtRef = useRef(0);
   const stoppingRef = useRef(false);
+  // ★一時停止をまたいでも正しい長さを出すため、「確定済みの長さ」と
+  // 「いま数えている区間の開始時刻」に分けて持つ。止まっている間は
+  // segStart を使わない。
+  const recordedRef = useRef(0);
+  const segStartRef = useRef(0);
+  const pausedRef = useRef(false);
   // 波形。0〜1 の並び。録音を始めるたびに空にする。
   const levelsRef = useRef<number[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const levelTimerRef = useRef<number | null>(null);
 
-  const stopMeter = useCallback(() => {
+  /** 実際に録音できている長さ(ms)。一時停止していた間は数えない。
+   *  ★参照の同一性を保つため依存は空。中身は ref だけを読む。 */
+  const elapsedMs = useCallback(() => {
+    if (pausedRef.current || segStartRef.current === 0) return recordedRef.current;
+    return recordedRef.current + (Date.now() - segStartRef.current);
+  }, []);
+
+  /** 音量の測定を始める/止める。一時停止のたびに止め、再開で張り直す。 */
+  const startMeter = useCallback(() => {
+    const analyser = analyserRef.current;
+    if (!analyser || levelTimerRef.current != null) return;
+    const data = new Uint8Array(analyser.fftSize);
+    levelTimerRef.current = window.setInterval(() => {
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128;
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / data.length);
+      // 生のRMSは小さいので持ち上げる。1で頭打ち。
+      levelsRef.current.push(Math.min(1, rms * 3.4));
+    }, LEVEL_MS);
+  }, []);
+
+  const pauseMeter = useCallback(() => {
     if (levelTimerRef.current != null) window.clearInterval(levelTimerRef.current);
     levelTimerRef.current = null;
+  }, []);
+
+  const stopMeter = useCallback(() => {
+    pauseMeter();
+    analyserRef.current = null;
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
-  }, []);
+  }, [pauseMeter]);
 
   useEffect(() => () => {
     stopMeter();
@@ -89,6 +128,10 @@ export function useVoiceRecorder(opts: {
       recRef.current = rec;
       stoppingRef.current = false;
       startedAtRef.current = Date.now();
+      recordedRef.current = 0;
+      segStartRef.current = startedAtRef.current;
+      pausedRef.current = false;
+      setPaused(false);
       setStartedAt(startedAtRef.current);
       setDurationMs(0);
       setState("recording");
@@ -103,33 +146,48 @@ export function useVoiceRecorder(opts: {
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
         ctx.createMediaStreamSource(stream).connect(analyser);
-        const data = new Uint8Array(analyser.fftSize);
-        levelTimerRef.current = window.setInterval(() => {
-          analyser.getByteTimeDomainData(data);
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) {
-            const v = (data[i] - 128) / 128;
-            sum += v * v;
-          }
-          const rms = Math.sqrt(sum / data.length);
-          // 生のRMSは小さいので持ち上げる。1で頭打ち。
-          levelsRef.current.push(Math.min(1, rms * 3.4));
-        }, LEVEL_MS);
+        analyserRef.current = analyser;
+        startMeter();
       } catch {
         // 波形が測れなくても録音自体は続ける(棒が出ないだけ)。
       }
     } catch {
       onError("マイクを使えませんでした");
     }
-  }, [onError]);
+  }, [onError, startMeter]);
+
+  /** ★録音の一時停止/再開。もう一度押すとそのまま続きから録れる。
+   *  MediaRecorder.pause()/resume() は、そのまま同じ録音の続きになる
+   *  (チャンクが連結されるだけなので、あとで切り出す位置もずれない)。 */
+  const togglePause = useCallback(() => {
+    const rec = recRef.current;
+    if (!rec || rec.state === "inactive") return;
+    if (!pausedRef.current) {
+      recordedRef.current += Date.now() - segStartRef.current;
+      pausedRef.current = true;
+      setPaused(true);
+      pauseMeter();
+      try { rec.pause(); } catch { /* 対応していない端末では録り続ける */ }
+    } else {
+      segStartRef.current = Date.now();
+      pausedRef.current = false;
+      setPaused(false);
+      try { rec.resume(); } catch { /* 同上 */ }
+      startMeter();
+    }
+    haptic(9);
+  }, [pauseMeter, startMeter]);
 
   /** 録音を止めて review へ。ここではまだ送らない。 */
   const stop = useCallback(() => {
     const rec = recRef.current;
     if (!rec || stoppingRef.current) return;
     stoppingRef.current = true;
+    const ms = elapsedMs();
     stopMeter();
-    const ms = Date.now() - startedAtRef.current;
+    pausedRef.current = false;
+    segStartRef.current = 0;
+    setPaused(false);
     rec.onstop = () => {
       rec.stream.getTracks().forEach((t) => t.stop());
       recRef.current = null;
@@ -142,7 +200,7 @@ export function useVoiceRecorder(opts: {
       haptic(10);
     };
     try { rec.stop(); } catch { setState("idle"); }
-  }, [stopMeter]);
+  }, [stopMeter, elapsedMs]);
 
   const toggle = useCallback(() => {
     if (state === "recording") stop();
@@ -154,6 +212,9 @@ export function useVoiceRecorder(opts: {
       // 録音中のキャンセルは、止めてから捨てる。
       stoppingRef.current = true;
       stopMeter();
+      pausedRef.current = false;
+      segStartRef.current = 0;
+      setPaused(false);
       const rec = recRef.current;
       if (rec) {
         rec.onstop = () => {
@@ -207,5 +268,5 @@ export function useVoiceRecorder(opts: {
     }
   }, [durationMs, onDone, onError]);
 
-  return { state, startedAt, durationMs, levelsRef, toggle, cancel, send };
+  return { state, startedAt, durationMs, paused, elapsedMs, levelsRef, toggle, togglePause, cancel, send };
 }

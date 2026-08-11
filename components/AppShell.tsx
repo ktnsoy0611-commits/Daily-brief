@@ -805,9 +805,12 @@ export function AppShell() {
   const voice = useMemo<VoiceControls>(
     () => ({
       state: recorder.state, startedAt: recorder.startedAt, durationMs: recorder.durationMs,
-      levelsRef: recorder.levelsRef, toggle: recorder.toggle, send: recorder.send, cancel: recorder.cancel,
+      paused: recorder.paused, elapsedMs: recorder.elapsedMs,
+      levelsRef: recorder.levelsRef, toggle: recorder.toggle, togglePause: recorder.togglePause,
+      send: recorder.send, cancel: recorder.cancel,
     }),
-    [recorder.state, recorder.startedAt, recorder.durationMs, recorder.levelsRef, recorder.toggle, recorder.send, recorder.cancel],
+    [recorder.state, recorder.startedAt, recorder.durationMs, recorder.paused, recorder.elapsedMs,
+      recorder.levelsRef, recorder.toggle, recorder.togglePause, recorder.send, recorder.cancel],
   );
   // ウィッシュを書く入口。タブバーの右端は録音に譲ったので、いまは
   // ストックタブ(ウィッシュの一覧がある場所)から開く。

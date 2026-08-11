@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GOLD, GREEN, INK, JOURNAL_BG, JOURNAL_FIG, JOURNAL_MUTED, NAV_BOTTOM_GAP, PAPER, SANS } from "@/lib/constants";
+import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { haptic } from "@/lib/helpers";
 import type { VoiceControls, VoiceTrim } from "@/lib/types";
 
@@ -15,7 +16,10 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //     2つの円のあいだに残る細い縦の帯(砂時計の腰)がテープの通り道。
 //     腰の高さ=掴む高さ。タブの中では下寄り、全画面のオーバーレイでは
 //     画面の真ん中あたりに置く。
-//   ・その上の空きに、波形と数字。最下部にカセットの操作キーが4つ。
+//   ・波形は**円に重ならない**よう、腰の少し上に細く狭く置く。録音中は
+//     赤い線が立ち、録れた棒がその左へ流れる(線の右は点線=まだ録っていない)。
+//     止めると帯が広がり、線が左右2本へ分かれて全体表示(トリミング)になる。
+//   ・最下部にカセットの操作キーが4つ。
 //
 // ■ 数字の扱い(ユーザー指定)
 //   ・**どれも強調しない**。録音中の経過も、録音後の長さも、細く小さく
@@ -31,7 +35,7 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //
 // ■ 操作キー(下段)
 //   REC … 録音の開始/停止。録音中は押し込まれたまま。録り直しにも使う。
-//   RESET … 切り出しを全体へ戻す(録音後だけ点灯)。
+//   PAUSE … 録音の一時停止/再開(録音中だけ点灯)。もう一度押すと続きから。
 //   SEND … 文字起こしへ送る(録音後だけ点灯)。
 //   CANCEL … 少し間を空けて右端。いつでも押せて、録音を捨てて最初へ戻す。
 //
@@ -41,6 +45,9 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //   ★毎フレームの textContent 代入・font-size の遷移は禁止。値が同じでも
 //   レイアウトを汚し、巨大な円を含むページ全体のレイアウトをやり直す
 //   (実測でこれだけで1ドラッグ508ms。§41参照)。
+//   ★録音中に setState する仕掛けを置かないこと。以前は経過時間を100msごとに
+//   state へ入れていて、そのたびに全体が再レンダーされ「画面がちらつく」
+//   原因になっていた。時間は rAF から textContent で書く。
 //
 // ■ ハプティクスの限界(正直に書いておく)
 //   haptic() は navigator.vibrate。**iOS Safari はこのAPIを持たない**ため、
@@ -48,9 +55,11 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //   → だから掴んだ合図は**視覚**(円がふくらむ)で持たせている。haptic の
 //     呼び出しはAndroid向けの付け足しとして残してあるだけ。
 
-/** 波形の棒の間隔と太さ(px)。太めで、両端は丸い。 */
-const BAR_PITCH = 9;
-const BAR_W = 5;
+/** 波形の棒の間隔と太さ(px)。録音中は細かく、止めたあと(全体表示)は太め。 */
+const BAR_PITCH_REC = 5;
+const BAR_W_REC = 3;
+const BAR_PITCH_ALL = 9;
+const BAR_W_ALL = 5;
 /** ダイヤル1回転で動かす割合。小さいほど「重い」。 */
 const TURN_RATIO = 0.5;
 /** 手応えを返す刻み(rad)。15度ごと。 */
@@ -58,12 +67,28 @@ const NOTCH = (15 * Math.PI) / 180;
 /** 開始と終了が潰れないよう、最低これだけは残す。 */
 const MIN_SPAN = 0.04;
 /** ダイヤルの直径(器の幅に対する比)。画面をはみ出す大きさ。 */
-const DIAL_RATIO = 1.48;
+const DIAL_RATIO = 1.30;
 /** 中心のx(器の幅に対する比)。左右へ大きくはみ出す。
  *  ★砂時計の腰の幅は `器の幅 x (1 + 2*DIAL_CX - DIAL_RATIO)` で決まる。
  *  直径を変えるときは、腰が同じ 0.30 になるよう DIAL_CX も一緒に動かすこと
  *  (直径だけ縮めると腰が広がって、砂時計の締まりが無くなる)。 */
-const DIAL_CX = 0.39;
+const DIAL_CX = 0.30;
+/** ★波形の帯の中心を、円の中心からどれだけ上へ置くか。
+ *  「真ん中の少し上」(ユーザー指定)。 */
+const WAVE_DY = -136;
+/** 波形の帯の高さ。録音中は細く、止めると広がる。 */
+const WAVE_H_REC = 58;
+const WAVE_H_ALL = 104;
+/** 録音中の帯は、円に**絶対に重ならない**幅までしか広げない。
+ *  実際の幅はコードが円の式から計算する(WAVE_MARGIN は左右の余白)。 */
+const WAVE_MARGIN = 6;
+/** 止めたあと(全体表示)の左右の余白。 */
+const WAVE_PAD_ALL = 26;
+/** 録音中の赤い線を帯のどこに立てるか(左からの割合)。左が録れた分、
+ *  右がまだ録っていない分(点線)。真ん中より右に置いて履歴を長く見せる。 */
+const REC_LINE_AT = 0.66;
+/** 録音を止めたとき、帯が広がり中心の線が左右へ分かれるまでの時間(ms)。 */
+const SPLIT_MS = 420;
 /** ★円を置く「帯」。上=左上のタイトル(Masthead)の下端、下=タブバーの上端。
  *  円の中心はこの帯のちょうど真ん中に来る(ユーザー指定)。
  *  タブの中でも全画面のオーバーレイでも**同じ値**を使うので、両者の円は
@@ -158,9 +183,10 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
   // ★切り出しの位置は **ref**。ダイヤルを回すたびに setState すると
   // 1ジェスチャーで数十回の再レンダーになる(§14)。
   const trimRef = useRef<VoiceTrim>({ start: 0, end: 1 });
-  const [elapsed, setElapsed] = useState(0);
-  /** 幾何アルファベットで出す長さ。**指を離した時だけ**更新する。 */
-  const [keptMs, setKeptMs] = useState(0);
+  /** ★止めた直後、中心の1本が左右2本へ分かれていく進み具合(0→1)。
+   *  ここも ref。毎フレーム setState すると再レンダーの嵐になる。 */
+  const splitRef = useRef(1);
+  const [splitting, setSplitting] = useState(false);
   /** いま掴んでいる円。掴んでいなければ null。 */
   const [active, setActive] = useState<"L" | "R" | null>(null);
   /** 円が左右から入ってくるアニメーションの再生キー。 */
@@ -171,14 +197,13 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
   /** ★オーバーレイが閉じていく最中。円が左右へ出ていく間だけ true。 */
   const [leaving, setLeaving] = useState(false);
 
-  const { state, startedAt, durationMs, levelsRef } = voice;
+  const { state, durationMs, levelsRef, elapsedMs, paused } = voice;
   const recording = state === "recording";
   const review = state === "review";
   const sending = state === "sending";
 
   useEffect(() => {
     if (state === "recording" || state === "idle") trimRef.current = { start: 0, end: 1 };
-    if (state === "review") setKeptMs(durationMs);
   }, [state, durationMs]);
 
   // ★円の入場は**画面が出たときだけ**。以前は録音を始めた瞬間にも流して
@@ -192,7 +217,11 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     const cv = canvasRef.current;
     if (!el || !cv) return;
     const read = () => {
-      setSize({ w: el.clientWidth, h: el.clientHeight });
+      // ★値が同じなら setState しない。ResizeObserver は波形の帯が広がる
+      // 間ずっと発火するので、毎回新しいオブジェクトを入れると1フレームごとに
+      // 全体が再レンダーされ、画面がちらつく。
+      setSize((prev) => (prev.w === el.clientWidth && prev.h === el.clientHeight
+        ? prev : { w: el.clientWidth, h: el.clientHeight }));
       cvSizeRef.current = { w: cv.clientWidth, h: cv.clientHeight };
     };
     const ro = new ResizeObserver(read);
@@ -201,14 +230,6 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     read();
     return () => ro.disconnect();
   }, []);
-
-  // 経過時間。★録音中だけ数える(値そのものは props で受け取らない)。
-  useEffect(() => {
-    if (!recording || !startedAt) { setElapsed(0); return; }
-    setElapsed(Date.now() - startedAt);
-    const id = window.setInterval(() => setElapsed(Date.now() - startedAt), 100);
-    return () => window.clearInterval(id);
-  }, [recording, startedAt]);
 
   // ---- 円の配置 --------------------------------------------------------------
   const w = size.w || 390;
@@ -219,9 +240,22 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
   const cy = (BAND_TOP + (h - BAND_BOTTOM)) / 2;
   const cxL = -w * DIAL_CX;
   const cxR = w * (1 + DIAL_CX);
-  // 波形と数字も、円と同じ高さ(帯の真ん中)へ寄せる。
-  const stagePadTop = Math.max(0, 2 * cy - h);
-  const stagePadBottom = Math.max(0, h - 2 * cy);
+
+  // ---- 波形の帯の置き場 ------------------------------------------------------
+  // ★録音中の帯は「真ん中の少し上」に置き、**円に重ならない幅**までしか
+  // 広げない。円は中心が画面の外にあるので、外接矩形ではなく円の式で見ること。
+  // 中心から dy 離れた高さでの左右の隙間 = (cxR - cxL) - 2*sqrt(R^2 - dy^2)。
+  // 帯の上端/下端のうち、中心に近い方(=隙間が最小)で決まる。
+  const waveCy = cy + WAVE_DY;
+  const gapAt = (dy: number) => {
+    const s = (RD / 2) * (RD / 2) - dy * dy;
+    return (cxR - cxL) - 2 * (s > 0 ? Math.sqrt(s) : 0);
+  };
+  const nearDy = Math.max(0, Math.abs(WAVE_DY) - WAVE_H_REC / 2);
+  const waveWRec = Math.max(90, Math.min(w - 2 * WAVE_PAD_ALL, gapAt(nearDy) - 2 * WAVE_MARGIN));
+  const waveWAll = w - 2 * WAVE_PAD_ALL;
+  // 数字は帯の下、腰のところへ。
+  const timeTop = waveCy + WAVE_H_ALL / 2 + 10;
 
   // ---- 波形を描く ------------------------------------------------------------
   const draw = useCallback(() => {
@@ -240,53 +274,98 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     c.clearRect(0, 0, cw, ch);
 
-    const n = Math.max(1, Math.floor((cw - BAR_W) / BAR_PITCH) + 1);
     const all = levelsRef.current;
-    // 録音中は「いま鳴っている分」が流れて見えるよう末尾だけ。止めたあとは
-    // 全体を均して、どこを切り出すか決められるようにする。
-    const bars = resample(recording ? all.slice(-n) : all, n);
     const t = trimRef.current;
     const mid = ch / 2;
-    // 中心線。波形が無いときも基準として見えるように、常に引く。
-    c.lineWidth = 1;
+    const bar = (x: number, v: number, color: string, bw: number) => {
+      // ★小さい音は棒にしない(ユーザー指定)。丸い端(lineCap:"round")の
+      // せいで、短い線は**点**として描かれ、それが中心線に沿って数珠つなぎに
+      // 並ぶと汚く見える。しきい値未満は中心線だけを残す。
+      if (v < LEVEL_FLOOR) return;
+      const hgt = Math.max(bw * 1.6, v * (ch - bw));
+      c.lineWidth = bw;
+      c.strokeStyle = color;
+      c.beginPath();
+      c.moveTo(x, mid - hgt / 2);
+      c.lineTo(x, mid + hgt / 2);
+      c.stroke();
+    };
+
+    if (recording) {
+      // ── 録音中 ──────────────────────────────────────────────
+      // 赤い線が真ん中に立ち、録れた棒はその左へ流れていく。線の右は
+      // 「まだ録っていない」ので点線だけ(参考画像と同じ構え)。
+      const lineX = Math.round(cw * REC_LINE_AT);
+      // ★滑らかに流す。棒は LEVEL_MS ごとにしか増えないので、そのままだと
+      // 1本ぶんずつ飛んで「カクカク」する。次の1本までの端数を px に直して
+      // 全体をずらすと、60fps で連続して動く。
+      const frac = (((elapsedMs() % LEVEL_MS) + LEVEL_MS) % LEVEL_MS) / LEVEL_MS;
+      const shift = frac * BAR_PITCH_REC;
+      // 中心線(左は実線、右は点線)。
+      c.lineCap = "butt";
+      c.lineWidth = 1;
+      c.strokeStyle = mute;
+      c.beginPath();
+      c.moveTo(0, mid);
+      c.lineTo(lineX, mid);
+      c.stroke();
+      c.save();
+      c.setLineDash([2, 4]);
+      c.beginPath();
+      c.moveTo(lineX, mid);
+      c.lineTo(cw, mid);
+      c.stroke();
+      c.restore();
+      // 棒。線のところが「いま」で、左へ行くほど過去。
+      c.lineCap = "round";
+      const count = Math.ceil(lineX / BAR_PITCH_REC) + 1;
+      for (let k = 0; k < count; k++) {
+        const v = all[all.length - 1 - k];
+        if (v == null) break;
+        bar(lineX - k * BAR_PITCH_REC - shift, v, fg, BAR_W_REC);
+      }
+      // 赤い線。帯より少し高く出して、参考画像と同じく主役にする。
+      c.lineCap = "round";
+      c.lineWidth = 2.5;
+      c.strokeStyle = LAMP_REC;
+      c.beginPath();
+      c.moveTo(lineX, 2);
+      c.lineTo(lineX, ch - 2);
+      c.stroke();
+      return;
+    }
+
+    // ── 止めたあと(全体表示・トリミング) ─────────────────────
+    const n = Math.max(1, Math.floor((cw - BAR_W_ALL) / BAR_PITCH_ALL) + 1);
+    const bars = resample(all, n);
     c.lineCap = "butt";
+    c.lineWidth = 1;
     c.strokeStyle = mute;
     c.beginPath();
     c.moveTo(0, mid);
     c.lineTo(cw, mid);
     c.stroke();
-    // ★太い線＋丸い端。存在感を出すため、塗りではなく線で描く。
-    c.lineWidth = BAR_W;
     c.lineCap = "round";
     for (let i = 0; i < n; i++) {
       const r = n <= 1 ? 0 : i / (n - 1);
-      const inRange = all.length > 0 && (recording || (r >= t.start && r <= t.end));
-      // ★小さい音は棒にしない(ユーザー指定)。丸い端(lineCap:"round")の
-      // せいで、短い線は直径5pxの**点**として描かれ、それが中心線に沿って
-      // 数珠つなぎに並ぶと汚く見える。しきい値未満は中心線だけを残す。
-      if (bars[i] < LEVEL_FLOOR) continue;
-      const hgt = Math.max(BAR_W * 1.6, bars[i] * (ch - BAR_W));
-      const x = BAR_W / 2 + i * BAR_PITCH;
-      c.strokeStyle = inRange ? fg : mute;
-      c.beginPath();
-      c.moveTo(x, mid - hgt / 2);
-      c.lineTo(x, mid + hgt / 2);
-      c.stroke();
+      bar(BAR_W_ALL / 2 + i * BAR_PITCH_ALL, bars[i], (r >= t.start && r <= t.end) ? fg : mute, BAR_W_ALL);
     }
-    if (!recording && all.length > 0) {
-      // 切り出しの位置。細い直線で示す。
-      c.lineWidth = 2;
+    if (all.length > 0) {
+      // ★切り出しの2本。止めた直後は真ん中で重なっていて、split が 0→1 に
+      // 進むにつれて左右へ分かれていく(ユーザー指定の「線が2つに分離する」)。
+      const s = splitRef.current;
       c.lineCap = "butt";
+      c.lineWidth = 2.5;
       c.strokeStyle = LAMP_REC;
-      for (const r of [t.start, t.end]) {
-        const x = Math.min(cw - 1, Math.max(1, r * cw));
+      for (const r of [REC_LINE_AT + (t.start - REC_LINE_AT) * s, REC_LINE_AT + (t.end - REC_LINE_AT) * s]) {
+        const x = Math.min(cw - 1.5, Math.max(1.5, r * cw));
         c.beginPath();
         c.moveTo(x, 0);
         c.lineTo(x, ch);
         c.stroke();
       }
     }
-  }, [fg, mute, recording, levelsRef]);
+  }, [fg, mute, recording, levelsRef, elapsedMs]);
 
   // ★同じ文字列なら書かない。textContent への代入は、値が同じでもその
   // 要素のレイアウトを汚す。毎フレームやると、巨大な円を含むページの
@@ -299,20 +378,41 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     draw();
     const t = trimRef.current;
     // 録音中の経過時間だけ、この控えめな数字に出す。
-    if (recording) setText(timeRef.current, mmss(Date.now() - startedAt));
+    if (recording) setText(timeRef.current, mmss(elapsedMs()));
+    else setText(timeRef.current, mmss(durationMs * Math.max(0, t.end - t.start)));
     // ★切り出し中は、それぞれの円の上にその位置の秒数を出す。
     setText(markL.current, mmss(durationMs * t.start));
     setText(markR.current, mmss(durationMs * t.end));
-  }, [draw, recording, startedAt, durationMs]);
+  }, [draw, recording, elapsedMs, durationMs]);
 
-  // rAF を回すのは「録音中」と「ダイヤルを回している間」だけ。
+  // rAF を回すのは「録音中」「ダイヤルを回している間」「線が分かれる間」だけ。
   useEffect(() => {
     let raf = 0;
     const loop = () => { drawAll(); raf = requestAnimationFrame(loop); };
-    if (recording || active || coasting) raf = requestAnimationFrame(loop);
+    if (recording || active || coasting || splitting) raf = requestAnimationFrame(loop);
     else drawAll();
     return () => cancelAnimationFrame(raf);
-  }, [drawAll, recording, active, coasting, size.w, size.h]);
+  }, [drawAll, recording, active, coasting, splitting, size.w, size.h]);
+
+  // ★録音を止めた瞬間、帯が広がるのに合わせて中心の1本を左右2本へ分ける。
+  // 進み具合は ref に書き、rAF が読んで描く(setState では毎フレーム
+  // 全体が再レンダーされてしまう)。
+  useEffect(() => {
+    if (state !== "review") { splitRef.current = 1; return; }
+    splitRef.current = 0;
+    setSplitting(true);
+    const t0 = performance.now();
+    let raf = 0;
+    const step = () => {
+      const p = Math.min(1, (performance.now() - t0) / SPLIT_MS);
+      // 帯の広がり(CSSのトランジション)と同じ ease-out に合わせる。
+      splitRef.current = 1 - Math.pow(1 - p, 3);
+      if (p < 1) raf = requestAnimationFrame(step);
+      else setSplitting(false);
+    };
+    raf = requestAnimationFrame(step);
+    return () => { cancelAnimationFrame(raf); setSplitting(false); };
+  }, [state]);
 
   // ---- ダイヤルを回す --------------------------------------------------------
   const dragRef = useRef<{ id: number; side: "L" | "R"; ang: number; notch: number; rot: number; vel: number; t: number } | null>(null);
@@ -337,12 +437,6 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       ? { ...prev, start: clamp01(Math.min(prev.end - MIN_SPAN, prev.start + dr)) }
       : { ...prev, end: clamp01(Math.max(prev.start + MIN_SPAN, prev.end + dr)) };
   }, []);
-
-  /** 真ん中の数字(長さ)は動きが止まってから1回だけ更新する。 */
-  const commitKept = useCallback(() => {
-    const t = trimRef.current;
-    setKeptMs(durationMs * Math.max(0, t.end - t.start));
-  }, [durationMs]);
 
   const stopCoast = useCallback(() => {
     if (!coastRef.current) return;
@@ -375,13 +469,12 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         if (el) el.dataset.rot = String(rot);
         coastRef.current = null;
         setCoasting(false);
-        commitKept();
         return;
       }
       coastRef.current = { raf: requestAnimationFrame(step) };
     };
     coastRef.current = { raf: requestAnimationFrame(step) };
-  }, [advanceTrim, commitKept]);
+  }, [advanceTrim]);
 
   useEffect(() => stopCoast, [stopCoast]);
 
@@ -435,7 +528,6 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       setActive(null);
       // ★離した勢いが残っていれば、惰性で回し続ける。
       if (d && Math.abs(d.vel) > COAST_STOP * 3) startCoast(d.side, d.rot, d.vel);
-      else commitKept();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
@@ -443,7 +535,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
-  }, [review, cxL, cxR, cy, advanceTrim, commitKept, startCoast, stopCoast]);
+  }, [review, cxL, cxR, cy, advanceTrim, startCoast, stopCoast]);
 
   // 録音を始めるたびに、ダイヤルの角度も戻す。
   useEffect(() => {
@@ -498,21 +590,9 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     cancelAll();
   }, [onClose, beginExit, cancelAll]);
 
-  // 切り出しの範囲を全体へ戻す。ダイヤルの角度も0へ。
-  const resetTrim = useCallback(() => {
-    stopCoast();
-    trimRef.current = { start: 0, end: 1 };
-    for (const el of [reelL.current, reelR.current]) {
-      if (!el) continue;
-      el.dataset.rot = "0";
-      el.style.transform = "";
-    }
-    setKeptMs(durationMs);
-    haptic(9);
-  }, [durationMs, stopCoast]);
-
   // ---- 文言 -------------------------------------------------------------------
-  const centerLabel = recording ? "もう一度 REC で停止"
+  const centerLabel = paused ? "PAUSE 中。もう一度押すと続けられる"
+    : recording ? "もう一度 REC で停止"
     : review ? "左右の円で切り出す"
       : sending ? "文字にしています"
         : "";
@@ -619,52 +699,57 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         >00:00</div>
       ))}
 
-      {/* 舞台。タップで録音の開始/停止。文字と波形はここに乗る。 */}
+      {/* ★波形の帯。録音中は「真ん中の少し上」に細く狭く置き、円に重ならない。
+          止めると幅も高さも広がり、全体表示(トリミング)へ移る。
+          ★flex の並びには入れず**絶対配置**にしてある。幅を遷移させても
+          周りをレイアウトし直さずに済むため。 */}
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: "absolute", zIndex: 2, pointerEvents: "none",
+          left: "50%", transform: "translateX(-50%)",
+          width: recording ? waveWRec : waveWAll,
+          height: recording ? WAVE_H_REC : WAVE_H_ALL,
+          top: waveCy - (recording ? WAVE_H_REC : WAVE_H_ALL) / 2,
+          transition: `width ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), height ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), top ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1)`,
+          display: "block",
+        }}
+      />
+
+      {/* 数字。録音中は経過、止めたあとは切り出した長さ。どちらも控えめに。
+          ★中身は rAF から textContent で書く(再レンダーしない)。 */}
+      <div ref={timeRef} style={{
+        position: "absolute", zIndex: 2, pointerEvents: "none",
+        left: 0, right: 0, top: timeTop, textAlign: "center",
+        fontFamily: SANS, fontSize: 19, fontWeight: 500, lineHeight: 1,
+        letterSpacing: "0.20em", color: mute, fontVariantNumeric: "tabular-nums",
+        opacity: (recording || review || sending) ? 1 : 0,
+        transition: "opacity 200ms ease",
+      }}>{mmss(0)}</div>
+
+      {/* 舞台。タップで録音の開始/停止。 */}
       <div
         onClick={() => { if (canToggle) voice.toggle(); }}
         role={canToggle ? "button" : undefined}
         aria-label={recording ? "録音を停止" : "録音を開始"}
         style={{
           position: "absolute", inset: 0, zIndex: 2,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          // 波形と数字の重心を、円と同じ「帯の真ん中」に合わせる。
-          padding: "0 26px", paddingTop: stagePadTop, paddingBottom: stagePadBottom, gap: 26,
           cursor: canToggle ? "pointer" : "default",
           // ★review のときは指を素通りさせ、下のダイヤルに渡す。
           pointerEvents: canToggle ? "auto" : "none",
           userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
         }}
-      >
-        {/* 録音中の数字は**強調しない**。小さく、控えめに。 */}
-        <div ref={timeRef} style={{
-          fontFamily: SANS, fontSize: 19, fontWeight: 500, lineHeight: 1,
-          letterSpacing: "0.20em", color: mute, fontVariantNumeric: "tabular-nums",
-          opacity: recording ? 1 : 0, height: 19,
-        }}>{mmss(elapsed)}</div>
-
-        {/* 中心線は常に見せる。棒は録ったぶんだけ立つ。 */}
-        <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: 104 }} />
-
-        {/* 録音を終えたあとの長さ。★存在感は出さない(ユーザー指定)。
-            素の書体で、細く・小さく・字間を広げて置くだけ。 */}
-        <div style={{
-          height: 24, display: "flex", alignItems: "center",
-          fontFamily: SANS, fontSize: 21, fontWeight: 300, lineHeight: 1,
-          letterSpacing: "0.22em", color: mute, fontVariantNumeric: "tabular-nums",
-        }}>
-          {(review || sending) ? mmss(keptMs) : ""}
-        </div>
-      </div>
+      />
 
       {/* ★最下部は、カセットプレイヤーの操作キーを模した3つの物理ボタン。
           出っ張り(KEY_DEPTH)があり、押されると沈む。押せない間は沈んだまま
           暗く、押せるようになるとランプが灯る。
             REC   … 録音の開始/停止。録音中は押し込まれたまま。
-            RESET … 切り出しの範囲を全体へ戻す。
+            PAUSE … 録音の一時停止/再開。止めている間は押し込まれたまま。
             SEND  … 文字起こしへ送る。 */}
       <div style={{
         // ★高さは中身に任せる(下端が keyBottom)。以前は固定の96pxで中央寄せに
-        // していたため、キーの下のラベル(REC/RESET/…)が枠からはみ出し、
+        // していたため、キーの下のラベル(REC/PAUSE/…)が枠からはみ出し、
         // タブバーに隠れて切れていた。
         position: "absolute", left: 0, right: 0, bottom: `calc(${KEY_BOTTOM} + 10px)`, zIndex: 3,
         display: "flex", flexDirection: "column", alignItems: "center", gap: 9,
@@ -685,10 +770,12 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
           onPress={() => voice.toggle()}
           fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
         />
+        {/* ★PAUSE。録音中だけ押せる。押すとその場で止まり、もう一度押すと
+            そのまま続きから録れる(MediaRecorder の pause/resume)。 */}
         <TransportKey
-          label="RESET" lamp={GOLD}
-          pressed={false} enabled={review} lit={review}
-          onPress={resetTrim}
+          label="PAUSE" lamp={GOLD} bars
+          pressed={paused} enabled={recording} lit={recording}
+          onPress={voice.togglePause}
           fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
         />
         <TransportKey
@@ -723,7 +810,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
  *  ・enabled=false … 沈んだまま暗い。押せない。
  *  ・lit=true      … ランプが灯る(押せることの合図)。
  *  ・pressed=true  … 押し込まれたまま(録音中のRECなど)。 */
-function TransportKey({ label, lamp, ring, cross, pressed, enabled, lit, onPress, fg, mute, figure, well, capOff, lampOff }: {
+function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, onPress, fg, mute, figure, well, capOff, lampOff }: {
   label: string;
   /** 丸いランプの色(点灯時)。 */
   lamp?: string;
@@ -731,6 +818,8 @@ function TransportKey({ label, lamp, ring, cross, pressed, enabled, lit, onPress
   ring?: string;
   /** CANCEL の ✕。 */
   cross?: boolean;
+  /** PAUSE の2本線。灯っていれば lamp の色、消えていれば lampOff。 */
+  bars?: boolean;
   pressed: boolean;
   enabled: boolean;
   lit?: boolean;
@@ -778,7 +867,18 @@ function TransportKey({ label, lamp, ring, cross, pressed, enabled, lit, onPress
             userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
           }}
         >
-          {cross ? (
+          {bars ? (
+            // PAUSE の2本線。ランプと同じ扱いで、押せるときだけ色が付く。
+            <span style={{ display: "flex", gap: 4 }}>
+              {[0, 1].map((i) => (
+                <span key={i} style={{
+                  width: 4, height: 14, borderRadius: 1,
+                  background: lit ? lamp : lampOff,
+                  transition: "background 200ms ease",
+                }} />
+              ))}
+            </span>
+          ) : cross ? (
             // CANCEL の ✕。2本の直線で。
             <span style={{ position: "relative", width: 14, height: 14 }}>
               <span style={{ position: "absolute", top: 6, left: 0, width: 14, height: 2, background: enabled ? fg : mute, transform: "rotate(45deg)" }} />

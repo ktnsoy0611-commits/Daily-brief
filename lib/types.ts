@@ -443,8 +443,17 @@ export interface VoiceControls {
   /** 波形の高さ(0〜1)の並び。★同じ理由で state ではなく **ref** で渡す。
    *  録音中は 45ms ごとに増えるので、描く側が rAF で読みに来る。 */
   levelsRef: { current: number[] };
+  /** 一時停止しているか(録音中のみ意味を持つ)。 */
+  paused: boolean;
+  /** ★実際に録音できている長さ(ms)。一時停止していた間は数えない。
+   *  ここも state ではなく**関数**にしてある。毎フレーム変わる値を props で
+   *  渡すと全タブが再レンダーされるため、必要な側が呼びに来る形にする。
+   *  参照の同一性は保証する(useCallback の依存は空)。 */
+  elapsedMs: () => number;
   /** タップでの開始/停止。 */
   toggle: () => void;
+  /** 録音の一時停止/再開。 */
+  togglePause: () => void;
   /** トリミングを適用して文字起こしへ送る。 */
   send: (trim: VoiceTrim) => void;
   /** 破棄して idle へ戻す。 */

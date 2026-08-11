@@ -269,6 +269,36 @@ button:active {
 @keyframes vs-spin { to { transform: rotate(360deg); } }
 .vs-reel-spin { animation: vs-spin 3.2s linear infinite; }
 
+/* ★円が左右から入ってくる。画面を開いたときと、録音を始めた瞬間に流す。
+   ★fill-mode は **backwards**。both にすると、入場が終わったあとも最後の
+   コマの transform が残り続け、切り出しのときに JS がインラインで書く
+   rotate() を上書きしてしまう(§21 で踏んだのと同じ罠)。 */
+@keyframes vs-dial-in-l {
+  from { transform: translateX(-46%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes vs-dial-in-r {
+  from { transform: translateX(46%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+.vs-dial-in-l, .vs-dial-in-r {
+  animation-duration: 640ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: backwards;
+}
+.vs-dial-in-l { animation-name: vs-dial-in-l; }
+.vs-dial-in-r { animation-name: vs-dial-in-r; }
+/* 回転(録音中)と入場が同時に掛かるときは、入場を先に見せてから回す。 */
+.vs-dial-in-l.vs-reel-spin, .vs-dial-in-r.vs-reel-spin {
+  animation-name: vs-dial-in-l, vs-spin;
+  animation-duration: 640ms, 3.2s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1), linear;
+  animation-delay: 0ms, 640ms;
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: backwards, none;
+}
+.vs-dial-in-r.vs-reel-spin { animation-name: vs-dial-in-r, vs-spin; }
+
 /* テープの帯。縞は repeating-linear-gradient(直線だけ)で、録音中は
    背景の位置を動かして流れて見せる。 */
 .vs-tape {
@@ -291,7 +321,8 @@ button:active {
 .vs-in { animation: vs-in 220ms ease-out; }
 
 @media (prefers-reduced-motion: reduce) {
-  .vs-reel-spin, .vs-tape-run, .vs-blink, .vs-in { animation: none; }
+  .vs-reel-spin, .vs-tape-run, .vs-blink, .vs-in,
+  .vs-dial-in-l, .vs-dial-in-r { animation: none; }
 }
 
 /* インボックスの候補がふわふわ漂う動き。上下にゆっくり揺れるだけの

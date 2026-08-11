@@ -8,7 +8,7 @@ import { appTitle } from "@/lib/apps";
 import { GOLD, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
 import { dayInfo, img, todayKey } from "@/lib/helpers";
-import type { JournalEntry, JournalTabId, TabProps } from "@/lib/types";
+import type { JournalEntry, JournalTabId, TabProps, VoiceNote } from "@/lib/types";
 
 // ★ジャーナルアプリ。アーカイブ(旧・独立タブ)をここへ統合した。
 // 「今日」= 今日の記録を書く/読む場所。「アーカイブ」= 過去の日々を
@@ -24,6 +24,25 @@ function EntryCard({ entry }: { entry: JournalEntry }) {
       <p style={{ fontFamily: SANS, fontSize: 12.5, lineHeight: 1.95, color: INK, whiteSpace: "pre-wrap" }}>{entry.body}</p>
     </div>
   );
+}
+
+// ★声のメモ。以前はレコードタブの下に並べていたが、レコードは1画面で
+// 完結させる(スクロールさせない)ことにしたので、こちらへ移した。
+function VoiceNoteCard({ note }: { note: VoiceNote }) {
+  return (
+    <div style={{ background: PAPER, borderRadius: 16, padding: "13px 16px 15px", boxShadow: SOFT_SHADOW }}>
+      <div style={{ fontSize: 9, letterSpacing: "0.16em", color: MUTED, fontWeight: 700, marginBottom: 7 }}>
+        {new Date(note.at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+        {note.durationMs ? ` ・ ${mmssOf(note.durationMs)}` : ""}
+      </div>
+      <p style={{ fontFamily: SANS, fontSize: 12.5, lineHeight: 1.95, color: INK, whiteSpace: "pre-wrap" }}>{note.text}</p>
+    </div>
+  );
+}
+
+function mmssOf(ms: number) {
+  const sec = Math.floor(ms / 1000);
+  return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
 }
 
 // その日にやったこと(カード・タスク)の小さな一覧。「今日」タブと
@@ -187,7 +206,8 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
   const months = groupByMonth(past);
 
   if (tab === "journal-today") {
-    const empty = dayRecordCount(todayRec) === 0 && !summaries[todayRec.dateKey];
+    const notes = (appState.voiceNotes ?? []).slice(0, 12);
+    const empty = dayRecordCount(todayRec) === 0 && !summaries[todayRec.dateKey] && notes.length === 0;
     return (
       <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
         <Masthead title={appTitle("journal")} corner={profileButton} />
@@ -201,10 +221,18 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
               </section>
             )}
             {todayRec.entries.length > 0 && (
-              <section>
+              <section style={{ marginBottom: notes.length > 0 ? 26 : 0 }}>
                 <SectionLabel text="記録" style={{ margin: "0 4px 10px" }} />
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {todayRec.entries.map((e) => <EntryCard key={e.id} entry={e} />)}
+                </div>
+              </section>
+            )}
+            {notes.length > 0 && (
+              <section>
+                <SectionLabel text="声のメモ" style={{ margin: "0 4px 10px" }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {notes.map((n) => <VoiceNoteCard key={n.id} note={n} />)}
                 </div>
               </section>
             )}

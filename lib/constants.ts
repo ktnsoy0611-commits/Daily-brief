@@ -105,6 +105,13 @@ export const NAV_PILL_PAD = 6;
 // 背景(AppBackdrop)の地と図形。画面より下(iOSでツールバーが引っ込んだ
 // ときに現れる帯)にも同じ色が要るので、ここに置いて body へも書く。
 export const BD_GREY = "#ECECEA";
+// ★ジャーナル(声の記録)の地と図。参考画像(2026-08-11)から採った、暖かみの
+// ある中間グレー。地と図の差はごくわずか(明度差 約18)で、円は「浮いた面」
+// ではなく「地の濃淡」として読める。
+export const JOURNAL_BG = "#B3B3AE";
+export const JOURNAL_FIG = "#C5C5C1";
+// この地の上での控えめな文字色。
+export const JOURNAL_MUTED = "rgba(26,26,24,0.46)";
 export const BD_LIGHT = "#F3F3F1";
 
 // navのピル自体を画面下端からどれだけ浮かせるか。ホーム画面に追加した

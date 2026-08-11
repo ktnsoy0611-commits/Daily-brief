@@ -100,7 +100,8 @@ interface AppColumnProps {
 }
 
 const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, appState, persist, showToast, goTab, onNavPointerDown, onRecord, navDragged }: AppColumnProps) {
-  const scrollLocked = tab === "brief";
+  // ★1画面で完結し、スクロールさせないタブ。
+  const scrollLocked = tab === "brief" || tab === "journal-record";
   return (
         <div style={{
           position: "relative", isolation: "isolate", width: `${100 / APPS.length}%`, height: "100%",
@@ -340,12 +341,6 @@ export function AppShell() {
   const setDragVar = useCallback((px: number, dragging: boolean) => {
     const root = document.documentElement;
     root.style.setProperty("--drag", `${px}px`);
-    // ★背景の figure が「どれだけ去ったか」も、この同じ書き込みで一緒に
-    // 出す(2026-08-04)。画面を動かすのと同じ変数・同じフレームなので、
-    // 「払ってから背景が動き出すまでの遅れ」が構造的に存在しない。
-    // 画面幅の22%ぶん払ったところで完全にはけ切る(送る判定は18%)。
-    const w = window.innerWidth || 390;
-    root.style.setProperty("--outp", String(Math.min(1, Math.abs(px) / (w * 0.22))));
     root.dataset.dragging = dragging ? "1" : "0";
   }, []);
   const [showProfile, setShowProfile] = useState(false);

@@ -2,29 +2,31 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BD_LIGHT, INK, PAPER, SANS } from "@/lib/constants";
+import { INK, JOURNAL_BG, JOURNAL_FIG, JOURNAL_MUTED, PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import type { VoiceControls, VoiceTrim } from "@/lib/types";
 
-// ★声の記録の画面(2026-08-11 新設)。純粋幾何学ミニマリズム。
-// テクスチャ・写実・3Dの箱はすべてやめ、**ベタ塗りの円と直線だけ**で組む。
+// ★声の記録の画面(2026-08-11・参考画像に合わせて作り直し)。
 //
-// ■ 配置(ユーザー指定)
-//   画面の下部 … 画面をはみ出すほど巨大な円が2つ。カセットのリールの抽象。
-//                 2つの円のあいだは「テープ」を表す直線の帯でつながる。
-//   その上     … 音声波形とタイポグラフィ。
+// ■ 参考にした構図(ユーザー提供の画像)
+//   ・地は暖かみのある中間グレー。**図と地の明度差はごくわずか**(約18)。
+//   ・画面の外に中心を置いた**巨大な円が2つ**、左右から寄ってくる。円は
+//     ただの塗り面で、輪もスポークもハブも持たない(「シンプルな円」)。
+//     2つの円のあいだに残る細い縦の帯(砂時計の腰)が、テープの通り道になる。
+//   ・その上に、数字だけの大きなタイポグラフィ。
+//   ・最下部に1本のバー: 左に ✕、中央に短いラベル、右に濃い丸ボタン。
+//   ・線・枠・影は一切使わない。
 //
 // ■ 手触り
-//   録音中 … 2つの円が実際にテープを巻くように回り、帯の縞が流れる。
+//   録音中 … 2つの円がゆっくり回る(小さな点ひとつだけが回転を示す)。
 //   録音後 … 同じ2つの円が**物理ダイヤル**になる。左の円を回すと波形の
 //            開始位置、右の円を回すと終了位置が動く。1回転で全体の50%
 //            動く重い比率にしてあり、15度ごとに手応え(haptic)を返す。
-//   送信は明示 … 止めた時点では何も起きない。「送信」を押して初めて
-//            文字起こしへ回る。「キャンセル」で捨てる。
+//   送信は明示 … 止めた時点では何も起きない。右の丸(✓)で送り、左の ✕ で捨てる。
 //
 // ■ 性能
-//   波形は canvas に rAF で描く。音量の並びは ref から読むだけなので、
-//   録音中に React のレンダーは1回も走らない(§14の落とし穴を踏まない)。
+//   波形も切り出し位置も **ref** に持ち、canvas へ rAF で描く。指の動きで
+//   React を再レンダーしない(§14で潰した性能の穴を踏まないため)。
 //
 // ■ ハプティクスの限界(正直に書いておく)
 //   haptic() は navigator.vibrate。**iOS Safari はこのAPIを持たない**ため、
@@ -32,16 +34,18 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 
 /** 波形の棒の間隔(px)と太さ(px)。 */
 const BAR_PITCH = 5;
-const BAR_W = 3;
+const BAR_W = 2;
 /** ダイヤル1回転で動かす割合。小さいほど「重い」。 */
 const TURN_RATIO = 0.5;
 /** 手応えを返す刻み(rad)。15度ごと。 */
 const NOTCH = (15 * Math.PI) / 180;
 /** 開始と終了が潰れないよう、最低これだけは残す。 */
 const MIN_SPAN = 0.04;
-/** オーバーレイの地の色。★円の「抜き」と同じ色でなければ段差が出るので、
- *  半透明の幕ではなく**ほぼ不透明**にしてある。 */
-const SCRIM = "#15151A";
+/** 最下部のバーの高さ。 */
+const BAR_H = 74;
+/** 円の半径と中心(器の幅に対する比)。参考画像の腰のくびれ(幅の約16%)に合わせた。 */
+const R_RATIO = 0.97;
+const CX_RATIO = 0.55;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -67,28 +71,26 @@ function resample(levels: number[], n: number): number[] {
 
 export function VoiceStudio({ voice, dim, onClose }: {
   voice: VoiceControls;
-  /** オーバーレイとして暗い幕の上に出すか。 */
+  /** オーバーレイとして幕の上に出すか。 */
   dim?: boolean;
   /** 幕を閉じる(オーバーレイのときだけ)。 */
   onClose?: () => void;
 }) {
+  // 幕の上でも、地と図の関係(わずかな明度差)は同じにする。
+  const ground = dim ? "#2A2A28" : JOURNAL_BG;
+  const figure = dim ? "#3A3A37" : JOURNAL_FIG;
   const fg = dim ? PAPER : INK;
-  const mute = dim ? "rgba(255,255,255,0.26)" : "rgba(26,26,24,0.20)";
-  // 円の「抜き」の色。★背景と完全に同じ色でなければ縁に段差が出る。
-  // 幕(VoiceOverlay)の地は SCRIM で塗りつぶしてあるので、そこと同じ色を使う。
-  const hole = dim ? SCRIM : BD_LIGHT;
+  const mute = dim ? "rgba(255,255,255,0.46)" : JOURNAL_MUTED;
 
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reelL = useRef<HTMLDivElement>(null);
   const reelR = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  // ★トリミングの位置は **ref** で持つ。ダイヤルを回すたびに setState すると
-  // 1ジェスチャーで数十回の再レンダーになり、実測(4倍スロットリング)で
-  // 251ms の long task が乗った。指の動きに追従するものは DOM へ直接書く、
-  // というこのコードベースの流儀(§14)に合わせてある。
-  const trimRef = useRef<VoiceTrim>({ start: 0, end: 1 });
   const timeRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  // ★切り出しの位置は **ref**。ダイヤルを回すたびに setState すると
+  // 1ジェスチャーで数十回の再レンダーになる(§14)。
+  const trimRef = useRef<VoiceTrim>({ start: 0, end: 1 });
   const [elapsed, setElapsed] = useState(0);
 
   const { state, startedAt, durationMs, levelsRef } = voice;
@@ -96,10 +98,8 @@ export function VoiceStudio({ voice, dim, onClose }: {
   const review = state === "review";
   const sending = state === "sending";
 
-  // 録音のたびにトリミングを初期化する。
   useEffect(() => { if (state === "recording" || state === "idle") trimRef.current = { start: 0, end: 1 }; }, [state]);
 
-  // 器の大きさを実測する(円の直径も位置もここから決まる)。
   useLayoutEffect(() => {
     const el = boxRef.current;
     if (!el) return;
@@ -109,8 +109,7 @@ export function VoiceStudio({ voice, dim, onClose }: {
     return () => ro.disconnect();
   }, []);
 
-  // 経過時間。★録音中だけ 100ms 間隔で数える(値そのものは props で
-  // 受け取らない。受け取ると全タブが再レンダーされる)。
+  // 経過時間。★録音中だけ数える(値そのものは props で受け取らない)。
   useEffect(() => {
     if (!recording || !startedAt) { setElapsed(0); return; }
     setElapsed(Date.now() - startedAt);
@@ -118,14 +117,14 @@ export function VoiceStudio({ voice, dim, onClose }: {
     return () => window.clearInterval(id);
   }, [recording, startedAt]);
 
-  // ---- 円の配置(器の幅から決まる)------------------------------------------
+  // ---- 円の配置 --------------------------------------------------------------
   const w = size.w || 390;
-  const h = size.h || 560;
-  const RD = w * 0.66;               // 直径。中心が画面の外なので半分弱しか見えない。
-  const cxL = -w * 0.02;             // ★中心を画面の外に置いて大きくはみ出させる。
-  const cxR = w * 1.02;
-  const cy = h - RD * 0.22;          // 下にもはみ出す。
-  const waveH = Math.max(64, Math.min(112, cy - RD / 2 - 170));
+  const h = size.h || 620;
+  const RD = w * R_RATIO * 2;          // 直径
+  const stageH = h - BAR_H;            // 円が乗る舞台(バーの上まで)
+  const cy = stageH / 2;
+  const cxL = -w * CX_RATIO;
+  const cxR = w * (1 + CX_RATIO);
 
   // ---- 波形を描く ------------------------------------------------------------
   const draw = useCallback(() => {
@@ -146,36 +145,30 @@ export function VoiceStudio({ voice, dim, onClose }: {
 
     const n = Math.max(1, Math.floor(cw / BAR_PITCH));
     const all = levelsRef.current;
-    // 録音中は「いま鳴っている分」が流れて見えるよう末尾だけを見せる。
-    // 止めたあとは全体を均してトリミングできるようにする。
-    const src = recording ? all.slice(-n) : all;
-    const bars = resample(src, n);
+    // 録音中は「いま鳴っている分」が流れて見えるよう末尾だけ。止めたあとは
+    // 全体を均して、どこを切り出すか決められるようにする。
+    const bars = resample(recording ? all.slice(-n) : all, n);
     const t = trimRef.current;
     const mid = ch / 2;
     for (let i = 0; i < n; i++) {
       const r = n <= 1 ? 0 : i / (n - 1);
       const inRange = all.length > 0 && (recording || (r >= t.start && r <= t.end));
-      const hgt = Math.max(2, bars[i] * (ch - 6));
+      const hgt = Math.max(1, bars[i] * (ch - 4));
       c.fillStyle = inRange ? fg : mute;
       c.fillRect(i * BAR_PITCH, mid - hgt / 2, BAR_W, hgt);
     }
     if (!recording && all.length > 0) {
-      // トリミングの位置を示す縦の直線。
       c.fillStyle = fg;
       for (const r of [t.start, t.end]) {
-        const x = Math.min(cw - 2, Math.max(0, r * cw));
-        c.fillRect(x, 0, 2, ch);
+        c.fillRect(Math.min(cw - 1.5, Math.max(0, r * cw)), 0, 1.5, ch);
       }
     }
   }, [fg, mute, recording, levelsRef]);
 
-  // 表示する秒数。review 中はトリミングで刻々と変わるので、rAF から
-  // timeRef へ直接書く(下の drawAll)。
   const shownMs = useCallback(() => (recording ? Date.now() - startedAt
     : review || sending ? durationMs * Math.max(0, trimRef.current.end - trimRef.current.start)
       : 0), [recording, review, sending, startedAt, durationMs]);
 
-  // 波形と秒数をまとめて1回描く。
   const drawAll = useCallback(() => {
     draw();
     if (timeRef.current) timeRef.current.textContent = mmss(shownMs());
@@ -203,8 +196,10 @@ export function VoiceStudio({ voice, dim, onClose }: {
     const ox = r.left + (side === "L" ? cxL : cxR);
     const oy = r.top + cy;
     const el = side === "L" ? reelL.current : reelR.current;
-    const cur = Number(el?.dataset.rot ?? 0);
-    dragRef.current = { id: e.pointerId, side, ang: Math.atan2(e.clientY - oy, e.clientX - ox), notch: 0, rot: cur };
+    dragRef.current = {
+      id: e.pointerId, side, ang: Math.atan2(e.clientY - oy, e.clientX - ox),
+      notch: 0, rot: Number(el?.dataset.rot ?? 0),
+    };
     setSpinning(true);
     haptic(8);
 
@@ -245,7 +240,7 @@ export function VoiceStudio({ voice, dim, onClose }: {
     window.addEventListener("pointercancel", up);
   }, [review, cxL, cxR, cy]);
 
-  // 録音を始めるたびに、ダイヤルの見た目の角度も戻す。
+  // 録音を始めるたびに、ダイヤルの角度も戻す。
   useEffect(() => {
     if (state !== "idle" && state !== "recording") return;
     for (const el of [reelL.current, reelR.current]) {
@@ -256,79 +251,19 @@ export function VoiceStudio({ voice, dim, onClose }: {
   }, [state]);
 
   // ---- 文言 -------------------------------------------------------------------
-  const label = recording ? "RECORDING" : review ? "TRIM" : sending ? "SENDING" : "VOICE";
-  const hint = recording ? "もう一度タップで停止"
-    : review ? "左の円で始点、右の円で終点"
-      : sending ? "文字にしています…"
+  const centerLabel = recording ? "もう一度タップで停止"
+    : review ? "左右の円で切り出す"
+      : sending ? "文字にしています"
         : "タップして録音";
-  const btn: React.CSSProperties = {
-    flex: 1, height: 46, borderRadius: 999, cursor: "pointer",
-    fontFamily: SANS, fontSize: 13, fontWeight: 800, letterSpacing: "0.14em",
-    userSelect: "none", WebkitUserSelect: "none",
-  };
-  const dialCommon: React.CSSProperties = {
-    position: "absolute", width: RD, height: RD, borderRadius: "50%",
-    background: fg, top: cy - RD / 2,
-    touchAction: "none", cursor: review ? "grab" : "default",
-  };
+
+  const canToggle = recording || state === "idle";
 
   return (
-    <div
-      ref={boxRef}
-      style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}
-    >
-      {/* 上の空間。ここをタップすると録音が始まる/止まる。 */}
-      <div
-        onClick={() => { if (recording || state === "idle") voice.toggle(); }}
-        role={recording || state === "idle" ? "button" : undefined}
-        aria-label={recording ? "録音を停止" : "録音を開始"}
-        style={{
-          position: "absolute", left: 0, right: 0, top: 0, height: Math.max(170, cy - RD / 2),
-          display: "flex", flexDirection: "column", justifyContent: "flex-end",
-          padding: "0 24px 16px", gap: 13,
-          cursor: recording || state === "idle" ? "pointer" : "default",
-          userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
-          <div>
-            <div style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: "0.28em", color: mute, marginBottom: 6 }}>
-              {label}
-            </div>
-            <div ref={timeRef} style={{ fontFamily: SANS, fontSize: 46, fontWeight: 800, lineHeight: 1, letterSpacing: "0.02em", color: fg, fontVariantNumeric: "tabular-nums" }}>
-              {mmss(recording ? elapsed : 0)}
-            </div>
-          </div>
-          {/* 録音中の目印。ベタ塗りの円ひとつ。 */}
-          {recording && <div className="vs-blink" style={{ width: 14, height: 14, borderRadius: "50%", background: fg, marginBottom: 6 }} />}
-        </div>
-
-        <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: waveH }} />
-
-        <div style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em", color: mute }}>{hint}</div>
-
-        {/* 送信 / キャンセル。録音を止めてからだけ出す。★円(ダイヤル)に
-            重ならないよう、必ずこの上のブロックの中に置くこと。 */}
-        {review && (
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={(e) => { e.stopPropagation(); voice.send(trimRef.current); }} style={{ ...btn, background: fg, color: dim ? INK : PAPER, border: "none" }}>送信</button>
-            <button onClick={(e) => { e.stopPropagation(); voice.cancel(); }} style={{ ...btn, background: "transparent", color: fg, border: `2px solid ${fg}` }}>キャンセル</button>
-          </div>
-        )}
-      </div>
-
-      {/* テープ。2つの円のあいだにピンと張った直線の帯。録音中は縞が流れる。 */}
-      <div
-        aria-hidden
-        className={recording ? "vs-tape vs-tape-run" : "vs-tape"}
-        style={{
-          position: "absolute", left: cxL, width: cxR - cxL,
-          top: cy - RD * 0.045, height: RD * 0.09,
-          background: fg, opacity: 0.9,
-        }}
-      />
-
-      {/* 巨大な2つの円。録音中は回り、止めるとトリミングのダイヤルになる。 */}
+    <div ref={boxRef} style={{
+      position: "relative", width: "100%", height: "100%", overflow: "hidden", background: ground,
+    }}>
+      {/* 巨大な円ふたつ。ただの塗り面。録音中はゆっくり回り、止めると
+          切り出しのダイヤルになる。 */}
       {(["L", "R"] as const).map((side) => (
         <div
           key={side}
@@ -336,41 +271,91 @@ export function VoiceStudio({ voice, dim, onClose }: {
           data-rot="0"
           className={recording ? "vs-reel-spin" : undefined}
           onPointerDown={(e) => onDialDown(e, side)}
-          style={{ ...dialCommon, left: (side === "L" ? cxL : cxR) - RD / 2 }}
+          style={{
+            position: "absolute", width: RD, height: RD, borderRadius: "50%", background: figure,
+            left: (side === "L" ? cxL : cxR) - RD / 2, top: cy - RD / 2,
+            touchAction: "none", cursor: review ? "grab" : "default",
+          }}
         >
-          {/* リールの意匠。輪(フランジ)・短いスポーク3本・中心のハブ。
-              どれも背景と同じ色で「抜く」ので、ベタ塗りの円に穴が空いて
-              いるように見える。 */}
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{
-              position: "absolute", width: RD * 0.78, height: RD * 0.78, borderRadius: "50%",
-              border: `${RD * 0.028}px solid ${hole}`,
-            }} />
-            {[0, 1, 2].map((i) => (
-              <div key={i} style={{
-                position: "absolute", width: RD * 0.46, height: RD * 0.048,
-                background: hole, transform: `rotate(${i * 60}deg)`,
-              }} />
-            ))}
-            <div style={{ width: RD * 0.20, height: RD * 0.20, borderRadius: "50%", background: hole }} />
-          </div>
+          {/* 回転が読めるようにする、ただ1つの小さな点。 */}
+          <div style={{
+            position: "absolute", left: "50%", top: RD * 0.09, width: RD * 0.022, height: RD * 0.022,
+            marginLeft: -RD * 0.011, borderRadius: "50%", background: mute,
+          }} />
         </div>
       ))}
 
-      {/* オーバーレイのときだけ、閉じるための面(左上)。 */}
-      {dim && onClose && (
-        <button onClick={onClose} aria-label="閉じる" style={{
-          position: "absolute", top: 14, left: 16, width: 34, height: 34, borderRadius: "50%",
-          background: "transparent", border: `2px solid ${mute}`, cursor: "pointer", zIndex: 4,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
-        }}>
-          <div style={{ width: 14, height: 2, background: fg, transform: "rotate(45deg)", position: "absolute" }} />
-          <div style={{ width: 14, height: 2, background: fg, transform: "rotate(-45deg)", position: "absolute" }} />
-        </button>
-      )}
+      {/* 舞台。タップで録音の開始/停止。 */}
+      <div
+        onClick={() => { if (canToggle) voice.toggle(); }}
+        role={canToggle ? "button" : undefined}
+        aria-label={recording ? "録音を停止" : "録音を開始"}
+        style={{
+          position: "absolute", left: 0, right: 0, top: 0, height: stageH,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          padding: "0 26px", gap: 22,
+          cursor: canToggle ? "pointer" : "default",
+          userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
+        }}
+      >
+        <div ref={timeRef} style={{
+          fontFamily: SANS, fontSize: 66, fontWeight: 500, lineHeight: 1,
+          letterSpacing: "-0.02em", color: fg, fontVariantNumeric: "tabular-nums",
+        }}>{mmss(recording ? elapsed : 0)}</div>
+
+        {/* まだ何も録っていないときは波形そのものを出さない(参考画像と同じく、
+            静止しているときの画面には数字とラベルしか無い)。 */}
+        <canvas ref={canvasRef} style={{
+          display: "block", width: "100%", height: 92,
+          visibility: state === "idle" ? "hidden" : "visible",
+        }} />
+      </div>
+
+      {/* 最下部のバー。左に破棄、中央にラベル、右に確定。参考画像と同じ構え。 */}
+      <div style={{
+        position: "absolute", left: 0, right: 0, bottom: 0, height: BAR_H,
+        display: "flex", alignItems: "center", padding: "0 22px", gap: 12,
+      }}>
+        <div style={{ width: 46, display: "flex", justifyContent: "flex-start" }}>
+          {(review || (dim && !recording && !sending)) && (
+            <button
+              onClick={() => { if (review) voice.cancel(); else onClose?.(); }}
+              aria-label={review ? "破棄する" : "閉じる"}
+              style={{ ...plain, width: 34, height: 34, position: "relative" }}
+            >
+              <span style={{ ...bar34, background: fg, transform: "rotate(45deg)" }} />
+              <span style={{ ...bar34, background: fg, transform: "rotate(-45deg)" }} />
+            </button>
+          )}
+        </div>
+
+        <div style={{
+          flex: 1, textAlign: "center", fontFamily: SANS, fontSize: 12.5, fontWeight: 500,
+          letterSpacing: "0.02em", color: mute,
+        }}>{centerLabel}</div>
+
+        <div style={{ width: 46, display: "flex", justifyContent: "flex-end" }}>
+          {review && (
+            <button onClick={() => voice.send(trimRef.current)} aria-label="送信する" style={{
+              ...plain, width: 46, height: 46, borderRadius: "50%", background: fg,
+            }}>
+              {/* ✓ を2本の直線で。 */}
+              <span style={{ position: "absolute", width: 7, height: 2, background: ground, transform: "translate(-4px, 3px) rotate(45deg)" }} />
+              <span style={{ position: "absolute", width: 15, height: 2, background: ground, transform: "translate(2px, 0px) rotate(-45deg)" }} />
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
+const plain: React.CSSProperties = {
+  border: "none", background: "transparent", padding: 0, cursor: "pointer",
+  display: "flex", alignItems: "center", justifyContent: "center",
+  userSelect: "none", WebkitUserSelect: "none",
+};
+const bar34: React.CSSProperties = { position: "absolute", width: 16, height: 1.6 };
 
 // ★どのアプリからでも録音できる全画面のオーバーレイ。タブバー右端の録音
 // アイコンを押すと、いまの画面が暗くなり、その上に同じ VoiceStudio が出る。
@@ -384,10 +369,7 @@ export function VoiceOverlay({ voice, open, onClose }: {
 }) {
   if (!open || typeof document === "undefined") return null;
   return createPortal(
-    <div className="vs-in" style={{
-      position: "fixed", inset: 0, zIndex: 58,
-      background: SCRIM,
-    }}>
+    <div className="vs-in" style={{ position: "fixed", inset: 0, zIndex: 58 }}>
       <VoiceStudio voice={voice} dim onClose={onClose} />
     </div>,
     document.body,

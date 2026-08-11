@@ -7,7 +7,8 @@ import { TAB_ICON_OFF, TabGlyph, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
-import { HOLD_MS, RecordingOverlay, useVoiceRecorder } from "@/components/VoiceRecorder";
+import { useVoiceRecorder } from "@/components/VoiceRecorder";
+import { VoiceOverlay } from "@/components/VoiceStudio";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { GoalsTab } from "@/components/tabs/GoalsTab";
@@ -94,14 +95,11 @@ interface AppColumnProps {
   showToast: (msg: string) => void;
   goTab: (id: TabId) => void;
   onNavPointerDown: (e: ReactPointerEvent) => void;
-  onWrite: (id: AppId) => void;
-  beginHold: () => void;
-  endHold: () => void;
+  onRecord: () => void;
   navDragged: React.MutableRefObject<boolean>;
-  held: React.MutableRefObject<boolean>;
 }
 
-const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, appState, persist, showToast, goTab, onNavPointerDown, onWrite, beginHold, endHold, navDragged, held }: AppColumnProps) {
+const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, appState, persist, showToast, goTab, onNavPointerDown, onRecord, navDragged }: AppColumnProps) {
   const scrollLocked = tab === "brief";
   return (
         <div style={{
@@ -251,20 +249,18 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                   );
                 })}
               </div>
-              {/* 右の丸ボタンはアプリごとの「書く」入口。今のアプリでは
-                  ウィッシュ(どのタブからでも書ける受信箱)。タスク・ジャーナルの
-                  中身は後で作るため、今は場所だけ確保してある。 */}
+              {/* ★右端の丸ボタンは**録音**。3つのアプリすべてで同じ位置・
+                  同じ意味の常設ボタンにしてある(ユーザー指定)。どのタブから
+                  押しても、いまの画面が暗くなって声の記録が開く。 */}
               <button
-                onPointerDown={beginHold}
-                onPointerUp={endHold}
-                onPointerCancel={endHold}
-                onPointerLeave={endHold}
-                onContextMenu={(e) => e.preventDefault()}
-                onClick={() => { if (navDragged.current || held.current) return; onWrite(a.id); }} aria-label={a.id === "life" ? "ウィッシュを書く" : a.id === "tasks" ? "タスクを足す" : "ジャーナルを書く"} style={{
-                flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
-              }}>
-                <TabIcon name={a.id === "life" ? "sparkle" : a.id === "tasks" ? "plus" : "pen"} color={PAPER} size={22} />
+                onClick={() => { if (navDragged.current) return; onRecord(); }}
+                aria-label="録音する"
+                style={{
+                  flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
+                }}
+              >
+                <TabIcon name="record" color={PAPER} size={22} />
               </button>
             </div>
           </nav>
@@ -743,22 +739,31 @@ export function AppShell() {
     showToast("声のメモを保存しました");
   }, [appState, persist, showToast]);
   const recorder = useVoiceRecorder({ onDone: addVoiceNote, onError: (m) => showToast(m) });
-  // 長押しの判定。押しっぱなしがHOLD_MSを超えたら録音を始め、離した時点で
-  // 録音していたなら確定(=タップとしては扱わない)。
-  const holdTimerRef = useRef<number | null>(null);
-  const heldRef = useRef(false);
+  // ★録音の入口はタブバー右端の丸ボタンひとつ。押すと全画面のオーバーレイ
+  // (VoiceOverlay)が開き、そこでタップして録音を始め、もう一度タップで
+  // 止める。長押しでの録音(以前のトランシーバー式)は廃止した。
+  const [studioOpen, setStudioOpen] = useState(false);
   const recorderRef = useRef(recorder);
   recorderRef.current = recorder;
-  const beginHold = useCallback(() => {
-    heldRef.current = false;
-    if (holdTimerRef.current != null) window.clearTimeout(holdTimerRef.current);
-    holdTimerRef.current = window.setTimeout(() => { heldRef.current = true; recorderRef.current.start("hold"); }, HOLD_MS);
+  const onRecord = useCallback(() => {
+    haptic(6);
+    setStudioOpen(true);
   }, []);
-  const endHold = useCallback(() => {
-    if (holdTimerRef.current != null) window.clearTimeout(holdTimerRef.current);
-    holdTimerRef.current = null;
-    if (heldRef.current) recorderRef.current.stop();
+  const closeStudio = useCallback(() => {
+    // 録音中/確認中のまま閉じたら、その録音は捨てる。
+    if (recorderRef.current.state === "recording" || recorderRef.current.state === "review") recorderRef.current.cancel();
+    setStudioOpen(false);
   }, []);
+  // ★送信が**終わったとき**だけオーバーレイを閉じる。
+  // 「いま idle なら閉じる」と書くと、開いた瞬間(まだ録音していない=idle)に
+  // 閉じてしまい、オーバーレイが一度も出ない。sending → idle という
+  // 「遷移」を見ること。
+  const prevRecStateRef = useRef(recorder.state);
+  useEffect(() => {
+    const prev = prevRecStateRef.current;
+    prevRecStateRef.current = recorder.state;
+    if (prev === "sending" && recorder.state === "idle") setStudioOpen(false);
+  }, [recorder.state]);
 
   // ダッシュボードからのタスクのチェック。
   const toggleTask = useCallback((id: string) => {
@@ -809,19 +814,19 @@ export function AppShell() {
   // ここへ入れると、そのたびにtabPropsが作り直されて全タブが再レンダー
   // される)。録音の開始時刻だけを渡し、経過時間は表示する側が自分で数える。
   const voice = useMemo<VoiceControls>(
-    () => ({ state: recorder.state, origin: recorder.origin, startedAt: recorder.startedAt, start: recorder.start, stop: recorder.stop }),
-    [recorder.state, recorder.origin, recorder.startedAt, recorder.start, recorder.stop],
+    () => ({
+      state: recorder.state, startedAt: recorder.startedAt, durationMs: recorder.durationMs,
+      levelsRef: recorder.levelsRef, toggle: recorder.toggle, send: recorder.send, cancel: recorder.cancel,
+    }),
+    [recorder.state, recorder.startedAt, recorder.durationMs, recorder.levelsRef, recorder.toggle, recorder.send, recorder.cancel],
   );
+  // ウィッシュを書く入口。タブバーの右端は録音に譲ったので、いまは
+  // ストックタブ(ウィッシュの一覧がある場所)から開く。
+  const openWishSheet = useCallback(() => { haptic(5); setAddingWish(true); }, []);
   const tabProps = useMemo(
-    () => (appState ? { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection, voice } as TabProps : null),
-    [appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, voice],
+    () => (appState ? { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection, voice, openWishSheet } as TabProps : null),
+    [appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, voice, openWishSheet],
   );
-  // タブバー右の丸ボタン(アプリごとの「書く」入口)。
-  const onWrite = useCallback((id: AppId) => {
-    haptic(5);
-    if (id === "life") setAddingWish(true);
-    else showToast("この機能はこれから作ります");
-  }, [showToast]);
 
   // 認証ゲート(Supabase構成済みのときだけ)。未構成なら以下の2分岐は素通り。
   if (isSupabaseConfigured && !authReady) {
@@ -930,11 +935,8 @@ export function AppShell() {
           showToast={showToast}
           goTab={goTab}
           onNavPointerDown={onNavPointerDown}
-          onWrite={onWrite}
-          beginHold={beginHold}
-          endHold={endHold}
+          onRecord={onRecord}
           navDragged={navDraggedRef}
-          held={heldRef}
         />
       ))}
       </div>
@@ -949,8 +951,8 @@ export function AppShell() {
 
       {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}
 
-      {/* 録音中/文字起こし中の幕。 */}
-      <RecordingOverlay state={recorder.state} origin={recorder.origin} elapsed={recorder.elapsed} />
+      {/* ★どのアプリからでも開く、声の記録の全画面オーバーレイ。 */}
+      <VoiceOverlay voice={voice} open={studioOpen} onClose={closeStudio} />
 
       {/* ★ダッシュボード。タブバーを上へ引き上げる(または選択の目印をタップ
           する)と、3つのアプリのどこからでも開く共通の引き出し。選んでいる

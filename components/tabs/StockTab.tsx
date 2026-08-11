@@ -4,6 +4,7 @@ import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Pack
 import { useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn, SectionLabel } from "@/components/common";
+import { TabIcon } from "@/components/TabIcons";
 import { appTitle } from "@/lib/apps";
 import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
 import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
@@ -195,7 +196,7 @@ function StackSection({ title, children }: { title: string; children: React.Reac
 // 書く自由文の受信箱で、ブリーフが形にして返したカードだけがここに並ぶ)。
 // ブリーフのKEEP由来のカードにはKEEP、ウィッシュが形になったカードには
 // WISHのバッジが付き、手動追加したものと見分けられる。
-export function StockTab({ appState, persist, showToast, profileButton, selection, toggleItemSelection }: TabProps) {
+export function StockTab({ appState, persist, showToast, profileButton, selection, toggleItemSelection, openWishSheet }: TabProps) {
   const [openDomain, setOpenDomain] = useState<ItemDomain | null>(null);
   const [adding, setAdding] = useState<ItemDomain | null>(null);
   const [itemDetail, setItemDetail] = useState<Item | null>(null);
@@ -293,9 +294,21 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
         {/* ★ウィッシュ。棚(4ドメイン)の下に、書いたものすべてを新しい順に
             並べる平たいリスト。左のチェックは「派生カードが実際に実行された
             か」の自動判定(isWishBound)で、タップでの手動トグルは持たない。 */}
+        <section style={{ marginTop: 10 }}>
+          {/* ★ウィッシュを書く入口。タブバーの右端は録音に譲ったので、
+              一覧のあるここに置いた(見出しの右の丸ボタン)。 */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <SectionLabel text="ウィッシュ" />
+            <button onClick={openWishSheet} aria-label="ウィッシュを書く" style={{
+              width: 30, height: 30, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0,
+            }}>
+              <TabIcon name="sparkle" color={PAPER} size={15} />
+            </button>
+          </div>
+        </section>
         {allWishesDesc.length > 0 && (
-          <section style={{ marginTop: 10 }}>
-            <SectionLabel text="ウィッシュ" style={{ marginBottom: 10 }} />
+          <section>
             <div style={{ display: "flex", flexDirection: "column" }}>
               {allWishesDesc.map((w) => {
                 const bound = isWishBound(w, appState.items);

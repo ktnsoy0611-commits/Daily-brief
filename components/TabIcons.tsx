@@ -16,7 +16,7 @@ export type TabIconName =
   | "list" | "pie" | "layers" | "pin"
   | "venn" | "toggle" | "grid"
   | "pen" | "dots" | "cassette"
-  | "sparkle" | "plus" | "gear";
+  | "sparkle" | "plus" | "gear" | "record";
 
 const S = 24;
 // 未選択のアイコンの色。**不透明**にすること(半透明にすると上記の
@@ -185,6 +185,14 @@ function shapes(name: TabIconName, c: string) {
         <>
           <path d={GEAR_PATH} fill={c} opacity={PALE} />
           <circle cx="12" cy="12" r="3.4" fill={c} />
+        </>
+      );
+    // 録音 = 同心の円ふたつ。外の輪が薄く、中の点が濃い。
+    case "record":
+      return (
+        <>
+          <circle cx="12" cy="12" r="10.4" fill={c} opacity={PALE} />
+          <circle cx="12" cy="12" r="5.2" fill={c} />
         </>
       );
     // 追加 = 直交する2本の面。

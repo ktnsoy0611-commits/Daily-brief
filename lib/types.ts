@@ -420,19 +420,35 @@ export interface PlanSelection {
 
 // 録音の状態。タブバー右の丸ボタンの長押し(origin:"hold")と、ジャーナルの
 // レコードタブのタップ(origin:"tab")のどちらからでも同じ録音を動かす。
-export type RecordState = "idle" | "recording" | "sending";
-export type RecordOrigin = "hold" | "tab";
+// 録音は「タップで始めて、タップで止める」トグル。止めても即座には送らず、
+// review(トリミングして送るか捨てるかを決める状態)で待つ。
+export type RecordState = "idle" | "recording" | "review" | "sending";
+
+export interface VoiceTrim {
+  /** 0〜1。波形のどこから使うか。 */
+  start: number;
+  /** 0〜1。どこまで使うか。 */
+  end: number;
+}
 
 export interface VoiceControls {
   state: RecordState;
-  origin: RecordOrigin;
   /** 録音を始めた時刻(ms)。0 なら録音していない。
    *  ★経過時間そのものは持たせない。100msごとに変わる値をタブへ渡すと、
    *  そのたびに全タブのpropsが作り直されて再レンダーが走る(§14で潰した
    *  性能の落とし穴)。経過時間の表示が要る側が、この時刻から自分で数える。 */
   startedAt: number;
-  start: (origin?: RecordOrigin) => void;
-  stop: (cancel?: boolean) => void;
+  /** 録音し終えた長さ(ms)。review 以降で使う。 */
+  durationMs: number;
+  /** 波形の高さ(0〜1)の並び。★同じ理由で state ではなく **ref** で渡す。
+   *  録音中は 45ms ごとに増えるので、描く側が rAF で読みに来る。 */
+  levelsRef: { current: number[] };
+  /** タップでの開始/停止。 */
+  toggle: () => void;
+  /** トリミングを適用して文字起こしへ送る。 */
+  send: (trim: VoiceTrim) => void;
+  /** 破棄して idle へ戻す。 */
+  cancel: () => void;
 }
 
 export interface TabProps {
@@ -447,4 +463,7 @@ export interface TabProps {
   toggleItemSelection: (id: string) => void;
   addItemIds: (ids: string[]) => void;
   setSelection: (next: PlanSelection) => void;
+  /** ✨ウィッシュの入力シートを開く。タブバー右端は録音に譲ったので、
+   *  いまはストックタブ(ウィッシュの一覧がある場所)から開く。 */
+  openWishSheet: () => void;
 }

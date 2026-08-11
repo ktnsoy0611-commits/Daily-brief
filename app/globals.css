@@ -347,22 +347,36 @@ button:active {
   .tab-in { animation: none; }
 }
 
-/* ★声のメモのカセットプレイヤー(components/CassettePlayer.tsx)。
-   録音中は画面の中央に出てきてリールが回り、送信すると蓋が開いて中の
-   カセットが飛んでいく。 */
+/* ★声の記録(components/VoiceStudio.tsx)。純粋幾何学ミニマリズム。
+   画面の下部に置いた巨大な円が2つ = カセットのリールの抽象で、そのあいだを
+   「テープ」の直線の帯がつなぐ。録音中は円が回り、帯の縞が流れる。 */
 
-/* 出てくるとき。少し下から、ひとまわり小さいところから。 */
-@keyframes cp-enter {
-  from { opacity: 0; transform: translateY(24px) scale(0.86); }
-  to   { opacity: 1; transform: none; }
+@keyframes vs-spin { to { transform: rotate(360deg); } }
+.vs-reel-spin { animation: vs-spin 3.2s linear infinite; }
+
+/* テープの帯。縞は repeating-linear-gradient(直線だけ)で、録音中は
+   背景の位置を動かして流れて見せる。 */
+.vs-tape {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0 14px,
+    rgba(0, 0, 0, 0.22) 14px 18px
+  );
+  background-size: 18px 100%;
 }
-.cp-enter { animation: cp-enter 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes vs-tape { to { background-position-x: 18px; } }
+.vs-tape-run { animation: vs-tape 260ms linear infinite; }
 
-/* 蓋が開く・カセットが飛ぶ・リールが回る、はモデル側(React Three Fiber)の
-   useFrame が持つ。CSSのキーフレームはもう使わない。 */
+/* 録音中の印。ベタ塗りの円がゆっくり明滅するだけ。 */
+@keyframes vs-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.vs-blink { animation: vs-blink 1.15s ease-in-out infinite; }
+
+/* オーバーレイが出るとき。 */
+@keyframes vs-in { from { opacity: 0; } to { opacity: 1; } }
+.vs-in { animation: vs-in 220ms ease-out; }
 
 @media (prefers-reduced-motion: reduce) {
-  .cp-enter { animation: none; }
+  .vs-reel-spin, .vs-tape-run, .vs-blink, .vs-in { animation: none; }
 }
 
 /* インボックスの候補がふわふわ漂う動き。上下にゆっくり揺れるだけの

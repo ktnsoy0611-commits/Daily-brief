@@ -23,9 +23,10 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //   ・切り出し中の秒数は、**触っている円にだけ**出す。
 //
 // ■ 手触り
-//   ・画面を開いたとき/録音を始めたときに、円が左右から入ってくる。
+//   ・画面を開いたときに、円が左右から入ってくる(★録音の開始では流さない)。
 //   ・録音中は円がゆっくり回る。縁の目盛りで回転が読める。
-//   ・円を掴んだ合図は haptic だけ(縁の線の色は変えない)。
+//   ・円を掴むと**その円だけ少しふくらむ**(縁の線の色は変えない)。
+//     iPhoneのWebアプリでは手応えが返らないので、目で分かる反応にしてある。
 //   ・指を離すと**惰性**で回り続け、摩擦で止まる。止まったところで長さを確定。
 //
 // ■ 操作キー(下段)
@@ -44,6 +45,8 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 // ■ ハプティクスの限界(正直に書いておく)
 //   haptic() は navigator.vibrate。**iOS Safari はこのAPIを持たない**ため、
 //   実機(iPhone)では手応えは返らない。Androidと対応ブラウザでのみ効く。
+//   → だから掴んだ合図は**視覚**(円がふくらむ)で持たせている。haptic の
+//     呼び出しはAndroid向けの付け足しとして残してあるだけ。
 
 /** 波形の棒の間隔と太さ(px)。太めで、両端は丸い。 */
 const BAR_PITCH = 9;
@@ -54,20 +57,17 @@ const TURN_RATIO = 0.5;
 const NOTCH = (15 * Math.PI) / 180;
 /** 開始と終了が潰れないよう、最低これだけは残す。 */
 const MIN_SPAN = 0.04;
-/** 最下部のバーの高さ。 */
-const BAR_H = 96;
 /** ダイヤルの直径(器の幅に対する比)。画面をはみ出す大きさ。 */
-const DIAL_RATIO = 1.94;
+const DIAL_RATIO = 1.70;
 /** 中心のx(器の幅に対する比)。左右へ大きくはみ出す。 */
-const DIAL_CX = 0.55;
-/** 中心のyを、器の下端からどれだけ上に置くか(直径に対する比)。
- *  ★ここが砂時計の腰=いちばん掴みやすい高さになるので、下寄りにする。 */
-const DIAL_CY_UP = 0.30;
+const DIAL_CX = 0.50;
+/** 中心のy(器の高さに対する比)。真ん中より少し下。
+ *  ★タブの中でも全画面のオーバーレイでも**同じ**にすること(ユーザー指定)。 */
+const DIAL_CY = 0.60;
 /** 縁の目盛りの本数。 */
 const TICKS = 5;
-/** 物理キーの寸法。出っ張り(depth)ぶん、押されていないと上に浮いて見える。 */
-const KEY_W = 66;
-const KEY_H = 34;
+/** 物理キーの寸法。丸いキーで、出っ張り(depth)ぶん浮いて見える。 */
+const KEY_D = 54;
 const KEY_DEPTH = 6;
 /** ランプの色。トリミングの縦線もこの赤を使う。 */
 const LAMP_REC = "#D0412B";
@@ -97,12 +97,24 @@ function resample(levels: number[], n: number): number[] {
   return out;
 }
 
-export function VoiceStudio({ voice, dim, onClose }: {
+export function VoiceStudio({ voice, dim, onClose, bleed = "0px", keyBottom = "24px" }: {
   voice: VoiceControls;
   /** オーバーレイとして幕の上に出すか。 */
   dim?: boolean;
   /** 幕を閉じる(オーバーレイのときだけ)。 */
   onClose?: () => void;
+  /** ★器より下へどれだけはみ出すか(CSSの長さ)。
+   *  タブの中ではタブバーのぶんだけ**下へ潜らせる**。こうしないと円が
+   *  タブバーの上端でスパッと切れ、そこに横一直線の境目が出る(実機で
+   *  「画面の下部がタブのところで切れている」と報告された症状)。
+   *  ★これを入れることで、器の実高さが「タブの中」でも「全画面の
+   *  オーバーレイ」でもほぼ画面いっぱいで揃う。円の位置は器の高さから
+   *  決めているので、結果として**両者の円がぴったり同じ**になる
+   *  (ユーザー指定)。 */
+  bleed?: string;
+  /** 操作キーを器の下端からどれだけ上に置くか。タブの中ではタブバーの
+   *  ぶん(=bleed)、オーバーレイではセーフエリアぶん。 */
+  keyBottom?: string;
 }) {
   // 幕の上でも、地と図の関係(わずかな明度差)は同じにする。
   const ground = dim ? "#2A2A28" : JOURNAL_BG;
@@ -153,8 +165,11 @@ export function VoiceStudio({ voice, dim, onClose }: {
     if (state === "review") setKeptMs(durationMs);
   }, [state, durationMs]);
 
-  // ★円の入場。画面を開いたとき(mount)と、録音を始めた瞬間に流す。
-  useEffect(() => { if (state === "idle" || state === "recording") setEnterKey((n) => n + 1); }, [state]);
+  // ★円の入場は**画面が出たときだけ**。以前は録音を始めた瞬間にも流して
+  // いたが、getUserMedia の許可待ちのぶん遅れて再生され、しかも同時に回転が
+  // 始まるため「録音し始めると円が変な挙動をする」と報告された。
+  // 入場は画面の初回表示に限る(remount しないので rot も保たれる)。
+  useEffect(() => { setEnterKey(1); }, []);
 
   useLayoutEffect(() => {
     const el = boxRef.current;
@@ -183,9 +198,7 @@ export function VoiceStudio({ voice, dim, onClose }: {
   const w = size.w || 390;
   const h = size.h || 620;
   const RD = w * DIAL_RATIO;                 // 直径
-  // ★オーバーレイ(全画面)のときは、腰を画面の真ん中あたりに置く。
-  // タブの中に置くときは、見出しのぶん下寄りにして親指の届く高さにする。
-  const cy = dim ? h * 0.54 : h - RD * DIAL_CY_UP;
+  const cy = h * DIAL_CY;                    // 真ん中より少し下(タブ・幕で共通)
   const cxL = -w * DIAL_CX;
   const cxR = w * (1 + DIAL_CX);
 
@@ -213,6 +226,14 @@ export function VoiceStudio({ voice, dim, onClose }: {
     const bars = resample(recording ? all.slice(-n) : all, n);
     const t = trimRef.current;
     const mid = ch / 2;
+    // 中心線。波形が無いときも基準として見えるように、常に引く。
+    c.lineWidth = 1;
+    c.lineCap = "butt";
+    c.strokeStyle = mute;
+    c.beginPath();
+    c.moveTo(0, mid);
+    c.lineTo(cw, mid);
+    c.stroke();
     // ★太い線＋丸い端。存在感を出すため、塗りではなく線で描く。
     c.lineWidth = BAR_W;
     c.lineCap = "round";
@@ -220,6 +241,9 @@ export function VoiceStudio({ voice, dim, onClose }: {
       const r = n <= 1 ? 0 : i / (n - 1);
       const inRange = all.length > 0 && (recording || (r >= t.start && r <= t.end));
       const hgt = Math.max(0, bars[i] * (ch - BAR_W));
+      // ★高さゼロの棒は描かない。丸い端(lineCap:"round")のせいで、長さの無い
+      // 線が直径5pxの**点**として描かれ、中心線が数珠つなぎに見えてしまう。
+      if (hgt < 0.5) continue;
       const x = BAR_W / 2 + i * BAR_PITCH;
       c.strokeStyle = inRange ? fg : mute;
       c.beginPath();
@@ -439,13 +463,18 @@ export function VoiceStudio({ voice, dim, onClose }: {
   const centerLabel = recording ? "もう一度 REC で停止"
     : review ? "左右の円で切り出す"
       : sending ? "文字にしています"
-        : "REC を押して録音";
+        : "";
 
   const canToggle = recording || state === "idle";
 
   return (
     <div ref={boxRef} style={{
-      position: "relative", width: "100%", height: "100%", overflow: "hidden", background: ground,
+      position: "relative", width: "100%",
+      // ★タブバーのぶんだけ下へはみ出す。はみ出した先は祖先
+      // (data-tab-scroll-root)が画面の下端で切ってくれるので、円は
+      // タブバーの下へ自然に潜り込んで消える。
+      height: `calc(100% + ${bleed})`,
+      overflow: "hidden", background: ground,
     }}>
       {/* 巨大な円ふたつ。ただの塗り面＋縁の目盛り。
           ★重なり順とポインタの通し方に注意: 舞台(タップで録音)はこの上に
@@ -458,15 +487,26 @@ export function VoiceStudio({ voice, dim, onClose }: {
           onPointerDown={(e) => onDialDown(e, side)}
           style={{
             position: "absolute", width: RD, height: RD, borderRadius: "50%",
-            // ★掴んだ反応で**この円の塗りは変えない**。直径が画面幅の約2倍
-            // あるため、背景色を変えるだけで 757px の面が塗り直され、
+            // ★掴んだ反応で**塗りの色は変えない**。直径が画面幅の約2倍
+            // あるため、背景色を変えるだけで巨大な面が塗り直され、
             // transition を付けるとそれが十数フレーム続く(実測でこれだけで
-            // 1ドラッグ約500msのコスト)。反応は目盛りと数字で見せる。
+            // 1ドラッグ約500msのコスト)。
             background: figure,
             left: (side === "L" ? cxL : cxR) - RD / 2, top: cy - RD / 2,
             zIndex: 1, touchAction: "none",
             pointerEvents: review ? "auto" : "none",
             cursor: review ? "grab" : "default",
+            // ★掴んだ合図は「一瞬ふくらむ」。iPhoneのWebアプリでは
+            // navigator.vibrate が無く手応えが返らないため、目で分かる
+            // 反応にする(ユーザー指定)。**transform だけ**を動かし、
+            // will-change で合成レイヤーへ上げてあるので、塗り直しは
+            // 起きず合成のやり直しだけで済む。
+            // ★will-change は**掴める間(review)だけ**。常時付けると、
+            // この巨大な面が2枚とも合成レイヤーに居座り続け、録音中の
+            // 描画が実測で 60ms → 160ms(4倍スロットリング)まで重くなった。
+            willChange: review ? "transform" : undefined,
+            transform: active === side ? "scale(1.028)" : "scale(1)",
+            transition: "transform 200ms cubic-bezier(0.16,1,0.3,1)",
           }}
         >
           {/* ★回るのはこの層だけ。塗りつぶしの円は回転対称なので静止させる。
@@ -538,11 +578,8 @@ export function VoiceStudio({ voice, dim, onClose }: {
           opacity: recording ? 1 : 0, height: 19,
         }}>{mmss(elapsed)}</div>
 
-        {/* まだ何も録っていないときは波形を出さない。 */}
-        <canvas ref={canvasRef} style={{
-          display: "block", width: "100%", height: 104,
-          visibility: state === "idle" ? "hidden" : "visible",
-        }} />
+        {/* 中心線は常に見せる。棒は録ったぶんだけ立つ。 */}
+        <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: 104 }} />
 
         {/* 録音を終えたあとの長さ。★存在感は出さない(ユーザー指定)。
             素の書体で、細く・小さく・字間を広げて置くだけ。 */}
@@ -562,14 +599,22 @@ export function VoiceStudio({ voice, dim, onClose }: {
             RESET … 切り出しの範囲を全体へ戻す。
             SEND  … 文字起こしへ送る。 */}
       <div style={{
-        position: "absolute", left: 0, right: 0, bottom: 0, height: BAR_H, zIndex: 3,
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 9,
+        // ★高さは中身に任せる(下端が keyBottom)。以前は固定の96pxで中央寄せに
+        // していたため、キーの下のラベル(REC/RESET/…)が枠からはみ出し、
+        // タブバーに隠れて切れていた。
+        position: "absolute", left: 0, right: 0, bottom: `calc(${keyBottom} + 10px)`, zIndex: 3,
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 9,
+        // ★この帯は画面幅いっぱい・高さ96pxある。素通しにしておかないと、
+        // 帯の空いている所(キーの左右・文言の行)で指を吸ってしまい、その下の
+        // ダイヤルが回せなくなる。指を受けるのはキーそのものだけにする
+        // (このコードベースで一度やらかした「円が一切操作できない」と同じ罠)。
+        pointerEvents: "none",
       }}>
         <div style={{
           fontFamily: SANS, fontSize: 11.5, fontWeight: 500,
           letterSpacing: "0.02em", color: mute,
         }}>{centerLabel}</div>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 9 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 9, pointerEvents: "auto" }}>
         <TransportKey
           label="REC" ring={LAMP_REC}
           pressed={recording} enabled={!sending}
@@ -648,11 +693,11 @@ function TransportKey({ label, lamp, ring, cross, pressed, enabled, lit, onPress
   const down = pressed || held || !enabled;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-      <div style={{ position: "relative", width: KEY_W, height: KEY_H + KEY_DEPTH }}>
+      <div style={{ position: "relative", width: KEY_D, height: KEY_D + KEY_DEPTH }}>
         {/* キーが沈む「穴」。出っ張っているときはここが影として見える。 */}
         <div style={{
-          position: "absolute", left: 0, bottom: 0, width: KEY_W, height: KEY_H,
-          borderRadius: 8, background: well,
+          position: "absolute", left: 0, bottom: 0, width: KEY_D, height: KEY_D,
+          borderRadius: "50%", background: well,
         }} />
         <button
           onPointerDown={() => { if (enabled) { setHeld(true); haptic(7); } }}
@@ -664,8 +709,8 @@ function TransportKey({ label, lamp, ring, cross, pressed, enabled, lit, onPress
           aria-label={label}
           aria-pressed={pressed}
           style={{
-            position: "absolute", left: 0, bottom: 0, width: KEY_W, height: KEY_H,
-            borderRadius: 8, border: "none", padding: 0,
+            position: "absolute", left: 0, bottom: 0, width: KEY_D, height: KEY_D,
+            borderRadius: "50%", border: "none", padding: 0,
             background: enabled ? figure : capOff,
             transform: `translateY(${down ? 0 : -KEY_DEPTH}px)`,
             transition: "transform 90ms cubic-bezier(0.32,0.72,0,1), background 160ms ease",
@@ -723,7 +768,9 @@ export function VoiceOverlay({ voice, open, onClose }: {
   if (!open || typeof document === "undefined") return null;
   return createPortal(
     <div className="vs-in" style={{ position: "fixed", inset: 0, zIndex: 58 }}>
-      <VoiceStudio voice={voice} dim onClose={onClose} />
+      {/* ★器の高さは画面いっぱい。タブの中の器も bleed でここと同じ高さに
+          揃えてあるので、円の大きさ・位置が両者で必ず一致する。 */}
+      <VoiceStudio voice={voice} dim onClose={onClose} keyBottom="max(20px, env(safe-area-inset-bottom))" />
     </div>,
     document.body,
   );

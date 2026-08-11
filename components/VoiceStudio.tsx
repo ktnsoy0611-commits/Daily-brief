@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GeoText } from "@/components/GeoType";
-import { INK, JOURNAL_BG, JOURNAL_FIG, JOURNAL_MUTED, PAPER, SANS } from "@/lib/constants";
+import { GOLD, GREEN, INK, JOURNAL_BG, JOURNAL_FIG, JOURNAL_MUTED, PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import type { VoiceControls, VoiceTrim } from "@/lib/types";
 
@@ -48,7 +48,7 @@ const NOTCH = (15 * Math.PI) / 180;
 /** 開始と終了が潰れないよう、最低これだけは残す。 */
 const MIN_SPAN = 0.04;
 /** 最下部のバーの高さ。 */
-const BAR_H = 74;
+const BAR_H = 96;
 /** ダイヤルの直径(器の幅に対する比)。画面をはみ出す大きさ。 */
 const DIAL_RATIO = 1.94;
 /** 中心のx(器の幅に対する比)。左右へ大きくはみ出す。 */
@@ -58,6 +58,12 @@ const DIAL_CX = 0.55;
 const DIAL_CY_UP = 0.30;
 /** 縁の目盛りの本数。 */
 const TICKS = 5;
+/** 物理キーの寸法。出っ張り(depth)ぶん、押されていないと上に浮いて見える。 */
+const KEY_W = 74;
+const KEY_H = 34;
+const KEY_DEPTH = 6;
+/** ランプの色。 */
+const LAMP_REC = "#D0412B";
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -112,6 +118,10 @@ export function VoiceStudio({ voice, dim, onClose }: {
   const fg = dim ? PAPER : INK;
   const mute = dim ? "rgba(255,255,255,0.46)" : JOURNAL_MUTED;
   const tick = dim ? "rgba(255,255,255,0.40)" : "rgba(26,26,24,0.38)";
+  // 物理キーの色。★どれも不透明にする(下が明るい円か地かで変わらないように)。
+  const well = dim ? "#141417" : "#8F8F89";
+  const capOff = dim ? "#383835" : "#A6A6A0";
+  const lampOff = dim ? "#1F1F22" : "#8A8A84";
 
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -343,11 +353,23 @@ export function VoiceStudio({ voice, dim, onClose }: {
     }
   }, [state, enterKey]);
 
+  // 切り出しの範囲を全体へ戻す。ダイヤルの角度も0へ。
+  const resetTrim = useCallback(() => {
+    trimRef.current = { start: 0, end: 1 };
+    for (const el of [reelL.current, reelR.current]) {
+      if (!el) continue;
+      el.dataset.rot = "0";
+      el.style.transform = "";
+    }
+    setKeptMs(durationMs);
+    haptic(9);
+  }, [durationMs]);
+
   // ---- 文言 -------------------------------------------------------------------
-  const centerLabel = recording ? "もう一度タップで停止"
+  const centerLabel = recording ? "もう一度 REC で停止"
     : review ? "左右の円で切り出す"
       : sending ? "文字にしています"
-        : "タップして録音";
+        : "REC を押して録音";
 
   const canToggle = recording || state === "idle";
   const geoSize = Math.min(52, w * 0.132);
@@ -459,41 +481,133 @@ export function VoiceStudio({ voice, dim, onClose }: {
         </div>
       </div>
 
-      {/* 最下部のバー。左に破棄、中央にラベル、右に確定。 */}
+      {/* ★最下部は、カセットプレイヤーの操作キーを模した3つの物理ボタン。
+          出っ張り(KEY_DEPTH)があり、押されると沈む。押せない間は沈んだまま
+          暗く、押せるようになるとランプが灯る。
+            REC   … 録音の開始/停止。録音中は押し込まれたまま。
+            RESET … 切り出しの範囲を全体へ戻す。
+            SEND  … 文字起こしへ送る。 */}
       <div style={{
         position: "absolute", left: 0, right: 0, bottom: 0, height: BAR_H, zIndex: 3,
-        display: "flex", alignItems: "center", padding: "0 22px", gap: 12,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 9,
       }}>
-        <div style={{ width: 46, display: "flex", justifyContent: "flex-start" }}>
-          {(review || (dim && !recording && !sending)) && (
-            <button
-              onClick={() => { if (review) voice.cancel(); else onClose?.(); }}
-              aria-label={review ? "破棄する" : "閉じる"}
-              style={{ ...plain, width: 34, height: 34, position: "relative" }}
-            >
-              <span style={{ ...bar34, background: fg, transform: "rotate(45deg)" }} />
-              <span style={{ ...bar34, background: fg, transform: "rotate(-45deg)" }} />
-            </button>
-          )}
-        </div>
-
         <div style={{
-          flex: 1, textAlign: "center", fontFamily: SANS, fontSize: 12.5, fontWeight: 500,
+          fontFamily: SANS, fontSize: 11.5, fontWeight: 500,
           letterSpacing: "0.02em", color: mute,
         }}>{centerLabel}</div>
-
-        <div style={{ width: 46, display: "flex", justifyContent: "flex-end" }}>
-          {review && (
-            <button onClick={() => voice.send(trimRef.current)} aria-label="送信する" style={{
-              ...plain, width: 46, height: 46, borderRadius: "50%", background: fg,
-            }}>
-              {/* ✓ を2本の直線で。 */}
-              <span style={{ position: "absolute", width: 7, height: 2, background: ground, transform: "translate(-4px, 3px) rotate(45deg)" }} />
-              <span style={{ position: "absolute", width: 15, height: 2, background: ground, transform: "translate(2px, 0px) rotate(-45deg)" }} />
-            </button>
-          )}
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 14 }}>
+        <TransportKey
+          label="REC" ring={LAMP_REC}
+          pressed={recording} enabled={!sending}
+          onPress={() => voice.toggle()}
+          fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
+        />
+        <TransportKey
+          label="RESET" lamp={GOLD}
+          pressed={false} enabled={review} lit={review}
+          onPress={resetTrim}
+          fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
+        />
+        <TransportKey
+          label="SEND" lamp={GREEN}
+          pressed={sending} enabled={review} lit={review}
+          onPress={() => voice.send(trimRef.current)}
+          fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
+        />
         </div>
       </div>
+
+      {/* オーバーレイのときだけ、閉じるための ✕(左上)。 */}
+      {dim && onClose && (
+        <button onClick={onClose} aria-label="閉じる" style={{
+          ...plain, position: "absolute", top: 14, left: 16, width: 34, height: 34, zIndex: 4,
+        }}>
+          <span style={{ ...bar34, background: mute, transform: "rotate(45deg)" }} />
+          <span style={{ ...bar34, background: mute, transform: "rotate(-45deg)" }} />
+        </button>
+      )}
+
+    </div>
+  );
+}
+
+/** カセットプレイヤーの操作キー。出っ張り(KEY_DEPTH)を持ち、押されると沈む。
+ *  ・enabled=false … 沈んだまま暗い。押せない。
+ *  ・lit=true      … ランプが灯る(押せることの合図)。
+ *  ・pressed=true  … 押し込まれたまま(録音中のRECなど)。 */
+function TransportKey({ label, lamp, ring, pressed, enabled, lit, onPress, fg, mute, figure, well, capOff, lampOff }: {
+  label: string;
+  /** 丸いランプの色(点灯時)。 */
+  lamp?: string;
+  /** REC の赤い輪。 */
+  ring?: string;
+  pressed: boolean;
+  enabled: boolean;
+  lit?: boolean;
+  onPress: () => void;
+  fg: string;
+  mute: string;
+  /** 押せるときのキーの面(明るい)。 */
+  figure: string;
+  /** キーが沈む穴。★半透明にしないこと。明るい円の上と地の上とで
+   *  見え方が変わり、物として読めなくなる。 */
+  well: string;
+  /** 押せないときのキーの面。 */
+  capOff: string;
+  /** 消えているランプ。 */
+  lampOff: string;
+}) {
+  const [held, setHeld] = useState(false);
+  // 押し込まれて見えるか。押している間・押されたままの状態・押せない状態。
+  const down = pressed || held || !enabled;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+      <div style={{ position: "relative", width: KEY_W, height: KEY_H + KEY_DEPTH }}>
+        {/* キーが沈む「穴」。出っ張っているときはここが影として見える。 */}
+        <div style={{
+          position: "absolute", left: 0, bottom: 0, width: KEY_W, height: KEY_H,
+          borderRadius: 8, background: well,
+        }} />
+        <button
+          onPointerDown={() => { if (enabled) { setHeld(true); haptic(7); } }}
+          onPointerUp={() => setHeld(false)}
+          onPointerCancel={() => setHeld(false)}
+          onPointerLeave={() => setHeld(false)}
+          onClick={() => { if (enabled) onPress(); }}
+          disabled={!enabled}
+          aria-label={label}
+          aria-pressed={pressed}
+          style={{
+            position: "absolute", left: 0, bottom: 0, width: KEY_W, height: KEY_H,
+            borderRadius: 8, border: "none", padding: 0,
+            background: enabled ? figure : capOff,
+            transform: `translateY(${down ? 0 : -KEY_DEPTH}px)`,
+            transition: "transform 90ms cubic-bezier(0.32,0.72,0,1), background 160ms ease",
+            cursor: enabled ? "pointer" : "default",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
+          }}
+        >
+          {ring ? (
+            // REC の赤い輪。
+            <span style={{
+              width: 15, height: 15, borderRadius: "50%",
+              border: `3px solid ${enabled ? ring : mute}`,
+            }} />
+          ) : (
+            // ランプ。押せるようになると灯る。
+            <span style={{
+              width: 11, height: 11, borderRadius: "50%",
+              background: lit ? lamp : lampOff,
+              transition: "background 200ms ease",
+            }} />
+          )}
+        </button>
+      </div>
+      <span style={{
+        fontFamily: SANS, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.18em",
+        color: enabled ? fg : mute, marginRight: "-0.18em",
+      }}>{label}</span>
     </div>
   );
 }

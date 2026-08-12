@@ -24,13 +24,13 @@ import type { TabProps } from "@/lib/types";
 
 const PAD_TOP = "max(16px, env(safe-area-inset-top))";
 
-export function RecordTab({ profileButton, voice }: TabProps) {
+export function RecordTab({ profileButton, voice, appActive }: TabProps & { appActive?: boolean }) {
   return (
     <main style={{
       position: "relative", flex: 1, minHeight: 0,
       margin: `calc(-1 * ${PAD_TOP}) -16px 0`,
     }}>
-      <VoiceStudio voice={voice} bleed={STUDIO_BLEED} />
+      <VoiceStudio voice={voice} bleed={STUDIO_BLEED} active={appActive} />
       <div style={{ position: "absolute", top: PAD_TOP, left: 16, right: 16, pointerEvents: "none" }}>
         <Masthead title={appTitle("journal")} corner={<span style={{ pointerEvents: "auto" }}>{profileButton}</span>} />
       </div>

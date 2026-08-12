@@ -18,7 +18,8 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //     画面の真ん中あたりに置く。
 //   ・波形は**円に重ならない**よう、腰の少し上に細く狭く置く。録音中は
 //     赤い線が立ち、録れた棒がその左へ流れる(線の右は点線=まだ録っていない)。
-//     止めると帯が広がり、線が左右2本へ分かれて全体表示(トリミング)になる。
+//     止めても**帯の大きさは変えず**、中心の線が左右2本へ分かれて全体表示
+//     (トリミング)になる。
 //   ・最下部にカセットの操作キーが4つ。
 //
 // ■ 数字の扱い(ユーザー指定)
@@ -58,11 +59,10 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //   → だから掴んだ合図は**視覚**(円がふくらむ)で持たせている。haptic の
 //     呼び出しはAndroid向けの付け足しとして残してあるだけ。
 
-/** 波形の棒の間隔と太さ(px)。録音中は細かく、止めたあと(全体表示)は太め。 */
-const BAR_PITCH_REC = 5;
-const BAR_W_REC = 3;
-const BAR_PITCH_ALL = 9;
-const BAR_W_ALL = 5;
+/** 波形の棒の間隔と太さ(px)。★録音中もトリミング中も**同じ寸法**
+ *  (ユーザー指定。止めても帯は大きくしない)。 */
+const BAR_PITCH = 5;
+const BAR_W = 3;
 /** ダイヤル1回転で動かす割合。小さいほど「重い」。 */
 const TURN_RATIO = 0.5;
 /** 手応えを返す刻み(rad)。15度ごと。 */
@@ -81,14 +81,11 @@ const DIAL_CX = 0.30;
 /** ★波形の帯の中心を、円の中心からどれだけ上へ置くか。
  *  「真ん中の少し上」(ユーザー指定)。 */
 const WAVE_DY = -136;
-/** 波形の帯の高さ。録音中は細く、止めると広がる。 */
-const WAVE_H_REC = 58;
-const WAVE_H_ALL = 104;
+/** 波形の帯の高さ。★止めても広げない(ユーザー指定)。 */
+const WAVE_H = 58;
 /** 録音中の帯は、円に**絶対に重ならない**幅までしか広げない。
  *  実際の幅はコードが円の式から計算する(WAVE_MARGIN は左右の余白)。 */
 const WAVE_MARGIN = 6;
-/** 止めたあと(全体表示)の左右の余白。 */
-const WAVE_PAD_ALL = 26;
 /** 録音中の赤い線を帯のどこに立てるか(左からの割合)。左が録れた分、
  *  右がまだ録っていない分(点線)。真ん中より右に置いて履歴を長く見せる。 */
 const REC_LINE_AT = 0.66;
@@ -118,6 +115,8 @@ const DIAL_OUT_MS = 380;
 /** ★これ未満の音は棒として描かない。小さい点が並ぶと汚く見えるため
  *  (ユーザー指定)。 */
 const LEVEL_FLOOR = 0.1;
+/** 全画面のオーバーレイの地。★html の地色にも同じ値を書く(下記 VoiceOverlay)。 */
+const DIM_GROUND = "#2A2A28";
 /** ランプの色。トリミングの縦線もこの赤を使う。 */
 const LAMP_REC = "#D0412B";
 /** 指を離したあとの惰性。1フレームごとに速度へ掛ける摩擦と、止まる閾値。 */
@@ -146,7 +145,7 @@ function resample(levels: number[], n: number): number[] {
   return out;
 }
 
-export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
+export function VoiceStudio({ voice, dim, onClose, bleed = "0px", active: appActive = true }: {
   voice: VoiceControls;
   /** オーバーレイとして幕の上に出すか。 */
   dim?: boolean;
@@ -159,9 +158,14 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
    *  ★これを入れることで、器の実高さが「タブの中」でも「全画面の
    *  オーバーレイ」でもほぼ画面いっぱいで揃う。 */
   bleed?: string;
+  /** ★この画面がいま表示されているか。円の入場アニメーションの合図に使う。
+   *  タブの中では AppShell が「このアプリが表示中か」を渡す(3つのアプリの列は
+   *  常にマウントされたままなので、mount では判定できない)。オーバーレイは
+   *  開いたときに新しくマウントされるので省略(既定 true)。 */
+  active?: boolean;
 }) {
   // 幕の上でも、地と図の関係(わずかな明度差)は同じにする。
-  const ground = dim ? "#2A2A28" : JOURNAL_BG;
+  const ground = dim ? DIM_GROUND : JOURNAL_BG;
   const figure = dim ? "#3A3A37" : JOURNAL_FIG;
   const fg = dim ? PAPER : INK;
   const mute = dim ? "rgba(255,255,255,0.46)" : JOURNAL_MUTED;
@@ -222,22 +226,18 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
   // 再マウントされず、入場が二度と再生されない(実機で報告された症状)。
   // 列は画面外へ translate されるだけなので、IntersectionObserver で
   // 「見えた/見えなくなった」を拾えば、切り替えのたびに流せる。
-  // ★「ほぼ完全に見えた」ときだけ出す。半分見えた時点で流すと、**遷移の
-  // 途中で円が既に定位置に見えているのに、そこから外へ飛んで入り直す**という
-  // おかしな見え方になる(実機で指摘された)。見えていない間は円をそもそも
-  // 描かないので、地だけが流れてきて、収まってから円が入ってくる。
-  const [shown, setShown] = useState(false);
+  // ★このアプリが表示されている間だけ円を出し、表示になった瞬間に入場を流す。
+  // 遷移の途中で流すと、**円が既に定位置に見えているのに、そこから外へ飛んで
+  // 入り直す**というおかしな見え方になる(実機で指摘された)。見えていない間は
+  // 円をそもそも描かないので、地だけが流れてきて、収まってから円が入ってくる。
+  // ★合図は **AppShell から渡される prop**。以前は IntersectionObserver で
+  // 見え方から推測していたが、実機では一度も閾値に達せず「円が出てこない」
+  // 不具合になった。どのアプリを表示しているかは AppShell が知っているので、
+  // 推測せずそれをそのまま使う。
+  const shown = appActive;
   useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver((entries) => {
-      const r = entries[entries.length - 1].intersectionRatio;
-      if (r >= 0.9) setShown((was) => { if (!was) setEnterKey((n) => n + 1); return true; });
-      else if (r < 0.5) setShown(false);
-    }, { threshold: [0, 0.5, 0.9, 1] });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
+    if (appActive) setEnterKey((n) => n + 1);
+  }, [appActive]);
 
   useLayoutEffect(() => {
     const el = boxRef.current;
@@ -278,11 +278,10 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     const s = (RD / 2) * (RD / 2) - dy * dy;
     return (cxR - cxL) - 2 * (s > 0 ? Math.sqrt(s) : 0);
   };
-  const nearDy = Math.max(0, Math.abs(WAVE_DY) - WAVE_H_REC / 2);
-  const waveWRec = Math.max(90, Math.min(w - 2 * WAVE_PAD_ALL, gapAt(nearDy) - 2 * WAVE_MARGIN));
-  const waveWAll = w - 2 * WAVE_PAD_ALL;
+  const nearDy = Math.max(0, Math.abs(WAVE_DY) - WAVE_H / 2);
+  const waveW = Math.max(90, Math.min(w - 52, gapAt(nearDy) - 2 * WAVE_MARGIN));
   // 数字は帯の下、腰のところへ。
-  const timeTop = waveCy + WAVE_H_ALL / 2 + 10;
+  const timeTop = waveCy + WAVE_H / 2 + 30;
 
   // ---- 波形を描く ------------------------------------------------------------
   const draw = useCallback(() => {
@@ -329,7 +328,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       // 「ガクつき・点滅」として見える。時刻で置けば、間隔が揺れても
       // 位置は常に連続で、1フレームぶんも飛ばない。
       const now = elapsedMs();
-      const pxPerMs = BAR_PITCH_REC / LEVEL_MS;
+      const pxPerMs = BAR_PITCH / LEVEL_MS;
       // 中心線(左は実線、右は点線)。
       c.lineCap = "butt";
       c.lineWidth = 1;
@@ -352,9 +351,9 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         const at = times[k];
         if (at == null) continue;
         const x = lineX - (now - at) * pxPerMs;
-        if (x < -BAR_W_REC) break;      // 左端より外はもう描かない
+        if (x < -BAR_W) break;      // 左端より外はもう描かない
         if (x > lineX) continue;
-        bar(x, all[k], fg, BAR_W_REC);
+        bar(x, all[k], fg, BAR_W);
       }
       // 赤い線。帯より少し高く出して、参考画像と同じく主役にする。
       c.lineCap = "round";
@@ -372,7 +371,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     if (all.length === 0) return;
 
     // ── 止めたあと(全体表示・トリミング) ─────────────────────
-    const n = Math.max(1, Math.floor((cw - BAR_W_ALL) / BAR_PITCH_ALL) + 1);
+    const n = Math.max(1, Math.floor((cw - BAR_W) / BAR_PITCH) + 1);
     const bars = resample(all, n);
     c.lineCap = "butt";
     c.lineWidth = 1;
@@ -384,7 +383,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     c.lineCap = "round";
     for (let i = 0; i < n; i++) {
       const r = n <= 1 ? 0 : i / (n - 1);
-      bar(BAR_W_ALL / 2 + i * BAR_PITCH_ALL, bars[i], (r >= t.start && r <= t.end) ? fg : mute, BAR_W_ALL);
+      bar(BAR_W / 2 + i * BAR_PITCH, bars[i], (r >= t.start && r <= t.end) ? fg : mute, BAR_W);
     }
     {
       // ★切り出しの2本。止めた直後は真ん中で重なっていて、split が 0→1 に
@@ -645,18 +644,17 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
   const canToggle = recording || state === "idle";
   // 波形の帯を出すか。何も録っていない待機中は出さない。
   const waveOn = recording || review || sending;
-  // ★帯を広げるのは「止めたあと」だけ。待機中も**録音中と同じ寸法**に
-  // しておくこと。待機中を全体表示の寸法にすると、録音を始めた瞬間に
-  // 幅が 338→152 へ縮むアニメーションが走ってしまう。
-  const wide = review || sending;
 
   return (
     <div ref={boxRef} style={{
-      position: "relative", width: "100%",
-      // ★タブバーのぶんだけ下へはみ出す。はみ出した先は祖先
-      // (data-tab-scroll-root)が画面の下端で切ってくれるので、円は
-      // タブバーの下へ自然に潜り込んで消える。
-      height: `calc(100% + ${bleed})`,
+      // ★幕の中では割合の高さを使わず inset で埋め切る(端末によって
+      // 親の高さの解決が揺れても、下端に隙間が残らないように)。
+      ...(dim
+        ? { position: "absolute" as const, inset: 0 }
+        // ★タブの中はタブバーのぶんだけ下へはみ出す。はみ出した先は祖先
+        // (data-tab-scroll-root)が画面の下端で切ってくれるので、円は
+        // タブバーの下へ自然に潜り込んで消える。
+        : { position: "relative" as const, width: "100%", height: `calc(100% + ${bleed})` }),
       overflow: "hidden", background: ground,
       // 閉じていく間は、円が出ていくのに少し遅れて地も消える。
       ...(onClose ? {
@@ -758,15 +756,13 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         style={{
           position: "absolute", zIndex: 2, pointerEvents: "none",
           left: "50%",
-          width: wide ? waveWAll : waveWRec,
-          height: wide ? WAVE_H_ALL : WAVE_H_REC,
-          top: waveCy - (wide ? WAVE_H_ALL : WAVE_H_REC) / 2,
+          width: waveW, height: WAVE_H, top: waveCy - WAVE_H / 2,
           // ★録音を始めると、横に伸びながら現れる。何も録っていない間は
           // 出さない(以前は横線だけが残り、円の上を横切って見えていた)。
           opacity: waveOn ? 1 : 0,
           transform: `translateX(-50%) scaleX(${waveOn ? 1 : 0.5}) translateZ(0)`,
           transition: waveOn
-            ? `opacity 260ms ease-out, transform 340ms cubic-bezier(0.16,1,0.3,1), width ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), height ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), top ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1)`
+            ? "opacity 260ms ease-out, transform 340ms cubic-bezier(0.16,1,0.3,1)"
             : "opacity 200ms ease-in, transform 240ms ease-in",
           // ★自分だけの合成レイヤーへ上げる。こうしないと、毎フレームの
           // 描き直しが**巨大な円と同じレイヤー**を汚し、円ごと塗り直しになる
@@ -989,9 +985,27 @@ export function VoiceOverlay({ voice, open, onClose }: {
   open: boolean;
   onClose: () => void;
 }) {
+  // ★開いている間は **html の地色も幕の色に**する。実機(iPhone)で、幕の下端と
+  // 画面の下端のあいだに明るい帯が残ると報告された。position:fixed の要素が
+  // どこまで届くかは端末の事情(セーフエリア・ツールバー)で変わりうるので、
+  // 「届かなかった所に何色が出るか」を合わせて、隙間そのものを見えなくする。
+  // タブの中で気づかなかったのは、そちらの地色が html と同じだったから。
+  useEffect(() => {
+    if (!open) return;
+    const el = document.documentElement;
+    const prev = el.style.backgroundColor;
+    el.style.backgroundColor = DIM_GROUND;
+    return () => { el.style.backgroundColor = prev; };
+  }, [open]);
+
   if (!open || typeof document === "undefined") return null;
   return createPortal(
-    <div className="vs-in" style={{ position: "fixed", inset: 0, zIndex: 58 }}>
+    <div className="vs-in" style={{
+      position: "fixed", left: 0, top: 0, right: 0, bottom: 0,
+      // 高さも明示しておく(inset だけに頼らない)。
+      width: "100vw", height: "100lvh", minHeight: "100%",
+      zIndex: 58, background: DIM_GROUND,
+    }}>
       {/* ★器の高さは画面いっぱい。タブの中の器も bleed でここと同じ高さに
           揃えてあるので、円の大きさ・位置が両者で必ず一致する。 */}
       <VoiceStudio voice={voice} dim onClose={onClose} />

@@ -160,7 +160,10 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 {tab === "execute" && <ExecuteTab {...tabProps} />}
                 {tab === "tasks-inbox" && <InboxView appState={appState} persist={persist} showToast={showToast} />}
                 {(tab === "tasks-today" || tab === "tasks-all") && <TasksTab {...tabProps} tab={tab as TasksTabId} />}
-                {tab === "journal-record" && <RecordTab {...tabProps} />}
+                {/* ★active(このアプリが表示中か)を明示的に渡す。円の入場アニメーションの
+                    合図に使う。IntersectionObserver で見え方から推測する方式は、実機で
+                    一度も発火せず「円が出てこない」不具合になった。 */}
+                {tab === "journal-record" && <RecordTab {...tabProps} appActive={active} />}
                 {(tab === "journal-today" || tab === "journal-archive") && <JournalTab {...tabProps} tab={tab as JournalTabId} />}
               </div>
             )}

@@ -236,6 +236,9 @@ export interface FiveW {
 // AIが見立て、本人が展開図で上書きする(ユーザー確定)。
 export type TaskWeight = 1 | 2 | 3;
 
+// ★タスクのタグ。物体の色になる。固定の6つ(lib/taskTags.ts が定義の正)。
+export type TaskTag = "work" | "shopping" | "life" | "body" | "people" | "learn";
+
 // ★展開図のどの位置にどの項目を置いたか。柱体の展開図は
 // 「底面 + 側面の帯 + 底面」の帯状で、
 //   base0 = タイトル(=なにを)の底面。必ずあり、外せない。
@@ -261,6 +264,8 @@ export interface Task extends FiveW {
   suggestedAt?: string;
   // 重要度。未設定は中扱い。
   weight?: TaskWeight;
+  // タグ。物体の色になる。未設定なら中間のグレー。
+  tag?: TaskTag;
   // 5W1Hを展開図のどの面に置いたか。未設定なら埋まっている順に自動で並べる。
   faces?: Partial<Record<PrismSlot, FiveWKey>>;
 }
@@ -302,6 +307,7 @@ export interface InboxCandidate extends FiveW {
   weight?: TaskWeight;
   // 展開図のどの面に何を置いたか(＋で足した面は中身が空でもここに残る)。
   faces?: Partial<Record<PrismSlot, FiveWKey>>;
+  tag?: TaskTag;
   // 元になった声のメモ(その場で原文を確かめられるように)。
   sourceNoteId?: string;
   sourceText?: string;

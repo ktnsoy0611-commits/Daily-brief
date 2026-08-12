@@ -359,6 +359,29 @@ function build(faceCount: number, t: number, split: boolean): PrismFace[] {
     .sort((a, b) => a.depth - b.depth);
 }
 
+/**
+ * 底面の輪郭。**柱を倒してこちらへ向けた姿**(2026-08-12にユーザー確定)。
+ * 見えるのは底面そのものなので、面の数の違いが図形の違いとして出る:
+ *   3面=円 / 4面=半円 / 5面=三角 / 6面=四角。
+ * 座標は -0.5〜0.5 に正規化してあり、そのまま一辺の長さを掛けて使える。
+ */
+export function baseOutline(faceCount: number): Pt[] {
+  const { pts } = basePolygon(lateralCount(faceCount));
+  // 幅・高さのどちらもはみ出さないよう、外接する箱で正規化する。
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const s = 1 / Math.max(maxX - minX, maxY - minY);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  // 画面の座標(yは下向き)へ合わせる。
+  return pts.map((p) => ({ x: (p.x - cx) * s, y: -(p.y - cy) * s }));
+}
+
 // ── 器に収める ──────────────────────────────────────────────
 
 export interface Box { minX: number; minY: number; maxX: number; maxY: number }

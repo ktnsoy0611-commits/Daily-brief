@@ -10,8 +10,9 @@ import {
   assignFaces, boundsOf, fitTo, lateralCount, prismDraw, prismFaces, prismName,
   withKeyPlaced, withKeyRemoved,
 } from "@/lib/prism";
+import { TASK_TAGS } from "@/lib/taskTags";
 import { FIVE_W_KEYS, FIVE_W_LABEL } from "@/lib/types";
-import type { FiveW, FiveWKey, PrismSlot, SubTask, TaskSuggestion, TaskWeight } from "@/lib/types";
+import type { FiveW, FiveWKey, PrismSlot, SubTask, TaskSuggestion, TaskTag, TaskWeight } from "@/lib/types";
 
 // ★展開図。立体をタップすると、パタパタと開いて中身(5W1H)が見える。
 // 候補(まだ確定していない)と、確定したタスクの**両方が同じ画面**を使う。
@@ -35,6 +36,7 @@ export interface NetData extends FiveW {
   title: string;
   faces?: Partial<Record<PrismSlot, FiveWKey>>;
   weight?: TaskWeight;
+  tag?: TaskTag;
   subtasks?: SubTask[];
   suggestions?: TaskSuggestion[];
 }
@@ -332,6 +334,30 @@ export function TaskNet({ data, mode, autoEdit, onChange, onConfirm, onDelete, o
             </>
           )}
         </div>
+
+        {/* タグ。山の中でのこの物体の色になる。 */}
+        <Section label="タグ">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {TASK_TAGS.map((t) => {
+              const on = data.tag === t.id;
+              return (
+                <button key={t.id}
+                  onClick={() => { haptic(6); onChange({ tag: on ? undefined : t.id }); }}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer",
+                    borderRadius: 999, padding: "8px 13px",
+                    border: on ? "none" : "1px solid rgba(255,255,255,0.26)",
+                    background: on ? t.color : "transparent",
+                    color: on ? PAPER : "rgba(255,255,255,0.8)",
+                    fontFamily: SANS, fontSize: 12, fontWeight: 700,
+                  }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: on ? PAPER : t.color }} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
 
         {/* 重要度。大きさ(重要度 × 切迫度)の片方をここで決める。 */}
         <Section label="重要度">

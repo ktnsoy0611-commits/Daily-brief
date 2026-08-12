@@ -73,6 +73,10 @@ export const BLUE = "#2C6E8A";
 export const RUST = "#C1502E";
 export const GREEN = "#33633F";
 export const GOLD = "#C79433";
+// タスクのタグ用に2色だけ足す。既存の4色と同じ「くすんだ中間色」の register を
+// 守ってあるので、アプリ全体の色の語彙からはみ出さない。
+export const PLUM = "#6E4270";
+export const SLATE = "#4A5560";
 export const HAIRLINE = "rgba(26,26,24,0.08)";
 // カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
 export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";

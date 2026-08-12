@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Body, Engine } from "matter-js";
 import { Masthead } from "@/components/common";
-import { faceFill } from "@/components/tasks/PrismSolid";
 import { DemoSeedButton, TaskAddButton } from "@/components/tasks/TaskAddButton";
 import { TaskNet, type NetData } from "@/components/tasks/TaskNet";
 import { appTitle } from "@/lib/apps";
 import { TAB_PAD_TOP } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { assignFaces, boundsOf, fitTo, prismDraw } from "@/lib/prism";
+import { assignFaces, baseOutline } from "@/lib/prism";
+import { tagColor } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { sideOf } from "@/lib/taskSize";
 import type { AppState, TabProps, Task } from "@/lib/types";
@@ -18,9 +18,10 @@ import type { AppState, TabProps, Task } from "@/lib/types";
 // 物体の大きさ = 重要度 × 切迫度(lib/taskSize.ts)。何が差し迫っているかを
 // 日付の文字ではなく、山の高さと物の大きさで直感的に見せる。
 //
-// ★物理は matter.js に計算だけさせ、描画は自前の canvas。立体の絵は
-// 候補タブと同じ lib/prism.ts の平行投影を使うので、漂っていたものが
-// そのまま落ちてきたように見える。
+// ★見えるのは**底面の形そのもの**(柱を倒してこちらへ向けた姿)。
+// 円柱=円 / 半円柱=半円 / 三角柱=三角 / 四角柱=四角。バウハウスの基本図形が
+// そのまま積み上がり、面の数(=情報の揃い具合)も図形の違いとして読める。
+// 色はタグ(仕事・買い物…)。物理は matter.js に計算だけさせ、描画は自前の canvas。
 //
 // ★rAF は「このアプリが表示されている(appActive)」かつ「起きている物体が
 // ある」ときだけ回す。全部が寝たら止める(matter.js の enableSleeping)。
@@ -31,7 +32,7 @@ import type { AppState, TabProps, Task } from "@/lib/types";
 interface Shard { x: number; y: number; vx: number; vy: number; r: number; life: number; fill: string }
 const SHARD_MS = 620;
 
-interface Piece { id: string; body: Body; side: number; faceCount: number }
+interface Piece { id: string; body: Body; side: number; faceCount: number; color: string }
 
 export function GravityTab({ appState, persist, profileButton, showToast, appActive }: TabProps & { appActive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -54,21 +55,6 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   const tasks = useMemo(() => (appState.tasks ?? []).filter((t) => !t.done), [appState.tasks]);
   const open = (appState.tasks ?? []).find((t) => t.id === openId) ?? null;
 
-  // 立体の絵は一度だけ作って使い回す(毎フレーム作り直さない)。
-  const shapeCache = useRef(new Map<number, { points: { x: number; y: number }[]; fill: string }[]>());
-  const shapeOf = useCallback((faceCount: number) => {
-    const hit = shapeCache.current.get(faceCount);
-    if (hit) return hit;
-    const faces = prismDraw(faceCount, 0);
-    const { scale, dx, dy } = fitTo(boundsOf(faces), 1, 1, 0);
-    const made = faces.map((f) => ({
-      points: f.points.map((p) => ({ x: p.x * scale + dx - 0.5, y: p.y * scale + dy - 0.5 })),
-      fill: faceFill(f.light),
-    }));
-    shapeCache.current.set(faceCount, made);
-    return made;
-  }, []);
-
   const draw = useCallback(() => {
     const cv = canvasRef.current;
     const { w, h } = sizeRef.current;
@@ -83,23 +69,21 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
+    // ★描くのは**底面の形そのもの**(柱を倒してこちらへ向けた姿)。
+    // 円柱=円 / 半円柱=半円 / 三角柱=三角 / 四角柱=四角 なので、面の数
+    // (=情報の揃い具合)が図形の違いとしてそのまま山の中に見える。
+    // 形は body の実際の頂点から引く。物理の当たり判定と絵が必ず一致する
+    // (自前の輪郭を別に持つと、重心のずれで絵だけ浮いてしまう)。
     for (const p of piecesRef.current) {
-      const { position: pos, angle } = p.body;
-      ctx.save();
-      ctx.translate(pos.x, pos.y);
-      ctx.rotate(angle);
-      ctx.scale(p.side, p.side);
-      for (const f of shapeOf(p.faceCount)) {
-        ctx.beginPath();
-        f.points.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      if (p.body.circleRadius) {
+        ctx.arc(p.body.position.x, p.body.position.y, p.body.circleRadius, 0, Math.PI * 2);
+      } else {
+        p.body.vertices.forEach((v, i) => (i === 0 ? ctx.moveTo(v.x, v.y) : ctx.lineTo(v.x, v.y)));
         ctx.closePath();
-        ctx.fillStyle = f.fill;
-        ctx.strokeStyle = f.fill;
-        ctx.lineWidth = 1 / p.side;
-        ctx.fill();
-        ctx.stroke();
       }
-      ctx.restore();
+      ctx.fill();
     }
 
     for (const s of shardsRef.current) {
@@ -108,7 +92,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       ctx.fillRect(s.x - s.r / 2, s.y - s.r / 2, s.r, s.r);
     }
     ctx.globalAlpha = 1;
-  }, [shapeOf]);
+  }, []);
 
   // ★rAF のループは ref 越しに回す。React の再レンダーとは無関係に、
   // 触るのは ref だけ(毎フレームの state 更新はしない)。
@@ -208,7 +192,14 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     for (const p of piecesRef.current) {
       if (!alive.has(p.id)) M.Composite.remove(engine.world, p.body);
     }
-    piecesRef.current = piecesRef.current.filter((p) => alive.has(p.id));
+    // 残るものは、タグの色を今の値に合わせ直す(展開図で変えたら山にも効く)。
+    piecesRef.current = piecesRef.current
+      .filter((p) => alive.has(p.id))
+      .map((p) => {
+        const t = tasks.find((x) => x.id === p.id);
+        const color = tagColor(t?.tag);
+        return color === p.color ? p : { ...p, color };
+      });
 
     const have = new Set(piecesRef.current.map((p) => p.id));
     const added: Piece[] = [];
@@ -220,15 +211,15 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       ).faceCount;
       // 落ちてくる位置は id から決める(開くたびに散らばり方が変わらない)。
       const x = w * 0.16 + frac(t.id) * w * 0.68;
-      const body = M.Bodies.rectangle(x, -side - i * (side + 20), side, side, {
-        restitution: 0.03, friction: 0.62, frictionStatic: 1.2, frictionAir: 0.012,
-        chamfer: { radius: 0 },
-        // ★回転させない。立体の絵は平行投影(アイソメ)なので、body ごと回すと
-        // 絵まで回ってしまい、同じ立体が別の形に見える。倒れず積み上がる方が
-        // 「どれが大きいか」も読み取りやすい。
-        inertia: Infinity,
-      });
-      added.push({ id: t.id, body, side, faceCount });
+      const y = -side - i * (side + 20);
+      const opts = { restitution: 0.05, friction: 0.5, frictionStatic: 0.9, frictionAir: 0.01 };
+      // ★底面の形をそのまま物理の形にする。丸いものは転がり、角のあるものは
+      // 止まりやすい、という差が積み方に出る(回転もさせる。絵が平面図形に
+      // なったので、body ごと回っても形が破綻しない)。
+      const body = faceCount === 3
+        ? M.Bodies.circle(x, y, side / 2, opts)
+        : M.Bodies.fromVertices(x, y, [baseOutline(faceCount).map((q) => ({ x: q.x * side, y: q.y * side }))], opts);
+      added.push({ id: t.id, body, side, faceCount, color: tagColor(t.tag) });
     });
     if (added.length) {
       M.Composite.add(engine.world, added.map((p) => p.body));
@@ -251,7 +242,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     const piece = piecesRef.current.find((p) => p.id === t.id);
     if (piece) {
       const { x, y } = piece.body.position;
-      const fills = shapeOf(piece.faceCount).map((f) => f.fill);
+      const fills = [piece.color];
       for (let i = 0; i < 14; i++) {
         const a = (Math.PI * 2 * i) / 14 + Math.random() * 0.4;
         const sp = 2 + Math.random() * 4;

@@ -64,6 +64,8 @@ const BAR_W_ALL = 5;
 const TURN_RATIO = 0.5;
 /** 手応えを返す刻み(rad)。15度ごと。 */
 const NOTCH = (15 * Math.PI) / 180;
+/** これ以下しか回っていなければ「タップ」とみなす(rad)。 */
+const TAP_SLOP = 0.05;
 /** 開始と終了が潰れないよう、最低これだけは残す。 */
 const MIN_SPAN = 0.04;
 /** ダイヤルの直径(器の幅に対する比)。画面をはみ出す大きさ。 */
@@ -99,8 +101,8 @@ const BAND_BOTTOM = 80;
 /** 縁の目盛りの本数。 */
 const TICKS = 5;
 /** 物理キーの寸法。丸いキーで、出っ張り(depth)ぶん浮いて見える。 */
-const KEY_D = 54;
-const KEY_DEPTH = 6;
+const KEY_D = 42;
+const KEY_DEPTH = 4;
 /** ★操作キーの列を器の下端からどれだけ上に置くか。タブバーの高さぶん。
  *  オーバーレイ(タブバーを覆う)でも同じ値を使い、見た目を揃える。 */
 const KEY_BOTTOM = `calc(76px + ${NAV_BOTTOM_GAP})`;
@@ -201,16 +203,34 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
   const recording = state === "recording";
   const review = state === "review";
   const sending = state === "sending";
+  // window に張ったリスナーから最新の状態を見るための控え。
+  const reviewRef = useRef(review);
+  reviewRef.current = review;
 
   useEffect(() => {
     if (state === "recording" || state === "idle") trimRef.current = { start: 0, end: 1 };
   }, [state, durationMs]);
 
-  // ★円の入場は**画面が出たときだけ**。以前は録音を始めた瞬間にも流して
-  // いたが、getUserMedia の許可待ちのぶん遅れて再生され、しかも同時に回転が
-  // 始まるため「録音し始めると円が変な挙動をする」と報告された。
-  // 入場は画面の初回表示に限る(remount しないので rot も保たれる)。
-  useEffect(() => { setEnterKey(1); }, []);
+  // ★円の入場は「この画面が見えるようになった瞬間」に流す。
+  // 録音の開始では流さない(getUserMedia の許可待ちのぶん遅れて再生され、
+  // 回転と同時に走るため「録音し始めると円が変な挙動をする」と言われた)。
+  // ★マウント時の1回だけにしてはいけない。3つのアプリの列は**常に
+  // マウントされたまま**(§14)なので、アプリを切り替えて戻ってきても
+  // 再マウントされず、入場が二度と再生されない(実機で報告された症状)。
+  // 列は画面外へ translate されるだけなので、IntersectionObserver で
+  // 「見えた/見えなくなった」を拾えば、切り替えのたびに流せる。
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    let shown = false;
+    const io = new IntersectionObserver((entries) => {
+      const on = entries[entries.length - 1].isIntersecting;
+      if (on && !shown) setEnterKey((n) => n + 1);
+      shown = on;
+    }, { threshold: 0.5 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     const el = boxRef.current;
@@ -426,7 +446,9 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
   }, [state]);
 
   // ---- ダイヤルを回す --------------------------------------------------------
-  const dragRef = useRef<{ id: number; side: "L" | "R"; ang: number; notch: number; rot: number; vel: number; t: number } | null>(null);
+  const dragRef = useRef<{ id: number; side: "L" | "R"; ang: number; notch: number; moved: number; rot: number; vel: number; t: number } | null>(null);
+  /** 直前のジェスチャーが「回した」か「タップ」か。回したなら click を無視する。 */
+  const draggedRef = useRef(false);
 
   // ★回すのは**目盛りの層だけ**。塗りつぶしの円は回転対称なので動かす意味が
   // 無く、直径が画面幅の約2倍あるため毎フレーム塗り直すと非常に高くつく
@@ -489,9 +511,24 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
 
   useEffect(() => stopCoast, [stopCoast]);
 
+  /** ★指がどちらの円の上にあるか。器の左上からの座標で見る。
+   *  円は中心が画面の外にあるので、矩形ではなく円の式で判定すること。 */
+  const dialAt = useCallback((clientX: number, clientY: number): "L" | "R" | null => {
+    const box = boxRef.current;
+    if (!box) return null;
+    const r = box.getBoundingClientRect();
+    const x = clientX - r.left, y = clientY - r.top;
+    const rr = RD / 2;
+    if ((x - cxL) ** 2 + (y - cy) ** 2 <= rr * rr) return "L";
+    if ((x - cxR) ** 2 + (y - cy) ** 2 <= rr * rr) return "R";
+    return null;
+  }, [RD, cxL, cxR, cy]);
+
+  /** ★円の上で指を下ろしたとき。**録音していなくても回して遊べる**
+   *  (ユーザー指定)。切り出しに反映するのは review のときだけで、
+   *  それ以外はただ回るだけ。動かさずに離したらタップとして扱い、
+   *  下の舞台の「タップで録音」に譲る(tappedRef)。 */
   const onDialDown = useCallback((e: React.PointerEvent, side: "L" | "R") => {
-    if (!review) return;
-    e.stopPropagation();
     const box = boxRef.current;
     if (!box) return;
     const r = box.getBoundingClientRect();
@@ -501,7 +538,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     stopCoast();
     dragRef.current = {
       id: e.pointerId, side, ang: Math.atan2(e.clientY - oy, e.clientX - ox),
-      notch: 0, rot: Number(el?.dataset.rot ?? 0), vel: 0, t: performance.now(),
+      notch: 0, moved: 0, rot: Number(el?.dataset.rot ?? 0), vel: 0, t: performance.now(),
     };
     setActive(side);
     // ★掴んだ瞬間の合図はこれだけ(縁の線の色は変えない・ユーザー指定)。
@@ -525,8 +562,10 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       d.t = now;
       d.vel = d.vel * 0.6 + (delta / dt) * 0.4;
       if (Math.abs(d.notch) >= NOTCH) { haptic(9); d.notch = 0; }
+      d.moved += Math.abs(delta);
       applyDial(d.side === "L" ? reelL.current : reelR.current, d.rot);
-      advanceTrim(d.side, delta);
+      // 切り出しに効くのは review のときだけ。それ以外はただ回るだけ。
+      if (reviewRef.current) advanceTrim(d.side, delta);
     };
     const up = (ev: PointerEvent) => {
       const d = dragRef.current;
@@ -537,8 +576,11 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       }
       dragRef.current = null;
       setActive(null);
+      // ほとんど動かさずに離したら「タップ」。回転として扱わず、
+      // 下の舞台の click(録音の開始/停止)をそのまま通す。
+      draggedRef.current = !!d && d.moved > TAP_SLOP;
       // ★離した勢いが残っていれば、惰性で回し続ける。
-      if (d && Math.abs(d.vel) > COAST_STOP * 3) startCoast(d.side, d.rot, d.vel);
+      if (d && d.moved > TAP_SLOP && Math.abs(d.vel) > COAST_STOP * 3) startCoast(d.side, d.rot, d.vel);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
@@ -546,17 +588,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
-  }, [review, cxL, cxR, cy, advanceTrim, startCoast, stopCoast]);
-
-  // 録音を始めるたびに、ダイヤルの角度も戻す。
-  useEffect(() => {
-    if (state !== "idle" && state !== "recording") return;
-    for (const el of [reelL.current, reelR.current]) {
-      if (!el) continue;
-      el.dataset.rot = "0";
-      el.style.transform = "";
-    }
-  }, [state, enterKey]);
+  }, [cxL, cxR, cy, advanceTrim, startCoast, stopCoast]);
 
   // ★いつでも押せる取り消し。録音中でも切り出し中でも、その録音を捨てて
   // 最初の状態へ戻す(hook 側の cancel が状態に応じて処理を分ける)。
@@ -601,13 +633,6 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     cancelAll();
   }, [onClose, beginExit, cancelAll]);
 
-  // ---- 文言 -------------------------------------------------------------------
-  const centerLabel = paused ? "PAUSE 中。もう一度押すと続けられる"
-    : recording ? "もう一度 REC で停止"
-    : review ? "左右の円で切り出す"
-      : sending ? "文字にしています"
-        : "";
-
   const canToggle = recording || state === "idle";
   // 波形の帯を出すか。何も録っていない待機中は出さない。
   const waveOn = recording || review || sending;
@@ -632,9 +657,10 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       } : null),
     }}>
       {/* 巨大な円ふたつ。ただの塗り面＋縁の目盛り。
-          ★重なり順とポインタの通し方に注意: 舞台(タップで録音)はこの上に
-          あるので、review のときは舞台をポインタに対して透明にして、
-          こちらが指を受け取る。これを忘れると円が一切操作できない。 */}
+          ★指を受けるのはこの円ではなく、**上にある舞台**。円は波形や数字より
+          下に描かれる必要がある(zIndex 1)のに、指は上から受けたい——という
+          矛盾を、舞台が「どちらの円の上か」を円の式で判定して振り分けることで
+          解いている。円自身は pointerEvents:none。 */}
       {(["L", "R"] as const).map((side) => (
         <div
           key={`${side}-${enterKey}`}
@@ -644,7 +670,6 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
           className={leaving
             ? (side === "L" ? "vs-dial-out-l" : "vs-dial-out-r")
             : (side === "L" ? "vs-dial-in-l" : "vs-dial-in-r")}
-          onPointerDown={(e) => onDialDown(e, side)}
           style={{
             position: "absolute", width: RD, height: RD, borderRadius: "50%",
             // ★掴んだ反応で**塗りの色は変えない**。直径が画面幅の約2倍
@@ -653,18 +678,17 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
             // 1ドラッグ約500msのコスト)。
             background: figure,
             left: (side === "L" ? cxL : cxR) - RD / 2, top: cy - RD / 2,
-            zIndex: 1, touchAction: "none",
-            pointerEvents: review ? "auto" : "none",
-            cursor: review ? "grab" : "default",
+            zIndex: 1, pointerEvents: "none",
             // ★掴んだ合図は「一瞬ふくらむ」。iPhoneのWebアプリでは
             // navigator.vibrate が無く手応えが返らないため、目で分かる
             // 反応にする(ユーザー指定)。**transform だけ**を動かし、
             // will-change で合成レイヤーへ上げてあるので、塗り直しは
             // 起きず合成のやり直しだけで済む。
-            // ★will-change は**掴める間(review)だけ**。常時付けると、
-            // この巨大な面が2枚とも合成レイヤーに居座り続け、録音中の
-            // 描画が実測で 60ms → 160ms(4倍スロットリング)まで重くなった。
-            willChange: review ? "transform" : undefined,
+            // ★合成レイヤーへ上げておく。ふくらみ(scale)を塗り直しではなく
+            // 合成だけで済ませるため。掴んだ瞬間に付けると、そのフレームで
+            // 昇格が間に合わず一度カクつくので**常時**にしてある
+            // (2枚で約2MB。録音中の描画コストに差が出ないことは実測済み)。
+            willChange: "transform",
             transform: active === side ? "scale(1.028)" : "scale(1)",
             transition: "transform 200ms cubic-bezier(0.16,1,0.3,1)",
           }}
@@ -754,16 +778,26 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         transition: "opacity 200ms ease",
       }}>{mmss(0)}</div>
 
-      {/* 舞台。タップで録音の開始/停止。 */}
+      {/* 舞台。指を受ける唯一の面。円の上なら回転、それ以外(と、円の上でも
+          ほとんど動かさなかったとき)はタップとして録音の開始/停止。 */}
       <div
-        onClick={() => { if (canToggle) voice.toggle(); }}
+        onPointerDown={(e) => {
+          draggedRef.current = false;
+          const side = dialAt(e.clientX, e.clientY);
+          if (side) onDialDown(e, side);
+        }}
+        onClick={() => {
+          // 回した直後の click は無視する(マウスでは drag のあとにも来る)。
+          if (draggedRef.current) { draggedRef.current = false; return; }
+          if (canToggle) voice.toggle();
+        }}
         role={canToggle ? "button" : undefined}
         aria-label={recording ? "録音を停止" : "録音を開始"}
         style={{
           position: "absolute", inset: 0, zIndex: 2,
           cursor: canToggle ? "pointer" : "default",
-          // ★review のときは指を素通りさせ、下のダイヤルに渡す。
-          pointerEvents: canToggle ? "auto" : "none",
+          touchAction: "none",
+          pointerEvents: leaving ? "none" : "auto",
           userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
         }}
       />
@@ -778,19 +812,15 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         // ★高さは中身に任せる(下端が keyBottom)。以前は固定の96pxで中央寄せに
         // していたため、キーの下のラベル(REC/PAUSE/…)が枠からはみ出し、
         // タブバーに隠れて切れていた。
-        position: "absolute", left: 0, right: 0, bottom: `calc(${KEY_BOTTOM} + 10px)`, zIndex: 3,
-        display: "flex", flexDirection: "column", alignItems: "center", gap: 9,
+        position: "absolute", left: 0, right: 0, bottom: `calc(${KEY_BOTTOM} + 34px)`, zIndex: 3,
+        display: "flex", flexDirection: "column", alignItems: "center",
         // ★この帯は画面幅いっぱい・高さ96pxある。素通しにしておかないと、
         // 帯の空いている所(キーの左右・文言の行)で指を吸ってしまい、その下の
         // ダイヤルが回せなくなる。指を受けるのはキーそのものだけにする
         // (このコードベースで一度やらかした「円が一切操作できない」と同じ罠)。
         pointerEvents: "none",
       }}>
-        <div style={{
-          fontFamily: SANS, fontSize: 11.5, fontWeight: 500,
-          letterSpacing: "0.02em", color: mute,
-        }}>{centerLabel}</div>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 9, pointerEvents: "auto" }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, pointerEvents: "auto" }}>
         <TransportKey
           label="REC" ring={LAMP_REC}
           pressed={recording} enabled={!sending}
@@ -815,7 +845,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
             最初の状態へ戻す(録音中でも、切り出し中でも)。
             オーバーレイでは、これがそのまま「元の画面へ戻る」になる
             (右上の閉じるボタンは廃止した)。 */}
-        <div style={{ marginLeft: 18 }}>
+        <div style={{ marginLeft: 14 }}>
           <TransportKey
             label="CANCEL" cross
             pressed={false} enabled={!sending && !leaving}
@@ -867,7 +897,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
   // 押し込まれて見えるか。押している間・押されたままの状態・押せない状態。
   const down = pressed || held || !enabled;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
       <div style={{ position: "relative", width: KEY_D, height: KEY_D + KEY_DEPTH }}>
         {/* キーが沈む「穴」。出っ張っているときはここが影として見える。 */}
         <div style={{
@@ -895,11 +925,11 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
           }}
         >
           {bars ? (
-            // PAUSE の2本線。ランプと同じ扱いで、押せるときだけ色が付く。
-            <span style={{ display: "flex", gap: 4 }}>
+            // PAUSE の2本線。
+            <span style={{ display: "flex", gap: 3 }}>
               {[0, 1].map((i) => (
                 <span key={i} style={{
-                  width: 4, height: 14, borderRadius: 1,
+                  width: 3, height: 11,
                   background: lit ? lamp : lampOff,
                   transition: "background 200ms ease",
                 }} />
@@ -907,20 +937,21 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
             </span>
           ) : cross ? (
             // CANCEL の ✕。2本の直線で。
-            <span style={{ position: "relative", width: 14, height: 14 }}>
-              <span style={{ position: "absolute", top: 6, left: 0, width: 14, height: 2, background: enabled ? fg : mute, transform: "rotate(45deg)" }} />
-              <span style={{ position: "absolute", top: 6, left: 0, width: 14, height: 2, background: enabled ? fg : mute, transform: "rotate(-45deg)" }} />
+            <span style={{ position: "relative", width: 12, height: 12 }}>
+              <span style={{ position: "absolute", top: 5, left: 0, width: 12, height: 1.5, background: enabled ? fg : mute, transform: "rotate(45deg)" }} />
+              <span style={{ position: "absolute", top: 5, left: 0, width: 12, height: 1.5, background: enabled ? fg : mute, transform: "rotate(-45deg)" }} />
             </span>
           ) : ring ? (
-            // REC の赤い輪。
+            // ★REC の赤い線は、**ボタンの丸い面の内側の縁に沿わせる**
+            // (ユーザー指定)。中央の小さな輪ではなく、キーいっぱいの円環。
             <span style={{
-              width: 15, height: 15, borderRadius: "50%",
-              border: `3px solid ${enabled ? ring : mute}`,
+              position: "absolute", inset: 4, borderRadius: "50%",
+              border: `1.5px solid ${enabled ? ring : mute}`,
             }} />
           ) : (
             // ランプ。押せるようになると灯る。
             <span style={{
-              width: 11, height: 11, borderRadius: "50%",
+              width: 8, height: 8, borderRadius: "50%",
               background: lit ? lamp : lampOff,
               transition: "background 200ms ease",
             }} />
@@ -928,8 +959,8 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
         </button>
       </div>
       <span style={{
-        fontFamily: SANS, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.18em",
-        color: enabled ? fg : mute, marginRight: "-0.18em",
+        fontFamily: SANS, fontSize: 7.5, fontWeight: 600, letterSpacing: "0.16em",
+        color: enabled ? fg : mute, marginRight: "-0.16em",
       }}>{label}</span>
     </div>
   );

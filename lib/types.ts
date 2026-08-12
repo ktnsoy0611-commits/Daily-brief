@@ -300,6 +300,8 @@ export interface InboxCandidate extends FiveW {
   what?: string;
   // 重要度の見立て。Coworkが書いてくれば入る(未設定なら中扱い)。
   weight?: TaskWeight;
+  // 展開図のどの面に何を置いたか(＋で足した面は中身が空でもここに残る)。
+  faces?: Partial<Record<PrismSlot, FiveWKey>>;
   // 元になった声のメモ(その場で原文を確かめられるように)。
   sourceNoteId?: string;
   sourceText?: string;

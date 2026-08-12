@@ -1,3 +1,4 @@
+import { FIVE_W_KEYS } from "./types";
 import type { FiveWKey, PrismSlot } from "./types";
 
 // ★タスクの立体(柱体)の幾何。**純粋関数だけ**。単体テストで検証する。
@@ -224,11 +225,27 @@ function slotLight(k: number): Map<PrismSlot, number> {
     out.set(slot, bestLight);
     i = j;
   }
-  const local = ring.map((p) => ({ a: p.x, b: p.y }));
-  out.set("base0", lightAt(local.map(({ a, b }) => ({ x: a, y: half, z: b }))));
-  out.set("base1", lightAt(local.map(({ a, b }) => ({ x: a, y: -half, z: b }))));
+  // 底面は閉じた形では上下の蓋そのもの。
+  out.set("base0", lightAt(ring.map((p) => ({ x: p.x, y: half, z: p.y }))));
+  out.set("base1", lightAt(ring.map((p) => ({ x: p.x, y: -half, z: p.y }))));
   return out;
 }
+
+/** 底面の蝶番にする小辺。**周の真ん中**を選ぶ。
+ *  ★端(小辺0)を蝶番にすると、展開図で底面が帯の左端に寄って絵が偏る。
+ *  真ん中にすると底面が帯の中央に載り、展開図として素直に読める。 */
+function hingeIndex(edges: SubEdge[]): number {
+  const total = edges.reduce((s, e) => s + e.len, 0);
+  let acc = 0;
+  for (let i = 0; i < edges.length; i++) {
+    if (acc + edges[i].len >= total / 2) return i;
+    acc += edges[i].len;
+  }
+  return 0;
+}
+
+/** v を90度回す。s で向きを選ぶ。 */
+const rot90 = (v: Pt, s: number): Pt => (s >= 0 ? { x: -v.y, y: v.x } : { x: v.y, y: -v.x });
 
 /** 断面の折れ線の i 番目の小辺を、高さ方向に伸ばした四角形。 */
 function quadOf(line: Pt[], i: number, half: number): Vec3[] {
@@ -292,26 +309,45 @@ function build(faceCount: number, t: number, split: boolean): PrismFace[] {
     i = j;
   }
 
-  // 底面。蝶番は側面0の上端(base0)・下端(base1)で、そこを軸に回る。
+  // 底面。周の真ん中の小辺を蝶番にして、そこを軸に回る。
   // 折り具合 t での回転角: t=1 で帯と同じ平面(平ら)、t=0 で水平(蓋になる)。
   const phi = (1 - t) * (Math.PI / 2);
   const cosP = Math.cos(phi);
   const sinP = Math.sin(phi);
-  // 蝶番(=側面0の最初の小辺)は常に原点から +X 方向。多角形はその
-  // どちら側にあるか(内側の向き)を、閉じた形の重心から決める。
-  let cz = 0;
-  for (let m = 0; m < closed.length - 1; m++) cz += closed[m].y;
-  const sgn = cz >= 0 ? 1 : -1;
+  const h = hingeIndex(edges);
+  const ring = closed.slice(0, closed.length - 1);
 
-  const local = closed.slice(0, closed.length - 1).map((p) => ({ a: p.x, b: p.y * sgn }));
-  out.unshift({
-    slot: "base1",
-    pts3: local.map(({ a, b }) => ({ x: a, y: -half - b * cosP, z: b * sinP * sgn })),
-  });
-  out.push({
-    slot: "base0",
-    pts3: local.map(({ a, b }) => ({ x: a, y: half + b * cosP, z: b * sinP * sgn })),
-  });
+  // 閉じた形での蝶番の枠(向き u0 と、多角形の内側を向く法線 n0)。
+  const q0 = closed[h];
+  const q1 = closed[h + 1];
+  const len0 = Math.max(Math.hypot(q1.x - q0.x, q1.y - q0.y), 1e-9);
+  const u0: Pt = { x: (q1.x - q0.x) / len0, y: (q1.y - q0.y) / len0 };
+  const cx = ring.reduce((s, p) => s + p.x, 0) / ring.length;
+  const cy = ring.reduce((s, p) => s + p.y, 0) / ring.length;
+  // 内側がどちら回りかを、重心の位置で決める。
+  const side = (cx - q0.x) * (-u0.y) + (cy - q0.y) * u0.x >= 0 ? 1 : -1;
+  const n0 = rot90(u0, side);
+  // 各頂点を(蝶番に沿う量 a、蝶番から内側へ入る量 b)で表す。
+  const local = ring.map((p) => ({
+    a: (p.x - q0.x) * u0.x + (p.y - q0.y) * u0.y,
+    b: (p.x - q0.x) * n0.x + (p.y - q0.y) * n0.y,
+  }));
+
+  // 折り具合 t での蝶番の枠。
+  let dirH = 0;
+  for (let m = 0; m < h; m++) dirH += (1 - t) * edges[m].turn;
+  const u: Pt = { x: Math.cos(dirH), y: Math.sin(dirH) };
+  const nIn = rot90(u, side);
+  const hx = line[h].x;
+  const hz = line[h].y;
+  const cap = (sign: 1 | -1) => local.map(({ a, b }) => ({
+    x: hx + a * u.x + b * sinP * nIn.x,
+    y: sign * (half + b * cosP),
+    z: hz + a * u.y + b * sinP * nIn.y,
+  }));
+
+  out.unshift({ slot: "base1", pts3: cap(-1) });
+  out.push({ slot: "base0", pts3: cap(1) });
 
   return out
     .map(({ slot, pts3 }) => ({
@@ -368,32 +404,52 @@ export interface FaceAssign {
   value: string;
 }
 
+/** 5W1Hのうち、いまこの立体の面に乗っているもの。
+ *  ★「中身が入っているもの」ではなく「面として置かれているもの」で数える。
+ *  ＋で面を足した直後はまだ空なので、中身で数えると面が生えてこない。 */
+export function keysOnNet(
+  values: Partial<Record<FiveWKey, string | undefined>>,
+  placed: Partial<Record<PrismSlot, FiveWKey>> | undefined,
+): FiveWKey[] {
+  const set = new Set<FiveWKey>();
+  for (const k of FIVE_W_KEYS) if ((values[k] ?? "").trim() !== "") set.add(k);
+  // 置き場所の指定があるもの(中身はまだ空でもよい)。
+  if (placed) for (const slot of Object.keys(placed) as PrismSlot[]) {
+    const k = placed[slot];
+    if (k && FIVE_W_KEYS.includes(k)) set.add(k);
+  }
+  return FIVE_W_KEYS.filter((k) => set.has(k));
+}
+
 /**
  * 5W1Hの中身と、本人が置いた位置(faces)から、各面に何が乗るかを決める。
  * 置き場所の指定が無いものは、空いている面へ前から順に入れる。
+ *
+ * 最小は円柱(3面)なので、乗っている項目が2つに満たないうちは
+ * **空白の面**が残る(そこはタップして中身を選べる)。
  */
 export function assignFaces(
   values: Partial<Record<FiveWKey, string | undefined>>,
   placed: Partial<Record<PrismSlot, FiveWKey>> | undefined,
   title: string,
 ): { faceCount: number; assigns: FaceAssign[] } {
-  const filled = (Object.keys(values) as FiveWKey[]).filter((k) => (values[k] ?? "").trim() !== "");
-  const faceCount = clampFaces(1 + filled.length);
+  const onNet = keysOnNet(values, placed);
+  const faceCount = clampFaces(1 + onNet.length);
   const slots = prismSlots(faceCount);
   const used = new Set<FiveWKey>();
   const bySlot = new Map<PrismSlot, FiveWKey>();
 
-  // 本人が置いた位置を先に確定する(その立体に無い面・埋まっていない項目は捨てる)。
+  // 本人が置いた位置を先に確定する(その立体に無い面への指定は捨てる)。
   for (const slot of slots) {
     if (slot === "base0") continue; // タイトル固定
     const key = placed?.[slot];
-    if (key && filled.includes(key) && !used.has(key)) {
+    if (key && onNet.includes(key) && !used.has(key)) {
       used.add(key);
       bySlot.set(slot, key);
     }
   }
   // 残りを、空いている面へ前から順に。
-  const rest = filled.filter((k) => !used.has(k));
+  const rest = onNet.filter((k) => !used.has(k));
   for (const slot of slots) {
     if (slot === "base0" || bySlot.has(slot)) continue;
     const key = rest.shift();
@@ -409,4 +465,52 @@ export function assignFaces(
       return { slot, key, value: key ? (values[key] ?? "") : "" };
     }),
   };
+}
+
+/** ＋で新しい面を足したときの、置き場所の指定の作り直し。
+ *  `end` は帯のどちら端で＋を押したか。左端なら側面の先頭へ割り込ませる。 */
+export function withKeyPlaced(
+  values: Partial<Record<FiveWKey, string | undefined>>,
+  placed: Partial<Record<PrismSlot, FiveWKey>> | undefined,
+  title: string,
+  key: FiveWKey,
+  end: "left" | "right",
+): Partial<Record<PrismSlot, FiveWKey>> {
+  const cur = assignFaces(values, placed, title).assigns;
+  const sides = cur.filter((a) => a.slot.startsWith("side")).map((a) => a.key);
+  const base1 = cur.find((a) => a.slot === "base1")?.key ?? null;
+  const nextSides = end === "left" ? [key, ...sides] : [...sides, key];
+
+  // 新しい立体の面の並びへ入れ直す。側面に入り切らない分は底面へ回す。
+  const count = clampFaces(1 + keysOnNet(values, placed).length + 1);
+  const slotList = lateralSlots(count);
+  const out: Partial<Record<PrismSlot, FiveWKey>> = {};
+  const overflow: FiveWKey[] = [];
+  nextSides.forEach((k, i) => {
+    if (!k) return;
+    if (i < slotList.length) out[slotList[i]] = k;
+    else overflow.push(k);
+  });
+  const b1 = base1 ?? overflow.shift() ?? null;
+  if (b1) out.base1 = b1;
+  return out;
+}
+
+/** 面から項目を外したときの置き場所。外した項目の中身も空にする側は呼び出し元で。 */
+export function withKeyRemoved(
+  values: Partial<Record<FiveWKey, string | undefined>>,
+  placed: Partial<Record<PrismSlot, FiveWKey>> | undefined,
+  title: string,
+  key: FiveWKey,
+): Partial<Record<PrismSlot, FiveWKey>> {
+  const cur = assignFaces(values, placed, title).assigns;
+  const kept = cur.filter((a) => a.key && a.key !== key).map((a) => a.key as FiveWKey);
+  const count = clampFaces(1 + kept.length);
+  const slotList = lateralSlots(count);
+  const out: Partial<Record<PrismSlot, FiveWKey>> = {};
+  kept.forEach((k, i) => {
+    if (i < slotList.length) out[slotList[i]] = k;
+    else out.base1 = k;
+  });
+  return out;
 }

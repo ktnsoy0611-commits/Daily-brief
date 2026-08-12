@@ -19,6 +19,15 @@ import { boundsOf, fitTo, prismDraw, toPath } from "@/lib/prism";
  *  立体が地から浮いて見えるようにしてある。 */
 export const faceFill = (light: number, base = PAPER) => shade(base, (light - 0.9) * 62);
 
+/**
+ * 折り具合 t に応じた明度。
+ * 立体のときは陰影をそのまま(t=0)、平らに開き切ったときは明るい側へ寄せる(t=1)。
+ * 平らな一枚の紙は本来どこも同じ明るさだが、面ごとの差を少しだけ残しておくと
+ * 「どの面がどこへ折れるか」が読めるので、**幅を狭めるだけで潰さない**。
+ * 暗いままだと面の上の文字が読めなくなる。
+ */
+export const foldLight = (light: number, t: number) => light + (0.62 + light * 0.28 - light) * t;
+
 export function PrismSolid({ faceCount, size, opacity = 1 }: { faceCount: number; size: number; opacity?: number }) {
   const paths = useMemo(() => {
     const faces = prismDraw(faceCount, 0);

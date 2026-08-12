@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { GOLD, GREEN, INK, JOURNAL_BG, JOURNAL_FIG, JOURNAL_MUTED, NAV_BOTTOM_GAP, PAPER, SANS } from "@/lib/constants";
+import { GOLD, GREEN, INK, JOURNAL_BG, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS } from "@/lib/constants";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { haptic } from "@/lib/helpers";
 import type { VoiceControls, VoiceTrim } from "@/lib/types";
@@ -104,12 +104,9 @@ const TICKS = 5;
 const KEY_D = 42;
 const KEY_DEPTH = 4;
 /** ★操作キーの列を器の下端からどれだけ上に置くか。タブバーの高さぶん。
- *  オーバーレイ(タブバーを覆う)でも同じ値を使い、見た目を揃える。 */
-const KEY_BOTTOM = `calc(76px + ${NAV_BOTTOM_GAP})`;
-/** ★タブの中で、器をタブバーの下へどれだけ潜らせるか。
- *  タブバーの高さ + 祖先(data-tab-scroll-root)の下パディング16px。
- *  これで器の下端がちょうど画面の下端に届く。 */
-export const STUDIO_BLEED = `calc(92px + ${NAV_BOTTOM_GAP})`;
+ *  オーバーレイ(タブバーを覆う)でも同じ値を使い、見た目を揃える。
+ *  高さの数字は lib/constants.ts の NAV_H が唯一の出どころ。 */
+const KEY_BOTTOM = NAV_H;
 /** 円が外へ出ていくアニメーションの長さ(globals.css の vs-dial-out-* と揃える)。 */
 const DIAL_OUT_MS = 380;
 /** ★これ未満の音は棒として描かない。小さい点が並ぶと汚く見えるため
@@ -145,19 +142,12 @@ function resample(levels: number[], n: number): number[] {
   return out;
 }
 
-export function VoiceStudio({ voice, dim, onClose, bleed = "0px", active: appActive = true }: {
+export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   voice: VoiceControls;
   /** オーバーレイとして幕の上に出すか。 */
   dim?: boolean;
   /** 幕を閉じる(オーバーレイのときだけ)。CANCEL・送信の完了で呼ぶ。 */
   onClose?: () => void;
-  /** ★器より下へどれだけはみ出すか(CSSの長さ)。
-   *  タブの中ではタブバーのぶんだけ**下へ潜らせる**。こうしないと円が
-   *  タブバーの上端でスパッと切れ、そこに横一直線の境目が出る(実機で
-   *  「画面の下部がタブのところで切れている」と報告された症状)。
-   *  ★これを入れることで、器の実高さが「タブの中」でも「全画面の
-   *  オーバーレイ」でもほぼ画面いっぱいで揃う。 */
-  bleed?: string;
   /** ★この画面がいま表示されているか。円の入場アニメーションの合図に使う。
    *  タブの中では AppShell が「このアプリが表示中か」を渡す(3つのアプリの列は
    *  常にマウントされたままなので、mount では判定できない)。オーバーレイは
@@ -651,10 +641,10 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px", active: appAct
       // 親の高さの解決が揺れても、下端に隙間が残らないように)。
       ...(dim
         ? { position: "absolute" as const, inset: 0 }
-        // ★タブの中はタブバーのぶんだけ下へはみ出す。はみ出した先は祖先
-        // (data-tab-scroll-root)が画面の下端で切ってくれるので、円は
-        // タブバーの下へ自然に潜り込んで消える。
-        : { position: "relative" as const, width: "100%", height: `calc(100% + ${bleed})` }),
+        // ★タブの中も同じ。器は `.full-bleed` を付けた親(RecordTab)が
+        // 既に画面いっぱいなので、ここは 100% を埋めるだけでよい。
+        // タブバーのぶんの計算はこの部品では**一切しない**。
+        : { position: "relative" as const, width: "100%", height: "100%" }),
       overflow: "hidden", background: ground,
       // 閉じていく間は、円が出ていくのに少し遅れて地も消える。
       ...(onClose ? {

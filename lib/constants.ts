@@ -132,6 +132,15 @@ export const NAV_BOTTOM_GAP = "max(4px, calc(env(safe-area-inset-bottom) - 26px)
 // から浮く量が変わればここに揃えるUIが下端に近づく量も連動させるため。
 export const NAV_OFFSET = `calc(82px + ${NAV_BOTTOM_GAP})`;
 
+// ★タブバーの実高さ(画面の下端からタブバーの上端まで)。
+// アプリの目印の行(5+7=12) + ピル(TAB_MARK + NAV_PILL_PAD*2 = 64) + 下の浮き。
+// ★★タブバーは**フローから外して**画面の上に浮かせてある(AppShell参照)ので、
+// 「タブバーのぶんの余白」が要る場所はすべてこの値を見ること。ここと
+// globals.css の --nav-h だけが、タブバーの高さを知っている場所。
+export const NAV_H = `calc(76px + ${NAV_BOTTOM_GAP})`;
+// タブ本文の上の余白(セーフエリア込み)。--pad-top として全体へ配る。
+export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";
+
 // ---- 興味の自動検出（プロトタイプ: キーワード頻度。現在は未使用） --
 // 好み/興味は「興味・好み」1リストへ統合し、チップ本体はCoworkの週次分析が
 // taste-state.md で所有する(HANDOFF §8.14 優先度3)。この頻度検出ルールは

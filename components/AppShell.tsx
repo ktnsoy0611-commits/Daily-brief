@@ -19,7 +19,7 @@ import { StockTab } from "@/components/tabs/StockTab";
 import { InboxView } from "@/components/tabs/InboxView";
 import { TasksTab } from "@/components/tabs/TasksTab";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
-import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK } from "@/lib/constants";
+import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -122,7 +122,11 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             // ブラウザのスクロールアンカリングがscrollTopを勝手に補正して
             // 「グイッと引っ張られる」ジャンプを起こさないよう無効化する。
             overflowAnchor: "none",
-            padding: "max(16px, env(safe-area-inset-top)) 16px 16px",
+            // ★下の逃がしはここではなく、中身の枠(下の tab-in)が持つ。
+            // スクロールコンテナ自身の padding-bottom は、flex の中身が
+            // 伸びたときに scrollHeight へ正しく入らないことがあり、
+            // 実際に最後の項目がタブバーの裏へ潜って止まった。
+            padding: "var(--pad-top) 16px 0",
           }}>
             {active && memoryMode && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
 
@@ -151,7 +155,19 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 従来どおり帯の下に潜り、ぼかしが正しく効く。 */}
             {mounted && (
               <div key={tab} className="tab-in" style={{
-                display: "flex", flexDirection: "column", flex: 1, minHeight: 0,
+                display: "flex", flexDirection: "column", minHeight: 0,
+                // ★flex-basis は auto(=中身の高さ)。`flex: 1`(basis 0)にすると、
+                // この枠は「空いている高さ」に固定され、中身が長いタブでは
+                // 中身がこの枠から**はみ出して**しまう。はみ出した分は枠の
+                // padding-bottom の外側なので、下の逃がしが効かず、最後の項目が
+                // タブバーの裏に潜って止まる(実測で 38px 隠れていた)。
+                // basis:auto なら「中身が短ければ空きいっぱいに伸び、長ければ
+                // 中身の高さになる」ので、padding-bottom が必ず効く。
+                flex: "1 0 auto",
+                // ★タブバーのぶんの逃がし。タブバーはフローから外して浮かせて
+                // あるので、中身がその裏で止まらないようここで空けておく。
+                // 画面の四隅まで敷きたいタブは `.full-bleed` がこれを打ち消す。
+                paddingBottom: "var(--nav-h)",
                 ...(scrollLocked ? { position: "relative" as const, zIndex: 16 } : null),
               }}>
                 {tab === "brief" && <BriefTab {...tabProps} />}
@@ -170,14 +186,24 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
           </>
       </div>
 
-      {/* ヘッダーのプロフィール丸アイコン/件数ピルと同じ「PAPERの丸背景+
-          SOFT_SHADOWで浮く」語彙に揃えたフローティングタブバー。position:
-          fixedにすると、iOS SafariのURLバー(動的ツールバー)の表示/非表示
-          遷移中に固定要素が実際のビューポートとズレて、下に不自然な隙間が
-          生まれることがある(このアプリで以前sticky→fixedへの変更で
-          一度再発したバグ)。stickyなら実スクロール位置基準になるため、
-          この種のズレを避けられる。navの箱自体はbottom:0(実際の画面下端)
-          まで届かせておき、ピルはその中でmarginBottomにより浮かせる。
+      {/* ★★タブバーは**フローから外して画面の上に浮かせる**(2026-08-12)。
+          以前はスクロールルートの中に flex の兄弟として置いていたため、
+          「本文の領域がタブバーの上端で終わる」構造になっていた。その結果、
+          全面に敷きたい背景や大きな図形は必ずタブバーの手前で途切れ、
+          タブの側が negative margin でタブバーの高さぶん食い込ませる、という
+          帳尻合わせが要った。高さの数字がどこかでずれるたびに
+          「タブバーの上下に境目が出る」「背景が途中で切れる」不具合が
+          再発し、そのたびに直す羽目になっていた。
+          いまはタブバーが**列の中の絶対配置**で、本文の領域は常に画面いっぱい。
+          中身はタブバーの下へそのまま continue し、タブバーはその上に浮く。
+          スクロールする中身がタブバーの裏に隠れて止まらないよう、逃がしは
+          スクロールルートの padding-bottom(= --nav-h)で一元的に行う。
+          画面の四隅まで敷きたいタブは globals.css の `.full-bleed` を付ける
+          だけでよい(高さの計算はそこ1箇所にしかない)。
+          ★position:fixed にはしないこと。iOS SafariのURLバー伸縮中に実際の
+          ビューポートとズレて下に隙間が生まれる(過去に再発済み)。列は
+          シェル(100svh)の中の普通の要素なので、その中の absolute なら
+          ビューポートの都合に影響されない。
           下地へ溶け込むグラデーションは、以前はnavの内側(nav自身のzIndex
           =25)に敷いていたが、それだとPlanSelectionBar/ExecuteTabの
           バインド！ボタンのような「それ自体は不透明な独立UI」の上にまで
@@ -199,7 +225,11 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
               [data-dash-active="1"] .app-nav がこれを消し、portal側の
               モーフ用ピルへ役目を渡す(見た目が同一の位置で入れ替わる)。
               CSS側でやるのは、そのためだけに列を再レンダーしないため。 */}
-          <nav className="app-nav" style={{ position: "sticky", bottom: 0, width: "100%", zIndex: 25, display: "flex", flexDirection: "column", alignItems: "center", padding: "0 16px", pointerEvents: "none" }}>
+          <nav className="app-nav" style={{
+            position: "absolute", left: 0, right: 0, bottom: 0,
+            display: "flex", flexDirection: "column", alignItems: "center",
+            padding: "0 16px", zIndex: 25, pointerEvents: "none",
+          }}>
             {/* いま3つのアプリのどこにいるか。文字は出さず、点だけの控えめな
                 目印にしている。この目印もトラックに乗っているので、指で
                 引いている最中に「次のアプリの目印」が一緒に流れ込んでくる
@@ -897,6 +927,11 @@ export function AppShell() {
     <div ref={shellRef} style={{
       height: "100svh", overflow: "hidden",
       fontFamily: SANS, color: INK,
+      // ★タブバーの高さと本文の上余白は、ここで一度だけCSS変数として配る。
+      // 「タブバーのぶんの余白」を要る場所(スクロールルートの下パディング、
+      // globals.css の .full-bleed)はすべてこれを見る。値を変えるときは
+      // lib/constants.ts の NAV_H / TAB_PAD_TOP だけを直せばよい。
+      ...({ "--nav-h": NAV_H, "--pad-top": TAB_PAD_TOP } as React.CSSProperties),
       // 背景(AppBackdrop)はzIndex:-1で敷くので、シェルを独立した重なりの
       // 単位にして、外へ抜け落ちないようにする。
       // 背景(AppBackdrop)はbody直下へポータルで敷いてあるので、ここは透明。

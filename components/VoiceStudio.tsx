@@ -18,8 +18,7 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //     画面の真ん中あたりに置く。
 //   ・波形は**円に重ならない**よう、腰の少し上に細く狭く置く。録音中は
 //     赤い線が立ち、録れた棒がその左へ流れる(線の右は点線=まだ録っていない)。
-//     止めても**帯の大きさは変えず**、中心の線が左右2本へ分かれて全体表示
-//     (トリミング)になる。
+//     止めると帯が広がり、線が左右2本へ分かれて全体表示(トリミング)になる。
 //   ・最下部にカセットの操作キーが4つ。
 //
 // ■ 数字の扱い(ユーザー指定)
@@ -59,10 +58,11 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //   → だから掴んだ合図は**視覚**(円がふくらむ)で持たせている。haptic の
 //     呼び出しはAndroid向けの付け足しとして残してあるだけ。
 
-/** 波形の棒の間隔と太さ(px)。★録音中もトリミング中も**同じ寸法**
- *  (ユーザー指定で、止めても帯が大きくならないようにした)。 */
-const BAR_PITCH = 5;
-const BAR_W = 3;
+/** 波形の棒の間隔と太さ(px)。録音中は細かく、止めたあと(全体表示)は太め。 */
+const BAR_PITCH_REC = 5;
+const BAR_W_REC = 3;
+const BAR_PITCH_ALL = 9;
+const BAR_W_ALL = 5;
 /** ダイヤル1回転で動かす割合。小さいほど「重い」。 */
 const TURN_RATIO = 0.5;
 /** 手応えを返す刻み(rad)。15度ごと。 */
@@ -81,11 +81,14 @@ const DIAL_CX = 0.30;
 /** ★波形の帯の中心を、円の中心からどれだけ上へ置くか。
  *  「真ん中の少し上」(ユーザー指定)。 */
 const WAVE_DY = -136;
-/** 波形の帯の高さ。★止めても広げない(ユーザー指定)。 */
-const WAVE_H = 58;
+/** 波形の帯の高さ。録音中は細く、止めると広がる。 */
+const WAVE_H_REC = 58;
+const WAVE_H_ALL = 104;
 /** 録音中の帯は、円に**絶対に重ならない**幅までしか広げない。
  *  実際の幅はコードが円の式から計算する(WAVE_MARGIN は左右の余白)。 */
 const WAVE_MARGIN = 6;
+/** 止めたあと(全体表示)の左右の余白。 */
+const WAVE_PAD_ALL = 26;
 /** 録音中の赤い線を帯のどこに立てるか(左からの割合)。左が録れた分、
  *  右がまだ録っていない分(点線)。真ん中より右に置いて履歴を長く見せる。 */
 const REC_LINE_AT = 0.66;
@@ -275,10 +278,11 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     const s = (RD / 2) * (RD / 2) - dy * dy;
     return (cxR - cxL) - 2 * (s > 0 ? Math.sqrt(s) : 0);
   };
-  const nearDy = Math.max(0, Math.abs(WAVE_DY) - WAVE_H / 2);
-  const waveW = Math.max(90, Math.min(w - 52, gapAt(nearDy) - 2 * WAVE_MARGIN));
+  const nearDy = Math.max(0, Math.abs(WAVE_DY) - WAVE_H_REC / 2);
+  const waveWRec = Math.max(90, Math.min(w - 2 * WAVE_PAD_ALL, gapAt(nearDy) - 2 * WAVE_MARGIN));
+  const waveWAll = w - 2 * WAVE_PAD_ALL;
   // 数字は帯の下、腰のところへ。
-  const timeTop = waveCy + WAVE_H / 2 + 30;
+  const timeTop = waveCy + WAVE_H_ALL / 2 + 10;
 
   // ---- 波形を描く ------------------------------------------------------------
   const draw = useCallback(() => {
@@ -325,7 +329,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       // 「ガクつき・点滅」として見える。時刻で置けば、間隔が揺れても
       // 位置は常に連続で、1フレームぶんも飛ばない。
       const now = elapsedMs();
-      const pxPerMs = BAR_PITCH / LEVEL_MS;
+      const pxPerMs = BAR_PITCH_REC / LEVEL_MS;
       // 中心線(左は実線、右は点線)。
       c.lineCap = "butt";
       c.lineWidth = 1;
@@ -348,9 +352,9 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         const at = times[k];
         if (at == null) continue;
         const x = lineX - (now - at) * pxPerMs;
-        if (x < -BAR_W) break;      // 左端より外はもう描かない
+        if (x < -BAR_W_REC) break;      // 左端より外はもう描かない
         if (x > lineX) continue;
-        bar(x, all[k], fg, BAR_W);
+        bar(x, all[k], fg, BAR_W_REC);
       }
       // 赤い線。帯より少し高く出して、参考画像と同じく主役にする。
       c.lineCap = "round";
@@ -368,7 +372,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     if (all.length === 0) return;
 
     // ── 止めたあと(全体表示・トリミング) ─────────────────────
-    const n = Math.max(1, Math.floor((cw - BAR_W) / BAR_PITCH) + 1);
+    const n = Math.max(1, Math.floor((cw - BAR_W_ALL) / BAR_PITCH_ALL) + 1);
     const bars = resample(all, n);
     c.lineCap = "butt";
     c.lineWidth = 1;
@@ -380,7 +384,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     c.lineCap = "round";
     for (let i = 0; i < n; i++) {
       const r = n <= 1 ? 0 : i / (n - 1);
-      bar(BAR_W / 2 + i * BAR_PITCH, bars[i], (r >= t.start && r <= t.end) ? fg : mute, BAR_W);
+      bar(BAR_W_ALL / 2 + i * BAR_PITCH_ALL, bars[i], (r >= t.start && r <= t.end) ? fg : mute, BAR_W_ALL);
     }
     {
       // ★切り出しの2本。止めた直後は真ん中で重なっていて、split が 0→1 に
@@ -641,6 +645,10 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
   const canToggle = recording || state === "idle";
   // 波形の帯を出すか。何も録っていない待機中は出さない。
   const waveOn = recording || review || sending;
+  // ★帯を広げるのは「止めたあと」だけ。待機中も**録音中と同じ寸法**に
+  // しておくこと。待機中を全体表示の寸法にすると、録音を始めた瞬間に
+  // 幅が 338→152 へ縮むアニメーションが走ってしまう。
+  const wide = review || sending;
 
   return (
     <div ref={boxRef} style={{
@@ -750,13 +758,15 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         style={{
           position: "absolute", zIndex: 2, pointerEvents: "none",
           left: "50%",
-          width: waveW, height: WAVE_H, top: waveCy - WAVE_H / 2,
+          width: wide ? waveWAll : waveWRec,
+          height: wide ? WAVE_H_ALL : WAVE_H_REC,
+          top: waveCy - (wide ? WAVE_H_ALL : WAVE_H_REC) / 2,
           // ★録音を始めると、横に伸びながら現れる。何も録っていない間は
           // 出さない(以前は横線だけが残り、円の上を横切って見えていた)。
           opacity: waveOn ? 1 : 0,
           transform: `translateX(-50%) scaleX(${waveOn ? 1 : 0.5}) translateZ(0)`,
           transition: waveOn
-            ? "opacity 260ms ease-out, transform 340ms cubic-bezier(0.16,1,0.3,1)"
+            ? `opacity 260ms ease-out, transform 340ms cubic-bezier(0.16,1,0.3,1), width ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), height ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), top ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1)`
             : "opacity 200ms ease-in, transform 240ms ease-in",
           // ★自分だけの合成レイヤーへ上げる。こうしないと、毎フレームの
           // 描き直しが**巨大な円と同じレイヤー**を汚し、円ごと塗り直しになる

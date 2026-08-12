@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
-import { AppBackdrop } from "@/components/AppBackdrop";
+import { AppBackdrop, groundOf } from "@/components/AppBackdrop";
 import { TAB_ICON_OFF, TabGlyph, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
@@ -112,9 +112,19 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
           // 必ず隣に列がいる状態を、列を増やさずに作れる。値が変わるのは
           // アプリが切り替わった瞬間だけなので、ドラッグ中は静止している。
           transform: wrap ? `translateX(${wrap * 100}%)` : undefined,
+          // ★★アプリの地色は**この列が持つ**(2026-08-12)。
+          // 以前は画面全体に1枚だけ敷いた帆布(AppBackdrop)が現在のアプリの色を
+          // 塗り、アプリが切り替わるときにその1枚が**クロスフェード**していた。
+          // 列は横へスライドするのに、地色だけがその場で混ざるので、遷移中は
+          // 「新しいアプリの領域に古い地色が残っている」状態になり、タブバーの
+          // 下など、中身が自分で地を塗っている所との境目が見えていた
+          // (実測: 払っている間ずっと 179、離すと 206→233→236 と混ざる)。
+          // 地色を列に持たせると、A の地が出ていって B の地が入ってくるだけに
+          // なるので、混ざる瞬間そのものが無くなる。**背景を変えても同じ**。
+          // ★タブや中身の側で地色を塗らないこと。塗ると出どころが2つになり、
+          // 遷移中にどちらかがズレて必ず境目が出る。
+          background: groundOf(a.id),
         }}>
-          {/* 背景はここではなくシェル直下に1枚だけ置いてある(3アプリを貫く
-              一続きの帆布にするため)。列は透明で、その帆布が透けて見える。 */}
           <div data-tab-scroll-root style={{
             width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
             overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",

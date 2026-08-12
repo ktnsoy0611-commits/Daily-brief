@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { GOLD, GREEN, INK, JOURNAL_BG, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS } from "@/lib/constants";
+import { GOLD, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS } from "@/lib/constants";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { haptic } from "@/lib/helpers";
 import type { VoiceControls, VoiceTrim } from "@/lib/types";
@@ -154,8 +154,11 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
    *  開いたときに新しくマウントされるので省略(既定 true)。 */
   active?: boolean;
 }) {
-  // 幕の上でも、地と図の関係(わずかな明度差)は同じにする。
-  const ground = dim ? DIM_GROUND : JOURNAL_BG;
+  // ★地色は**列(AppColumn)が持つ**。ここでは塗らない(タブの中では
+  // `background` を指定せず、列の色をそのまま透かす)。出どころを2つにすると、
+  // アプリの遷移中にどちらかがズレて必ず境目が出る。
+  // 全画面のオーバーレイだけは列の外なので、自分で暗い地を塗る。
+  const ground = dim ? DIM_GROUND : undefined;
   const figure = dim ? "#3A3A37" : JOURNAL_FIG;
   const fg = dim ? PAPER : INK;
   const mute = dim ? "rgba(255,255,255,0.46)" : JOURNAL_MUTED;

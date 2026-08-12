@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Body, Engine } from "matter-js";
 import { Masthead } from "@/components/common";
 import { faceFill } from "@/components/tasks/PrismSolid";
+import { DemoSeedButton, TaskAddButton } from "@/components/tasks/TaskAddButton";
 import { TaskNet, type NetData } from "@/components/tasks/TaskNet";
 import { appTitle } from "@/lib/apps";
 import { TAB_PAD_TOP } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { assignFaces, boundsOf, fitTo, prismDraw } from "@/lib/prism";
+import { demoTasks } from "@/lib/taskDemo";
 import { sideOf } from "@/lib/taskSize";
 import type { AppState, TabProps, Task } from "@/lib/types";
 
@@ -43,6 +45,8 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   const activeRef = useRef(!!appActive);
   const sizeRef = useRef({ w: 0, h: 0 });
   const [openId, setOpenId] = useState<string | null>(null);
+  // ＋で作ったばかりのもの。題が空のまま閉じたら捨てる。
+  const [draftId, setDraftId] = useState<string | null>(null);
   // 物理の世界ができたかどうか。matter.js は非同期に読み込むので、
   // これが立つまでタスクを落とし込めない(立った時点で下の同期をやり直す)。
   const [ready, setReady] = useState(false);
@@ -277,6 +281,32 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     setOpenId(null);
   };
 
+  // 手でタスクを足す。空のまま作って開き、題を書いてもらう。
+  const addTask = () => {
+    const id = `task-${Date.now()}`;
+    const next: AppState = structuredClone(appState);
+    next.tasks = [{ id, title: "", done: false, createdAt: new Date().toISOString(), weight: 2 }, ...(next.tasks ?? [])];
+    persist(next);
+    setDraftId(id);
+    setOpenId(id);
+  };
+
+  // 題が空のまま閉じたら、作りかけを消す。
+  const closeNet = (id: string) => {
+    setOpenId(null);
+    if (draftId !== id) return;
+    setDraftId(null);
+    const t = (appState.tasks ?? []).find((x) => x.id === id);
+    if (t && !t.title.trim()) remove(id);
+  };
+
+  const seedDemo = () => {
+    const next: AppState = structuredClone(appState);
+    next.tasks = [...demoTasks(), ...(next.tasks ?? [])];
+    persist(next);
+    showToast("デモのタスクを入れました");
+  };
+
   // 積んである物体をタップして開く。
   const onTap = (e: React.PointerEvent) => {
     const M = matterRef.current;
@@ -303,15 +333,19 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       <div style={{ position: "absolute", top: TAB_PAD_TOP, left: 16, right: 16, pointerEvents: "none", zIndex: 2 }}>
         <Masthead title={appTitle("tasks")} corner={<span style={{ pointerEvents: "auto" }}>{profileButton}</span>} />
       </div>
+      {/* full-bleed(タブバーの下まで敷く)なので、ボタンはタブバーのぶん持ち上げる。 */}
+      <TaskAddButton onAdd={addTask} lifted />
+      {tasks.length === 0 && <DemoSeedButton label="デモのタスクを入れる" onSeed={seedDemo} lifted />}
       {open && (
         <TaskNet
           key={open.id}
           data={open}
           mode="task"
+          autoEdit={draftId === open.id}
           onChange={(p) => patch(open.id, p)}
           onConfirm={() => complete(open)}
           onDelete={() => remove(open.id)}
-          onClose={() => setOpenId(null)}
+          onClose={() => closeNet(open.id)}
         />
       )}
     </main>

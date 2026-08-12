@@ -45,9 +45,11 @@ const WEIGHTS: { v: TaskWeight; label: string }[] = [
 
 const valuesOf = (d: NetData) => ({ when: d.when, where: d.where, who: d.who, why: d.why, how: d.how });
 
-export function TaskNet({ data, mode, onChange, onConfirm, onDelete, onClose }: {
+export function TaskNet({ data, mode, autoEdit, onChange, onConfirm, onDelete, onClose }: {
   data: NetData;
   mode: "candidate" | "task";
+  /** 開き切ったらすぐ題を入力状態にする(＋で作ったばかりのとき)。 */
+  autoEdit?: boolean;
   onChange: (patch: Partial<NetData>) => void;
   onConfirm?: () => void;
   onDelete?: () => void;
@@ -160,6 +162,15 @@ export function TaskNet({ data, mode, onChange, onConfirm, onDelete, onClose }: 
     if (!opened) raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }, [opened, draw, onClose]);
+
+  // ＋で作ったばかりのものは、開き切ったところで題の入力へ入る。
+  const autoEditedRef = useRef(false);
+  useEffect(() => {
+    if (!opened || !autoEdit || autoEditedRef.current) return;
+    autoEditedRef.current = true;
+    setDraft(data.title);
+    setEditing("base0");
+  }, [opened, autoEdit, data.title]);
 
   const beginClose = useCallback(() => {
     if (closedRef.current) return;

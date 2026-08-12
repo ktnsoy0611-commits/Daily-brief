@@ -51,6 +51,14 @@ export function useVoiceRecorder(opts: {
   const [paused, setPaused] = useState(false);
 
   const recRef = useRef<MediaRecorder | null>(null);
+  // ★マイクの生ストリーム。MediaRecorder とは別に**自分で持っておく**。
+  // rec.stream 経由でしか止めていないと、MediaRecorder を作る前に例外が出た
+  // 場合や、二重に start してしまった場合に、止め損ねたストリームが残って
+  // マイクが点きっぱなしになる(実機で「録音していないのにマイクがオンの
+  // ような挙動」と報告された)。
+  const streamRef = useRef<MediaStream | null>(null);
+  /** 開始処理が走っている最中の目印。二重に getUserMedia しないため。 */
+  const startingRef = useRef(false);
   const chunksRef = useRef<Blob[]>([]);
   const blobRef = useRef<Blob | null>(null);
   const startedAtRef = useRef(0);
@@ -110,18 +118,32 @@ export function useVoiceRecorder(opts: {
     audioCtxRef.current = null;
   }, [pauseMeter]);
 
+  /** ★マイクを手放す。どの終わり方でも必ずここを通すこと。 */
+  const releaseStream = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => { try { t.stop(); } catch { /* 既に停止 */ } });
+    streamRef.current = null;
+    recRef.current = null;
+  }, []);
+
   useEffect(() => () => {
     stopMeter();
-    recRef.current?.stream.getTracks().forEach((t) => t.stop());
-  }, [stopMeter]);
+    releaseStream();
+  }, [stopMeter, releaseStream]);
 
   const start = useCallback(async () => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       onError("この端末では録音できません");
       return;
     }
+    // ★二重起動を防ぐ。ここが無いと、素早く2回タップしたときに
+    // getUserMedia が2つ走り、後から来た方だけが recRef に入って、
+    // 先に取ったストリームが誰にも止められずマイクが点きっぱなしになる。
+    if (startingRef.current || recRef.current) return;
+    startingRef.current = true;
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
       // iOS Safari は webm を作れないため、対応している形式を順に試す。
       const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac"];
       const mimeType = types.find((t) => MediaRecorder.isTypeSupported?.(t));
@@ -159,7 +181,13 @@ export function useVoiceRecorder(opts: {
         // 波形が測れなくても録音自体は続ける(棒が出ないだけ)。
       }
     } catch {
+      // ★MediaRecorder の生成などで落ちた場合も、取ったストリームは必ず返す。
+      stream?.getTracks().forEach((t) => { try { t.stop(); } catch { /* 既に停止 */ } });
+      streamRef.current = null;
+      recRef.current = null;
       onError("マイクを使えませんでした");
+    } finally {
+      startingRef.current = false;
     }
   }, [onError, startMeter]);
 
@@ -195,9 +223,12 @@ export function useVoiceRecorder(opts: {
     pausedRef.current = false;
     segStartRef.current = 0;
     setPaused(false);
+    // ★onstop が来なかった場合の保険。ここを通らないとマイクが点いたままに
+    // なるので、少し待って必ず手放す(Safari で onstop が落ちる報告がある)。
+    const guard = window.setTimeout(releaseStream, 1500);
     rec.onstop = () => {
-      rec.stream.getTracks().forEach((t) => t.stop());
-      recRef.current = null;
+      window.clearTimeout(guard);
+      releaseStream();
       const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
       chunksRef.current = [];
       if (ms < MIN_MS || blob.size === 0) { setState("idle"); return; }
@@ -206,8 +237,8 @@ export function useVoiceRecorder(opts: {
       setState("review");
       haptic(10);
     };
-    try { rec.stop(); } catch { setState("idle"); }
-  }, [stopMeter, elapsedMs]);
+    try { rec.stop(); } catch { window.clearTimeout(guard); releaseStream(); setState("idle"); }
+  }, [stopMeter, elapsedMs, releaseStream]);
 
   const toggle = useCallback(() => {
     if (state === "recording") stop();
@@ -232,18 +263,17 @@ export function useVoiceRecorder(opts: {
       const rec = recRef.current;
       if (rec) {
         rec.onstop = () => {
-          rec.stream.getTracks().forEach((t) => t.stop());
-          recRef.current = null;
+          releaseStream();
           chunksRef.current = [];
           setState("idle");
         };
-        try { rec.stop(); } catch { setState("idle"); }
-      } else setState("idle");
+        try { rec.stop(); } catch { releaseStream(); setState("idle"); }
+      } else { releaseStream(); setState("idle"); }
     } else if (state === "review") {
       setState("idle");
     }
     haptic(6);
-  }, [state, stopMeter]);
+  }, [state, stopMeter, releaseStream]);
 
   const send = useCallback(async (trim: VoiceTrim) => {
     const raw = blobRef.current;

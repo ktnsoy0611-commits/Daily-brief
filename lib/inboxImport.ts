@@ -1,4 +1,4 @@
-import type { InboxCandidate, JournalEntry } from "./types";
+import type { InboxCandidate, JournalEntry, TaskWeight } from "./types";
 
 // ★Coworkが夜間に書いた my-brain のファイルを読み取る(純粋関数)。
 //   inbox/candidates.md … タスク・ウィッシュの候補(承認して初めて登録される)
@@ -40,6 +40,15 @@ function blocks(md: string): { head: string; body: string }[] {
   return out;
 }
 
+// 「重要度: 3」の値を 1〜3 に丸める。全角の数字・「3（…）」のような
+// 注釈つきにも寛容にする(Coworkに書かせるものなので書式が少し崩れうる)。
+function parseWeight(raw: string | undefined): TaskWeight | undefined {
+  if (!raw) return undefined;
+  const m = /[1-3１-３]/.exec(raw.normalize("NFKC"));
+  if (!m) return undefined;
+  return Number(m[0].normalize("NFKC")) as TaskWeight;
+}
+
 export function parseCandidates(md: string | null): InboxCandidate[] {
   if (!md) return [];
   return blocks(md)
@@ -60,6 +69,9 @@ export function parseCandidates(md: string | null): InboxCandidate[] {
         what: f["なにを"],
         why: f["なぜ"],
         how: f["どうやって"],
+        // 重要度の見立て(1〜3)。物体の大きさ = 重要度 × 切迫度 の片方になる。
+        // 1〜3以外・未記入は未設定のままにし、アプリ側で「中」として扱う。
+        weight: parseWeight(f["重要度"]),
         sourceText: f["もとの声"],
         createdAt: f["出典"] ?? new Date().toISOString(),
       };

@@ -44,9 +44,8 @@ export const APPS: AppDef[] = [
     label: "タスク",
     en: "TASK",
     tabs: [
-      { id: "tasks-inbox", label: "インボックス", en: "INBOX", icon: "venn" },
-      { id: "tasks-today", label: "今日", en: "TODAY", icon: "toggle" },
-      { id: "tasks-all", label: "すべて", en: "ALL", icon: "grid" },
+      { id: "tasks-drift", label: "候補", en: "DRIFT", icon: "drift" },
+      { id: "tasks-gravity", label: "タスク", en: "GRAVITY", icon: "pile" },
     ],
   },
   {
@@ -76,7 +75,7 @@ export function cycleApp(id: AppId, dir: 1 | -1): AppId {
 
 // 各アプリを開いたとき最初に見せるタブ。
 export const DEFAULT_TAB: Record<AppId, TabId> = {
-  tasks: "tasks-inbox",
+  tasks: "tasks-drift",
   life: "brief",
   journal: "journal-record",
 };

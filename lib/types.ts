@@ -213,11 +213,42 @@ export interface TaskSuggestion {
   why?: string;   // なぜ今それを確認するのか(1文)
 }
 
+// ★5W1Hのうち、タイトル以外の5つ。
+// **「なにを」はタイトルそのもの**なので、ここには持たない(ユーザー確定、
+// 2026-08-12)。タスクの立体はこの5つ+タイトルで最大6面になる。
+export type FiveWKey = "when" | "where" | "who" | "why" | "how";
+
+export const FIVE_W_KEYS: FiveWKey[] = ["when", "where", "who", "why", "how"];
+
+export const FIVE_W_LABEL: Record<FiveWKey, string> = {
+  when: "いつ", where: "どこで", who: "だれと", why: "なぜ", how: "どうやって",
+};
+
+export interface FiveW {
+  when?: string;
+  where?: string;
+  who?: string;
+  why?: string;
+  how?: string;
+}
+
+// ★タスクの重要度。1=小 2=中 3=大。未設定は 2(中)として扱う。
+// AIが見立て、本人が展開図で上書きする(ユーザー確定)。
+export type TaskWeight = 1 | 2 | 3;
+
+// ★展開図のどの位置にどの項目を置いたか。柱体の展開図は
+// 「底面 + 側面の帯 + 底面」の帯状で、
+//   base0 = タイトル(=なにを)の底面。必ずあり、外せない。
+//   side0..3 = 側面(帯に横一列)。1枚=円柱 2枚=半円柱 3枚=三角柱 4枚=四角柱。
+//   base1 = もう一方の底面。
+// 面の数 = 1 + 埋まっている項目の数。最小3(円柱)・最大6(四角柱)。
+export type PrismSlot = "base0" | "base1" | "side0" | "side1" | "side2" | "side3";
+
 // ★タスク(タスクアプリ)。
-export interface Task {
+export interface Task extends FiveW {
   id: string;
   title: string;
-  // 予定日(YYYY-MM-DD)。無いものは「いつか」扱いで今日の一覧には出ない。
+  // 予定日(YYYY-MM-DD)。無いものは「いつか」扱い。切迫度=物体の大きさに効く。
   dueDate?: string;
   done: boolean;
   doneAt?: string;
@@ -228,6 +259,10 @@ export interface Task {
   suggestions?: TaskSuggestion[];
   // 提案を作った時刻。未設定なら「まだ一度も作っていない」= 開いたときに作る。
   suggestedAt?: string;
+  // 重要度。未設定は中扱い。
+  weight?: TaskWeight;
+  // 5W1Hを展開図のどの面に置いたか。未設定なら埋まっている順に自動で並べる。
+  faces?: Partial<Record<PrismSlot, FiveWKey>>;
 }
 
 // ★ジャーナルの1件。日付ごとに書き足していくログ。
@@ -255,17 +290,16 @@ export interface VoiceNote {
 // ★インボックスの候補。声のメモをCoworkが読んで作る「これはタスクに
 // した方がいいのでは?」という提案。承認するまで本登録されない。
 // 5W1Hは分かった分だけ埋まり、空欄はユーザーがその場で足せる。
-export interface InboxCandidate {
+export interface InboxCandidate extends FiveW {
   id: string;
   kind: "task" | "journal" | "wish" | "item";
   title: string;
-  // 5W1H。分からないものは省く(埋まっていないことが手がかりになる)。
-  when?: string;
-  where?: string;
-  who?: string;
+  // 「なにを」。タイトルと同じ意味なので**面としては持たない**(§ FiveW)。
+  // Coworkが別に書いてきた場合だけ残り、確定するときタイトルが空なら
+  // これを使い、そうでなければメモへ回す。
   what?: string;
-  why?: string;
-  how?: string;
+  // 重要度の見立て。Coworkが書いてくれば入る(未設定なら中扱い)。
+  weight?: TaskWeight;
   // 元になった声のメモ(その場で原文を確かめられるように)。
   sourceNoteId?: string;
   sourceText?: string;
@@ -404,7 +438,11 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
 export type AppId = "tasks" | "life" | "journal";
 
 export type LifeTabId = "brief" | "stock" | "goals" | "execute";
-export type TasksTabId = "tasks-inbox" | "tasks-today" | "tasks-all";
+// ★タスクは2タブ(2026-08-12にユーザー確定)。日付での区切り(今日/すべて)は
+// 廃止した。「何が差し迫っているか」は日付の文字ではなく**物体の大きさと
+// 山の高さ**が語る。drift=未確定の候補が無重力で漂う / gravity=確定した
+// タスクが落ちて積み上がる。
+export type TasksTabId = "tasks-drift" | "tasks-gravity";
 // アーカイブ(旧・独立タブ)はジャーナルへ統合した。「レコード」=カセット
 // プレイヤーをタップして声で記録する、「今日」=その日の記録、
 // 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10・§33)。

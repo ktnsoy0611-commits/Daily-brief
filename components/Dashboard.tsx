@@ -4,7 +4,7 @@ import { Bookmark, Check, X } from "lucide-react";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { TAB_ICON_OFF, TabGlyph } from "@/components/TabIcons";
-import { TaskRow } from "@/components/tabs/TasksTab";
+import { TaskRow } from "@/components/TaskRow";
 import type { AppDef } from "@/lib/apps";
 import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, TAB_MARK } from "@/lib/constants";
 import { haptic, img, todayKey, todayLabel } from "@/lib/helpers";

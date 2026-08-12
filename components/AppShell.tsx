@@ -16,15 +16,15 @@ import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordTab } from "@/components/tabs/RecordTab";
 import { StockTab } from "@/components/tabs/StockTab";
-import { InboxView } from "@/components/tabs/InboxView";
-import { TasksTab } from "@/components/tabs/TasksTab";
+import { DriftTab } from "@/components/tabs/DriftTab";
+import { GravityTab } from "@/components/tabs/GravityTab";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
-import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, TasksTabId, VoiceControls } from "@/lib/types";
+import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, VoiceControls } from "@/lib/types";
 
 // 読み込み待機画面。2x2のグリッドの上を、黒い幾何学が動き回る
 // (globals.css の load-rect / load-dot / load-fan)。背景と同じ語彙で、
@@ -90,16 +90,13 @@ interface AppColumnProps {
   wrap: number;
   memoryMode: boolean;
   tabProps: TabProps;
-  appState: AppState;
-  persist: (next: AppState) => void;
-  showToast: (msg: string) => void;
   goTab: (id: TabId) => void;
   onNavPointerDown: (e: ReactPointerEvent) => void;
   onRecord: () => void;
   navDragged: React.MutableRefObject<boolean>;
 }
 
-const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, appState, persist, showToast, goTab, onNavPointerDown, onRecord, navDragged }: AppColumnProps) {
+const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, goTab, onNavPointerDown, onRecord, navDragged }: AppColumnProps) {
   // ★1画面で完結し、スクロールさせないタブ。
   const scrollLocked = tab === "brief" || tab === "journal-record";
   return (
@@ -184,8 +181,10 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 {tab === "stock" && <StockTab {...tabProps} />}
                 {tab === "goals" && <GoalsTab {...tabProps} />}
                 {tab === "execute" && <ExecuteTab {...tabProps} />}
-                {tab === "tasks-inbox" && <InboxView appState={appState} persist={persist} showToast={showToast} />}
-                {(tab === "tasks-today" || tab === "tasks-all") && <TasksTab {...tabProps} tab={tab as TasksTabId} />}
+                {tab === "tasks-drift" && <DriftTab {...tabProps} />}
+                {/* ★重力タブも active(このアプリが表示中か)を受け取る。物理の
+                    rAF を「表示中かつ起きている物体があるとき」だけ回すため。 */}
+                {tab === "tasks-gravity" && <GravityTab {...tabProps} appActive={active} />}
                 {/* ★active(このアプリが表示中か)を明示的に渡す。円の入場アニメーションの
                     合図に使う。IntersectionObserver で見え方から推測する方式は、実機で
                     一度も発火せず「円が出てこない」不具合になった。 */}
@@ -971,9 +970,6 @@ export function AppShell() {
           wrap={wrapOf(j, pos)}
           memoryMode={storageMode === "memory"}
           tabProps={tabProps}
-          appState={appState}
-          persist={persist}
-          showToast={showToast}
           goTab={goTab}
           onNavPointerDown={onNavPointerDown}
           onRecord={onRecord}

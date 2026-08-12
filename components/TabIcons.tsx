@@ -14,7 +14,7 @@ import { SANS } from "@/lib/constants";
 
 export type TabIconName =
   | "list" | "pie" | "layers" | "pin"
-  | "venn" | "toggle" | "grid"
+  | "drift" | "pile"
   | "pen" | "dots" | "cassette"
   | "sparkle" | "plus" | "gear" | "record";
 
@@ -87,39 +87,31 @@ function shapes(name: TabIconName, c: string) {
           <circle cx="7.8" cy="8.4" r="4.4" fill={c} />
         </>
       );
-    // インボックス = 重なる2つの円(集まってくる)。
-    case "venn":
-      return (
-        <>
-          <circle cx="9.2" cy="12" r="6.4" fill={c} opacity={PALE} />
-          <circle cx="14.8" cy="12" r="6.4" fill={c} />
-        </>
-      );
-    // 今日(タスク) = 2段のスイッチ(済み/未)。
-    case "toggle":
+    // 候補 = 宙に離れて漂う面(無重力)。下に何も無く、ばらばらの高さに浮く。
+    case "drift":
       return (
         <>
           <g opacity={PALE} fill={c}>
-            <rect x="2.4" y="3.6" width="15.2" height="7.4" rx="3.7" />
-            <circle cx="6.4" cy="16.8" r="3.7" />
+            <circle cx="6.2" cy="15.4" r="3.6" />
+            <rect x="13.4" y="14" width="7.2" height="7.2" rx="1.4" />
           </g>
           <g fill={c}>
-            <circle cx="17.6" cy="7.3" r="3.7" />
-            <rect x="6.4" y="13.1" width="15.2" height="7.4" rx="3.7" />
+            <rect x="3.4" y="3.2" width="7.2" height="7.2" rx="1.4" />
+            <circle cx="17.2" cy="7.2" r="3.6" />
           </g>
         </>
       );
-    // すべて = 2x2の面(全体を見渡す)。
-    case "grid":
+    // タスク = 下に積み上がった面(重力)。床の側ほど大きく、上ほど小さい。
+    case "pile":
       return (
         <>
           <g opacity={PALE} fill={c}>
-            <rect x="13" y="2.6" width="8.4" height="8.4" rx="1.4" />
-            <rect x="2.6" y="13" width="8.4" height="8.4" rx="1.4" />
+            <circle cx="8.2" cy="5.6" r="3.1" />
+            <rect x="13.6" y="10.2" width="7.8" height="6.4" rx="1.2" />
           </g>
           <g fill={c}>
-            <rect x="2.6" y="2.6" width="8.4" height="8.4" rx="1.4" />
-            <circle cx="17.2" cy="17.2" r="4.2" />
+            <rect x="2.6" y="10.2" width="9.2" height="6.4" rx="1.2" />
+            <rect x="2.6" y="18" width="18.8" height="3.4" rx="1.2" />
           </g>
         </>
       );

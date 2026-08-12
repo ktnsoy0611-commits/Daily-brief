@@ -197,7 +197,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
   /** ★オーバーレイが閉じていく最中。円が左右へ出ていく間だけ true。 */
   const [leaving, setLeaving] = useState(false);
 
-  const { state, durationMs, levelsRef, elapsedMs, paused } = voice;
+  const { state, durationMs, levelsRef, timesRef, elapsedMs, paused } = voice;
   const recording = state === "recording";
   const review = state === "review";
   const sending = state === "sending";
@@ -296,11 +296,13 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       // 赤い線が真ん中に立ち、録れた棒はその左へ流れていく。線の右は
       // 「まだ録っていない」ので点線だけ(参考画像と同じ構え)。
       const lineX = Math.round(cw * REC_LINE_AT);
-      // ★滑らかに流す。棒は LEVEL_MS ごとにしか増えないので、そのままだと
-      // 1本ぶんずつ飛んで「カクカク」する。次の1本までの端数を px に直して
-      // 全体をずらすと、60fps で連続して動く。
-      const frac = (((elapsedMs() % LEVEL_MS) + LEVEL_MS) % LEVEL_MS) / LEVEL_MS;
-      const shift = frac * BAR_PITCH_REC;
+      // ★棒は「本数を数えて等間隔」ではなく、**測った時刻から実際の位置**を
+      // 出す。setInterval(45ms) はぴったり45msでは来ない(端末や負荷で
+      // 40〜70msに揺れる)ので、等間隔に並べると、そのズレがそのまま
+      // 「ガクつき・点滅」として見える。時刻で置けば、間隔が揺れても
+      // 位置は常に連続で、1フレームぶんも飛ばない。
+      const now = elapsedMs();
+      const pxPerMs = BAR_PITCH_REC / LEVEL_MS;
       // 中心線(左は実線、右は点線)。
       c.lineCap = "butt";
       c.lineWidth = 1;
@@ -318,11 +320,14 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       c.restore();
       // 棒。線のところが「いま」で、左へ行くほど過去。
       c.lineCap = "round";
-      const count = Math.ceil(lineX / BAR_PITCH_REC) + 1;
-      for (let k = 0; k < count; k++) {
-        const v = all[all.length - 1 - k];
-        if (v == null) break;
-        bar(lineX - k * BAR_PITCH_REC - shift, v, fg, BAR_W_REC);
+      const times = timesRef.current;
+      for (let k = all.length - 1; k >= 0; k--) {
+        const at = times[k];
+        if (at == null) continue;
+        const x = lineX - (now - at) * pxPerMs;
+        if (x < -BAR_W_REC) break;      // 左端より外はもう描かない
+        if (x > lineX) continue;
+        bar(x, all[k], fg, BAR_W_REC);
       }
       // 赤い線。帯より少し高く出して、参考画像と同じく主役にする。
       c.lineCap = "round";
@@ -334,6 +339,10 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       c.stroke();
       return;
     }
+
+    // ★録音していない・波形も無い(=まだ何も録っていない)ときは**何も描かない**。
+    // 以前は横線だけが残り、それが円の上を横切って見えていた。
+    if (all.length === 0) return;
 
     // ── 止めたあと(全体表示・トリミング) ─────────────────────
     const n = Math.max(1, Math.floor((cw - BAR_W_ALL) / BAR_PITCH_ALL) + 1);
@@ -350,7 +359,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
       const r = n <= 1 ? 0 : i / (n - 1);
       bar(BAR_W_ALL / 2 + i * BAR_PITCH_ALL, bars[i], (r >= t.start && r <= t.end) ? fg : mute, BAR_W_ALL);
     }
-    if (all.length > 0) {
+    {
       // ★切り出しの2本。止めた直後は真ん中で重なっていて、split が 0→1 に
       // 進むにつれて左右へ分かれていく(ユーザー指定の「線が2つに分離する」)。
       const s = splitRef.current;
@@ -365,7 +374,7 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         c.stroke();
       }
     }
-  }, [fg, mute, recording, levelsRef, elapsedMs]);
+  }, [fg, mute, recording, levelsRef, timesRef, elapsedMs]);
 
   // ★同じ文字列なら書かない。textContent への代入は、値が同じでもその
   // 要素のレイアウトを汚す。毎フレームやると、巨大な円を含むページの
@@ -392,7 +401,9 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
     if (recording || active || coasting || splitting) raf = requestAnimationFrame(loop);
     else drawAll();
     return () => cancelAnimationFrame(raf);
-  }, [drawAll, recording, active, coasting, splitting, size.w, size.h]);
+  // ★state を依存に入れること。取り消して idle へ戻ったとき、drawAll の
+  // 参照が変わらないと effect が動かず、**前の録音の波形が残ったまま**になる。
+  }, [drawAll, state, recording, active, coasting, splitting, size.w, size.h]);
 
   // ★録音を止めた瞬間、帯が広がるのに合わせて中心の1本を左右2本へ分ける。
   // 進み具合は ref に書き、rAF が読んで描く(setState では毎フレーム
@@ -598,6 +609,12 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         : "";
 
   const canToggle = recording || state === "idle";
+  // 波形の帯を出すか。何も録っていない待機中は出さない。
+  const waveOn = recording || review || sending;
+  // ★帯を広げるのは「止めたあと」だけ。待機中も**録音中と同じ寸法**に
+  // しておくこと。待機中を全体表示の寸法にすると、録音を始めた瞬間に
+  // 幅が 338→152 へ縮むアニメーションが走ってしまう。
+  const wide = review || sending;
 
   return (
     <div ref={boxRef} style={{
@@ -707,11 +724,21 @@ export function VoiceStudio({ voice, dim, onClose, bleed = "0px" }: {
         ref={canvasRef}
         style={{
           position: "absolute", zIndex: 2, pointerEvents: "none",
-          left: "50%", transform: "translateX(-50%)",
-          width: recording ? waveWRec : waveWAll,
-          height: recording ? WAVE_H_REC : WAVE_H_ALL,
-          top: waveCy - (recording ? WAVE_H_REC : WAVE_H_ALL) / 2,
-          transition: `width ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), height ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), top ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1)`,
+          left: "50%",
+          width: wide ? waveWAll : waveWRec,
+          height: wide ? WAVE_H_ALL : WAVE_H_REC,
+          top: waveCy - (wide ? WAVE_H_ALL : WAVE_H_REC) / 2,
+          // ★録音を始めると、横に伸びながら現れる。何も録っていない間は
+          // 出さない(以前は横線だけが残り、円の上を横切って見えていた)。
+          opacity: waveOn ? 1 : 0,
+          transform: `translateX(-50%) scaleX(${waveOn ? 1 : 0.5}) translateZ(0)`,
+          transition: waveOn
+            ? `opacity 260ms ease-out, transform 340ms cubic-bezier(0.16,1,0.3,1), width ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), height ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1), top ${SPLIT_MS}ms cubic-bezier(0.16,1,0.3,1)`
+            : "opacity 200ms ease-in, transform 240ms ease-in",
+          // ★自分だけの合成レイヤーへ上げる。こうしないと、毎フレームの
+          // 描き直しが**巨大な円と同じレイヤー**を汚し、円ごと塗り直しになる
+          // (実機で「点滅しているように見える」の一因)。
+          willChange: "transform",
           display: "block",
         }}
       />

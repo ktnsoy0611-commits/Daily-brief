@@ -806,11 +806,12 @@ export function AppShell() {
     () => ({
       state: recorder.state, startedAt: recorder.startedAt, durationMs: recorder.durationMs,
       paused: recorder.paused, elapsedMs: recorder.elapsedMs,
-      levelsRef: recorder.levelsRef, toggle: recorder.toggle, togglePause: recorder.togglePause,
+      levelsRef: recorder.levelsRef, timesRef: recorder.timesRef,
+      toggle: recorder.toggle, togglePause: recorder.togglePause,
       send: recorder.send, cancel: recorder.cancel,
     }),
     [recorder.state, recorder.startedAt, recorder.durationMs, recorder.paused, recorder.elapsedMs,
-      recorder.levelsRef, recorder.toggle, recorder.togglePause, recorder.send, recorder.cancel],
+      recorder.levelsRef, recorder.timesRef, recorder.toggle, recorder.togglePause, recorder.send, recorder.cancel],
   );
   // ウィッシュを書く入口。タブバーの右端は録音に譲ったので、いまは
   // ストックタブ(ウィッシュの一覧がある場所)から開く。

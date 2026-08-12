@@ -63,6 +63,11 @@ export function useVoiceRecorder(opts: {
   const pausedRef = useRef(false);
   // 波形。0〜1 の並び。録音を始めるたびに空にする。
   const levelsRef = useRef<number[]>([]);
+  // ★その1本を測った時刻(録音の経過ms)。描く側が「棒の実際の位置」を
+  // 時刻から出すために使う。setInterval は 45ms ちょうどでは来ないので、
+  // 本数を数えて等間隔に置くと、そのズレがそのまま「ガクつき」になる。
+  // 一時停止中は経過が進まないので、棒もその場で止まる。
+  const timesRef = useRef<number[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const levelTimerRef = useRef<number | null>(null);
@@ -89,8 +94,9 @@ export function useVoiceRecorder(opts: {
       const rms = Math.sqrt(sum / data.length);
       // 生のRMSは小さいので持ち上げる。1で頭打ち。
       levelsRef.current.push(Math.min(1, rms * 3.4));
+      timesRef.current.push(elapsedMs());
     }, LEVEL_MS);
-  }, []);
+  }, [elapsedMs]);
 
   const pauseMeter = useCallback(() => {
     if (levelTimerRef.current != null) window.clearInterval(levelTimerRef.current);
@@ -123,6 +129,7 @@ export function useVoiceRecorder(opts: {
       chunksRef.current = [];
       blobRef.current = null;
       levelsRef.current = [];
+      timesRef.current = [];
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       rec.start();
       recRef.current = rec;
@@ -208,6 +215,13 @@ export function useVoiceRecorder(opts: {
   }, [state, start, stop]);
 
   const cancel = useCallback(() => {
+    // ★どの状態から取り消しても、波形・長さ・音声をすべて捨てて初期状態へ戻す。
+    // 以前は録音中の経路で波形(levelsRef)を消しておらず、取り消したのに
+    // 前の録音の波形が残ったままになっていた。
+    levelsRef.current = [];
+    timesRef.current = [];
+    blobRef.current = null;
+    setDurationMs(0);
     if (state === "recording") {
       // 録音中のキャンセルは、止めてから捨てる。
       stoppingRef.current = true;
@@ -226,8 +240,6 @@ export function useVoiceRecorder(opts: {
         try { rec.stop(); } catch { setState("idle"); }
       } else setState("idle");
     } else if (state === "review") {
-      blobRef.current = null;
-      levelsRef.current = [];
       setState("idle");
     }
     haptic(6);
@@ -264,9 +276,11 @@ export function useVoiceRecorder(opts: {
     } finally {
       blobRef.current = null;
       levelsRef.current = [];
+      timesRef.current = [];
+      setDurationMs(0);
       setState("idle");
     }
   }, [durationMs, onDone, onError]);
 
-  return { state, startedAt, durationMs, paused, elapsedMs, levelsRef, toggle, togglePause, cancel, send };
+  return { state, startedAt, durationMs, paused, elapsedMs, levelsRef, timesRef, toggle, togglePause, cancel, send };
 }

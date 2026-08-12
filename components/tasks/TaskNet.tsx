@@ -409,7 +409,7 @@ export function TaskNet({ data, mode, onChange, onConfirm, onDelete, onClose }: 
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}>
             <Check size={16} strokeWidth={2.6} />
-            タスクにする
+            {mode === "candidate" ? "タスクにする" : "完了にする"}
           </button>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { DEFAULT_STATE, STORAGE_KEY } from "./constants";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
+import { normalizeTag } from "./taskTags";
 import type { AppState, Item, ItemKind } from "./types";
 
 // v19プロトタイプの window.storage (サンドボックス専用API) を、実ブラウザで
@@ -124,6 +125,33 @@ function migrate(s: any): AppState {
   merged.voiceNotes = merged.voiceNotes ?? [];
   merged.inbox = merged.inbox ?? [];
   merged.generatedDecks = merged.generatedDecks ?? {};
+
+  // ---- タスクの5W1H → 側面4項目(Title/When/Context/Belongings)への移行 ----
+  // 2026-08-13にユーザー確定。「どこで」は Context に読み替え、面に載らなく
+  // なった「だれと/なぜ/どうやって」は捨てずに Free Text(note)の末尾へ回す。
+  // 面の置き場所(faces)は並びが固定になったので落とす。タグも6→5へ読み替える。
+  {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const migrateSides = (o: any) => {
+      if (!o || typeof o !== "object") return o;
+      if (typeof o.where === "string" && !o.context) o.context = o.where;
+      const carry = [
+        ["だれと", o.who], ["なぜ", o.why], ["どうやって", o.how],
+        // 旧InboxCandidateの「なにを」。題と同じ意味だが、違う文言なら残す。
+        ["なにを", o.what && o.what !== o.title ? o.what : undefined],
+      ]
+        .filter(([, v]) => typeof v === "string" && v.trim() !== "")
+        .map(([k, v]) => `${k}: ${v}`);
+      if (carry.length) o.note = [o.note, ...carry].filter(Boolean).join("\n");
+      delete o.where; delete o.who; delete o.why; delete o.how;
+      delete o.what; delete o.faces;
+      o.tag = normalizeTag(o.tag);
+      if (!o.tag) delete o.tag;
+      return o;
+    };
+    merged.tasks = (merged.tasks ?? []).map(migrateSides);
+    merged.inbox = (merged.inbox ?? []).map(migrateSides);
+  }
 
   // ---- 場所(keeps)+作品(records.media)の2コンテナ → Item統一への移行 ----
   // 「場所か作品か」は排他ではなく「種類(kind)×場所の有無(area)」の直交と

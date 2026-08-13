@@ -213,50 +213,50 @@ export interface TaskSuggestion {
   why?: string;   // なぜ今それを確認するのか(1文)
 }
 
-// ★5W1Hのうち、タイトル以外の5つ。
-// **「なにを」はタイトルそのもの**なので、ここには持たない(ユーザー確定、
-// 2026-08-12)。タスクの立体はこの5つ+タイトルで最大6面になる。
-export type FiveWKey = "when" | "where" | "who" | "why" | "how";
+// ★タスクの「側面の情報」。立体の側面になる4つ(2026-08-13にユーザー確定)。
+// title は Task.title / InboxCandidate.title をそのまま使うので、ここには
+// 持たない(同じ意味の値を二重に持たない)。
+//
+// 面の並びは SIDE_KEYS の順に**固定**。埋まっている数がそのまま側面の数になり、
+//   1=円柱 / 2=半円柱 / 3=三角柱 / 4=四角柱
+// と角ばっていく。本人が置き場所を指定する仕組みは持たない。
+export type SideKey = "title" | "when" | "context" | "belongings";
 
-export const FIVE_W_KEYS: FiveWKey[] = ["when", "where", "who", "why", "how"];
+export const SIDE_KEYS: SideKey[] = ["title", "when", "context", "belongings"];
 
-export const FIVE_W_LABEL: Record<FiveWKey, string> = {
-  when: "いつ", where: "どこで", who: "だれと", why: "なぜ", how: "どうやって",
+/** 面と展開図に出すラベル。表示は英字のみ(OS標準のフォームUIを使わない方針)。 */
+export const SIDE_LABEL: Record<SideKey, string> = {
+  title: "TITLE", when: "WHEN", context: "CONTEXT", belongings: "BELONGINGS",
 };
 
-export interface FiveW {
+export interface TaskSides {
+  /** いつ。 */
   when?: string;
-  where?: string;
-  who?: string;
-  why?: string;
-  how?: string;
+  /** 道具・場所(どこで/何を使って)。短い自由入力。 */
+  context?: string;
+  /** 持ち物。 */
+  belongings?: string;
 }
 
 // ★タスクの重要度。1=小 2=中 3=大。未設定は 2(中)として扱う。
-// AIが見立て、本人が展開図で上書きする(ユーザー確定)。
+// 立体の断面の大きさ(Y/Z)と、物理演算上の重さに直結する。
 export type TaskWeight = 1 | 2 | 3;
 
-// ★タスクのタグ。物体の色になる。固定の6つ(lib/taskTags.ts が定義の正)。
-export type TaskTag = "work" | "shopping" | "life" | "body" | "people" | "learn";
-
-// ★展開図のどの位置にどの項目を置いたか。柱体の展開図は
-// 「底面 + 側面の帯 + 底面」の帯状で、
-//   base0 = タイトル(=なにを)の底面。必ずあり、外せない。
-//   side0..3 = 側面(帯に横一列)。1枚=円柱 2枚=半円柱 3枚=三角柱 4枚=四角柱。
-//   base1 = もう一方の底面。
-// 面の数 = 1 + 埋まっている項目の数。最小3(円柱)・最大6(四角柱)。
-export type PrismSlot = "base0" | "base1" | "side0" | "side1" | "side2" | "side3";
+// ★タスクのタグ。立体の上下の面の色になる。固定の5つ(lib/taskTags.ts が定義の正)。
+export type TaskTag = "work" | "life" | "wellness" | "social" | "growth";
 
 // ★タスク(タスクアプリ)。
-export interface Task extends FiveW {
+export interface Task extends TaskSides {
   id: string;
   title: string;
-  // 予定日(YYYY-MM-DD)。無いものは「いつか」扱い。切迫度=物体の大きさに効く。
+  // 予定日(YYYY-MM-DD)。無いものは「いつか」扱い。落ちてくる順に効く。
   dueDate?: string;
   done: boolean;
   doneAt?: string;
   createdAt: string;
+  // Free Text。形には影響しない、ただのメタ情報。
   note?: string;
+  // 残っている数だけ立体がスラブ(層)に割れる。
   subtasks?: SubTask[];
   // 未採用の提案。採用・却下すると消える。
   suggestions?: TaskSuggestion[];
@@ -264,10 +264,8 @@ export interface Task extends FiveW {
   suggestedAt?: string;
   // 重要度。未設定は中扱い。
   weight?: TaskWeight;
-  // タグ。物体の色になる。未設定なら中間のグレー。
+  // タグ。上下の面の色になる。未設定なら中間のグレー。
   tag?: TaskTag;
-  // 5W1Hを展開図のどの面に置いたか。未設定なら埋まっている順に自動で並べる。
-  faces?: Partial<Record<PrismSlot, FiveWKey>>;
 }
 
 // ★ジャーナルの1件。日付ごとに書き足していくログ。
@@ -294,19 +292,15 @@ export interface VoiceNote {
 
 // ★インボックスの候補。声のメモをCoworkが読んで作る「これはタスクに
 // した方がいいのでは?」という提案。承認するまで本登録されない。
-// 5W1Hは分かった分だけ埋まり、空欄はユーザーがその場で足せる。
-export interface InboxCandidate extends FiveW {
+// 側面の情報は分かった分だけ埋まり、空欄はユーザーがその場で足せる。
+export interface InboxCandidate extends TaskSides {
   id: string;
   kind: "task" | "journal" | "wish" | "item";
   title: string;
-  // 「なにを」。タイトルと同じ意味なので**面としては持たない**(§ FiveW)。
-  // Coworkが別に書いてきた場合だけ残り、確定するときタイトルが空なら
-  // これを使い、そうでなければメモへ回す。
-  what?: string;
+  // Free Text(Coworkが書いた補足。確定するとタスクの note になる)。
+  note?: string;
   // 重要度の見立て。Coworkが書いてくれば入る(未設定なら中扱い)。
   weight?: TaskWeight;
-  // 展開図のどの面に何を置いたか(＋で足した面は中身が空でもここに残る)。
-  faces?: Partial<Record<PrismSlot, FiveWKey>>;
   tag?: TaskTag;
   // 元になった声のメモ(その場で原文を確かめられるように)。
   sourceNoteId?: string;

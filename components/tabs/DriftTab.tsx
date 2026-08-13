@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Masthead } from "@/components/common";
-import { PrismSolid } from "@/components/tasks/PrismSolid";
+import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { DemoSeedButton, TaskAddButton } from "@/components/tasks/TaskAddButton";
-import { TaskNet, type NetData } from "@/components/tasks/TaskNet";
+import { TaskSheet, type SheetData } from "@/components/tasks/TaskSheet";
 import { appTitle } from "@/lib/apps";
 import { INK, MUTED, SANS } from "@/lib/constants";
 import { haptic, hashStr } from "@/lib/helpers";
-import { assignFaces } from "@/lib/prism";
 import { demoCandidates } from "@/lib/taskDemo";
+import { specOf } from "@/lib/taskSize";
 import type { InboxCandidate, TabProps } from "@/lib/types";
 
 // ★候補タブ(DRIFT)。まだ確定していないタスクの候補が、**円環に並んで**
@@ -26,7 +26,9 @@ import type { InboxCandidate, TabProps } from "@/lib/types";
 // 候補の**大きさは揃える**。重さ(重要度 × 切迫度)を持つのは確定してからで、
 // 漂っているうちはまだ量られていない、という区別を形で示す。
 
-const SOLID = 186;
+/** 立体の器。横倒しの柱なので横長にとる(軸=タイトルの長さ)。 */
+const SOLID_W = 288;
+const SOLID_H = 176;
 /** 輪の1つぶんの角度。件数が多いときは一周に収まるよう詰める。
  *  ★狭くしすぎないこと。角度が小さいと cos がほとんど変わらず、隣の候補が
  *  同じ大きさ・同じ濃さで並んで「輪」ではなく「団子」に見える(実際そうなった)。 */
@@ -41,10 +43,6 @@ const SPREAD = 215;
 const COAST_MS = 260;
 const SNAP_MIN_MS = 260;
 const SNAP_MAX_MS = 680;
-
-/** 候補の 5W1H から、いま何面の立体か。 */
-export const candidateFaces = (c: InboxCandidate): number =>
-  assignFaces({ when: c.when, where: c.where, who: c.who, why: c.why, how: c.how }, c.faces, c.title).faceCount;
 
 export function DriftTab({ appState, persist, profileButton, showToast, goTab, appActive }: TabProps & { appActive?: boolean }) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -196,7 +194,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
     };
   }, [apply, glide]);
 
-  const patch = (id: string, p: Partial<NetData>) => {
+  const patch = (id: string, p: Partial<SheetData>) => {
     const next = structuredClone(appState);
     const c = next.inbox.find((x) => x.id === id);
     if (c) Object.assign(c, p);
@@ -223,10 +221,8 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       title: c.title,
       // 「いつ」が日付そのものなら期日として持つ(切迫度=大きさに効く)。
       dueDate: /^\d{4}-\d{2}-\d{2}$/.test(c.when ?? "") ? c.when : undefined,
-      when: c.when, where: c.where, who: c.who, why: c.why, how: c.how,
-      faces: c.faces, weight: c.weight ?? 2, tag: c.tag,
-      // Coworkが別に「なにを」を書いていた場合だけメモへ回す(タイトルと同義のため)。
-      note: c.what && c.what !== c.title ? c.what : undefined,
+      when: c.when, context: c.context, belongings: c.belongings,
+      weight: c.weight ?? 2, tag: c.tag, note: c.note,
       done: false, createdAt: now,
     });
     next.inbox = next.inbox.filter((x) => x.id !== c.id);
@@ -299,7 +295,13 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
                 }}
                 aria-label={`${c.title || "無題の候補"}を開く`}
                 style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "block" }}>
-                <PrismSolid faceCount={candidateFaces(c)} size={SOLID} />
+                <SolidCanvas
+                  w={SOLID_W} h={SOLID_H}
+                  paint={{
+                    spec: specOf(c), view: "front", tag: c.tag,
+                    texts: { title: c.title, when: c.when, context: c.context, belongings: c.belongings },
+                  }}
+                />
               </button>
             </div>
           </div>
@@ -327,10 +329,11 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       <TaskAddButton onAdd={addCandidate} />
       {count === 0 && <DemoSeedButton label="デモの候補を入れる" onSeed={seedDemo} />}
       {open && (
-        <TaskNet
+        <TaskSheet
           key={open.id}
           data={open}
           mode="candidate"
+          from="top"
           autoEdit={draftId === open.id}
           onChange={(p) => patch(open.id, p)}
           onConfirm={() => confirm(open)}

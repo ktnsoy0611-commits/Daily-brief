@@ -1,4 +1,4 @@
-import { inferTag } from "./taskTags";
+import { inferTag, normalizeTag } from "./taskTags";
 import type { InboxCandidate, JournalEntry, TaskWeight } from "./types";
 
 // ★Coworkが夜間に書いた my-brain のファイルを読み取る(純粋関数)。
@@ -60,20 +60,30 @@ export function parseCandidates(md: string | null): InboxCandidate[] {
       if (!kind || !title) return null;
       // ジャーナルは候補にしない方針(その日の記録へ直接入る)。混ざっていても弾く。
       if (kind === "journal") return null;
-      const w = f["いつ"], wh = f["どこで"], who = f["だれと"], why = f["なぜ"], how = f["どうやって"];
+      // 側面の4項目。Coworkの新しい書式(道具・場所/持ち物)と、旧書式
+      // (どこで)の両方を受ける。面に載らなくなった旧項目(だれと/なぜ/
+      // どうやって/なにを)は捨てずに Free Text(note)へ回す。
+      const when = f["いつ"];
+      const context = f["道具・場所"] ?? f["道具"] ?? f["どこで"];
+      const belongings = f["持ち物"];
+      const extra = [
+        ["だれと", f["だれと"]], ["なぜ", f["なぜ"]], ["どうやって", f["どうやって"]],
+        ["なにを", f["なにを"] && f["なにを"] !== title ? f["なにを"] : undefined],
+      ]
+        .filter(([, v]) => v)
+        .map(([k, v]) => `${k}: ${v}`);
+      const note = [f["メモ"], ...extra].filter(Boolean).join("\n") || undefined;
       return {
         id: head.trim(),
         kind,
         title,
-        when: w,
-        where: wh,
-        who,
-        what: f["なにを"],
-        why,
-        how,
+        when,
+        context,
+        belongings,
+        note,
         // ★AIから来た時点でタグ(=色)を自動で割り振る。Coworkが書いてくれば
-        // そちらを優先し、無ければ題と5W1Hの言葉から見立てる。
-        tag: (f["タグ"] as InboxCandidate["tag"]) ?? inferTag(title, f["なにを"], w, wh, who, why, how),
+        // そちらを優先し(旧6タグの綴りも読み替える)、無ければ言葉から見立てる。
+        tag: normalizeTag(f["タグ"]) ?? inferTag(title, when, context, belongings, note),
         // 重要度の見立て(1〜3)。物体の大きさ = 重要度 × 切迫度 の片方になる。
         // 1〜3以外・未記入は未設定のままにし、アプリ側で「中」として扱う。
         weight: parseWeight(f["重要度"]),

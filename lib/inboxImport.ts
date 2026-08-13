@@ -1,3 +1,4 @@
+import { inferTag } from "./taskTags";
 import type { InboxCandidate, JournalEntry, TaskWeight } from "./types";
 
 // ★Coworkが夜間に書いた my-brain のファイルを読み取る(純粋関数)。
@@ -59,16 +60,20 @@ export function parseCandidates(md: string | null): InboxCandidate[] {
       if (!kind || !title) return null;
       // ジャーナルは候補にしない方針(その日の記録へ直接入る)。混ざっていても弾く。
       if (kind === "journal") return null;
+      const w = f["いつ"], wh = f["どこで"], who = f["だれと"], why = f["なぜ"], how = f["どうやって"];
       return {
         id: head.trim(),
         kind,
         title,
-        when: f["いつ"],
-        where: f["どこで"],
-        who: f["だれと"],
+        when: w,
+        where: wh,
+        who,
         what: f["なにを"],
-        why: f["なぜ"],
-        how: f["どうやって"],
+        why,
+        how,
+        // ★AIから来た時点でタグ(=色)を自動で割り振る。Coworkが書いてくれば
+        // そちらを優先し、無ければ題と5W1Hの言葉から見立てる。
+        tag: (f["タグ"] as InboxCandidate["tag"]) ?? inferTag(title, f["なにを"], w, wh, who, why, how),
         // 重要度の見立て(1〜3)。物体の大きさ = 重要度 × 切迫度 の片方になる。
         // 1〜3以外・未記入は未設定のままにし、アプリ側で「中」として扱う。
         weight: parseWeight(f["重要度"]),

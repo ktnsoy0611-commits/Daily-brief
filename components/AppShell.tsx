@@ -181,7 +181,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 {tab === "stock" && <StockTab {...tabProps} />}
                 {tab === "goals" && <GoalsTab {...tabProps} />}
                 {tab === "execute" && <ExecuteTab {...tabProps} />}
-                {tab === "tasks-drift" && <DriftTab {...tabProps} />}
+                {tab === "tasks-drift" && <DriftTab {...tabProps} appActive={active} />}
                 {/* ★重力タブも active(このアプリが表示中か)を受け取る。物理の
                     rAF を「表示中かつ起きている物体があるとき」だけ回すため。 */}
                 {tab === "tasks-gravity" && <GravityTab {...tabProps} appActive={active} />}

@@ -361,13 +361,37 @@ button:active {
 
 /* インボックスの候補がふわふわ漂う動き。上下にゆっくり揺れるだけの
    控えめなもの(飛び回ると読めなくなるため)。 */
+/* ★候補の立体が、その場でふわふわ浮いている感じ。輪の回転(JSがtransformを
+   書く外側のdiv)とぶつからないよう、**内側のdiv**に掛ける。CSSのkeyframesなので
+   毎フレームの計算はゼロ。 */
+@keyframes drift-bob {
+  0%, 100% { transform: translate3d(0, -7px, 0) rotate(-1.1deg); }
+  50%      { transform: translate3d(0, 7px, 0) rotate(1.1deg); }
+}
+.drift-bob { animation: drift-bob 5.4s ease-in-out infinite; will-change: transform; }
+@media (prefers-reduced-motion: reduce) {
+  .drift-bob { animation: none; }
+}
+
 @keyframes inbox-drift {
   0%, 100% { transform: translate(0, 0); }
   33% { transform: translate(10px, -12px); }
   66% { transform: translate(-8px, 8px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  @keyframes inbox-drift { 0%, 100% { transform: none; } }
+  /* ★候補の立体が、その場でふわふわ浮いている感じ。輪の回転(JSがtransformを
+   書く外側のdiv)とぶつからないよう、**内側のdiv**に掛ける。CSSのkeyframesなので
+   毎フレームの計算はゼロ。 */
+@keyframes drift-bob {
+  0%, 100% { transform: translate3d(0, -7px, 0) rotate(-1.1deg); }
+  50%      { transform: translate3d(0, 7px, 0) rotate(1.1deg); }
+}
+.drift-bob { animation: drift-bob 5.4s ease-in-out infinite; will-change: transform; }
+@media (prefers-reduced-motion: reduce) {
+  .drift-bob { animation: none; }
+}
+
+@keyframes inbox-drift { 0%, 100% { transform: none; } }
 }
 
 /* 提案を考えている間のくるくる。タスク詳細の「手配を確認する」で使う。 */

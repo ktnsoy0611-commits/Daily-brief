@@ -7,7 +7,7 @@ import { DemoSeedButton, TaskAddButton } from "@/components/tasks/TaskAddButton"
 import { TaskNet, type NetData } from "@/components/tasks/TaskNet";
 import { appTitle } from "@/lib/apps";
 import { INK, MUTED, SANS } from "@/lib/constants";
-import { haptic } from "@/lib/helpers";
+import { haptic, hashStr } from "@/lib/helpers";
 import { assignFaces } from "@/lib/prism";
 import { demoCandidates } from "@/lib/taskDemo";
 import type { InboxCandidate, TabProps } from "@/lib/types";
@@ -26,24 +26,27 @@ import type { InboxCandidate, TabProps } from "@/lib/types";
 // 候補の**大きさは揃える**。重さ(重要度 × 切迫度)を持つのは確定してからで、
 // 漂っているうちはまだ量られていない、という区別を形で示す。
 
-const SOLID = 132;
+const SOLID = 186;
 /** 輪の1つぶんの角度。件数が多いときは一周に収まるよう詰める。
  *  ★狭くしすぎないこと。角度が小さいと cos がほとんど変わらず、隣の候補が
  *  同じ大きさ・同じ濃さで並んで「輪」ではなく「団子」に見える(実際そうなった)。 */
 const stepFor = (n: number) => Math.min(1.15, (Math.PI * 2) / Math.max(n, 1));
 /** 指をどれだけ動かすと1つ送るか。 */
-const DRAG_PER_ITEM = 132;
+const DRAG_PER_ITEM = 150;
 /** 遠近の効き。小さいほど奥のものが強く縮む。 */
 const FOCAL = 1.9;
-/** 手前に来たときの左右の広がり。 */
-const SPREAD = 150;
-const SNAP_MS = 320;
+/** 輪の半径(手前に来たときの左右の広がり)。 */
+const SPREAD = 215;
+/** 払ったあとの惰性。この時間ぶん、離したときの速さで流れ続けるとみなす。 */
+const COAST_MS = 260;
+const SNAP_MIN_MS = 260;
+const SNAP_MAX_MS = 680;
 
 /** 候補の 5W1H から、いま何面の立体か。 */
 export const candidateFaces = (c: InboxCandidate): number =>
   assignFaces({ when: c.when, where: c.where, who: c.who, why: c.why, how: c.how }, c.faces, c.title).faceCount;
 
-export function DriftTab({ appState, persist, profileButton, showToast, goTab }: TabProps) {
+export function DriftTab({ appState, persist, profileButton, showToast, goTab, appActive }: TabProps & { appActive?: boolean }) {
   const [openId, setOpenId] = useState<string | null>(null);
   // ＋で作ったばかりのもの。開いた直後に題の入力へ入り、何も書かずに
   // 閉じたらそのまま捨てる(名前のないものを残さない)。
@@ -60,7 +63,12 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab }:
   const posRef = useRef(0);
   const itemsRef = useRef<(HTMLDivElement | null)[]>([]);
   const labelRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ id: number; x: number; y: number; from: number; axis: "" | "x" | "y"; moved: boolean } | null>(null);
+  const dragRef = useRef<{
+    id: number; x: number; y: number; from: number; axis: "" | "x" | "y"; moved: boolean;
+    // 惰性のための速さ(index/ms)。直近の動きを平滑化して持つ。
+    vel: number; lastX: number; lastT: number;
+  } | null>(null);
+  const glideRef = useRef(0);
   const [front, setFront] = useState(0);
 
   // 円環上の位置を各要素へ書き込む。**React は通さない**。
@@ -101,15 +109,23 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab }:
     apply();
   }, [count, apply]);
 
-  // 指を離したあと、いちばん近い候補へ寄せる。
-  const snap = useCallback(() => {
+  // 指を離したあと、**惰性を乗せて**いちばん近い候補へ寄せる。
+  // 速く払えばいくつも送られ、そっと離せば隣で止まる。
+  const glide = useCallback((vel: number) => {
     const n = itemsRef.current.length;
-    const target = Math.max(0, Math.min(n - 1, Math.round(posRef.current)));
     const from = posRef.current;
+    // 離したときの速さで COAST_MS ぶん流れた先を見て、そこから近いものを選ぶ。
+    const projected = from + vel * COAST_MS;
+    const target = Math.max(0, Math.min(n - 1, Math.round(projected)));
     if (Math.abs(target - from) < 0.001) { setFront(target); return; }
+    const dist = Math.abs(target - from);
+    const dur = Math.max(SNAP_MIN_MS, Math.min(SNAP_MAX_MS, 220 + dist * 200));
     const t0 = performance.now();
+    const id = ++glideRef.current;
     const tick = () => {
-      const k = Math.min(1, (performance.now() - t0) / SNAP_MS);
+      if (glideRef.current !== id) return; // 新しい操作が始まったら降りる
+      const k = Math.min(1, (performance.now() - t0) / dur);
+      // ease-out。勢いよく出て、するすると止まる。
       const e = 1 - Math.pow(1 - k, 3);
       posRef.current = from + (target - from) * e;
       apply();
@@ -121,7 +137,11 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab }:
 
   const onDown = (e: React.PointerEvent) => {
     if (count < 2) return;
-    dragRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: posRef.current, axis: "", moved: false };
+    glideRef.current++; // 流れている途中なら、そこで掴んで止める
+    dragRef.current = {
+      id: e.pointerId, x: e.clientX, y: e.clientY, from: posRef.current, axis: "", moved: false,
+      vel: 0, lastX: e.clientX, lastT: performance.now(),
+    };
   };
 
   // ★追従は window に張る。指が舞台の外へ出た瞬間に要素側の
@@ -139,6 +159,15 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab }:
         if (d.axis === "y") { dragRef.current = null; return; }
       }
       d.moved = true;
+      // 速さ(index/ms)を平滑化しながら持つ。指を止めてから離したときに
+      // 惰性が残らないよう、間が空いたら鈍らせる。
+      const now = performance.now();
+      const dt = Math.max(1, now - d.lastT);
+      const v = -(e.clientX - d.lastX) / DRAG_PER_ITEM / dt;
+      const blend = Math.min(1, dt / 90);
+      d.vel = d.vel * (1 - blend) + v * blend;
+      d.lastX = e.clientX;
+      d.lastT = now;
       const n = itemsRef.current.length;
       let next = d.from - dx / DRAG_PER_ITEM;
       // 端では引っぱりを弱め、これ以上先が無いことを体で示す。
@@ -151,8 +180,11 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab }:
       const d = dragRef.current;
       if (!d || e.pointerId !== d.id) return;
       const moved = d.moved;
+      // 指を止めてから離したときは惰性ゼロ(最後に動いたときの速さが
+      // 残り続けるのを防ぐ。声の記録のダイヤルで踏んだのと同じ罠)。
+      const vel = performance.now() - d.lastT > 90 ? 0 : d.vel;
       dragRef.current = null;
-      if (moved) { haptic(6); snap(); }
+      if (moved) { haptic(6); glide(vel); }
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -162,7 +194,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab }:
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
-  }, [apply, snap]);
+  }, [apply, glide]);
 
   const patch = (id: string, p: Partial<NetData>) => {
     const next = structuredClone(appState);
@@ -250,16 +282,26 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab }:
             key={c.id}
             ref={(el) => { itemsRef.current[i] = el; }}
             style={{ position: "absolute", left: "50%", top: "50%", willChange: "transform, opacity" }}>
-            <button
-              onClick={() => {
-                if (dragRef.current?.moved) return;
-                haptic(8);
-                setOpenId(c.id);
-              }}
-              aria-label={`${c.title || "無題の候補"}を開く`}
-              style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "block" }}>
-              <PrismSolid faceCount={candidateFaces(c)} size={SOLID} />
-            </button>
+            {/* ふわふわは内側に掛ける。外側は輪の回転(JSがtransformを書く)。 */}
+            <div className="drift-bob" style={{
+              animationDuration: `${4.6 + (hashStr(c.id) % 22) / 10}s`,
+              animationDelay: `-${(hashStr(c.id) >> 3) % 40 / 10}s`,
+              // ★このアプリを見ていない間は止める。列は常にマウントされたまま
+              // なので、放っておくと裏でずっと合成し続ける(実測で他アプリに
+              // いる間も 118ms/1.5秒 の負荷が出ていた)。
+              animationPlayState: appActive === false ? "paused" : "running",
+            }}>
+              <button
+                onClick={() => {
+                  if (dragRef.current?.moved) return;
+                  haptic(8);
+                  setOpenId(c.id);
+                }}
+                aria-label={`${c.title || "無題の候補"}を開く`}
+                style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "block" }}>
+                <PrismSolid faceCount={candidateFaces(c)} size={SOLID} />
+              </button>
+            </div>
           </div>
         ))}
       </div>

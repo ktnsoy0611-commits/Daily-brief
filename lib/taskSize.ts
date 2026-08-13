@@ -23,8 +23,8 @@ export const weightOf = (w: TaskWeight | undefined): number =>
   ({ 1: 0.2, 2: 0.55, 3: 1 })[w ?? 2];
 
 /** 物体の一辺(px)。 */
-export const MIN_SIDE = 34;
-export const MAX_SIDE = 96;
+export const MIN_SIDE = 52;
+export const MAX_SIDE = 138;
 
 /** 0〜1 の「効き具合」。重要度と切迫度をこの比で混ぜる。
  *  ★重要度をわずかに重く見る。半々にすると「どうでもいいが今日が期限」の

@@ -14,17 +14,21 @@ import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, soli
 import { clearGlyphs, onFontsReady } from "@/lib/textFit";
 import { resolveTag, tagColor } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
-import { dropOrder, massOf, specOf } from "@/lib/taskSize";
+import { areaOf, dropOrder, massOf, specOf } from "@/lib/taskSize";
 import type { AppState, TabProps, Task } from "@/lib/types";
 
 // ★タスクタブ(GRAVITY)。確定したタスクが上から落ちてきて積み上がる。
 //
-// 立体の寸法がそのままタスクの中身になっている(lib/taskSize.ts):
-//   軸(横)の長さ = タイトルの文字数 × 手順の残り
-//   断面の太さ   = 重要度(= 物理の重さ)
-//   断面の形     = 埋まっている側面の数(円/半円/三角/四角)
+// 図形の寸法がそのままタスクの中身になっている(lib/taskSize.ts):
+//   面積        = 重要度(WEIGHT + 期限の切迫度)。**大きさに効くのはこれだけ**
+//   横幅        = タイトルの長さ(画面幅の約2/3で頭打ち)
+//   断面の形    = 埋まっている側面の数(円/半円/三角/四角)
 //   スラブの枚数 = 残っている手順
-//   上下の面の色 = タグ
+//   色と書体    = タグ
+//
+// ★山が画面からはみ出さないよう、**タスクの数に応じて全体を一括で縮める**
+// (2026-08-16にユーザー指定)。縮んだぶんは lib/solidPaint.ts の LOD が拾い、
+// 小さい図形からは文字が消える。
 //
 // ★FRONT / BOTTOM の2つの見え方を切り替えられる(既定は FRONT)。
 // **切り替えるたびに山を落とし直す**(2026-08-16にユーザー確定)。前は絵だけを
@@ -41,10 +45,21 @@ import type { AppState, TabProps, Task } from "@/lib/types";
 // ある」ときだけ回す。全部が寝たら止める(matter.js の enableSleeping)。
 // matter.js は effect の中で dynamic import する(leaflet と同じ手)。
 
-/** 図形の1単位を何pxで描くか。★2026-08-13にユーザー指定で2倍(32→64)。 */
+/** 図形の1単位を何pxで描くか。★2026-08-13にユーザー指定で2倍(32→64)。
+ *  実際に使うのはこれ × scale(下の fitScale)。 */
 const UNIT = 64;
 /** 物理の重さの倍率。 */
 const MASS_K = 1.6;
+/** 図形の合計面積を、床から上の領域のどれだけに収めるか。
+ *  1.0 だと隙間なく敷き詰める計算になり、実際には積み方の隙間で溢れる。 */
+const FILL = 0.58;
+/** どこまで縮めてよいか。これ以上小さいと何が積まれているか読めない。 */
+const SCALE_MIN = 0.28;
+/** どこまで大きくしてよいか。数個しか無いときに画面の下で小さく固まらないよう、
+ *  拡大側にも余地を持たせる(「なるべく画面全体に入り切る大きさ」)。 */
+const SCALE_MAX = 1.6;
+/** 縮尺がこれ以上変わったら山を作り直す(当たり判定が変わるため)。 */
+const SCALE_EPS = 0.02;
 /** 1フレームに焼いてよい図形の絵の枚数。 */
 const BAKE_BUDGET = 1;
 /** 1フレームに用意してよいグリフの枚数。
@@ -82,7 +97,7 @@ interface Piece {
 // 見立て、それでも決まらなければ id から決定的に割り当てる。
 // **タグを持たない図形は作らない**(2026-08-16にユーザー確定)。
 const paintOf = (t: Task, view: SolidView): SolidPaint => ({
-  spec: specOf(t), view, title: t.title, seed: t.id,
+  spec: specOf(t), view, title: t.title,
   tag: resolveTag(t.tag, t.id, t.title, t.when, t.context, t.belongings, t.note),
 });
 
@@ -114,6 +129,8 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   // 消えるアニメーションの最中か。動いている間は物理を止める。
   const exitRef = useRef<{ start: number; until: number } | null>(null);
   const dropAllRef = useRef<() => void>(() => {});
+  // いまの一括縮尺。図形の絵も当たり判定もこれを掛けた単位で作る。
+  const scaleRef = useRef(1);
 
   const tasks = useMemo(() => (appState.tasks ?? []).filter((t) => !t.done), [appState.tasks]);
   const tasksRef = useRef(tasks);
@@ -145,18 +162,19 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     // 落ちてくる最中なので、1〜2フレームぶんは目に入らない。
     let budget = BAKE_BUDGET;
     let glyphBudget = GLYPH_BUDGET;
+    const unit = UNIT * scaleRef.current;
     // ビューを切り替えた直後は「消えていく」途中。0=そのまま、1=消え切り。
     const ex = exitRef.current;
     const now = ex ? performance.now() : 0;
     for (const p of piecesRef.current) {
       const k = ex ? clamp01((now - ex.start - p.exitDelay) / EXIT_MS) : 0;
       if (k >= 1) continue; // 消え切ったものは描かない
-      let bmp = peekSolidBitmap(p.paint, UNIT, bakeDpr);
+      let bmp = peekSolidBitmap(p.paint, unit, bakeDpr);
       if (!bmp) {
         // ★文字のグリフが揃ってから絵を焼く。揃っていないものは今フレームの
         // 予算のぶんだけ用意して、残りは次のフレームに回す。
         if (glyphBudget > 0) glyphBudget -= warmShapeGlyphs(p.paint, glyphBudget);
-        if (budget > 0 && shapeGlyphsReady(p.paint)) { bmp = solidBitmap(p.paint, UNIT, bakeDpr); budget--; }
+        if (budget > 0 && shapeGlyphsReady(p.paint)) { bmp = solidBitmap(p.paint, unit, bakeDpr); budget--; }
       }
       ctx.save();
       if (k > 0) {
@@ -190,7 +208,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     // ★ループの中から wake() を呼んでも「もう回っている」と見なされて何もしない。
     // 止める判定の側で見るためのフラグにしておく。
     pendingBakeRef.current = budget === 0 || glyphBudget === 0
-      || piecesRef.current.some((p) => !peekSolidBitmap(p.paint, UNIT, bakeDpr));
+      || piecesRef.current.some((p) => !peekSolidBitmap(p.paint, unit, bakeDpr));
     if (pendingBakeRef.current) wakeRef.current();
 
     for (const s of shardsRef.current) {
@@ -266,7 +284,14 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     }
   }, [appActive, wake]);
 
-  // ★山を丸ごと作り直して落とし直す。ビューの切り替えで使う。
+  /** いま置くべき一括縮尺。タスクの面積の合計と、床から上の高さから決まる。 */
+  const nextScale = useCallback((list: Task[]) => {
+    const { w, h } = sizeRef.current;
+    const today = new Date();
+    return fitScale(list.map((t) => areaOf(t, today)), w, h - navHeightPx());
+  }, []);
+
+  // ★山を丸ごと作り直して落とし直す。ビューの切り替えと、縮尺が変わったときに使う。
   const dropAll = useCallback(() => {
     const M = matterRef.current;
     const engine = engineRef.current;
@@ -274,13 +299,15 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     if (!M || !engine || !w) return;
     M.Composite.remove(engine.world, piecesRef.current.map((p) => p.body));
     shardsRef.current = [];
+    scaleRef.current = nextScale(tasksRef.current);
+    const unit = UNIT * scaleRef.current;
     const added = dropOrder(tasksRef.current, new Date())
-      .map((t, i) => makePiece(M, t, viewRef.current, w, i));
+      .map((t, i) => makePiece(M, t, viewRef.current, w, i, unit));
     M.Composite.add(engine.world, added.map((p) => p.body));
     piecesRef.current = added;
     wake();
     drawRef.current();
-  }, [wake]);
+  }, [wake, nextScale]);
   dropAllRef.current = dropAll;
 
   // ★見え方を切り替えたら、**いまの山を消してから落とし直す**
@@ -343,6 +370,16 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     const engine = engineRef.current;
     const { w } = sizeRef.current;
     if (!M || !engine || !w) return;
+
+    // ★数が変わって一括縮尺が動いたら、当たり判定ごと作り直す(落とし直し)。
+    // 縮尺だけ差し替えると、絵と当たり判定の大きさが食い違って山が崩れる。
+    const s = nextScale(tasks);
+    if (piecesRef.current.length && Math.abs(s - scaleRef.current) > SCALE_EPS) {
+      dropAll();
+      return;
+    }
+    scaleRef.current = s;
+    const unit = UNIT * s;
     const alive = new Map(tasks.map((t) => [t.id, t]));
 
     // 消えたもの(完了・削除)は世界からも外す。
@@ -358,12 +395,12 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
         // ★形そのものが変わった(手順を済ませて短くなった等)ときだけ、
         // 位置と速度を引き継いだまま body を差し替える。
         if (!sameShape(p.spec, paint.spec)) {
-          const { body, ox, oy } = makeBody(M, paint, p.body.position.x, p.body.position.y);
+          const { body, ox, oy } = makeBody(M, paint, p.body.position.x, p.body.position.y, unit);
           M.Body.setAngle(body, p.body.angle);
           M.Body.setVelocity(body, p.body.velocity);
           M.Composite.remove(engine.world, p.body);
           M.Composite.add(engine.world, body);
-          return { ...p, body, spec: paint.spec, paint, girth: girthOf(paint), ox, oy };
+          return { ...p, body, spec: paint.spec, paint, girth: girthOf(paint, unit), ox, oy };
         }
         return { ...p, paint };
       });
@@ -372,13 +409,13 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     // 差し迫ったものから先に落として、山の下になるようにする。
     const added = dropOrder(tasks, new Date())
       .filter((t) => !have.has(t.id))
-      .map((t, i) => makePiece(M, t, viewRef.current, w, i));
+      .map((t, i) => makePiece(M, t, viewRef.current, w, i, unit));
     if (added.length) {
       M.Composite.add(engine.world, added.map((p) => p.body));
       piecesRef.current = [...piecesRef.current, ...added];
     }
     wake();
-  }, [tasks, wake, ready]);
+  }, [tasks, wake, ready, nextScale, dropAll]);
 
   const patch = (id: string, p: Partial<SheetData>) => {
     const next: AppState = structuredClone(appState);
@@ -503,16 +540,16 @@ const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /** 落ちてくる図形を1つ作る。i は落とす順(大きいほど高いところから)。 */
 function makePiece(
-  M: typeof import("matter-js"), t: Task, view: SolidView, w: number, i: number,
+  M: typeof import("matter-js"), t: Task, view: SolidView, w: number, i: number, unit: number,
 ): Piece {
   const paint = paintOf(t, view);
   const b = shapeBounds(paint);
-  const hw = ((b.maxX - b.minX) * UNIT) / 2;
+  const hw = ((b.maxX - b.minX) * unit) / 2;
   // 落ちてくる位置は id から決める(開くたびに散らばり方が変わらない)。
   const x = Math.max(hw + 6, Math.min(Math.max(w - hw - 6, hw + 6), w * 0.14 + frac(t.id) * w * 0.72));
-  const y = -((b.maxY - b.minY) * UNIT) - i * 210;
-  const { body, ox, oy } = makeBody(M, paint, x, y);
-  return { id: t.id, body, spec: paint.spec, paint, girth: girthOf(paint), exitDelay: 0, ox, oy };
+  const y = -((b.maxY - b.minY) * unit) - i * (110 + 100 * unit / UNIT);
+  const { body, ox, oy } = makeBody(M, paint, x, y, unit);
+  return { id: t.id, body, spec: paint.spec, paint, girth: girthOf(paint, unit), exitDelay: 0, ox, oy };
 }
 
 /**
@@ -523,14 +560,14 @@ function makePiece(
  * 落とし直す設計になったので(2026-08-16確定)、物体を作り分けられる。
  */
 function makeBody(
-  M: typeof import("matter-js"), paint: SolidPaint, x: number, y: number,
+  M: typeof import("matter-js"), paint: SolidPaint, x: number, y: number, unit: number,
 ): { body: Body; ox: number; oy: number } {
   const opts = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
   let body: Body;
   let ox = 0;
   let oy = 0;
   if (paint.view === "bottom") {
-    const size = 2 * paint.spec.radius * UNIT;
+    const size = paint.spec.section * unit;
     const verts = sectionOutline(paint.spec.sides.length).map((q) => ({ x: q.x * size, y: q.y * size }));
     body = M.Bodies.fromVertices(x, y, [verts], opts);
     // fromVertices は**重心**を body.position に置く。絵は図形の原点を中心に
@@ -540,16 +577,28 @@ function makeBody(
     oy = -c.y;
   } else {
     const { w, h } = frontRect(paint.spec);
-    body = M.Bodies.rectangle(x, y, w * UNIT, h * UNIT, opts);
+    body = M.Bodies.rectangle(x, y, w * unit, h * unit, opts);
   }
   M.Body.setMass(body, massOf(paint.spec) * MASS_K);
   return { body, ox, oy };
 }
 
 /** その絵の短辺(px)。破片の大きさに使う。 */
-function girthOf(paint: SolidPaint): number {
+function girthOf(paint: SolidPaint, unit: number): number {
   const b = shapeBounds(paint);
-  return Math.min(b.maxX - b.minX, b.maxY - b.minY) * UNIT;
+  return Math.min(b.maxX - b.minX, b.maxY - b.minY) * unit;
+}
+
+/**
+ * ★山が画面に収まる一括の縮尺。図形の**面積の合計**を、床から上の領域の
+ * FILL 倍に収める大きさを出す(2026-08-16にユーザー指定)。
+ * 面積で見るので、タスクが増えても重要度の**比**は保たれたまま全体が縮む。
+ */
+export function fitScale(areas: number[], w: number, usableH: number): number {
+  const total = areas.reduce((a, c) => a + c, 0);
+  if (!total || w <= 0 || usableH <= 0) return 1;
+  const budget = ((w * usableH) / (UNIT * UNIT)) * FILL;
+  return Math.max(SCALE_MIN, Math.min(SCALE_MAX, Math.sqrt(budget / total)));
 }
 
 /** 器の左右と床。器の大きさが変わるたびに作り直す。

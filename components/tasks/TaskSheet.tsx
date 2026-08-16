@@ -176,7 +176,7 @@ export function TaskSheet({ data, mode, from = "bottom", autoEdit, onChange, onC
 
           {/* 右上の空き3マス = いまの図形(山に出るのと同じ絵)。 */}
           <div style={{ gridColumn: "2 / span 3", gridRow: 1, position: "relative" }}>
-            <PreviewShape spec={spec} title={data.title} tag={tag} seed={seed} />
+            <PreviewShape spec={spec} title={data.title} tag={tag} />
           </div>
 
           {/* 中央4マス = 側面の情報。埋まった数が断面の形になる。 */}
@@ -404,8 +404,8 @@ function WeightCell({ weight, onSet }: { weight: TaskWeight; onSet: (w: TaskWeig
 }
 
 /** 方眼の余白に置く、いまの図形。**山に出るのと同じ絵**(FRONT)。 */
-function PreviewShape({ spec, title, tag, seed }: {
-  spec: ReturnType<typeof specOf>; title: string; tag: TaskTag; seed: string;
+function PreviewShape({ spec, title, tag }: {
+  spec: ReturnType<typeof specOf>; title: string; tag: TaskTag;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -425,7 +425,7 @@ function PreviewShape({ spec, title, tag, seed }: {
       {box.w > 8 && box.h > 8 && (
         <SolidCanvas
           w={box.w} h={box.h}
-          paint={{ spec, view: "front", tag, title, seed }}
+          paint={{ spec, view: "front", tag, title }}
         />
       )}
     </div>

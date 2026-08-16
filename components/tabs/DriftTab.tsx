@@ -299,7 +299,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
                 <SolidCanvas
                   w={SOLID_W} h={SOLID_H}
                   paint={{
-                    spec: specOf(c), view: "front", title: c.title, seed: c.id,
+                    spec: specOf(c), view: "front", title: c.title,
                     // ★タグ無しの図形は作らない(2026-08-16確定)。
                     tag: resolveTag(c.tag, c.id, c.title, c.when, c.context, c.belongings, c.note),
                   }}

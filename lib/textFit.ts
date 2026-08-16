@@ -1,19 +1,21 @@
 import { FONT_FACES } from "./constants";
 import type { FontFace } from "./constants";
 
-// ★図形の上に載せる文字。与えられた箱にできるだけ大きく収める。
+// ★図形の上に載せる文字。
 //
-// ★書体は**図形(タスク)ごとに1つ**。1文字ずつ変えるのは 2026-08-16 に
-// ユーザーが明確に否定した(「フォントは一文字ずつとかではなく、タスクごと
-// (図形ごと)に変えること」)。同じタスクの文字列は必ず同じ書体で組む。
+// ★書体は**タグごとに1つ**(2026-08-16にユーザー確定)。どの書体を使うかは
+// lib/taskTags.ts が持ち、ここは「番号で渡された書体で組む」だけ。
+// 以前は id から決めていた(faceIndexFor)が、同じタグのタスクが別々の書体に
+// なって見分けが付かないため廃止した。
 //
-// ★書体は「タスクの id」から決める。乱数を引くと再描画のたびに書体が
-// 変わってちらつくため、**必ず決定的に**選ぶこと。
+// 組み方は2種類:
+//   fitText   … 箱いっぱいに**できるだけ大きく**。BOTTOM のタグ名が使う。
+//   layoutText … **一定の大きさ**から始めて、幅で折り、入らなければ縮める。
+//                FRONT のタイトルが使う(左下寄せ)。
 //
 // ★★文字は**グリフのアトラス**を経由して描く。canvas の fillText は、和文の
 // Webフォント(unicode-range で数百の @font-face に分割されている)に対して
-// 1回 10ms 級の照合+ラスタライズが走り、1文字ごとに書体を替えるこの設計では
-// 毎回それを支払うことになる(実測: 落下中の fillText 合計 2.4秒)。
+// 1回 10ms 級の照合+ラスタライズが走る(実測: 落下中の fillText 合計 2.4秒)。
 // 同じ (書体, 文字, 色) は一度だけ描いて小さな canvas に取り、以後は
 // drawImage(数十µs)で使い回す。
 
@@ -27,15 +29,9 @@ export function hashOf(s: string): number {
   return h >>> 0;
 }
 
-/** その図形に割り当てる書体の番号。seed(タスクのid等)だけから決まる。
- *  ★連番の id("task-1","task-2"…)は hash も連番になり、剰余を取っても
- *  ほとんど動かず全部が同じ書体に寄る。黄金比の定数を掛けて桁を混ぜる。 */
-export function faceIndexFor(seed: string): number {
-  const h = Math.imul(hashOf(seed) ^ 0x9e3779b9, 2246822519) >>> 0;
-  return h % FONT_FACES.length;
-}
-
-export const faceFor = (seed: string): FontFace => FONT_FACES[faceIndexFor(seed)];
+/** 書体の番号を FONT_FACES の範囲へ丸める。 */
+export const clampFace = (face: number): number =>
+  Math.max(0, Math.min(FONT_FACES.length - 1, Math.round(face || 0)));
 
 // ★canvas の ctx.font は **CSS変数を解決できない**。`var(--font-…)` を含む
 // 文字列を代入すると黙って失敗し、既定の 10px サンセリフのままになる
@@ -144,8 +140,8 @@ export const hasGlyph = (faceIdx: number, ch: string, color: string): boolean =>
   glyphCache.has(glyphKey(faceIdx, ch, color));
 
 /** その文字列に足りないグリフの数。 */
-export function missingGlyphs(text: string, seed: string, color: string): number {
-  const fi = faceIndexFor(seed);
+export function missingGlyphs(text: string, face: number, color: string): number {
+  const fi = clampFace(face);
   let n = 0;
   for (const ch of new Set([...(text ?? "")])) if (!hasGlyph(fi, ch, color)) n++;
   return n;
@@ -156,8 +152,8 @@ export function missingGlyphs(text: string, seed: string, color: string): number
  * ★1枚が実機で数ms〜10ms かかるので、呼び出し側はフレームに数枚ずつ配ること
  * (いっぺんに描くと落下がガクつく。実測で fillText 合計2.4秒)。
  */
-export function warmGlyphs(text: string, seed: string, color: string, budget: number): number {
-  const fi = faceIndexFor(seed);
+export function warmGlyphs(text: string, face: number, color: string, budget: number): number {
+  const fi = clampFace(face);
   let left = budget;
   for (const ch of new Set([...(text ?? "")])) {
     if (left <= 0) break;
@@ -197,15 +193,17 @@ export function splitLines(text: string, n: number): string[] {
 }
 
 /**
- * 箱 w×h に、その図形の書体1つで組んだ文字列をできるだけ大きく収める。
+ * 箱 w×h に、その書体で組んだ文字列を**できるだけ大きく**収める。
  * 行数の候補をすべて試し、いちばん文字が大きくなる割り方を選ぶ。
+ * ★BOTTOM のタグ名専用(「図形いっぱいに」というユーザー指定を守る)。
+ * FRONT のタイトルは layoutText を使うこと。
  * 幅は advanceOf のキャッシュから出す(measureText は書体×文字につき1回だけ)。
  */
-export function fitText(text: string, seed: string, w: number, h: number, maxLines = 4): FitResult | null {
+export function fitText(text: string, face: number, w: number, h: number, maxLines = 4): FitResult | null {
   const chars = [...(text ?? "").trim()];
   if (!chars.length || w <= 1 || h <= 1) return null;
 
-  const fi = faceIndexFor(seed);
+  const fi = clampFace(face);
   const widths = chars.map((c) => advanceOf(fi, c));
 
   let best: FitResult | null = null;
@@ -229,23 +227,87 @@ export function fitText(text: string, seed: string, w: number, h: number, maxLin
   return best;
 }
 
-/** 箱の中央に、fitText の結果をアトラスのグリフで描く。 */
+/**
+ * 幅 maxW(グリフ座標)に収まるように、貪欲に詰めて折り返す。
+ * 和文なので単語の切れ目は見ず、1文字ずつ入るところまで入れる。
+ * maxLines を超えるぶんは最後の行へ押し込む(縮小は呼び出し側が決める)。
+ */
+export function wrapToWidth(chars: string[], widths: number[], maxW: number, maxLines: number): FitLine[] {
+  const out: FitLine[] = [];
+  let text = "";
+  let sum = 0;
+  for (let i = 0; i < chars.length; i++) {
+    const w = widths[i];
+    // 1文字目は幅を超えても必ず置く(でないと無限に空行が出る)。
+    if (text && sum + w > maxW && out.length < maxLines - 1) {
+      out.push({ text, widthAtGlyph: sum });
+      text = chars[i];
+      sum = w;
+      continue;
+    }
+    text += chars[i];
+    sum += w;
+  }
+  if (text) out.push({ text, widthAtGlyph: sum });
+  return out;
+}
+
+/**
+ * ★FRONT のタイトル用。**一定の大きさ**(basePx)から始めて幅で折り返し、
+ * それでも箱に入らなければ入るまで縮める(2026-08-16にユーザー確定。
+ * 「できるだけ大きく」のルールは廃止)。
+ *
+ * @returns 収まった結果。minPx を割るほど小さくしないと入らないなら null
+ *          (= その大きさでは文字を出さない。LOD の入口)。
+ */
+export function layoutText(
+  text: string, face: number, w: number, h: number,
+  basePx: number, maxLines = 3, minPx = 7,
+): FitResult | null {
+  const chars = [...(text ?? "").trim()];
+  if (!chars.length || w <= 1 || h <= 1) return null;
+  const fi = clampFace(face);
+  const widths = chars.map((c) => advanceOf(fi, c));
+
+  let size = Math.min(basePx, h / LINE_H);
+  for (let pass = 0; pass < 6; pass++) {
+    if (size < minPx) return null;
+    const lines = wrapToWidth(chars, widths, (w * GLYPH_PX) / size, maxLines);
+    const need = lines.length * LINE_H * size;
+    const widest = Math.max(...lines.map((l) => l.widthAtGlyph), 1);
+    const overW = (widest * size) / GLYPH_PX / w;
+    if (need <= h && overW <= 1.001) return { size, lines };
+    // 縦か横のはみ出しの大きい方だけ詰める。
+    size = size / Math.max(need / h, overW, 1.02);
+  }
+  return null;
+}
+
+/** 文字ブロックをどこに合わせるか。 */
+export type TextAlign = "center" | "bottom-left";
+
+/**
+ * アトラスのグリフで文字を描く。
+ * center      … (cx, cy) をブロックの中心に。
+ * bottom-left … (cx, cy) をブロックの**左下**に(FRONT のタイトル)。
+ */
 export function drawFitted(
   ctx: CanvasRenderingContext2D,
   fit: FitResult,
-  seed: string,
+  face: number,
   cx: number,
   cy: number,
   color: string,
+  align: TextAlign = "center",
 ) {
   const { size, lines } = fit;
-  const fi = faceIndexFor(seed);
+  const fi = clampFace(face);
   const scale = size / GLYPH_PX;
   const lineH = size * LINE_H;
-  const top = cy - (lines.length * lineH) / 2;
+  const top = align === "center" ? cy - (lines.length * lineH) / 2 : cy - lines.length * lineH;
   lines.forEach((line, li) => {
     const y = top + lineH * (li + 0.5);
-    let x = cx - (line.widthAtGlyph * scale) / 2;
+    let x = align === "center" ? cx - (line.widthAtGlyph * scale) / 2 : cx;
     for (const ch of [...line.text]) {
       const g = bakeGlyph(fi, ch, color);
       ctx.drawImage(

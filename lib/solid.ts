@@ -11,11 +11,13 @@ import type { SideKey } from "./types";
 //   BOTTOM … 断面の形(円 / 半円 / 三角 / 四角)。**形は正しいまま**、足あとの
 //            高さに合わせて中央へ置く。タグの英字が載る。
 //
-// 寸法の対応(lib/taskSize.ts):
-//   len    = タイトルの文字数 × 手順の残り
-//   radius = 重要度(物理の重さも同じ値から)
-//   sides  = 埋まっている側面の数 → 断面の形
-//   slabs  = 残っている手順 → 長方形が何枚に割れるか
+// 寸法の対応(lib/taskSize.ts。2026-08-16にユーザー確定):
+//   面積    = 重要度(WEIGHT + 期限の切迫度)。**大きさに効くのはこれだけ**
+//   len     = タイトルの長さ(LEN_MAX で頭打ち)
+//   radius  = 面積 ÷ len ÷ 2
+//   section = √面積 → BOTTOM の断面の大きさ
+//   sides   = 埋まっている側面の数 → 断面の形
+//   slabs   = 残っている手順 → 長方形が何枚に割れるか(大きさには効かない)
 
 export const MIN_SIDES = 1;
 export const MAX_SIDES = 4;
@@ -31,10 +33,13 @@ export interface Pt { x: number; y: number }
 export interface SolidSpec {
   /** 埋まっている側面。SIDE_KEYS の順。先頭は必ず "title"。1〜4枚。 */
   sides: SideKey[];
-  /** 長方形の幅(横)。 */
+  /** 長方形の幅(横)。タイトルの長さで決まる。 */
   len: number;
-  /** 断面の半径。長方形の高さは 2 × これ。 */
+  /** 長方形の高さの半分。面積 ÷ 幅 から出る。 */
   radius: number;
+  /** ★BOTTOM の断面の外接箱の一辺。面積(=重要度)をそのまま持つので、
+   *  FRONT が平たくても断面は痩せない。 */
+  section: number;
   /** スラブの枚数(1以上)。 */
   slabs: number;
 }

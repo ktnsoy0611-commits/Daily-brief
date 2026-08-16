@@ -10,17 +10,21 @@ import type { TaskTag } from "./types";
 // 「図形の色」と「文字の色」は画像の組み合わせどおりで、タグと**一対一対応**。
 // 明度から白黒を選ぶ(inkOn)のはやめた — 相方の色は画像が決めている。
 
-export interface TagDef { id: TaskTag; label: string; color: string; ink: string }
+// ★書体もタグと対応させる(2026-08-16にユーザー確定)。同じタグのタスクは
+// 必ず同じ書体になり、色と書体の2つでタグが読める。番号は
+// lib/constants.ts の FONT_FACES の並び。骨格が明確に違う5つを選んである
+// (ゴシック太 / 丸ゴ / 極太 / 明朝太 / 明朝斜体)。
+export interface TagDef { id: TaskTag; label: string; color: string; ink: string; face: number }
 
-const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }): TagDef =>
-  ({ id, label, color: p.bg, ink: p.ink });
+const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }, face: number): TagDef =>
+  ({ id, label, color: p.bg, ink: p.ink, face });
 
 export const TASK_TAGS: TagDef[] = [
-  tag("work", "WORK", SCHEME.sky),          // 空 × 淡い緑
-  tag("life", "LIFE", SCHEME.forest),       // 深緑 × 淡いピンク
-  tag("wellness", "WELLNESS", SCHEME.yellow), // 黄 × 朱
-  tag("social", "SOCIAL", SCHEME.pink),     // ピンク × 濃い赤紫
-  tag("growth", "GROWTH", SCHEME.navy),     // 濃紺 × ピンク
+  tag("work", "WORK", SCHEME.sky, 1),           // 空 × 淡い緑   / ゴシック700
+  tag("life", "LIFE", SCHEME.forest, 8),        // 深緑 × 淡桃   / 丸ゴシック500
+  tag("wellness", "WELLNESS", SCHEME.yellow, 10), // 黄 × 朱      / Dela(極太)
+  tag("social", "SOCIAL", SCHEME.red, 4),       // 赤 × 淡桃     / 明朝700
+  tag("growth", "GROWTH", SCHEME.orange, 6),    // 橙 × 濃紺     / 明朝400斜体
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>
@@ -34,6 +38,9 @@ export const tagColor = (id: TaskTag | undefined): string => tagDef(id)?.color ?
 
 /** その色面の上に載せる文字の色。**画像の組み合わせをそのまま使う。** */
 export const tagInk = (id: TaskTag | undefined): string => tagDef(id)?.ink ?? TASK_TAGS[0].ink;
+
+/** そのタグの書体(FONT_FACES の番号)。**同じタグなら必ず同じ書体**。 */
+export const tagFace = (id: TaskTag | undefined): number => tagDef(id)?.face ?? TASK_TAGS[0].face;
 
 export const tagLabel = (id: TaskTag | undefined): string => tagDef(id)?.label ?? TASK_TAGS[0].label;
 

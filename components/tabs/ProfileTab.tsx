@@ -380,6 +380,21 @@ export function ProfileTab({ appState, persist, onClose }: {
     persist(next);
   };
 
+  // ★タスク/候補のダミーだけを消す(id が "demo-" で始まるもの)。
+  // 手で作ったタスクや、声のメモから来た本物の候補は残す。ダミーを入れ直して
+  // 積み方や落ち方を見直す往復のための入口(2026-08-16にユーザー指定)。
+  const demoCount =
+    (appState.tasks ?? []).filter((t) => t.id.startsWith("demo-")).length
+    + (appState.inbox ?? []).filter((c) => c.id.startsWith("demo-")).length;
+
+  const clearTaskDemo = () => {
+    haptic(12);
+    const next = structuredClone(appState);
+    next.tasks = (next.tasks ?? []).filter((t) => !t.id.startsWith("demo-"));
+    next.inbox = (next.inbox ?? []).filter((c) => !c.id.startsWith("demo-"));
+    persist(next);
+  };
+
   const addSource = async () => {
     const url = srcInput.trim();
     if (!/^https?:\/\//.test(url)) return;
@@ -705,6 +720,21 @@ export function ProfileTab({ appState, persist, onClose }: {
               borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
             }}>デモ・テストデータを削除</button>
           )}
+
+          {/* ★タスク/候補のダミーだけを消す。上のボタンとは別扱いにしてある —
+              上はブリーフ側(アイテム・ウィッシュ・ゴール)を消すもので、
+              タスクの山を作り直したいだけのときに巻き添えにしたくない。 */}
+          <div style={{ height: 1, background: HAIRLINE, margin: "14px 0" }} />
+          <p style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.7, margin: "0 0 10px" }}>
+            タスクと候補に入れたデモだけを消します（手で作ったタスクと、声のメモから来た候補は残ります）。
+          </p>
+          <button onClick={clearTaskDemo} disabled={demoCount === 0} style={{
+            width: "100%", padding: "11px 0", background: "transparent",
+            color: demoCount === 0 ? MUTED : INK,
+            border: `1.5px solid ${demoCount === 0 ? HAIRLINE : "rgba(26,26,24,0.28)"}`,
+            borderRadius: 999, cursor: demoCount === 0 ? "default" : "pointer",
+            fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
+          }}>{demoCount === 0 ? "デモのタスク・候補はありません" : `デモのタスク・候補を削除（${demoCount}）`}</button>
         </SettingsCard>
 
         {/* バインド！(確定ビューでの綴じ操作)のログ。誤ってバインドして

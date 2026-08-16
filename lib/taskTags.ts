@@ -19,12 +19,13 @@ export const TASK_TAGS: TagDef[] = [
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>
   TASK_TAGS.find((t) => t.id === id);
 
-/** タグが無いものの色。地から浮くが主張しない中間のグレー。 */
-export const NO_TAG_COLOR = "#9A9A94";
+// ★**タグを持たない図形は作らない**(2026-08-16にユーザー確定)。
+// 以前は無色のグレーに "NO TAG" と書いていたが、色の無い塊が山に混ざると
+// 何のタスクか読めないうえ、5色の家族から浮く。タグが決まっていないものは
+// resolveTag() が必ず何か1つに割り当てる。
+export const tagColor = (id: TaskTag | undefined): string => tagDef(id)?.color ?? TASK_TAGS[0].color;
 
-export const tagColor = (id: TaskTag | undefined): string => tagDef(id)?.color ?? NO_TAG_COLOR;
-
-export const tagLabel = (id: TaskTag | undefined): string => tagDef(id)?.label ?? "NO TAG";
+export const tagLabel = (id: TaskTag | undefined): string => tagDef(id)?.label ?? TASK_TAGS[0].label;
 
 /** タグを1つ進める(展開図のタグのマスはタップで循環する)。 */
 export function nextTag(id: TaskTag | undefined): TaskTag {
@@ -56,6 +57,29 @@ export function inferTag(...texts: (string | undefined)[]): TaskTag | undefined 
     if (words.some((w) => hay.includes(w.toLowerCase()))) return id;
   }
   return undefined;
+}
+
+/**
+ * ★図形に必ず1つタグを与える。**タグ無しの図形は存在させない**
+ * (2026-08-16にユーザー確定)。
+ *
+ * 1. 本人が展開図で決めたタグ / Cowork が書いたタグ … そのまま。
+ * 2. 題や側面の言葉から見立てる(inferTag)。
+ * 3. それでも決まらなければ、**id から決定的に**5つのどれかへ割り当てる。
+ *    乱数だと開くたびに色が変わってしまうので必ず hash から引く。連番の id
+ *    でも偏らないよう黄金比の定数で桁を混ぜる。
+ */
+export function resolveTag(
+  tag: TaskTag | undefined,
+  seed: string,
+  ...texts: (string | undefined)[]
+): TaskTag {
+  if (tagDef(tag)) return tag as TaskTag;
+  const guessed = inferTag(...texts);
+  if (guessed) return guessed;
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  return TASK_TAGS[(Math.imul(h >>> 0, 2654435761) >>> 0) % TASK_TAGS.length].id;
 }
 
 /** 旧6タグ → 新5タグ。移行(dataStore の migrate)と取り込みの両方で使う。 */

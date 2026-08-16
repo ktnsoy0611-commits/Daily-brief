@@ -10,6 +10,7 @@ import { INK, MUTED, SANS } from "@/lib/constants";
 import { haptic, hashStr } from "@/lib/helpers";
 import { demoCandidates } from "@/lib/taskDemo";
 import { specOf } from "@/lib/taskSize";
+import { resolveTag } from "@/lib/taskTags";
 import type { InboxCandidate, TabProps } from "@/lib/types";
 
 // ★候補タブ(DRIFT)。まだ確定していないタスクの候補が、**円環に並んで**
@@ -297,7 +298,11 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
                 style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "block" }}>
                 <SolidCanvas
                   w={SOLID_W} h={SOLID_H}
-                  paint={{ spec: specOf(c), view: "front", tag: c.tag, title: c.title, seed: c.id }}
+                  paint={{
+                    spec: specOf(c), view: "front", title: c.title, seed: c.id,
+                    // ★タグ無しの図形は作らない(2026-08-16確定)。
+                    tag: resolveTag(c.tag, c.id, c.title, c.when, c.context, c.belongings, c.note),
+                  }}
                 />
               </button>
             </div>

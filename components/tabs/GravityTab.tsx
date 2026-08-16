@@ -9,10 +9,10 @@ import { ViewToggle } from "@/components/tasks/ViewToggle";
 import { appTitle } from "@/lib/apps";
 import { TAB_PAD_TOP } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { frontRect, type SolidSpec } from "@/lib/solid";
-import { clearSolidBitmaps, peekSolidBitmap, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint, type SolidView } from "@/lib/solidPaint";
+import { frontRect, sectionOutline, type SolidSpec } from "@/lib/solid";
+import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint, type SolidView } from "@/lib/solidPaint";
 import { clearGlyphs, onFontsReady } from "@/lib/textFit";
-import { tagColor } from "@/lib/taskTags";
+import { resolveTag, tagColor } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { dropOrder, massOf, specOf } from "@/lib/taskSize";
 import type { AppState, TabProps, Task } from "@/lib/types";
@@ -27,9 +27,11 @@ import type { AppState, TabProps, Task } from "@/lib/types";
 //   上下の面の色 = タグ
 //
 // ★FRONT / BOTTOM の2つの見え方を切り替えられる(既定は FRONT)。
-// **物理の形は FRONT のシルエットで1つだけ持ち、切り替えでは body を作り直さない**
-// (作り直すと山が崩れる)。BOTTOM は同じ位置・同じ回転のまま、絵だけを
-// タグ色の断面図形へ差し替える。
+// **切り替えるたびに山を落とし直す**(2026-08-16にユーザー確定)。前は絵だけを
+// 差し替えて山をそのまま残していたが、「ビューを変更するごとに落下させ直す
+// こと」と指定された。切り替えると、いま画面にある図形が**縮みながら消え**
+// (EXIT_MS・上のものから順に)、消え切ってから新しい見え方で落ちてくる。
+// 消えている間は物理を止める(崩れる途中の絵が混ざらないように)。
 //
 // ★毎フレームのコストは物体ごとに drawImage 1回。立体の絵は
 // lib/solidPaint.ts が1枚のビットマップに焼いてキャッシュしており、matter.js の
@@ -55,6 +57,11 @@ const GLYPH_BUDGET = 1;
 interface Shard { x: number; y: number; vx: number; vy: number; r: number; life: number; fill: string }
 const SHARD_MS = 620;
 
+/** ビューを切り替えたとき、1つの図形が消えるのにかける時間(ms)。 */
+const EXIT_MS = 260;
+/** 消え始めをずらす間隔(ms)。上にあるものから順に消える。 */
+const EXIT_STAGGER = 38;
+
 interface Piece {
   id: string;
   body: Body;
@@ -62,10 +69,21 @@ interface Piece {
   paint: SolidPaint;
   /** 長方形の短辺(破片の大きさに使う)。 */
   girth: number;
+  /** 消えるアニメーションの開始をどれだけ遅らせるか(ms)。 */
+  exitDelay: number;
+  /** 絵の原点と物体の重心のズレ(px)。matter.js の多角形は**重心**が
+   *  body.position になるが、絵は図形の原点を中心に焼いてあるため、
+   *  三角形のように重心が原点と一致しない形ではこのぶん戻して描く。 */
+  ox: number;
+  oy: number;
 }
 
+// ★タグは必ず1つ入る(resolveTag)。決めていないタスクも、題や側面の言葉から
+// 見立て、それでも決まらなければ id から決定的に割り当てる。
+// **タグを持たない図形は作らない**(2026-08-16にユーザー確定)。
 const paintOf = (t: Task, view: SolidView): SolidPaint => ({
-  spec: specOf(t), view, tag: t.tag, title: t.title, seed: t.id,
+  spec: specOf(t), view, title: t.title, seed: t.id,
+  tag: resolveTag(t.tag, t.id, t.title, t.when, t.context, t.belongings, t.note),
 });
 
 /** 同じ立体か(形が変わったら body を作り直す必要がある)。 */
@@ -93,7 +111,13 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   const [view, setView] = useState<SolidView>("front");
   const viewRef = useRef<SolidView>("front");
 
+  // 消えるアニメーションの最中か。動いている間は物理を止める。
+  const exitRef = useRef<{ start: number; until: number } | null>(null);
+  const dropAllRef = useRef<() => void>(() => {});
+
   const tasks = useMemo(() => (appState.tasks ?? []).filter((t) => !t.done), [appState.tasks]);
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
   const open = (appState.tasks ?? []).find((t) => t.id === openId) ?? null;
 
   const draw = useCallback(() => {
@@ -121,7 +145,12 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     // 落ちてくる最中なので、1〜2フレームぶんは目に入らない。
     let budget = BAKE_BUDGET;
     let glyphBudget = GLYPH_BUDGET;
+    // ビューを切り替えた直後は「消えていく」途中。0=そのまま、1=消え切り。
+    const ex = exitRef.current;
+    const now = ex ? performance.now() : 0;
     for (const p of piecesRef.current) {
+      const k = ex ? clamp01((now - ex.start - p.exitDelay) / EXIT_MS) : 0;
+      if (k >= 1) continue; // 消え切ったものは描かない
       let bmp = peekSolidBitmap(p.paint, UNIT, bakeDpr);
       if (!bmp) {
         // ★文字のグリフが揃ってから絵を焼く。揃っていないものは今フレームの
@@ -130,10 +159,21 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
         if (budget > 0 && shapeGlyphsReady(p.paint)) { bmp = solidBitmap(p.paint, UNIT, bakeDpr); budget--; }
       }
       ctx.save();
+      if (k > 0) {
+        // 縮みながら薄くなり、わずかに傾く。塗りの色は変えない
+        // (巨大な面の色を変えると合成レイヤーごと塗り直しになる)。
+        const e = 1 - (1 - k) * (1 - k); // ease-out
+        ctx.globalAlpha = 1 - e;
+        ctx.translate(p.body.position.x, p.body.position.y);
+        ctx.rotate(p.body.angle + e * 0.22);
+        ctx.scale(1 - e * 0.85, 1 - e * 0.85);
+        ctx.translate(-p.body.position.x, -p.body.position.y);
+      }
       ctx.translate(p.body.position.x, p.body.position.y);
       ctx.rotate(p.body.angle);
       if (bmp) {
-        ctx.drawImage(bmp.canvas, -bmp.w / 2, -bmp.h / 2, bmp.w, bmp.h);
+        // 重心と絵の原点のズレを戻す(回転したあとに効かせる)。
+        ctx.drawImage(bmp.canvas, p.ox - bmp.w / 2, p.oy - bmp.h / 2, bmp.w, bmp.h);
       } else {
         ctx.rotate(-p.body.angle);
         ctx.translate(-p.body.position.x, -p.body.position.y);
@@ -145,6 +185,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       }
       ctx.restore();
     }
+    ctx.globalAlpha = 1;
     // まだ焼けていないものが残っていれば、次のフレームでも回す。
     // ★ループの中から wake() を呼んでも「もう回っている」と見なされて何もしない。
     // 止める判定の側で見るためのフラグにしておく。
@@ -178,6 +219,17 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       const M = matterRef.current;
       const engine = engineRef.current;
       if (!M || !engine) { runningRef.current = false; return; }
+
+      // ★ビューの切り替え中。物理は止めて、消えていく絵だけを描く。
+      // 消え切ったらその場で落とし直し、次のフレームから普通に回る。
+      const ex = exitRef.current;
+      if (ex) {
+        drawRef.current();
+        if (performance.now() >= ex.until) { exitRef.current = null; dropAllRef.current(); }
+        rafRef.current = requestAnimationFrame(() => loopRef.current());
+        return;
+      }
+
       M.Engine.update(engine, 1000 / 60);
 
       // 粉砕の破片。物理には乗せず、自分で落として消す。
@@ -214,12 +266,37 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     }
   }, [appActive, wake]);
 
-  // ★見え方の切り替えは**絵だけ**。物体は作り直さないので山は崩れない。
+  // ★山を丸ごと作り直して落とし直す。ビューの切り替えで使う。
+  const dropAll = useCallback(() => {
+    const M = matterRef.current;
+    const engine = engineRef.current;
+    const { w } = sizeRef.current;
+    if (!M || !engine || !w) return;
+    M.Composite.remove(engine.world, piecesRef.current.map((p) => p.body));
+    shardsRef.current = [];
+    const added = dropOrder(tasksRef.current, new Date())
+      .map((t, i) => makePiece(M, t, viewRef.current, w, i));
+    M.Composite.add(engine.world, added.map((p) => p.body));
+    piecesRef.current = added;
+    wake();
+    drawRef.current();
+  }, [wake]);
+  dropAllRef.current = dropAll;
+
+  // ★見え方を切り替えたら、**いまの山を消してから落とし直す**
+  // (2026-08-16にユーザー確定)。消えている間の物理はループ側で止める。
   useEffect(() => {
+    if (viewRef.current === view) return; // 初回のマウント
     viewRef.current = view;
-    piecesRef.current = piecesRef.current.map((p) => ({ ...p, paint: { ...p.paint, view } }));
-    draw();
-  }, [view, draw]);
+    const n = piecesRef.current.length;
+    if (!n) { dropAll(); return; }
+    // 上にあるもの(y が小さい)から順に消す。
+    const order = [...piecesRef.current].sort((a, b) => a.body.position.y - b.body.position.y);
+    order.forEach((p, i) => { p.exitDelay = i * EXIT_STAGGER; });
+    const start = performance.now();
+    exitRef.current = { start, until: start + EXIT_MS + EXIT_STAGGER * (n - 1) };
+    wake();
+  }, [view, dropAll, wake]);
 
   // 物理の世界を作る。器の大きさが決まってから。
   useEffect(() => {
@@ -281,29 +358,21 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
         // ★形そのものが変わった(手順を済ませて短くなった等)ときだけ、
         // 位置と速度を引き継いだまま body を差し替える。
         if (!sameShape(p.spec, paint.spec)) {
-          const next = makeBody(M, paint.spec, p.body.position.x, p.body.position.y);
-          M.Body.setAngle(next, p.body.angle);
-          M.Body.setVelocity(next, p.body.velocity);
+          const { body, ox, oy } = makeBody(M, paint, p.body.position.x, p.body.position.y);
+          M.Body.setAngle(body, p.body.angle);
+          M.Body.setVelocity(body, p.body.velocity);
           M.Composite.remove(engine.world, p.body);
-          M.Composite.add(engine.world, next);
-          return { id: p.id, body: next, spec: paint.spec, paint, girth: girthOf(paint.spec) };
+          M.Composite.add(engine.world, body);
+          return { ...p, body, spec: paint.spec, paint, girth: girthOf(paint), ox, oy };
         }
         return { ...p, paint };
       });
 
     const have = new Set(piecesRef.current.map((p) => p.id));
-    const added: Piece[] = [];
     // 差し迫ったものから先に落として、山の下になるようにする。
-    dropOrder(tasks, new Date()).forEach((t, i) => {
-      if (have.has(t.id)) return;
-      const paint = paintOf(t, viewRef.current);
-      const rect = frontRect(paint.spec);
-      const hw = (rect.w * UNIT) / 2;
-      // 落ちてくる位置は id から決める(開くたびに散らばり方が変わらない)。
-      const x = Math.max(hw + 6, Math.min(Math.max(w - hw - 6, hw + 6), w * 0.14 + frac(t.id) * w * 0.72));
-      const y = -(rect.h * UNIT) - i * 210;
-      added.push({ id: t.id, body: makeBody(M, paint.spec, x, y), spec: paint.spec, paint, girth: girthOf(paint.spec) });
-    });
+    const added = dropOrder(tasks, new Date())
+      .filter((t) => !have.has(t.id))
+      .map((t, i) => makePiece(M, t, viewRef.current, w, i));
     if (added.length) {
       M.Composite.add(engine.world, added.map((p) => p.body));
       piecesRef.current = [...piecesRef.current, ...added];
@@ -430,19 +499,58 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   );
 }
 
-/** ★当たり判定は FRONT の長方形。**ビューを切り替えても作り直さない**
- *  (作り直すと山が崩れる)。BOTTOM は同じ位置・同じ回転のまま絵だけ差し替える。 */
-function makeBody(M: typeof import("matter-js"), spec: SolidSpec, x: number, y: number): Body {
-  const { w, h } = frontRect(spec);
-  const body = M.Bodies.rectangle(x, y, w * UNIT, h * UNIT, {
-    restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012,
-  });
-  M.Body.setMass(body, massOf(spec) * MASS_K);
-  return body;
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/** 落ちてくる図形を1つ作る。i は落とす順(大きいほど高いところから)。 */
+function makePiece(
+  M: typeof import("matter-js"), t: Task, view: SolidView, w: number, i: number,
+): Piece {
+  const paint = paintOf(t, view);
+  const b = shapeBounds(paint);
+  const hw = ((b.maxX - b.minX) * UNIT) / 2;
+  // 落ちてくる位置は id から決める(開くたびに散らばり方が変わらない)。
+  const x = Math.max(hw + 6, Math.min(Math.max(w - hw - 6, hw + 6), w * 0.14 + frac(t.id) * w * 0.72));
+  const y = -((b.maxY - b.minY) * UNIT) - i * 210;
+  const { body, ox, oy } = makeBody(M, paint, x, y);
+  return { id: t.id, body, spec: paint.spec, paint, girth: girthOf(paint), exitDelay: 0, ox, oy };
 }
 
-/** 長方形の短辺(px)。破片の大きさに使う。 */
-const girthOf = (spec: SolidSpec): number => Math.min(frontRect(spec).w, frontRect(spec).h) * UNIT;
+/**
+ * ★当たり判定は**そのビューで実際に描く形**。
+ * FRONT は長方形、BOTTOM は断面の多角形(円/半円/三角/四角)。
+ * 以前は BOTTOM でも FRONT の長方形で当てていたため、断面の周りの見えない
+ * 余白どうしがぶつかって図形が宙に浮いて見えた。ビューを切り替えるたびに
+ * 落とし直す設計になったので(2026-08-16確定)、物体を作り分けられる。
+ */
+function makeBody(
+  M: typeof import("matter-js"), paint: SolidPaint, x: number, y: number,
+): { body: Body; ox: number; oy: number } {
+  const opts = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
+  let body: Body;
+  let ox = 0;
+  let oy = 0;
+  if (paint.view === "bottom") {
+    const size = 2 * paint.spec.radius * UNIT;
+    const verts = sectionOutline(paint.spec.sides.length).map((q) => ({ x: q.x * size, y: q.y * size }));
+    body = M.Bodies.fromVertices(x, y, [verts], opts);
+    // fromVertices は**重心**を body.position に置く。絵は図形の原点を中心に
+    // 焼いてあるので、そのズレを描画側で戻す。
+    const c = M.Vertices.centre(verts);
+    ox = -c.x;
+    oy = -c.y;
+  } else {
+    const { w, h } = frontRect(paint.spec);
+    body = M.Bodies.rectangle(x, y, w * UNIT, h * UNIT, opts);
+  }
+  M.Body.setMass(body, massOf(paint.spec) * MASS_K);
+  return { body, ox, oy };
+}
+
+/** その絵の短辺(px)。破片の大きさに使う。 */
+function girthOf(paint: SolidPaint): number {
+  const b = shapeBounds(paint);
+  return Math.min(b.maxX - b.minX, b.maxY - b.minY) * UNIT;
+}
 
 /** 器の左右と床。器の大きさが変わるたびに作り直す。
  *  床はタブバーの下ではなく、その少し上に置く(タブバーの裏に積まれると

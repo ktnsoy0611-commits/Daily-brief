@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { BG, INK, MUTED, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { nextTag, tagColor, tagLabel } from "@/lib/taskTags";
+import { nextTag, resolveTag, tagColor, tagLabel } from "@/lib/taskTags";
 import { specOf } from "@/lib/taskSize";
 import { inkOn } from "@/lib/textFit";
 import { SIDE_LABEL } from "@/lib/types";
@@ -39,6 +39,9 @@ const RULE = RUST;
 const RULE_W = 1;
 
 export interface SheetData {
+  /** タスク/候補の id。書体とタグの割り当ての種になる(図形の見た目を
+   *  重力タブ・候補タブと一致させるために要る)。 */
+  id?: string;
   title: string;
   when?: string;
   context?: string;
@@ -90,6 +93,11 @@ export function TaskSheet({ data, mode, from = "bottom", autoEdit, onChange, onC
     title: data.title, when: data.when, context: data.context, belongings: data.belongings,
     weight: data.weight, subtasks: data.subtasks,
   }), [data.title, data.when, data.context, data.belongings, data.weight, data.subtasks]);
+
+  // ★図形は必ずタグの色を持つ。決めていなければ言葉から見立て、それでも
+  // 決まらなければ id から決定的に割り当てる(2026-08-16確定)。
+  const seed = data.id || "draft";
+  const tag = resolveTag(data.tag, seed, data.title, data.when, data.context, data.belongings, data.note);
 
   const valueOf = (k: SideKey): string => (k === "title" ? data.title : data[k]) ?? "";
 
@@ -169,7 +177,7 @@ export function TaskSheet({ data, mode, from = "bottom", autoEdit, onChange, onC
 
           {/* 右上の空き3マス = いまの図形(山に出るのと同じ絵)。 */}
           <div style={{ gridColumn: "2 / span 3", gridRow: 1, position: "relative" }}>
-            <PreviewShape spec={spec} data={data} />
+            <PreviewShape spec={spec} title={data.title} tag={tag} seed={seed} />
           </div>
 
           {/* 中央4マス = 側面の情報。埋まった数が断面の形になる。 */}
@@ -190,15 +198,17 @@ export function TaskSheet({ data, mode, from = "bottom", autoEdit, onChange, onC
             );
           })}
 
-          {/* 右下 = タグ。タップで5つを循環し、マスの色がそのまま図形の色になる。 */}
-          <button onClick={() => { haptic(6); onChange({ tag: nextTag(data.tag) }); }}
+          {/* 右下 = タグ。タップで5つを循環し、マスの色がそのまま図形の色になる。
+              ★「未設定」の見え方は作らない。決めていないものは resolveTag が
+              見立てた1つを最初から出す(タグ無しの図形は存在しない・2026-08-16確定)。 */}
+          <button onClick={() => { haptic(6); onChange({ tag: nextTag(tag) }); }}
             aria-label="タグを変える"
-            style={{ gridColumn: 4, gridRow: 3, ...cellStyle(data.tag ? tagColor(data.tag) : "transparent") }}>
-            <span style={{ ...labelStyle, color: data.tag ? inkOn(tagColor(data.tag)) : RULE, opacity: data.tag ? 0.7 : 1 }}>TAG</span>
+            style={{ gridColumn: 4, gridRow: 3, ...cellStyle(tagColor(tag)) }}>
+            <span style={{ ...labelStyle, color: inkOn(tagColor(tag)), opacity: 0.7 }}>TAG</span>
             <span style={{
               fontFamily: SANS, fontWeight: 700, fontSize: 13, letterSpacing: "0.04em", textAlign: "left",
-              color: data.tag ? inkOn(tagColor(data.tag)) : MUTED,
-            }}>{data.tag ? tagLabel(data.tag) : "—"}</span>
+              color: inkOn(tagColor(tag)),
+            }}>{tagLabel(tag)}</span>
           </button>
         </NetGrid>
 
@@ -395,7 +405,9 @@ function WeightCell({ weight, onSet }: { weight: TaskWeight; onSet: (w: TaskWeig
 }
 
 /** 方眼の余白に置く、いまの図形。**山に出るのと同じ絵**(FRONT)。 */
-function PreviewShape({ spec, data }: { spec: ReturnType<typeof specOf>; data: SheetData }) {
+function PreviewShape({ spec, title, tag, seed }: {
+  spec: ReturnType<typeof specOf>; title: string; tag: TaskTag; seed: string;
+}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
   useEffect(() => {
@@ -414,7 +426,7 @@ function PreviewShape({ spec, data }: { spec: ReturnType<typeof specOf>; data: S
       {box.w > 8 && box.h > 8 && (
         <SolidCanvas
           w={box.w} h={box.h}
-          paint={{ spec, view: "front", tag: data.tag, title: data.title, seed: data.title || "draft" }}
+          paint={{ spec, view: "front", tag, title, seed }}
         />
       )}
     </div>

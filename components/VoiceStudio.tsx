@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { GOLD, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS } from "@/lib/constants";
+import { CHARCOAL, GOLD, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS } from "@/lib/constants";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { haptic } from "@/lib/helpers";
 import type { VoiceControls, VoiceTrim } from "@/lib/types";
@@ -112,8 +112,9 @@ const DIAL_OUT_MS = 380;
 /** ★これ未満の音は棒として描かない。小さい点が並ぶと汚く見えるため
  *  (ユーザー指定)。 */
 const LEVEL_FLOOR = 0.1;
-/** 全画面のオーバーレイの地。★html の地色にも同じ値を書く(下記 VoiceOverlay)。 */
-const DIM_GROUND = "#2A2A28";
+/** 全画面のオーバーレイの地。★出どころは lib/constants.ts の CHARCOAL 1つ
+ *  (タスクの入力画面も同じ地)。html の地色にも同じ値を書く(下記 VoiceOverlay)。 */
+const DIM_GROUND = CHARCOAL;
 /** ランプの色。トリミングの縦線もこの赤を使う。 */
 const LAMP_REC = "#D0412B";
 /** 指を離したあとの惰性。1フレームごとに速度へ掛ける摩擦と、止まる閾値。 */

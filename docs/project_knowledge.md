@@ -70,8 +70,14 @@
   （バショ／タイケン／ジョウホウ／モノ）。
 - `Wish` … ✨で書く受信箱。`category: ItemDomain`。KEEP されて初めて Item になる。
 - `Goal` / `CheckIn` … ゴールのバインダーと記録。
-- `Task extends TaskSides` … §4 参照。
+- `Task extends TaskSides` … §4 参照。面は `SIDE_KEYS = title / due / context /
+  belongings` の 4 つで、埋まった数がそのまま図形になる。
+  ★2 番目は **`dueDate`（YYYY-MM-DD）**。自由文の `when` は 2026-08-16 に廃止し、
+  `migrate()` が「日付なら `dueDate` へ / それ以外は `context` の先頭へ」畳んだ。
+  同じ「いつ」が自由文と期日の 2 箇所にあると、大きさ（切迫度）に効くのが
+  どちらか読めなくなるため。
 - `InboxCandidate extends TaskSides` … Cowork が声のメモから作った候補。
+  `dueDate` を持ち、確定するとそのままタスクの期日になる。
 - `JournalEntry` / `VoiceNote` … ジャーナルと声のメモ。
 - `BriefCard` / `GrowthCard` … ブリーフのデッキのカード。
 - `AppState` … 上記すべての入れ物。
@@ -199,7 +205,9 @@ localStorage のキーは `qol-app-state-v1`。
 
 **書体はタグごとに 1 つ**。`tagFace()` が `FONT_FACES` の番号を引く
 （同じタグ＝同じ書体）。★**明朝は使わない**（2026-08-16 確定）。
-ゴシック系だけで骨格の違う 5 つ（細 / 太 / 太斜体 / 丸ゴ / 極太）を当てる。
+ゴシック系だけで骨格の違う 5 つ（太 / 丸ゴ / 極太 / 極太斜体 / 太斜体）を当てる。
+★SOCIAL（赤）は 2026-08-16 に「細くて読めない」という指摘で
+**ゴシック 400 → Dela 斜体**へ移した。細いウェイトは色面の上で線が消える。
 
 **タグを持たない図形は作らない**。`resolveTag()` が
 ①本人／Cowork が決めたタグ → ②題や側面の言葉から見立て（`inferTag`）→
@@ -213,7 +221,7 @@ localStorage のキーは `qol-app-state-v1`。
 | `WORK` | `sky` `#509BF5` | `#C4F0C5` | ゴシック 700 |
 | `LIFE` | `forest` `#04624A` | `#F7D6D3` | 丸ゴシック 500 |
 | `WELLNESS` | `yellow` `#F5E837` | `#EF3E23` | Dela（極太） |
-| `SOCIAL` | `red` `#EE1B33` | `#F9C3C9` | ゴシック 400 |
+| `SOCIAL` | `red` `#EE1B33` | `#F9C3C9` | Dela 斜体（極太） |
 | `GROWTH` | `orange` `#FA6E31` | `#1B2B4F` | ゴシック 700 斜体 |
 
 ### 寸法の対応
@@ -227,6 +235,8 @@ localStorage のキーは `qol-app-state-v1`。
 縦横比 … **四角だけ**題の長さのはしご 1:2 / 3:4 / 1:1 / 3:2 / 5:2 / 4:1
         円 1:1・半円 2:1・三角 1.155:1 は**必ずその比を保つ**
 形     … 埋まっている側面の数（1..4）      lib/solid.ts
+        題だけ=円 / ＋日付=半円 / ＋メモ=三角 / ＋持ち物=四角
+        ★2 番目の面は **dueDate**（自由文の `when` は 2026-08-16 に廃止）
 スラブ … 残っている手順（大きさには効かない）
 色・書体 … タグ                            lib/taskTags.ts
 落ちる順 … 切迫度（期日）
@@ -243,6 +253,36 @@ localStorage のキーは `qol-app-state-v1`。
 幅で折り返し（最大 3 行）、それでも入らなければ縮める。置くのは
 `innerBox` の**中央**。タグの英字だけは `fitText()` で図形いっぱい。
 ★基準に √面積 を使うのは**縦横比に左右されないため**。
+
+### 入力画面（`components/tasks/TaskComposer.tsx`）
+
+TickTick 型の**即時入力**（2026-08-16 確定。方眼の展開図 `TaskSheet` は削除）。
+地はチャコール（`CHARCOAL`。声の録音と同じ墨）。
+
+```
+✕                    DELETE  COMPLETE   ← 完了・削除は常時ここ
+        ● いまの図形（実寸で変わる）
+──────────────────────────
+タスクの名前                            ← 開いたら即キーボード
+▪ 手順1  ▪ 手順2                       ← Enter で行が増える＝手順
+──────────────────────────
+日付  メモ  持ち物  重要度  タグ          ← 値が入ると印が灯る
+```
+
+- **1 行目＝題 / 2 行目以降＝手順**。行はそれぞれ独立した `<textarea>`
+  （1 つの textarea に混ぜると行ごとに字を変えられず、行頭の点も合わない）。
+  Enter でキャレットから割って次の行へ、行頭の Backspace で前の行とつなげる。
+- **下書きはこの画面が持ち、確定は閉じるときの 1 回**。1 文字ごとに親へ返すと
+  保存（localStorage ＋ クラウド）と山の作り直しが毎打鍵走る。背面へ回った
+  ときだけ保険で保存する（`visibilitychange`）。
+- **キーボードの高さは `visualViewport`** で追い、下の帯を持ち上げる。
+  iOS は `position:fixed` をキーボードで隠すので、これ以外に手が無い。
+- **開いたら即フォーカス**は `useLayoutEffect`（rAF ではない）。iOS は
+  タップと同じ処理の流れの中でしかキーボードを開かない。
+- ポップオーバーは共通の器（`Popover`）＋中身（`ComposerFields`）。
+  日付はカレンダー、重要度は四角の大きさ、タグは 5 色のベタ塗り。
+  ★**この画面のルートに transform を掛けないこと**。掛けると
+  ポップオーバーの `position:fixed` の背面板が包含ブロックごと壊れる。
 
 ### 一括スケールと間引き（`pileOf`）
 「小さすぎるものは出さない」と「混雑しても大きい図形を残す」を同じ仕組みで解く。
@@ -266,7 +306,8 @@ LOD は代表寸法 `s = √面積 × unit` で決める。`>=48` 3 行 / `30〜
   **グリフのアトラス**。
 - `lib/solidPaint.ts` … `paintShape`（立面 2 枚）＋図形 1 枚のビットマップ
   キャッシュ（LRU、フレームごとの焼き予算つき）。
-- `components/tasks/` … `SolidCanvas` / `TaskSheet`（方眼の設定画面）/
+- `components/tasks/` … `SolidCanvas`（図形 1 つ）/ `TaskComposer`（入力画面）/
+  `ComposerToolbar`・`ComposerFields`・`Popover`（その部品）/
   `ViewToggle` / `TaskAddButton`。
 - `components/tabs/GravityTab.tsx`（落として積む）/ `DriftTab.tsx`（円環の
   カバーフロー）。
@@ -314,8 +355,14 @@ LOD は代表寸法 `s = √面積 × unit` で決める。`>=48` 3 行 / `30〜
   （ビュー切替は全部作り直すので、こちらは編集のときだけ）。
 - **落下位置の hash に連番をそのまま使わない。** `"t1","t2",…` は hash も
   連番になり、全部が同じ x に落ちて 1 本の塔になる。黄金比の定数を掛けて混ぜる。
-- `TaskSheet` のルートは `data-task-sheet` と `--cell` / `--gx` / `--gy` の
-  **既定値**を持つこと。無いと `var()` が不正になり方眼ごと描かれない。
+- **`document.fonts.ready` は一度きり**。和文は unicode-range の分割配信で、
+  その文字を初めて描いた瞬間に断片の取得が始まるので、**ready はとっくに
+  解決したあと**に届く。`onFontsReady` は `loadingdone` も購読し、
+  届くたびに**アトラスを捨ててから**呼び側へ知らせること。捨てないと
+  fallback で焼いた絵がそのまま残る（候補の円環と入力画面で実際にそうなった）。
+- **入力画面のプレビューは倍率を固定する**（`SolidCanvas` の `unit`）。
+  器いっぱいに拡大すると、重要度や期限を変えても絵の大きさが変わらず
+  「大きさ ＝ 重要度」が読めなくなる。
 
 ---
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Masthead } from "@/components/common";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { DemoSeedButton, TaskAddButton } from "@/components/tasks/TaskAddButton";
-import { TaskSheet, type SheetData } from "@/components/tasks/TaskSheet";
+import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { appTitle } from "@/lib/apps";
 import { INK, MUTED, SANS } from "@/lib/constants";
 import { haptic, hashStr } from "@/lib/helpers";
@@ -195,7 +195,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
     };
   }, [apply, glide]);
 
-  const patch = (id: string, p: Partial<SheetData>) => {
+  const patch = (id: string, p: Partial<ComposerData>) => {
     const next = structuredClone(appState);
     const c = next.inbox.find((x) => x.id === id);
     if (c) Object.assign(c, p);
@@ -214,16 +214,17 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
   };
 
   // ★確定 = 重さを持ち、重力の側へ落ちていく。
-  const confirm = (c: InboxCandidate) => {
+  const confirm = (c: InboxCandidate, final: ComposerData) => {
     const next = structuredClone(appState);
     const now = new Date().toISOString();
     next.tasks.unshift({
       id: `task-${Date.now()}`,
-      title: c.title,
-      // 「いつ」が日付そのものなら期日として持つ(切迫度=大きさに効く)。
-      dueDate: /^\d{4}-\d{2}-\d{2}$/.test(c.when ?? "") ? c.when : undefined,
-      when: c.when, context: c.context, belongings: c.belongings,
-      weight: c.weight ?? 2, tag: c.tag, note: c.note,
+      title: final.title,
+      // 期日はカレンダーが書いた日付をそのまま持つ(切迫度=大きさに効く)。
+      dueDate: final.dueDate,
+      context: final.context, belongings: final.belongings,
+      subtasks: final.subtasks, suggestions: final.suggestions,
+      weight: final.weight ?? 2, tag: final.tag, note: final.note,
       done: false, createdAt: now,
     });
     next.inbox = next.inbox.filter((x) => x.id !== c.id);
@@ -247,16 +248,18 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
   };
 
   // 題が空のまま閉じたら、作りかけを消す。
-  const closeNet = (id: string) => {
+  // 閉じるときに下書きをまとめて保存する。★題が空のままなら作りかけを消す。
+  const closeNet = (id: string, final: ComposerData) => {
     setOpenId(null);
-    if (draftId !== id) return;
-    setDraftId(null);
-    const c = (appState.inbox ?? []).find((x) => x.id === id);
-    if (c && !c.title.trim()) {
+    const isDraft = draftId === id;
+    if (isDraft) setDraftId(null);
+    if (isDraft && !final.title.trim()) {
       const next = structuredClone(appState);
       next.inbox = next.inbox.filter((x) => x.id !== id);
       persist(next);
+      return;
     }
+    patch(id, final);
   };
 
   const seedDemo = () => {
@@ -301,7 +304,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
                   paint={{
                     spec: specOf(c), view: "name", title: c.title,
                     // ★タグ無しの図形は作らない(2026-08-16確定)。
-                    tag: resolveTag(c.tag, c.id, c.title, c.when, c.context, c.belongings, c.note),
+                    tag: resolveTag(c.tag, c.id, c.title, c.context, c.belongings, c.note),
                   }}
                 />
               </button>
@@ -331,16 +334,14 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       <TaskAddButton onAdd={addCandidate} />
       {count === 0 && <DemoSeedButton label="デモの候補を入れる" onSeed={seedDemo} />}
       {open && (
-        <TaskSheet
+        <TaskComposer
           key={open.id}
           data={open}
           mode="candidate"
-          from="top"
-          autoEdit={draftId === open.id}
-          onChange={(p) => patch(open.id, p)}
-          onConfirm={() => confirm(open)}
+          onCommit={(d) => patch(open.id, d)}
+          onConfirm={(d) => confirm(open, d)}
           onDelete={() => drop(open.id)}
-          onClose={() => closeNet(open.id)}
+          onClose={(d) => closeNet(open.id, d)}
         />
       )}
     </main>

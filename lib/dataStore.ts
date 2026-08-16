@@ -145,6 +145,19 @@ function migrate(s: any): AppState {
       if (carry.length) o.note = [o.note, ...carry].filter(Boolean).join("\n");
       delete o.where; delete o.who; delete o.why; delete o.how;
       delete o.what; delete o.faces;
+      // ---- 自由文の「いつ(when)」→ 日付(dueDate) + メモ(context) ----
+      // 2026-08-16にユーザー確定で面の2番目を dueDate へ一本化した。
+      // 日付そのものなら期日として拾い(まだ入っていなければ)、
+      // 「今週中」のような自由文はメモの先頭へ1行として畳んで残す。
+      if (typeof o.when === "string" && o.when.trim() !== "") {
+        const w = o.when.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(w)) {
+          if (!o.dueDate) o.dueDate = w;
+        } else {
+          o.context = [w, o.context].filter(Boolean).join("\n");
+        }
+      }
+      delete o.when;
       o.tag = normalizeTag(o.tag);
       if (!o.tag) delete o.tag;
       return o;

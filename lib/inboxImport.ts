@@ -50,6 +50,50 @@ function parseWeight(raw: string | undefined): TaskWeight | undefined {
   return Number(m[0].normalize("NFKC")) as TaskWeight;
 }
 
+const pad = (n: number) => String(n).padStart(2, "0");
+const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+/**
+ * ★「いつ」を**日付**として読む(2026-08-16にユーザー確定で面の2番目を
+ * dueDate へ一本化した)。読めた分だけ拾い、「今週中」のような自由文は
+ * undefined を返す — 呼び側がメモ(context)へ回す。
+ *
+ * Coworkに書かせる値なので、書式は一通り受ける:
+ *   2026-08-20 / 2026/8/20 / 8月20日 / 8/20 / 今日・明日・明後日
+ * 月日だけのものは**未来に寄せる**(過ぎていれば翌年)。
+ */
+export function parseWhenDate(raw: string | undefined, today = new Date()): string | undefined {
+  if (!raw) return undefined;
+  const s = raw.normalize("NFKC").trim();
+  const rel = { "今日": 0, "本日": 0, "明日": 1, "あす": 1, "明後日": 2, "あさって": 2 }[s];
+  if (rel !== undefined) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + rel);
+    return ymd(d);
+  }
+  const full = /^(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})日?$/.exec(s);
+  if (full) {
+    const [, y, m, d] = full.map(Number);
+    return isValid(y, m, d) ? `${y}-${pad(m)}-${pad(d)}` : undefined;
+  }
+  const md = /^(\d{1,2})[-/月](\d{1,2})日?$/.exec(s);
+  if (md) {
+    const [, m, d] = md.map(Number);
+    if (!isValid(today.getFullYear(), m, d)) return undefined;
+    const y = today.getFullYear();
+    const cand = `${y}-${pad(m)}-${pad(d)}`;
+    return cand < ymd(today) ? `${y + 1}-${pad(m)}-${pad(d)}` : cand;
+  }
+  return undefined;
+}
+
+/** 実在する日付か(2月30日のような値を弾く)。 */
+function isValid(y: number, m: number, d: number): boolean {
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const t = new Date(y, m - 1, d);
+  return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === d;
+}
+
 export function parseCandidates(md: string | null): InboxCandidate[] {
   if (!md) return [];
   return blocks(md)
@@ -63,8 +107,13 @@ export function parseCandidates(md: string | null): InboxCandidate[] {
       // 側面の4項目。Coworkの新しい書式(道具・場所/持ち物)と、旧書式
       // (どこで)の両方を受ける。面に載らなくなった旧項目(だれと/なぜ/
       // どうやって/なにを)は捨てずに Free Text(note)へ回す。
+      // 「いつ」は日付として読む。読めなければメモ(context)の先頭へ回す。
       const when = f["いつ"];
-      const context = f["道具・場所"] ?? f["道具"] ?? f["どこで"];
+      const dueDate = parseWhenDate(when);
+      const context = [
+        dueDate ? undefined : when,
+        f["道具・場所"] ?? f["道具"] ?? f["どこで"],
+      ].filter(Boolean).join("\n") || undefined;
       const belongings = f["持ち物"];
       const extra = [
         ["だれと", f["だれと"]], ["なぜ", f["なぜ"]], ["どうやって", f["どうやって"]],
@@ -77,7 +126,7 @@ export function parseCandidates(md: string | null): InboxCandidate[] {
         id: head.trim(),
         kind,
         title,
-        when,
+        dueDate,
         context,
         belongings,
         note,

@@ -72,9 +72,19 @@ export function requestFonts(text: string) {
 }
 
 /** すべての書体が使える状態になったら一度だけ呼ぶ。絵の作り直しに使う。 */
-export function onFontsReady(cb: () => void) {
-  if (typeof document === "undefined" || !document.fonts?.ready) return;
-  document.fonts.ready.then(() => cb()).catch(() => {});
+export function onFontsReady(cb: () => void): (() => void) | undefined {
+  if (typeof document === "undefined" || !document.fonts) return;
+  document.fonts.ready?.then(() => cb()).catch(() => {});
+  // ★`fonts.ready` は「いま待っているもの」が揃った時点で一度きり解決する。
+  // Googleフォントの和文は unicode-range で分割配信されるので、**その文字を
+  // 初めて描いた瞬間**に断片の取得が始まる — つまり ready はとっくに解決した
+  // あとで届く。届くたびに焼き直さないと、初めて出る字だけ fallback の書体で
+  // 固まる(候補の円環と入力画面のプレビューで実際にそうなっていた)。
+  // ★焼いた絵を**ここで捨てる**。捨てないと、呼び側が描き直しても
+  // fallback で焼いたビットマップがそのまま出てくる(実際にそうなっていた)。
+  const on = () => { clearGlyphs(); cb(); };
+  document.fonts.addEventListener?.("loadingdone", on);
+  return () => document.fonts.removeEventListener?.("loadingdone", on);
 }
 
 export const cssFont = (f: FontFace, size: number): string =>

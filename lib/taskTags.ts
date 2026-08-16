@@ -14,7 +14,10 @@ import type { TaskTag } from "./types";
 // 必ず同じ書体になり、色と書体の2つでタグが読める。番号は
 // lib/constants.ts の FONT_FACES の並び。
 // ★**明朝は使わない**(2026-08-16にユーザー確定)。ゴシック系だけで
-// 骨格の違う5つ(細 / 太 / 太斜体 / 丸ゴ / 極太)を当てる。
+// 骨格の違う5つ(太 / 丸ゴ / 極太 / 極太斜体 / 太斜体)を当てる。
+// ★SOCIAL(赤)は細いゴシック400だったが、赤地×淡桃の組では線が消えて
+// 読めないというユーザー指摘(2026-08-16)により**極太の斜体**へ。
+// WELLNESS の極太(直立)とは傾きで見分ける。
 export interface TagDef { id: TaskTag; label: string; color: string; ink: string; face: number }
 
 const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }, face: number): TagDef =>
@@ -24,7 +27,7 @@ export const TASK_TAGS: TagDef[] = [
   tag("work", "WORK", SCHEME.sky, 1),           // 空 × 淡い緑   / ゴシック700
   tag("life", "LIFE", SCHEME.forest, 3),        // 深緑 × 淡桃   / 丸ゴシック500
   tag("wellness", "WELLNESS", SCHEME.yellow, 4),// 黄 × 朱       / Dela(極太)
-  tag("social", "SOCIAL", SCHEME.red, 0),       // 赤 × 淡桃     / ゴシック400
+  tag("social", "SOCIAL", SCHEME.red, 5),       // 赤 × 淡桃     / Dela(極太)斜体
   tag("growth", "GROWTH", SCHEME.orange, 2),    // 橙 × 濃紺     / ゴシック700斜体
 ];
 

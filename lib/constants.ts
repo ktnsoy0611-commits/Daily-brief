@@ -71,6 +71,7 @@ export const FONT_FACES: FontFace[] = [
   { family: GOTHIC, weight: 700, italic: true },// 2 太いゴシックの斜体
   { family: MARU, weight: 500 },                // 3 丸ゴシック
   { family: DELA, weight: 400 },                // 4 極太
+  { family: DELA, weight: 400, italic: true },  // 5 極太の斜体
 ];
 // ★ネオバウハウス化(2026-08-02)。それまでは暖色のクリーム地(BG #F2EADA /
 // PAPER #FBF6E9)に、アプリごとに違う地の色(グレージュ・緑)を敷いて「別の
@@ -90,6 +91,9 @@ export const BG = "#F0F0EE";
 // 16程度に留めてある。ここを触ると背景の主張の強さが変わる。
 export const SHADE = "#E9E9E6";
 export const SHADE_DEEP = "#E0E0DC";
+// 全画面のオーバーレイの地(声の録音・タスクの入力)。★出どころはここ1つ。
+// 明るい地から切り離して「いまは書く/録るためだけの画面」を作るための墨。
+export const CHARCOAL = "#2A2A28";
 // 補助の文字色。以前は各所で "#9A988E" を直書きしていたものをここへ集約した。
 export const MUTED = "#8E8E88";
 

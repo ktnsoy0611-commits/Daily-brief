@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Body, Engine } from "matter-js";
 import { Masthead } from "@/components/common";
 import { DemoSeedButton, TaskAddButton } from "@/components/tasks/TaskAddButton";
-import { TaskSheet, type SheetData } from "@/components/tasks/TaskSheet";
+import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { ViewToggle } from "@/components/tasks/ViewToggle";
 import { appTitle } from "@/lib/apps";
 import { TAB_PAD_TOP } from "@/lib/constants";
@@ -98,7 +98,7 @@ interface Piece {
 // **タグを持たない図形は作らない**(2026-08-16にユーザー確定)。
 const paintOf = (t: Task, view: SolidView): SolidPaint => ({
   spec: specOf(t), view, title: t.title,
-  tag: resolveTag(t.tag, t.id, t.title, t.when, t.context, t.belongings, t.note),
+  tag: resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note),
 });
 
 /** 同じ立体か(形が変わったら body を作り直す必要がある)。 */
@@ -244,10 +244,10 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
 
   // ★書体が揃ったら焼いた絵を捨てて描き直す。最初の数フレームは fallback の
   // 書体で焼かれているため(canvasのフォントは非同期に届く)。
-  useEffect(() => {
-    onFontsReady(() => { clearGlyphs(); clearSolidBitmaps(); primeTagMetrics(); wake(); drawRef.current(); });
+  useEffect(() => onFontsReady(() => {
+    clearGlyphs(); clearSolidBitmaps(); primeTagMetrics(); wake(); drawRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }), []);
 
   // ★タグの英字の送り幅を、暇な時間に少しずつ測っておく。欧文は全角の近道が
   // 効かず1文字ずつ measureText が要るので、BOTTOM へ切り替えた瞬間に
@@ -398,7 +398,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     wake();
   }, [tasks, wake, ready, planPile, dropAll]);
 
-  const patch = (id: string, p: Partial<SheetData>) => {
+  const patch = (id: string, p: Partial<ComposerData>) => {
     const next: AppState = structuredClone(appState);
     const t = next.tasks.find((x) => x.id === id);
     if (t) Object.assign(t, p);
@@ -407,7 +407,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
 
   // ★完了 = 粉砕。物体を消し、その場に破片を飛ばす。上に乗っていたものは
   // 起きて沈むので、山が実際に低くなる。
-  const complete = (t: Task) => {
+  const complete = (t: Task, final: ComposerData) => {
     haptic(18);
     const piece = piecesRef.current.find((p) => p.id === t.id);
     if (piece) {
@@ -429,9 +429,11 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     }
     const next: AppState = structuredClone(appState);
     const task = next.tasks.find((x) => x.id === t.id);
-    if (task) { task.done = true; task.doneAt = new Date().toISOString(); }
+    // 入力画面での書き足しごと確定してから閉じる(下書きは画面側が持っている)。
+    if (task) { Object.assign(task, final); task.done = true; task.doneAt = new Date().toISOString(); }
     persist(next);
     setOpenId(null);
+    setDraftId(null);
     showToast("完了しました");
   };
 
@@ -440,6 +442,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     next.tasks = next.tasks.filter((x) => x.id !== id);
     persist(next);
     setOpenId(null);
+    setDraftId(null);
   };
 
   // 手でタスクを足す。空のまま作って開き、題を書いてもらう。
@@ -452,13 +455,14 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     setOpenId(id);
   };
 
-  // 題が空のまま閉じたら、作りかけを消す。
-  const closeSheet = (id: string) => {
+  // 閉じるときに下書きをまとめて保存する。★題が空のままなら作りかけを消す。
+  // (入力画面は1文字ごとには返さない — 保存と山の作り直しが毎打鍵走るため)
+  const closeSheet = (id: string, final: ComposerData) => {
     setOpenId(null);
-    if (draftId !== id) return;
-    setDraftId(null);
-    const t = (appState.tasks ?? []).find((x) => x.id === id);
-    if (t && !t.title.trim()) remove(id);
+    const isDraft = draftId === id;
+    if (isDraft) setDraftId(null);
+    if (isDraft && !final.title.trim()) { remove(id); return; }
+    patch(id, final);
   };
 
   const seedDemo = () => {
@@ -501,16 +505,14 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       <TaskAddButton onAdd={addTask} lifted />
       {tasks.length === 0 && <DemoSeedButton label="デモのタスクを入れる" onSeed={seedDemo} lifted />}
       {open && (
-        <TaskSheet
+        <TaskComposer
           key={open.id}
           data={open}
           mode="task"
-          from="bottom"
-          autoEdit={draftId === open.id}
-          onChange={(p) => patch(open.id, p)}
-          onConfirm={() => complete(open)}
+          onCommit={(d) => patch(open.id, d)}
+          onConfirm={(d) => complete(open, d)}
           onDelete={() => remove(open.id)}
-          onClose={() => closeSheet(open.id)}
+          onClose={(d) => closeSheet(open.id, d)}
         />
       )}
     </main>

@@ -220,19 +220,21 @@ export interface TaskSuggestion {
 // 面の並びは SIDE_KEYS の順に**固定**。埋まっている数がそのまま側面の数になり、
 //   1=円柱 / 2=半円柱 / 3=三角柱 / 4=四角柱
 // と角ばっていく。本人が置き場所を指定する仕組みは持たない。
-export type SideKey = "title" | "when" | "context" | "belongings";
+// ★2番目の面は**日付(dueDate)**(2026-08-16にユーザー確定)。自由文の
+// 「いつ」は廃止し、カレンダーが書く YYYY-MM-DD に一本化した。同じ「いつ」が
+// 自由文と期日の2箇所にあったため、大きさ(切迫度)に効く方がどちらか読めなく
+// なっていた。旧 when の中身は migrate() で context の先頭へ畳んである。
+export type SideKey = "title" | "due" | "context" | "belongings";
 
-export const SIDE_KEYS: SideKey[] = ["title", "when", "context", "belongings"];
+export const SIDE_KEYS: SideKey[] = ["title", "due", "context", "belongings"];
 
-/** 面と展開図に出すラベル。表示は英字のみ(OS標準のフォームUIを使わない方針)。 */
+/** 面に出すラベル。表示は英字のみ(OS標準のフォームUIを使わない方針)。 */
 export const SIDE_LABEL: Record<SideKey, string> = {
-  title: "TITLE", when: "WHEN", context: "CONTEXT", belongings: "BELONGINGS",
+  title: "TITLE", due: "DUE", context: "CONTEXT", belongings: "BELONGINGS",
 };
 
 export interface TaskSides {
-  /** いつ。 */
-  when?: string;
-  /** 道具・場所(どこで/何を使って)。短い自由入力。 */
+  /** 道具・場所・メモ(どこで/何を使って)。自由入力。 */
   context?: string;
   /** 持ち物。 */
   belongings?: string;
@@ -297,6 +299,8 @@ export interface InboxCandidate extends TaskSides {
   id: string;
   kind: "task" | "journal" | "wish" | "item";
   title: string;
+  // 予定日(YYYY-MM-DD)。2番目の面。確定するとそのままタスクの dueDate になる。
+  dueDate?: string;
   // Free Text(Coworkが書いた補足。確定するとタスクの note になる)。
   note?: string;
   // 重要度の見立て。Coworkが書いてくれば入る(未設定なら中扱い)。

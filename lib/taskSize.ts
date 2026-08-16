@@ -79,11 +79,13 @@ export function ratioOf(title: string): number {
  *  円・半円・三角は伸ばさず、面積のぶんだけ単純に大きくなる。 */
 const STRETCHES = (sides: number) => sides === 4;
 
-/** 埋まっている側面。先頭は必ず title(必須なので常に埋まっている扱い)。 */
+/** 埋まっている側面。先頭は必ず title(必須なので常に埋まっている扱い)。
+ *  ★2番目は **dueDate**(2026-08-16確定。自由文の when は廃止)。 */
 export function sidesOf(t: Partial<Task> | Partial<InboxCandidate>): SideKey[] {
   const has = (v: string | undefined) => (v ?? "").trim() !== "";
+  const src = t as Record<string, string | undefined>;
   return SIDE_KEYS.filter((k) =>
-    k === "title" ? true : has((t as Record<string, string | undefined>)[k]));
+    k === "title" ? true : has(k === "due" ? src.dueDate : src[k]));
 }
 
 /** 残っているサブタスクの数 = スラブの枚数(最低1枚)。 */

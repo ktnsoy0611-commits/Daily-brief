@@ -49,7 +49,9 @@
 ## タスク（TASK）
 - `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。
 - `components/tabs/DriftTab.tsx` — 候補の円環カバーフロー。
-- `components/tasks/` — `TaskSheet`（方眼の設定画面）/ `SolidCanvas` / `ViewToggle` / `TaskAddButton`。
+- `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
+  `ComposerToolbar` / `ComposerFields`（カレンダー・重要度・タグ）/ `Popover` /
+  `SolidCanvas` / `ViewToggle` / `TaskAddButton`。
 - `lib/solid.ts` `lib/solidPaint.ts` `lib/textFit.ts` `lib/taskSize.ts` `lib/taskTags.ts` — 図形・描画・寸法・タグ。
 
 ## ジャーナル（JOURNAL）

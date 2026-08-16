@@ -397,3 +397,35 @@ button:active {
 /* 提案を考えている間のくるくる。タスク詳細の「手配を確認する」で使う。 */
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { @keyframes spin { to { transform: none; } } }
+
+/* ── タスクの入力画面(components/tasks/TaskComposer.tsx) ────────────
+   ★動きは全部ここ。イージングはアプリ共通の cubic-bezier(0.16,1,0.3,1)。
+   毎フレームの計算はゼロ(JSは一切関与しない)。 */
+@keyframes tc-rise {
+  from { opacity: 0; transform: translate3d(0, 26px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes tc-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* 図形。形が変わった瞬間だけ1度だけ弾む。 */
+@keyframes tc-pop {
+  0%   { transform: scale(0.93); }
+  60%  { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+.tc-sheet  { animation: tc-rise 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tc-pop    { animation: tc-pop 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tc-pop-in { animation: tc-rise 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tc-row-in { animation: tc-fade 220ms ease-out both; }
+/* 灯り(ツールバーの丸)。色だけを滑らかに。 */
+.tc-lamp {
+  transition: background-color 180ms ease, color 180ms ease,
+              box-shadow 180ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tc-lamp:active { transform: scale(0.9); }
+@media (prefers-reduced-motion: reduce) {
+  .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in { animation: none; }
+  .tc-lamp { transition: none; }
+}

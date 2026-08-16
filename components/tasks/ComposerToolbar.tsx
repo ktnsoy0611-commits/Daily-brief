@@ -68,19 +68,28 @@ function Glyph({ name, c }: { name: ToolKey; c: string }) {
   }
 }
 
-export function ComposerToolbar({ open, filled, onOpen, on, off }: {
+/**
+ * ★丸いボタンを5つ(2026-08-16にユーザー指定で角の立った枠から作り直し)。
+ * アプリの他の画面(タブバーのピル・設定の丸ボタン・録音の丸)と同じ語彙。
+ *
+ *   値が入っている … タグの色で**塗った丸**（アイコンは相方の色）
+ *   空             … 地に沈んだ細い輪
+ */
+export function ComposerToolbar({ open, filled, onOpen, on, onInk, off }: {
   /** いま開いているポップオーバー。 */
   open: ToolKey | null;
   /** 値が入っている項目。 */
   filled: Record<ToolKey, boolean>;
   onOpen: (k: ToolKey) => void;
-  /** 灯っているときの色(タグの色) / 沈んでいるときの色。 */
+  /** 灯っているときの丸の色(タグの色)とその上のアイコンの色。 */
   on: string;
+  onInk: string;
+  /** 沈んでいるときのアイコンの色。 */
   off: string;
 }) {
   const keys: ToolKey[] = ["due", "context", "belongings", "weight", "tag"];
   return (
-    <div style={{ display: "flex", alignItems: "stretch" }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
       {keys.map((k) => {
         const lit = filled[k] || open === k;
         return (
@@ -89,13 +98,15 @@ export function ComposerToolbar({ open, filled, onOpen, on, off }: {
             onClick={() => { haptic(6); onOpen(k); }}
             aria-label={TOOL_LABEL[k]}
             aria-pressed={open === k}
+            className="tc-lamp"
             style={{
-              flex: 1, height: 52, border: "none", cursor: "pointer", padding: 0,
-              background: open === k ? "rgba(250,250,249,0.10)" : "transparent",
+              width: 44, height: 44, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
+              background: lit ? on : "transparent",
+              boxShadow: lit ? "none" : `inset 0 0 0 1.5px ${off}`,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
           >
-            <Glyph name={k} c={lit ? on : off} />
+            <Glyph name={k} c={lit ? onInk : off} />
           </button>
         );
       })}

@@ -3,7 +3,7 @@ import {
   type Pt, type SolidSpec,
 } from "./solid";
 import { tagColor, tagFace, tagInk, tagLabel } from "./taskTags";
-import { drawFitted, fitText, layoutText, missingGlyphs, requestFonts, warmGlyphs } from "./textFit";
+import { drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, warmGlyphs } from "./textFit";
 import type { TaskTag } from "./types";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
@@ -80,9 +80,9 @@ export function paintShape(
   ctx: CanvasRenderingContext2D, p: SolidPaint, unit = UNIT_PX, dpr = 1,
 ) {
   const fill = tagColor(p.tag);
-  // 使う書体の読み込みを頼んでおく(まだなら fallback で描かれ、揃った時点で
-  // 呼び出し側が絵を作り直す)。色と書体はタグが決める(textPlanOf が引く)。
-  requestFonts(p.title + tagLabel(p.tag));
+  // ★焼く前に、使う (書体, 文字) の組を取りに行く。まだ届いていなければ
+  // fallback で描かれるが、届いた時点で ensureGlyphs が焼き直しを知らせる。
+  ensureGlyphs(tagFace(p.tag), p.title + tagLabel(p.tag));
 
   // ★形はビューによらず1つ。違うのは載せる文字だけ。
   const tagView = p.view === "tag";
@@ -160,25 +160,31 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   if (s < LOD_NO_TEXT) return null;
   const tagView = p.view === "tag";
   const { w, h } = rectOf(p.spec);
-  const box = innerBox(n);
-  const bw = box.w * w * unit;
-  const bh = box.h * h * unit;
   const face = tagFace(p.tag);
-  const fit = tagView
-    // タグの英字は**図形いっぱい**。
-    ? fitText(tagLabel(p.tag), face, bw, bh, 2)
-    // ★タイトルは「最低 TITLE_MIN、図形が大きければ面積に比例して大きく」。
-    : layoutText(
-      p.title, face, bw, bh,
-      Math.min(TITLE_MAX, Math.max(TITLE_MIN, TITLE_K * s)),
-      s < LOD_ONE_LINE ? 1 : 3,
-    );
+  const wpx = w * unit;
+  const hpx = h * unit;
+  if (tagView) {
+    // タグの英字は**図形いっぱい**。矩形1つ(innerBox)で十分な短さ。
+    const box = innerBox(n);
+    const fit = fitText(tagLabel(p.tag), face, box.w * wpx, box.h * hpx, 2);
+    if (!fit) return null;
+    return {
+      text: tagLabel(p.tag), face, ink: tagInk(p.tag), fit,
+      cx: box.x + box.w / 2, cy: box.y + box.h / 2, size: fit.size,
+    };
+  }
+  // ★タイトルは「最低 TITLE_MIN、図形が大きければ面積に比例して大きく」。
+  // ★**形に合わせて折り返す**(2026-08-16にユーザー指摘)。矩形1つだと
+  // 三角だけ極端に小さくなる。
+  const fit = layoutInShape(
+    p.title, face, n, wpx, hpx,
+    Math.min(TITLE_MAX, Math.max(TITLE_MIN, TITLE_K * s)),
+    s < LOD_ONE_LINE ? 1 : 3,
+  );
   if (!fit) return null;
   return {
-    text: tagView ? tagLabel(p.tag) : p.title,
-    face, ink: tagInk(p.tag), fit,
-    cx: box.x + box.w / 2, cy: box.y + box.h / 2,
-    size: fit.size,
+    text: p.title, face, ink: tagInk(p.tag), fit,
+    cx: 0, cy: fit.cy / hpx, size: fit.size,
   };
 }
 

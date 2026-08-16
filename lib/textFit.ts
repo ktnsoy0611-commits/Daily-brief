@@ -1,5 +1,6 @@
 import { FONT_FACES } from "./constants";
 import type { FontFace } from "./constants";
+import { clampSides, halfWidthAt } from "./solid";
 
 // ★図形の上に載せる文字。
 //
@@ -10,7 +11,8 @@ import type { FontFace } from "./constants";
 //
 // 組み方は2種類:
 //   fitText   … 箱いっぱいに**できるだけ大きく**。BOTTOM のタグ名が使う。
-//   layoutText … **一定の大きさ**から始めて、幅で折り、入らなければ縮める。
+//   layoutInShape … **一定の大きさ**から始め、**形の輪郭に沿って**折り返し、
+//                   入らなければ縮める。
 //                FRONT のタイトルが使う(左下寄せ)。
 //
 // ★★文字は**グリフのアトラス**を経由して描く。canvas の fillText は、和文の
@@ -54,37 +56,55 @@ function resolveFamily(family: string): string {
   return out;
 }
 
-/** 書体の読み込みを頼んでおく(非同期・ベストエフォート)。
- *  @font-face で定義しただけの書体は、canvas から使っても自動では
- *  ダウンロードされないことがあるため、実際に使う文字を添えて load する。 */
-const requested = new Set<string>();
-export function requestFonts(text: string) {
+// ── 書体が届いたら焼き直す ──────────────────────────────────
+//
+// ★和文の Web フォントは unicode-range で数百の断片に分かれて配信される。
+// 断片の取得が始まるのは**その文字を初めて描いた瞬間**なので、
+// `document.fonts.ready` はとっくに解決したあとに届く。待ちの姿勢だと
+// 「たまに前の書体のまま固まる」(2026-08-16に実機で報告された)。
+//
+// そこで**こちらから取りに行く**。焼く前に ensureGlyphs() を呼び、
+// その (書体, 文字) が**まだ使えないとき**だけ、届いた時点で
+// 焼いた絵を捨てて購読者へ知らせる。
+
+const listeners = new Set<() => void>();
+const notify = () => { clearGlyphs(); for (const cb of listeners) cb(); };
+
+/** その (書体, 文字) の組を取りに行く。**焼く直前に必ず呼ぶこと。** */
+const asked = new Set<string>();
+export function ensureGlyphs(face: number, text: string) {
   if (typeof document === "undefined" || !document.fonts?.load) return;
-  for (const ch of new Set([...text])) {
-    if (requested.has(ch)) continue;
-    requested.add(ch);
-    for (const f of FONT_FACES) {
-      // ★load() は Promise を返し、失敗すると unhandled rejection になって
-      // pageerror が飛ぶ。読めない書体は fallback で描くだけなので握りつぶす。
-      try { document.fonts.load(cssFont(f, 16), ch).catch(() => {}); } catch { /* noop */ }
-    }
-  }
+  const fi = clampFace(face);
+  const need = [...new Set([...(text ?? "")])].filter((c) => {
+    const k = `${fi}|${c}`;
+    if (asked.has(k)) return false;
+    asked.add(k);
+    return true;
+  }).join("");
+  if (!need) return;
+  const font = cssFont(FONT_FACES[fi], GLYPH_PX);
+  // ★いま使えるかを先に見る。使えるなら fallback では描かれないので、
+  // 届いたあとに焼き直す必要は無い(毎回捨てると描き直しが延々続く)。
+  let had = false;
+  try { had = document.fonts.check(font, need); } catch { /* noop */ }
+  try {
+    // load() の Promise は必ず握りつぶす(unhandled rejection で pageerror)。
+    document.fonts.load(font, need).then(() => { if (!had) notify(); }).catch(() => {});
+  } catch { /* noop */ }
 }
 
-/** すべての書体が使える状態になったら一度だけ呼ぶ。絵の作り直しに使う。 */
+/** 書体が届いて焼き直しが要るときに呼ばれる。返り値で購読をやめる。 */
 export function onFontsReady(cb: () => void): (() => void) | undefined {
   if (typeof document === "undefined" || !document.fonts) return;
+  listeners.add(cb);
   document.fonts.ready?.then(() => cb()).catch(() => {});
-  // ★`fonts.ready` は「いま待っているもの」が揃った時点で一度きり解決する。
-  // Googleフォントの和文は unicode-range で分割配信されるので、**その文字を
-  // 初めて描いた瞬間**に断片の取得が始まる — つまり ready はとっくに解決した
-  // あとで届く。届くたびに焼き直さないと、初めて出る字だけ fallback の書体で
-  // 固まる(候補の円環と入力画面のプレビューで実際にそうなっていた)。
-  // ★焼いた絵を**ここで捨てる**。捨てないと、呼び側が描き直しても
-  // fallback で焼いたビットマップがそのまま出てくる(実際にそうなっていた)。
+  // 保険。こちらが取りに行っていない書体(他の画面のもの)が届いた場合も拾う。
   const on = () => { clearGlyphs(); cb(); };
   document.fonts.addEventListener?.("loadingdone", on);
-  return () => document.fonts.removeEventListener?.("loadingdone", on);
+  return () => {
+    listeners.delete(cb);
+    document.fonts.removeEventListener?.("loadingdone", on);
+  };
 }
 
 export const cssFont = (f: FontFace, size: number): string =>
@@ -263,7 +283,7 @@ export function splitLines(text: string, n: number): string[] {
  * 箱 w×h に、その書体で組んだ文字列を**できるだけ大きく**収める。
  * 行数の候補をすべて試し、いちばん文字が大きくなる割り方を選ぶ。
  * ★BOTTOM のタグ名専用(「図形いっぱいに」というユーザー指定を守る)。
- * FRONT のタイトルは layoutText を使うこと。
+ * タイトルは layoutInShape を使うこと(形に沿って折り返す)。
  * 幅は advanceOf のキャッシュから出す(measureText は書体×文字につき1回だけ)。
  */
 export function fitText(text: string, face: number, w: number, h: number, maxLines = 4): FitResult | null {
@@ -295,59 +315,85 @@ export function fitText(text: string, face: number, w: number, h: number, maxLin
 }
 
 /**
- * 幅 maxW(グリフ座標)に収まるように、貪欲に詰めて折り返す。
- * 和文なので単語の切れ目は見ず、1文字ずつ入るところまで入れる。
- * maxLines を超えるぶんは最後の行へ押し込む(縮小は呼び出し側が決める)。
+ * ★**形に合わせて折り返す**版(2026-08-16にユーザー指摘で追加)。
+ * 行ごとに使える幅を断面の輪郭から引くので、三角のように上が狭い形でも
+ * 下の広いところを目一杯使える。
+ *
+ * 矩形1つ(innerBox)で収めていた頃は、三角が外接箱の 23% しか使えず
+ * (四角は 79%)、同じ面積でも三角だけ文字が半分以下になっていた。
+ *
+ * @param sides 断面の形(1..4)
+ * @param boxW  外接箱の幅(px) / @param boxH 外接箱の高さ(px)
+ * @returns 収まった結果 ＋ ブロックの中心 y(図形の中心からの px)。
+ *          minPx を割るほど縮めないと入らないなら null。
  */
-export function wrapToWidth(chars: string[], widths: number[], maxW: number, maxLines: number): FitLine[] {
+export function layoutInShape(
+  text: string, face: number, sides: number,
+  boxW: number, boxH: number,
+  basePx: number, maxLines = 3, minPx = 7,
+): (FitResult & { cy: number }) | null {
+  const chars = [...(text ?? "").trim()];
+  if (!chars.length || boxW <= 1 || boxH <= 1) return null;
+  const fi = clampFace(face);
+  const widths = chars.map((c) => advanceOf(fi, c));
+  // 輪郭へ文字が触れないための余白(幅の比・高さの比)。
+  const INSET = 0.9;
+  const PAD_Y = 0.05;
+  // ★三角だけ**下寄せ**。頂点の側は幅が0に近く、中央に置くと入らない。
+  const bottomUp = clampSides(sides) === 3;
+
+  /** その行(中心 y・高さ lh)で使える幅(px)。**狭い方の端**で測る。 */
+  const widthOfLine = (cy: number, lh: number): number => {
+    const a = halfWidthAt(sides, (cy - lh / 2) / boxH);
+    const b = halfWidthAt(sides, (cy + lh / 2) / boxH);
+    return Math.min(a, b) * 2 * boxW * INSET;
+  };
+
+  let size = Math.min(basePx, boxH / LINE_H);
+  for (let pass = 0; pass < 8; pass++) {
+    if (size < minPx) return null;
+    const lh = size * LINE_H;
+    const limit = boxH * (1 - PAD_Y * 2);
+    // 行数の候補を小さい方から試し、最初に収まったものを採る。
+    // 収まらなかったときは、**いちばん惜しかったはみ出し具合**で縮める
+    // (固定の倍率で刻むと、あと数%のところで打ち切って文字なしになる)。
+    let best = Infinity;
+    for (let k = 1; k <= maxLines; k++) {
+      const block = k * lh;
+      if (block > limit) break;
+      const top = bottomUp ? boxH * (0.5 - PAD_Y) - block : -block / 2;
+      const maxWs = Array.from({ length: k }, (_, i) => widthOfLine(top + lh * (i + 0.5), lh));
+      if (maxWs.some((w) => w < size * 0.9)) continue; // その行に1文字も入らない
+      const lines = wrapPerLine(chars, widths, maxWs.map((w) => (w * GLYPH_PX) / size), k);
+      if (lines.length > k) continue;
+      const over = Math.max(...lines.map((l, i) => (l.widthAtGlyph * size) / GLYPH_PX / maxWs[i]));
+      if (over <= 1.001) return { size, lines, cy: top + block / 2 };
+      best = Math.min(best, over);
+    }
+    // 行数を増やせば入る場合もあるので、縮め幅は控えめに見積もる。
+    size /= Math.min(Math.max(Number.isFinite(best) ? best : 1.14, 1.04), 1.4);
+  }
+  return null;
+}
+
+/** 行ごとに違う幅(グリフ座標)で貪欲に折り返す。maxLines を超えた分は最後へ。 */
+function wrapPerLine(chars: string[], widths: number[], maxW: number[], maxLines: number): FitLine[] {
   const out: FitLine[] = [];
   let text = "";
   let sum = 0;
   for (let i = 0; i < chars.length; i++) {
-    const w = widths[i];
-    // 1文字目は幅を超えても必ず置く(でないと無限に空行が出る)。
-    if (text && sum + w > maxW && out.length < maxLines - 1) {
+    const cap = maxW[Math.min(out.length, maxW.length - 1)];
+    if (text && sum + widths[i] > cap && out.length < maxLines - 1) {
       out.push({ text, widthAtGlyph: sum });
       text = chars[i];
-      sum = w;
+      sum = widths[i];
       continue;
     }
     text += chars[i];
-    sum += w;
+    sum += widths[i];
   }
   if (text) out.push({ text, widthAtGlyph: sum });
   return out;
-}
-
-/**
- * ★FRONT のタイトル用。**一定の大きさ**(basePx)から始めて幅で折り返し、
- * それでも箱に入らなければ入るまで縮める(2026-08-16にユーザー確定。
- * 「できるだけ大きく」のルールは廃止)。
- *
- * @returns 収まった結果。minPx を割るほど小さくしないと入らないなら null
- *          (= その大きさでは文字を出さない。LOD の入口)。
- */
-export function layoutText(
-  text: string, face: number, w: number, h: number,
-  basePx: number, maxLines = 3, minPx = 7,
-): FitResult | null {
-  const chars = [...(text ?? "").trim()];
-  if (!chars.length || w <= 1 || h <= 1) return null;
-  const fi = clampFace(face);
-  const widths = chars.map((c) => advanceOf(fi, c));
-
-  let size = Math.min(basePx, h / LINE_H);
-  for (let pass = 0; pass < 6; pass++) {
-    if (size < minPx) return null;
-    const lines = wrapToWidth(chars, widths, (w * GLYPH_PX) / size, maxLines);
-    const need = lines.length * LINE_H * size;
-    const widest = Math.max(...lines.map((l) => l.widthAtGlyph), 1);
-    const overW = (widest * size) / GLYPH_PX / w;
-    if (need <= h && overW <= 1.001) return { size, lines };
-    // 縦か横のはみ出しの大きい方だけ詰める。
-    size = size / Math.max(need / h, overW, 1.02);
-  }
-  return null;
 }
 
 /**

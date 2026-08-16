@@ -133,6 +133,28 @@ export function innerBox(sides: number): { x: number; y: number; w: number; h: n
   }
 }
 
+/**
+ * ★その断面の、**高さ y での半幅**(sectionOutline と同じ -0.5〜0.5 の座標系。
+ * y は下向き)。文字を「形に合わせて折り返す」ために要る。
+ *
+ * innerBox(矩形1つ)では三角がどうしても不利になる — 外接箱の 23% しか
+ * 取れず、四角(79%)に対して文字が半分以下になっていた(2026-08-16にユーザー
+ * 指摘)。行ごとにここで幅を引けば、下の広いところは目一杯使える。
+ */
+export function halfWidthAt(sides: number, y: number): number {
+  const t = Math.max(-0.5, Math.min(0.5, y));
+  switch (clampSides(sides)) {
+    // 円。
+    case 1: return Math.sqrt(Math.max(0, 0.25 - t * t));
+    // 半円。平らな辺が下(y=+0.5)、弧が上。
+    case 2: return Math.sqrt(Math.max(0, 1 - (0.5 - t) * (0.5 - t))) / 2;
+    // 三角。頂点が上(y=-0.5)、底辺が下。
+    case 3: return (t + 0.5) / 2;
+    // 四角。
+    default: return 0.5;
+  }
+}
+
 /** 多角形の面積(符号なし)。 */
 export function areaOfPoly(pts: Pt[]): number {
   let s = 0;

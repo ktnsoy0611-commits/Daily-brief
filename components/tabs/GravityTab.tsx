@@ -55,6 +55,11 @@ const FILL = 0.58;
  *  無くメリハリが消える」状態になっていた。
  *  0.70 だと 16件はそのまま全部出て、40件では10件に絞られて最大137px になる。 */
 const SCALE_MIN = 0.70;
+/** 見出し(Masthead + ビュー切替)が占める高さ。山はここまで積み上がらない。 */
+const MASTHEAD_H = 108;
+/** いちばん大きい1枚が、画面の幅・高さのどこまでを占めてよいか。 */
+const FIT_W = 0.86;
+const FIT_H = 0.62;
 /** どこまで大きくしてよいか。数個しか無いときに画面の下で小さく固まらないよう、
  *  拡大側にも余地を持たせる(「なるべく画面全体に入り切る大きさ」)。 */
 const SCALE_MAX = 1.6;
@@ -264,10 +269,12 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     }
   }, [appActive, wake]);
 
-  /** いま山に入れるタスクと、その縮尺。小さすぎるものは間引く。 */
+  /** いま山に入れるタスクと、その縮尺。小さすぎるものは間引く。
+   *  ★見出し(TASK・歯車・ビュー切替)のぶんを引く。引かないと山が上へ
+   *  溢れて見出しに重なる(2026-08-16に実機で報告された)。 */
   const planPile = useCallback((list: Task[]) => {
     const { w, h } = sizeRef.current;
-    return pileOf(list, new Date(), w, h - navHeightPx());
+    return pileOf(list, new Date(), w, h - navHeightPx() - MASTHEAD_H);
   }, []);
 
   // ★山を丸ごと作り直して落とし直す。**縮尺が変わったときだけ**使う
@@ -626,7 +633,17 @@ export function pileOf(
     n++;
   }
   // 1件だけはどんなに大きくても必ず入れる(空の山にしない)。
-  return { keep: sorted.slice(0, n).map((r) => r.t), scale: Math.max(SCALE_MIN, scaleFor(total)) };
+  const keep = sorted.slice(0, n).map((r) => r.t);
+  // ★**いちばん大きい1枚が画面に収まる**ところまで縮める(2026-08-16に
+  // 実機で報告された「図形が見出しに重なって上へはみ出す」への対処)。
+  // 面積の合計だけで決めていた頃は、数件しか無いと縮尺が上限に張り付き、
+  // 重要度の高い1枚が画面より大きくなって壁に挟まったまま浮いていた。
+  let scale = Math.max(SCALE_MIN, scaleFor(total));
+  for (const t of keep) {
+    const { w: bw, h: bh } = rectOf(specOf(t, today));
+    scale = Math.min(scale, (w * FIT_W) / (bw * UNIT), (usableH * FIT_H) / (bh * UNIT));
+  }
+  return { keep, scale: Math.max(0.12, scale) };
 }
 
 /** 器の左右と床。器の大きさが変わるたびに作り直す。

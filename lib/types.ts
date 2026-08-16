@@ -447,7 +447,7 @@ export type LifeTabId = "brief" | "stock" | "goals" | "execute";
 export type TasksTabId = "tasks-drift" | "tasks-gravity";
 // アーカイブ(旧・独立タブ)はジャーナルへ統合した。「レコード」=カセット
 // プレイヤーをタップして声で記録する、「今日」=その日の記録、
-// 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10・§33)。
+// 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10)。
 export type JournalTabId = "journal-record" | "journal-today" | "journal-archive";
 export type TabId = LifeTabId | TasksTabId | JournalTabId;
 

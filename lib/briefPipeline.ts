@@ -50,7 +50,7 @@ export type InterestSignal = { label: string; weight: number };
 // ウィッシュ(願望)は文字列(タイトルのみ)でも、Wish.category(ItemDomain)を
 // 添えたオブジェクトでも受け取れる。domainがあれば層Cがそのウィッシュに
 // 応えるカードのkindを、対応するドメインに沿った値へ優先的に揃える
-// (HANDOFF-CURRENT.md §8.14 Issue 3)。
+// (docs/archive/brief-pipeline-2026-07.md §8.14 Issue 3)。
 export type WishInput = { title: string; domain?: string; id?: string };
 // ゴール(目標)の達成に効くキーワード。Coworkの週次分析が taste-state.md の
 // 「## ゴールに効くキーワード」に書き、Cronがゴール本体(app_state)のidと突き合わせて
@@ -642,14 +642,14 @@ export async function buildDeck(input: {
     .slice(0, 20);
   // 「興味・好み」=strong判定(直接合致)の材料、「興味・好みの関連キーワード」=
   // moderate判定(地続きの広がり)の材料。好み/興味は概念が重なり重複しやすいので
-  // 1リストへ統合した(HANDOFF §8.14 優先度3)。
+  // 1リストへ統合した(docs/archive/brief-pipeline-2026-07.md §8.14 優先度3)。
   const tasteSignals = (input.taste.taste ?? []).filter((i) => i && typeof i.label === "string" && i.label.trim()).slice(0, 30);
   const relatedSignals = (input.taste.related ?? []).filter((i) => i && typeof i.label === "string" && i.label.trim()).slice(0, 20);
   const livingArea = (input.taste.livingArea ?? "").trim() || DEFAULT_LIVING_AREA;
 
   // 願いのドメイン(Wish.category)が分かる場合は [ドメイン: …] を添えて渡す。
   // 層Cがこれを見て、その願いに応えるカードのkindをドメインに沿わせる
-  // (HANDOFF-CURRENT.md §8.14 Issue 3)。ドメイン注記はsourceWishTitleの
+  // (docs/archive/brief-pipeline-2026-07.md §8.14 Issue 3)。ドメイン注記はsourceWishTitleの
   // 一致判定(BriefTab側、Wish.titleとの完全一致)を壊さないよう、願いの
   // 内容(title)そのものには含めない。
   const domainLabelOf = (id?: string) => ITEM_DOMAINS.find((d) => d.id === id)?.label;

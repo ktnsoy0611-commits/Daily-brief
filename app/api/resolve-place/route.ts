@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 // 場所の座標解決サーバー関数(フェーズB)。
-// SYSTEM-DESIGN.md §8.1 / HANDOFF-CURRENT.md §8.1-1 の多段フォールバック:
+// SYSTEM-DESIGN.md §8.1 / docs/archive/brief-pipeline-2026-07.md §8.1-1 の多段フォールバック:
 //   (1) GoogleマップURLに埋まった座標を正規表現で抽出(API呼び出し0・無料)。
 //       店名は、まず URL の /place/店名/ から、取れなければマップのページを
 //       1回だけ取得して og:title / <title>(=その場所の名前が入っている)から

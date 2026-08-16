@@ -41,8 +41,8 @@ type GenResponse =
 // だったと分かった。「気になっていること」欄が保存ボタン未表示になる
 // 不具合の実際の原因は特定できていないが、非編集/編集の2状態を切り替える
 // 構成自体を撤去し「情報源」と同じ常時表示の構成にしたことで、その
-// 状態遷移に起因する不具合の可能性そのものを消した(詳細はHANDOFF-
-// CURRENT.md参照)。fontSize:16はタップしやすい大きさとしてそのまま残す。)
+// 状態遷移に起因する不具合の可能性そのものを消した(詳細は docs/archive/ui-binder-2026-07.md
+// §7.21 参照)。fontSize:16はタップしやすい大きさとしてそのまま残す。)
 const settingsInputStyle: React.CSSProperties = {
   flex: 1, border: "none", borderBottom: `1.5px solid ${INK}`, background: "transparent",
   fontFamily: SANS, fontSize: 16, padding: "7px 2px", outline: "none", minWidth: 0,
@@ -219,7 +219,7 @@ export function ProfileTab({ appState, persist, onClose }: {
   };
 
   // フェーズC-0: ブリーフ生成の実験。まだ本番デッキには繋がず、返ってきた
-  // カードをこの画面に表示して品質を目視確認するだけ(HANDOFF §8.12)。
+  // カードをこの画面に表示して品質を目視確認するだけ(docs/archive/brief-pipeline-2026-07.md §8.12)。
   const [genState, setGenState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [genCards, setGenCards] = useState<GeneratedCard[]>([]);
   const [genSites, setGenSites] = useState<SiteTrace[]>([]);
@@ -236,7 +236,7 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [genNow, setGenNow] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [genNowMsg, setGenNowMsg] = useState("");
 
-  // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
+  // 好み/興味は「興味・好み」1リストへ統合済み(docs/archive/brief-pipeline-2026-07.md §8.14 優先度3)。
   const taste = (appState.profile?.interests ?? []).slice().sort((a, b) => b.weight - a.weight);
   const sources = appState.sources ?? [];
   const bindLog = appState.bindLog ?? [];
@@ -563,7 +563,7 @@ export function ProfileTab({ appState, persist, onClose }: {
         {tab === "taste" && (<>
         {/* 「興味・好み」= state(profile.interests)をそのまま表示・編集する
             1リスト。好み/興味は概念が重なり重複しやすいため統合した
-            (HANDOFF §8.14 優先度3)。ここから直接追加・削除したものも、
+            (docs/archive/brief-pipeline-2026-07.md §8.14 優先度3)。ここから直接追加・削除したものも、
             KEEP等のフィードバックからの自動検出(Cowork分析経由)も同じ並びに
             混在する。手入力は残すが必須ではなく、主にログ分析が育てる。
             (かつての自由文「気になっていること」欄はウィッシュで代替済みのため廃止。) */}
@@ -709,7 +709,7 @@ export function ProfileTab({ appState, persist, onClose }: {
 
         {/* バインド！(確定ビューでの綴じ操作)のログ。誤ってバインドして
             ストック/プランからカードが消えてしまった時に、この画面から
-            元に戻せるようにする(HANDOFF-CURRENT.md §7.8参照)。 */}
+            元に戻せるようにする(docs/archive/ui-binder-2026-07.md §7.8参照)。 */}
         <SettingsCard label="バインドの記録" icon={RotateCcw}>
           {bindLog.length === 0 ? (
             <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>まだありません。</p>
@@ -724,7 +724,7 @@ export function ProfileTab({ appState, persist, onClose }: {
         {/* フェーズC-0「プロンプト実験場」。本番のブリーフタブは夜間Cronが
             生成したデッキ(generatedDecks)のみを使う。サンプルデータ
             (CARDS・injectDemo)は撤去済み。このカードは生成パイプラインの
-            動作確認用として残す(HANDOFF §8.12)。 */}
+            動作確認用として残す(docs/archive/brief-pipeline-2026-07.md §8.12)。 */}
         <SettingsCard label="ブリーフ生成の実験（開発用）" icon={Sparkles}>
           <p style={{ fontSize: 11, color: MUTED, lineHeight: 1.7, margin: "0 0 10px" }}>
             下の情報源ページをレンダリング(Jina Reader)でクリーンな本文に変換して

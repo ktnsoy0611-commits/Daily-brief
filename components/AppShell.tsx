@@ -497,7 +497,7 @@ export function AppShell() {
       // 表示するだけ。ユーザーが手で足したチップ(source:"user")は残し、それ以外
       // (Cowork由来)は taste-state.md の現在値で置き換える(Coworkが消したものは消える)。
       // 手で消したラベル(dismissedInterests)は復活させない。
-      // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
+      // 好み/興味は「興味・好み」1リストへ統合済み(docs/archive/brief-pipeline-2026-07.md §8.14 優先度3)。
       // read routeはそれを単一 taste で返す(interestは後方互換で来ても取り込む)。
       const brainTaste: { label?: unknown; weight?: unknown }[] = [
         ...(Array.isArray(data.taste) ? data.taste : []),
@@ -569,7 +569,7 @@ export function AppShell() {
   // 追従は要素のReactハンドラではなく **windowへ直接張ったリスナー** で行う。
   // 指がタブバーの外(上方向へのドラッグでは必ず外へ出る)へ移動した瞬間に
   // 要素側のonPointerMoveは呼ばれなくなり、ジェスチャーが途中で死ぬため
-  // (アーカイブの長押しドラッグで同じ罠を踏んでいる。HANDOFF §7.26)。
+  // (アーカイブの長押しドラッグで同じ罠を踏んでいる。docs/archive/ui-binder-2026-07.md §7.26)。
   //
   // ★横は「中身ごと横スライド」(ページング)になった。3アプリを横一列の
   // トラックに並べ、指の動きに1:1で追従させる。以前は地の色が変わるだけで
@@ -727,7 +727,7 @@ export function AppShell() {
   // 選んでいたカードは実行済み(done)としてアーカイブのバインダーへまとめて
   // 移り、その日に済ませたタスクも同じ記録に添える。以前はこれを2段階
   // (プランの「バインダーへ」→確定ビューの「バインド！」)に分けていたが、
-  // 確定ビューごと撤去してこの1操作に集約した(HANDOFF §8.25)。
+  // 確定ビューごと撤去してこの1操作に集約した(docs/archive/shell-redesign-2026-08.md §9)。
   const finishDay = useCallback(() => {
     if (!appState) return;
     const next = structuredClone(appState);
@@ -899,7 +899,7 @@ export function AppShell() {
   // 一切使っていない。それでいて実機Safariのdvhはツールバーの動きと無関係な
   // タイミング(DOM更新のたびなど)でも値が揺れることがあり、これが
   // ブリーフタブでスワイプ確定・育成カード昇格の瞬間にカード全体がガクッと
-  // 動く不具合の一因と疑われる(HANDOFF-CURRENT.md §7参照)。svh(小さい方の
+  // 動く不具合の一因と疑われる(docs/archive/ui-binder-2026-07.md §7 参照)。svh(小さい方の
   // ビューポート高=ツールバー表示時の高さ)は固定値でライブに変化しないため、
   // この揺れが構造的に起こらなくなる。代わりにツールバーが後から隠れた場合は
   // 器の下に数十pxの余白(背景色のみ)が残ることがあるが、スクロールを

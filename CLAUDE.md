@@ -1,70 +1,92 @@
 @AGENTS.md
-@HANDOFF-CURRENT.md
+
+# 読むもの（必要なときだけ開く）
+
+- `docs/project_knowledge.md` … **現行仕様の正**。設計・データモデル・守るべき約束。
+- `handoff_current.md` … いまどこにいるか。直近完了・次の一手・重要パス（200行以内）。
+- `docs/archive/*.md` … 経緯と教訓。**全文を読まない。`grep` で必要な節だけ**。
+  コード内コメントの `HANDOFF §N` はここの節番号を指す。§5・§7.x=`ui-binder`、
+  §8.x=`brief-pipeline`、§9〜§31・§50・§51=`shell-redesign`、
+  §38〜§49=`journal-voice`、§52・§53=`task-app`。
+- `SYSTEM-DESIGN.md` … 生成パイプラインの設計思想。
+- `COWORK-ROUTINES.md` … Cowork に渡すプロンプト（アプリ側は読まない）。
 
 # AIへの絶対ルール（最優先・厳守）
 
 ユーザーは**非エンジニア**であり、ファイル名やディレクトリ構造を把握していない。
-漠然とした指示（例:「ブリーフのカードがおかしい」「設定画面を直して」）を受けた場合、
-以下を必ず守ること。
+漠然とした指示（例:「タスクのカードがおかしい」「設定画面を直して」）を受けたら:
 
-1. **いきなりプロジェクト全体を検索しない**（grep・フルスキャン・広範なファイル読み込み禁止）。
-2. **必ず最初にこの CLAUDE.md の「ファイル地図」を確認**し、修正対象になり得るファイルの仮説を立てる。
+1. **いきなりプロジェクト全体を検索しない**（grep・フルスキャン・広範な読み込み禁止）。
+2. **まず下の「ファイル地図」で当たりをつける**。
 3. 仮説に基づき、**必要最小限のファイルだけを開いてから**作業を始める。
 4. 仮説が外れたと分かった時点で初めて、対象を絞った検索に切り替える。
 
-この順序を飛ばすとトークンを浪費し、ユーザーの意図もつかめない。
+# コミュニケーションスタイル
 
-# ファイル地図（目次）
+- 前置き・言い訳・過剰な相槌を挟まない。「〜だと思われます」より「原因は〜」。
+- バグは CSS の微調整で誤魔化さず、**根本原因を特定してから**直す。対症療法は即座に見抜かれる。
+- 実装後は必ず動作確認する（Playwright でのスクリーンショット／数値確認が定石）。
+- 技術的な判断の理由（トレードオフ）は書く。ユーザーは「なぜその設計か」を尋ね返す。
+- ユーザーは実機 iPhone で最終確認する。Chromium で問題なくても実機で直っていないことがある。
+- **デザイン・文言の変更、AI のプロンプトの変更は、事前に文面を提示して承認を得てから**行う。
+- Tailwind 不使用（すべてインライン style）。コミットメッセージは日本語で「何をなぜ」。
 
-深掘り前の「当たりをつける」ための索引。詳細な仕様は `HANDOFF-CURRENT.md` が正。
+# ファイル地図
 
-## 画面・タブ（ユーザーが「〜の画面」と言ったらまずここ）
+## 骨格
+- `components/AppShell.tsx` — 3アプリの横スライド・タブ・共有state・ダッシュボードの司令塔。
+- `components/AppBackdrop.tsx` — アプリごとの地色（`groundOf` が唯一の出どころ）。
+- `components/Dashboard.tsx` — 下から引き上げる引き出し。「今日を終える」。
+- `lib/apps.ts` — アプリとタブの定義（**タブ構成の正**）。
 
-- `components/AppShell.tsx` — 全体の骨格。タブ切替・共有state・地図モード等の司令塔。
-- `components/tabs/BriefTab.tsx` — **ブリーフ**（カードをスワイプするデッキ）。
-- `components/tabs/RecordsTab.tsx` — **アーカイブ**（実行済みバインダーの棚）。初期タブ。
-- `components/tabs/StockTab.tsx` — **ストック**（候補アイテムの一覧・追加シート）。
-- `components/tabs/ExecuteTab.tsx` — **プラン**（地図・今週のおすすめ・バインド！確定）。
-- `components/tabs/GoalsTab.tsx` — **ゴール**（ゴールのバインダー・チェックイン）。
-- `components/tabs/ProfileTab.tsx` — **設定**（好み/興味・情報源・サインアウト・ブリーフ生成の実験）。
+## ブリーフ（EXPLORE）
+- `components/tabs/BriefTab.tsx` — カードのデッキ（右=KEEP / 左=SKIP）。
+- `components/tabs/StockTab.tsx` — 候補の一覧・追加シート・ウィッシュ一覧。
+- `components/tabs/ExecuteTab.tsx` — 地図（Leaflet）・プラン生成・4ドメインの棚。
+- `components/tabs/GoalsTab.tsx` — ゴールのバインダーとチェックイン。
+- `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
 
-## 共通UI部品
+## タスク（TASK）
+- `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。
+- `components/tabs/DriftTab.tsx` — 候補の円環カバーフロー。
+- `components/tasks/` — `TaskSheet`（方眼の設定画面）/ `SolidCanvas` / `ViewToggle` / `TaskAddButton`。
+- `lib/solid.ts` `lib/solidPaint.ts` `lib/textFit.ts` `lib/taskSize.ts` `lib/taskTags.ts` — 図形・描画・寸法・タグ。
 
-- `components/common.tsx` — `PosterCard`・`Masthead` などカード共通言語。
-- `components/Binder.tsx` — バインダーの3D表現・棚の長押しドラッグ並べ替え。
-- `components/BottomSheet.tsx` — 下から出る共通オーバーレイ。
-- `components/PlanSelectionBar.tsx` — プランの選択バー（「バインダーへ」ボタン）。
-- `components/AddWishSheet.tsx` — ✨ウィッシュ入力シート。
-- `components/SignInGate.tsx` — ログイン画面（6桁コード方式）。
-- `components/LeafletMap.tsx` — 実地図（Leaflet + OSM/CartoDB）。
+## ジャーナル（JOURNAL）
+- `components/VoiceStudio.tsx` — 録音・トリミングのダイヤル・物理キー（録音UIはここ1つ）。
+- `components/tabs/RecordTab.tsx` / `JournalTab.tsx` — レコード / 今日・アーカイブ。
+- `lib/audioTrim.ts` `lib/dayRecords.ts` — 音声の切り出し・1日分の組み立て。
 
-## データ・ロジック（型・保存・生成）
+## 共通UI
+- `components/common.tsx` — `PosterCard` / `Masthead` / `SectionLabel`。
+- `components/GeoType.tsx` — 幾何アルファベット。`components/TabIcons.tsx` — 面で描いたアイコン。
+- `components/BottomSheet.tsx` / `PlanSelectionBar.tsx` / `PlanGenerateSheet.tsx` / `AddWishSheet.tsx` / `SignInGate.tsx` / `LeafletMap.tsx` / `Binder.tsx`（ゴールのみ）。
 
-- `lib/types.ts` — **データモデルの正**（Item/Wish/BriefCard/AppState など）。
-- `lib/constants.ts` — 色・定数・kind↔ドメイン対応・（撤去予定の）ダミーCARDS。
-- `lib/helpers.ts` — `domainOf`/`hasPlace`/座標投影など純粋関数。
-- `lib/dataStore.ts` — 永続化（localStorage / Supabase）。`SERVER_OWNED_KEYS`。
-- `lib/supabaseClient.ts` — Supabaseクライアント（環境変数が無ければnull）。
-- `lib/briefPipeline.ts` — **ブリーフ生成の中核**（Jina取得→層B抽出→層C分類→層D検証）。
-- `lib/deckStyle.ts` — 生成カードを表示用BriefCardへ整形。
-- `lib/myBrain.ts` / `myBrainSyncClient.ts` / `myBrainWrite.ts` — my-brain（好み/興味の真実源）連携。
+## データ・ロジック
+- `lib/types.ts` — **データモデルの正**。`lib/constants.ts` — 色・寸法・書体。
+- `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。
+- `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
+- `lib/myBrainPaths.ts` — **my-brain のパスを知っている唯一の場所**。`myBrain.ts` / `myBrainWrite.ts` / `myBrainSyncClient.ts`。
 
 ## サーバー関数（app/api）
+- `cron/build-brief` 夜間生成 / `generate-brief` 実験 / `generate-plan` / `transcribe` / `suggest-subtasks` / `resolve-place` / `mybrain/*`。
 
-- `app/api/generate-brief/route.ts` — 設定画面「生成を試す」用（briefPipelineの薄いラッパー）。
-- `app/api/cron/build-brief/route.ts` — 夜間Cron。デッキを生成し`generatedDecks`へ保存。
-- `app/api/resolve-place/route.ts` — マップURL→座標/店名の解決（Places API）。
-- `app/api/mybrain/read/route.ts` / `sync/route.ts` — my-brainの読み書き。
+# 恒久ルール（全セッション厳守）
 
-## 設定・基盤
+## 作業を終えるたびに必ず行う後始末
+コードやドキュメントに変更を加えたら、**コミットの前に**必ず次の3つを行う。
+省略しない。「次のセッションでやる」は禁止（引き継がれずに必ず腐る）。
 
-- `app/layout.tsx` / `page.tsx` / `globals.css` / `manifest.ts` — Next.js基盤・PWA。
-- `next.config.ts` — キャッシュヘッダ等。
-- `supabase/schema.sql` — DBスキーマ（app_state/content_cache 他）。
-- `.github/workflows/` — `build-brief.yml`（夜間生成）・`supabase-heartbeat.yml`。
+1. **選別** … `handoff_current.md` を読み、価値の無くなった記述を消す。
+   - 完全削除: 一時的な実行ログ、測定値の羅列、撤回されて跡形も無い案、会話のつなぎ。**アーカイブせず捨てる。**
+   - 退避: 「なぜそう設計したか」「同じ轍を踏まないための教訓」がある記述は `docs/archive/` の該当ファイルへ移す。
+2. **追記** … 今回確定した仕様・設計判断は `docs/project_knowledge.md` の該当章へ**追記ではなく上書き**で反映する（同じ話題の古い記述を残さない）。
+3. **更新** … `handoff_current.md` を「いまどこにいるか / 直近完了（1行ずつ） / 次の一手 / 未解決 / 重要パス」の形に書き直す。**常に200行以内**。
 
-## 参照専用（通常は開かない）
+この `CLAUDE.md` のファイル地図も、ファイルを増減させたら同時に直す。
+実在しないファイルを指したまま放置しない。
 
-- `IMPLEMENTATION HANDOFF.md` — 初期要件定義書。**データモデル/タブ構成は古い**（HANDOFF-CURRENT.mdが正）。
-- `SYSTEM-DESIGN.md` — 生成パイプライン・情報源戦略の設計思想。
-- `qol-app-v19.tsx` — 移植元プロトタイプ（差分確認用）。
+## トークン節約
+- **部分読み取りの徹底** … ファイル全体を出力（`cat` 等）しない。必ず `grep` / `head` / `tail` / `sed -n 'X,Yp'` で必要な箇所だけ読む。
+- **ソースコードの分割** … 1ファイルが200〜300行を超えたら、UIコンポーネントやユーティリティを別ファイルへ分割する。
+- **ログ出力の抑制** … 長大な出力やエラーが予想されるコマンドは `> /tmp/.../x.log 2>&1` へ逃がし、そのログを `grep` で絞って読む。

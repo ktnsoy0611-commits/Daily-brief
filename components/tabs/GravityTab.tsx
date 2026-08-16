@@ -9,10 +9,10 @@ import { ViewToggle } from "@/components/tasks/ViewToggle";
 import { appTitle } from "@/lib/apps";
 import { TAB_PAD_TOP } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { frontRect, sectionOutline, type SolidSpec } from "@/lib/solid";
+import { bottomRect, frontRect, sectionOutline, type SolidSpec } from "@/lib/solid";
 import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint, type SolidView } from "@/lib/solidPaint";
-import { clearGlyphs, onFontsReady } from "@/lib/textFit";
-import { resolveTag, tagColor } from "@/lib/taskTags";
+import { clearGlyphs, onFontsReady, primeAdvances } from "@/lib/textFit";
+import { allTagFaces, allTagLabels, resolveTag, tagColor } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, dropOrder, massOf, specOf } from "@/lib/taskSize";
 import type { AppState, TabProps, Task } from "@/lib/types";
@@ -20,9 +20,9 @@ import type { AppState, TabProps, Task } from "@/lib/types";
 // ★タスクタブ(GRAVITY)。確定したタスクが上から落ちてきて積み上がる。
 //
 // 図形の寸法がそのままタスクの中身になっている(lib/taskSize.ts):
-//   面積        = 重要度(WEIGHT + 期限の切迫度)。**大きさに効くのはこれだけ**
-//   横幅        = タイトルの長さ(画面幅の約2/3で頭打ち)
-//   断面の形    = 埋まっている側面の数(円/半円/三角/四角)
+//   塗られる面積 = 重要度(WEIGHT + 期限の切迫度)。**大きさに効くのはこれだけ**
+//   形          = 埋まっている側面の数(円/半円/三角/四角)。**両ビューとも**
+//   縦横比      = 四角と三角だけ、題の長さで横に伸びる(円と半円は伸びない)
 //   スラブの枚数 = 残っている手順
 //   色と書体    = タグ
 //
@@ -60,6 +60,8 @@ const SCALE_MIN = 0.28;
 const SCALE_MAX = 1.6;
 /** 縮尺がこれ以上変わったら山を作り直す(当たり判定が変わるため)。 */
 const SCALE_EPS = 0.02;
+/** 当たり判定の多角形の頂点の上限(見た目の輪郭は間引かない)。 */
+const PHYS_VERTS = 12;
 /** 1フレームに焼いてよい図形の絵の枚数。 */
 const BAKE_BUDGET = 1;
 /** 1フレームに用意してよいグリフの枚数。
@@ -103,7 +105,9 @@ const paintOf = (t: Task, view: SolidView): SolidPaint => ({
 
 /** 同じ立体か(形が変わったら body を作り直す必要がある)。 */
 const sameShape = (a: SolidSpec, b: SolidSpec) =>
-  a.sides.length === b.sides.length && Math.abs(a.len - b.len) < 1e-6 && Math.abs(a.radius - b.radius) < 1e-6;
+  a.sides.length === b.sides.length
+  && Math.abs(a.frontW - b.frontW) < 1e-6 && Math.abs(a.frontH - b.frontH) < 1e-6
+  && Math.abs(a.bottomW - b.bottomW) < 1e-6 && Math.abs(a.bottomH - b.bottomH) < 1e-6;
 
 export function GravityTab({ appState, persist, profileButton, showToast, appActive }: TabProps & { appActive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -142,10 +146,11 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     const { w, h } = sizeRef.current;
     if (!cv || !w || !h) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    // ★焼き込みは表示より低い解像度で持つ。UNIT を2倍(64)にしたぶん bitmap の
-    // 面積が4倍になり、dpr2 のまま焼くと1枚 100ms 級で落下がガクついた(実測)。
-    // 文字は太字のベタ塗りなので 1.25x で十分読める。
-    const bakeDpr = Math.min(dpr, 1.25);
+    // ★焼き込みの解像度。1.25x では dpr2 の画面へ 1.6倍に拡大されて滲み、
+    // 文字がジャギーに見えていた。かといって dpr(2.0) そのままにすると
+    // 1枚の画素が 2.56倍になり、落下中に 800ms 級のひっかかりが出た(実測)。
+    // 1.5 が折衷点 — 拡大は 1.33倍に収まり、コストは 1.44倍で済む。
+    const bakeDpr = Math.min(dpr, 1.5);
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
       cv.width = Math.round(w * dpr);
       cv.height = Math.round(h * dpr);
@@ -153,6 +158,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     const ctx = cv.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingQuality = "high";
     ctx.clearRect(0, 0, w, h);
 
     // 立体は1枚に焼いた絵を、物体の位置と角度で置くだけ。
@@ -173,8 +179,8 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       if (!bmp) {
         // ★文字のグリフが揃ってから絵を焼く。揃っていないものは今フレームの
         // 予算のぶんだけ用意して、残りは次のフレームに回す。
-        if (glyphBudget > 0) glyphBudget -= warmShapeGlyphs(p.paint, glyphBudget);
-        if (budget > 0 && shapeGlyphsReady(p.paint)) { bmp = solidBitmap(p.paint, unit, bakeDpr); budget--; }
+        if (glyphBudget > 0) glyphBudget -= warmShapeGlyphs(p.paint, glyphBudget, unit, bakeDpr);
+        if (budget > 0 && shapeGlyphsReady(p.paint, unit, bakeDpr)) { bmp = solidBitmap(p.paint, unit, bakeDpr); budget--; }
       }
       ctx.save();
       if (k > 0) {
@@ -270,9 +276,14 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   // ★書体が揃ったら焼いた絵を捨てて描き直す。最初の数フレームは fallback の
   // 書体で焼かれているため(canvasのフォントは非同期に届く)。
   useEffect(() => {
-    onFontsReady(() => { clearGlyphs(); clearSolidBitmaps(); wake(); drawRef.current(); });
+    onFontsReady(() => { clearGlyphs(); clearSolidBitmaps(); primeTagMetrics(); wake(); drawRef.current(); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ★タグの英字の送り幅を、暇な時間に少しずつ測っておく。欧文は全角の近道が
+  // 効かず1文字ずつ measureText が要るので、BOTTOM へ切り替えた瞬間に
+  // 5書体ぶんがまとめて走ると 328ms 止まる(実測)。
+  useEffect(() => { primeTagMetrics(); }, []);
 
   // このアプリを見ていない間は回さない。
   useEffect(() => {
@@ -538,6 +549,16 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
+/** タグの英字の送り幅を、requestIdleCallback で数組ずつ潰していく。 */
+function primeTagMetrics() {
+  if (typeof window === "undefined") return;
+  const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 32));
+  const step = () => {
+    if (primeAdvances(allTagLabels(), allTagFaces(), 4) > 0) idle(step as never);
+  };
+  idle(step as never);
+}
+
 /** 落ちてくる図形を1つ作る。i は落とす順(大きいほど高いところから)。 */
 function makePiece(
   M: typeof import("matter-js"), t: Task, view: SolidView, w: number, i: number, unit: number,
@@ -553,31 +574,39 @@ function makePiece(
 }
 
 /**
- * ★当たり判定は**そのビューで実際に描く形**。
- * FRONT は長方形、BOTTOM は断面の多角形(円/半円/三角/四角)。
- * 以前は BOTTOM でも FRONT の長方形で当てていたため、断面の周りの見えない
- * 余白どうしがぶつかって図形が宙に浮いて見えた。ビューを切り替えるたびに
- * 落とし直す設計になったので(2026-08-16確定)、物体を作り分けられる。
+ * ★当たり判定は**そのビューで実際に描く形**そのもの。どちらのビューも
+ * 断面の形(円/半円/三角/四角)なので、輪郭をその箱の大きさへ拡大した多角形で
+ * 作る。長方形で当てていた頃は、形の周りの見えない余白どうしがぶつかって
+ * 図形が宙に浮いて見えた。
  */
 function makeBody(
   M: typeof import("matter-js"), paint: SolidPaint, x: number, y: number, unit: number,
 ): { body: Body; ox: number; oy: number } {
   const opts = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
+  const n = paint.spec.sides.length;
+  const { w, h } = paint.view === "bottom" ? bottomRect(paint.spec) : frontRect(paint.spec);
   let body: Body;
   let ox = 0;
   let oy = 0;
-  if (paint.view === "bottom") {
-    const size = paint.spec.section * unit;
-    const verts = sectionOutline(paint.spec.sides.length).map((q) => ({ x: q.x * size, y: q.y * size }));
+  if (n === 1) {
+    // ★丸は 36角形ではなく本物の円で作る。多角形にすると衝突判定が重く、
+    // 転がりもカクつく(頂点の角で引っかかる)。
+    body = M.Bodies.circle(x, y, (w * unit) / 2, opts);
+  } else {
+    // ★物理の頂点は**間引く**。半円は輪郭が37点あり、16個を一度に
+    // fromVertices で作ると凸包の計算で 400ms 級のひっかかりが出た(実測)。
+    // 当たり判定は12点もあれば見た目と区別が付かない。
+    const src = sectionOutline(n);
+    const step = Math.max(1, Math.ceil(src.length / PHYS_VERTS));
+    const verts = src
+      .filter((_, k) => k % step === 0)
+      .map((q) => ({ x: q.x * w * unit, y: q.y * h * unit }));
     body = M.Bodies.fromVertices(x, y, [verts], opts);
     // fromVertices は**重心**を body.position に置く。絵は図形の原点を中心に
     // 焼いてあるので、そのズレを描画側で戻す。
     const c = M.Vertices.centre(verts);
     ox = -c.x;
     oy = -c.y;
-  } else {
-    const { w, h } = frontRect(paint.spec);
-    body = M.Bodies.rectangle(x, y, w * unit, h * unit, opts);
   }
   M.Body.setMass(body, massOf(paint.spec) * MASS_K);
   return { body, ox, oy };

@@ -44,6 +44,10 @@ export const tagFace = (id: TaskTag | undefined): number => tagDef(id)?.face ?? 
 
 export const tagLabel = (id: TaskTag | undefined): string => tagDef(id)?.label ?? TASK_TAGS[0].label;
 
+/** すべてのタグの英字と書体。送り幅の先読みに使う。 */
+export const allTagLabels = (): string[] => TASK_TAGS.map((t) => t.label);
+export const allTagFaces = (): number[] => TASK_TAGS.map((t) => t.face);
+
 /** タグを1つ進める(展開図のタグのマスはタップで循環する)。 */
 export function nextTag(id: TaskTag | undefined): TaskTag {
   const i = TASK_TAGS.findIndex((t) => t.id === id);

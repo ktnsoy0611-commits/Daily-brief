@@ -1,5 +1,5 @@
 import { SIDE_KEYS } from "./types";
-import type { SolidSpec } from "./solid";
+import { inkRatio, naturalRatio, type SolidSpec } from "./solid";
 import type { InboxCandidate, SideKey, Task, TaskWeight } from "./types";
 
 // ★タスク → 図形の寸法。**純粋関数だけ**。単体テストで検証する。
@@ -7,11 +7,12 @@ import type { InboxCandidate, SideKey, Task, TaskWeight } from "./types";
 // 対応(2026-08-16にユーザー確定。それまでの「文字数=横幅 / 重要度=高さ /
 // 手順の数=長さ」は、大きさが何を表しているのか読めないので作り直した):
 //
-//   **面積 = 重要度**   … WEIGHT(小/中/大) と 期限の切迫度 の合成。これだけ。
-//   **横幅 = タイトルの長さ** … 画面幅の約2/3(LEN_MAX)で頭打ち。超えたら折り返す。
-//   高さ   = 面積 ÷ 横幅（極端に平たくならないようアスペクトを挟む）
-//   断面の大きさ = √面積 … FRONT の平たさに引きずられない
-//   断面の形 = 埋まっている側面の数(1..4)
+//   **塗られる面積 = 重要度** … WEIGHT(小/中/大) と 期限の切迫度 の合成。これだけ。
+//     形ごとの塗り率(inkRatio)で外接箱を広げるので、三角でも四角でも
+//     同じ重要度なら**色の量が同じ**になる。
+//   **縦横比** … 四角と三角だけ、題の長さのはしご(RATIOS)で横に伸びる。
+//     円は 1:1、半円は 2:1 のまま(伸ばさず、面積のぶん大きくなるだけ)。
+//   形 = 埋まっている側面の数(1..4)
 //   スラブの枚数 = 残っているサブタスクの数（大きさには効かない）
 //
 // 切迫度は**大きさ**と**落ちてくる順**の両方に効く(下記 dropOrder)。
@@ -37,26 +38,41 @@ export function areaOf(t: Partial<Task>, today: Date): number {
   return weightArea(t.weight) * (1 + urgencyOf(t.dueDate, today) * URGENCY_K);
 }
 
-export const LEN_MIN = 1.4;
 /** ★横幅の上限。UNIT=64 のとき 256px ＝ 390px 画面の約 2/3(ユーザー指定)。
- *  これを超える長さのタイトルは、幅を伸ばさず折り返す。 */
+ *  はしごが決めた幅がこれを超えたときだけ切り、そのぶんを高さへ回す。 */
 export const LEN_MAX = 4.0;
 
-/** 横幅 ÷ 高さ の上限。これ以上平たい帯にはしない。
- *  ★高さを下から押さえるのではなく、**横幅を上から押さえる**こと。
- *  高さを押さえると面積が目標より膨らみ、「面積=重要度」が崩れる
- *  (長い題の中くらいのタスクが、大きいタスクに見えてしまう)。
- *  幅が足りないぶんは折り返しが受け持つ(ユーザー指定)。 */
-const ASPECT_MAX = 3.2;
-/** 横幅 ÷ 高さ の下限。これ以上細い塔にはしない
- *  (重要度=大 × 短い題 が、幅1.6・高さ5の柱になってしまうため)。
- *  こちらも高さではなく**幅を広げて**合わせるので、面積は保たれる。 */
-const ASPECT_MIN = 0.75;
+/**
+ * ★縦横比(横 ÷ 縦)の**はしご**(2026-08-16にユーザー確定)。
+ *
+ * 以前は 0.75〜3.2 の連続値だったため、ダミー16件のうち9件が 1.0〜2.4 に
+ * 密集し、さらに4件が下限に・1件が上限に貼り付いて同じ形になっていた
+ * (「形にメリハリがない」というユーザー指摘)。**必ずこの6段のどれか**に
+ * スナップさせることで、縦長・正方形・帯 がはっきり見分けられるようにする。
+ *
+ * 単純な整数比に揃えてあるのは、積んだときの収まりを良くするため。
+ */
+export const RATIOS = [1 / 2, 3 / 4, 1, 3 / 2, 5 / 2, 4] as const;
 
-/** タイトルの文字数 → 横幅。 */
-export function lenOf(title: string): number {
+/** タイトルの文字数 → 比率の段。長い題ほど横長。 */
+export function ratioOf(title: string): number {
   const n = (title ?? "").trim().length;
-  return Math.max(LEN_MIN, Math.min(LEN_MAX, 1.1 + n * 0.16));
+  if (n <= 2) return RATIOS[0];   // 縦長
+  if (n <= 4) return RATIOS[1];   // やや縦長
+  if (n <= 6) return RATIOS[2];   // 正方形
+  if (n <= 9) return RATIOS[3];   // 横長
+  if (n <= 14) return RATIOS[4];  // 帯
+  return RATIOS[5];               // 細長い帯
+}
+
+/** ★はしごで伸びるのは**四角と三角だけ**(2026-08-16にユーザー確定)。
+ *  円と半円は伸ばさず、面積のぶんだけ単純に大きくなる。 */
+const STRETCHES = (sides: number) => sides >= 3;
+
+/** 外接箱の面積 area/inkRatio を、比 r の箱(w × h)へ割り振る。 */
+function boxOf(boxArea: number, r: number): { w: number; h: number } {
+  const w = Math.min(LEN_MAX, Math.sqrt(boxArea * r));
+  return { w, h: boxArea / w };
 }
 
 /** 埋まっている側面。先頭は必ず title(必須なので常に埋まっている扱い)。 */
@@ -79,24 +95,26 @@ export const slabsOf = (t: Pick<Task, "subtasks">): number =>
  */
 export function specOf(t: Partial<Task> & { title: string }, today = new Date()): SolidSpec {
   const area = areaOf(t, today);
-  // 幅はタイトルの長さ。ただし「画面幅の2/3(LEN_MAX)」と「その面積で
-  // 平たくなりすぎない幅」の小さい方で頭打ちにする。→ 高さは常に area/len で、
-  // **面積はぴったり重要度どおり**になる。
-  const cap = Math.max(LEN_MIN, Math.min(LEN_MAX, Math.sqrt(area * ASPECT_MAX)));
-  const floor = Math.min(cap, Math.sqrt(area * ASPECT_MIN));
-  const len = Math.max(floor, Math.min(lenOf(t.title), cap));
+  const sides = sidesOf(t);
+  const n = sides.length;
+  // ★**塗られる**面積を重要度に揃える。形ごとの塗り率で外接箱を広げるので、
+  // 三角でも四角でも同じ重要度なら色の量が同じになる。
+  const boxArea = area / inkRatio(n);
+  // FRONT … 四角と三角は題の長さのはしごで伸びる。円と半円は自然な比のまま。
+  const front = boxOf(boxArea, STRETCHES(n) ? ratioOf(t.title) : naturalRatio(n));
+  // BOTTOM … どの形も自然な比。
+  const bottom = boxOf(boxArea, naturalRatio(n));
   return {
-    sides: sidesOf(t),
-    len,
-    radius: area / len / 2,
-    // 断面は面積をそのまま持つ(FRONT が平たくても BOTTOM は痩せない)。
-    section: Math.sqrt(area),
+    sides,
+    area,
+    frontW: front.w, frontH: front.h,
+    bottomW: bottom.w, bottomH: bottom.h,
     slabs: slabsOf(t as Pick<Task, "subtasks">),
   };
 }
 
-/** 物理の重さ。**面積 = 重要度**にそのまま比例させる。 */
-export const massOf = (spec: SolidSpec): number => spec.section * spec.section;
+/** 物理の重さ。**塗られる面積 = 重要度**にそのまま比例させる。 */
+export const massOf = (spec: SolidSpec): number => spec.area;
 
 /** 画面に描くときの倍率(1単位 = 何px か)。 */
 export const UNIT_PX = 46;

@@ -1,5 +1,5 @@
 import {
-  boundsOf, frontRect, innerBox, sectionOutline, slabRects,
+  boundsOf, bottomRect, frontRect, innerBox, sectionOutline, slabRects,
   type Pt, type SolidSpec,
 } from "./solid";
 import { tagColor, tagFace, tagInk, tagLabel } from "./taskTags";
@@ -9,10 +9,9 @@ import type { TaskTag } from "./types";
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
 // 確定)。真横から見た立面を2枚、ベタ塗りで描くだけ。
 //
-//   FRONT  … 長方形。スラブの切れ目で割れる。**タスクのタイトル**を一定の
-//            大きさで**左下**に(2026-08-16確定)。
-//   BOTTOM … 断面の形(円/半円/三角/四角)。**形は正しいまま**、面積(=重要度)の
-//            大きさで。**タグの英字**を図形いっぱいに。
+//   FRONT  … 断面の形。**四角と三角だけ**題の長さで横に伸びる。スラブの
+//            切れ目が入る。**タスクのタイトル**を中央に。
+//   BOTTOM … 断面の形。自然な縦横比のまま。**タグの英字**を図形いっぱいに。
 //
 // 色はどちらもタグの色を全面に。**文字の色も書体もタグが決める**
 // (画像の組み合わせとの一対一対応・2026-08-16確定)。
@@ -41,19 +40,24 @@ export const UNIT_PX = 64;
 // 判定は**実際に描かれる px** で行うので、一括スケールを縮めるだけで
 // 自動的に効く。文字を描かない = グリフを焼かないので、数が増えるほど
 // 1枚あたりのコストが下がる。
+// 判定に使うのは、その形の**代表寸法** s = √(塗られる面積) × unit。
 /** これ未満はタイトルを最大1行に切り詰める。 */
-const LOD_ONE_LINE = 46;
+const LOD_ONE_LINE = 48;
 /** これ未満は文字を描かない。 */
-const LOD_NO_TEXT = 28;
+const LOD_NO_TEXT = 30;
 /** これ未満はスラブの切れ目も描かない(ベタ塗り1枚)。 */
-const LOD_NO_SLIT = 14;
+const LOD_NO_SLIT = 16;
 
-/** タイトルの基準の大きさ(solid 座標)。UNIT=64 で約 19px。
- *  ★「できるだけ大きく」は廃止(2026-08-16)。まずこの大きさで組み、
- *  入らないときだけ折り返し、それでも駄目なら縮める。 */
-const TITLE_EM = 0.30;
-/** 文字を置く内側の余白(solid 座標)。 */
-const TITLE_PAD = 0.10;
+// ── タイトルの大きさ ────────────────────────────────────────
+// ★「最低限を決めて、図形が大きいときは比例して大きくなる」(2026-08-16に
+// ユーザー確定)。代表寸法 s に比例させるので、**縦横比に左右されない** —
+// 高さを基準にすると、同じ重要度でも平たい帯だけ文字が小さくなってしまう。
+/** どんなに小さい図形でもこれ以上は小さくしない(px)。 */
+const TITLE_MIN = 16;
+/** 暴走止めの上限(px)。 */
+const TITLE_MAX = 64;
+/** 代表寸法に対する比。s=85px(重要度中)で約29px、s=160px(大)で約54px。 */
+const TITLE_K = 0.34;
 
 type Canvas2D = HTMLCanvasElement;
 
@@ -67,68 +71,114 @@ const poly = (ctx: CanvasRenderingContext2D, pts: Pt[], unit: number, cx = 0, cy
   ctx.closePath();
 };
 
-/** 図形を、原点(0,0)を中心に ctx へ描く。単位は solid 座標 × unit(px)。 */
-export function paintShape(ctx: CanvasRenderingContext2D, p: SolidPaint, unit = UNIT_PX) {
+/** 図形を、原点(0,0)を中心に ctx へ描く。単位は solid 座標 × unit(px)。
+ *  dpr は「この ctx が実際に何倍の解像度を持っているか」。グリフを焼く
+ *  大きさをそれに合わせるために要る(ジャギー対策)。 */
+export function paintShape(
+  ctx: CanvasRenderingContext2D, p: SolidPaint, unit = UNIT_PX, dpr = 1,
+) {
   const fill = tagColor(p.tag);
-  const ink = tagInk(p.tag);
-  // ★書体はタグが決める(同じタグ = 同じ書体)。
-  const face = tagFace(p.tag);
   // 使う書体の読み込みを頼んでおく(まだなら fallback で描かれ、揃った時点で
-  // 呼び出し側が絵を作り直す)。
+  // 呼び出し側が絵を作り直す)。色と書体はタグが決める(textPlanOf が引く)。
   requestFonts(p.title + tagLabel(p.tag));
 
-  if (p.view === "bottom") {
-    // 断面の形を、**縦横比はそのまま**、面積(=重要度)の大きさで置く。
-    const size = p.spec.section * unit;
-    const outline = sectionOutline(p.spec.sides.length);
-    ctx.fillStyle = fill;
-    poly(ctx, outline.map((q) => ({ x: q.x * size, y: q.y * size })), 1);
-    ctx.fill();
-
-    // ★BOTTOM のタグ名は以前の指定どおり**図形いっぱい**のまま。
-    if (size < LOD_NO_TEXT) return;
-    const box = innerBox(p.spec.sides.length);
-    const fit = fitText(tagLabel(p.tag), face, box.w * size, box.h * size, 2);
-    if (fit) drawFitted(ctx, fit, face, (box.x + box.w / 2) * size, (box.y + box.h / 2) * size, ink);
-    return;
-  }
-
-  // FRONT。スラブごとの長方形を塗り、その union にクリップしてから題を描く
-  // (切れ目のところで文字がスパッと切れる)。
-  const { w, h } = frontRect(p.spec);
+  // ★どちらのビューも**断面の形**で描く。違うのは箱の大きさと載せる文字だけ。
+  const bottom = p.view === "bottom";
+  const { w, h } = bottom ? bottomRect(p.spec) : frontRect(p.spec);
+  const n = p.spec.sides.length;
+  const outline = sectionOutline(n);
+  const wpx = w * unit;
   const hpx = h * unit;
-  const x0 = (-w / 2) * unit;
-  const y0 = (-h / 2) * unit;
-  ctx.fillStyle = fill;
-  if (hpx < LOD_NO_SLIT) {
-    // 小さすぎる。切れ目を描いても潰れて見えないので1枚のベタ塗りにする。
-    ctx.fillRect(x0, y0, w * unit, hpx);
-    return;
-  }
-  const rects = slabRects(p.spec);
-  for (const r of rects) ctx.fillRect(r.x0 * unit, y0, (r.x1 - r.x0) * unit, hpx);
+  // LOD の判定はその形の**代表寸法**で行う(平たい帯だけ不利にならないように)。
+  const s = Math.sqrt(p.spec.area) * unit;
 
-  if (hpx < LOD_NO_TEXT) return;
+  ctx.fillStyle = fill;
+  const path = () => poly(ctx, outline.map((q) => ({ x: q.x * wpx, y: q.y * hpx })), 1);
+
+  if (bottom || s < LOD_NO_SLIT || p.spec.slabs <= 1) {
+    // 切れ目なし。輪郭をそのまま塗る。
+    path();
+    ctx.fill();
+  } else {
+    // ★スラブの切れ目。輪郭でクリップしてから、スラブの帯だけを塗る。
+    // 縦の切れ目が形を横切り、残っている手順の数がそこで読める。
+    ctx.save();
+    path();
+    ctx.clip();
+    for (const r of slabRects(p.spec)) {
+      ctx.fillRect(r.x0 * unit, -hpx / 2, (r.x1 - r.x0) * unit, hpx);
+    }
+    ctx.restore();
+  }
+
+  const plan = textPlanOf(p, unit);
+  if (!plan) return;
 
   ctx.save();
-  ctx.beginPath();
-  for (const r of rects) ctx.rect(r.x0 * unit, y0, (r.x1 - r.x0) * unit, hpx);
+  path();
   ctx.clip();
-  // ★タイトルは一定の大きさで、図形の**左下**へ寄せる(2026-08-16確定)。
-  const pad = TITLE_PAD * unit;
-  const maxLines = hpx < LOD_ONE_LINE ? 1 : 3;
-  const fit = layoutText(
-    p.title, face,
-    w * unit - pad * 2, hpx - pad * 2,
-    TITLE_EM * unit, maxLines,
-  );
-  if (fit) drawFitted(ctx, fit, face, x0 + pad, y0 + hpx - pad, ink, "bottom-left");
+  drawFitted(ctx, plan.fit, plan.face, plan.cx * wpx, plan.cy * hpx, plan.ink, plan.size * dpr);
   ctx.restore();
 }
 
-/** その図形が使う文字と色。グリフの用意に使う。 */
-const textOf = (p: SolidPaint) => (p.view === "bottom" ? tagLabel(p.tag) : p.title);
+/**
+ * その図形に載る文字の割り付け。**描くときと、グリフを先に用意するときで
+ * 必ず同じ結果**になるよう、計算をここ1つにまとめてある。
+ * (ずれると「用意できている」と判断したのに描画時に焼き直しが走り、
+ *  落下が一瞬止まる。)
+ */
+interface TextPlan {
+  text: string; face: number; ink: string;
+  fit: NonNullable<ReturnType<typeof fitText>>;
+  /** innerBox の中心(正規化座標)。 */
+  cx: number; cy: number;
+  /** 実際に描かれる文字の高さ(CSS px)。 */
+  size: number;
+}
 
+// ★割り付けの結果をキャッシュする。draw は1フレームにつき、焼けていない
+// 図形ごとに warmShapeGlyphs と shapeGlyphsReady と paintShape から
+// 最大3回ここを通る。layoutText は最大6回の折り返し計算をするので、
+// 素通しだと落下中のCPUを無駄に食う。
+const planCache = new Map<string, TextPlan | null>();
+const PLAN_LIMIT = 200;
+
+function textPlanOf(p: SolidPaint, unit: number): TextPlan | null {
+  const key = paintKey(p, unit);
+  if (planCache.has(key)) return planCache.get(key) ?? null;
+  const made = computeTextPlan(p, unit);
+  if (planCache.size > PLAN_LIMIT) planCache.clear();
+  planCache.set(key, made);
+  return made;
+}
+
+function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
+  const n = p.spec.sides.length;
+  const s = Math.sqrt(p.spec.area) * unit;
+  if (s < LOD_NO_TEXT) return null;
+  const bottom = p.view === "bottom";
+  const { w, h } = bottom ? bottomRect(p.spec) : frontRect(p.spec);
+  const box = innerBox(n);
+  const bw = box.w * w * unit;
+  const bh = box.h * h * unit;
+  const face = tagFace(p.tag);
+  const fit = bottom
+    // BOTTOM のタグ名は以前の指定どおり**図形いっぱい**。
+    ? fitText(tagLabel(p.tag), face, bw, bh, 2)
+    // ★タイトルは「最低 TITLE_MIN、図形が大きければ面積に比例して大きく」。
+    : layoutText(
+      p.title, face, bw, bh,
+      Math.min(TITLE_MAX, Math.max(TITLE_MIN, TITLE_K * s)),
+      s < LOD_ONE_LINE ? 1 : 3,
+    );
+  if (!fit) return null;
+  return {
+    text: bottom ? tagLabel(p.tag) : p.title,
+    face, ink: tagInk(p.tag), fit,
+    cx: box.x + box.w / 2, cy: box.y + box.h / 2,
+    size: fit.size,
+  };
+}
 
 /**
  * その図形を焼くのに足りないグリフを budget 枚まで用意し、**用意した枚数**を返す。
@@ -136,22 +186,22 @@ const textOf = (p: SolidPaint) => (p.view === "bottom" ? tagLabel(p.tag) : p.tit
  * 7個ぶんをまとめて焼くと数秒止まるので(実測 fillText 合計2.4秒)、
  * 呼び出し側はフレームごとに少しずつ配ること。
  */
-export function warmShapeGlyphs(p: SolidPaint, budget: number): number {
-  return warmGlyphs(textOf(p), tagFace(p.tag), tagInk(p.tag), budget);
+export function warmShapeGlyphs(p: SolidPaint, budget: number, unit: number, dpr: number): number {
+  const plan = textPlanOf(p, unit);
+  if (!plan) return 0;
+  return warmGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr, budget);
 }
 
 /** その図形を今すぐ焼けるか(グリフが全部そろっているか)。 */
-export const shapeGlyphsReady = (p: SolidPaint): boolean =>
-  missingGlyphs(textOf(p), tagFace(p.tag), tagInk(p.tag)) === 0;
+export function shapeGlyphsReady(p: SolidPaint, unit: number, dpr: number): boolean {
+  const plan = textPlanOf(p, unit);
+  return !plan || missingGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr) === 0;
+}
 
 /** その絵が占める範囲(solid 座標)。ビットマップの大きさを決めるのに使う。 */
 export function shapeBounds(p: SolidPaint) {
-  if (p.view === "bottom") {
-    const size = p.spec.section;
-    return boundsOf(sectionOutline(p.spec.sides.length).map((q) => ({ x: q.x * size, y: q.y * size })));
-  }
-  const { w, h } = frontRect(p.spec);
-  return { minX: -w / 2, maxX: w / 2, minY: -h / 2, maxY: h / 2 };
+  const { w, h } = p.view === "bottom" ? bottomRect(p.spec) : frontRect(p.spec);
+  return boundsOf(sectionOutline(p.spec.sides.length).map((q) => ({ x: q.x * w, y: q.y * h })));
 }
 
 // ── 図形まるごとのビットマップ ──────────────────────────────
@@ -170,11 +220,14 @@ const BMP_LIMIT = 60;
 /** 焼いた絵を全部捨てる(書体が揃ったときに呼ぶ。次に描くとき作り直される)。 */
 export function clearSolidBitmaps() {
   bmpCache.clear();
+  planCache.clear();
 }
 
 export const paintKey = (p: SolidPaint, unit: number): string =>
-  [p.view, p.tag ?? "-", p.spec.sides.length, p.spec.len.toFixed(3), p.spec.radius.toFixed(3),
-    p.spec.section.toFixed(3), p.spec.slabs, unit.toFixed(1), p.title].join("|");
+  [p.view, p.tag ?? "-", p.spec.sides.length, p.spec.area.toFixed(3),
+    p.spec.frontW.toFixed(3), p.spec.frontH.toFixed(3),
+    p.spec.bottomW.toFixed(3), p.spec.bottomH.toFixed(3),
+    p.spec.slabs, unit.toFixed(1), p.title].join("|");
 
 /** 焼いてあるものだけ返す(まだなら undefined)。
  *  ★山に何個もいっぺんに落とすと、1フレームで全部を焼くことになって数百ms
@@ -204,7 +257,7 @@ export function solidBitmap(p: SolidPaint, unit = UNIT_PX, dpr = 1): SolidBitmap
   if (ctx) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.translate(w / 2, h / 2);
-    paintShape(ctx, p, unit);
+    paintShape(ctx, p, unit, dpr);
   }
   const made = { canvas: cv, w, h, dpr };
   bmpCache.set(key, made);

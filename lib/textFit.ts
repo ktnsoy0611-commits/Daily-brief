@@ -82,12 +82,31 @@ export const cssFont = (f: FontFace, size: number): string =>
 
 // ── グリフのアトラス ────────────────────────────────────────
 
-/** アトラスに描く1文字の大きさ(px)。表示はこれを拡縮して使う。 */
+/** 送り幅を測る基準の大きさ。**幅の比率**を持つためだけの値で、
+ *  実際にラスタライズする大きさ(バケツ)とは別。 */
 export const GLYPH_PX = 128;
-/** はみ出し(斜体・明朝のハネ)のための余白。 */
-const GPAD = Math.round(GLYPH_PX * 0.3);
 
-interface Glyph { cv: HTMLCanvasElement; advance: number }
+/**
+ * ★ラスタライズする大きさの**バケツ**(2026-08-16)。
+ * 以前は常に 128px で焼いて表示サイズ(13px 級)へ縮めていたため、
+ * **9.5倍の縮小**になり canvas の drawImage が標本を落として文字が
+ * ジャギーになっていた。「表示サイズ × dpr 以上でいちばん小さいバケツ」を
+ * 選べば、縮小率は 1.5倍以内に収まる。
+ */
+// ★段を増やしすぎないこと。同じ文字が段の数だけ焼き直されるので、
+// 7段にしたら落下中の fillText が 868ms まで増えた(実測)。3段なら
+// 縮小率は最悪 1.94倍に収まり、焼く回数は 1/2 以下になる。
+const BUCKETS = [32, 64, 96] as const;
+
+export function bucketFor(px: number): number {
+  for (const b of BUCKETS) if (b >= px) return b;
+  return BUCKETS[BUCKETS.length - 1];
+}
+
+/** はみ出し(斜体・明朝のハネ)のための余白。バケツの大きさに比例させる。 */
+const gpad = (bucket: number) => Math.round(bucket * 0.3);
+
+interface Glyph { cv: HTMLCanvasElement; advance: number; bucket: number }
 
 const glyphCache = new Map<string, Glyph>();
 const advanceCache = new Map<string, number>();
@@ -100,8 +119,15 @@ function ctxForMeasure(): CanvasRenderingContext2D | null {
   return measureCtx;
 }
 
+/** 和文の全角(かな・漢字・全角記号)。送り幅は必ず 1em なので測らない。
+ *  ★measureText は和文のWebフォントだと1回 5ms 級で、題の文字数ぶんが
+ *  1フレームにまとまって走る(実測 合計666ms)。全角を弾くだけでその
+ *  ほとんどが消える。 */
+const FULL_WIDTH = /[\u3000-\u30FF\u3400-\u9FFF\uF900-\uFAFF\uFF00-\uFF60\uFFE0-\uFFE6]/;
+
 /** その (書体, 文字) の送り幅(GLYPH_PX 基準)。一度測ったら二度と測らない。 */
 export function advanceOf(faceIdx: number, ch: string): number {
+  if (FULL_WIDTH.test(ch)) return GLYPH_PX;
   const key = `${faceIdx}|${ch}`;
   const hit = advanceCache.get(key);
   if (hit !== undefined) return hit;
@@ -113,37 +139,65 @@ export function advanceOf(faceIdx: number, ch: string): number {
   return w;
 }
 
-const glyphKey = (faceIdx: number, ch: string, color: string) => `${faceIdx}|${ch}|${color}`;
+/**
+ * 送り幅をあらかじめ測っておく。budget 組まで測り、**測った組数**を返す。
+ * ★欧文は全角の近道が効かないので1文字ずつ measureText が要る。タグの英字
+ * (WORK/LIFE/…)は 5書体 × 十数文字あり、ビューを切り替えた瞬間にまとめて
+ * 走ると 328ms 止まった(実測)。開いた直後の暇な時間に少しずつ潰しておく。
+ */
+export function primeAdvances(texts: string[], faces: number[], budget: number): number {
+  let done = 0;
+  for (const face of faces) {
+    const fi = clampFace(face);
+    for (const t of texts) {
+      for (const ch of new Set([...t])) {
+        if (done >= budget) return done;
+        if (FULL_WIDTH.test(ch) || advanceCache.has(`${fi}|${ch}`)) continue;
+        advanceOf(fi, ch);
+        done++;
+      }
+    }
+  }
+  return done;
+}
+
+const glyphKey = (faceIdx: number, ch: string, color: string, bucket: number) =>
+  `${faceIdx}|${ch}|${color}|${bucket}`;
 
 /** グリフを1枚描いてアトラスへ。**ここが唯一 fillText を呼ぶ場所**。 */
-function bakeGlyph(faceIdx: number, ch: string, color: string): Glyph {
-  const key = glyphKey(faceIdx, ch, color);
+function bakeGlyph(faceIdx: number, ch: string, color: string, bucket: number): Glyph {
+  const key = glyphKey(faceIdx, ch, color, bucket);
   const hit = glyphCache.get(key);
   if (hit) return hit;
-  const advance = advanceOf(faceIdx, ch);
+  const pad = gpad(bucket);
+  // 送り幅は GLYPH_PX 基準の比率で持っているので、バケツの大きさへ直す。
+  const advance = (advanceOf(faceIdx, ch) / GLYPH_PX) * bucket;
   const cv = document.createElement("canvas");
-  cv.width = Math.max(2, Math.ceil(advance + GPAD * 2));
-  cv.height = GLYPH_PX + GPAD * 2;
+  cv.width = Math.max(2, Math.ceil(advance + pad * 2));
+  cv.height = bucket + pad * 2;
   const ctx = cv.getContext("2d");
   if (ctx) {
-    ctx.font = cssFont(FONT_FACES[faceIdx], GLYPH_PX);
+    ctx.font = cssFont(FONT_FACES[faceIdx], bucket);
     ctx.textBaseline = "middle";
     ctx.fillStyle = color;
-    ctx.fillText(ch, GPAD, cv.height / 2);
+    ctx.fillText(ch, pad, cv.height / 2);
   }
-  const g = { cv, advance };
+  const g = { cv, advance, bucket };
   glyphCache.set(key, g);
   return g;
 }
 
-export const hasGlyph = (faceIdx: number, ch: string, color: string): boolean =>
-  glyphCache.has(glyphKey(faceIdx, ch, color));
+export const hasGlyph = (faceIdx: number, ch: string, color: string, bucket: number): boolean =>
+  glyphCache.has(glyphKey(faceIdx, ch, color, bucket));
 
-/** その文字列に足りないグリフの数。 */
-export function missingGlyphs(text: string, face: number, color: string): number {
+/** その文字列に足りないグリフの数。
+ *  ★bucket は**描くときと同じ値**を渡すこと。ずれると「用意できている」と
+ *  判断したのに描画時に焼き直しが走り、落下が一瞬止まる。 */
+export function missingGlyphs(text: string, face: number, color: string, bucket: number): number {
   const fi = clampFace(face);
+  const b = bucketFor(bucket);
   let n = 0;
-  for (const ch of new Set([...(text ?? "")])) if (!hasGlyph(fi, ch, color)) n++;
+  for (const ch of new Set([...(text ?? "")])) if (!hasGlyph(fi, ch, color, b)) n++;
   return n;
 }
 
@@ -152,13 +206,16 @@ export function missingGlyphs(text: string, face: number, color: string): number
  * ★1枚が実機で数ms〜10ms かかるので、呼び出し側はフレームに数枚ずつ配ること
  * (いっぺんに描くと落下がガクつく。実測で fillText 合計2.4秒)。
  */
-export function warmGlyphs(text: string, face: number, color: string, budget: number): number {
+export function warmGlyphs(
+  text: string, face: number, color: string, bucket: number, budget: number,
+): number {
   const fi = clampFace(face);
+  const b = bucketFor(bucket);
   let left = budget;
   for (const ch of new Set([...(text ?? "")])) {
     if (left <= 0) break;
-    if (hasGlyph(fi, ch, color)) continue;
-    bakeGlyph(fi, ch, color);
+    if (hasGlyph(fi, ch, color, b)) continue;
+    bakeGlyph(fi, ch, color, b);
     left--;
   }
   return budget - left;
@@ -283,13 +340,13 @@ export function layoutText(
   return null;
 }
 
-/** 文字ブロックをどこに合わせるか。 */
-export type TextAlign = "center" | "bottom-left";
-
 /**
- * アトラスのグリフで文字を描く。
- * center      … (cx, cy) をブロックの中心に。
- * bottom-left … (cx, cy) をブロックの**左下**に(FRONT のタイトル)。
+ * アトラスのグリフで文字を描く。(cx, cy) がブロックの**中心**
+ * (2026-08-16にユーザー確定で中央揃えに統一。左下寄せは廃止)。
+ *
+ * ★`bucket` は「その canvas の実解像度での表示サイズ」を渡すこと
+ * (= 表示px × dpr)。焼く大きさが表示に近いほど縮小率が下がり、
+ * ジャギーが出ない。
  */
 export function drawFitted(
   ctx: CanvasRenderingContext2D,
@@ -298,21 +355,26 @@ export function drawFitted(
   cx: number,
   cy: number,
   color: string,
-  align: TextAlign = "center",
+  bucketPx = fit.size,
 ) {
   const { size, lines } = fit;
   const fi = clampFace(face);
-  const scale = size / GLYPH_PX;
+  const bucket = bucketFor(bucketPx);
+  const pad = gpad(bucket);
+  // グリフは bucket px で焼いてあるので、表示サイズへ直す倍率。
+  const scale = size / bucket;
   const lineH = size * LINE_H;
-  const top = align === "center" ? cy - (lines.length * lineH) / 2 : cy - lines.length * lineH;
+  const top = cy - (lines.length * lineH) / 2;
+  ctx.imageSmoothingQuality = "high";
   lines.forEach((line, li) => {
     const y = top + lineH * (li + 0.5);
-    let x = align === "center" ? cx - (line.widthAtGlyph * scale) / 2 : cx;
+    // widthAtGlyph は GLYPH_PX 基準なので、表示サイズへ直す。
+    let x = cx - (line.widthAtGlyph * size) / GLYPH_PX / 2;
     for (const ch of [...line.text]) {
-      const g = bakeGlyph(fi, ch, color);
+      const g = bakeGlyph(fi, ch, color, bucket);
       ctx.drawImage(
         g.cv,
-        x - GPAD * scale, y - (g.cv.height / 2) * scale,
+        x - pad * scale, y - (g.cv.height / 2) * scale,
         g.cv.width * scale, g.cv.height * scale,
       );
       x += g.advance * scale;

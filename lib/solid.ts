@@ -5,19 +5,23 @@ import type { SideKey } from "./types";
 // ★3D は持たない(2026-08-13にユーザー確定)。
 // 「どちらのビューでも、アイソメではなく**各立面**を表示する。なのでシステム的に
 // 3Dである必要はない」という指定により、投影・陰影・凸包の類はすべて撤去した。
-// 描くのは真横から見た平らな図形2枚だけ:
+// ★**どちらのビューも断面の形**(円 / 半円 / 三角 / 四角)で描く
+// (2026-08-16にユーザー確定)。以前は FRONT を長方形にしていたが、それだと
+// FRONT だけで情報が完結してしまい、「埋まっている側面の数 → 形」という
+// 対応が何も意味しなくなっていた。
 //
-//   FRONT  … 長方形(len × 2r)。スラブの切れ目が入る。タスクのタイトルが載る。
-//   BOTTOM … 断面の形(円 / 半円 / 三角 / 四角)。**形は正しいまま**、足あとの
-//            高さに合わせて中央へ置く。タグの英字が載る。
+//   FRONT  … 断面の形。**四角と三角だけ**題の長さで横に伸びる。
+//            スラブの切れ目が入る。タスクのタイトルが中央に載る。
+//   BOTTOM … 断面の形。その形の自然な縦横比のまま。タグの英字が載る。
 //
-// 寸法の対応(lib/taskSize.ts。2026-08-16にユーザー確定):
-//   面積    = 重要度(WEIGHT + 期限の切迫度)。**大きさに効くのはこれだけ**
-//   len     = タイトルの長さ(LEN_MAX で頭打ち)
-//   radius  = 面積 ÷ len ÷ 2
-//   section = √面積 → BOTTOM の断面の大きさ
-//   sides   = 埋まっている側面の数 → 断面の形
-//   slabs   = 残っている手順 → 長方形が何枚に割れるか(大きさには効かない)
+// 寸法の対応(lib/taskSize.ts):
+//   area    = **塗られる**面積 = 重要度(WEIGHT + 期限の切迫度)。
+//             大きさに効くのはこれだけ。形ごとの塗り率(inkRatio)で外接箱を
+//             広げるので、**形が違っても同じ重要度なら色の量が同じ**。
+//   frontW/H … FRONT の外接箱。四角・三角は ratioOf(題) の比、円は 1:1、半円は 2:1
+//   bottomW/H… BOTTOM の外接箱(自然な比)
+//   sides   = 埋まっている側面の数 → 形
+//   slabs   = 残っている手順 → 何枚に割れるか(大きさには効かない)
 
 export const MIN_SIDES = 1;
 export const MAX_SIDES = 4;
@@ -33,13 +37,15 @@ export interface Pt { x: number; y: number }
 export interface SolidSpec {
   /** 埋まっている側面。SIDE_KEYS の順。先頭は必ず "title"。1〜4枚。 */
   sides: SideKey[];
-  /** 長方形の幅(横)。タイトルの長さで決まる。 */
-  len: number;
-  /** 長方形の高さの半分。面積 ÷ 幅 から出る。 */
-  radius: number;
-  /** ★BOTTOM の断面の外接箱の一辺。面積(=重要度)をそのまま持つので、
-   *  FRONT が平たくても断面は痩せない。 */
-  section: number;
+  /** ★**塗られる**面積(=重要度)。solid²。
+   *  文字の大きさ・物理の重さ・LOD の基準はすべてここから引く。 */
+  area: number;
+  /** FRONT の外接箱。四角と三角は題の長さで横に伸びる。 */
+  frontW: number;
+  frontH: number;
+  /** BOTTOM の外接箱。その形の自然な縦横比のまま。 */
+  bottomW: number;
+  bottomH: number;
   /** スラブの枚数(1以上)。 */
   slabs: number;
 }
@@ -86,8 +92,15 @@ export function section(sides: number): Pt[] {
 }
 
 /**
- * 断面の輪郭を **-0.5〜0.5 に正規化**したもの(長い方の辺がちょうど 1)。
- * 画面の座標(y は下向き)に合わせてある。BOTTOM VIEW がそのまま使う。
+ * 断面の輪郭を **縦横とも -0.5〜0.5 に正規化**したもの。
+ * 画面の座標(y は下向き)に合わせてある。
+ *
+ * ★縦横を**別々に**1へ揃えるのが要点。こうしておくと、呼び出し側が
+ * `(w, h)` を掛けた結果の外接箱がちょうど `w × h` になり、
+ * 「箱の面積 × 塗り率 = 塗られる面積」が形によらず成立する。
+ * (以前は「長い方の辺だけ 1」に揃えていたため、半円は狙いの 1/2、
+ *  三角は 0.87 の面積にしかならなかった。)
+ * その形の本来の縦横比は naturalRatio() が別に持つ。
  */
 export function sectionOutline(sides: number): Pt[] {
   const pts = section(sides);
@@ -98,10 +111,11 @@ export function sectionOutline(sides: number): Pt[] {
     if (p.y < minY) minY = p.y;
     if (p.y > maxY) maxY = p.y;
   }
-  const s = 1 / Math.max(maxX - minX, maxY - minY);
+  const sx = 1 / (maxX - minX);
+  const sy = 1 / (maxY - minY);
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
-  return pts.map((p) => ({ x: (p.x - cx) * s, y: -(p.y - cy) * s }));
+  return pts.map((p) => ({ x: (p.x - cx) * sx, y: -(p.y - cy) * sy }));
 }
 
 /**
@@ -109,24 +123,67 @@ export function sectionOutline(sides: number): Pt[] {
  * 形ごとに手で決めた値。曲線や斜辺に文字が食い込まないところまで。
  */
 export function innerBox(sides: number): { x: number; y: number; w: number; h: number } {
+  // ★sectionOutline は**縦横とも -0.5〜0.5**。ここの値もその座標系で書く
+  // (以前は「長い方だけ 1」の座標系だったので、半円と三角の縦の値が違う)。
   switch (clampSides(sides)) {
     // 円: 内接する正方形(半径0.5 → 一辺 0.707)。
     case 1: return { x: -0.35, y: -0.35, w: 0.70, h: 0.70 };
-    // 半円: 幅1・高さ0.5(y ∈ -0.25..0.25、平らな辺が下)。弧の内側に収まる
-    //   最大面積の矩形は dy = r/√2 のとき。
-    case 2: return { x: -0.17, y: 0.07, w: 0.34, h: 0.17 };
-    // 三角: 頂点が上(y ∈ -0.433..0.433)。底辺に寄せた内接矩形。
-    case 3: return { x: -0.24, y: 0.0, w: 0.48, h: 0.41 };
+    // 半円: 平らな辺が下(y=+0.5)。最大内接矩形は高さ・半幅とも r/√2 のとき
+    //   (正規化後 0.707 角)。★以前は 0.34 角と本来の半分以下しか取れておらず、
+    //   半円だけ文字が極端に小さくなっていた。
+    case 2: return { x: -0.35, y: -0.21, w: 0.70, h: 0.70 };
+    // 三角: 頂点が上。底辺に寄せた内接矩形。
+    case 3: return { x: -0.24, y: 0.0, w: 0.48, h: 0.473 };
     // 四角。
     default: return { x: -0.46, y: -0.43, w: 0.92, h: 0.86 };
   }
 }
 
+/** 多角形の面積(符号なし)。 */
+export function areaOfPoly(pts: Pt[]): number {
+  let s = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    s += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(s) / 2;
+}
+
+/**
+ * ★その形が外接箱のうち何割を塗るか。円/半円 0.78・三角 0.50・四角 1.00。
+ * **同じ重要度なら形が違っても色の量が同じ**になるよう、外接箱の面積を
+ * これで割って広げる(2026-08-16にユーザー確定)。
+ * 定数を手で書かず section() から出すので、形を足しても勝手に追随する。
+ */
+const inkCache = new Map<number, number>();
+export function inkRatio(sides: number): number {
+  const n = clampSides(sides);
+  const hit = inkCache.get(n);
+  if (hit !== undefined) return hit;
+  const o = sectionOutline(n);
+  const b = boundsOf(o);
+  const r = areaOfPoly(o) / ((b.maxX - b.minX) * (b.maxY - b.minY));
+  inkCache.set(n, r);
+  return r;
+}
+
+/** その形の**本来の**縦横比(横 ÷ 縦)。円=1、半円=2、三角≒1.155、四角=1。
+ *  sectionOutline は縦横とも 1 に潰してあるので、比はここから取る。 */
+export function naturalRatio(sides: number): number {
+  const b = boundsOf(section(sides));
+  return (b.maxX - b.minX) / (b.maxY - b.minY);
+}
+
 // ── 立面 ────────────────────────────────────────────────────
 
-/** FRONT の長方形。単位は solid 座標。 */
+/** FRONT の外接箱。単位は solid 座標。 */
 export const frontRect = (spec: SolidSpec): { w: number; h: number } =>
-  ({ w: spec.len, h: 2 * spec.radius });
+  ({ w: spec.frontW, h: spec.frontH });
+
+/** BOTTOM の外接箱。 */
+export const bottomRect = (spec: SolidSpec): { w: number; h: number } =>
+  ({ w: spec.bottomW, h: spec.bottomH });
 
 /**
  * FRONT の長方形を、スラブの枚数だけ横に割ったもの。中央を 0 とした座標。
@@ -134,7 +191,7 @@ export const frontRect = (spec: SolidSpec): { w: number; h: number } =>
  */
 export function slabRects(spec: SolidSpec): { x0: number; x1: number }[] {
   const n = Math.max(1, Math.round(spec.slabs || 1));
-  const L = spec.len;
+  const L = spec.frontW;
   if (n === 1) return [{ x0: -L / 2, x1: L / 2 }];
   const gap = (SLIT * L) / n;
   const step = L / n;

@@ -36,7 +36,7 @@ export function SolidCanvas({ paint, w, h, opacity = 1 }: {
       (h - pad * 2) / Math.max(box.maxY - box.minY, 1e-6),
     );
     ctx.translate(w / 2, h / 2);
-    paintShape(ctx, paint, unit);
+    paintShape(ctx, paint, unit, dpr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, w, h]);
 

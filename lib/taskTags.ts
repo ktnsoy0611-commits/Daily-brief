@@ -12,8 +12,9 @@ import type { TaskTag } from "./types";
 
 // ★書体もタグと対応させる(2026-08-16にユーザー確定)。同じタグのタスクは
 // 必ず同じ書体になり、色と書体の2つでタグが読める。番号は
-// lib/constants.ts の FONT_FACES の並び。骨格が明確に違う5つを選んである
-// (ゴシック太 / 丸ゴ / 極太 / 明朝太 / 明朝斜体)。
+// lib/constants.ts の FONT_FACES の並び。
+// ★**明朝は使わない**(2026-08-16にユーザー確定)。ゴシック系だけで
+// 骨格の違う5つ(細 / 太 / 太斜体 / 丸ゴ / 極太)を当てる。
 export interface TagDef { id: TaskTag; label: string; color: string; ink: string; face: number }
 
 const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }, face: number): TagDef =>
@@ -21,10 +22,10 @@ const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }, face: n
 
 export const TASK_TAGS: TagDef[] = [
   tag("work", "WORK", SCHEME.sky, 1),           // 空 × 淡い緑   / ゴシック700
-  tag("life", "LIFE", SCHEME.forest, 8),        // 深緑 × 淡桃   / 丸ゴシック500
-  tag("wellness", "WELLNESS", SCHEME.yellow, 10), // 黄 × 朱      / Dela(極太)
-  tag("social", "SOCIAL", SCHEME.red, 4),       // 赤 × 淡桃     / 明朝700
-  tag("growth", "GROWTH", SCHEME.orange, 6),    // 橙 × 濃紺     / 明朝400斜体
+  tag("life", "LIFE", SCHEME.forest, 3),        // 深緑 × 淡桃   / 丸ゴシック500
+  tag("wellness", "WELLNESS", SCHEME.yellow, 4),// 黄 × 朱       / Dela(極太)
+  tag("social", "SOCIAL", SCHEME.red, 0),       // 赤 × 淡桃     / ゴシック400
+  tag("growth", "GROWTH", SCHEME.orange, 2),    // 橙 × 濃紺     / ゴシック700斜体
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>

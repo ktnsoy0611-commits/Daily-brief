@@ -50,34 +50,27 @@ export const SANS = "var(--font-zen-kaku-gothic-new), sans-serif";
 export const SERIF = SANS;
 export const DISPLAY = SANS;
 
-// ★タスクの図形に載る文字の書体。**1文字ごとにここから選ぶ**(2026-08-13に
-// ユーザー指定)。読み込みは app/layout.tsx が行い、ここは組み合わせの表だけを
-// 持つ。★書体を増やすときは layout.tsx とこの表の2箇所だけを触る。
+// ★タスクの図形に載る文字の書体。**タグごとに1つ**選ぶ(番号は
+// lib/taskTags.ts が持つ)。読み込みは app/layout.tsx が行い、ここは表だけ。
+// ★書体を増やすときは layout.tsx とこの表の2箇所だけを触る。
 //
-// 明朝・ゴシック・丸ゴシック・極太 と、太さ・斜体を掛け合わせてある。
-// どれも和文を持つので、日本語の題でも書体の違いがはっきり出る。
+// ★**全部ゴシック**(2026-08-16にユーザー確定で明朝を廃止)。ゴシック・
+// 丸ゴシック・極太 と、太さ・斜体を掛け合わせて骨格の違いを作る。
+// どれも和文を持つので、日本語の題でも違いがはっきり出る。
 export interface FontFace { family: string; weight: number; italic?: boolean }
 
 // ★和文のフォールバックも系統ごとに変えておく。Googleフォントの和文は
 // 分割配信で遅れて届くことがあり、その間も書体の違いが見えるようにするため。
 const GOTHIC = 'var(--font-zen-kaku-gothic-new), "Hiragino Sans", sans-serif';
-const MINCHO = 'var(--font-zen-old-mincho), "Hiragino Mincho ProN", "Yu Mincho", serif';
 const MARU = 'var(--font-zen-maru-gothic), "Hiragino Maru Gothic ProN", sans-serif';
 const DELA = 'var(--font-dela-gothic-one), "Hiragino Sans", sans-serif';
 
 export const FONT_FACES: FontFace[] = [
-  { family: GOTHIC, weight: 400 },
-  { family: GOTHIC, weight: 700 },
-  { family: GOTHIC, weight: 700, italic: true },
-  { family: MINCHO, weight: 400 },
-  { family: MINCHO, weight: 700 },
-  { family: MINCHO, weight: 900 },
-  { family: MINCHO, weight: 400, italic: true },
-  { family: MARU, weight: 300 },
-  { family: MARU, weight: 500 },
-  { family: MARU, weight: 900 },
-  { family: DELA, weight: 400 },
-  { family: DELA, weight: 400, italic: true },
+  { family: GOTHIC, weight: 400 },              // 0 細いゴシック
+  { family: GOTHIC, weight: 700 },              // 1 太いゴシック
+  { family: GOTHIC, weight: 700, italic: true },// 2 太いゴシックの斜体
+  { family: MARU, weight: 500 },                // 3 丸ゴシック
+  { family: DELA, weight: 400 },                // 4 極太
 ];
 // ★ネオバウハウス化(2026-08-02)。それまでは暖色のクリーム地(BG #F2EADA /
 // PAPER #FBF6E9)に、アプリごとに違う地の色(グレージュ・緑)を敷いて「別の

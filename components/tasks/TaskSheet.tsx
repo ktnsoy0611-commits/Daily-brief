@@ -425,7 +425,7 @@ function PreviewShape({ spec, title, tag }: {
       {box.w > 8 && box.h > 8 && (
         <SolidCanvas
           w={box.w} h={box.h}
-          paint={{ spec, view: "front", tag, title }}
+          paint={{ spec, view: "name", tag, title }}
         />
       )}
     </div>

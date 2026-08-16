@@ -7,11 +7,12 @@ import type { InboxCandidate, SideKey, Task, TaskWeight } from "./types";
 // 対応(2026-08-16にユーザー確定。それまでの「文字数=横幅 / 重要度=高さ /
 // 手順の数=長さ」は、大きさが何を表しているのか読めないので作り直した):
 //
-//   **塗られる面積 = 重要度** … WEIGHT(小/中/大) と 期限の切迫度 の合成。これだけ。
+//   **塗られる面積 = 重要度** … WEIGHT(小/中/大) × 期限の倍率。これだけ。
 //     形ごとの塗り率(inkRatio)で外接箱を広げるので、三角でも四角でも
 //     同じ重要度なら**色の量が同じ**になる。
-//   **縦横比** … 四角と三角だけ、題の長さのはしご(RATIOS)で横に伸びる。
-//     円は 1:1、半円は 2:1 のまま(伸ばさず、面積のぶん大きくなるだけ)。
+//   **縦横比** … **四角だけ**、題の長さのはしご(RATIOS)で横に伸びる。
+//     円 1:1・半円 2:1・三角 1.155:1 は**その形の比を必ず保つ**
+//     (2026-08-16にユーザー確定。歪ませない)。
 //   形 = 埋まっている側面の数(1..4)
 //   スラブの枚数 = 残っているサブタスクの数（大きさには効かない）
 //
@@ -27,20 +28,29 @@ export const weightArea = (w: TaskWeight | undefined): number =>
 export const weightOf = (w: TaskWeight | undefined): number =>
   ({ 1: 0.2, 2: 0.55, 3: 1 })[w ?? 2];
 
-/** 切迫しているものをどこまで大きく見せるか(今日締切で 1 + これ 倍)。 */
-export const URGENCY_K = 0.6;
-
 /**
- * その図形の**面積**(solid²)。大きさに効くのはここだけ。
- * WEIGHT の土台に、期限の切迫度を掛けて持ち上げる。
+ * ★期限 → 面積の倍率(2026-08-16にユーザー確定で強くした)。
+ * 切迫したものを大きく、**遠いものはその分小さく**する。以前は
+ * 1.0〜1.6 倍しか動かず「期限による差が小さい」と指摘された。
+ * これで面積の幅は 8:1 → **24:1**(辺の比 2.8:1 → 4.9:1)。
  */
-export function areaOf(t: Partial<Task>, today: Date): number {
-  return weightArea(t.weight) * (1 + urgencyOf(t.dueDate, today) * URGENCY_K);
+export function urgencyScale(dueDate: string | undefined, today: Date): number {
+  if (!dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return 0.55; // 期日なし
+  const days = daysUntil(dueDate, today);
+  if (days <= 0) return 2.2;    // 今日・過ぎている
+  if (days <= 2) return 1.6;    // 明日・明後日
+  if (days <= 7) return 1.1;    // 今週のうち
+  if (days <= 30) return 0.7;   // 今月のうち
+  return 0.45;                  // それより先
 }
 
-/** ★横幅の上限。UNIT=64 のとき 256px ＝ 390px 画面の約 2/3(ユーザー指定)。
- *  はしごが決めた幅がこれを超えたときだけ切り、そのぶんを高さへ回す。 */
-export const LEN_MAX = 4.0;
+/**
+ * その図形の**塗られる面積**(solid²)。大きさに効くのはここだけ。
+ * WEIGHT の土台に、期限の倍率を掛ける。
+ */
+export function areaOf(t: Partial<Task>, today: Date): number {
+  return weightArea(t.weight) * urgencyScale(t.dueDate, today);
+}
 
 /**
  * ★縦横比(横 ÷ 縦)の**はしご**(2026-08-16にユーザー確定)。
@@ -65,15 +75,9 @@ export function ratioOf(title: string): number {
   return RATIOS[5];               // 細長い帯
 }
 
-/** ★はしごで伸びるのは**四角と三角だけ**(2026-08-16にユーザー確定)。
- *  円と半円は伸ばさず、面積のぶんだけ単純に大きくなる。 */
-const STRETCHES = (sides: number) => sides >= 3;
-
-/** 外接箱の面積 area/inkRatio を、比 r の箱(w × h)へ割り振る。 */
-function boxOf(boxArea: number, r: number): { w: number; h: number } {
-  const w = Math.min(LEN_MAX, Math.sqrt(boxArea * r));
-  return { w, h: boxArea / w };
-}
+/** ★はしごで伸びるのは**四角だけ**(2026-08-16にユーザー確定)。
+ *  円・半円・三角は伸ばさず、面積のぶんだけ単純に大きくなる。 */
+const STRETCHES = (sides: number) => sides === 4;
 
 /** 埋まっている側面。先頭は必ず title(必須なので常に埋まっている扱い)。 */
 export function sidesOf(t: Partial<Task> | Partial<InboxCandidate>): SideKey[] {
@@ -100,15 +104,16 @@ export function specOf(t: Partial<Task> & { title: string }, today = new Date())
   // ★**塗られる**面積を重要度に揃える。形ごとの塗り率で外接箱を広げるので、
   // 三角でも四角でも同じ重要度なら色の量が同じになる。
   const boxArea = area / inkRatio(n);
-  // FRONT … 四角と三角は題の長さのはしごで伸びる。円と半円は自然な比のまま。
-  const front = boxOf(boxArea, STRETCHES(n) ? ratioOf(t.title) : naturalRatio(n));
-  // BOTTOM … どの形も自然な比。
-  const bottom = boxOf(boxArea, naturalRatio(n));
+  // ★幅に上限を置かないこと。以前は LEN_MAX 4.0 で頭打ちにして余りを高さへ
+  // 回していたため、本来 2:1 の半円が 1.06:1 のドームに潰れていた。
+  // 画面に収める役目は GravityTab の一括スケールが持っている。
+  const r = STRETCHES(n) ? ratioOf(t.title) : naturalRatio(n);
+  const w = Math.sqrt(boxArea * r);
   return {
     sides,
     area,
-    frontW: front.w, frontH: front.h,
-    bottomW: bottom.w, bottomH: bottom.h,
+    w,
+    h: boxArea / w,
     slabs: slabsOf(t as Pick<Task, "subtasks">),
   };
 }
@@ -119,13 +124,18 @@ export const massOf = (spec: SolidSpec): number => spec.area;
 /** 画面に描くときの倍率(1単位 = 何px か)。 */
 export const UNIT_PX = 46;
 
-/** 期日までの日数 → 切迫度(0〜1)。 */
-export function urgencyOf(dueDate: string | undefined, today: Date): number {
-  if (!dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return 0;
+/** 期日までの日数。 */
+export function daysUntil(dueDate: string, today: Date): number {
   const [y, m, d] = dueDate.split("-").map(Number);
   const due = Date.UTC(y, m - 1, d);
   const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
-  const days = Math.round((due - now) / 86400000);
+  return Math.round((due - now) / 86400000);
+}
+
+/** 期日までの日数 → 切迫度(0〜1)。**落ちてくる順**に使う。 */
+export function urgencyOf(dueDate: string | undefined, today: Date): number {
+  if (!dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return 0;
+  const days = daysUntil(dueDate, today);
   if (days <= 0) return 1;      // 今日・過ぎている
   if (days <= 2) return 0.8;    // 明日・明後日
   if (days <= 7) return 0.5;    // 今週のうち

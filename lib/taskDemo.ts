@@ -70,10 +70,12 @@ export function demoCandidates(now = new Date()): InboxCandidate[] {
 /**
  * 確定したタスク。★このダミーは「何が何に効くか」が一望できるように選んである
  * (2026-08-16にユーザー指定):
- *   形    = 埋まっている側面の数 … 円(題だけ) / 半円(+1) / 三角(+2) / 四角(+3)
- *   縦横比 = 題の長さ。**四角と三角だけ**伸びる(円と半円は伸びない)
- *   面積  = 重要度(WEIGHT × 期限の切迫度)
- *   色と書体 = タグ(5つとも複数個あり、同じタグ同士が揃うのが見える)
+ *   形     = 埋まっている側面の数 … 円(題だけ) / 半円(+1) / 三角(+2) / 四角(+3)
+ *   縦横比 = **四角だけ**題の長さで伸びる(円・半円・三角は本来の比を保つ)
+ *   面積   = 重要度 × 期限の倍率 … 今日 2.2 〜 先 0.45 で強く効く
+ *   色と書体 = タグ(5つとも複数個)
+ * 期限は 今日 / 1〜2日 / 3〜7日 / 8〜30日 / 31日〜 / なし が一通り出るので、
+ * 遠いものが小さくなり、混雑時には間引かれる様子まで見える。
  */
 export function demoTasks(now = new Date()): Task[] {
   const at = now.toISOString();
@@ -82,46 +84,48 @@ export function demoTasks(now = new Date()): Task[] {
     id: `demo-task-${seed}-${n}`, title: "", done: false, createdAt: at, ...o,
   }) as Task;
   return [
-    // ── 四角(側面4)。題の長さで 正方形 → 帯 → 細長い帯 と伸びる ──
+    // ── 今日が期日。いちばん大きく出る ──
     mk(1, {
       title: "確定申告", weight: 3, tag: "work", dueDate: day(now, 0),
       when: "今日中", context: "自宅", belongings: "領収書",
       subtasks: subs(1, "領収書を集める", "経費を分類する", "電子申告"),
     }),
-    mk(2, {
+    mk(2, { title: "ゴミを出す", weight: 1, tag: "life", dueDate: day(now, 0), when: "今朝" }),
+    mk(3, { title: "祖母に電話", weight: 3, tag: "social", dueDate: day(now, 0) }),
+    // ── 明日・明後日 ──
+    mk(4, { title: "家賃の振込", weight: 3, tag: "life", dueDate: day(now, 1), when: "明日まで" }),
+    mk(5, {
+      title: "定例会議の資料", weight: 2, tag: "work", dueDate: day(now, 2),
+      when: "水曜の朝", context: "会議室A",
+      subtasks: subs(5, "議事録を読む", "たたき台を書く"),
+    }),
+    // ── 今週のうち ──
+    mk(6, {
       title: "健康診断を予約する", weight: 2, tag: "wellness", dueDate: day(now, 5),
       when: "今週", context: "クリニック", belongings: "保険証",
     }),
-    mk(3, {
-      title: "引っ越しの見積もりを三社から取る", weight: 3, tag: "life", dueDate: day(now, 30),
-      when: "来月", context: "自宅", belongings: "間取り図",
-      subtasks: subs(3, "候補を調べる", "電話する"),
-    }),
-    mk(4, {
-      title: "読みかけの本を最後まで読み切って感想を残す", weight: 2, tag: "growth",
-      dueDate: day(now, 20), when: "月末", context: "自宅", belongings: "しおり",
-    }),
-    // ── 三角(側面3)。こちらも伸びる ──
-    mk(5, { title: "走る", weight: 1, tag: "wellness", when: "朝", context: "河川敷" }),
-    mk(6, {
-      title: "定例会議の資料", weight: 2, tag: "work", dueDate: day(now, 2),
-      when: "水曜の朝", context: "会議室A",
-      subtasks: subs(6, "議事録を読む", "たたき台を書く"),
-    }),
-    mk(7, {
+    mk(7, { title: "走る", weight: 1, tag: "wellness", dueDate: day(now, 6), when: "朝", context: "河川敷" }),
+    mk(8, { title: "お礼状", weight: 2, tag: "social", dueDate: day(now, 7), when: "今週", context: "郵便局" }),
+    // ── 今月のうち ──
+    mk(9, {
       title: "友人の結婚祝いを選んで贈る", weight: 2, tag: "social",
       dueDate: day(now, 14), when: "今月中", context: "百貨店",
     }),
-    mk(8, { title: "お礼状", weight: 1, tag: "social", when: "今週", context: "郵便局" }),
-    // ── 半円(側面2)。伸びない。面積のぶん大きくなるだけ ──
-    mk(9, { title: "家賃の振込", weight: 3, tag: "life", dueDate: day(now, 1), when: "明日まで" }),
-    mk(10, { title: "英語の教材を一章ぶん進める", weight: 2, tag: "growth", when: "毎朝" }),
-    mk(11, { title: "ゴミを出す", weight: 1, tag: "life", dueDate: day(now, 0), when: "今朝" }),
-    mk(12, { title: "歯医者", weight: 2, tag: "wellness", dueDate: day(now, 5), when: "木曜" }),
-    // ── 円(側面1・題だけ)。伸びない ──
-    mk(13, { title: "電球を買う", weight: 1, tag: "life" }),
-    mk(14, { title: "祖母に電話", weight: 3, tag: "social", dueDate: day(now, 3) }),
-    mk(15, { title: "名刺を刷る", weight: 1, tag: "work" }),
-    mk(16, { title: "本棚を整理する", weight: 2, tag: "growth", dueDate: day(now, 30) }),
+    mk(10, { title: "本棚を整理する", weight: 2, tag: "growth", dueDate: day(now, 20) }),
+    mk(11, {
+      title: "読みかけの本を最後まで読み切って感想を残す", weight: 2, tag: "growth",
+      dueDate: day(now, 25), when: "月末", context: "自宅", belongings: "しおり",
+    }),
+    // ── それより先。小さく出て、混雑すると間引かれる ──
+    mk(12, {
+      title: "引っ越しの見積もりを三社から取る", weight: 3, tag: "life", dueDate: day(now, 60),
+      when: "来月", context: "自宅", belongings: "間取り図",
+      subtasks: subs(12, "候補を調べる", "電話する"),
+    }),
+    mk(13, { title: "名刺を刷る", weight: 1, tag: "work", dueDate: day(now, 90) }),
+    // ── 期日なし ──
+    mk(14, { title: "電球を買う", weight: 1, tag: "life" }),
+    mk(15, { title: "英語の教材を一章ぶん進める", weight: 2, tag: "growth", when: "毎朝" }),
+    mk(16, { title: "歯医者", weight: 2, tag: "wellness", when: "そのうち", context: "駅前" }),
   ];
 }

@@ -5,23 +5,20 @@ import type { SideKey } from "./types";
 // ★3D は持たない(2026-08-13にユーザー確定)。
 // 「どちらのビューでも、アイソメではなく**各立面**を表示する。なのでシステム的に
 // 3Dである必要はない」という指定により、投影・陰影・凸包の類はすべて撤去した。
-// ★**どちらのビューも断面の形**(円 / 半円 / 三角 / 四角)で描く
-// (2026-08-16にユーザー確定)。以前は FRONT を長方形にしていたが、それだと
-// FRONT だけで情報が完結してしまい、「埋まっている側面の数 → 形」という
-// 対応が何も意味しなくなっていた。
+// ★図形は**断面の形**(円 / 半円 / 三角 / 四角)ひとつ。ビューを切り替えても
+// 形は変わらず、**載る文字だけ**が変わる(2026-08-16にユーザー確定)。
 //
-//   FRONT  … 断面の形。**四角と三角だけ**題の長さで横に伸びる。
-//            スラブの切れ目が入る。タスクのタイトルが中央に載る。
-//   BOTTOM … 断面の形。その形の自然な縦横比のまま。タグの英字が載る。
+//   ネームビュー … タスクの題が中央に載る
+//   タグビュー   … タグの英字が図形いっぱいに載る
 //
 // 寸法の対応(lib/taskSize.ts):
-//   area    = **塗られる**面積 = 重要度(WEIGHT + 期限の切迫度)。
-//             大きさに効くのはこれだけ。形ごとの塗り率(inkRatio)で外接箱を
-//             広げるので、**形が違っても同じ重要度なら色の量が同じ**。
-//   frontW/H … FRONT の外接箱。四角・三角は ratioOf(題) の比、円は 1:1、半円は 2:1
-//   bottomW/H… BOTTOM の外接箱(自然な比)
-//   sides   = 埋まっている側面の数 → 形
-//   slabs   = 残っている手順 → 何枚に割れるか(大きさには効かない)
+//   area  = **塗られる**面積 = 重要度(WEIGHT × 期限の切迫度)。
+//           大きさに効くのはこれだけ。形ごとの塗り率(inkRatio)で外接箱を
+//           広げるので、**形が違っても同じ重要度なら色の量が同じ**。
+//   w / h = 外接箱。**四角だけ**題の長さで横に伸び、円・半円・三角は
+//           その形の自然な比(1:1 / 2:1 / 1.155:1)を必ず保つ。
+//   sides = 埋まっている側面の数 → 形
+//   slabs = 残っている手順 → 何枚に割れるか(大きさには効かない)
 
 export const MIN_SIDES = 1;
 export const MAX_SIDES = 4;
@@ -38,14 +35,11 @@ export interface SolidSpec {
   /** 埋まっている側面。SIDE_KEYS の順。先頭は必ず "title"。1〜4枚。 */
   sides: SideKey[];
   /** ★**塗られる**面積(=重要度)。solid²。
-   *  文字の大きさ・物理の重さ・LOD の基準はすべてここから引く。 */
+   *  文字の大きさ・物理の重さ・LOD・間引きの基準はすべてここから引く。 */
   area: number;
-  /** FRONT の外接箱。四角と三角は題の長さで横に伸びる。 */
-  frontW: number;
-  frontH: number;
-  /** BOTTOM の外接箱。その形の自然な縦横比のまま。 */
-  bottomW: number;
-  bottomH: number;
+  /** 外接箱。ビューによらず1つ。 */
+  w: number;
+  h: number;
   /** スラブの枚数(1以上)。 */
   slabs: number;
 }
@@ -177,13 +171,9 @@ export function naturalRatio(sides: number): number {
 
 // ── 立面 ────────────────────────────────────────────────────
 
-/** FRONT の外接箱。単位は solid 座標。 */
-export const frontRect = (spec: SolidSpec): { w: number; h: number } =>
-  ({ w: spec.frontW, h: spec.frontH });
-
-/** BOTTOM の外接箱。 */
-export const bottomRect = (spec: SolidSpec): { w: number; h: number } =>
-  ({ w: spec.bottomW, h: spec.bottomH });
+/** 外接箱。単位は solid 座標。 */
+export const rectOf = (spec: SolidSpec): { w: number; h: number } =>
+  ({ w: spec.w, h: spec.h });
 
 /**
  * FRONT の長方形を、スラブの枚数だけ横に割ったもの。中央を 0 とした座標。
@@ -191,7 +181,7 @@ export const bottomRect = (spec: SolidSpec): { w: number; h: number } =>
  */
 export function slabRects(spec: SolidSpec): { x0: number; x1: number }[] {
   const n = Math.max(1, Math.round(spec.slabs || 1));
-  const L = spec.frontW;
+  const L = spec.w;
   if (n === 1) return [{ x0: -L / 2, x1: L / 2 }];
   const gap = (SLIT * L) / n;
   const step = L / n;

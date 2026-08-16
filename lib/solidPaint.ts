@@ -1,5 +1,5 @@
 import {
-  boundsOf, bottomRect, frontRect, innerBox, sectionOutline, slabRects,
+  boundsOf, innerBox, rectOf, sectionOutline, slabRects,
   type Pt, type SolidSpec,
 } from "./solid";
 import { tagColor, tagFace, tagInk, tagLabel } from "./taskTags";
@@ -9,9 +9,10 @@ import type { TaskTag } from "./types";
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
 // 確定)。真横から見た立面を2枚、ベタ塗りで描くだけ。
 //
-//   FRONT  … 断面の形。**四角と三角だけ**題の長さで横に伸びる。スラブの
-//            切れ目が入る。**タスクのタイトル**を中央に。
-//   BOTTOM … 断面の形。自然な縦横比のまま。**タグの英字**を図形いっぱいに。
+// ★形はビューによらず**1つ**。切り替えても山は動かず、**載る文字だけ**が
+// 変わる(2026-08-16にユーザー確定):
+//   ネームビュー … **タスクの題**を中央に(一定の下限＋面積に比例)
+//   タグビュー   … **タグの英字**を図形いっぱいに
 //
 // 色はどちらもタグの色を全面に。**文字の色も書体もタグが決める**
 // (画像の組み合わせとの一対一対応・2026-08-16確定)。
@@ -20,13 +21,14 @@ import type { TaskTag } from "./types";
 // matter.js の物体は画面内の2D回転しかしないので、キャッシュした絵を
 // body.angle で回して drawImage するだけで厳密に正しい。
 
-export type SolidView = "front" | "bottom";
+/** 図形に何の文字を載せるか。**形は変わらない**。 */
+export type SolidView = "name" | "tag";
 
 export interface SolidPaint {
   spec: SolidSpec;
   view: SolidView;
   tag?: TaskTag;
-  /** FRONT に載せる文字(タスクの題)。BOTTOM はタグの英字を使う。 */
+  /** ネームビューに載せる文字(タスクの題)。タグビューはタグの英字を使う。 */
   title: string;
 }
 
@@ -82,9 +84,9 @@ export function paintShape(
   // 呼び出し側が絵を作り直す)。色と書体はタグが決める(textPlanOf が引く)。
   requestFonts(p.title + tagLabel(p.tag));
 
-  // ★どちらのビューも**断面の形**で描く。違うのは箱の大きさと載せる文字だけ。
-  const bottom = p.view === "bottom";
-  const { w, h } = bottom ? bottomRect(p.spec) : frontRect(p.spec);
+  // ★形はビューによらず1つ。違うのは載せる文字だけ。
+  const tagView = p.view === "tag";
+  const { w, h } = rectOf(p.spec);
   const n = p.spec.sides.length;
   const outline = sectionOutline(n);
   const wpx = w * unit;
@@ -95,7 +97,7 @@ export function paintShape(
   ctx.fillStyle = fill;
   const path = () => poly(ctx, outline.map((q) => ({ x: q.x * wpx, y: q.y * hpx })), 1);
 
-  if (bottom || s < LOD_NO_SLIT || p.spec.slabs <= 1) {
+  if (tagView || s < LOD_NO_SLIT || p.spec.slabs <= 1) {
     // 切れ目なし。輪郭をそのまま塗る。
     path();
     ctx.fill();
@@ -156,14 +158,14 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   const n = p.spec.sides.length;
   const s = Math.sqrt(p.spec.area) * unit;
   if (s < LOD_NO_TEXT) return null;
-  const bottom = p.view === "bottom";
-  const { w, h } = bottom ? bottomRect(p.spec) : frontRect(p.spec);
+  const tagView = p.view === "tag";
+  const { w, h } = rectOf(p.spec);
   const box = innerBox(n);
   const bw = box.w * w * unit;
   const bh = box.h * h * unit;
   const face = tagFace(p.tag);
-  const fit = bottom
-    // BOTTOM のタグ名は以前の指定どおり**図形いっぱい**。
+  const fit = tagView
+    // タグの英字は**図形いっぱい**。
     ? fitText(tagLabel(p.tag), face, bw, bh, 2)
     // ★タイトルは「最低 TITLE_MIN、図形が大きければ面積に比例して大きく」。
     : layoutText(
@@ -173,7 +175,7 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
     );
   if (!fit) return null;
   return {
-    text: bottom ? tagLabel(p.tag) : p.title,
+    text: tagView ? tagLabel(p.tag) : p.title,
     face, ink: tagInk(p.tag), fit,
     cx: box.x + box.w / 2, cy: box.y + box.h / 2,
     size: fit.size,
@@ -198,9 +200,10 @@ export function shapeGlyphsReady(p: SolidPaint, unit: number, dpr: number): bool
   return !plan || missingGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr) === 0;
 }
 
-/** その絵が占める範囲(solid 座標)。ビットマップの大きさを決めるのに使う。 */
+/** その絵が占める範囲(solid 座標)。ビットマップの大きさを決めるのに使う。
+ *  ★ビューによらず同じ(形が変わらないので)。 */
 export function shapeBounds(p: SolidPaint) {
-  const { w, h } = p.view === "bottom" ? bottomRect(p.spec) : frontRect(p.spec);
+  const { w, h } = rectOf(p.spec);
   return boundsOf(sectionOutline(p.spec.sides.length).map((q) => ({ x: q.x * w, y: q.y * h })));
 }
 
@@ -225,8 +228,7 @@ export function clearSolidBitmaps() {
 
 export const paintKey = (p: SolidPaint, unit: number): string =>
   [p.view, p.tag ?? "-", p.spec.sides.length, p.spec.area.toFixed(3),
-    p.spec.frontW.toFixed(3), p.spec.frontH.toFixed(3),
-    p.spec.bottomW.toFixed(3), p.spec.bottomH.toFixed(3),
+    p.spec.w.toFixed(3), p.spec.h.toFixed(3),
     p.spec.slabs, unit.toFixed(1), p.title].join("|");
 
 /** 焼いてあるものだけ返す(まだなら undefined)。

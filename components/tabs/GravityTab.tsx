@@ -9,7 +9,7 @@ import { ViewToggle } from "@/components/tasks/ViewToggle";
 import { appTitle } from "@/lib/apps";
 import { TAB_PAD_TOP } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { bottomRect, frontRect, sectionOutline, type SolidSpec } from "@/lib/solid";
+import { rectOf, sectionOutline, type SolidSpec } from "@/lib/solid";
 import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint, type SolidView } from "@/lib/solidPaint";
 import { clearGlyphs, onFontsReady, primeAdvances } from "@/lib/textFit";
 import { allTagFaces, allTagLabels, resolveTag, tagColor } from "@/lib/taskTags";
@@ -20,22 +20,18 @@ import type { AppState, TabProps, Task } from "@/lib/types";
 // ★タスクタブ(GRAVITY)。確定したタスクが上から落ちてきて積み上がる。
 //
 // 図形の寸法がそのままタスクの中身になっている(lib/taskSize.ts):
-//   塗られる面積 = 重要度(WEIGHT + 期限の切迫度)。**大きさに効くのはこれだけ**
-//   形          = 埋まっている側面の数(円/半円/三角/四角)。**両ビューとも**
-//   縦横比      = 四角と三角だけ、題の長さで横に伸びる(円と半円は伸びない)
+//   塗られる面積 = 重要度(WEIGHT × 期限の倍率)。**大きさに効くのはこれだけ**
+//   形          = 埋まっている側面の数(円/半円/三角/四角)
+//   縦横比      = **四角だけ**題の長さで横に伸びる(他は本来の比を保つ)
 //   スラブの枚数 = 残っている手順
 //   色と書体    = タグ
 //
-// ★山が画面からはみ出さないよう、**タスクの数に応じて全体を一括で縮める**
-// (2026-08-16にユーザー指定)。縮んだぶんは lib/solidPaint.ts の LOD が拾い、
-// 小さい図形からは文字が消える。
+// ★ネームビュー / タグビューの切り替えは**載る文字が変わるだけ**
+// (2026-08-16にユーザー確定)。形も位置も変わらないので、山は動かさない。
 //
-// ★FRONT / BOTTOM の2つの見え方を切り替えられる(既定は FRONT)。
-// **切り替えるたびに山を落とし直す**(2026-08-16にユーザー確定)。前は絵だけを
-// 差し替えて山をそのまま残していたが、「ビューを変更するごとに落下させ直す
-// こと」と指定された。切り替えると、いま画面にある図形が**縮みながら消え**
-// (EXIT_MS・上のものから順に)、消え切ってから新しい見え方で落ちてくる。
-// 消えている間は物理を止める(崩れる途中の絵が混ざらないように)。
+// ★山が画面からはみ出さないよう、**タスクの数に応じて全体を一括で縮める**。
+// さらに、縮んだ結果 CULL_PX を割るものは**そもそも山に入れない**。
+// これで「混雑しても切迫した数件は大きいまま残る」ようになる。
 //
 // ★毎フレームのコストは物体ごとに drawImage 1回。立体の絵は
 // lib/solidPaint.ts が1枚のビットマップに焼いてキャッシュしており、matter.js の
@@ -53,8 +49,12 @@ const MASS_K = 1.6;
 /** 図形の合計面積を、床から上の領域のどれだけに収めるか。
  *  1.0 だと隙間なく敷き詰める計算になり、実際には積み方の隙間で溢れる。 */
 const FILL = 0.58;
-/** どこまで縮めてよいか。これ以上小さいと何が積まれているか読めない。 */
-const SCALE_MIN = 0.28;
+/** ★どこまで縮めてよいか。**これ以上は縮めず、代わりに間引く**
+ *  (2026-08-16にユーザー確定)。0.28 まで縮めていた頃は、40件あると全部が
+ *  入るかわりに いちばん大きい図形でも 93px しかなく、「混雑時に大きい図形が
+ *  無くメリハリが消える」状態になっていた。
+ *  0.70 だと 16件はそのまま全部出て、40件では10件に絞られて最大137px になる。 */
+const SCALE_MIN = 0.70;
 /** どこまで大きくしてよいか。数個しか無いときに画面の下で小さく固まらないよう、
  *  拡大側にも余地を持たせる(「なるべく画面全体に入り切る大きさ」)。 */
 const SCALE_MAX = 1.6;
@@ -74,10 +74,10 @@ const GLYPH_BUDGET = 1;
 interface Shard { x: number; y: number; vx: number; vy: number; r: number; life: number; fill: string }
 const SHARD_MS = 620;
 
-/** ビューを切り替えたとき、1つの図形が消えるのにかける時間(ms)。 */
-const EXIT_MS = 260;
-/** 消え始めをずらす間隔(ms)。上にあるものから順に消える。 */
-const EXIT_STAGGER = 38;
+/** ★これ未満の代表寸法(px)になる図形は山に入れない(2026-08-16にユーザー確定)。
+ *  「どうせ読めない図形は表示しなくてよい」。間引いたぶん縮尺が上がるので、
+ *  混雑時も切迫した数件が大きいまま残る。 */
+const CULL_PX = 30;
 
 interface Piece {
   id: string;
@@ -86,8 +86,6 @@ interface Piece {
   paint: SolidPaint;
   /** 長方形の短辺(破片の大きさに使う)。 */
   girth: number;
-  /** 消えるアニメーションの開始をどれだけ遅らせるか(ms)。 */
-  exitDelay: number;
   /** 絵の原点と物体の重心のズレ(px)。matter.js の多角形は**重心**が
    *  body.position になるが、絵は図形の原点を中心に焼いてあるため、
    *  三角形のように重心が原点と一致しない形ではこのぶん戻して描く。 */
@@ -106,8 +104,7 @@ const paintOf = (t: Task, view: SolidView): SolidPaint => ({
 /** 同じ立体か(形が変わったら body を作り直す必要がある)。 */
 const sameShape = (a: SolidSpec, b: SolidSpec) =>
   a.sides.length === b.sides.length
-  && Math.abs(a.frontW - b.frontW) < 1e-6 && Math.abs(a.frontH - b.frontH) < 1e-6
-  && Math.abs(a.bottomW - b.bottomW) < 1e-6 && Math.abs(a.bottomH - b.bottomH) < 1e-6;
+  && Math.abs(a.w - b.w) < 1e-6 && Math.abs(a.h - b.h) < 1e-6;
 
 export function GravityTab({ appState, persist, profileButton, showToast, appActive }: TabProps & { appActive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -127,11 +124,9 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   const [openId, setOpenId] = useState<string | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const [view, setView] = useState<SolidView>("front");
-  const viewRef = useRef<SolidView>("front");
+  const [view, setView] = useState<SolidView>("name");
+  const viewRef = useRef<SolidView>("name");
 
-  // 消えるアニメーションの最中か。動いている間は物理を止める。
-  const exitRef = useRef<{ start: number; until: number } | null>(null);
   const dropAllRef = useRef<() => void>(() => {});
   // いまの一括縮尺。図形の絵も当たり判定もこれを掛けた単位で作る。
   const scaleRef = useRef(1);
@@ -169,12 +164,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     let budget = BAKE_BUDGET;
     let glyphBudget = GLYPH_BUDGET;
     const unit = UNIT * scaleRef.current;
-    // ビューを切り替えた直後は「消えていく」途中。0=そのまま、1=消え切り。
-    const ex = exitRef.current;
-    const now = ex ? performance.now() : 0;
     for (const p of piecesRef.current) {
-      const k = ex ? clamp01((now - ex.start - p.exitDelay) / EXIT_MS) : 0;
-      if (k >= 1) continue; // 消え切ったものは描かない
       let bmp = peekSolidBitmap(p.paint, unit, bakeDpr);
       if (!bmp) {
         // ★文字のグリフが揃ってから絵を焼く。揃っていないものは今フレームの
@@ -183,16 +173,6 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
         if (budget > 0 && shapeGlyphsReady(p.paint, unit, bakeDpr)) { bmp = solidBitmap(p.paint, unit, bakeDpr); budget--; }
       }
       ctx.save();
-      if (k > 0) {
-        // 縮みながら薄くなり、わずかに傾く。塗りの色は変えない
-        // (巨大な面の色を変えると合成レイヤーごと塗り直しになる)。
-        const e = 1 - (1 - k) * (1 - k); // ease-out
-        ctx.globalAlpha = 1 - e;
-        ctx.translate(p.body.position.x, p.body.position.y);
-        ctx.rotate(p.body.angle + e * 0.22);
-        ctx.scale(1 - e * 0.85, 1 - e * 0.85);
-        ctx.translate(-p.body.position.x, -p.body.position.y);
-      }
       ctx.translate(p.body.position.x, p.body.position.y);
       ctx.rotate(p.body.angle);
       if (bmp) {
@@ -209,7 +189,6 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       }
       ctx.restore();
     }
-    ctx.globalAlpha = 1;
     // まだ焼けていないものが残っていれば、次のフレームでも回す。
     // ★ループの中から wake() を呼んでも「もう回っている」と見なされて何もしない。
     // 止める判定の側で見るためのフラグにしておく。
@@ -243,16 +222,6 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       const M = matterRef.current;
       const engine = engineRef.current;
       if (!M || !engine) { runningRef.current = false; return; }
-
-      // ★ビューの切り替え中。物理は止めて、消えていく絵だけを描く。
-      // 消え切ったらその場で落とし直し、次のフレームから普通に回る。
-      const ex = exitRef.current;
-      if (ex) {
-        drawRef.current();
-        if (performance.now() >= ex.until) { exitRef.current = null; dropAllRef.current(); }
-        rafRef.current = requestAnimationFrame(() => loopRef.current());
-        return;
-      }
 
       M.Engine.update(engine, 1000 / 60);
 
@@ -295,14 +264,14 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     }
   }, [appActive, wake]);
 
-  /** いま置くべき一括縮尺。タスクの面積の合計と、床から上の高さから決まる。 */
-  const nextScale = useCallback((list: Task[]) => {
+  /** いま山に入れるタスクと、その縮尺。小さすぎるものは間引く。 */
+  const planPile = useCallback((list: Task[]) => {
     const { w, h } = sizeRef.current;
-    const today = new Date();
-    return fitScale(list.map((t) => areaOf(t, today)), w, h - navHeightPx());
+    return pileOf(list, new Date(), w, h - navHeightPx());
   }, []);
 
-  // ★山を丸ごと作り直して落とし直す。ビューの切り替えと、縮尺が変わったときに使う。
+  // ★山を丸ごと作り直して落とし直す。**縮尺が変わったときだけ**使う
+  // (ビューの切り替えでは呼ばない — 形も位置も変わらないので)。
   const dropAll = useCallback(() => {
     const M = matterRef.current;
     const engine = engineRef.current;
@@ -310,31 +279,26 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     if (!M || !engine || !w) return;
     M.Composite.remove(engine.world, piecesRef.current.map((p) => p.body));
     shardsRef.current = [];
-    scaleRef.current = nextScale(tasksRef.current);
-    const unit = UNIT * scaleRef.current;
-    const added = dropOrder(tasksRef.current, new Date())
+    const { keep, scale } = planPile(tasksRef.current);
+    scaleRef.current = scale;
+    const unit = UNIT * scale;
+    const added = dropOrder(keep, new Date())
       .map((t, i) => makePiece(M, t, viewRef.current, w, i, unit));
     M.Composite.add(engine.world, added.map((p) => p.body));
     piecesRef.current = added;
     wake();
     drawRef.current();
-  }, [wake, nextScale]);
+  }, [wake, planPile]);
   dropAllRef.current = dropAll;
 
-  // ★見え方を切り替えたら、**いまの山を消してから落とし直す**
-  // (2026-08-16にユーザー確定)。消えている間の物理はループ側で止める。
+  // ★ネーム / タグの切り替えは**載る文字が変わるだけ**(2026-08-16にユーザー
+  // 確定)。形も位置も同じなので、山は一切動かさず絵だけ差し替える。
   useEffect(() => {
-    if (viewRef.current === view) return; // 初回のマウント
     viewRef.current = view;
-    const n = piecesRef.current.length;
-    if (!n) { dropAll(); return; }
-    // 上にあるもの(y が小さい)から順に消す。
-    const order = [...piecesRef.current].sort((a, b) => a.body.position.y - b.body.position.y);
-    order.forEach((p, i) => { p.exitDelay = i * EXIT_STAGGER; });
-    const start = performance.now();
-    exitRef.current = { start, until: start + EXIT_MS + EXIT_STAGGER * (n - 1) };
+    piecesRef.current = piecesRef.current.map((p) => ({ ...p, paint: { ...p.paint, view } }));
     wake();
-  }, [view, dropAll, wake]);
+    drawRef.current();
+  }, [view, wake]);
 
   // 物理の世界を作る。器の大きさが決まってから。
   useEffect(() => {
@@ -384,14 +348,20 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
 
     // ★数が変わって一括縮尺が動いたら、当たり判定ごと作り直す(落とし直し)。
     // 縮尺だけ差し替えると、絵と当たり判定の大きさが食い違って山が崩れる。
-    const s = nextScale(tasks);
-    if (piecesRef.current.length && Math.abs(s - scaleRef.current) > SCALE_EPS) {
+    // 間引きの結果が変わったときも同じ(入るべきものが変わるため)。
+    const { keep, scale } = planPile(tasks);
+    const keepIds = new Set(keep.map((t) => t.id));
+    const shownIds = new Set(piecesRef.current.map((p) => p.id));
+    const culledChanged = keepIds.size !== shownIds.size
+      || [...keepIds].some((id) => !shownIds.has(id));
+    if (piecesRef.current.length
+      && (Math.abs(scale - scaleRef.current) > SCALE_EPS || culledChanged)) {
       dropAll();
       return;
     }
-    scaleRef.current = s;
-    const unit = UNIT * s;
-    const alive = new Map(tasks.map((t) => [t.id, t]));
+    scaleRef.current = scale;
+    const unit = UNIT * scale;
+    const alive = new Map(keep.map((t) => [t.id, t]));
 
     // 消えたもの(完了・削除)は世界からも外す。
     for (const p of piecesRef.current) {
@@ -418,7 +388,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
 
     const have = new Set(piecesRef.current.map((p) => p.id));
     // 差し迫ったものから先に落として、山の下になるようにする。
-    const added = dropOrder(tasks, new Date())
+    const added = dropOrder(keep, new Date())
       .filter((t) => !have.has(t.id))
       .map((t, i) => makePiece(M, t, viewRef.current, w, i, unit));
     if (added.length) {
@@ -426,7 +396,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       piecesRef.current = [...piecesRef.current, ...added];
     }
     wake();
-  }, [tasks, wake, ready, nextScale, dropAll]);
+  }, [tasks, wake, ready, planPile, dropAll]);
 
   const patch = (id: string, p: Partial<SheetData>) => {
     const next: AppState = structuredClone(appState);
@@ -547,8 +517,6 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   );
 }
 
-const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-
 /** タグの英字の送り幅を、requestIdleCallback で数組ずつ潰していく。 */
 function primeTagMetrics() {
   if (typeof window === "undefined") return;
@@ -570,7 +538,7 @@ function makePiece(
   const x = Math.max(hw + 6, Math.min(Math.max(w - hw - 6, hw + 6), w * 0.14 + frac(t.id) * w * 0.72));
   const y = -((b.maxY - b.minY) * unit) - i * (110 + 100 * unit / UNIT);
   const { body, ox, oy } = makeBody(M, paint, x, y, unit);
-  return { id: t.id, body, spec: paint.spec, paint, girth: girthOf(paint, unit), exitDelay: 0, ox, oy };
+  return { id: t.id, body, spec: paint.spec, paint, girth: girthOf(paint, unit), ox, oy };
 }
 
 /**
@@ -584,7 +552,7 @@ function makeBody(
 ): { body: Body; ox: number; oy: number } {
   const opts = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
   const n = paint.spec.sides.length;
-  const { w, h } = paint.view === "bottom" ? bottomRect(paint.spec) : frontRect(paint.spec);
+  const { w, h } = rectOf(paint.spec);
   let body: Body;
   let ox = 0;
   let oy = 0;
@@ -619,15 +587,44 @@ function girthOf(paint: SolidPaint, unit: number): number {
 }
 
 /**
- * ★山が画面に収まる一括の縮尺。図形の**面積の合計**を、床から上の領域の
- * FILL 倍に収める大きさを出す(2026-08-16にユーザー指定)。
+ * ★山に入れるタスクと、その一括の縮尺を決める(2026-08-16にユーザー確定)。
+ *
+ * 図形の**面積の合計**が、床から上の領域の FILL 倍に収まる大きさを出す。
  * 面積で見るので、タスクが増えても重要度の**比**は保たれたまま全体が縮む。
+ *
+ * ★そのうえで、縮んだ結果 CULL_PX を割るものは**山に入れない**。
+ * 面積の降順に並べ、先頭 N 件だけで縮尺を出しながら N を増やしていき、
+ * 「N 件目が CULL_PX を下回る」ところで止める。含める数を増やすほど縮尺は
+ * 単調に下がるので、この走査は一意に決まる。
+ *
+ * これで「混雑しても切迫した数件は大きいまま残り、遠いものは消える」。
+ * 数個しか無いときは縮尺が上限に張り付くので、何も間引かれない。
  */
-export function fitScale(areas: number[], w: number, usableH: number): number {
-  const total = areas.reduce((a, c) => a + c, 0);
-  if (!total || w <= 0 || usableH <= 0) return 1;
+export function pileOf(
+  tasks: Task[], today: Date, w: number, usableH: number,
+): { keep: Task[]; scale: number } {
+  if (!tasks.length || w <= 0 || usableH <= 0) return { keep: tasks, scale: 1 };
+  const sorted = [...tasks]
+    .map((t) => ({ t, area: areaOf(t, today) }))
+    .sort((a, b) => b.area - a.area);
   const budget = ((w * usableH) / (UNIT * UNIT)) * FILL;
-  return Math.max(SCALE_MIN, Math.min(SCALE_MAX, Math.sqrt(budget / total)));
+  const scaleFor = (total: number) => Math.min(SCALE_MAX, Math.sqrt(budget / total));
+
+  let total = 0;
+  let n = 0;
+  for (const row of sorted) {
+    const next = total + row.area;
+    const scale = scaleFor(next);
+    // 2つの止めどき。どちらかに触れたら、そこから先は山に入れない。
+    //   ・これ以上入れると全体を SCALE_MIN より縮めないと収まらない
+    //     → 縮めるのではなく**間引く**(混雑時も大きい図形を残すため)
+    //   ・その1件自身が CULL_PX を割る → どうせ読めないので入れない
+    if (n > 0 && (scale < SCALE_MIN || Math.sqrt(row.area) * UNIT * scale < CULL_PX)) break;
+    total = next;
+    n++;
+  }
+  // 1件だけはどんなに大きくても必ず入れる(空の山にしない)。
+  return { keep: sorted.slice(0, n).map((r) => r.t), scale: Math.max(SCALE_MIN, scaleFor(total)) };
 }
 
 /** 器の左右と床。器の大きさが変わるたびに作り直す。

@@ -34,14 +34,14 @@ export function ViewToggle({ view, onChange }: { view: SolidView; onChange: (v: 
   );
 }
 
-/** 横倒しの柱を斜めから見た絵(平行四辺形 + 端の面)。 */
+/** 真横から見た長方形(スラブの切れ目入り)。 */
 function FrontMark({ on }: { on: boolean }) {
   const c = on ? PAPER : INK;
   return (
     <svg width={20} height={13} viewBox="0 0 20 13" aria-hidden focusable="false">
-      <path d="M0 3 H14 V11 H0 Z" fill={c} opacity={0.95} />
-      <path d="M0 3 L4 0 H18 L14 3 Z" fill={c} opacity={0.55} />
-      <path d="M14 3 L18 0 V8 L14 11 Z" fill={c} opacity={0.75} />
+      <rect x={0} y={2} width={8.6} height={9} fill={c} />
+      <rect x={10} y={2} width={4.4} height={9} fill={c} />
+      <rect x={15.8} y={2} width={4.2} height={9} fill={c} />
     </svg>
   );
 }

@@ -26,9 +26,9 @@ import type { InboxCandidate, TabProps } from "@/lib/types";
 // 候補の**大きさは揃える**。重さ(重要度 × 切迫度)を持つのは確定してからで、
 // 漂っているうちはまだ量られていない、という区別を形で示す。
 
-/** 立体の器。横倒しの柱なので横長にとる(軸=タイトルの長さ)。 */
-const SOLID_W = 288;
-const SOLID_H = 176;
+/** 図形の器。真横から見た長方形なので横長にとる(横幅=タイトルの長さ)。 */
+const SOLID_W = 300;
+const SOLID_H = 190;
 /** 輪の1つぶんの角度。件数が多いときは一周に収まるよう詰める。
  *  ★狭くしすぎないこと。角度が小さいと cos がほとんど変わらず、隣の候補が
  *  同じ大きさ・同じ濃さで並んで「輪」ではなく「団子」に見える(実際そうなった)。 */
@@ -297,10 +297,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
                 style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "block" }}>
                 <SolidCanvas
                   w={SOLID_W} h={SOLID_H}
-                  paint={{
-                    spec: specOf(c), view: "front", tag: c.tag,
-                    texts: { title: c.title, when: c.when, context: c.context, belongings: c.belongings },
-                  }}
+                  paint={{ spec: specOf(c), view: "front", tag: c.tag, title: c.title, seed: c.id }}
                 />
               </button>
             </div>

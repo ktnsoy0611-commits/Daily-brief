@@ -49,6 +49,36 @@ export const SWIPE_THRESHOLD = 90;
 export const SANS = "var(--font-zen-kaku-gothic-new), sans-serif";
 export const SERIF = SANS;
 export const DISPLAY = SANS;
+
+// ★タスクの図形に載る文字の書体。**1文字ごとにここから選ぶ**(2026-08-13に
+// ユーザー指定)。読み込みは app/layout.tsx が行い、ここは組み合わせの表だけを
+// 持つ。★書体を増やすときは layout.tsx とこの表の2箇所だけを触る。
+//
+// 明朝・ゴシック・丸ゴシック・極太 と、太さ・斜体を掛け合わせてある。
+// どれも和文を持つので、日本語の題でも書体の違いがはっきり出る。
+export interface FontFace { family: string; weight: number; italic?: boolean }
+
+// ★和文のフォールバックも系統ごとに変えておく。Googleフォントの和文は
+// 分割配信で遅れて届くことがあり、その間も書体の違いが見えるようにするため。
+const GOTHIC = 'var(--font-zen-kaku-gothic-new), "Hiragino Sans", sans-serif';
+const MINCHO = 'var(--font-zen-old-mincho), "Hiragino Mincho ProN", "Yu Mincho", serif';
+const MARU = 'var(--font-zen-maru-gothic), "Hiragino Maru Gothic ProN", sans-serif';
+const DELA = 'var(--font-dela-gothic-one), "Hiragino Sans", sans-serif';
+
+export const FONT_FACES: FontFace[] = [
+  { family: GOTHIC, weight: 400 },
+  { family: GOTHIC, weight: 700 },
+  { family: GOTHIC, weight: 700, italic: true },
+  { family: MINCHO, weight: 400 },
+  { family: MINCHO, weight: 700 },
+  { family: MINCHO, weight: 900 },
+  { family: MINCHO, weight: 400, italic: true },
+  { family: MARU, weight: 300 },
+  { family: MARU, weight: 500 },
+  { family: MARU, weight: 900 },
+  { family: DELA, weight: 400 },
+  { family: DELA, weight: 400, italic: true },
+];
 // ★ネオバウハウス化(2026-08-02)。それまでは暖色のクリーム地(BG #F2EADA /
 // PAPER #FBF6E9)に、アプリごとに違う地の色(グレージュ・緑)を敷いて「別の
 // アプリにいる」ことを伝えていた。ユーザー指定により、地は**3アプリとも

@@ -9,8 +9,9 @@ import { ViewToggle } from "@/components/tasks/ViewToggle";
 import { appTitle } from "@/lib/apps";
 import { TAB_PAD_TOP } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { boundsOf, silhouette, type SolidSpec } from "@/lib/solid";
-import { peekSolidBitmap, solidBitmap, type SolidPaint, type SolidView } from "@/lib/solidPaint";
+import { frontRect, type SolidSpec } from "@/lib/solid";
+import { clearSolidBitmaps, peekSolidBitmap, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint, type SolidView } from "@/lib/solidPaint";
+import { clearGlyphs, onFontsReady } from "@/lib/textFit";
 import { tagColor } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { dropOrder, massOf, specOf } from "@/lib/taskSize";
@@ -38,12 +39,17 @@ import type { AppState, TabProps, Task } from "@/lib/types";
 // ある」ときだけ回す。全部が寝たら止める(matter.js の enableSleeping)。
 // matter.js は effect の中で dynamic import する(leaflet と同じ手)。
 
-/** 立体の1単位を何pxで描くか。 */
-const UNIT = 32;
+/** 図形の1単位を何pxで描くか。★2026-08-13にユーザー指定で2倍(32→64)。 */
+const UNIT = 64;
 /** 物理の重さの倍率。 */
 const MASS_K = 1.6;
-/** 1フレームに焼いてよい立体の絵の枚数。 */
+/** 1フレームに焼いてよい図形の絵の枚数。 */
 const BAKE_BUDGET = 1;
+/** 1フレームに用意してよいグリフの枚数。
+ *  ★和文のWebフォントは1文字の fillText が数ms〜10msかかる。落下中に
+ *  7個ぶんをまとめて焼くと数秒止まった(実測 fillText 合計2.4秒)ので、
+ *  少しずつ配る。 */
+const GLYPH_BUDGET = 1;
 
 /** 完了したときに飛び散る破片。 */
 interface Shard { x: number; y: number; vx: number; vy: number; r: number; life: number; fill: string }
@@ -54,15 +60,12 @@ interface Piece {
   body: Body;
   spec: SolidSpec;
   paint: SolidPaint;
-  /** シルエットの短辺(破片の大きさに使う)。 */
+  /** 長方形の短辺(破片の大きさに使う)。 */
   girth: number;
 }
 
 const paintOf = (t: Task, view: SolidView): SolidPaint => ({
-  spec: specOf(t),
-  view,
-  tag: t.tag,
-  texts: { title: t.title, when: t.when, context: t.context, belongings: t.belongings },
+  spec: specOf(t), view, tag: t.tag, title: t.title, seed: t.id,
 });
 
 /** 同じ立体か(形が変わったら body を作り直す必要がある)。 */
@@ -98,6 +101,10 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     const { w, h } = sizeRef.current;
     if (!cv || !w || !h) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // ★焼き込みは表示より低い解像度で持つ。UNIT を2倍(64)にしたぶん bitmap の
+    // 面積が4倍になり、dpr2 のまま焼くと1枚 100ms 級で落下がガクついた(実測)。
+    // 文字は太字のベタ塗りなので 1.25x で十分読める。
+    const bakeDpr = Math.min(dpr, 1.25);
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
       cv.width = Math.round(w * dpr);
       cv.height = Math.round(h * dpr);
@@ -113,9 +120,15 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     // いないものはタグ色のベタ塗りで置いておく — どうせ画面の上の方を
     // 落ちてくる最中なので、1〜2フレームぶんは目に入らない。
     let budget = BAKE_BUDGET;
+    let glyphBudget = GLYPH_BUDGET;
     for (const p of piecesRef.current) {
-      let bmp = peekSolidBitmap(p.paint, UNIT, dpr);
-      if (!bmp && budget > 0) { bmp = solidBitmap(p.paint, UNIT, dpr); budget--; }
+      let bmp = peekSolidBitmap(p.paint, UNIT, bakeDpr);
+      if (!bmp) {
+        // ★文字のグリフが揃ってから絵を焼く。揃っていないものは今フレームの
+        // 予算のぶんだけ用意して、残りは次のフレームに回す。
+        if (glyphBudget > 0) glyphBudget -= warmShapeGlyphs(p.paint, glyphBudget);
+        if (budget > 0 && shapeGlyphsReady(p.paint)) { bmp = solidBitmap(p.paint, UNIT, bakeDpr); budget--; }
+      }
       ctx.save();
       ctx.translate(p.body.position.x, p.body.position.y);
       ctx.rotate(p.body.angle);
@@ -135,7 +148,8 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     // まだ焼けていないものが残っていれば、次のフレームでも回す。
     // ★ループの中から wake() を呼んでも「もう回っている」と見なされて何もしない。
     // 止める判定の側で見るためのフラグにしておく。
-    pendingBakeRef.current = budget === 0;
+    pendingBakeRef.current = budget === 0 || glyphBudget === 0
+      || piecesRef.current.some((p) => !peekSolidBitmap(p.paint, UNIT, bakeDpr));
     if (pendingBakeRef.current) wakeRef.current();
 
     for (const s of shardsRef.current) {
@@ -181,6 +195,13 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       }
       rafRef.current = requestAnimationFrame(() => loopRef.current());
     };
+  }, []);
+
+  // ★書体が揃ったら焼いた絵を捨てて描き直す。最初の数フレームは fallback の
+  // 書体で焼かれているため(canvasのフォントは非同期に届く)。
+  useEffect(() => {
+    onFontsReady(() => { clearGlyphs(); clearSolidBitmaps(); wake(); drawRef.current(); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // このアプリを見ていない間は回さない。
@@ -276,11 +297,11 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     dropOrder(tasks, new Date()).forEach((t, i) => {
       if (have.has(t.id)) return;
       const paint = paintOf(t, viewRef.current);
-      const box = boundsOf(silhouette(paint.spec));
-      const hw = ((box.maxX - box.minX) * UNIT) / 2;
+      const rect = frontRect(paint.spec);
+      const hw = (rect.w * UNIT) / 2;
       // 落ちてくる位置は id から決める(開くたびに散らばり方が変わらない)。
-      const x = Math.max(hw + 6, Math.min(w - hw - 6, w * 0.14 + frac(t.id) * w * 0.72));
-      const y = -((box.maxY - box.minY) * UNIT) - i * 130;
+      const x = Math.max(hw + 6, Math.min(Math.max(w - hw - 6, hw + 6), w * 0.14 + frac(t.id) * w * 0.72));
+      const y = -(rect.h * UNIT) - i * 210;
       added.push({ id: t.id, body: makeBody(M, paint.spec, x, y), spec: paint.spec, paint, girth: girthOf(paint.spec) });
     });
     if (added.length) {
@@ -409,21 +430,19 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   );
 }
 
-/** FRONT のシルエットをそのまま当たり判定にする。重さは断面積 × 長さから。 */
+/** ★当たり判定は FRONT の長方形。**ビューを切り替えても作り直さない**
+ *  (作り直すと山が崩れる)。BOTTOM は同じ位置・同じ回転のまま絵だけ差し替える。 */
 function makeBody(M: typeof import("matter-js"), spec: SolidSpec, x: number, y: number): Body {
-  const hull = silhouette(spec).map((p) => ({ x: p.x * UNIT, y: p.y * UNIT }));
-  const body = M.Bodies.fromVertices(x, y, [hull], {
+  const { w, h } = frontRect(spec);
+  const body = M.Bodies.rectangle(x, y, w * UNIT, h * UNIT, {
     restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012,
   });
   M.Body.setMass(body, massOf(spec) * MASS_K);
   return body;
 }
 
-/** シルエットの短辺(px)。破片の大きさに使う。 */
-function girthOf(spec: SolidSpec): number {
-  const box = boundsOf(silhouette(spec));
-  return Math.min(box.maxX - box.minX, box.maxY - box.minY) * UNIT;
-}
+/** 長方形の短辺(px)。破片の大きさに使う。 */
+const girthOf = (spec: SolidSpec): number => Math.min(frontRect(spec).w, frontRect(spec).h) * UNIT;
 
 /** 器の左右と床。器の大きさが変わるたびに作り直す。
  *  床はタブバーの下ではなく、その少し上に置く(タブバーの裏に積まれると

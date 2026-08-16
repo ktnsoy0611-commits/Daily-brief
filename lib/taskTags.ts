@@ -1,19 +1,26 @@
-import { BLUE, GOLD, GREEN, PLUM, SLATE } from "./constants";
+import { SCHEME } from "./constants";
 import type { TaskTag } from "./types";
 
 // ★タスクのタグ。**固定の5つ**から選ぶ(2026-08-13にユーザー確定)。
-// 立体の上下の面(cap)の色になり、BOTTOM VIEW ではこの色面と英字だけが見える。
-// 表示は**英字のみ**(日本語は出さない)。
+// 図形の全面の色になり、そこに載る文字(FRONT=題 / BOTTOM=タグの英字)の色も
+// タグが決める。表示は**英字のみ**(日本語は出さない)。
 // 自由入力にすると似たタグが増えて色が似通い、山の中で見分けが付かなくなる。
+//
+// ★色は**スキームの組をそのまま**当てる(2026-08-16にユーザー確定・参照画像)。
+// 「図形の色」と「文字の色」は画像の組み合わせどおりで、タグと**一対一対応**。
+// 明度から白黒を選ぶ(inkOn)のはやめた — 相方の色は画像が決めている。
 
-export interface TagDef { id: TaskTag; label: string; color: string }
+export interface TagDef { id: TaskTag; label: string; color: string; ink: string }
+
+const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }): TagDef =>
+  ({ id, label, color: p.bg, ink: p.ink });
 
 export const TASK_TAGS: TagDef[] = [
-  { id: "work", label: "WORK", color: BLUE },
-  { id: "life", label: "LIFE", color: GREEN },
-  { id: "wellness", label: "WELLNESS", color: GOLD },
-  { id: "social", label: "SOCIAL", color: PLUM },
-  { id: "growth", label: "GROWTH", color: SLATE },
+  tag("work", "WORK", SCHEME.sky),          // 空 × 淡い緑
+  tag("life", "LIFE", SCHEME.forest),       // 深緑 × 淡いピンク
+  tag("wellness", "WELLNESS", SCHEME.yellow), // 黄 × 朱
+  tag("social", "SOCIAL", SCHEME.pink),     // ピンク × 濃い赤紫
+  tag("growth", "GROWTH", SCHEME.navy),     // 濃紺 × ピンク
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>
@@ -24,6 +31,9 @@ export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>
 // 何のタスクか読めないうえ、5色の家族から浮く。タグが決まっていないものは
 // resolveTag() が必ず何か1つに割り当てる。
 export const tagColor = (id: TaskTag | undefined): string => tagDef(id)?.color ?? TASK_TAGS[0].color;
+
+/** その色面の上に載せる文字の色。**画像の組み合わせをそのまま使う。** */
+export const tagInk = (id: TaskTag | undefined): string => tagDef(id)?.ink ?? TASK_TAGS[0].ink;
 
 export const tagLabel = (id: TaskTag | undefined): string => tagDef(id)?.label ?? TASK_TAGS[0].label;
 

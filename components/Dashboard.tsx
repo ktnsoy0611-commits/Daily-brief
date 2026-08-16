@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { TAB_ICON_OFF, TabGlyph } from "@/components/TabIcons";
 import { TaskRow } from "@/components/TaskRow";
 import type { AppDef } from "@/lib/apps";
-import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, TAB_MARK } from "@/lib/constants";
+import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, RUST_TINT, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, TAB_MARK } from "@/lib/constants";
 import { haptic, img, todayKey, todayLabel } from "@/lib/helpers";
 import type { AppState, PlanSelection, TabId } from "@/lib/types";
 
@@ -77,7 +77,7 @@ function SelectedRow({ title, image, color, onRemove }: {
       </div>
       <div style={{ flex: 1, minWidth: 0, fontFamily: SANS, fontSize: 12.5, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
       <button onClick={() => { haptic(6); onRemove(); }} aria-label={`${title}を外す`} style={{
-        width: 26, height: 26, borderRadius: "50%", border: "none", background: "rgba(193,80,46,0.12)", color: RUST,
+        width: 26, height: 26, borderRadius: "50%", border: "none", background: RUST_TINT, color: RUST,
         display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0,
       }}>
         <X size={13} strokeWidth={2.4} />
@@ -256,7 +256,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
                 {entries.length > 0 && (
                   <button onClick={() => { haptic(6); onClearSelection(); }} aria-label="すべて外す" style={{
                     width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer",
-                    background: "rgba(193,80,46,0.12)", color: RUST, display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+                    background: RUST_TINT, color: RUST, display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
                   }}><X size={14} strokeWidth={2.4} /></button>
                 )}
               </div>

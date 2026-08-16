@@ -2,7 +2,7 @@
 
 import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-react";
 import { memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
 import { GeoText } from "./GeoType";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
@@ -189,7 +189,7 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
           {onToggleGood && (
             <button onClick={(e) => { e.stopPropagation(); onToggleGood(); }} aria-label="良かった" style={{
               width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0,
-              background: good ? "#D9A441" : "rgba(26,26,24,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+              background: good ? GOLD : "rgba(26,26,24,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
             }}>
               <Star size={14} fill={good ? "#fff" : "none"} color="#fff" strokeWidth={2} />
             </button>

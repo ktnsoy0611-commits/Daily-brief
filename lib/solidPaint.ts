@@ -2,8 +2,8 @@ import {
   boundsOf, frontRect, innerBox, sectionOutline, slabRects,
   type Pt, type SolidSpec,
 } from "./solid";
-import { tagColor, tagLabel } from "./taskTags";
-import { drawFitted, fitText, inkOn, missingGlyphs, requestFonts, warmGlyphs } from "./textFit";
+import { tagColor, tagInk, tagLabel } from "./taskTags";
+import { drawFitted, fitText, missingGlyphs, requestFonts, warmGlyphs } from "./textFit";
 import type { TaskTag } from "./types";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
@@ -13,8 +13,8 @@ import type { TaskTag } from "./types";
 //   BOTTOM … 断面の形(円/半円/三角/四角)。**形は正しいまま**、足あとの高さに
 //            合わせて中央へ。**タグの英字**を図形いっぱいに。
 //
-// 色はどちらもタグの色を全面に。文字は下地の明るさで白か黒、1文字ごとに
-// 違う書体(lib/textFit.ts)。
+// 色はどちらもタグの色を全面に。**文字の色もタグが決める**(画像の組み合わせ
+// との一対一対応・2026-08-16確定)。書体は図形ごとに1つ(lib/textFit.ts)。
 //
 // ★図形まるごとを1枚のビットマップに焼いてキャッシュする(性能の要)。
 // matter.js の物体は画面内の2D回転しかしないので、キャッシュした絵を
@@ -50,7 +50,7 @@ const poly = (ctx: CanvasRenderingContext2D, pts: Pt[], unit: number, cx = 0, cy
 /** 図形を、原点(0,0)を中心に ctx へ描く。単位は solid 座標 × unit(px)。 */
 export function paintShape(ctx: CanvasRenderingContext2D, p: SolidPaint, unit = UNIT_PX) {
   const fill = tagColor(p.tag);
-  const ink = inkOn(fill);
+  const ink = tagInk(p.tag);
   // 使う書体の読み込みを頼んでおく(まだなら fallback で描かれ、揃った時点で
   // 呼び出し側が絵を作り直す)。
   requestFonts(p.title + tagLabel(p.tag));
@@ -97,12 +97,12 @@ const seedOf = (p: SolidPaint) => (p.view === "bottom" ? `${p.seed}|tag` : p.see
  * 呼び出し側はフレームごとに少しずつ配ること。
  */
 export function warmShapeGlyphs(p: SolidPaint, budget: number): number {
-  return warmGlyphs(textOf(p), seedOf(p), inkOn(tagColor(p.tag)), budget);
+  return warmGlyphs(textOf(p), seedOf(p), tagInk(p.tag), budget);
 }
 
 /** その図形を今すぐ焼けるか(グリフが全部そろっているか)。 */
 export const shapeGlyphsReady = (p: SolidPaint): boolean =>
-  missingGlyphs(textOf(p), seedOf(p), inkOn(tagColor(p.tag))) === 0;
+  missingGlyphs(textOf(p), seedOf(p), tagInk(p.tag)) === 0;
 
 /** その絵が占める範囲(solid 座標)。ビットマップの大きさを決めるのに使う。 */
 export function shapeBounds(p: SolidPaint) {

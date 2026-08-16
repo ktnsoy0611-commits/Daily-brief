@@ -5,9 +5,8 @@ import { createPortal } from "react-dom";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { BG, INK, MUTED, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { nextTag, resolveTag, tagColor, tagLabel } from "@/lib/taskTags";
+import { nextTag, resolveTag, tagColor, tagInk, tagLabel } from "@/lib/taskTags";
 import { specOf } from "@/lib/taskSize";
-import { inkOn } from "@/lib/textFit";
 import { SIDE_LABEL } from "@/lib/types";
 import type { SideKey, SubTask, TaskSuggestion, TaskTag, TaskWeight } from "@/lib/types";
 
@@ -204,10 +203,10 @@ export function TaskSheet({ data, mode, from = "bottom", autoEdit, onChange, onC
           <button onClick={() => { haptic(6); onChange({ tag: nextTag(tag) }); }}
             aria-label="タグを変える"
             style={{ gridColumn: 4, gridRow: 3, ...cellStyle(tagColor(tag)) }}>
-            <span style={{ ...labelStyle, color: inkOn(tagColor(tag)), opacity: 0.7 }}>TAG</span>
+            <span style={{ ...labelStyle, color: tagInk(tag), opacity: 0.7 }}>TAG</span>
             <span style={{
               fontFamily: SANS, fontWeight: 700, fontSize: 13, letterSpacing: "0.04em", textAlign: "left",
-              color: inkOn(tagColor(tag)),
+              color: tagInk(tag),
             }}>{tagLabel(tag)}</span>
           </button>
         </NetGrid>

@@ -4,24 +4,30 @@
 // 写真は生成カードが持つOGP画像(og:image)をそのまま引き継ぐ。無ければ images:[] で
 // 現行の「写真が無いカードは色ベタ+字面」表示になる。
 
-import { shade } from "@/lib/helpers";
+import { INK, SCHEME } from "@/lib/constants";
 import type { BriefCard, ItemKind } from "@/lib/types";
 import type { GeneratedCard } from "@/lib/briefPipeline";
 
-const PAPER_FG = "#F3ECDD";
+/** スキームの1組を、カードの「地」と「字面」へそのまま写す。 */
+function pair(p: { bg: string; ink: string }) { return { color: p.bg, fg: p.ink }; }
 
-// kind → 表示意匠。color は暗めの下地(明るい字面 PAPER_FG が乗る前提)。
-const KIND_STYLE: Record<ItemKind, { category: string; categoryJp: string; glyph: string; color: string }> = {
-  place:      { category: "PLACE",       categoryJp: "場所",   glyph: "場", color: "#33633F" },
-  exhibition: { category: "EXHIBITION",  categoryJp: "展覧会", glyph: "展", color: "#2C4E74" },
-  live:       { category: "LIVE",        categoryJp: "ライブ", glyph: "演", color: "#2A4A3A" },
-  activity:   { category: "ACTIVITY",    categoryJp: "体験",   glyph: "体", color: "#7A4432" },
-  food:       { category: "FOOD",        categoryJp: "食",     glyph: "食", color: "#8A3C2A" },
-  movie:      { category: "CINEMA",      categoryJp: "映画",   glyph: "映", color: "#1A1A18" },
-  book:       { category: "BOOK",        categoryJp: "本",     glyph: "本", color: "#6B4A2E" },
-  album:      { category: "MUSIC",       categoryJp: "音楽",   glyph: "音", color: "#A67A2E" },
-  info:       { category: "INFO",        categoryJp: "情報",   glyph: "報", color: "#3E5468" },
-  thing:      { category: "THING",       categoryJp: "もの",   glyph: "物", color: "#8A6B2E" },
+// kind → 表示意匠。★色はカラースキームの組をそのまま当てる(2026-08-16)。
+// 地(color)と字面(fg)は必ず同じ組から取る — 明るい地に明るい字が乗る事故を
+// 構造的に防ぐため、片方だけを差し替えられないようにしてある。
+// 墨(INK)だけは無彩色なので、相方に淡いピンクを借りる。
+const KIND_STYLE: Record<ItemKind, {
+  category: string; categoryJp: string; glyph: string; color: string; fg: string;
+}> = {
+  place:      { category: "PLACE",      categoryJp: "場所",   glyph: "場", ...pair(SCHEME.forest) },
+  exhibition: { category: "EXHIBITION", categoryJp: "展覧会", glyph: "展", ...pair(SCHEME.navy) },
+  live:       { category: "LIVE",       categoryJp: "ライブ", glyph: "演", ...pair(SCHEME.violet) },
+  activity:   { category: "ACTIVITY",   categoryJp: "体験",   glyph: "体", ...pair(SCHEME.orange) },
+  food:       { category: "FOOD",       categoryJp: "食",     glyph: "食", ...pair(SCHEME.red) },
+  movie:      { category: "CINEMA",     categoryJp: "映画",   glyph: "映", color: INK, fg: SCHEME.forest.ink },
+  book:       { category: "BOOK",       categoryJp: "本",     glyph: "本", ...pair(SCHEME.wine) },
+  album:      { category: "MUSIC",      categoryJp: "音楽",   glyph: "音", ...pair(SCHEME.yellow) },
+  info:       { category: "INFO",       categoryJp: "情報",   glyph: "報", ...pair(SCHEME.sky) },
+  thing:      { category: "THING",      categoryJp: "もの",   glyph: "物", ...pair(SCHEME.pink) },
 };
 const FALLBACK_STYLE = KIND_STYLE.info;
 
@@ -60,8 +66,10 @@ export function generatedToBriefCard(gc: GeneratedCard, id: number): BriefCard {
     detail: gc.detail,
     meta: cleanMeta.length ? cleanMeta : undefined,
     bg: s.color,
-    fg: PAPER_FG,
-    accent: shade(s.color, 45),
+    fg: s.fg,
+    // 差し色も同じ組の相方から取る(shade で明るくすると、黄や空の地では
+    // 地に溶けて消えてしまう)。
+    accent: s.fg,
     images: gc.images ?? [],
     sourceUrl: gc.sourceUrl,
     sourceLabel,

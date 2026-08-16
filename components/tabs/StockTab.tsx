@@ -6,7 +6,7 @@ import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomS
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn, SectionLabel } from "@/components/common";
 import { TabIcon } from "@/components/TabIcons";
 import { appTitle } from "@/lib/apps";
-import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
+import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, RUST_EDGE, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
 import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
 
@@ -384,7 +384,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
                 {selected ? "＋ 追加済み" : "＋ プランに追加"}
               </button>
               <button onClick={() => { markItemDone(itemDetail!.id); close(); }} style={rowBtn("transparent", INK, "rgba(26,26,24,0.3)")}>{itemKindOf(itemDetail!.kind).doneActionLabel}</button>
-              <button onClick={() => { removeItem(itemDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+              <button onClick={() => { removeItem(itemDetail!.id); close(); }} style={rowBtn("transparent", RUST, RUST_EDGE)}>削除</button>
             </div>
           );
         }} />
@@ -403,7 +403,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
             {!wishDetailBound && (
               <button onClick={() => { makeGoal(wishDetail!); close(); }} style={rowBtn("transparent", GREEN, GREEN)}>ゴールにする</button>
             )}
-            <button onClick={() => { removeWish(wishDetail!.id); close(); }} style={rowBtn("transparent", RUST, "rgba(168,85,47,0.4)")}>削除</button>
+            <button onClick={() => { removeWish(wishDetail!.id); close(); }} style={rowBtn("transparent", RUST, RUST_EDGE)}>削除</button>
           </div>
         )} />
     </>

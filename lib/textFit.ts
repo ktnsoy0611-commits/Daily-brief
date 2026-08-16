@@ -258,10 +258,6 @@ export function drawFitted(
   });
 }
 
-/** 下地の色の明るさから、白と黒のどちらで書くかを決める。 */
-export function inkOn(hex: string, light = "#FFFFFF", dark = "#111110"): string {
-  const n = hex.replace("#", "");
-  const v = parseInt(n.length === 3 ? n.split("").map((c) => c + c).join("") : n, 16);
-  const lum = (0.2126 * ((v >> 16) & 255) + 0.7152 * ((v >> 8) & 255) + 0.0722 * (v & 255)) / 255;
-  return lum > 0.58 ? dark : light;
-}
+// ★以前ここにあった inkOn(下地の明度から白か黒を選ぶ)は削除した。
+// 文字の色はカラースキームの組が決める(lib/taskTags.ts の tagInk)ので、
+// 明度から機械的に選ぶと画像の組み合わせと食い違う(2026-08-16確定)。

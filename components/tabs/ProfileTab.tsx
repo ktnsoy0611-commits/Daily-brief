@@ -4,7 +4,7 @@ import { Activity, BarChart3, Heart, Link2, RotateCcw, Sparkles, X } from "lucid
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
-import { BLUE, FIXED_SOURCES, HAIRLINE, INK, MUTED, PAPER, RUST, SANS, SERIF } from "@/lib/constants";
+import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SERIF } from "@/lib/constants";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -65,13 +65,13 @@ function SettingsCard({ label, icon: Icon, children }: { label: string; icon?: I
 }
 
 // 削除・取り消しの丸いアイコンボタン。PlanSelectionBarの「選択を外す」と
-// 同じ語彙(rgba(168,85,47,0.12)地+RUST)に揃え、テキストの「削除」
+// 同じ語彙(RUST_TINT 地 + RUST)に揃え、テキストの「削除」
 // 「元に戻す」のような素のテキストボタンをやめて画面内のボタンをすべて
 // 同じ形式にする。
 function IconButton({ onClick, label, children }: { onClick: () => void; label: string; children: React.ReactNode }) {
   return (
     <button onClick={onClick} aria-label={label} style={{
-      width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(168,85,47,0.12)", color: RUST,
+      width: 28, height: 28, borderRadius: "50%", border: "none", background: RUST_TINT, color: RUST,
       display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0,
     }}>
       {children}
@@ -716,7 +716,7 @@ export function ProfileTab({ appState, persist, onClose }: {
             }}>本当に削除？（元に戻せません）</button>
           ) : (
             <button onClick={() => arm("clear-test")} style={{
-              width: "100%", padding: "11px 0", background: "transparent", color: RUST, border: `1.5px solid rgba(168,85,47,0.5)`,
+              width: "100%", padding: "11px 0", background: "transparent", color: RUST, border: `1.5px solid ${RUST_EDGE}`,
               borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
             }}>デモ・テストデータを削除</button>
           )}
@@ -823,11 +823,11 @@ export function ProfileTab({ appState, persist, onClose }: {
               {genSites.map((s, i) => (
                 <div key={i} style={{ fontSize: 10, color: MUTED, marginBottom: 6, lineHeight: 1.6 }}>
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    <span style={{ color: s.fetched ? "#33633F" : RUST }}>{s.fetched ? "✓" : "×"}</span> {s.source}
+                    <span style={{ color: s.fetched ? GREEN : RUST }}>{s.fetched ? "✓" : "×"}</span> {s.source}
                   </div>
                   {s.fetched && (
                     <div style={{ paddingLeft: 14 }}>
-                      候補<span style={{ color: (s.candidates ?? 0) > 0 ? "#33633F" : RUST, fontWeight: 700 }}>{s.candidates ?? 0}</span>件 ／ Markdown中のリンク:{s.linkCount}
+                      候補<span style={{ color: (s.candidates ?? 0) > 0 ? GREEN : RUST, fontWeight: 700 }}>{s.candidates ?? 0}</span>件 ／ Markdown中のリンク:{s.linkCount}
                     </div>
                   )}
                 </div>
@@ -840,7 +840,7 @@ export function ProfileTab({ appState, persist, onClose }: {
               <div style={{ fontSize: 8.5, letterSpacing: "0.14em", color: MUTED, fontWeight: 700, marginBottom: 6 }}>取得したページ（✓=Markdown取得成功）→ 抽出候補{genCandidateCount}件</div>
               {genPagesRead.map((s, i) => (
                 <div key={i} style={{ fontSize: 10, color: MUTED, marginBottom: 3, display: "flex", gap: 6 }}>
-                  <span style={{ color: s.ok ? "#33633F" : RUST, flexShrink: 0 }}>{s.ok ? "✓" : "×"}</span>
+                  <span style={{ color: s.ok ? GREEN : RUST, flexShrink: 0 }}>{s.ok ? "✓" : "×"}</span>
                   <a href={s.url} target="_blank" rel="noopener noreferrer"
                     style={{ color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.url}</a>
                 </div>

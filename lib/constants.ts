@@ -99,14 +99,45 @@ export const SHADE = "#E9E9E6";
 export const SHADE_DEEP = "#E0E0DC";
 // 補助の文字色。以前は各所で "#9A988E" を直書きしていたものをここへ集約した。
 export const MUTED = "#8E8E88";
-export const BLUE = "#2C6E8A";
-export const RUST = "#C1502E";
-export const GREEN = "#33633F";
-export const GOLD = "#C79433";
-// タスクのタグ用に2色だけ足す。既存の4色と同じ「くすんだ中間色」の register を
-// 守ってあるので、アプリ全体の色の語彙からはみ出さない。
-export const PLUM = "#6E4270";
-export const SLATE = "#4A5560";
+
+// ── カラースキーム(2026-08-16にユーザー指定・参照画像=Spotifyの配色見本) ──
+//
+// ★**色の出どころはここ1つ**。9つの「地の色 × その上に載る文字の色」の組。
+// 使うのは**地の色**の方で、それがアプリの基本の色になる。文字の色は、
+// その地の上に文字や図形を載せるときだけ相方として使う。
+//
+// ★無彩色(INK / PAPER / BG / SHADE / MUTED / BD_GREY / JOURNAL_* など)は
+// この置き換えの対象外。地とタイトルのグレースケールは今までどおり。
+export interface ColorPair {
+  /** 地の色。これが「その色」の正体。 */
+  bg: string;
+  /** その地の上に載せる文字・図形の色。 */
+  ink: string;
+}
+export const SCHEME = {
+  pink: { bg: "#F76FA1", ink: "#4B2438" },
+  orange: { bg: "#FA6E31", ink: "#1B2B4F" },
+  sky: { bg: "#509BF5", ink: "#C4F0C5" },
+  red: { bg: "#EE1B33", ink: "#F9C3C9" },
+  violet: { bg: "#4100F5", ink: "#FFFFFF" },
+  yellow: { bg: "#F5E837", ink: "#EF3E23" },
+  navy: { bg: "#1E3264", ink: "#F573A0" },
+  wine: { bg: "#8C1932", ink: "#A3E3C8" },
+  forest: { bg: "#04624A", ink: "#F7D6D3" },
+} as const satisfies Record<string, ColorPair>;
+
+// アプリが前から持っている6つのアクセントの名前は変えず、**中身をスキームの
+// 地の色へ差し替える**。呼び出し側(数十箇所)はそのまま新しい色になる。
+// どれを当てるかは「元の色相を保つ」ことと「その色の上に何が載るか」で決めた。
+export const BLUE = SCHEME.violet.bg;   // 選択中・リンク。濃いので細い字でも読める
+export const RUST = SCHEME.red.bg;      // 削除・エラー。警告として最も強い赤
+export const GREEN = SCHEME.forest.bg;  // 肯定・達成
+export const GOLD = SCHEME.orange.bg;   // ★白い ✓ を載せる面。黄だと白が消える
+export const PLUM = SCHEME.wine.bg;
+export const SLATE = SCHEME.navy.bg;
+/** RUST の淡い敷き。以前は rgba(193,80,46,…) を各所に直書きしていた。 */
+export const RUST_TINT = "rgba(238,27,51,0.12)";
+export const RUST_EDGE = "rgba(238,27,51,0.45)";
 export const HAIRLINE = "rgba(26,26,24,0.08)";
 // カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
 export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";
@@ -122,12 +153,9 @@ export const HEADER_CHIP_SIZE = 40;
 export const ITEM_CARD_ASPECT = "3 / 4";
 export const GOAL_CARD_ASPECT = ITEM_CARD_ASPECT;
 
-// 色数を絞った、写真が映えるための控えめなパレット。以前は8色の
-// ビビッドな色相を持っていたが、カードが並んだ時に色がぶつかり合って
-// ごちゃついたため、渋めで馴染みやすい4色まで減らした。参考画像に
-// 合わせ、紫系をやめてバウハウスの5色(黒・マスタード・コーラル・
-// ティール・深緑)の家族に揃えている。
-export const POSTER_PALETTE = ["#2C4E74", GOLD, RUST, GREEN];
+// 文字だけのカードの地。スキームの地の色から、濃さの違う4つを選ぶ
+// (白い文字が載るので、明るい黄・空・ピンクは使わない)。
+export const POSTER_PALETTE = [SCHEME.navy.bg, SCHEME.orange.bg, SCHEME.red.bg, SCHEME.forest.bg];
 
 // ★タブバーの寸法。選択中の印は**正円**で、その直径がそのまま
 // ピルの内側の高さになる(ピルの高さ = TAB_MARK + NAV_PILL_PAD * 2 = 64)。

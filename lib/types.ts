@@ -252,7 +252,12 @@ export interface Task extends TaskSides {
   id: string;
   title: string;
   // 予定日(YYYY-MM-DD)。無いものは「いつか」扱い。落ちてくる順に効く。
+  // ★**大きさ(切迫度)に効くのはこの1つだけ**。下の2つは表示のためだけ。
   dueDate?: string;
+  // 終了日(YYYY-MM-DD)。期間のときだけ入る(2026-08-17にユーザー指定)。
+  endDate?: string;
+  // 時刻("HH:MM")。無ければ終日。
+  dueTime?: string;
   done: boolean;
   doneAt?: string;
   createdAt: string;
@@ -301,6 +306,8 @@ export interface InboxCandidate extends TaskSides {
   title: string;
   // 予定日(YYYY-MM-DD)。2番目の面。確定するとそのままタスクの dueDate になる。
   dueDate?: string;
+  endDate?: string;
+  dueTime?: string;
   // Free Text(Coworkが書いた補足。確定するとタスクの note になる)。
   note?: string;
   // 重要度の見立て。Coworkが書いてくれば入る(未設定なら中扱い)。

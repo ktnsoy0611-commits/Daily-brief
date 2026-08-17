@@ -19,10 +19,21 @@ export const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${p
 /** 月送りをスワイプで決める閾値(px)。 */
 const SWIPE = 44;
 
-/** 期日。日は円。今日は輪、選んだ日はベタ塗り。**横スワイプで月送り**。 */
-export function Calendar({ value, onPick }: {
+/**
+ * 期日。日は円。今日は輪、選んだ日はベタ塗り。**横スワイプで月送り**。
+ *
+ * ★**期間と時刻**を持つ(2026-08-17にユーザー指定):
+ *   1回目のタップ = 開始日(dueDate)
+ *   別の日をタップ = そこまでが期間(endDate)。開始より前なら入れ替える
+ *   同じ日を再タップ = 解除
+ *   時刻 = 「終日 / 時刻」の切り替えと、時・分のチップ(dueTime)
+ * ★大きさ(切迫度)に効くのは dueDate だけ。endDate と dueTime は表示のため。
+ */
+export function Calendar({ value, end, time, onPick }: {
   value?: string;
-  onPick: (v: string | undefined) => void;
+  end?: string;
+  time?: string;
+  onPick: (v: { dueDate?: string; endDate?: string; dueTime?: string }) => void;
 }) {
   const today = new Date();
   const base = value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : today;
@@ -52,6 +63,16 @@ export function Calendar({ value, onPick }: {
     if (Math.abs(moved) > SWIPE) step(moved < 0 ? 1 : -1);
   };
 
+  /** 日をタップしたとき。1つ目=開始 / 2つ目=期間 / 同じ日=解除。 */
+  const tap = (iso: string) => {
+    haptic(6);
+    if (iso === value && !end) return onPick({ dueDate: undefined, endDate: undefined, dueTime: undefined });
+    if (!value || end) return onPick({ dueDate: iso, endDate: undefined, dueTime: time });
+    if (iso === value) return onPick({ dueDate: iso, endDate: undefined, dueTime: time });
+    const [a, b] = iso < value ? [iso, value] : [value, iso];
+    onPick({ dueDate: a, endDate: b, dueTime: time });
+  };
+
   const first = new Date(cursor.y, cursor.m, 1);
   const days = new Date(cursor.y, cursor.m + 1, 0).getDate();
   const cells: (number | null)[] = [
@@ -62,7 +83,7 @@ export function Calendar({ value, onPick }: {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
         <Arrow dir={-1} onClick={() => step(-1)} />
         <span style={{ ...CAP, fontSize: 12, letterSpacing: "0.14em", color: INK }}>
           {cursor.y} / {pad(cursor.m + 1)}
@@ -75,31 +96,39 @@ export function Calendar({ value, onPick }: {
         style={{ touchAction: "pan-y", overflow: "hidden" }}
       >
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 1,
+          display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
           transform: `translateX(${dx}px)`,
           transition: dragRef.current ? "none" : "transform 260ms cubic-bezier(0.16,1,0.3,1)",
         }}>
           {["S", "M", "T", "W", "T", "F", "S"].map((w, i) => (
-            <span key={i} style={{ ...CAP, fontSize: 8.5, color: MUTED, textAlign: "center", paddingBottom: 4 }}>{w}</span>
+            <span key={i} style={{ ...CAP, fontSize: 8.5, color: MUTED, textAlign: "center", paddingBottom: 2 }}>{w}</span>
           ))}
           {cells.map((d, i) => {
             if (d === null) return <span key={i} />;
             const iso = `${cursor.y}-${pad(cursor.m + 1)}-${pad(d)}`;
-            const on = iso === value;
+            const isStart = iso === value;
+            const isEnd = !!end && iso === end;
+            const inRange = !!value && !!end && iso > value && iso < end;
+            const on = isStart || isEnd;
             const isToday = iso === ymd(today);
             return (
-              <span key={i} style={{ display: "flex", justifyContent: "center", height: 38 }}>
+              // 期間は帯で塗る。両端の丸と地続きに見えるよう、帯は角を丸めない。
+              <span key={i} style={{
+                display: "flex", justifyContent: "center", alignItems: "center", height: 34,
+                background: inRange ? "rgba(26,26,24,0.08)" : "transparent",
+                borderRadius: inRange ? 0 : undefined,
+              }}>
                 <button
-                  onClick={() => { haptic(6); onPick(on ? undefined : iso); }}
+                  onClick={() => tap(iso)}
                   aria-label={`${cursor.m + 1}月${d}日`}
                   aria-pressed={on}
                   className="tc-lamp"
                   style={{
-                    width: 34, height: 34, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
+                    width: 32, height: 32, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
                     background: on ? INK : "transparent",
                     boxShadow: !on && isToday ? `inset 0 0 0 1.5px ${RUST}` : "none",
                     color: on ? PAPER : INK,
-                    fontFamily: SANS, fontSize: 13.5, fontWeight: on ? 700 : 500,
+                    fontFamily: SANS, fontSize: 13, fontWeight: on ? 700 : 500,
                   }}
                 >{d}</button>
               </span>
@@ -108,12 +137,62 @@ export function Calendar({ value, onPick }: {
         </div>
       </div>
 
-      <button onClick={() => { haptic(6); onPick(undefined); }} style={{
-        marginTop: 8, width: "100%", height: 40, borderRadius: 999, border: "none", cursor: "pointer",
-        background: value ? "rgba(26,26,24,0.06)" : "transparent",
-        boxShadow: value ? "none" : `inset 0 0 0 1.5px rgba(26,26,24,0.14)`,
-        ...CAP, fontSize: 10, color: MUTED,
-      }}>NO DATE</button>
+      {/* 時刻。終日と切り替え、時と分をチップで選ぶ。 */}
+      <TimeRow
+        value={time}
+        disabled={!value}
+        onChange={(t) => onPick({ dueDate: value, endDate: end, dueTime: t })}
+      />
+
+      <button onClick={() => { haptic(6); onPick({ dueDate: undefined, endDate: undefined, dueTime: undefined }); }}
+        style={{
+          marginTop: 6, width: "100%", height: 36, borderRadius: 999, border: "none", cursor: "pointer",
+          background: value ? "rgba(26,26,24,0.06)" : "transparent",
+          boxShadow: value ? "none" : `inset 0 0 0 1.5px rgba(26,26,24,0.14)`,
+          ...CAP, fontSize: 10, color: MUTED,
+        }}>NO DATE</button>
+    </div>
+  );
+}
+
+/** 時刻。「終日」と、時・分のチップの列。横に送って選ぶ。 */
+function TimeRow({ value, disabled, onChange }: {
+  value?: string;
+  disabled: boolean;
+  onChange: (t: string | undefined) => void;
+}) {
+  const [h, m] = (value ?? "09:00").split(":");
+  const chip = (on: boolean): React.CSSProperties => ({
+    flexShrink: 0, height: 30, minWidth: 34, padding: "0 9px", borderRadius: 999, border: "none",
+    cursor: "pointer", background: on ? INK : "rgba(26,26,24,0.06)", color: on ? PAPER : INK,
+    fontFamily: SANS, fontSize: 12.5, fontWeight: on ? 700 : 500,
+  });
+  return (
+    <div style={{ marginTop: 8, opacity: disabled ? 0.4 : 1, pointerEvents: disabled ? "none" : "auto" }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <button onClick={() => { haptic(6); onChange(undefined); }} className="tc-lamp"
+          aria-label="終日" aria-pressed={!value} style={{ ...chip(!value), flex: 1 }}>終日</button>
+        <button onClick={() => { haptic(6); onChange(value ?? "09:00"); }} className="tc-lamp"
+          aria-label="時刻を指定" aria-pressed={!!value} style={{ ...chip(!!value), flex: 1 }}>
+          {value ?? "時刻"}
+        </button>
+      </div>
+      {!!value && (
+        <>
+          <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 5 }}>
+            {Array.from({ length: 24 }, (_, i) => pad(i)).map((hh) => (
+              <button key={hh} onClick={() => onChange(`${hh}:${m}`)} aria-label={`${Number(hh)}時`}
+                style={chip(hh === h)}>{Number(hh)}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 4 }}>
+            {["00", "10", "20", "30", "40", "50"].map((mm) => (
+              <button key={mm} onClick={() => onChange(`${h}:${mm}`)} aria-label={`${Number(mm)}分`}
+                style={{ ...chip(mm === m), flex: 1 }}>{mm}</button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

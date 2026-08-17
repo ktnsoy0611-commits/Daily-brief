@@ -70,6 +70,35 @@ function resolveFamily(family: string): string {
 const listeners = new Set<() => void>();
 const notify = () => { clearGlyphs(); for (const cb of listeners) cb(); };
 
+/**
+ * ★★**`document.fonts` には「先頭の family だけ」を渡すこと。**
+ *
+ * next/font は `--font-dela-gothic-one` を
+ * `"Dela Gothic One", "Dela Gothic One Fallback"` に展開する。後ろの
+ * *Fallback* は**端末にあるフォントに寸法だけ合わせた local()** なので、
+ * **いつでも「読み込み済み」**。だからスタックごと渡すと
+ *   - `load()`  … Fallback で即 resolve し、**本物の断片を取りに行かない**
+ *   - `check()` … Fallback があるので常に false/true が当てにならない
+ * となる。実測: スタックで load → 塗り率 17%(素のサンセリフ)のまま。
+ * 先頭だけで load → 37.9%(本物の Dela)。
+ *
+ * つまりこれを間違えると、**和文のディスプレイ書体は一度も表示されない**
+ * (2026-08-17に判明。それまでの「書体の違い」は太さと斜体の合成だけだった)。
+ */
+function primaryFamily(family: string): string {
+  return resolveFamily(family).split(",")[0].trim();
+}
+
+const loadFont = (f: FontFace, size: number): string =>
+  `${f.italic ? "italic " : ""}${f.weight} ${size}px ${primaryFamily(f.family)}`;
+
+/** その書体が**その文字を本当に描けるか**(＝本物の断片が届いているか)。 */
+export function fontReady(face: number, text: string): boolean {
+  if (typeof document === "undefined" || !document.fonts?.check) return true;
+  try { return document.fonts.check(loadFont(FONT_FACES[clampFace(face)], GLYPH_PX), text || "あ"); }
+  catch { return true; }
+}
+
 /** その (書体, 文字) の組を取りに行く。**焼く直前に必ず呼ぶこと。** */
 const asked = new Set<string>();
 export function ensureGlyphs(face: number, text: string) {
@@ -82,14 +111,15 @@ export function ensureGlyphs(face: number, text: string) {
     return true;
   }).join("");
   if (!need) return;
-  const font = cssFont(FONT_FACES[fi], GLYPH_PX);
-  // ★いま使えるかを先に見る。使えるなら fallback では描かれないので、
-  // 届いたあとに焼き直す必要は無い(毎回捨てると描き直しが延々続く)。
-  let had = false;
-  try { had = document.fonts.check(font, need); } catch { /* noop */ }
+  // まだ使えないものだけ、届いた時点で焼き直しを知らせる
+  // (使えるものまで捨てると描き直しが延々続く)。
+  const had = fontReady(fi, need);
   try {
+    // ★**先頭の family だけ**で頼む(上記の理由。スタックごと渡すと取りに行かない)。
     // load() の Promise は必ず握りつぶす(unhandled rejection で pageerror)。
-    document.fonts.load(font, need).then(() => { if (!had) notify(); }).catch(() => {});
+    document.fonts.load(loadFont(FONT_FACES[fi], GLYPH_PX), need)
+      .then(() => { if (!had && fontReady(fi, need)) notify(); })
+      .catch(() => {});
   } catch { /* noop */ }
 }
 
@@ -191,12 +221,18 @@ export function primeAdvances(texts: string[], faces: number[], budget: number):
   return done;
 }
 
-const glyphKey = (faceIdx: number, ch: string, color: string, bucket: number) =>
-  `${faceIdx}|${ch}|${color}|${bucket}`;
+// ★キーに **ready(その書体が届いているか)** を混ぜる。1回の描画で使う ready は
+// 呼び出し側(solidPaint の textPlanOf)が**一度だけ**決めるので、
+// 「前半は fallback・後半は本物」という混在が起きない。
+// グリフは1フレームに1枚しか焼かない(落下のガクつき対策)ため、
+// 焼いている途中で書体が届くと、混在した絵がそのまま残っていた
+// (2026-08-17に実機で報告された「1つの図形に2書体」の原因)。
+const glyphKey = (faceIdx: number, ch: string, color: string, bucket: number, ready: boolean) =>
+  `${faceIdx}|${ch}|${color}|${bucket}|${ready ? 1 : 0}`;
 
 /** グリフを1枚描いてアトラスへ。**ここが唯一 fillText を呼ぶ場所**。 */
-function bakeGlyph(faceIdx: number, ch: string, color: string, bucket: number): Glyph {
-  const key = glyphKey(faceIdx, ch, color, bucket);
+function bakeGlyph(faceIdx: number, ch: string, color: string, bucket: number, ready: boolean): Glyph {
+  const key = glyphKey(faceIdx, ch, color, bucket, ready);
   const hit = glyphCache.get(key);
   if (hit) return hit;
   const pad = gpad(bucket);
@@ -217,17 +253,19 @@ function bakeGlyph(faceIdx: number, ch: string, color: string, bucket: number): 
   return g;
 }
 
-export const hasGlyph = (faceIdx: number, ch: string, color: string, bucket: number): boolean =>
-  glyphCache.has(glyphKey(faceIdx, ch, color, bucket));
+export const hasGlyph = (faceIdx: number, ch: string, color: string, bucket: number, ready: boolean): boolean =>
+  glyphCache.has(glyphKey(faceIdx, ch, color, bucket, ready));
 
 /** その文字列に足りないグリフの数。
  *  ★bucket は**描くときと同じ値**を渡すこと。ずれると「用意できている」と
  *  判断したのに描画時に焼き直しが走り、落下が一瞬止まる。 */
-export function missingGlyphs(text: string, face: number, color: string, bucket: number): number {
+export function missingGlyphs(
+  text: string, face: number, color: string, bucket: number, ready: boolean,
+): number {
   const fi = clampFace(face);
   const b = bucketFor(bucket);
   let n = 0;
-  for (const ch of new Set([...(text ?? "")])) if (!hasGlyph(fi, ch, color, b)) n++;
+  for (const ch of new Set([...(text ?? "")])) if (!hasGlyph(fi, ch, color, b, ready)) n++;
   return n;
 }
 
@@ -237,15 +275,15 @@ export function missingGlyphs(text: string, face: number, color: string, bucket:
  * (いっぺんに描くと落下がガクつく。実測で fillText 合計2.4秒)。
  */
 export function warmGlyphs(
-  text: string, face: number, color: string, bucket: number, budget: number,
+  text: string, face: number, color: string, bucket: number, budget: number, ready: boolean,
 ): number {
   const fi = clampFace(face);
   const b = bucketFor(bucket);
   let left = budget;
   for (const ch of new Set([...(text ?? "")])) {
     if (left <= 0) break;
-    if (hasGlyph(fi, ch, color, b)) continue;
-    bakeGlyph(fi, ch, color, b);
+    if (hasGlyph(fi, ch, color, b, ready)) continue;
+    bakeGlyph(fi, ch, color, b, ready);
     left--;
   }
   return budget - left;
@@ -412,6 +450,8 @@ export function drawFitted(
   cy: number,
   color: string,
   bucketPx = fit.size,
+  /** その書体が届いているか。**焼いたときと同じ値**を渡すこと。 */
+  ready = true,
 ) {
   const { size, lines } = fit;
   const fi = clampFace(face);
@@ -427,7 +467,7 @@ export function drawFitted(
     // widthAtGlyph は GLYPH_PX 基準なので、表示サイズへ直す。
     let x = cx - (line.widthAtGlyph * size) / GLYPH_PX / 2;
     for (const ch of [...line.text]) {
-      const g = bakeGlyph(fi, ch, color, bucket);
+      const g = bakeGlyph(fi, ch, color, bucket, ready);
       ctx.drawImage(
         g.cv,
         x - pad * scale, y - (g.cv.height / 2) * scale,

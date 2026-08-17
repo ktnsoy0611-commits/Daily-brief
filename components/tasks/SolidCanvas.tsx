@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { paintKey, paintShape, shapeBounds, type SolidPaint } from "@/lib/solidPaint";
+import { clearSolidBitmaps, paintKey, paintShape, shapeBounds, type SolidPaint } from "@/lib/solidPaint";
 import { onFontsReady } from "@/lib/textFit";
 
 // ★図形を1つ描くだけの部品。候補タブの円環と、設定画面のプレビューが使う。
@@ -18,7 +18,12 @@ export function SolidCanvas({ paint, w, h, opacity = 1, unit: fixedUnit }: {
   // 書体が揃ったら一度だけ描き直す(最初の描画は fallback の書体のため)。
   const [fontsTick, setFontsTick] = useState(0);
   // 分割配信の断片が届くたびに焼き直す(初回は fallback の書体で描かれる)。
-  useEffect(() => onFontsReady(() => setFontsTick((t) => t + 1)), []);
+  // ★割り付け(plan)も捨てる — 「書体が届いたか」を持っているので、
+  //   捨てないと fallback 用の割り付けのまま描き直してしまう。
+  useEffect(() => onFontsReady(() => {
+    clearSolidBitmaps();
+    setFontsTick((t) => t + 1);
+  }), []);
   // 中身が変わったときだけ描き直す。毎レンダーで焼き直すと、円環のドラッグ中に
   // 何度も描き直すことになる。
   const key = `${paintKey(paint, 1)}|${fontsTick}|${fixedUnit ?? 0}`;

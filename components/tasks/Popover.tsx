@@ -39,11 +39,16 @@ export function Popover({ label, maxHeight, onClose, children }: {
 }) {
   return (
     <>
-      {/* 外側をつつくと閉じる。暗幕は重ねない(下の入力が見えたままの方が速い)。 */}
+      {/* 外側をつつくと閉じる。暗幕は重ねない(下の入力が見えたままの方が速い)。
+          ★**pointerdown ではなく click** で閉じる。押した瞬間に閉じると、
+          同じタップの click がその下のボタンへ届いて開き直してしまう
+          (「開くアニメーションだけ出て閉じられない」の原因・2026-08-17)。
+          ★ツールバーと入力行は zIndex 3 でこの板より前に出してあるので、
+          そこを叩いたぶんはここへ来ない。 */}
       <div
         aria-hidden
         onMouseDown={keepKeyboard}
-        onPointerDown={onClose}
+        onClick={onClose}
         style={{ position: "fixed", inset: 0, zIndex: 1 }}
       />
       <div

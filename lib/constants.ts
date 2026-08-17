@@ -54,9 +54,10 @@ export const DISPLAY = SANS;
 // lib/taskTags.ts が持つ)。読み込みは app/layout.tsx が行い、ここは表だけ。
 // ★書体を増やすときは layout.tsx とこの表の2箇所だけを触る。
 //
-// ★**全部ゴシック**(2026-08-16にユーザー確定で明朝を廃止)。ゴシック・
-// 丸ゴシック・極太 と、太さ・斜体を掛け合わせて骨格の違いを作る。
-// どれも和文を持つので、日本語の題でも違いがはっきり出る。
+// ★**全部ゴシック系**(2026-08-16にユーザー確定で明朝を廃止)。
+// ★**斜体で見分けを作らないこと**(2026-08-17にユーザー指摘)。iOS は和文の
+// 斜体を合成しないので、実機では直立と区別が付かない。骨格の違う家族を
+// 並べて見分ける(ゴシック / 丸ゴシック / 極太 / ディスプレイ体)。
 export interface FontFace { family: string; weight: number; italic?: boolean }
 
 // ★和文のフォールバックも系統ごとに変えておく。Googleフォントの和文は
@@ -64,6 +65,7 @@ export interface FontFace { family: string; weight: number; italic?: boolean }
 const GOTHIC = 'var(--font-zen-kaku-gothic-new), "Hiragino Sans", sans-serif';
 const MARU = 'var(--font-zen-maru-gothic), "Hiragino Maru Gothic ProN", sans-serif';
 const DELA = 'var(--font-dela-gothic-one), "Hiragino Sans", sans-serif';
+const REGGAE = 'var(--font-reggae-one), "Hiragino Sans", sans-serif';
 
 export const FONT_FACES: FontFace[] = [
   { family: GOTHIC, weight: 400 },              // 0 細いゴシック
@@ -71,7 +73,7 @@ export const FONT_FACES: FontFace[] = [
   { family: GOTHIC, weight: 700, italic: true },// 2 太いゴシックの斜体
   { family: MARU, weight: 500 },                // 3 丸ゴシック
   { family: DELA, weight: 400 },                // 4 極太
-  { family: DELA, weight: 400, italic: true },  // 5 極太の斜体
+  { family: REGGAE, weight: 400 },              // 5 極太のディスプレイ体
 ];
 // ★ネオバウハウス化(2026-08-02)。それまでは暖色のクリーム地(BG #F2EADA /
 // PAPER #FBF6E9)に、アプリごとに違う地の色(グレージュ・緑)を敷いて「別の

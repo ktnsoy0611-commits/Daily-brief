@@ -51,8 +51,12 @@ export interface ComposerData {
   /** タスク/候補の id。タグと書体の割り当ての種になる。 */
   id?: string;
   title: string;
-  /** 予定日(YYYY-MM-DD)。2番目の面。 */
+  /** 予定日(YYYY-MM-DD)。2番目の面。**大きさに効くのはこれだけ**。 */
   dueDate?: string;
+  /** 終了日(YYYY-MM-DD)。期間のときだけ入る。 */
+  endDate?: string;
+  /** 時刻("HH:MM")。無ければ終日。 */
+  dueTime?: string;
   /** メモ(道具・場所)。3番目の面。 */
   context?: string;
   /** 持ち物。4番目の面。 */
@@ -246,14 +250,23 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     due: !!draft.dueDate,
     context: !!(draft.context ?? "").trim(),
     belongings: !!(draft.belongings ?? "").trim(),
-    weight: draft.weight !== undefined,
+    // ★既定は**中**。既定のままなら灯さない(最初から設定済みに見えてしまう)。
+    weight: (draft.weight ?? 2) !== 2,
     // ★タグの丸は**常に灯す**。図形には必ず色が付いている(resolveTag)ので、
     // ここだけ沈んでいると「色が決まっていない」ように見えてしまう。
     tag: true,
   };
 
   const view = (
-    <div style={{
+    <>
+      {/* ★下敷き。**画面ぜんぶ**を墨で覆う(zIndex 59)。中身は見えている矩形
+          (visualViewport)にしか居ないので、キーボードの手前の帯が素通しに
+          なって後ろの山が見えていた(2026-08-17に実機で報告)。 */}
+      <div aria-hidden style={{
+        position: "fixed", inset: 0, zIndex: 59, background: CHARCOAL,
+        width: "100vw", height: "100lvh", minHeight: "100%",
+      }} />
+    <div onMouseDown={keepKeyboard} style={{
       position: "fixed", left: 0, right: 0, zIndex: 60, background: CHARCOAL,
       top: box.top, height: box.height || "100lvh",
       display: "flex", flexDirection: "column", overflow: "hidden",
@@ -261,7 +274,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。 ── */}
       <div onMouseDown={keepKeyboard} style={{
         flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
-        padding: "max(10px, env(safe-area-inset-top)) 14px 6px",
+        padding: "max(8px, env(safe-area-inset-top)) 14px 4px",
       }}>
         <button onClick={() => leave(() => onClose(draftRef.current))} aria-label="閉じる"
           className="tc-lamp" style={{
@@ -287,8 +300,13 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         )}
       </div>
 
-      {/* ── 図形。入力するそばから形が変わる。 ── */}
-      <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+      {/* ── 図形。入力するそばから形が変わる。
+             ★余白をタップしたら閉じる(2026-08-17にユーザー指定)。題が
+             入っていればそのまま保存され、空なら呼び側が作りかけを消す。 ── */}
+      <div
+        onClick={() => leave(() => onClose(draftRef.current))}
+        style={{ flex: 1, minHeight: 0, position: "relative", cursor: "pointer" }}
+      >
         {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
         <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
           <ShapeStage spec={spec} title={preview.title} tag={tag} />
@@ -301,7 +319,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         borderRadius: "26px 26px 0 0",
         // 角丸が読めるように、地との境目へ影を落とす。
         boxShadow: "0 -16px 34px rgba(0,0,0,0.34)",
-        padding: "14px 16px max(12px, env(safe-area-inset-bottom))",
+        padding: "10px 16px max(8px, env(safe-area-inset-bottom))",
       }}>
         {tool && (
           <Popover
@@ -309,7 +327,12 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             maxHeight={Math.max(160, (box.height || 700) - bandH - 78)}
             onClose={closeTool}
           >
-            {tool === "due" && <Calendar value={draft.dueDate} onPick={(v) => set({ dueDate: v })} />}
+            {tool === "due" && (
+              <Calendar
+                value={draft.dueDate} end={draft.endDate} time={draft.dueTime}
+                onPick={(v) => set(v)}
+              />
+            )}
             {tool === "context" && (
               <TextField multiline placeholder="どこで・何を使って" value={draft.context ?? ""}
                 onChange={(v) => set({ context: v.trim() ? v : undefined })} />
@@ -325,7 +348,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
         {/* Cowork の提案。タップで手順になる。 */}
         {(draft.suggestions?.length ?? 0) > 0 && (
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 10 }}>
+          <div style={{
+            display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8,
+            position: "relative", zIndex: 3,
+          }}>
             {(draft.suggestions ?? []).map((s) => (
               <span key={s.id} className="tc-row-in" style={{
                 display: "flex", flexShrink: 0, alignItems: "center",
@@ -338,22 +364,27 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
                     suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id),
                   });
                 }} style={{
-                  border: "none", background: "transparent", cursor: "pointer", padding: "0 6px 0 14px", height: 34,
+                  border: "none", background: "transparent", cursor: "pointer", padding: "0 6px 0 14px", height: 30,
                   fontFamily: SANS, fontSize: 12.5, color: ON_GROUND, whiteSpace: "nowrap",
                 }}>{s.title}</button>
                 <button onClick={() => set({ suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id) })}
                   aria-label={`${s.title}を却下`}
-                  style={{ width: 28, height: 34, border: "none", background: "transparent", cursor: "pointer", position: "relative" }}>
-                  <span style={{ position: "absolute", left: 9, top: 16, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(45deg)" }} />
-                  <span style={{ position: "absolute", left: 9, top: 16, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(-45deg)" }} />
+                  style={{ width: 28, height: 30, border: "none", background: "transparent", cursor: "pointer", position: "relative" }}>
+                  <span style={{ position: "absolute", left: 9, top: 14, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(45deg)" }} />
+                  <span style={{ position: "absolute", left: 9, top: 14, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(-45deg)" }} />
                 </button>
               </span>
             ))}
           </div>
         )}
 
-        {/* 題と手順。1つの縦の並び。 */}
-        <div style={{ maxHeight: "34vh", overflowY: "auto", paddingBottom: 10 }}>
+        {/* 題と手順。1つの縦の並び。
+            ★背面板(zIndex 1)より前に出す。でないとポップオーバーを開いている
+            あいだ、行もツールバーも叩けない。 */}
+        <div style={{
+          maxHeight: "32vh", overflowY: "auto", paddingBottom: 6,
+          position: "relative", zIndex: 3,
+        }}>
           {lines.map((text, i) => (
             <Row
               key={i === 0 ? "title" : subs[i - 1].id}
@@ -376,12 +407,17 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           )}
         </div>
 
-        <ComposerToolbar
-          open={tool} filled={filled} onOpen={openTool}
-          on={tagColor(liveTag)} onInk={tagInk(liveTag)} off={ON_GROUND_DIM}
-        />
+        {/* ★ツールバーも背面板より前へ。これが後ろにあると、アイコンを叩いた
+            タップが背面板に吸われ「閉じてすぐ開く」を繰り返していた。 */}
+        <div style={{ position: "relative", zIndex: 3 }}>
+          <ComposerToolbar
+            open={tool} filled={filled} onOpen={openTool}
+            on={tagColor(liveTag)} onInk={tagInk(liveTag)} off={ON_GROUND_DIM}
+          />
+        </div>
       </div>
     </div>
+    </>
   );
 
   if (typeof document === "undefined") return null;
@@ -407,7 +443,7 @@ function ShapeStage({ spec, title, tag }: {
   }, []);
   return (
     <div ref={ref} style={{
-      position: "absolute", inset: "8px 22px 16px",
+      position: "absolute", inset: "6px 22px 10px",
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       {box.w > 8 && box.h > 8 && (
@@ -444,7 +480,7 @@ function Row({ ref, value, head, done, onFocus, onChange, onEnter, onMergeUp, on
   }, [value]);
   return (
     <div className={head ? undefined : "tc-row-in"}
-      style={{ display: "flex", alignItems: "flex-start", gap: 9, minHeight: head ? 34 : 28 }}>
+      style={{ display: "flex", alignItems: "flex-start", gap: 9, minHeight: head ? 34 : 24 }}>
       {!head && (
         // 手順の点。**丸**。タップで済んだ印になる。
         <button onClick={onToggle} aria-label={done ? "手順を戻す" : "手順を済みにする"}

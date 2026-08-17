@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Anton, Dela_Gothic_One, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
+import { Anton, Dela_Gothic_One, Reggae_One, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
 import "./globals.css";
 
 // ミニマルなデザインへの刷新に伴い、明朝体(Zen Old Mincho)とPlayfair
@@ -42,6 +42,15 @@ const delaGothicOne = Dela_Gothic_One({
   preload: false,
 });
 
+// ★SOCIAL(赤)の書体。以前は Dela の斜体を当てていたが、**iOS は和文の斜体を
+// 合成しない**ため、実機では WELLNESS(黄)の Dela と見分けが付かなかった
+// (2026-08-17にユーザー指摘)。骨格そのものが違う家族を1つ足す。
+const reggaeOne = Reggae_One({
+  variable: "--font-reggae-one",
+  weight: "400",
+  preload: false,
+});
+
 export const metadata: Metadata = {
   title: "デイリーブリーフ",
   description: "趣味嗜好を貯蓄・トラッキングする個人用QOLアプリ",
@@ -70,7 +79,7 @@ export default function RootLayout({
   return (
     <html lang="ja" className={[
       zenKakuGothicNew.variable, anton.variable,
-      zenMaruGothic.variable, delaGothicOne.variable,
+      zenMaruGothic.variable, delaGothicOne.variable, reggaeOne.variable,
     ].join(" ")}>
       <body>{children}</body>
     </html>

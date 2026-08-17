@@ -221,7 +221,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       id: `task-${Date.now()}`,
       title: final.title,
       // 期日はカレンダーが書いた日付をそのまま持つ(切迫度=大きさに効く)。
-      dueDate: final.dueDate,
+      dueDate: final.dueDate, endDate: final.endDate, dueTime: final.dueTime,
       context: final.context, belongings: final.belongings,
       subtasks: final.subtasks, suggestions: final.suggestions,
       weight: final.weight ?? 2, tag: final.tag, note: final.note,
@@ -239,7 +239,8 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
   const addCandidate = () => {
     const id = `cand-${Date.now()}`;
     const next = structuredClone(appState);
-    next.inbox = [{ id, kind: "task", title: "", createdAt: new Date().toISOString() }, ...(next.inbox ?? [])];
+    // ★重要度の既定は**中**(2026-08-17にユーザー指定)。
+    next.inbox = [{ id, kind: "task", title: "", weight: 2, createdAt: new Date().toISOString() }, ...(next.inbox ?? [])];
     persist(next);
     posRef.current = 0;
     setFront(0);

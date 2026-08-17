@@ -3,7 +3,7 @@ import {
   type Pt, type SolidSpec,
 } from "./solid";
 import { tagColor, tagFace, tagInk, tagLabel } from "./taskTags";
-import { drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, warmGlyphs } from "./textFit";
+import { drawFitted, ensureGlyphs, fitText, fontReady, layoutInShape, missingGlyphs, warmGlyphs } from "./textFit";
 import type { TaskTag } from "./types";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
@@ -119,7 +119,7 @@ export function paintShape(
   ctx.save();
   path();
   ctx.clip();
-  drawFitted(ctx, plan.fit, plan.face, plan.cx * wpx, plan.cy * hpx, plan.ink, plan.size * dpr);
+  drawFitted(ctx, plan.fit, plan.face, plan.cx * wpx, plan.cy * hpx, plan.ink, plan.size * dpr, plan.ready);
   ctx.restore();
 }
 
@@ -136,6 +136,9 @@ interface TextPlan {
   cx: number; cy: number;
   /** 実際に描かれる文字の高さ(CSS px)。 */
   size: number;
+  /** ★その書体が届いているか。**この1枚の絵の中では一定**にする
+   *  (焼いている途中で届くと、前半 fallback / 後半 本物 の混在になる)。 */
+  ready: boolean;
 }
 
 // ★割り付けの結果をキャッシュする。draw は1フレームにつき、焼けていない
@@ -163,6 +166,9 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   const face = tagFace(p.tag);
   const wpx = w * unit;
   const hpx = h * unit;
+  // ★書体が届いているかを**ここで一度だけ**決める。以降の焼き込み・
+  // 描画はすべてこの値で揃うので、1枚の絵に2書体が混ざらない。
+  const ready = fontReady(face, tagView ? tagLabel(p.tag) : p.title);
   if (tagView) {
     // タグの英字は**図形いっぱい**。矩形1つ(innerBox)で十分な短さ。
     const box = innerBox(n);
@@ -170,7 +176,7 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
     if (!fit) return null;
     return {
       text: tagLabel(p.tag), face, ink: tagInk(p.tag), fit,
-      cx: box.x + box.w / 2, cy: box.y + box.h / 2, size: fit.size,
+      cx: box.x + box.w / 2, cy: box.y + box.h / 2, size: fit.size, ready,
     };
   }
   // ★タイトルは「最低 TITLE_MIN、図形が大きければ面積に比例して大きく」。
@@ -184,7 +190,7 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   if (!fit) return null;
   return {
     text: p.title, face, ink: tagInk(p.tag), fit,
-    cx: 0, cy: fit.cy / hpx, size: fit.size,
+    cx: 0, cy: fit.cy / hpx, size: fit.size, ready,
   };
 }
 
@@ -197,13 +203,13 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
 export function warmShapeGlyphs(p: SolidPaint, budget: number, unit: number, dpr: number): number {
   const plan = textPlanOf(p, unit);
   if (!plan) return 0;
-  return warmGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr, budget);
+  return warmGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr, budget, plan.ready);
 }
 
 /** その図形を今すぐ焼けるか(グリフが全部そろっているか)。 */
 export function shapeGlyphsReady(p: SolidPaint, unit: number, dpr: number): boolean {
   const plan = textPlanOf(p, unit);
-  return !plan || missingGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr) === 0;
+  return !plan || missingGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr, plan.ready) === 0;
 }
 
 /** その絵が占める範囲(solid 座標)。ビットマップの大きさを決めるのに使う。

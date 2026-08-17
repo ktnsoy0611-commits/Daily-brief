@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
 import { WhenSheet } from "@/components/tasks/WhenSheet";
 import { ComposerToolbar, TOOL_LABEL, type ToolKey } from "@/components/tasks/ComposerToolbar";
-import { CAP, keepKeyboard, Popover } from "@/components/tasks/Popover";
+import { CAP, keepKeyboard, Popover, press } from "@/components/tasks/Popover";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
 import { pushGround } from "@/lib/ground";
@@ -153,17 +153,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     };
   }, []);
 
-  // 下の帯の高さ。ポップオーバーに使える高さを出すために測る。
-  const bandRef = useRef<HTMLDivElement | null>(null);
-  const [bandH, setBandH] = useState(150);
-  useEffect(() => {
-    const el = bandRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setBandH(el.getBoundingClientRect().height));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   // ── 行(1行目=題 / 2行目以降=手順)────────────────────────────
   const rowsRef = useRef<(HTMLTextAreaElement | null)[]>([]);
   const wantRef = useRef<{ i: number; caret: number } | null>(null);
@@ -234,12 +223,20 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // ── ポップオーバー ──────────────────────────────────────────
   // ★**キーボードは出したまま**(2026-08-16にユーザー指定)。blur すると
   // 器の高さが変わり、ボタンの位置ごと飛んでしまう。
-  const openTool = (k: ToolKey) => setTool((cur) => (cur === k ? null : k));
-  const closeTool = () => {
-    setTool(null);
-    // 書いていた行へキャレットを戻す(キーボードは開いたまま)。
+  /**
+   * ★閉じたら**必ず**書いていた行へキャレットを戻す(2026-08-17)。
+   * メモ・持ち物の欄は開くと自分にフォーカスを取るので、戻し先を指定しないと
+   * 閉じた瞬間にフォーカスが body へ落ちてキーボードが消える。トグルで閉じる
+   * 道(ツールバーの丸をもう一度押す)がこれを忘れていて、そこから先の操作
+   * すべてでキーボードが出ていなかった。
+   */
+  const backToRow = () => {
     wantRef.current = { i: activeRow.current, caret: (lines[activeRow.current] ?? "").length };
   };
+  const openTool = (k: ToolKey) => {
+    if (tool === k) { backToRow(); setTool(null); } else setTool(k);
+  };
+  const closeTool = () => { backToRow(); setTool(null); };
 
   /** 画面を離れるときだけキーボードを閉じる。 */
   const leave = (run: () => void) => {
@@ -274,30 +271,33 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       top: box.top, height: box.height || "100lvh",
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
-      {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。 ── */}
-      <div onMouseDown={keepKeyboard} style={{
+      {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
+             ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
+             あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}
+      <div data-topbar onMouseDown={keepKeyboard} style={{
         flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
         padding: "max(8px, env(safe-area-inset-top)) 14px 4px",
+        position: "relative", zIndex: 2,
       }}>
-        <button onClick={() => leave(() => onClose(draftRef.current))} aria-label="閉じる"
+        <button {...press(() => leave(() => onClose(draftRef.current)))} aria-label="閉じる"
           className="tc-lamp" style={{
-            width: 40, height: 40, borderRadius: "50%", border: "none", padding: 0, cursor: "pointer",
+            width: 36, height: 36, borderRadius: "50%", border: "none", padding: 0, cursor: "pointer",
             background: "rgba(250,250,249,0.10)", position: "relative", flexShrink: 0,
           }}>
-          <span style={{ position: "absolute", left: 12, top: 19, width: 16, height: 1.6, background: ON_GROUND, transform: "rotate(45deg)" }} />
-          <span style={{ position: "absolute", left: 12, top: 19, width: 16, height: 1.6, background: ON_GROUND, transform: "rotate(-45deg)" }} />
+          <span style={{ position: "absolute", left: 11, top: 17, width: 14, height: 1.6, background: ON_GROUND, transform: "rotate(45deg)" }} />
+          <span style={{ position: "absolute", left: 11, top: 17, width: 14, height: 1.6, background: ON_GROUND, transform: "rotate(-45deg)" }} />
         </button>
         <span style={{ marginLeft: "auto" }} />
         {onDelete && (
-          <button onClick={() => leave(() => { haptic(8); onDelete(); })} className="tc-lamp" style={{
-            height: 40, padding: "0 16px", borderRadius: 999, border: "none",
+          <button {...press(() => leave(() => { haptic(8); onDelete(); }))} className="tc-lamp" style={{
+            height: 36, padding: "0 15px", borderRadius: 999, border: "none",
             background: "rgba(250,250,249,0.10)", cursor: "pointer",
             ...CAP, fontSize: 10, color: ON_GROUND_DIM,
           }}>DELETE</button>
         )}
         {onConfirm && (
-          <button onClick={() => leave(() => { haptic(16); onConfirm(draftRef.current); })} className="tc-lamp" style={{
-            height: 40, padding: "0 20px", borderRadius: 999, border: "none", background: ON_GROUND,
+          <button {...press(() => leave(() => { haptic(16); onConfirm(draftRef.current); }))} className="tc-lamp" style={{
+            height: 36, padding: "0 18px", borderRadius: 999, border: "none", background: ON_GROUND,
             cursor: "pointer", ...CAP, fontSize: 10, color: CHARCOAL,
           }}>{mode === "candidate" ? "CONFIRM" : "COMPLETE"}</button>
         )}
@@ -307,33 +307,22 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
              ★余白をタップしたら閉じる(2026-08-17にユーザー指定)。題が
              入っていればそのまま保存され、空なら呼び側が作りかけを消す。 ── */}
       <div
-        onClick={() => leave(() => onClose(draftRef.current))}
+        {...press(() => { if (!tool) leave(() => onClose(draftRef.current)); })}
         style={{ flex: 1, minHeight: 0, position: "relative", cursor: "pointer" }}
       >
         {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
         <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
           <ShapeStage spec={spec} title={preview.title} tag={tag} />
         </div>
-      </div>
 
-      {/* ── 下の帯。角丸の板が浮く。キーボードのすぐ上に居座る。 ── */}
-      <div ref={bandRef} className="tc-sheet" onMouseDown={keepKeyboard} style={{
-        flexShrink: 0, position: "relative", background: LIFT,
-        borderRadius: "26px 26px 0 0",
-        // 角丸が読めるように、地との境目へ影を落とす。
-        boxShadow: "0 -16px 34px rgba(0,0,0,0.34)",
-        padding: "10px 16px max(8px, env(safe-area-inset-bottom))",
-      }}>
+        {/* ★ポップオーバーは**この領域(上のバーの下〜下の帯の上)の中だけ**に出す。
+            以前は帯の上へ伸ばしていたので、中身が高いと画面の上へはみ出して
+            タブの下に潜り、下へスワイプしないと触れなかった(2026-08-17に指摘)。 */}
         {tool && (
-          <Popover
-            label={TOOL_LABEL[tool]}
-            maxHeight={Math.max(160, (box.height || 700) - bandH - 78)}
-            onClose={closeTool}
-          >
+          <Popover label={TOOL_LABEL[tool]} onClose={closeTool}>
             {tool === "due" && (
               <WhenSheet
                 value={{ dueDate: draft.dueDate, endDate: draft.endDate, dueTime: draft.dueTime, endTime: draft.endTime }}
-                maxHeight={Math.max(200, (box.height || 700) - bandH - 120)}
                 onChange={(v) => set(v)}
               />
             )}
@@ -349,13 +338,24 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             {tool === "tag" && <TagPicker value={liveTag} onPick={(t) => set({ tag: t })} />}
           </Popover>
         )}
+      </div>
 
+      {/* ── 下の帯。角丸の板が浮く。キーボードのすぐ上に居座る。 ── */}
+      {/* ★帯ごとポップオーバーの背面板(zIndex 1)より前に出す。
+             `.tc-sheet` は transform のアニメーションを持ち続けるので**帯自身が
+             重なりの文脈になる** — 中の要素に zIndex を振っても背面板には勝てず、
+             ツールバーがタップを吸われていた(ポップオーバーを帯の中から
+             図形の領域へ移した2026-08-17に発覚)。 */}
+      <div data-band className="tc-sheet" onMouseDown={keepKeyboard} style={{
+        flexShrink: 0, position: "relative", zIndex: 2, background: LIFT,
+        borderRadius: "26px 26px 0 0",
+        // 角丸が読めるように、地との境目へ影を落とす。
+        boxShadow: "0 -16px 34px rgba(0,0,0,0.34)",
+        padding: "7px 16px max(6px, env(safe-area-inset-bottom))",
+      }}>
         {/* Cowork の提案。タップで手順になる。 */}
         {(draft.suggestions?.length ?? 0) > 0 && (
-          <div style={{
-            display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8,
-            position: "relative", zIndex: 3,
-          }}>
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6 }}>
             {(draft.suggestions ?? []).map((s) => (
               <span key={s.id} className="tc-row-in" style={{
                 display: "flex", flexShrink: 0, alignItems: "center",
@@ -368,12 +368,12 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
                     suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id),
                   });
                 }} style={{
-                  border: "none", background: "transparent", cursor: "pointer", padding: "0 6px 0 14px", height: 30,
+                  border: "none", background: "transparent", cursor: "pointer", padding: "0 6px 0 14px", height: 28,
                   fontFamily: SANS, fontSize: 12.5, color: ON_GROUND, whiteSpace: "nowrap",
                 }}>{s.title}</button>
                 <button onClick={() => set({ suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id) })}
                   aria-label={`${s.title}を却下`}
-                  style={{ width: 28, height: 30, border: "none", background: "transparent", cursor: "pointer", position: "relative" }}>
+                  style={{ width: 26, height: 28, border: "none", background: "transparent", cursor: "pointer", position: "relative" }}>
                   <span style={{ position: "absolute", left: 9, top: 14, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(45deg)" }} />
                   <span style={{ position: "absolute", left: 9, top: 14, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(-45deg)" }} />
                 </button>
@@ -382,13 +382,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           </div>
         )}
 
-        {/* 題と手順。1つの縦の並び。
-            ★背面板(zIndex 1)より前に出す。でないとポップオーバーを開いている
-            あいだ、行もツールバーも叩けない。 */}
-        <div style={{
-          maxHeight: "32vh", overflowY: "auto", paddingBottom: 6,
-          position: "relative", zIndex: 3,
-        }}>
+        {/* 題と手順。1つの縦の並び。★件数が不定なのでここだけは送れるままに
+            する(ダイアログではなくリストなので、縦に送れて良い)。 */}
+        <div style={{ maxHeight: "30vh", overflowY: "auto", paddingBottom: 4 }}>
           {lines.map((text, i) => (
             <Row
               key={i === 0 ? "title" : subs[i - 1].id}
@@ -411,14 +407,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           )}
         </div>
 
-        {/* ★ツールバーも背面板より前へ。これが後ろにあると、アイコンを叩いた
-            タップが背面板に吸われ「閉じてすぐ開く」を繰り返していた。 */}
-        <div style={{ position: "relative", zIndex: 3 }}>
-          <ComposerToolbar
-            open={tool} filled={filled} onOpen={openTool}
-            on={tagColor(liveTag)} onInk={tagInk(liveTag)} off={ON_GROUND_DIM}
-          />
-        </div>
+        <ComposerToolbar
+          open={tool} filled={filled} onOpen={openTool}
+          on={tagColor(liveTag)} onInk={tagInk(liveTag)} off={ON_GROUND_DIM}
+        />
       </div>
     </div>
     </>
@@ -447,7 +439,7 @@ function ShapeStage({ spec, title, tag }: {
   }, []);
   return (
     <div ref={ref} style={{
-      position: "absolute", inset: "6px 22px 10px",
+      position: "absolute", inset: "6px 22px 8px",
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       {box.w > 8 && box.h > 8 && (
@@ -484,12 +476,12 @@ function Row({ ref, value, head, done, onFocus, onChange, onEnter, onMergeUp, on
   }, [value]);
   return (
     <div className={head ? undefined : "tc-row-in"}
-      style={{ display: "flex", alignItems: "flex-start", gap: 9, minHeight: head ? 34 : 24 }}>
+      style={{ display: "flex", alignItems: "flex-start", gap: 9, minHeight: head ? 32 : 22 }}>
       {!head && (
         // 手順の点。**丸**。タップで済んだ印になる。
-        <button onClick={onToggle} aria-label={done ? "手順を戻す" : "手順を済みにする"}
+        <button {...press(() => onToggle?.())} aria-label={done ? "手順を戻す" : "手順を済みにする"}
           className="tc-lamp" style={{
-            width: 20, height: 26, border: "none", background: "transparent", padding: 0,
+            width: 20, height: 24, border: "none", background: "transparent", padding: 0,
             cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
           }}>
           <span style={{

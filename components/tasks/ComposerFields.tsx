@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CAP, DIM, LIFT } from "@/components/tasks/Popover";
+import { CAP, DIM, LIFT, press } from "@/components/tasks/Popover";
 import { PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { TASK_TAGS, tagInk } from "@/lib/taskTags";
@@ -31,11 +31,11 @@ export function WeightPicker({ value, onPick }: {
       {steps.map((s) => {
         const on = s.w === value;
         return (
-          <button key={s.w} onClick={() => { haptic(6); onPick(s.w); }} aria-pressed={on}
+          <button key={s.w} {...press(() => { haptic(6); onPick(s.w); })} aria-pressed={on}
             aria-label={`重要度 ${s.label}`}
             className="tc-lamp"
             style={{
-              flex: 1, height: 84, borderRadius: 18, border: "none", cursor: "pointer",
+              flex: 1, height: 76, borderRadius: 18, border: "none", cursor: "pointer",
               background: on ? PAPER : CELL,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
             }}>
@@ -58,7 +58,7 @@ export function TagPicker({ value, onPick }: {
       {TASK_TAGS.map((t) => {
         const on = t.id === value;
         return (
-          <button key={t.id} onClick={() => { haptic(6); onPick(t.id); }} aria-pressed={on}
+          <button key={t.id} {...press(() => { haptic(6); onPick(t.id); })} aria-pressed={on}
             aria-label={t.label}
             className="tc-lamp"
             style={{

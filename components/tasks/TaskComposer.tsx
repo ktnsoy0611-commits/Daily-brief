@@ -5,12 +5,12 @@ import { createPortal } from "react-dom";
 import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
 import { WhenSheet } from "@/components/tasks/WhenSheet";
 import { ComposerToolbar, TOOL_LABEL, type ToolKey } from "@/components/tasks/ComposerToolbar";
-import { CAP, keepKeyboard, Popover, press } from "@/components/tasks/Popover";
+import { CAP, keepKeyboard, Popover, Press } from "@/components/tasks/Popover";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
-import { resolveTag, tagColor, tagInk } from "@/lib/taskTags";
+import { resolveTag, tagAccent, tagColor, tagInk } from "@/lib/taskTags";
 import { specOf } from "@/lib/taskSize";
 import type { SubTask, TaskSuggestion, TaskTag, TaskWeight } from "@/lib/types";
 
@@ -73,6 +73,9 @@ export interface ComposerData {
   suggestions?: TaskSuggestion[];
 }
 
+/** 開くと自分の入力欄へフォーカスするもの。ここは行へ戻さない。 */
+const TAKES_FOCUS: ToolKey[] = ["context", "belongings"];
+
 const newSub = (title: string): SubTask =>
   ({ id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title, done: false });
 
@@ -95,7 +98,18 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const set = (p: Partial<ComposerData>) => setDraft((d) => ({ ...d, ...p }));
 
   const [tool, setTool] = useState<ToolKey | null>(null);
+  // 日程のシート。"" = 出ていない / "open" = 出ている / "closing" = 下へ抜けている最中。
+  const [when, setWhen] = useState<"" | "open" | "closing">("");
+  const whenOpen = when === "open";
+  const whenBack = useRef<Pick<ComposerData, "dueDate" | "endDate" | "dueTime" | "endTime">>({});
   const leftRef = useRef(false);
+  // ★★**取りこぼしの受け皿**(2026-08-17・第6巡)。
+  // 「重要度やタグを何度も押しているとキーボードが閉じる」が `Press` の
+  // 2段構え(div + touchstart)でも残る場合に備える。これが true のあいだ、
+  // 行の欄からフォーカスが外れたら**その場で同期的に**戻す。同期なら iOS は
+  // キーボードを閉じない。意図した blur(画面を離れる・日程のシート)のときだけ
+  // false にする。
+  const keepFocus = useRef(true);
 
   const subs = useMemo(() => draft.subtasks ?? [], [draft.subtasks]);
   const weight = draft.weight ?? 2;
@@ -113,10 +127,13 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // ツールバーの灯りは下書き(遅らせない方)のタグで出す。
   const liveTag = resolveTag(draft.tag, seed, draft.title, draft.context, draft.belongings, draft.note);
 
-  // ★開いている間は**画面の地色**を墨にする。html の背景と theme-color の
-  // 両方を lib/ground.ts が書く — iOS が自分で塗る領域(キーボードの手前の帯・
-  // 画面の下端)まで揃わないと、そこだけ別の色の帯が見える。
-  useEffect(() => pushGround(CHARCOAL), []);
+  // ★★積む地色は **LIFT(帯の色)**。CHARCOAL ではない(2026-08-17)。
+  // `theme-color` は **iOS が自分で塗る領域**(キーボードの手前＝次候補の帯・
+  // 画面の下端・セーフエリア)に使われる。この画面の**いちばん下に見えている
+  // 面は帯(LIFT)**なので、CHARCOAL を積むとそこだけ色の違う帯として見え、
+  // 「境目が見える」と報告された。下敷き(zIndex 59)も LIFT にして、
+  // 器(visualViewport の矩形)の外側は必ず帯と同じ色になるようにする。
+  useEffect(() => pushGround(LIFT), []);
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -133,13 +150,23 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // ★器を「見えている矩形」に貼り付ける。キーボードが出てページがずれても、
   // 器は常に画面いっぱいのまま(transform は使わない — 中の position:fixed が
   // 壊れる)。
-  const [box, setBox] = useState({ top: 0, height: 0 });
+  //
+  // ★★**setState を使わない**(2026-08-17)。`visualViewport` の resize と
+  // scroll はキーボードのアニメーション中に何十回も飛ぶ。以前はそのたびに
+  // state を更新していたため、入力画面まるごと(図形のステージ・ResizeObserver
+  // 込み)が再レンダーされ、「キーボードが出るときに画面が動く・ガクつく」
+  // と報告された。矩形は **ref 越しに style へ直接書く** — React のレンダーは
+  // 1回も走らない(`.app-track` と同じ作法)。
+  const shellRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const apply = () => {
+      const el = shellRef.current;
+      if (!el) return;
       const vv = window.visualViewport;
-      setBox(vv
-        ? { top: vv.offsetTop, height: vv.height }
-        : { top: 0, height: window.innerHeight });
+      const top = vv ? vv.offsetTop : 0;
+      const height = vv ? vv.height : window.innerHeight;
+      el.style.top = `${top}px`;
+      el.style.height = `${height}px`;
     };
     apply();
     const vv = window.visualViewport;
@@ -176,6 +203,28 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     if (!el) return;
     el.focus();
     el.setSelectionRange(w.caret, w.caret);
+  });
+
+  // ★★**フォーカスが body へ落ちていたら必ず拾い直す**(2026-08-17・第6巡)。
+  //
+  // `onBlur` の受け皿では拾えない道がある — **フォーカスしている要素が
+  // 消える**とき(メモ・持ち物の欄を閉じる、別の項目へ切り替える)は、
+  // その欄の focusout であって行の focusout ではないので、行の onBlur は
+  // 呼ばれない。結果、そこから先ずっとキーボードが出ないままになっていた
+  // (実機で「何度も押していると閉じる」と報告された道のひとつ)。
+  //
+  // layout effect は**同じコミットの中**で走るので、要素が消えた直後・
+  // 画面が描かれる前に戻せる。iOS はユーザー操作の流れの中で focus が
+  // 戻ればキーボードを閉じない。
+  useLayoutEffect(() => {
+    if (!keepFocus.current || whenOpen) return;
+    const a = document.activeElement;
+    if (a && a !== document.body && a.tagName !== "HTML") return;
+    const el = rowsRef.current[activeRow.current] ?? rowsRef.current[0];
+    if (!el) return;
+    el.focus();
+    const n = el.value.length;
+    el.setSelectionRange(n, n);
   });
 
   const setLine = (i: number, v: string) => {
@@ -233,8 +282,51 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const backToRow = () => {
     wantRef.current = { i: activeRow.current, caret: (lines[activeRow.current] ?? "").length };
   };
+
+  /** いま書いている行の要素。 */
+  const liveRow = () => rowsRef.current[activeRow.current] ?? rowsRef.current[0];
+
+  // ★★**日程だけはキーボードを閉じる**(2026-08-17にユーザーが方針転換)。
+  // カレンダーに高さが要るため。閉じる前の値を控えておき、✕ はそこへ戻す。
+  const openWhen = () => {
+    setTool(null);
+    whenBack.current = {
+      dueDate: draft.dueDate, endDate: draft.endDate,
+      dueTime: draft.dueTime, endTime: draft.endTime,
+    };
+    keepFocus.current = false;               // ここでの blur は意図したもの
+    (document.activeElement as HTMLElement | null)?.blur();
+    setWhen("open");
+  };
+
+  /**
+   * 日程のシートを閉じる。★**この場(押した pointerdown の中)で同期的に
+   * focus し直す**こと。iOS はユーザー操作の流れの中でしかキーボードを
+   * 開かないので、アニメーションの後に focus してももう開かない。
+   */
+  const closeWhen = (commit: boolean) => {
+    if (!commit) set(whenBack.current);
+    // ★**シュッと閉じる**(2026-08-17にユーザー指定)。すぐ消すのではなく
+    // 180ms で下へ抜かす。キーボードはその場で戻すので、抜けきる前から
+    // 器が縮み始める(シートは下へ逃げているので気にならない)。
+    keepFocus.current = true;
+    setWhen("closing");
+    window.setTimeout(() => setWhen(""), 180);
+    const el = liveRow();
+    if (el) {
+      el.focus();
+      const n = el.value.length;
+      el.setSelectionRange(n, n);
+    }
+  };
+
   const openTool = (k: ToolKey) => {
-    if (tool === k) { backToRow(); setTool(null); } else setTool(k);
+    if (k === "due") { openWhen(); return; }
+    const next = tool === k ? null : k;
+    // ★行へ戻すのは「次に開くものが自分でフォーカスを取らないとき」。
+    // メモ・持ち物は開くと自分の欄へフォーカスするので、そこは邪魔しない。
+    if (!next || !TAKES_FOCUS.includes(next)) backToRow();
+    setTool(next);
   };
   const closeTool = () => { backToRow(); setTool(null); };
 
@@ -242,6 +334,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const leave = (run: () => void) => {
     if (leftRef.current) return;
     leftRef.current = true;
+    keepFocus.current = false;
     (document.activeElement as HTMLElement | null)?.blur();
     run();
   };
@@ -259,16 +352,18 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
   const view = (
     <>
-      {/* ★下敷き。**画面ぜんぶ**を墨で覆う(zIndex 59)。中身は見えている矩形
-          (visualViewport)にしか居ないので、キーボードの手前の帯が素通しに
-          なって後ろの山が見えていた(2026-08-17に実機で報告)。 */}
+      {/* ★下敷き。**画面ぜんぶ**を覆う(zIndex 59)。器は見えている矩形
+          (visualViewport)にしか居ないので、これが無いとキーボードの手前の帯が
+          素通しになって後ろの山が見えた(2026-08-17に実機で報告)。
+          ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、その続きに
+          なる色でないと「境目」として見えてしまう。 */}
       <div aria-hidden style={{
-        position: "fixed", inset: 0, zIndex: 59, background: CHARCOAL,
+        position: "fixed", inset: 0, zIndex: 59, background: LIFT,
         width: "100vw", height: "100lvh", minHeight: "100%",
       }} />
-    <div onMouseDown={keepKeyboard} style={{
+    <div ref={shellRef} onMouseDown={keepKeyboard} style={{
       position: "fixed", left: 0, right: 0, zIndex: 60, background: CHARCOAL,
-      top: box.top, height: box.height || "100lvh",
+      top: 0, height: "100lvh",
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
@@ -279,36 +374,39 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         padding: "max(8px, env(safe-area-inset-top)) 14px 4px",
         position: "relative", zIndex: 2,
       }}>
-        <button {...press(() => leave(() => onClose(draftRef.current)))} aria-label="閉じる"
+        <Press onPress={() => leave(() => onClose(draftRef.current))} aria-label="閉じる"
           className="tc-lamp" style={{
-            width: 36, height: 36, borderRadius: "50%", border: "none", padding: 0, cursor: "pointer",
+            width: 36, height: 36, borderRadius: "50%",
             background: "rgba(250,250,249,0.10)", position: "relative", flexShrink: 0,
           }}>
           <span style={{ position: "absolute", left: 11, top: 17, width: 14, height: 1.6, background: ON_GROUND, transform: "rotate(45deg)" }} />
           <span style={{ position: "absolute", left: 11, top: 17, width: 14, height: 1.6, background: ON_GROUND, transform: "rotate(-45deg)" }} />
-        </button>
+        </Press>
         <span style={{ marginLeft: "auto" }} />
         {onDelete && (
-          <button {...press(() => leave(() => { haptic(8); onDelete(); }))} className="tc-lamp" style={{
-            height: 36, padding: "0 15px", borderRadius: 999, border: "none",
-            background: "rgba(250,250,249,0.10)", cursor: "pointer",
+          <Press onPress={() => leave(() => { haptic(8); onDelete(); })} aria-label="DELETE" className="tc-lamp" style={{
+            height: 36, padding: "0 15px", borderRadius: 999,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(250,250,249,0.10)",
             ...CAP, fontSize: 10, color: ON_GROUND_DIM,
-          }}>DELETE</button>
+          }}>DELETE</Press>
         )}
         {onConfirm && (
-          <button {...press(() => leave(() => { haptic(16); onConfirm(draftRef.current); }))} className="tc-lamp" style={{
-            height: 36, padding: "0 18px", borderRadius: 999, border: "none", background: ON_GROUND,
-            cursor: "pointer", ...CAP, fontSize: 10, color: CHARCOAL,
-          }}>{mode === "candidate" ? "CONFIRM" : "COMPLETE"}</button>
+          <Press onPress={() => leave(() => { haptic(16); onConfirm(draftRef.current); })}
+            aria-label={mode === "candidate" ? "CONFIRM" : "COMPLETE"} className="tc-lamp" style={{
+              height: 36, padding: "0 18px", borderRadius: 999, background: ON_GROUND,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              ...CAP, fontSize: 10, color: CHARCOAL,
+            }}>{mode === "candidate" ? "CONFIRM" : "COMPLETE"}</Press>
         )}
       </div>
 
       {/* ── 図形。入力するそばから形が変わる。
              ★余白をタップしたら閉じる(2026-08-17にユーザー指定)。題が
              入っていればそのまま保存され、空なら呼び側が作りかけを消す。 ── */}
-      <div
-        {...press(() => { if (!tool) leave(() => onClose(draftRef.current)); })}
-        style={{ flex: 1, minHeight: 0, position: "relative", cursor: "pointer" }}
+      <Press
+        onPress={() => { if (!tool && !whenOpen) leave(() => onClose(draftRef.current)); }}
+        style={{ flex: 1, minHeight: 0, position: "relative" }}
       >
         {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
         <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
@@ -320,12 +418,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             タブの下に潜り、下へスワイプしないと触れなかった(2026-08-17に指摘)。 */}
         {tool && (
           <Popover label={TOOL_LABEL[tool]} onClose={closeTool}>
-            {tool === "due" && (
-              <WhenSheet
-                value={{ dueDate: draft.dueDate, endDate: draft.endDate, dueTime: draft.dueTime, endTime: draft.endTime }}
-                onChange={(v) => set(v)}
-              />
-            )}
             {tool === "context" && (
               <TextField multiline placeholder="どこで・何を使って" value={draft.context ?? ""}
                 onChange={(v) => set({ context: v.trim() ? v : undefined })} />
@@ -338,7 +430,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             {tool === "tag" && <TagPicker value={liveTag} onPick={(t) => set({ tag: t })} />}
           </Popover>
         )}
-      </div>
+      </Press>
 
       {/* ── 下の帯。角丸の板が浮く。キーボードのすぐ上に居座る。 ── */}
       {/* ★帯ごとポップオーバーの背面板(zIndex 1)より前に出す。
@@ -392,6 +484,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
               value={text}
               head={i === 0}
               done={i > 0 && subs[i - 1].done}
+              keepFocus={keepFocus}
               onFocus={() => { activeRow.current = i; }}
               onChange={(v) => setLine(i, v)}
               onEnter={(caret) => splitLine(i, caret)}
@@ -408,10 +501,31 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         </div>
 
         <ComposerToolbar
-          open={tool} filled={filled} onOpen={openTool}
+          open={whenOpen ? "due" : tool} filled={filled} onOpen={openTool}
           on={tagColor(liveTag)} onInk={tagInk(liveTag)} off={ON_GROUND_DIM}
         />
       </div>
+
+      {/* ── 日程のシート。★**キーボードを閉じて**下から立ち上がる
+             (2026-08-17にユーザーが方針転換)。カレンダーに高さが要るため、
+             ここだけは他の項目と扱いが違う。左上の ✕ で取り消し・右上の ✓ で
+             確定し、どちらも押した瞬間にキーボードが戻る。 ── */}
+      {when !== "" && (
+        <div className={when === "open" ? "tc-sheet" : "tc-sheet-out"} data-when style={{
+          position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 4,
+          background: LIFT, borderRadius: "28px 28px 0 0",
+          boxShadow: "0 -18px 40px rgba(0,0,0,0.40)",
+          padding: "14px 16px max(14px, env(safe-area-inset-bottom))",
+        }}>
+          <WhenSheet
+            value={{ dueDate: draft.dueDate, endDate: draft.endDate, dueTime: draft.dueTime, endTime: draft.endTime }}
+            accent={tagAccent(liveTag, LIFT)}
+            onChange={(v) => set(v)}
+            onCancel={() => closeWhen(false)}
+            onCommit={() => closeWhen(true)}
+          />
+        </div>
+      )}
     </div>
     </>
   );
@@ -456,11 +570,13 @@ function ShapeStage({ spec, title, tag }: {
 }
 
 // ── 1行。題は大きく、手順は丸い点つきで小さく。高さは中身に合わせて伸びる。 ──
-function Row({ ref, value, head, done, onFocus, onChange, onEnter, onMergeUp, onToggle }: {
+function Row({ ref, value, head, done, keepFocus, onFocus, onChange, onEnter, onMergeUp, onToggle }: {
   ref: (el: HTMLTextAreaElement | null) => void;
   value: string;
   head: boolean;
   done: boolean;
+  /** true のあいだ、フォーカスが外れたらその場で戻す(下の onBlur を参照)。 */
+  keepFocus: React.RefObject<boolean>;
   onFocus: () => void;
   onChange: (v: string) => void;
   onEnter: (caret: number) => void;
@@ -479,17 +595,17 @@ function Row({ ref, value, head, done, onFocus, onChange, onEnter, onMergeUp, on
       style={{ display: "flex", alignItems: "flex-start", gap: 9, minHeight: head ? 32 : 22 }}>
       {!head && (
         // 手順の点。**丸**。タップで済んだ印になる。
-        <button {...press(() => onToggle?.())} aria-label={done ? "手順を戻す" : "手順を済みにする"}
+        <Press onPress={() => onToggle?.()} aria-label={done ? "手順を戻す" : "手順を済みにする"}
           className="tc-lamp" style={{
-            width: 20, height: 24, border: "none", background: "transparent", padding: 0,
-            cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            width: 20, height: 24, flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
           }}>
           <span style={{
             width: 9, height: 9, borderRadius: "50%",
             background: done ? "transparent" : ON_GROUND,
             boxShadow: done ? `inset 0 0 0 1.5px ${ON_GROUND_DIM}` : "none",
           }} />
-        </button>
+        </Press>
       )}
       <textarea
         ref={(el) => { own.current = el; ref(el); }}
@@ -497,6 +613,18 @@ function Row({ ref, value, head, done, onFocus, onChange, onEnter, onMergeUp, on
         rows={1}
         placeholder={head ? "タスクの名前" : "手順"}
         onFocus={onFocus}
+        // ★★**取りこぼしの受け皿**(2026-08-17・第6巡)。
+        // 「重要度やタグを何度も押しているとキーボードが閉じる」を構造的に
+        // 起こせなくする。ここで**同期的に** focus し直せば、iOS はキーボードを
+        // 閉じない(非同期だと、もう閉じたあとなので開き直せない)。
+        // 別の入力欄(メモ・持ち物)へ移るときと、画面を離れるとき・日程の
+        // シートを開くとき(keepFocus=false)は通す。
+        onBlur={(e) => {
+          if (!keepFocus.current) return;
+          const to = e.relatedTarget as HTMLElement | null;
+          if (to && (to.tagName === "TEXTAREA" || to.tagName === "INPUT")) return;
+          e.currentTarget.focus();
+        }}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           const el = e.currentTarget;

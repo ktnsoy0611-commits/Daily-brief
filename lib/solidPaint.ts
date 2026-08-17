@@ -3,7 +3,7 @@ import {
   type Pt, type SolidSpec,
 } from "./solid";
 import { tagColor, tagFace, tagInk, tagLabel } from "./taskTags";
-import { drawFitted, ensureGlyphs, fitText, fontReady, layoutInShape, missingGlyphs, warmGlyphs } from "./textFit";
+import { drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
 import type { TaskTag } from "./types";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
@@ -163,12 +163,13 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   const face = tagFace(p.tag);
   const wpx = w * unit;
   const hpx = h * unit;
-  // ★★**書体が届くまで文字を描かない**(2026-08-17)。fallback で焼くと、
-  // グリフを1フレームに1枚ずつ焼いている途中で本物が届き、1つの図形の中で
-  // 書体が混ざる。図形だけ先に出して、届いた瞬間に**全文字まとめて**出す
-  // (ensureGlyphs が焼き直しを知らせる)。
+  // ★書体が届くまでは文字を描かない(fallback で焼くと、焼いている途中で
+  // 本物が届いて1つの図形の中で書体が混ざる)。★ただし**待ちすぎたら描く** —
+  // 待つだけにしていたら、届かない・判定が通らない・通知が飛ばないの
+  // どれか1つで**文字が永久に出なかった**(2026-08-17に実機で報告)。
+  // textDrawable が時間で門を開ける。
   const text = tagView ? tagLabel(p.tag) : p.title;
-  if (!fontReady(face, text)) return null;
+  if (!textDrawable(face, text)) return null;
   if (tagView) {
     // タグの英字は**図形いっぱい**。矩形1つ(innerBox)で十分な短さ。
     const box = innerBox(n);

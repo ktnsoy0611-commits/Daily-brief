@@ -11,7 +11,7 @@ import { TAB_PAD_TOP } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline, type SolidSpec } from "@/lib/solid";
 import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint, type SolidView } from "@/lib/solidPaint";
-import { clearGlyphs, onFontsReady, primeAdvances } from "@/lib/textFit";
+import { onFontsReady, primeAdvances } from "@/lib/textFit";
 import { allTagFaces, allTagLabels, resolveTag, tagColor } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, dropOrder, massOf, specOf } from "@/lib/taskSize";
@@ -73,7 +73,10 @@ const BAKE_BUDGET = 1;
  *  ★和文のWebフォントは1文字の fillText が数ms〜10msかかる。落下中に
  *  7個ぶんをまとめて焼くと数秒止まった(実測 fillText 合計2.4秒)ので、
  *  少しずつ配る。 */
-const GLYPH_BUDGET = 1;
+// ★1フレームに焼くグリフの枚数。★1枚では足りない(2026-08-17)。
+// 16個 × 8文字 ≒ 130枚を1枚/フレームで焼くと2秒以上かかり、そのあいだに
+// 書体の断片が届いて振り出しに戻るため、**文字が一度も出ない**状態になった。
+const GLYPH_BUDGET = 4;
 
 /** 完了したときに飛び散る破片。 */
 interface Shard { x: number; y: number; vx: number; vy: number; r: number; life: number; fill: string }
@@ -250,7 +253,9 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   // ★書体が揃ったら焼いた絵を捨てて描き直す。最初の数フレームは fallback の
   // 書体で焼かれているため(canvasのフォントは非同期に届く)。
   useEffect(() => onFontsReady(() => {
-    clearGlyphs(); clearSolidBitmaps(); primeTagMetrics(); wake(); drawRef.current();
+    // ★ここで clearGlyphs() は**呼ばない**。何を捨てるかは textFit が
+    // 面ごとに決めている(全消しすると焼き終わらない・2026-08-17)。
+    clearSolidBitmaps(); primeTagMetrics(); wake(); drawRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 

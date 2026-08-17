@@ -68,7 +68,42 @@ function resolveFamily(family: string): string {
 // 焼いた絵を捨てて購読者へ知らせる。
 
 const listeners = new Set<() => void>();
-const notify = () => { readyCache.clear(); clearGlyphs(); for (const cb of listeners) cb(); };
+
+// ★★**断片が届くたびにアトラスを捨ててはいけない**(2026-08-17に実機で
+// 「文字が表示されない・アプリ全体が不安定」として報告された)。
+//
+// 和文は unicode-range で **100 以上の断片**に分かれて配信され、こちらが
+// 文字ごとに load() を呼ぶので `loadingdone` は何十回も飛ぶ。以前はその
+// たびに glyphCache と bitmap を**全消し**していた。グリフは1フレームに
+// 数枚しか焼かないので、焼き切る前に次の断片が届いて振り出しに戻り、
+// **どの図形も「文字が揃った」状態にならないまま絵だけが焼かれ続けた**。
+// 落下の rAF も「まだ焼けていない絵がある」で止まらなくなる。
+//
+// なので (1) **まとめて1回**にし、(2) **届いた面のぶんだけ**捨てる。
+/** 捨てるのをまとめる時間(ms)。 */
+const FLUSH_MS = 400;
+let flushTimer = 0;
+let flushAll = false;
+const flushFaces = new Set<number>();
+
+function scheduleFlush(face?: number) {
+  if (face === undefined) flushAll = true;
+  else flushFaces.add(face);
+  if (flushTimer || typeof window === "undefined") return;
+  flushTimer = window.setTimeout(() => {
+    flushTimer = 0;
+    if (flushAll) {
+      flushAll = false;
+      flushFaces.clear();
+      clearGlyphs();
+    } else {
+      for (const f of flushFaces) dropFace(f);
+      flushFaces.clear();
+      readyCache.clear();
+    }
+    for (const cb of listeners) cb();
+  }, FLUSH_MS);
+}
 
 /**
  * ★★**`document.fonts` には「先頭の family だけ」を渡すこと。**
@@ -92,21 +127,58 @@ function primaryFamily(family: string): string {
 const loadFont = (f: FontFace, size: number): string =>
   `${f.italic ? "italic " : ""}${f.weight} ${size}px ${primaryFamily(f.family)}`;
 
+/** ★**キャッシュを通さない**生の判定。`document.fonts.check` を直接読む。
+ *  取りに行く前後の比較にはこちらを使うこと — `fontReady` を使うと、
+ *  「取りに行く前の false」がキャッシュに焼き付いて、届いたあとも false を
+ *  読み続け、**焼き直しの通知が一度も飛ばなくなる**(2026-08-17に判明。
+ *  これが「文字が永久に出ない」もう1つの原因)。 */
+function checkFace(fi: number, text: string): boolean {
+  if (typeof document === "undefined" || !document.fonts?.check) return true;
+  try { return document.fonts.check(loadFont(FONT_FACES[fi], GLYPH_PX), text || "あ"); }
+  catch { return true; }
+}
+
 /** その書体が**その文字を本当に描けるか**(＝本物の断片が届いているか)。
  *  ★結果を覚える。plan を作るたびに check を呼ぶと積み上がる(実測で 45ms)。
- *  届いたときは notify() が忘れさせるので、古い false は残らない。 */
+ *  届いたときは scheduleFlush が忘れさせるので、古い false は残らない。 */
 const readyCache = new Map<string, boolean>();
 export function fontReady(face: number, text: string): boolean {
-  if (typeof document === "undefined" || !document.fonts?.check) return true;
   const fi = clampFace(face);
   const key = `${fi}|${text}`;
   const hit = readyCache.get(key);
   if (hit !== undefined) return hit;
-  let ok = true;
-  try { ok = document.fonts.check(loadFont(FONT_FACES[fi], GLYPH_PX), text || "あ"); }
-  catch { ok = true; }
+  const ok = checkFace(fi, text);
   readyCache.set(key, ok);
   return ok;
+}
+
+// ★★**門は時間で必ず開ける**(2026-08-17)。
+// 「書体が届くまで文字を描かない」だけだと、届かない・判定が通らない・
+// 通知が飛ばないのどれか1つで**文字が永久に出ない**。実機でそうなった。
+// 頼んでから GATE_MS 過ぎたら、届いていなくても描く。混ざりは
+// 「届いた面を捨てて焼き直す」が引き受ける。
+// **「何も出ない」より「一度 fallback で出てから本物に差し替わる」**。
+/** 書体を待つ上限(ms)。 */
+const GATE_MS = 600;
+/** その面を最初に頼んだ時刻。 */
+const askedAt = new Map<number, number>();
+
+/** 描いてよいか。届いている、または待ちすぎたら真。 */
+export function textDrawable(face: number, text: string): boolean {
+  const fi = clampFace(face);
+  if (fontReady(fi, text)) return true;
+  const t0 = askedAt.get(fi);
+  return t0 !== undefined && Date.now() - t0 > GATE_MS;
+}
+
+/** 門が開く時刻に1度だけ知らせる(割り付けのキャッシュを捨ててもらうため)。 */
+function armGate(fi: number) {
+  if (askedAt.has(fi) || typeof window === "undefined") return;
+  askedAt.set(fi, Date.now());
+  window.setTimeout(() => {
+    readyCache.clear();
+    for (const cb of listeners) cb();
+  }, GATE_MS + 40);
 }
 
 /** その (書体, 文字) の組を取りに行く。**焼く直前に必ず呼ぶこと。** */
@@ -121,14 +193,15 @@ export function ensureGlyphs(face: number, text: string) {
     return true;
   }).join("");
   if (!need) return;
+  armGate(fi);
   // まだ使えないものだけ、届いた時点で焼き直しを知らせる
   // (使えるものまで捨てると描き直しが延々続く)。
-  const had = fontReady(fi, need);
+  const had = checkFace(fi, need);
   try {
     // ★**先頭の family だけ**で頼む(上記の理由。スタックごと渡すと取りに行かない)。
     // load() の Promise は必ず握りつぶす(unhandled rejection で pageerror)。
     document.fonts.load(loadFont(FONT_FACES[fi], GLYPH_PX), need)
-      .then(() => { if (!had && fontReady(fi, need)) notify(); })
+      .then(() => { if (!had && checkFace(fi, need)) scheduleFlush(fi); })
       .catch(() => {});
   } catch { /* noop */ }
 }
@@ -138,8 +211,14 @@ export function onFontsReady(cb: () => void): (() => void) | undefined {
   if (typeof document === "undefined" || !document.fonts) return;
   listeners.add(cb);
   document.fonts.ready?.then(() => cb()).catch(() => {});
-  // 保険。こちらが取りに行っていない書体(他の画面のもの)が届いた場合も拾う。
-  const on = () => { clearGlyphs(); cb(); };
+  // ★安全網。こちらが取りに行っていない書体(他の画面のもの)が届いた場合も拾う。
+  // ただし**読み込みが落ち着いたときだけ**動かす。断片が届くたびに動かすと、
+  // 1フレームに数枚しか焼けないアトラスを捨て続けて永久に焼き終わらない
+  // (2026-08-17に実機で「文字が表示されない」として報告された)。
+  const on = () => {
+    if (document.fonts.status !== "loaded") return;
+    scheduleFlush();
+  };
   document.fonts.addEventListener?.("loadingdone", on);
   return () => {
     listeners.delete(cb);
@@ -304,6 +383,18 @@ export function clearGlyphs() {
   glyphCache.clear();
   advanceCache.clear();
   readyCache.clear();
+}
+
+/**
+ * ★**その面のぶんだけ**捨てる(2026-08-17)。届いたのは1つの書体なのに
+ * 全部捨てていたため、他の面まで焼き直しになって焼き終わらなかった。
+ * キーはどちらも `face|…` で始まるので、前方一致で選べる。
+ */
+function dropFace(face: number) {
+  const head = `${face}|`;
+  for (const k of [...glyphCache.keys()]) if (k.startsWith(head)) glyphCache.delete(k);
+  for (const k of [...advanceCache.keys()]) if (k.startsWith(head)) advanceCache.delete(k);
+  for (const k of [...readyCache.keys()]) if (k.startsWith(head)) readyCache.delete(k);
 }
 
 // ── 箱に収める ──────────────────────────────────────────────

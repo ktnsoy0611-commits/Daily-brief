@@ -1,6 +1,6 @@
 "use client";
 
-import { press } from "@/components/tasks/Popover";
+import { Press } from "@/components/tasks/Popover";
 import { haptic } from "@/lib/helpers";
 
 // ★入力画面(TaskComposer)の下の帯。5つの項目を面で描いたアイコンで並べる
@@ -94,21 +94,21 @@ export function ComposerToolbar({ open, filled, onOpen, on, onInk, off }: {
       {keys.map((k) => {
         const lit = filled[k] || open === k;
         return (
-          <button
+          <Press
             key={k}
-            {...press(() => { haptic(6); onOpen(k); })}
+            onPress={() => { haptic(6); onOpen(k); }}
             aria-label={TOOL_LABEL[k]}
             aria-pressed={open === k}
             className="tc-lamp"
             style={{
-              width: 32, height: 32, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
+              width: 32, height: 32, borderRadius: "50%",
               background: lit ? on : "transparent",
               boxShadow: lit ? "none" : `inset 0 0 0 1.5px ${off}`,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
           >
             <Glyph name={k} c={lit ? onInk : off} />
-          </button>
+          </Press>
         );
       })}
     </div>

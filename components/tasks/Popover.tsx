@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { PAPER, SANS } from "@/lib/constants";
 
 // ★入力画面(TaskComposer)のポップオーバーの器。入力エリアの**すぐ上**に、
@@ -18,21 +19,71 @@ import { PAPER, SANS } from "@/lib/constants";
 // はみ出せない。**縦スクロールも持たせない** — 中身をこの高さに収める。
 
 /**
- * ★★**入力画面のボタンはこれで押す**(2026-08-17)。`onClick` は使わない。
+ * ★★**入力画面の押せる面はこれ**(2026-08-17・第6巡)。`<button>` は使わない。
  *
- * キーボードが閉じると器の高さが変わってレイアウトごと飛ぶ。閉じる引き金は
- * 「押したボタンへフォーカスが移ること」で、`onMouseDown` の preventDefault
- * (＝フォーカス移動を止める定石)は **Chromium では効くが iOS Safari では
- * 取りこぼす** — iOS は touchend の時点でフォーカスを動かすことがあり、
- * 合成 mousedown を止めても間に合わない(実機で3度報告された)。
+ * 以前の `press()`(`<button>` + `pointerdown` の `preventDefault`)では実機で
+ * 取りこぼしが残った(「何度も押しているとキーボードが閉じる」)。原因は2つ:
  *
- * そこで **pointerdown で止めて、その場で処理する**。click を待たないので
- * フォーカスは一度も動かない。`tabIndex: -1` でそもそも受け取らせない。
+ *  1. **`<button>` はタップすると、いま focus している欄を Safari が blur する**。
+ *     `div` は(tabindex が無ければ)フォーカスを受け取れないので、そもそも
+ *     移動先が無い。
+ *  2. iOS でフォーカス移動を確実に止められるのは **`touchstart` の
+ *     `preventDefault`**。ところが React は root の `touchstart` を **passive**
+ *     で張るため、React の `onTouchStart` からは preventDefault できない。
+ *     素の listener を `{ passive: false }` で張り直す。
+ *
+ * 処理を走らせるのは `pointerdown` の側だけ(iOS は pointerdown → touchstart の
+ * 順に飛ぶので、両方で走らせると二重になる)。`touchstart` は
+ * **既定動作を止める役だけ**。
  */
-export const press = (fn: () => void) => ({
-  onPointerDown: (e: React.PointerEvent) => { e.preventDefault(); fn(); },
-  tabIndex: -1 as const,
-});
+export function Press({ onPress, disabled, children, style, ...rest }: {
+  onPress: () => void;
+  disabled?: boolean;
+  children?: React.ReactNode;
+  style?: React.CSSProperties;
+  className?: string;
+  "aria-label"?: string;
+  "aria-pressed"?: boolean;
+  "aria-checked"?: boolean;
+  "aria-hidden"?: boolean;
+  role?: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  // 押したときにやることは毎レンダー変わるので ref 越しに読む
+  // (listener を張り替えないため)。
+  const fn = useRef(onPress);
+  fn.current = onPress;
+  const off = useRef(disabled);
+  off.current = disabled;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // ★止める役だけ。処理は pointerdown 側で走る。
+    const on = (e: TouchEvent) => { if (e.cancelable) e.preventDefault(); };
+    el.addEventListener("touchstart", on, { passive: false });
+    return () => el.removeEventListener("touchstart", on);
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      role={rest.role ?? "button"}
+      aria-disabled={disabled || undefined}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        if (!off.current) fn.current();
+      }}
+      style={{
+        cursor: disabled ? "default" : "pointer",
+        userSelect: "none", WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+        ...style,
+      }}
+      {...rest}
+    >{children}</div>
+  );
+}
 
 /**
  * 保険。器のルートに掛けて、ボタン以外(余白・ラベル)を叩いたときにも
@@ -65,12 +116,7 @@ export function Popover({ label, onClose, children }: {
           ★上のバーと下の帯は zIndex 2 でこの板より前に出してある(呼び側)。
           そこを叩いたぶんはここへ来ないので、「アイコンを叩いたら閉じてすぐ
           開き直す」は起きない(2026-08-17)。 */}
-      <div
-        aria-hidden
-        onMouseDown={keepKeyboard}
-        {...press(onClose)}
-        style={{ position: "fixed", inset: 0, zIndex: 1 }}
-      />
+      <Press aria-hidden onPress={onClose} style={{ position: "fixed", inset: 0, zIndex: 1 }} />
       <div
         role="dialog"
         aria-label={label}
@@ -95,13 +141,13 @@ export function Popover({ label, onClose, children }: {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexShrink: 0 }}>
           <span style={{ ...CAP, color: DIM }}>{label}</span>
-          <button {...press(onClose)} aria-label="閉じる" style={{
-            width: 26, height: 26, borderRadius: "50%", border: "none", background: "rgba(250,250,249,0.10)",
-            padding: 0, cursor: "pointer", position: "relative", flexShrink: 0,
+          <Press onPress={onClose} aria-label="閉じる" style={{
+            width: 26, height: 26, borderRadius: "50%", background: "rgba(250,250,249,0.10)",
+            position: "relative", flexShrink: 0,
           }}>
             <span style={{ position: "absolute", left: 7, top: 12, width: 12, height: 1.5, background: PAPER, transform: "rotate(45deg)" }} />
             <span style={{ position: "absolute", left: 7, top: 12, width: 12, height: 1.5, background: PAPER, transform: "rotate(-45deg)" }} />
-          </button>
+          </Press>
         </div>
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{children}</div>
       </div>

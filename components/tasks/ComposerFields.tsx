@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CAP, DIM, LIFT, press } from "@/components/tasks/Popover";
+import { CAP, DIM, LIFT, Press } from "@/components/tasks/Popover";
 import { PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { TASK_TAGS, tagInk } from "@/lib/taskTags";
@@ -31,17 +31,17 @@ export function WeightPicker({ value, onPick }: {
       {steps.map((s) => {
         const on = s.w === value;
         return (
-          <button key={s.w} {...press(() => { haptic(6); onPick(s.w); })} aria-pressed={on}
+          <Press key={s.w} onPress={() => { haptic(6); onPick(s.w); }} aria-pressed={on}
             aria-label={`重要度 ${s.label}`}
             className="tc-lamp"
             style={{
-              flex: 1, height: 76, borderRadius: 18, border: "none", cursor: "pointer",
+              flex: 1, height: 76, borderRadius: 18,
               background: on ? PAPER : CELL,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
             }}>
             <span style={{ width: s.size, height: s.size, borderRadius: "50%", background: on ? LIFT : PAPER }} />
             <span style={{ ...CAP, fontSize: 9.5, letterSpacing: "0.1em", color: on ? LIFT : DIM }}>{s.label}</span>
-          </button>
+          </Press>
         );
       })}
     </div>
@@ -58,16 +58,16 @@ export function TagPicker({ value, onPick }: {
       {TASK_TAGS.map((t) => {
         const on = t.id === value;
         return (
-          <button key={t.id} {...press(() => { haptic(6); onPick(t.id); })} aria-pressed={on}
+          <Press key={t.id} onPress={() => { haptic(6); onPick(t.id); }} aria-pressed={on}
             aria-label={t.label}
             className="tc-lamp"
             style={{
-              flex: on ? 2.2 : 1, height: 56, borderRadius: 999, border: "none", cursor: "pointer",
-              background: t.color, padding: 0, overflow: "hidden",
+              flex: on ? 2.2 : 1, height: 56, borderRadius: 999,
+              background: t.color, overflow: "hidden",
               boxShadow: on ? `0 0 0 2.5px ${LIFT}, 0 0 0 4.5px ${t.color}` : "none",
               display: "flex", alignItems: "center", justifyContent: "center",
               ...CAP, fontSize: 9.5, color: tagInk(t.id),
-            }}>{on ? t.label : ""}</button>
+            }}>{on ? t.label : ""}</Press>
         );
       })}
     </div>

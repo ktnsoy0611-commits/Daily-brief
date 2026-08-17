@@ -419,6 +419,13 @@ button:active {
 .tc-pop    { animation: tc-pop 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .tc-pop-in { animation: tc-rise 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .tc-row-in { animation: tc-fade 220ms ease-out both; }
+/* ★日程のシートが閉じるとき。「シュッと閉じる」(2026-08-17にユーザー指定)。
+   出るときより速く、下へ抜ける。 */
+@keyframes tc-fall {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translate3d(0, 34px, 0); }
+}
+.tc-sheet-out { animation: tc-fall 180ms cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
 /* 灯り(ツールバーの丸)。色だけを滑らかに。 */
 .tc-lamp {
   transition: background-color 180ms ease, color 180ms ease,
@@ -426,6 +433,6 @@ button:active {
 }
 .tc-lamp:active { transform: scale(0.9); }
 @media (prefers-reduced-motion: reduce) {
-  .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in { animation: none; }
+  .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in, .tc-sheet-out { animation: none; }
   .tc-lamp { transition: none; }
 }

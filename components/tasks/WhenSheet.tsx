@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CAP, Press } from "@/components/tasks/Popover";
 import { PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
@@ -37,7 +37,13 @@ export interface WhenValue {
 const pad = (n: number) => String(n).padStart(2, "0");
 export const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parse = (iso?: string) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`) : null);
+/** `Date.getDay()` の添字で引く曜日名。**日曜始まりのまま**にすること
+ *  (label() がこの添字で引いている)。 */
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
+/** カレンダーの見出し。★**月曜始まり**(2026-08-17にユーザー指定)。 */
+const WD_HEAD = ["月", "火", "水", "木", "金", "土", "日"];
+/** その月の1日が何マス目から始まるか(月曜始まり)。 */
+const leadBlanks = (y: number, m: number) => (new Date(y, m, 1).getDay() + 6) % 7;
 
 /** 「8月17日, 月」。 */
 function label(iso?: string): string {
@@ -51,6 +57,40 @@ function span(a?: string, b?: string): string {
   if (!x || !y) return "";
   return `期間: ${Math.round((+y - +x) / 86400000) + 1} 日`;
 }
+
+/** 月のヘッダー(‹ 8月 ›)の高さ。 */
+const HEAD_H = 34;
+/** 曜日の行の高さ。 */
+const WD_H = 18;
+/** ★常に6週ぶん描く。月によって5週/6週と変わると、送るたびに盤の高さが
+ *  跳ねて、下の行まで動いてしまう。 */
+const WEEKS = 6;
+/** 1週の高さ。★キーボードを閉じたので**大きく取れる**(2026-08-17)。 */
+const ROW_MAX = 40;
+/** 器が縮んだときの下限(保険)。 */
+const ROW_MIN = 24;
+/** カレンダーまるごとの高さ。 */
+const CAL_H = HEAD_H + WD_H + ROW_MAX * WEEKS;
+
+/** 早押しの高さ。 */
+const QUICK_H = 62;
+/** 「時刻」「終日」の行・カードの高さ。 */
+const ROW_H = 52;
+/** 「クリア」の高さ。 */
+const CLEAR_H = 36;
+
+/**
+ * ★★**シートの中身の高さ**(下の余白を除く)。
+ *
+ * 「期日」の並びの合計から導く。**上端を動かさない**ために呼び側
+ * (`TaskComposer`)がこの高さでシートを固定する — 高さを中身なりにすると、
+ * 中身の少ない「期間」で上端が下がり、押す位置が変わって不便だった
+ * (2026-08-17にユーザー指摘)。「期間」では下が空くが、それでよい。
+ *
+ *   上余白 14 + 見出し 44 + (8 + 早押し) + (8 + カレンダー)
+ *          + (8 + 時刻の行) + (8 + クリア)
+ */
+export const SHEET_BODY_H = 14 + 44 + (8 + QUICK_H) + (8 + CAL_H) + (8 + ROW_H) + (8 + CLEAR_H);
 
 const ON_G = PAPER;
 const DIM = "rgba(250,250,249,0.44)";
@@ -81,6 +121,9 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
   const [pop, setPop] = useState<null | "cal-start" | "cal-end" | "cal-due" | "time">(null);
   /** 時刻のダイアルで、開始と終了のどちらを触っているか。 */
   const [edge, setEdge] = useState<"start" | "end">("start");
+  // 浮きを出す位置の基準。**押した相手の隣**に出すために測る(Float を参照)。
+  const cardsRef = useRef<HTMLDivElement | null>(null);   // 期間のカードの行
+  const timeRef = useRef<HTMLDivElement | null>(null);    // 期日のときの「時刻」の行
 
   const today = ymd(new Date());
   const set = (p: WhenValue) => onChange({ ...value, ...p });
@@ -108,7 +151,11 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
   };
 
   return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
+    // ★**器いっぱいに広げる**(`height: 100%`)。中身なりの高さにしていると、
+    // 浮きの置き場所を決めるときの「使える高さ」が中身の高さになってしまい、
+    // 下に余裕があるのに上へ返って見出しを覆っていた(2026-08-17)。
+    // 中身は上から並ぶ(既定の flex-start)ので、下が空くだけ。
+    <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
       {/* ── 見出し。✕ は取り消し / ✓ は確定。ピルは**中央・幅を絞る**
              (参照画像のとおり。以前は幅いっぱいに伸ばしていた)。 ── */}
       <div style={{
@@ -149,7 +196,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
           <Quick accent={accent} selected={value.dueDate} onPick={(iso) => { haptic(6); set({ dueDate: iso }); }} />
           <MonthGrid accent={accent} selected={value.dueDate}
             onPick={(iso) => { haptic(6); set({ dueDate: iso }); }} />
-          <Row label="時刻" value={value.dueTime} accent={accent}
+          <Row ref={timeRef} label="時刻" value={value.dueTime} accent={accent}
             onOpen={() => { setEdge("start"); setPop(pop === "time" ? null : "time"); }}
             onClear={value.dueTime ? () => set({ dueTime: undefined, endTime: undefined }) : undefined}
           />
@@ -158,7 +205,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
         <>
           {allDay ? (
             // ★終日ON … 1枚のカードの中で開始と終了に割る(参照画像2)。
-            <div style={{ display: "flex", borderRadius: 16, background: CELL, overflow: "hidden", flexShrink: 0 }}>
+            <div ref={cardsRef} style={{ display: "flex", borderRadius: 16, background: CELL, overflow: "hidden", flexShrink: 0 }}>
               <Half title="開始" aria="開始日を選ぶ" main={label(value.dueDate)} accent={accent}
                 sub={value.dueDate === today ? "今日" : ""}
                 open={pop === "cal-start"} onOpen={() => setPop(pop === "cal-start" ? null : "cal-start")} />
@@ -169,7 +216,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
             </div>
           ) : (
             // ★終日OFF … 期日と時刻は別々の2枚(参照画像3)。
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <div ref={cardsRef} style={{ display: "flex", gap: 8, flexShrink: 0 }}>
               <Card title="期日" aria="期日を選ぶ" main={label(value.dueDate)} accent={accent}
                 sub={value.dueDate === today ? "今日" : ""}
                 open={pop === "cal-due"} onOpen={() => setPop(pop === "cal-due" ? null : "cal-due")} />
@@ -181,7 +228,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
           )}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            height: 52, padding: "0 14px", borderRadius: 16, background: CELL, flexShrink: 0,
+            height: ROW_H, padding: "0 14px", borderRadius: 16, background: CELL, flexShrink: 0,
           }}>
             <span style={{ fontFamily: SANS, fontSize: 15, fontWeight: 700, color: ON_G }}>終日</span>
             <Switch on={allDay} accent={accent} onToggle={() => toAllDay(!allDay)} />
@@ -190,14 +237,14 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
       )}
 
       <Press onPress={() => { haptic(8); setPop(null); onChange({}); }} aria-label="クリア" style={{
-        width: "100%", height: 36, borderRadius: 999, flexShrink: 0,
+        width: "100%", height: CLEAR_H, borderRadius: 999, flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
         ...CAP, fontSize: 10.5, color: RUST,
       }}>クリア</Press>
 
       {/* ── 浮かせるもの ── */}
       {pop?.startsWith("cal-") && (
-        <Float onClose={() => setPop(null)}>
+        <Float anchor={cardsRef} onClose={() => setPop(null)}>
           <MonthGrid accent={accent}
             selected={pop === "cal-end" ? (value.endDate ?? value.dueDate) : value.dueDate}
             onPick={(iso) => {
@@ -215,7 +262,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
         </Float>
       )}
       {pop === "time" && (
-        <Float onClose={() => setPop(null)}>
+        <Float anchor={isRange ? cardsRef : timeRef} onClose={() => setPop(null)}>
           {isRange && !allDay && (
             <div style={{ display: "flex", gap: 6, marginBottom: 8, flexShrink: 0 }}>
               {[["start", "開始"], ["end", "終了"]].map(([k, t]) => (
@@ -231,7 +278,9 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
               ))}
             </div>
           )}
-          <Dial accent={accent}
+          {/* ★`edge` で作り直す。列の中央合わせは初回だけなので、
+              key を変えないと開始⇄終了で位置が前のまま残る。 */}
+          <Dial key={edge} accent={accent}
             value={(edge === "end" ? value.endTime : value.dueTime) ?? "09:00"}
             onChange={(t) => {
               if (!isRange) return set({ dueTime: t });
@@ -283,7 +332,7 @@ function Quick({ accent, selected, onPick }: {
         return (
           <Press key={q.k} onPress={() => onPick(q.iso)} aria-label={q.t} aria-pressed={on}
             className="tc-lamp" style={{
-              flex: 1, height: 62, borderRadius: 16,
+              flex: 1, height: QUICK_H, borderRadius: 16,
               background: on ? "rgba(250,250,249,0.14)" : CELL,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5,
             }}>
@@ -334,13 +383,47 @@ function QuickGlyph({ name, c }: { name: string; c: string }) {
 
 // ── 浮かせる面 ──────────────────────────────────────────────
 
-/** 浮かせる小さな面。外をつつくと閉じる。 */
-function Float({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+/** 浮きと、開いた相手とのすき間。 */
+const FLOAT_GAP = 6;
+
+/**
+ * 浮かせる小さな面。外をつつくと閉じる。
+ *
+ * ★★**押した相手の隣に出す**(2026-08-17にユーザー指摘
+ * 「時刻というボタンと離れてホバーが出てくる」)。以前は見出しのすぐ下
+ * (`top: 52`)に固定していたので、どこから開いても同じ場所に出ていた。
+ *
+ * 下に入るなら相手の下、入らないなら**上へ返す**。幅はシートいっぱいのまま
+ * (カレンダーは半分の幅のカードに収まらない)。置き場所はシートの中に必ず
+ * 収まる — `anchor` も自分もシートの中にあり、上下どちらかには必ず入る。
+ */
+function Float({ anchor, onClose, children }: {
+  /** 開いた行・カードの並び。この隣に出す。 */
+  anchor: React.RefObject<HTMLDivElement | null>;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  // 測るまでは画面の外。1フレームだけなので見えない。
+  const [top, setTop] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const a = anchor.current;
+    const host = el?.offsetParent as HTMLElement | null;   // = シートの根
+    if (!el || !a || !host) return;
+    const hr = host.getBoundingClientRect();
+    const ar = a.getBoundingClientRect();
+    const h = el.offsetHeight;
+    const below = ar.bottom - hr.top + FLOAT_GAP;
+    const above = ar.top - hr.top - h - FLOAT_GAP;
+    setTop(below + h <= hr.height ? below : Math.max(FLOAT_GAP, above));
+  }, [anchor]);
   return (
     <>
       <div aria-hidden onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 4 }} />
-      <div className="tc-pop-in" style={{
-        position: "absolute", left: 0, right: 0, top: 52, zIndex: 5,
+      <div ref={ref} className="tc-pop-in" data-float style={{
+        position: "absolute", left: 0, right: 0, zIndex: 5,
+        top: top ?? -9999, visibility: top === null ? "hidden" : "visible",
         background: FLOAT, borderRadius: 18, padding: 10,
         boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
         display: "flex", flexDirection: "column",
@@ -409,12 +492,13 @@ function Wedge() {
 }
 
 /** 期日のときの「時刻」の行。値と ✕。 */
-function Row({ label: t, value, accent, onOpen, onClear }: {
+function Row({ ref, label: t, value, accent, onOpen, onClear }: {
+  ref: React.RefObject<HTMLDivElement | null>;
   label: string; value?: string; accent: string; onOpen: () => void; onClear?: () => void;
 }) {
   return (
-    <div style={{
-      display: "flex", alignItems: "center", height: 52, borderRadius: 16, background: CELL, flexShrink: 0,
+    <div ref={ref} style={{
+      display: "flex", alignItems: "center", height: ROW_H, borderRadius: 16, background: CELL, flexShrink: 0,
     }}>
       <Press onPress={onOpen} aria-label={t} className="tc-lamp" style={{
         flex: 1, height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -478,17 +562,6 @@ const AXIS = 8;
 /** 月を送る時間(ms)。 */
 const SLIDE_MS = 220;
 
-/** 月のヘッダー(‹ 8月 ›)の高さ。 */
-const HEAD_H = 34;
-/** 曜日の行の高さ。 */
-const WD_H = 18;
-/** ★常に6週ぶん描く。月によって5週/6週と変わると、送るたびに盤の高さが
- *  跳ねて、下の行まで動いてしまう。 */
-const WEEKS = 6;
-/** 1週の高さ。★キーボードを閉じたので**大きく取れる**(2026-08-17)。 */
-const ROW_MAX = 40;
-/** 器が縮んだときの下限(保険)。 */
-const ROW_MIN = 24;
 
 function MonthGrid({ accent, selected, onPick }: {
   accent: string; selected?: string; onPick: (iso: string) => void;
@@ -598,7 +671,7 @@ function MonthGrid({ accent, selected, onPick }: {
       {/* ★曜日は**送らない**。月ごとに描いていたため、指で送っている途中の
           曜日の並びがずれて見えた(2026-08-17)。 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", flexShrink: 0 }}>
-        {WD.map((wd, i) => (
+        {WD_HEAD.map((wd, i) => (
           <span key={i} style={{
             fontFamily: SANS, fontSize: 11, fontWeight: 700, color: DIM,
             textAlign: "center", height: WD_H, lineHeight: `${WD_H}px`,
@@ -641,7 +714,7 @@ function Days({ y, m, selected, onPick, flat, rowH, accent }: {
   const today = ymd(new Date());
   const days = new Date(y, m + 1, 0).getDate();
   const cells: (number | null)[] = [
-    ...Array.from({ length: new Date(y, m, 1).getDay() }, () => null),
+    ...Array.from({ length: leadBlanks(y, m) }, () => null),
     ...Array.from({ length: days }, (_, i) => i + 1),
   ];
   while (cells.length < WEEKS * 7) cells.push(null);
@@ -702,6 +775,12 @@ function Arrow({ dir, onClick }: { dir: -1 | 1; onClick: () => void }) {
 const ITEM_H = 36;
 /** 列の幅。★全幅に広げないこと(2026-08-17にユーザー指摘)。 */
 const COL_W = 70;
+/** 見えている行数。★iPhone のアラームと同じ見え方に(2026-08-17にユーザー指定)。 */
+const VISIBLE = 5;
+/** 中央の行までの段数。 */
+const MID = (VISIBLE - 1) / 2;
+/** ダイアルまるごとの高さ(浮きの置き場所の計算に使う)。 */
+const DIAL_H = ITEM_H * VISIBLE;
 
 function Dial({ value, accent, onChange }: {
   value: string; accent: string; onChange: (t: string) => void;
@@ -715,17 +794,17 @@ function Dial({ value, accent, onChange }: {
     }}>
       {/* 中央のハイライト。列の裏に敷く。 */}
       <span aria-hidden style={{
-        position: "absolute", left: 0, right: 0, top: ITEM_H, height: ITEM_H,
+        position: "absolute", left: 0, right: 0, top: ITEM_H * MID, height: ITEM_H,
         borderRadius: 12, background: "rgba(250,250,249,0.12)", pointerEvents: "none",
       }} />
       <Column values={Array.from({ length: 24 }, (_, i) => pad(i))} value={pad(h)}
-        unit="時" accent={accent} onPick={(v) => onChange(`${v}:${pad(m)}`)} />
+        accent={accent} onPick={(v) => onChange(`${v}:${pad(m)}`)} />
       <span aria-hidden style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         fontFamily: SANS, fontSize: 18, fontWeight: 700, color: ON_G, width: 10,
       }}>:</span>
       <Column values={Array.from({ length: 12 }, (_, i) => pad(i * 5))} value={pad(m - (m % 5))}
-        unit="分" accent={accent} onPick={(v) => onChange(`${pad(h)}:${v}`)} />
+        accent={accent} onPick={(v) => onChange(`${pad(h)}:${v}`)} />
     </div>
   );
 }
@@ -735,8 +814,8 @@ function Dial({ value, accent, onChange }: {
  * 指定。Apple のピッカーと同じ)。以前は回したあとタップが要った。
  * scroll が止まったのを見て、中央のindexを確定する。
  */
-function Column({ values, value, unit, accent, onPick }: {
-  values: string[]; value: string; unit: string; accent: string; onPick: (v: string) => void;
+function Column({ values, value, accent, onPick }: {
+  values: string[]; value: string; accent: string; onPick: (v: string) => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const timer = useRef(0);
@@ -765,20 +844,25 @@ function Column({ values, value, unit, accent, onPick }: {
       }}
       onScrollEnd={settle}
       style={{
-        width: COL_W, height: ITEM_H * 3, overflowY: "auto", scrollSnapType: "y mandatory",
-        padding: `${ITEM_H}px 0`, scrollbarWidth: "none", WebkitOverflowScrolling: "touch",
+        width: COL_W, height: DIAL_H, overflowY: "auto", scrollSnapType: "y mandatory",
+        padding: `${ITEM_H * MID}px 0`, scrollbarWidth: "none", WebkitOverflowScrolling: "touch",
       }}
     >
+      {/* ★★**ここに `Press` を置かないこと**(2026-08-17に実機で
+          「時刻の設定 UI が操作できない」と報告された)。`Press` は iOS の
+          フォーカス移動を止めるために非 passive な `touchstart` で
+          `preventDefault()` するが、**それはスクロールも打ち消す**。
+          そもそも押す必要が無い — 選ぶのは中央に来た値、つまりスクロール
+          位置だけ。 */}
       {values.map((v) => (
-        <Press key={v} onPress={() => onPick(v)}
-          aria-label={`${Number(v)}${unit}`} aria-pressed={v === value}
+        <span key={v} aria-hidden={v !== value}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: "100%", height: ITEM_H, scrollSnapAlign: "center",
-            fontFamily: SANS, fontSize: v === value ? 20 : 16,
+            fontFamily: SANS, fontSize: v === value ? 22 : 17,
             fontWeight: v === value ? 700 : 500,
             color: v === value ? accent : DIM,
-          }}>{v}</Press>
+          }}>{v}</span>
       ))}
     </div>
   );

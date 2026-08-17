@@ -3,7 +3,7 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
-import { WhenSheet } from "@/components/tasks/WhenSheet";
+import { SHEET_BODY_H, WhenSheet } from "@/components/tasks/WhenSheet";
 import { ComposerToolbar, TOOL_LABEL, type ToolKey } from "@/components/tasks/ComposerToolbar";
 import { CAP, keepKeyboard, Popover, Press } from "@/components/tasks/Popover";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
@@ -158,6 +158,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // と報告された。矩形は **ref 越しに style へ直接書く** — React のレンダーは
   // 1回も走らない(`.app-track` と同じ作法)。
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const bandRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const apply = () => {
       const el = shellRef.current;
@@ -167,6 +168,16 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       const height = vv ? vv.height : window.innerHeight;
       el.style.top = `${top}px`;
       el.style.height = `${height}px`;
+      // ★★キーボードが出ているあいだは**セーフエリアぶんの余白を取らない**
+      // (2026-08-17にユーザー指摘「キーボードとアイコンの隙間が変」)。
+      // iOS は**キーボードが出ていても `env(safe-area-inset-bottom)` を
+      // 34px のまま報告する**ので、そのぶんの死んだ帯がキーボードの真上に
+      // 残っていた。ここも ref 経由で書く(再レンダーを起こさない)。
+      const band = bandRef.current;
+      if (band) {
+        const up = window.innerHeight - height > 80;
+        band.style.paddingBottom = up ? "6px" : "max(6px, env(safe-area-inset-bottom))";
+      }
     };
     apply();
     const vv = window.visualViewport;
@@ -438,7 +449,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
              重なりの文脈になる** — 中の要素に zIndex を振っても背面板には勝てず、
              ツールバーがタップを吸われていた(ポップオーバーを帯の中から
              図形の領域へ移した2026-08-17に発覚)。 */}
-      <div data-band className="tc-sheet" onMouseDown={keepKeyboard} style={{
+      <div data-band ref={bandRef} className="tc-sheet" onMouseDown={keepKeyboard} style={{
         flexShrink: 0, position: "relative", zIndex: 2, background: LIFT,
         borderRadius: "26px 26px 0 0",
         // 角丸が読めるように、地との境目へ影を落とす。
@@ -516,6 +527,12 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           background: LIFT, borderRadius: "28px 28px 0 0",
           boxShadow: "0 -18px 40px rgba(0,0,0,0.40)",
           padding: "14px 16px max(14px, env(safe-area-inset-bottom))",
+          // ★高さは**固定**(2026-08-17にユーザー指定「期日と期間を切り替えても
+          // ウィンドウの上端の位置は変えず、上側に合わせてレイアウト」)。
+          // 中身なりにすると「期間」で上端が下がり、押す位置が変わるうえ
+          // ホバーがシートの外へはみ出していた。
+          height: `calc(${SHEET_BODY_H}px + max(14px, env(safe-area-inset-bottom)))`,
+          maxHeight: "calc(100% - 8px)",   // 背の低い端末の保険(カレンダーが痩せる)
         }}>
           <WhenSheet
             value={{ dueDate: draft.dueDate, endDate: draft.endDate, dueTime: draft.dueTime, endTime: draft.endTime }}

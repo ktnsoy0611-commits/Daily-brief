@@ -221,7 +221,8 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       id: `task-${Date.now()}`,
       title: final.title,
       // 期日はカレンダーが書いた日付をそのまま持つ(切迫度=大きさに効く)。
-      dueDate: final.dueDate, endDate: final.endDate, dueTime: final.dueTime,
+      dueDate: final.dueDate, endDate: final.endDate,
+      dueTime: final.dueTime, endTime: final.endTime,
       context: final.context, belongings: final.belongings,
       subtasks: final.subtasks, suggestions: final.suggestions,
       weight: final.weight ?? 2, tag: final.tag, note: final.note,

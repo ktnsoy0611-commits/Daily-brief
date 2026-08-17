@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Anton, Dela_Gothic_One, Reggae_One, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
+import { Anton, Dela_Gothic_One, M_PLUS_1, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
 import "./globals.css";
 
 // ミニマルなデザインへの刷新に伴い、明朝体(Zen Old Mincho)とPlayfair
@@ -42,12 +42,12 @@ const delaGothicOne = Dela_Gothic_One({
   preload: false,
 });
 
-// ★SOCIAL(赤)の書体。以前は Dela の斜体を当てていたが、**iOS は和文の斜体を
-// 合成しない**ため、実機では WELLNESS(黄)の Dela と見分けが付かなかった
-// (2026-08-17にユーザー指摘)。骨格そのものが違う家族を1つ足す。
-const reggaeOne = Reggae_One({
-  variable: "--font-reggae-one",
-  weight: "400",
+// ★SOCIAL(赤)の書体。Dela の斜体 → Reggae One → **M PLUS 1 (800)** と
+// 替えた(2026-08-17にユーザー選択)。幾何学的で平らな、いちばん「シンプル」な
+// ゴシック。800 あるので赤地に淡桃の文字でも線が消えない。
+const mplus1 = M_PLUS_1({
+  variable: "--font-mplus-1",
+  weight: "800",
   preload: false,
 });
 
@@ -68,7 +68,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#1A1A18",
+  // ★初期値だけ。以後は lib/ground.ts が html の背景色とセットで書き換える
+  // (固定の暗いグレーのままだと、iOS が自分で塗る領域 — キーボードの手前の
+  //  帯や画面の下端 — がその色になり、地色が途切れて見える)。
+  themeColor: "#ECECEA",
 };
 
 export default function RootLayout({
@@ -79,7 +82,7 @@ export default function RootLayout({
   return (
     <html lang="ja" className={[
       zenKakuGothicNew.variable, anton.variable,
-      zenMaruGothic.variable, delaGothicOne.variable, reggaeOne.variable,
+      zenMaruGothic.variable, delaGothicOne.variable, mplus1.variable,
     ].join(" ")}>
       <body>{children}</body>
     </html>

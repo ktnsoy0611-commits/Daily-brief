@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { BD_GREY, JOURNAL_BG } from "@/lib/constants";
+import { pushGround } from "@/lib/ground";
 import type { AppId } from "@/lib/types";
 
 // ★アプリの地(2026-08-11・作り直し)。
@@ -38,9 +39,9 @@ export function groundOf(app: AppId): string {
 export function AppBackdrop({ appId }: { appId: AppId }) {
   const ground = groundOf(appId);
 
-  useEffect(() => {
-    document.documentElement.style.backgroundColor = ground;
-  }, [ground]);
+  // ★地色の窓口は lib/ground.ts だけ(html の背景 + theme-color をセットで書く)。
+  // ここは「いちばん下の層」を積むだけ。全画面のオーバーレイはこの上へ積む。
+  useEffect(() => pushGround(ground), [ground]);
 
   // ★body直下へポータルで描き、高さは 100lvh(表示領域が最大のときの高さ)。
   // シェルは 100svh 固定 + overflow:hidden なので、ここへ置かないと、

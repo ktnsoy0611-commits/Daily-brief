@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { CHARCOAL, GOLD, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS } from "@/lib/constants";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
+import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
 import type { VoiceControls, VoiceTrim } from "@/lib/types";
 
@@ -984,13 +985,9 @@ export function VoiceOverlay({ voice, open, onClose }: {
   // どこまで届くかは端末の事情(セーフエリア・ツールバー)で変わりうるので、
   // 「届かなかった所に何色が出るか」を合わせて、隙間そのものを見えなくする。
   // タブの中で気づかなかったのは、そちらの地色が html と同じだったから。
-  useEffect(() => {
-    if (!open) return;
-    const el = document.documentElement;
-    const prev = el.style.backgroundColor;
-    el.style.backgroundColor = DIM_GROUND;
-    return () => { el.style.backgroundColor = prev; };
-  }, [open]);
+  // ★地色は lib/ground.ts が唯一の窓口(html の背景 + theme-color)。
+  // 自前で prev を覚えるのはやめた — 書き手が複数あると戻らなくなる。
+  useEffect(() => (open ? pushGround(DIM_GROUND) : undefined), [open]);
 
   if (!open || typeof document === "undefined") return null;
   return createPortal(

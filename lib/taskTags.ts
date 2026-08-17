@@ -15,9 +15,10 @@ import type { TaskTag } from "./types";
 // lib/constants.ts の FONT_FACES の並び。
 // ★**明朝は使わない**(2026-08-16にユーザー確定)。ゴシック系だけで
 // 骨格の違う5つ(太 / 丸ゴ / 極太 / ディスプレイ / 太斜体)を当てる。
-// ★SOCIAL(赤)は 細いゴシック → Dela斜体 → **Reggae One** と2度替えた。
+// ★SOCIAL(赤)は 細いゴシック → Dela斜体 → Reggae One → **M PLUS 1 (800)**。
 // 細いゴシックは赤地の上で線が消え、Dela の斜体は **iOS が和文の斜体を
-// 合成しない**ため WELLNESS の Dela と同じに見えた(2026-08-17に実機で指摘)。
+// 合成しない**ため WELLNESS の Dela と同じに見えた。**斜体で見分けを
+// 作らないこと**(2026-08-17確定)。
 export interface TagDef { id: TaskTag; label: string; color: string; ink: string; face: number }
 
 const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }, face: number): TagDef =>
@@ -27,7 +28,7 @@ export const TASK_TAGS: TagDef[] = [
   tag("work", "WORK", SCHEME.sky, 1),           // 空 × 淡い緑   / ゴシック700
   tag("life", "LIFE", SCHEME.forest, 3),        // 深緑 × 淡桃   / 丸ゴシック500
   tag("wellness", "WELLNESS", SCHEME.yellow, 4),// 黄 × 朱       / Dela(極太)
-  tag("social", "SOCIAL", SCHEME.red, 5),       // 赤 × 淡桃     / Reggae One
+  tag("social", "SOCIAL", SCHEME.red, 5),       // 赤 × 淡桃     / M PLUS 1 800
   tag("growth", "GROWTH", SCHEME.orange, 2),    // 橙 × 濃紺     / ゴシック700斜体
 ];
 

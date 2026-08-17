@@ -65,7 +65,7 @@ export interface FontFace { family: string; weight: number; italic?: boolean }
 const GOTHIC = 'var(--font-zen-kaku-gothic-new), "Hiragino Sans", sans-serif';
 const MARU = 'var(--font-zen-maru-gothic), "Hiragino Maru Gothic ProN", sans-serif';
 const DELA = 'var(--font-dela-gothic-one), "Hiragino Sans", sans-serif';
-const REGGAE = 'var(--font-reggae-one), "Hiragino Sans", sans-serif';
+const MPLUS = 'var(--font-mplus-1), "Hiragino Sans", sans-serif';
 
 export const FONT_FACES: FontFace[] = [
   { family: GOTHIC, weight: 400 },              // 0 細いゴシック
@@ -73,7 +73,7 @@ export const FONT_FACES: FontFace[] = [
   { family: GOTHIC, weight: 700, italic: true },// 2 太いゴシックの斜体
   { family: MARU, weight: 500 },                // 3 丸ゴシック
   { family: DELA, weight: 400 },                // 4 極太
-  { family: REGGAE, weight: 400 },              // 5 極太のディスプレイ体
+  { family: MPLUS, weight: 800 },               // 5 幾何学ゴシックの極太
 ];
 // ★ネオバウハウス化(2026-08-02)。それまでは暖色のクリーム地(BG #F2EADA /
 // PAPER #FBF6E9)に、アプリごとに違う地の色(グレージュ・緑)を敷いて「別の

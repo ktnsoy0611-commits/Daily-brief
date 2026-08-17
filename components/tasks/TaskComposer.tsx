@@ -2,11 +2,13 @@
 
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Calendar, TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
+import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
+import { WhenSheet } from "@/components/tasks/WhenSheet";
 import { ComposerToolbar, TOOL_LABEL, type ToolKey } from "@/components/tasks/ComposerToolbar";
 import { CAP, keepKeyboard, Popover } from "@/components/tasks/Popover";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
+import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
 import { resolveTag, tagColor, tagInk } from "@/lib/taskTags";
 import { specOf } from "@/lib/taskSize";
@@ -57,6 +59,8 @@ export interface ComposerData {
   endDate?: string;
   /** 時刻("HH:MM")。無ければ終日。 */
   dueTime?: string;
+  /** 終了時刻("HH:MM")。期間で終日オフのときだけ。 */
+  endTime?: string;
   /** メモ(道具・場所)。3番目の面。 */
   context?: string;
   /** 持ち物。4番目の面。 */
@@ -109,15 +113,14 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // ツールバーの灯りは下書き(遅らせない方)のタグで出す。
   const liveTag = resolveTag(draft.tag, seed, draft.title, draft.context, draft.belongings, draft.note);
 
-  // ★開いている間は html の地色も墨に。器が届かなかった隙間(キーボードとの
-  // あいだなど)から明るい地が見えるのを防ぐ(VoiceStudio と同じ手)。
+  // ★開いている間は**画面の地色**を墨にする。html の背景と theme-color の
+  // 両方を lib/ground.ts が書く — iOS が自分で塗る領域(キーボードの手前の帯・
+  // 画面の下端)まで揃わないと、そこだけ別の色の帯が見える。
+  useEffect(() => pushGround(CHARCOAL), []);
   useEffect(() => {
-    const el = document.documentElement;
-    const prevBg = el.style.backgroundColor;
-    const prevOv = document.body.style.overflow;
-    el.style.backgroundColor = CHARCOAL;
+    const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { el.style.backgroundColor = prevBg; document.body.style.overflow = prevOv; };
+    return () => { document.body.style.overflow = prev; };
   }, []);
 
   // 背面へ回るときだけ、保険として途中経過を保存する。
@@ -328,9 +331,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             onClose={closeTool}
           >
             {tool === "due" && (
-              <Calendar
-                value={draft.dueDate} end={draft.endDate} time={draft.dueTime}
-                onPick={(v) => set(v)}
+              <WhenSheet
+                value={{ dueDate: draft.dueDate, endDate: draft.endDate, dueTime: draft.dueTime, endTime: draft.endTime }}
+                maxHeight={Math.max(200, (box.height || 700) - bandH - 120)}
+                onChange={(v) => set(v)}
               />
             )}
             {tool === "context" && (

@@ -258,6 +258,8 @@ export interface Task extends TaskSides {
   endDate?: string;
   // 時刻("HH:MM")。無ければ終日。
   dueTime?: string;
+  // 終了時刻("HH:MM")。期間で終日オフのときだけ入る。
+  endTime?: string;
   done: boolean;
   doneAt?: string;
   createdAt: string;
@@ -308,6 +310,7 @@ export interface InboxCandidate extends TaskSides {
   dueDate?: string;
   endDate?: string;
   dueTime?: string;
+  endTime?: string;
   // Free Text(Coworkが書いた補足。確定するとタスクの note になる)。
   note?: string;
   // 重要度の見立て。Coworkが書いてくれば入る(未設定なら中扱い)。

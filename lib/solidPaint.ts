@@ -119,7 +119,7 @@ export function paintShape(
   ctx.save();
   path();
   ctx.clip();
-  drawFitted(ctx, plan.fit, plan.face, plan.cx * wpx, plan.cy * hpx, plan.ink, plan.size * dpr, plan.ready);
+  drawFitted(ctx, plan.fit, plan.face, plan.cx * wpx, plan.cy * hpx, plan.ink, plan.size * dpr);
   ctx.restore();
 }
 
@@ -136,9 +136,6 @@ interface TextPlan {
   cx: number; cy: number;
   /** 実際に描かれる文字の高さ(CSS px)。 */
   size: number;
-  /** ★その書体が届いているか。**この1枚の絵の中では一定**にする
-   *  (焼いている途中で届くと、前半 fallback / 後半 本物 の混在になる)。 */
-  ready: boolean;
 }
 
 // ★割り付けの結果をキャッシュする。draw は1フレームにつき、焼けていない
@@ -166,9 +163,12 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   const face = tagFace(p.tag);
   const wpx = w * unit;
   const hpx = h * unit;
-  // ★書体が届いているかを**ここで一度だけ**決める。以降の焼き込み・
-  // 描画はすべてこの値で揃うので、1枚の絵に2書体が混ざらない。
-  const ready = fontReady(face, tagView ? tagLabel(p.tag) : p.title);
+  // ★★**書体が届くまで文字を描かない**(2026-08-17)。fallback で焼くと、
+  // グリフを1フレームに1枚ずつ焼いている途中で本物が届き、1つの図形の中で
+  // 書体が混ざる。図形だけ先に出して、届いた瞬間に**全文字まとめて**出す
+  // (ensureGlyphs が焼き直しを知らせる)。
+  const text = tagView ? tagLabel(p.tag) : p.title;
+  if (!fontReady(face, text)) return null;
   if (tagView) {
     // タグの英字は**図形いっぱい**。矩形1つ(innerBox)で十分な短さ。
     const box = innerBox(n);
@@ -176,7 +176,7 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
     if (!fit) return null;
     return {
       text: tagLabel(p.tag), face, ink: tagInk(p.tag), fit,
-      cx: box.x + box.w / 2, cy: box.y + box.h / 2, size: fit.size, ready,
+      cx: box.x + box.w / 2, cy: box.y + box.h / 2, size: fit.size,
     };
   }
   // ★タイトルは「最低 TITLE_MIN、図形が大きければ面積に比例して大きく」。
@@ -190,7 +190,7 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   if (!fit) return null;
   return {
     text: p.title, face, ink: tagInk(p.tag), fit,
-    cx: 0, cy: fit.cy / hpx, size: fit.size, ready,
+    cx: 0, cy: fit.cy / hpx, size: fit.size,
   };
 }
 
@@ -203,13 +203,13 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
 export function warmShapeGlyphs(p: SolidPaint, budget: number, unit: number, dpr: number): number {
   const plan = textPlanOf(p, unit);
   if (!plan) return 0;
-  return warmGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr, budget, plan.ready);
+  return warmGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr, budget);
 }
 
 /** その図形を今すぐ焼けるか(グリフが全部そろっているか)。 */
 export function shapeGlyphsReady(p: SolidPaint, unit: number, dpr: number): boolean {
   const plan = textPlanOf(p, unit);
-  return !plan || missingGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr, plan.ready) === 0;
+  return !plan || missingGlyphs(plan.text, plan.face, plan.ink, plan.size * dpr) === 0;
 }
 
 /** その絵が占める範囲(solid 座標)。ビットマップの大きさを決めるのに使う。

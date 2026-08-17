@@ -1,9 +1,12 @@
 "use client";
 
-import { INK, MUTED, PAPER, SANS, SOFT_SHADOW_LG } from "@/lib/constants";
+import { PAPER, SANS } from "@/lib/constants";
 
 // ★入力画面(TaskComposer)のポップオーバーの器。入力エリアの**すぐ上**に、
-// 角丸の紙を1枚立ち上げる。丸みと影はアプリ共通の値(22 / SOFT_SHADOW_LG)。
+// 角丸の面を1枚立ち上げる。丸みはアプリ共通の 22。
+// ★地は**墨**(2026-08-17にユーザー確定)。白い紙だと入力画面の墨地から浮き、
+// 参照した TickTick の見た目とも違っていた。地より少し明るいチャコールにして
+// 「同じ暗い面の続き」として繋げる。
 //
 // ★キーボードは**出したまま**にする(2026-08-16にユーザー指定)。閉じると
 // 器の高さが変わってレイアウトが飛ぶため。よってこの紙は「キーボードの上・
@@ -25,6 +28,11 @@ export const keepKeyboard = (e: React.MouseEvent) => {
   if (tag === "TEXTAREA" || tag === "INPUT") return;
   e.preventDefault();
 };
+
+/** ポップオーバーの面。地(CHARCOAL)より少し明るいチャコール。 */
+export const LIFT = "#33332E";
+/** 墨の上の控えめな文字。 */
+export const DIM = "rgba(250,250,249,0.44)";
 
 export const CAP: React.CSSProperties = {
   fontFamily: SANS, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.22em",
@@ -58,20 +66,20 @@ export function Popover({ label, maxHeight, onClose, children }: {
         onMouseDown={keepKeyboard}
         style={{
           position: "absolute", left: 10, right: 10, bottom: "calc(100% + 8px)", zIndex: 2,
-          background: PAPER, color: INK,
-          borderRadius: 22, boxShadow: SOFT_SHADOW_LG,
+          background: LIFT, color: PAPER,
+          borderRadius: 22, boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
           padding: "14px 16px 16px",
           maxHeight: Math.max(140, maxHeight), overflowY: "auto",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 11 }}>
-          <span style={{ ...CAP, color: MUTED }}>{label}</span>
+          <span style={{ ...CAP, color: DIM }}>{label}</span>
           <button onClick={onClose} aria-label="閉じる" style={{
-            width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(26,26,24,0.06)",
+            width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(250,250,249,0.10)",
             padding: 0, cursor: "pointer", position: "relative", flexShrink: 0,
           }}>
-            <span style={{ position: "absolute", left: 8, top: 13, width: 12, height: 1.5, background: INK, transform: "rotate(45deg)" }} />
-            <span style={{ position: "absolute", left: 8, top: 13, width: 12, height: 1.5, background: INK, transform: "rotate(-45deg)" }} />
+            <span style={{ position: "absolute", left: 8, top: 13, width: 12, height: 1.5, background: PAPER, transform: "rotate(45deg)" }} />
+            <span style={{ position: "absolute", left: 8, top: 13, width: 12, height: 1.5, background: PAPER, transform: "rotate(-45deg)" }} />
           </button>
         </div>
         {children}

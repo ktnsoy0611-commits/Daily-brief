@@ -50,8 +50,8 @@
 - `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。
 - `components/tabs/DriftTab.tsx` — 候補の円環カバーフロー。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
-  `ComposerToolbar` / `ComposerFields`（カレンダー・重要度・タグ）/ `Popover` /
-  `SolidCanvas` / `ViewToggle` / `TaskAddButton`。
+  `WhenSheet`（期日・期間・時刻）/ `ComposerToolbar` / `ComposerFields`（重要度・
+  タグ・テキスト）/ `Popover` / `SolidCanvas` / `ViewToggle` / `TaskAddButton`。
 - `lib/solid.ts` `lib/solidPaint.ts` `lib/textFit.ts` `lib/taskSize.ts` `lib/taskTags.ts` — 図形・描画・寸法・タグ。
 
 ## ジャーナル（JOURNAL）
@@ -67,6 +67,8 @@
 ## データ・ロジック
 - `lib/types.ts` — **データモデルの正**。`lib/constants.ts` — 色・寸法・書体。
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。
+- `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
+  背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
 - `lib/myBrainPaths.ts` — **my-brain のパスを知っている唯一の場所**。`myBrain.ts` / `myBrainWrite.ts` / `myBrainSyncClient.ts`。
 

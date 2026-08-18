@@ -454,9 +454,23 @@ button:active {
    よい。安定的に、かつ引っ掛かりなく」)。器の寸法は動かないので、ここは
    **不透明度だけ**の合成。録音のオーバーレイと同じ手ざわりにする。 */
 .tc-shell-in { animation: tc-shell-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-/* 入力画面まるごとが閉じるとき。器は薄く、帯は下へ。 */
+/* ★★入力画面が閉じるときは**2段**(2026-08-18・第15巡にユーザー確定)。
+   0〜140ms … **中身だけ**が去る(図形は少し縮んで消え、帯は下へ抜け、
+               上のバーは薄くなる)。地はこのあいだ**不透明のまま**。
+   140〜340ms … 中身が無くなった地だけが薄くなる。
+   こうしないと、器と中身が同じ速さで薄くなるせいで途中は両方が半透明になり、
+   **後ろの画面と図形が重なって「図形が残っている」ように見える**。
+   録音のオーバーレイ(VoiceStudio)が「円が出ていってから地が消える」のと同じ順。 */
 @keyframes tc-shell-out { from { opacity: 1; } to { opacity: 0; } }
-.tc-shell-out { animation: tc-shell-out 240ms cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
+.tc-shell-out { animation: tc-shell-out 200ms cubic-bezier(0.4, 0, 1, 1) 140ms both; pointer-events: none; }
+/* 図形。少し縮みながら消える。 */
+@keyframes tc-gone {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.9); }
+}
+.tc-gone { animation: tc-gone 140ms cubic-bezier(0.4, 0, 1, 1) both; }
+/* 上のバー。薄くなるだけ。 */
+.tc-gone-flat { animation: tc-shell-out 120ms ease-in both; }
 /* 選んだ日のマスが1度だけ弾む。 */
 @keyframes tc-pick {
   0%   { transform: scale(0.7); }
@@ -482,7 +496,7 @@ button:active {
 .tc-lamp:active { transform: scale(0.9); }
 @media (prefers-reduced-motion: reduce) {
   .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in, .tc-sheet-out,
-  .tc-pop-out, .tc-shell-in, .tc-shell-out, .tc-pick { animation: none; }
+  .tc-pop-out, .tc-shell-in, .tc-shell-out, .tc-gone, .tc-gone-flat, .tc-pick { animation: none; }
   .tc-lamp { transition: none; }
   [data-composer-shell] { transition: none !important; }
 }

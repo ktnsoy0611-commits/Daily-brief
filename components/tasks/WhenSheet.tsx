@@ -297,7 +297,9 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
                 const end = value.endDate;
                 set(end && iso > end ? { dueDate: end, endDate: iso } : { dueDate: iso });
               }
-              setPop(null);
+              // ★★**選んでも閉じない**(2026-08-18にユーザー指定「押した瞬間に
+              //   閉じてしまって何日を選んだか分からない」)。閉じるのは
+              //   ✕・外側タップ・カードをもう一度押す、の3つ。
             }}
           />
         </Float>

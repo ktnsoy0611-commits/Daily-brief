@@ -130,7 +130,11 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   const activeRef = useRef(!!appActive);
   const sizeRef = useRef({ w: 0, h: 0 });
   const [openId, setOpenId] = useState<string | null>(null);
-  const [draftId, setDraftId] = useState<string | null>(null);
+  // ★★＋で作ったばかりのものは、**保存せずここだけで持つ**(2026-08-18・第15巡)。
+  // 以前は作った瞬間に保存していたので、**押した時点で山が丸ごと落とし直って**
+  // いた(実機で報告)。入力画面はレコードと同じただのオーバーレイであって、
+  // 開け閉めで後ろが動いてはいけない。題が付いて閉じたときに初めて山へ入る。
+  const [draft, setDraft] = useState<Task | null>(null);
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<SolidView>("name");
   const viewRef = useRef<SolidView>("name");
@@ -142,7 +146,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   const tasks = useMemo(() => (appState.tasks ?? []).filter((t) => !t.done), [appState.tasks]);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
-  const open = (appState.tasks ?? []).find((t) => t.id === openId) ?? null;
+  const open = draft ?? (appState.tasks ?? []).find((t) => t.id === openId) ?? null;
 
   const draw = useCallback(() => {
     const cv = canvasRef.current;
@@ -372,9 +376,14 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     const { keep, scale } = planPile(tasks);
     const keepIds = new Set(keep.map((t) => t.id));
     const shownIds = new Set(piecesRef.current.map((p) => p.id));
-    const culledChanged = keepIds.size !== shownIds.size
-      || [...keepIds].some((id) => !shownIds.has(id));
-    if (piecesRef.current.length && culledChanged) {
+    // ★★**落とし直すのは「まだ在るのに山から押し出された」ときだけ**
+    // (2026-08-18・第15巡)。以前は**件数が違うだけ**で落とし直していたので、
+    // タスクが1件増えるだけで全部が上から降ってきた。純粋な追加なら、
+    // 既存はその場のまま倍率だけ合わせ(`rescale`)、新しい1つだけが落ちる。
+    // 完了・削除は下の `alive` の道で世界から外れるので、これも落とし直さない。
+    const aliveIds = new Set(tasks.map((t) => t.id));
+    const pushedOut = [...shownIds].some((id) => !keepIds.has(id) && aliveIds.has(id));
+    if (piecesRef.current.length && pushedOut) {
       dropAll();
       return;
     }
@@ -453,25 +462,24 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     if (task) { Object.assign(task, final); task.done = true; task.doneAt = new Date().toISOString(); }
     persist(next);
     setOpenId(null);
-    setDraftId(null);
+    setDraft(null);
     showToast("完了しました");
   };
 
   const remove = (id: string) => {
+    setOpenId(null);
+    // 下書きはまだ保存していないので、捨てるだけでよい。
+    if (draft && draft.id === id) { setDraft(null); return; }
     const next: AppState = structuredClone(appState);
     next.tasks = next.tasks.filter((x) => x.id !== id);
     persist(next);
-    setOpenId(null);
-    setDraftId(null);
   };
 
   // 手でタスクを足す。空のまま作って開き、題を書いてもらう。
   const addTask = () => {
     const id = `task-${Date.now()}`;
-    const next: AppState = structuredClone(appState);
-    next.tasks = [{ id, title: "", done: false, createdAt: new Date().toISOString(), weight: 2 }, ...(next.tasks ?? [])];
-    persist(next);
-    setDraftId(id);
+    // ★保存しない・山も動かさない。ここで持つだけ(上のコメントを参照)。
+    setDraft({ id, title: "", done: false, createdAt: new Date().toISOString(), weight: 2 });
     setOpenId(id);
   };
 
@@ -479,9 +487,17 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   // (入力画面は1文字ごとには返さない — 保存と山の作り直しが毎打鍵走るため)
   const closeSheet = (id: string, final: ComposerData) => {
     setOpenId(null);
-    const isDraft = draftId === id;
-    if (isDraft) setDraftId(null);
-    if (isDraft && !final.title.trim()) { remove(id); return; }
+    const d = draft;
+    if (d && d.id === id) {
+      setDraft(null);
+      // 題が無いまま閉じたら、何も無かったことにする(保存もしていない)。
+      if (!final.title.trim()) return;
+      // 題が付いた ＝ ここで初めて山へ入る。1つだけが上から落ちてくる。
+      const next: AppState = structuredClone(appState);
+      next.tasks = [{ ...d, ...final }, ...(next.tasks ?? [])];
+      persist(next);
+      return;
+    }
     patch(id, final);
   };
 
@@ -529,8 +545,11 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
           key={open.id}
           data={open}
           mode="task"
-          onCommit={(d) => patch(open.id, d)}
-          onConfirm={(d) => complete(open, d)}
+          // ★下書き(まだ保存していないもの)は、保存ではなく手元へ書き戻す。
+          onCommit={(d) => (draft && draft.id === open.id
+            ? setDraft((x) => (x ? { ...x, ...d } : x))
+            : patch(open.id, d))}
+          onConfirm={(d) => { setDraft(null); complete(open, d); }}
           onDelete={() => remove(open.id)}
           onClose={(d) => closeSheet(open.id, d)}
         />

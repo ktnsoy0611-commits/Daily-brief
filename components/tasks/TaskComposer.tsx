@@ -77,11 +77,17 @@ export interface ComposerData {
 // **transform だけ**で動かす(レイアウトを起こさない)。イージングはシェルの
 // 横スライドと同じもの。**新しいイージングを増やさないこと。**
 /** 閉じる動きの長さ(ms)。 */
-const LEAVE_MS = 240;
+// ★閉じるのは**2段**(2026-08-18・第15巡にユーザー確定)。中身が先に去り、
+// 地はそのあと。合計の時間。
+const LEAVE_MS = 340;
+// ★中身が去りきるのは 140ms(`.tc-gone` / `.tc-gone-flat`)。地はそのあと
+//   200ms かけて薄くなる(`.tc-shell-out` の遅れ)。合わせて LEAVE_MS。
 /** これより高く出たら「キーボードが出ている」。 */
 const KB_UP = 120;
 /** これより低くなったら「キーボードが閉じた」。 */
 const KB_DOWN = 60;
+/** 下がったように見えてから、確かめるまでの待ち。 */
+const KB_SETTLE_MS = 200;
 /** キーボードに追いつくときの動き。**transform だけ**に掛ける。 */
 const KB_EASE = "transform 280ms cubic-bezier(0.32,0.72,0,1)";
 /** 図形を最初に焼くまでの待ち。器の登場(260ms)が終わってから。 */
@@ -236,30 +242,32 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const shellRef = useRef<HTMLDivElement | null>(null);
   /** 一度でもキーボードが出たか。出ていないうちは「閉じた」と見なさない。 */
   const kbSeen = useRef(false);
+  /** いま出している持ち上げ量(px)。 */
+  const kbRef = useRef(0);
+  const settleRef = useRef(0);
   useLayoutEffect(() => {
-    const apply = () => {
+    /** 器の下端が、見えている下端よりどれだけ下か。 */
+    const measure = () => {
       const el = shellRef.current;
-      // ★閉じている最中はもう触らない(閉じ際に画面が動いて見えるのを防ぐ)。
-      if (!el || leftRef.current) return;
+      if (!el) return kbRef.current;
       const vv = window.visualViewport;
       // ★★**キーボードの高さは「自分の下端が、見えている下端より
       //    どれだけ下か」で測る**(2026-08-18・第13巡)。
-      //
-      //    これは器を実測するので、端末がどちらの流儀でも正しい:
+      //    器を実測するので、端末がどちらの流儀でも正しい:
       //     ・レイアウトごと縮む(iOS のスタンドアロン) … 器も縮むので差は 0。
-      //       帯はもともと見えている下端にいる。
-      //     ・visualViewport だけ縮む(通常の Safari) … 器は 844 のまま、
-      //       見えている下端は 470。差 374 ぶん持ち上げればよい。
-      //
+      //     ・visualViewport だけ縮む(通常の Safari) … 差がそのまま高さ。
       //    第8巡は `innerHeight - vv.height` で測って**前者で 0 になり**、
       //    第9〜12巡は器そのものを縮めて**レイアウトをやり直して**いた。
-      //    どちらも要らない。測るだけでよかった。
       const seen = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      const kb = Math.max(0, Math.round(el.getBoundingClientRect().bottom - seen));
+      return Math.max(0, Math.round(el.getBoundingClientRect().bottom - seen));
+    };
+
+    /** 実際に書き込む。ここだけが `--kb` を動かす。 */
+    const commit = (kb: number) => {
+      const el = shellRef.current;
+      if (!el || leftRef.current) return;
+      kbRef.current = kb;
       el.style.setProperty("--kb", `${kb}px`);
-      // ★見えている矩形が上へずれていたら押し戻す。器は画面に貼り付いて
-      //   いるので、ずれると上のバーが画面の外へ出てしまう。
-      if (vv && vv.offsetTop > 0) window.scrollTo(0, 0);
       // ★★**キーボードを閉じたら入力画面も閉じる**(2026-08-18にユーザー指定
       // 「キーボード上のバーのチェックマークで閉じたら、タスク入力画面も
       // 閉じるようにしてください」)。iOS の「完了」ボタンには専用のイベントが
@@ -268,11 +276,40 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       if (kb > KB_UP) kbSeen.current = true;
       else if (kbSeen.current && kb < KB_DOWN) {
         kbSeen.current = false;
-        // 日程のシートは**わざとキーボードを閉じている**ので、そこは通す。
-        if (whenRef.current === "") leaveRef.current();
+        leaveRef.current();
       }
     };
+
+    // ★★★**上がるのは即座に、下がるのは確かめてから**(2026-08-18・第15巡)。
+    //
+    // iOS は**欄から欄へフォーカスが移る一瞬**にもキーボードを畳みかける。
+    // 素直に書き替えていたので、メモ・持ち物のアイコンを押すたびに帯が
+    // 374px・図形が 187px 滑って「ガクッと動く」と報告された。
+    // 下がったように見えたら 200ms 待って測り直し、**まだ下がっていたときだけ**
+    // 書く。本当に閉じたときは 200ms 後も 0 なので、閉じる合図は今までどおり出る。
+    //
+    // ★日程のシートが開いているあいだは**一切書かない(凍らせる)**。
+    // あそこは**こちらから**キーボードを閉じているので、追いかける必要が無い。
+    // 追いかけていたので、開いた瞬間に帯が落ち、閉じると上がり直していた。
+    const apply = () => {
+      if (!shellRef.current || leftRef.current) return;
+      if (whenRef.current !== "") return;
+      const kb = measure();
+      window.clearTimeout(settleRef.current);
+      if (kb >= kbRef.current) { commit(kb); return; }
+      settleRef.current = window.setTimeout(() => {
+        if (leftRef.current || whenRef.current !== "") return;
+        const now = measure();
+        if (now < kbRef.current) commit(now);
+      }, KB_SETTLE_MS);
+    };
     apply();
+    // ★見えている矩形が上へずれていたら押し戻す。器は画面に貼り付いて
+    //   いるので、ずれると上のバーが画面の外へ出てしまう。
+    const unshift = () => {
+      const vv = window.visualViewport;
+      if (vv && vv.offsetTop > 0) window.scrollTo(0, 0);
+    };
     // ★★合図をもう1つ持つ(2026-08-18。`--kb` だけでは実機で閉じなかった)。
     // iOS の「完了」は**フォーカスを外す**。受け皿(`pressedRecently`)が
     // 戻さなかった＝画面の外で外れた、ということなので、少し待って
@@ -280,6 +317,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     const gone = () => {
       window.setTimeout(() => {
         if (leftRef.current || whenRef.current !== "") return;
+        // ★★**キーボードが一度も出ていないうちは働かせない**(2026-08-18・第15巡)。
+        //   開いた直後に focus が落ちただけで閉じてしまい、実機で
+        //   「追加ボタンを押すと立ち上がってすぐ閉じる」と報告された。
+        if (!kbSeen.current) return;
         const a = document.activeElement;
         const typing = !!a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT");
         if (!typing) leaveRef.current();
@@ -297,16 +338,18 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     };
     shellRef.current?.addEventListener("scroll", pin);
     const vv = window.visualViewport;
-    vv?.addEventListener("resize", apply);
-    vv?.addEventListener("scroll", apply);
-    window.addEventListener("resize", apply);
+    const onVV = () => { unshift(); apply(); };
+    vv?.addEventListener("resize", onVV);
+    vv?.addEventListener("scroll", onVV);
+    window.addEventListener("resize", onVV);
     const shell = shellRef.current;
     return () => {
       shell?.removeEventListener("focusout", gone);
       shell?.removeEventListener("scroll", pin);
-      vv?.removeEventListener("resize", apply);
-      vv?.removeEventListener("scroll", apply);
-      window.removeEventListener("resize", apply);
+      vv?.removeEventListener("resize", onVV);
+      vv?.removeEventListener("scroll", onVV);
+      window.removeEventListener("resize", onVV);
+      window.clearTimeout(settleRef.current);
     };
   }, []);
 
@@ -535,7 +578,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}
-      <div data-topbar onMouseDown={keepKeyboard} style={{
+      <div data-topbar className={bye ? "tc-gone-flat" : undefined} onMouseDown={keepKeyboard} style={{
         flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
         padding: "max(8px, env(safe-area-inset-top)) 14px 4px",
         position: "relative", zIndex: 2,
@@ -710,9 +753,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
              確定し、どちらも押した瞬間にキーボードが戻る。 ── */}
       {when !== "" && (
         <div className={when === "open" ? "tc-sheet" : "tc-sheet-out"} data-when style={{
-          // ★キーボードは閉じるので普段 `--kb` は 0。閉じ切る前の一瞬だけ、
-          //   ここが効いてシートがキーボードの裏に隠れずに済む。
-          position: "absolute", left: 0, right: 0, bottom: "var(--kb, 0px)", zIndex: 4,
+          // ★`--kb` は見ない。日程のシートが開いているあいだ `--kb` は
+          //   **凍らせてある**(帯と図形をその場に留めるため)ので、ここが
+          //   参照すると 374px 浮いてしまう。ここはいつも画面の下端。
+          position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 4,
           background: LIFT, borderRadius: "28px 28px 0 0",
           boxShadow: "0 -18px 40px rgba(0,0,0,0.40)",
           padding: "14px 16px max(14px, env(safe-area-inset-bottom))",
@@ -721,7 +765,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           // 中身なりにすると「期間」で上端が下がり、押す位置が変わるうえ
           // ホバーがシートの外へはみ出していた。
           height: `calc(${SHEET_BODY_H}px + max(14px, env(safe-area-inset-bottom)))`,
-          maxHeight: "calc(100% - var(--kb, 0px) - 8px)",   // 背の低い端末の保険(カレンダーが痩せる)
+          maxHeight: "calc(100% - 8px)",   // 背の低い端末の保険(カレンダーが痩せる)
         }}>
           <WhenSheet
             value={{ dueDate: draft.dueDate, endDate: draft.endDate, dueTime: draft.dueTime, endTime: draft.endTime }}
@@ -788,13 +832,7 @@ function ShapeStage({ spec, title, tag, bye }: {
       //   ちょうど真ん中に居続ける。**寸法は 1px も変わらない**ので、
       //   図形の焼き直しもレイアウトも起きない(合成のやり直しだけ)。
       transform: "translateY(calc(var(--kb, 0px) / -2))",
-      // ★★**自分でも薄くなる**(2026-08-18に実機で「フェードアウトするとき
-      //   図形の部分だけ薄くなっていない」と報告)。器の不透明度は本来
-      //   子へも効くはずだが、この面は `transform` で**別の合成レイヤー**に
-      //   上がっているため、WebKit では親の opacity アニメーションが
-      //   乗らないことがある。自分で持てば端末に関係なく必ず薄くなる。
-      opacity: bye ? 0 : 1,
-      transition: `${KB_EASE}, opacity ${LEAVE_MS}ms ease-in`,
+      transition: KB_EASE,
       // ★★**ここで切る**(2026-08-18)。上の「一番大きい箱を持ち続ける」に
       // したことで、キーボードが出ているあいだ canvas は舞台より背が高くなる。
       // 切らずに置くと**器(overflow:hidden)に本物のはみ出しが生まれ**、iOS が
@@ -807,7 +845,7 @@ function ShapeStage({ spec, title, tag, bye }: {
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       {ready && box.w > 8 && box.h > 8 && (
-      <span className="tc-row-in" style={{ display: "block", lineHeight: 0 }}>
+      <span className={bye ? "tc-gone" : "tc-row-in"} style={{ display: "block", lineHeight: 0 }}>
         <SolidCanvas
           w={box.w} h={box.h}
           // ★倍率を固定する。器に目一杯まで拡大すると、重要度や期限を変えても

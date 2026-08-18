@@ -30,13 +30,11 @@ import type { InboxCandidate, TabProps } from "@/lib/types";
 /**
  * 図形の器。真横から見た長方形なので横長にとる(横幅=タイトルの長さ)。
  *
- * ★★**画面の端で「切り落とす」のではなく「溶かす」**(2026-08-18・第11巡)。
- * 第10巡では図形と半径を縮めて画面に収めたが、それは求められたことでは
- * なかった（「半径を小さくしてはみ出さないようにして欲しいわけではなく、
- * 左右でトリミングされていたのを修正して欲しかった」）。輪なのだから隣は
- * 画面の外へ回っていくのが正しく、**問題はその境目が直線で切れていたこと**。
- * 器の `overflow: hidden` はそのままに、**横方向の mask** で端を薄れさせる
- * (`.drift-ring`)。これで大きさも半径も自由に決められる。
+ * ★★**画面の端で切らない**(2026-08-18・第12巡にユーザー指定)。
+ * 第10巡では図形と半径を縮めて画面に収め、第11巡では mask で溶かしたが、
+ * どちらも求められたことではなかった。**輪なのだから隣は画面の外へ
+ * そのままはみ出していく**のが正しい。器の横方向の切り取りをやめる。
+ * これで大きさも半径も画面幅に縛られない。
  */
 const SOLID_W = 300;
 const SOLID_H = 190;
@@ -295,8 +293,15 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       {/* 円環。手前の1つだけがはっきり見え、左右に払うと回る。 */}
       <div
         onPointerDown={onDown}
-        className="drift-ring"
-        style={{ position: "relative", flex: 1, minHeight: 340, touchAction: "pan-y", overflow: "hidden" }}>
+        className="bleed-x"
+        // ★★**薄れさせない。画面の端まで出して、そこで終わり**(2026-08-18に
+        //    ユーザー指定「マスクせず、そのままはみ出してください」)。
+        //    輪はこの面いっぱい(＝画面の幅そのもの)なので、ここで切るのは
+        //    画面の端で切るのと同じ ＝ 見た目は「画面の外へ出ていった」になる。
+        //    ★`hidden` ではなく **`clip`**。`hidden` は「送れる箱」なので、
+        //    はみ出したぶんを iOS が横に送れてしまう(入力画面で踏んだのと同じ罠)。
+        style={{ position: "relative", flex: 1, minHeight: 340, touchAction: "pan-y",
+          overflow: "clip" }}>
         {candidates.map((c, i) => (
           <div
             key={c.id}

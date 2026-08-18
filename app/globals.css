@@ -67,6 +67,14 @@ body {
 .full-bleed {
   margin: calc(-1 * var(--pad-top)) -16px calc(-1 * var(--nav-h));
 }
+/* ★左右だけ画面いっぱいにしたいとき(上下はタブの流れのまま)。
+   横に出ていくものを**画面の端で終わらせる**ために使う — 候補の輪は
+   これが無いと 16px 内側で切れ、「左右がトリミングされている」と見えた
+   (2026-08-18に実機で報告)。16 は上の `.full-bleed` と同じ数字。 */
+.bleed-x {
+  margin-left: -16px;
+  margin-right: -16px;
+}
 
 /* ★アプリの横スライドとダッシュボードの引き上げは、Reactのstateではなく
    **CSSカスタムプロパティ**で駆動する(2026-08-02)。
@@ -372,16 +380,6 @@ button:active {
 @media (prefers-reduced-motion: reduce) {
   .drift-bob { animation: none; }
 }
-/* ★輪の左右は**切り落とさずに溶かす**(2026-08-18)。輪なのだから隣は画面の外へ
-   回っていくのが正しく、直線で切れているのが「トリミング」に見えていた。
-   手前の1枚(画面の中央 300px ＝ 左右に 11.5% ずつの余白)には掛からない幅で
-   薄れさせる。 */
-.drift-ring {
-  -webkit-mask-image: linear-gradient(to right,
-    transparent 0, rgba(0,0,0,0.35) 5%, #000 11%, #000 89%, rgba(0,0,0,0.35) 95%, transparent 100%);
-  mask-image: linear-gradient(to right,
-    transparent 0, rgba(0,0,0,0.35) 5%, #000 11%, #000 89%, rgba(0,0,0,0.35) 95%, transparent 100%);
-}
 
 @keyframes inbox-drift {
   0%, 100% { transform: translate(0, 0); }
@@ -456,6 +454,16 @@ button:active {
   100% { transform: scale(1); }
 }
 .tc-pick { animation: tc-pick 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* 時刻ダイアルの列(期日のとき)。上下の薄れは**この mask だけ**が作る。
+   以前は各マスの style を中央からの距離で塗り分けていたので、指を動かすたび
+   180 個の inline style を書き換えていた ＝「反応が遅い」の正体。 */
+.tc-dial {
+  -webkit-mask-image: linear-gradient(to bottom,
+    transparent 0, rgba(0,0,0,0.25) 14%, #000 38%, #000 62%, rgba(0,0,0,0.25) 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom,
+    transparent 0, rgba(0,0,0,0.25) 14%, #000 38%, #000 62%, rgba(0,0,0,0.25) 86%, transparent 100%);
+}
+.tc-dial::-webkit-scrollbar { display: none; }
 /* 灯り(ツールバーの丸)。色だけを滑らかに。 */
 .tc-lamp {
   transition: background-color 180ms ease, color 180ms ease,

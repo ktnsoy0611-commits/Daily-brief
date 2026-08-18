@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CAP, Press } from "@/components/tasks/Popover";
 import { TimeRange } from "@/components/tasks/TimeRange";
 import { PAPER, RUST, SANS } from "@/lib/constants";
@@ -140,8 +140,14 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
    *  見えていないと、タイムラインは何もつまむものが無い面になってしまう。 */
   const openTime = () => {
     if (pop === "time") { setPop(null); return; }
-    if (!value.dueTime) set({ dueTime: "09:00", endTime: "10:00" });
-    else if (!value.endTime) set({ endTime: addHour(value.dueTime) });
+    if (isRange) {
+      // 期間 … つまむ帯が要るので、無ければその場で1時間ぶん置く。
+      if (!value.dueTime) set({ dueTime: "09:00", endTime: "10:00" });
+      else if (!value.endTime) set({ endTime: addHour(value.dueTime) });
+    } else if (!value.dueTime) {
+      // 期日 … 一点。終わりの時刻は持たない。
+      set({ dueTime: "09:00", endTime: undefined });
+    }
     setPop("time");
   };
 
@@ -150,9 +156,14 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
     haptic(6);
     setPop(null);
     const start = value.dueDate ?? today;
-    // 期間 … 終わりの日を持つ。期日 … 終わりの日は持たない。時刻はどちらでも同じ。
-    if (on) set({ dueDate: start, endDate: value.endDate ?? start });
-    else set({ dueDate: start, endDate: undefined });
+    // 期間 … 終わりの日と終わりの時刻を持つ。
+    // 期日 … どちらも持たない(時刻は締め切りの一点)。
+    if (on) {
+      set({ dueDate: start, endDate: value.endDate ?? start,
+        endTime: value.dueTime ? (value.endTime ?? addHour(value.dueTime)) : undefined });
+    } else {
+      set({ dueDate: start, endDate: undefined, endTime: undefined });
+    }
   };
 
   /** 期間のときの「終日」。 */
@@ -213,8 +224,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
             onPick={(iso) => { haptic(6); set({ dueDate: iso }); }} />
           {/* ★期日のときも時刻は**開始〜終了**で持つ(2026-08-18にユーザー確定)。
               期間と操作が同じになり、覚えることが1つ減る。 */}
-          <Row ref={timeRef} label="時刻" accent={accent}
-            value={value.dueTime ? `${value.dueTime} - ${value.endTime ?? addHour(value.dueTime)}` : undefined}
+          <Row ref={timeRef} label="時刻" accent={accent} value={value.dueTime}
             onOpen={openTime}
             onClear={value.dueTime ? () => set({ dueTime: undefined, endTime: undefined }) : undefined}
           />
@@ -256,7 +266,13 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
         </>
       )}
 
-      <Press onPress={() => { haptic(8); setPop(null); onChange({}); }} aria-label="クリア" style={{
+      {/* ★空の `{}` を渡してはいけない(2026-08-18)。呼び側は受け取ったものを
+          下書きへ**混ぜる**ので、`{}` では何も消えない。消すものを
+          **1つずつ undefined で名指しする**。 */}
+      <Press onPress={() => {
+        haptic(8); setPop(null);
+        onChange({ dueDate: undefined, endDate: undefined, dueTime: undefined, endTime: undefined });
+      }} aria-label="クリア" style={{
         width: "100%", height: CLEAR_H, borderRadius: 999, flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
         ...CAP, fontSize: 10.5, color: RUST,
@@ -288,13 +304,20 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
       )}
       {pop === "time" && (
         <Float anchor={timeRef} fit onClose={() => setPop(null)}>
-          {/* ★タイムラインで**範囲**を選ぶ(2026-08-18にユーザー確定)。
-              期日のときも期間のときも同じ形 — 覚えることが1つ減る。 */}
-          <TimeRange accent={accent}
-            start={value.dueTime ?? "09:00"}
-            end={value.endTime ?? addHour(value.dueTime ?? "09:00")}
-            onChange={(a, b) => set({ dueTime: a, endTime: b })}
-          />
+          {/* ★★**期日は一点・期間は範囲**(2026-08-18にユーザー確定)。
+              期日に入れるのは締め切りの時刻(8:00 など)なので、iPhone の
+              アラームと同じダイアル。期間は始まりと終わりがあるので、
+              タイムラインの上で帯をつまむ。 */}
+          {isRange ? (
+            <TimeRange accent={accent}
+              start={value.dueTime ?? "09:00"}
+              end={value.endTime ?? addHour(value.dueTime ?? "09:00")}
+              onChange={(a, b) => set({ dueTime: a, endTime: b })}
+            />
+          ) : (
+            <Dial accent={accent} value={value.dueTime ?? "09:00"}
+              onChange={(t) => set({ dueTime: t })} />
+          )}
         </Float>
       )}
     </div>
@@ -842,3 +865,166 @@ function Arrow({ dir, onClick }: { dir: -1 | 1; onClick: () => void }) {
   );
 }
 
+// ── 時刻のダイアル(期日のときだけ) ──────────────────────────
+// 時 / 分 の2列。`scroll-snap` で1つずつ止まるので、外部ライブラリは不要。
+// 中央のハイライトが「いま選んでいる値」。
+//
+// ★★**期日の時刻は「一点」**(2026-08-18にユーザー確定)。締め切りの時刻を
+// 入れる場所なので、範囲ではなく 8:00 のような1つの時刻を指す。だから
+// **iPhone のアラームと同じダイアル**に戻した。範囲を選ぶタイムライン
+// (`TimeRange`)は**期間のときだけ**使う。
+
+const ITEM_H = 36;
+/** 列の幅。★全幅に広げないこと(2026-08-17にユーザー指摘)。 */
+const COL_W = 70;
+/** 見えている行数。★iPhone のアラームと同じ見え方に(2026-08-17にユーザー指定)。 */
+const VISIBLE = 5;
+/** 中央の行までの段数。 */
+const MID = (VISIBLE - 1) / 2;
+/** ダイアルまるごとの高さ(浮きの置き場所の計算に使う)。 */
+const DIAL_H = ITEM_H * VISIBLE;
+/** ★一周させるために並べる周の数。奇数にして真ん中の周を定位置にする。 */
+const LOOPS = 5;
+
+const HOURS = Array.from({ length: 24 }, (_, i) => pad(i));
+/** ★15分刻み(2026-08-18にユーザー指定。5分は操作しづらい)。 */
+const MINUTES = Array.from({ length: 4 }, (_, i) => pad(i * 15));
+
+function Dial({ value, accent, onChange }: {
+  value: string; accent: string; onChange: (t: string) => void;
+}) {
+  const h = Number(value.slice(0, 2));
+  const m = Number(value.slice(3));
+  // ★列は**再レンダーしない**ので、渡す関数は**作り替えない**。
+  //   いまの時刻と受け手は ref 越しに読む(でないと古い値を掴んだままになる)。
+  const now = useRef(value); now.current = value;
+  const emit = useRef(onChange); emit.current = onChange;
+  const pickH = useRef((v: string) => emit.current(`${v}:${now.current.slice(3)}`)).current;
+  const pickM = useRef((v: string) => emit.current(`${now.current.slice(0, 2)}:${v}`)).current;
+  return (
+    <div style={{
+      position: "relative", display: "flex", gap: 6,
+      width: COL_W * 2 + 22, margin: "0 auto", alignItems: "stretch",
+    }}>
+      {/* 中央のハイライト。列の裏に敷く。 */}
+      <span aria-hidden style={{
+        position: "absolute", left: 0, right: 0, top: ITEM_H * MID, height: ITEM_H,
+        borderRadius: 12, background: "rgba(250,250,249,0.12)", pointerEvents: "none",
+      }} />
+      <Column values={HOURS} value={pad(h)} accent={accent} onPick={pickH} />
+      <span aria-hidden style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: SANS, fontSize: 18, fontWeight: 700, color: ON_G, width: 10,
+      }}>:</span>
+      <Column values={MINUTES} value={pad(m - (m % 15))} accent={accent} onPick={pickM} />
+    </div>
+  );
+}
+
+/**
+ * ダイアルの1列。
+ *
+ * ★**真ん中に来た値がそのまま選ばれる**(iPhone のアラームと同じ)。
+ * ★★**一周する**(2026-08-18にユーザー指定「一番下までスクロールすると
+ *   止まってしまう」)。値を LOOPS 周ぶん並べておき、外側の周へ入ったら
+ *   **transition を使わずに**中央の周へ差し戻す(見た目は動かない)。
+ * ★★**ワンテンポ遅れさせない**(同指摘)。以前は 120ms 待ってから確定して
+ *   いた。いまは**スクロール中に中央の値が変わった瞬間**に確定する。
+ *   止まったあとの差し戻しだけデバウンスに残す。
+ */
+/**
+ * ダイアルの1列。
+ *
+ * ★**真ん中に来た値がそのまま選ばれる**(iPhone のアラームと同じ)。
+ * ★**一周する** … 値を LOOPS 周ぶん並べ、止まったら外側の周から中央の周へ
+ *   **transition を使わずに**差し戻す(見た目は1pxも動かない)。
+ * ★**待たない** … スクロール中に中央の値が変わった瞬間に確定する。
+ *
+ * ★★**マスの見た目を `value` に依存させないこと**(2026-08-18)。
+ * 依存させていたので、中央の値が変わるたびに親が再レンダーし、
+ * **120 + 60 個の inline style を毎回書き換えていた**。それが実機で
+ * 「反応が遅い」の正体。選んでいる値は**中央のピル**が示し、上下の薄れは
+ * **CSS の mask** が作る(JS は関与しない)。おかげでマスの並びは
+ * `useMemo` で作り置きでき、スクロール中の再レンダーは**ゼロ**になる。
+ */
+const Column = memo(function Column({ values, accent, value, onPick }: {
+  values: string[]; accent: string;
+  /** 開いたときに中央へ置く値。**以後この props は見ない**(再レンダーしない)。 */
+  value: string;
+  onPick: (v: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const timer = useRef(0);
+  /** いま出している値。onPick を無駄に呼ばないための控え。 */
+  const shown = useRef(value);
+  /** 押したときにやることは毎レンダー変わるので ref 越しに読む。 */
+  const pick = useRef(onPick);
+  pick.current = onPick;
+
+  const cycle = values.length * ITEM_H;
+  /** 中央の周の先頭。 */
+  const base = Math.floor(LOOPS / 2) * cycle;
+
+  // 開いたとき、いまの値を中央の周の中央へ。
+  useEffect(() => {
+    const el = ref.current;
+    const i = values.indexOf(value);
+    if (el && i >= 0) el.scrollTop = base + i * ITEM_H;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 中央に来ている値。 */
+  const centered = (el: HTMLDivElement) =>
+    values[((Math.round(el.scrollTop / ITEM_H) % values.length) + values.length) % values.length];
+
+  /** 外側の周に入っていたら中央の周へ戻す。**見た目は1pxも動かない。** */
+  const recenter = (el: HTMLDivElement) => {
+    const off = ((el.scrollTop - base) % cycle + cycle) % cycle;
+    const want = base + off;
+    if (Math.abs(el.scrollTop - want) > 1) el.scrollTop = want;
+  };
+
+  // ★マスは**一度だけ**作る。`value` に依存させないので作り直す理由が無い。
+  const cells = useMemo(() => (
+    Array.from({ length: LOOPS }, (_, r) => values.map((v) => (
+      <span key={`${r}-${v}`} style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        width: "100%", height: ITEM_H, scrollSnapAlign: "center",
+        fontFamily: SANS, fontSize: 20, fontWeight: 600, color: accent,
+      }}>{v}</span>
+    )))
+  ), [values, accent]);
+
+  return (
+    <div
+      ref={ref}
+      className="tc-dial"
+      onScroll={() => {
+        const el = ref.current;
+        if (!el) return;
+        // ★指が動いているあいだに確定する(待たない)。
+        const v = centered(el);
+        if (v !== shown.current) { shown.current = v; haptic(4); pick.current(v); }
+        // 止まった頃に周を戻す。scrollend が使えない環境のための保険つき。
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => recenter(el), 140);
+      }}
+      onScrollEnd={() => { const el = ref.current; if (el) recenter(el); }}
+      style={{
+        width: COL_W, height: DIAL_H, overflowY: "auto", scrollSnapType: "y mandatory",
+        padding: `${ITEM_H * MID}px 0`, scrollbarWidth: "none", WebkitOverflowScrolling: "touch",
+      }}
+    >
+      {/* ★★**ここに `Press` を置かないこと**(2026-08-17に実機で
+          「時刻の設定 UI が操作できない」と報告された)。`Press` は iOS の
+          フォーカス移動を止めるために非 passive な `touchstart` で
+          `preventDefault()` するが、**それはスクロールも打ち消す**。 */}
+      {cells}
+    </div>
+  );
+}, (a, b) => (
+  // ★`value` と `onPick` は**見ない**。値は ref 越しに読み、見た目は中央のピルが
+  //   示すので、スクロール中に再レンダーする理由が 1 つも無い。
+  a.accent === b.accent && a.values.length === b.values.length &&
+  a.values.every((v, i) => v === b.values[i])
+));

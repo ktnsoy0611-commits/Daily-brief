@@ -82,6 +82,8 @@ const LEAVE_MS = 200;
 const KB_UP = 120;
 /** これより低くなったら「キーボードが閉じた」。 */
 const KB_DOWN = 60;
+/** 器がキーボードに追いつくときの動き。 */
+const SHELL_EASE = "height 260ms cubic-bezier(0.32,0.72,0,1), top 260ms cubic-bezier(0.32,0.72,0,1)";
 /** ポップオーバーが下へ抜ける時間(ms)。globals.css の `tc-pop-out` と合わせる。 */
 const POP_OUT_MS = 160;
 
@@ -202,15 +204,33 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   if (fullH.current === 0 && typeof window !== "undefined") fullH.current = window.innerHeight;
   /** 一度でもキーボードが出たか。出ていないうちは「閉じた」と見なさない。 */
   const kbSeen = useRef(false);
-  useEffect(() => {
+  /** 最初の1回だけ transition 抜きで置く(開いた瞬間に器が伸び縮みしないため)。 */
+  const settled = useRef(false);
+  useLayoutEffect(() => {
     const apply = () => {
       const el = shellRef.current;
-      if (!el) return;
+      // ★閉じている最中は**もう動かさない**(2026-08-18にユーザー指摘
+      //   「閉じた時に上部の図形が出てきたり、画面が上下に動く」)。
+      //   閉じるときはキーボードも引っ込むので、放っておくと器が 470→844 へ
+      //   伸び、その中で図形が下りてくる動きが見えてしまう。
+      if (!el || leftRef.current) return;
       const vv = window.visualViewport;
       const top = vv ? vv.offsetTop : 0;
       const height = vv ? vv.height : window.innerHeight;
+      // ★最初の1回は transition を切って置く。器は `100svh` で描かれてから
+      //   ここで矩形へ貼り直されるので、transition が生きていると
+      //   **開いた瞬間に一度伸び縮みする**(実機で「ガクッとなる」と報告)。
+      if (!settled.current) el.style.transition = "none";
       el.style.top = `${top}px`;
       el.style.height = `${height}px`;
+      if (!settled.current) {
+        settled.current = true;
+        // 次のフレームから、キーボードの追従にだけ transition を効かせる。
+        requestAnimationFrame(() => {
+          const e2 = shellRef.current;
+          if (e2 && !leftRef.current) e2.style.transition = SHELL_EASE;
+        });
+      }
       // ★帯の下の余白を切り替えるためだけの値。**位置には使わない。**
       fullH.current = Math.max(fullH.current, height + top);
       const kb = Math.max(0, fullH.current - height - top);
@@ -229,6 +249,19 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       }
     };
     apply();
+    // ★★合図をもう1つ持つ(2026-08-18。`--kb` だけでは実機で閉じなかった)。
+    // iOS の「完了」は**フォーカスを外す**。受け皿(`pressedRecently`)が
+    // 戻さなかった＝画面の外で外れた、ということなので、少し待って
+    // 「まだどこにも focus が無い」なら閉じる。`--kb` が動かない端末でも効く。
+    const gone = () => {
+      window.setTimeout(() => {
+        if (leftRef.current || whenRef.current !== "") return;
+        const a = document.activeElement;
+        const typing = !!a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT");
+        if (!typing) leaveRef.current();
+      }, 260);
+    };
+    shellRef.current?.addEventListener("focusout", gone);
     // ★保険。iOS はキャレットを見せるために `overflow:hidden` の器でも
     // スクロールさせてくる。動かされたらその場で戻す(器は画面そのものなので
     // 縦にも横にも動く理由が無い)。
@@ -245,6 +278,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     window.addEventListener("resize", apply);
     const shell = shellRef.current;
     return () => {
+      shell?.removeEventListener("focusout", gone);
       shell?.removeEventListener("scroll", pin);
       vv?.removeEventListener("resize", apply);
       vv?.removeEventListener("scroll", apply);
@@ -462,8 +496,12 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       // 素のままだと器が1〜2段で跳ね、それが「スムーズでない」の正体だった。
       // イージングは iOS のシートと同じ。★transform は**掛けない** — 掛けると
       // 中の position:fixed の下敷きが器を基準にしてしまい、背面が破れる。
-      transition: "height 260ms cubic-bezier(0.32,0.72,0,1), top 260ms cubic-bezier(0.32,0.72,0,1)",
-      display: "flex", flexDirection: "column", overflow: "hidden",
+      display: "flex", flexDirection: "column",
+      // ★★**`hidden` ではなく `clip`**(2026-08-18。実機で「まだスクロール
+      //   できる・右にバーが出る」と報告)。`hidden` の箱は**送れる箱**なので、
+      //   iOS はキャレットを見せるためにそこを送ってくるし、スクロールバーも
+      //   出す。`clip` は箱そのものを作らないので、構造的に送れない。
+      overflow: "clip",
     }}>
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
@@ -591,7 +629,12 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         {/* 題と手順。1つの縦の並び。★件数が不定なのでここだけは送れるままに
             する(ダイアログではなくリストなので、縦に送れて良い)。 */}
         {/* ★アイコンとのすき間(2026-08-18にユーザー指摘「詰まりすぎ」)。 */}
-        <div style={{ maxHeight: "30vh", overflowY: "auto", overscrollBehavior: "contain", paddingBottom: 12 }}>
+        {/* ★バーは出さない。1〜2行しか無いのに右端に細い棒が見えると
+            「スクロールできてしまう画面」に見える(実機で報告)。 */}
+        <div style={{
+          maxHeight: "30vh", overflowY: "auto", overscrollBehavior: "contain",
+          scrollbarWidth: "none", paddingBottom: 12,
+        }}>
           {lines.map((text, i) => (
             <Row
               key={i === 0 ? "title" : subs[i - 1].id}

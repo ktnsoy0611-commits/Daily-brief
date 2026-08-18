@@ -16,20 +16,23 @@ import { haptic } from "@/lib/helpers";
 // 時間の目盛りは `useMemo` で作り置き、帯だけを ref 経由で動かす。
 // 5分刻みなので、親へ返すのは値が実際に変わった瞬間だけ(1秒に数回)。
 
-/** 1時間ぶんの高さ。 */
-const HOUR_H = 44;
-/** 見えている高さ。 */
-export const TIMELINE_H = 200;
-/** 何分刻みか。 */
-const SNAP = 5;
+/** 1時間ぶんの高さ。★15分が 14px になるように取る。 */
+const HOUR_H = 56;
+/** 見えている高さ。★大きめに(2026-08-18にユーザー指定「縦幅も広く」)。 */
+export const TIMELINE_H = 264;
+/** 何分刻みか。★15分(同指定「5分は操作しづらい」)。 */
+const SNAP = 15;
 /** これより短くはできない。 */
 const MIN_DUR = 15;
 /** 端をつまむ帯の高さ。 */
-const GRIP = 15;
+const GRIP = 16;
 /** 時刻の目盛りの幅。 */
-const GUTTER = 30;
+const GUTTER = 34;
 /** 帯を置く面の幅。 */
-const TRACK = 130;
+const TRACK = 226;
+/** ★帯の左右に空ける「指を滑らせるための余白」(2026-08-18にユーザー指定)。
+ *  ここを触れば、帯を掴まずに時間帯を送れる。 */
+const LANE = 34;
 const DAY = 24 * 60;
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -42,9 +45,9 @@ const Grid = memo(function Grid({ line, ink }: { line: string; ink: string }) {
   const rows = useMemo(() => Array.from({ length: 24 }, (_, h) => (
     <div key={h} style={{ display: "flex", alignItems: "flex-start", height: HOUR_H }}>
       <span style={{
-        width: GUTTER, flexShrink: 0, textAlign: "right", paddingRight: 6,
+        width: GUTTER, flexShrink: 0, textAlign: "right", paddingRight: 7,
         transform: "translateY(-6px)",
-        fontFamily: SANS, fontSize: 10, fontWeight: 600, color: ink,
+        fontFamily: SANS, fontSize: 11, fontWeight: 600, color: ink,
       }}>{h === 0 ? "" : pad(h)}</span>
       <span style={{ flex: 1, height: 1, background: line }} />
     </div>
@@ -163,7 +166,8 @@ export function TimeRange({ start, end, accent, onChange }: {
             aria-valuenow={toMin(start)}
             aria-valuetext={`${start} から ${end}`}
             style={{
-              position: "absolute", left: GUTTER + 2, right: 2,
+              // ★左右に `LANE` ぶん空ける。ここが「指を滑らせる余白」。
+              position: "absolute", left: GUTTER + LANE, right: LANE,
               borderRadius: 10, background: accent, touchAction: "none",
               boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
               display: "flex", alignItems: "center", justifyContent: "center",
@@ -171,7 +175,7 @@ export function TimeRange({ start, end, accent, onChange }: {
             }}
           >
             <span ref={readout} style={{
-              fontFamily: SANS, fontSize: 11.5, fontWeight: 800, letterSpacing: "0.02em",
+              fontFamily: SANS, fontSize: 12.5, fontWeight: 800, letterSpacing: "0.02em",
               color: "#26261F", whiteSpace: "nowrap", pointerEvents: "none",
             }} />
             {/* 上下の端。ここをつまむと長さが変わる。 */}

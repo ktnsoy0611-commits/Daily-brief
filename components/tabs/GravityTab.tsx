@@ -265,14 +265,18 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   useEffect(() => { primeTagMetrics(); }, []);
 
   // このアプリを見ていない間は回さない。
+  // ★入力画面が開いているあいだも回さない(2026-08-18)。オーバーレイの裏で
+  //   山が動き続けると、閉じたときに開いたときと違う絵になってしまう。
+  //   ユーザー指定「閉じたら背景もそのまま維持されていて欲しい」。
   useEffect(() => {
-    activeRef.current = !!appActive;
-    if (appActive) wake();
+    const on = !!appActive && !openId;
+    activeRef.current = on;
+    if (on) wake();
     else {
       cancelAnimationFrame(rafRef.current);
       runningRef.current = false;
     }
-  }, [appActive, wake]);
+  }, [appActive, openId, wake]);
 
   /** いま山に入れるタスクと、その縮尺。小さすぎるものは間引く。
    *  ★見出し(TASK・歯車・ビュー切替)のぶんを引く。引かないと山が上へ
@@ -358,19 +362,23 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     const { w } = sizeRef.current;
     if (!M || !engine || !w) return;
 
-    // ★数が変わって一括縮尺が動いたら、当たり判定ごと作り直す(落とし直し)。
-    // 縮尺だけ差し替えると、絵と当たり判定の大きさが食い違って山が崩れる。
-    // 間引きの結果が変わったときも同じ(入るべきものが変わるため)。
+    // ★★**落とし直すのは「並ぶ顔ぶれが変わったとき」だけ**(2026-08-18・第14巡)。
+    // 以前は縮尺が動いただけでも落とし直していたので、**入力画面で1文字直して
+    // 閉じるたびに山が上から降ってきた**(実機で「閉じた瞬間に途中まで落ちて
+    // いる絵が一瞬出て、もう一度落とし直す」と報告)。入力画面はオーバーレイ
+    // なので、開け閉めで後ろが動いてはいけない。
+    // 中身だけ変わって縮尺が動いたときは、**いまの位置のまま body を作り直す**
+    // (位置・角度・速度を引き継ぐので山は崩れない)。
     const { keep, scale } = planPile(tasks);
     const keepIds = new Set(keep.map((t) => t.id));
     const shownIds = new Set(piecesRef.current.map((p) => p.id));
     const culledChanged = keepIds.size !== shownIds.size
       || [...keepIds].some((id) => !shownIds.has(id));
-    if (piecesRef.current.length
-      && (Math.abs(scale - scaleRef.current) > SCALE_EPS || culledChanged)) {
+    if (piecesRef.current.length && culledChanged) {
       dropAll();
       return;
     }
+    const rescale = piecesRef.current.length > 0 && Math.abs(scale - scaleRef.current) > SCALE_EPS;
     scaleRef.current = scale;
     const unit = UNIT * scale;
     const alive = new Map(keep.map((t) => [t.id, t]));
@@ -385,9 +393,9 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
       .map((p) => {
         const t = alive.get(p.id) as Task;
         const paint = paintOf(t, viewRef.current);
-        // ★形そのものが変わった(手順を済ませて短くなった等)ときだけ、
-        // 位置と速度を引き継いだまま body を差し替える。
-        if (!sameShape(p.spec, paint.spec)) {
+        // ★形そのものが変わった(手順を済ませて短くなった等)か、一括の縮尺が
+        // 動いたときだけ、位置と速度を引き継いだまま body を差し替える。
+        if (rescale || !sameShape(p.spec, paint.spec)) {
           const { body, ox, oy } = makeBody(M, paint, p.body.position.x, p.body.position.y, unit);
           M.Body.setAngle(body, p.body.angle);
           M.Body.setVelocity(body, p.body.velocity);

@@ -62,15 +62,19 @@ const SNAP_MAX_MS = 680;
 
 export function DriftTab({ appState, persist, profileButton, showToast, goTab, appActive }: TabProps & { appActive?: boolean }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  // ＋で作ったばかりのもの。開いた直後に題の入力へ入り、何も書かずに
-  // 閉じたらそのまま捨てる(名前のないものを残さない)。
-  const [draftId, setDraftId] = useState<string | null>(null);
+  // ★★＋で作ったばかりのものは、**保存せずここだけで持つ**(2026-08-18・第14巡)。
+  // 以前は作った瞬間に候補として保存していたので、入力画面を開いた瞬間に
+  // **後ろの輪が 4件→5件になって回り**、閉じるとまた戻っていた。実機で
+  // 「閉じる瞬間と閉じた後の画面が違うので飛んで見える」と報告された。
+  // 入力画面はレコードと同じ**ただのオーバーレイ**であって、開け閉めで
+  // 後ろが動いてはいけない。題が付いて確定したときに初めて輪へ入る。
+  const [draft, setDraft] = useState<InboxCandidate | null>(null);
   const inbox = appState.inbox;
   // ★タスクの候補だけを出す(2026-08-12にユーザー確定)。ジャーナル・ウィッシュ・
   // ストックの候補はデータとしては残るが、行き先は別途決める。
   const candidates = useMemo(() => (inbox ?? []).filter((c) => c.kind === "task"), [inbox]);
   const notes = (appState.voiceNotes ?? []).filter((n) => n.status === "new").length;
-  const open = candidates.find((c) => c.id === openId) ?? null;
+  const open = draft ?? candidates.find((c) => c.id === openId) ?? null;
   const count = candidates.length;
 
   // 輪の回転。posRef は連続値(0 = 先頭が手前)。
@@ -254,13 +258,9 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
   // 手で候補を足す。まず空のまま作って開き、題を書いてもらう。
   const addCandidate = () => {
     const id = `cand-${Date.now()}`;
-    const next = structuredClone(appState);
+    // ★保存しない・輪も動かさない。ここで持つだけ(上のコメントを参照)。
     // ★重要度の既定は**中**(2026-08-17にユーザー指定)。
-    next.inbox = [{ id, kind: "task", title: "", weight: 2, createdAt: new Date().toISOString() }, ...(next.inbox ?? [])];
-    persist(next);
-    posRef.current = 0;
-    setFront(0);
-    setDraftId(id);
+    setDraft({ id, kind: "task", title: "", weight: 2, createdAt: new Date().toISOString() });
     setOpenId(id);
   };
 
@@ -268,12 +268,17 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
   // 閉じるときに下書きをまとめて保存する。★題が空のままなら作りかけを消す。
   const closeNet = (id: string, final: ComposerData) => {
     setOpenId(null);
-    const isDraft = draftId === id;
-    if (isDraft) setDraftId(null);
-    if (isDraft && !final.title.trim()) {
+    const d = draft;
+    if (d && d.id === id) {
+      setDraft(null);
+      // 題が無いまま閉じたら、何も無かったことにする(保存もしていない)。
+      if (!final.title.trim()) return;
+      // 題が付いた ＝ ここで初めて輪へ入る。手前に来るよう位置も合わせる。
       const next = structuredClone(appState);
-      next.inbox = next.inbox.filter((x) => x.id !== id);
+      next.inbox = [{ ...d, ...final, kind: "task" as const }, ...(next.inbox ?? [])];
       persist(next);
+      posRef.current = 0;
+      setFront(0);
       return;
     }
     patch(id, final);
@@ -363,9 +368,12 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
           key={open.id}
           data={open}
           mode="candidate"
-          onCommit={(d) => patch(open.id, d)}
-          onConfirm={(d) => confirm(open, d)}
-          onDelete={() => drop(open.id)}
+          // ★下書き(まだ保存していないもの)は、保存ではなく手元へ書き戻す。
+          onCommit={(d) => (draft && draft.id === open.id
+            ? setDraft((x) => (x ? { ...x, ...d } : x))
+            : patch(open.id, d))}
+          onConfirm={(d) => { setDraft(null); confirm(open, d); }}
+          onDelete={() => { setDraft(null); setOpenId(null); if (!draft) drop(open.id); }}
           onClose={(d) => closeNet(open.id, d)}
         />
       )}

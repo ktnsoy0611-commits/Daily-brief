@@ -157,10 +157,47 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // 「境目が見える」と報告された。下敷き(zIndex 59)も LIFT にして、
   // 器(visualViewport の矩形)の外側は必ず帯と同じ色になるようにする。
   useEffect(() => pushGround(LIFT), []);
+  // ★★★**開いているあいだ、この画面の外は一切動かさない**(2026-08-18・第14巡)。
+  //
+  // 「まだスクロールできる」が 3 巡続いた。器の中を `clip` にしても消えなかった
+  // のは、**送っているのが器ではなかった**から。iOS は指の下に送れる箱が
+  // 見つからないと、**その先(タブの列・ページ・見えている矩形そのもの)を
+  // 送りにいく**。だから「送れる箱を減らす」ではなく、
+  // **「指が動かせるものを名指しで許す」**側から書く。
+  //
+  //  1. html に印を付け、後ろのタブの列を CSS で止める(`[data-overlay]`)。
+  //  2. `touchmove` を素の非 passive で受け、**本当に送れる箱の中でなければ
+  //     その場で止める**。送れる箱＝行の並び・カレンダー・ダイアル・
+  //     タイムライン(いずれも `overflow: auto` で実際にはみ出しているもの)。
+  //     二本指(拡大)も止める。
   useEffect(() => {
-    const prev = document.body.style.overflow;
+    const root = document.documentElement;
+    const prevBody = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
+    root.dataset.overlay = "1";
+
+    /** 指の下に「本当に送れる箱」があるか。 */
+    const scrollable = (from: EventTarget | null) => {
+      let n = from instanceof HTMLElement ? from : null;
+      while (n && n !== document.body) {
+        const cs = getComputedStyle(n);
+        if ((cs.overflowY === "auto" || cs.overflowY === "scroll") && n.scrollHeight - n.clientHeight > 1) return true;
+        if ((cs.overflowX === "auto" || cs.overflowX === "scroll") && n.scrollWidth - n.clientWidth > 1) return true;
+        n = n.parentElement;
+      }
+      return false;
+    };
+    const stop = (e: TouchEvent) => {
+      if (!e.cancelable) return;
+      if (e.touches.length > 1) { e.preventDefault(); return; }
+      if (!scrollable(e.target)) e.preventDefault();
+    };
+    document.addEventListener("touchmove", stop, { passive: false });
+    return () => {
+      document.removeEventListener("touchmove", stop);
+      document.body.style.overflow = prevBody;
+      delete root.dataset.overlay;
+    };
   }, []);
 
   // 背面へ回るときだけ、保険として途中経過を保存する。
@@ -538,7 +575,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         <div data-shape style={{ position: "absolute", inset: 0 }}>
           {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
           <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
-            <ShapeStage spec={spec} title={preview.title} tag={tag} />
+            <ShapeStage spec={spec} title={preview.title} tag={tag} bye={bye} />
           </div>
         </div>
 
@@ -704,8 +741,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 }
 
 // ── 図形の舞台。器の大きさを測って、その中央に1つ描く。 ──
-function ShapeStage({ spec, title, tag }: {
+function ShapeStage({ spec, title, tag, bye }: {
   spec: ReturnType<typeof specOf>; title: string; tag: TaskTag;
+  /** 閉じている最中。 */
+  bye?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   // ★★**出るアニメーションのあいだは焼かない**(2026-08-18・第13巡)。
@@ -749,7 +788,13 @@ function ShapeStage({ spec, title, tag }: {
       //   ちょうど真ん中に居続ける。**寸法は 1px も変わらない**ので、
       //   図形の焼き直しもレイアウトも起きない(合成のやり直しだけ)。
       transform: "translateY(calc(var(--kb, 0px) / -2))",
-      transition: KB_EASE,
+      // ★★**自分でも薄くなる**(2026-08-18に実機で「フェードアウトするとき
+      //   図形の部分だけ薄くなっていない」と報告)。器の不透明度は本来
+      //   子へも効くはずだが、この面は `transform` で**別の合成レイヤー**に
+      //   上がっているため、WebKit では親の opacity アニメーションが
+      //   乗らないことがある。自分で持てば端末に関係なく必ず薄くなる。
+      opacity: bye ? 0 : 1,
+      transition: `${KB_EASE}, opacity ${LEAVE_MS}ms ease-in`,
       // ★★**ここで切る**(2026-08-18)。上の「一番大きい箱を持ち続ける」に
       // したことで、キーボードが出ているあいだ canvas は舞台より背が高くなる。
       // 切らずに置くと**器(overflow:hidden)に本物のはみ出しが生まれ**、iOS が

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CAP, Press } from "@/components/tasks/Popover";
 import { PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
@@ -224,10 +224,12 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
               <Card title="期日" aria="期日を選ぶ" main={label(value.dueDate)} accent={accent}
                 sub={value.dueDate === today ? "今日" : ""}
                 open={pop === "cal-due"} onOpen={() => setPop(pop === "cal-due" ? null : "cal-due")} />
+              <div ref={timeRef} style={{ flex: 1, minWidth: 0, display: "flex" }}>
               <Card title="時刻" aria="時刻を選ぶ" accent={accent}
                 main={`${value.dueTime ?? "--:--"} - ${value.endTime ?? "--:--"}`}
                 sub={hours(value.dueTime, value.endTime)}
                 open={pop === "time"} onOpen={() => { setEdge("start"); setPop(pop === "time" ? null : "time"); }} />
+              </div>
             </div>
           )}
           <div style={{
@@ -267,7 +269,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
         </Float>
       )}
       {pop === "time" && (
-        <Float anchor={isRange ? cardsRef : timeRef} onClose={() => setPop(null)}>
+        <Float anchor={timeRef} fit onClose={() => setPop(null)}>
           {isRange && !allDay && (
             <div style={{ display: "flex", gap: 6, marginBottom: 8, flexShrink: 0 }}>
               {[["start", "開始"], ["end", "終了"]].map(([k, t]) => (
@@ -390,6 +392,8 @@ function QuickGlyph({ name, c }: { name: string; c: string }) {
 
 /** 浮きと、開いた相手とのすき間。 */
 const FLOAT_GAP = 6;
+/** 幅を絞った浮きが、シートの左右の縁に寄れる限界。 */
+const FLOAT_PAD = 4;
 
 /**
  * 浮かせる小さな面。外をつつくと閉じる。
@@ -402,15 +406,17 @@ const FLOAT_GAP = 6;
  * (カレンダーは半分の幅のカードに収まらない)。置き場所はシートの中に必ず
  * 収まる — `anchor` も自分もシートの中にあり、上下どちらかには必ず入る。
  */
-function Float({ anchor, onClose, children }: {
+function Float({ anchor, fit, onClose, children }: {
   /** 開いた行・カードの並び。この隣に出す。 */
   anchor: React.RefObject<HTMLDivElement | null>;
+  /** 中身のぶんだけの幅にして、開いた相手の真ん中へ寄せる。 */
+  fit?: boolean;
   onClose: () => void;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   // 測るまでは画面の外。1フレームだけなので見えない。
-  const [top, setTop] = useState<number | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
     const a = anchor.current;
@@ -421,14 +427,24 @@ function Float({ anchor, onClose, children }: {
     const h = el.offsetHeight;
     const below = ar.bottom - hr.top + FLOAT_GAP;
     const above = ar.top - hr.top - h - FLOAT_GAP;
-    setTop(below + h <= hr.height ? below : Math.max(FLOAT_GAP, above));
-  }, [anchor]);
+    const top = below + h <= hr.height ? below : Math.max(FLOAT_GAP, above);
+    // 幅を絞るときだけ、相手の真ん中に合わせる(はみ出す手前で止める)。
+    const w = el.offsetWidth;
+    const mid = ar.left + ar.width / 2 - hr.left;
+    const left = fit
+      ? Math.round(Math.min(Math.max(FLOAT_PAD, mid - w / 2), Math.max(FLOAT_PAD, hr.width - w - FLOAT_PAD)))
+      : 0;
+    setPos({ top, left });
+  }, [anchor, fit]);
   return (
     <>
       <div aria-hidden onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 4 }} />
       <div ref={ref} className="tc-pop-in" data-float style={{
-        position: "absolute", left: 0, right: 0, zIndex: 5,
-        top: top ?? -9999, visibility: top === null ? "hidden" : "visible",
+        position: "absolute", zIndex: 5,
+        left: pos ? pos.left : 0, right: fit ? "auto" : 0,
+        width: fit ? "max-content" : undefined,
+        maxWidth: `calc(100% - ${FLOAT_PAD * 2}px)`,
+        top: pos ? pos.top : -9999, visibility: pos ? "visible" : "hidden",
         background: FLOAT, borderRadius: 18, padding: 10,
         boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
         display: "flex", flexDirection: "column",
@@ -804,11 +820,20 @@ const DIAL_H = ITEM_H * VISIBLE;
 /** ★一周させるために並べる周の数。奇数にして真ん中の周を定位置にする。 */
 const LOOPS = 5;
 
+const HOURS = Array.from({ length: 24 }, (_, i) => pad(i));
+const MINUTES = Array.from({ length: 12 }, (_, i) => pad(i * 5));
+
 function Dial({ value, accent, onChange }: {
   value: string; accent: string; onChange: (t: string) => void;
 }) {
   const h = Number(value.slice(0, 2));
   const m = Number(value.slice(3));
+  // ★列は**再レンダーしない**ので、渡す関数は**作り替えない**。
+  //   いまの時刻と受け手は ref 越しに読む(でないと古い値を掴んだままになる)。
+  const now = useRef(value); now.current = value;
+  const emit = useRef(onChange); emit.current = onChange;
+  const pickH = useRef((v: string) => emit.current(`${v}:${now.current.slice(3)}`)).current;
+  const pickM = useRef((v: string) => emit.current(`${now.current.slice(0, 2)}:${v}`)).current;
   return (
     <div style={{
       position: "relative", display: "flex", gap: 6,
@@ -819,14 +844,12 @@ function Dial({ value, accent, onChange }: {
         position: "absolute", left: 0, right: 0, top: ITEM_H * MID, height: ITEM_H,
         borderRadius: 12, background: "rgba(250,250,249,0.12)", pointerEvents: "none",
       }} />
-      <Column values={Array.from({ length: 24 }, (_, i) => pad(i))} value={pad(h)}
-        accent={accent} onPick={(v) => onChange(`${v}:${pad(m)}`)} />
+      <Column values={HOURS} value={pad(h)} accent={accent} onPick={pickH} />
       <span aria-hidden style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         fontFamily: SANS, fontSize: 18, fontWeight: 700, color: ON_G, width: 10,
       }}>:</span>
-      <Column values={Array.from({ length: 12 }, (_, i) => pad(i * 5))} value={pad(m - (m % 5))}
-        accent={accent} onPick={(v) => onChange(`${pad(h)}:${v}`)} />
+      <Column values={MINUTES} value={pad(m - (m % 5))} accent={accent} onPick={pickM} />
     </div>
   );
 }
@@ -842,14 +865,34 @@ function Dial({ value, accent, onChange }: {
  *   いた。いまは**スクロール中に中央の値が変わった瞬間**に確定する。
  *   止まったあとの差し戻しだけデバウンスに残す。
  */
-function Column({ values, value, accent, onPick }: {
-  values: string[]; value: string; accent: string; onPick: (v: string) => void;
+/**
+ * ダイアルの1列。
+ *
+ * ★**真ん中に来た値がそのまま選ばれる**(iPhone のアラームと同じ)。
+ * ★**一周する** … 値を LOOPS 周ぶん並べ、止まったら外側の周から中央の周へ
+ *   **transition を使わずに**差し戻す(見た目は1pxも動かない)。
+ * ★**待たない** … スクロール中に中央の値が変わった瞬間に確定する。
+ *
+ * ★★**マスの見た目を `value` に依存させないこと**(2026-08-18)。
+ * 依存させていたので、中央の値が変わるたびに親が再レンダーし、
+ * **120 + 60 個の inline style を毎回書き換えていた**。それが実機で
+ * 「反応が遅い」の正体。選んでいる値は**中央のピル**が示し、上下の薄れは
+ * **CSS の mask** が作る(JS は関与しない)。おかげでマスの並びは
+ * `useMemo` で作り置きでき、スクロール中の再レンダーは**ゼロ**になる。
+ */
+const Column = memo(function Column({ values, accent, value, onPick }: {
+  values: string[]; accent: string;
+  /** 開いたときに中央へ置く値。**以後この props は見ない**(再レンダーしない)。 */
+  value: string;
+  onPick: (v: string) => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const timer = useRef(0);
   /** いま出している値。onPick を無駄に呼ばないための控え。 */
   const shown = useRef(value);
-  shown.current = value;
+  /** 押したときにやることは毎レンダー変わるので ref 越しに読む。 */
+  const pick = useRef(onPick);
+  pick.current = onPick;
 
   const cycle = values.length * ITEM_H;
   /** 中央の周の先頭。 */
@@ -874,15 +917,27 @@ function Column({ values, value, accent, onPick }: {
     if (Math.abs(el.scrollTop - want) > 1) el.scrollTop = want;
   };
 
+  // ★マスは**一度だけ**作る。`value` に依存させないので作り直す理由が無い。
+  const cells = useMemo(() => (
+    Array.from({ length: LOOPS }, (_, r) => values.map((v) => (
+      <span key={`${r}-${v}`} style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        width: "100%", height: ITEM_H, scrollSnapAlign: "center",
+        fontFamily: SANS, fontSize: 20, fontWeight: 600, color: accent,
+      }}>{v}</span>
+    )))
+  ), [values, accent]);
+
   return (
     <div
       ref={ref}
+      className="tc-dial"
       onScroll={() => {
         const el = ref.current;
         if (!el) return;
         // ★指が動いているあいだに確定する(待たない)。
         const v = centered(el);
-        if (v !== shown.current) { shown.current = v; haptic(4); onPick(v); }
+        if (v !== shown.current) { shown.current = v; haptic(4); pick.current(v); }
         // 止まった頃に周を戻す。scrollend が使えない環境のための保険つき。
         window.clearTimeout(timer.current);
         timer.current = window.setTimeout(() => recenter(el), 140);
@@ -896,19 +951,13 @@ function Column({ values, value, accent, onPick }: {
       {/* ★★**ここに `Press` を置かないこと**(2026-08-17に実機で
           「時刻の設定 UI が操作できない」と報告された)。`Press` は iOS の
           フォーカス移動を止めるために非 passive な `touchstart` で
-          `preventDefault()` するが、**それはスクロールも打ち消す**。
-          そもそも押す必要が無い — 選ぶのは中央に来た値、つまりスクロール
-          位置だけ。 */}
-      {Array.from({ length: LOOPS }, (_, r) => values.map((v) => (
-        <span key={`${r}-${v}`} aria-hidden={v !== value}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: "100%", height: ITEM_H, scrollSnapAlign: "center",
-            fontFamily: SANS, fontSize: v === value ? 22 : 17,
-            fontWeight: v === value ? 700 : 500,
-            color: v === value ? accent : DIM,
-          }}>{v}</span>
-      )))}
+          `preventDefault()` するが、**それはスクロールも打ち消す**。 */}
+      {cells}
     </div>
   );
-}
+}, (a, b) => (
+  // ★`value` と `onPick` は**見ない**。値は ref 越しに読み、見た目は中央のピルが
+  //   示すので、スクロール中に再レンダーする理由が 1 つも無い。
+  a.accent === b.accent && a.values.length === b.values.length &&
+  a.values.every((v, i) => v === b.values[i])
+));

@@ -432,6 +432,10 @@ button:active {
   to   { opacity: 0; transform: translate3d(0, 16px, 0); }
 }
 .tc-pop-out { animation: tc-pop-fall 160ms cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
+/* 入力画面まるごとが出るとき。★transform は掛けない(中の position:fixed の
+   下敷きが器を基準にしてしまい、背面が破れる)。薄さだけで出す。 */
+@keyframes tc-shell-in { from { opacity: 0; } to { opacity: 1; } }
+.tc-shell-in { animation: tc-shell-in 180ms cubic-bezier(0.32, 0.72, 0, 1) both; }
 /* 入力画面まるごとが閉じるとき。器は薄く、帯は下へ。 */
 @keyframes tc-shell-out { from { opacity: 1; } to { opacity: 0; } }
 .tc-shell-out { animation: tc-shell-out 200ms ease-in both; pointer-events: none; }
@@ -442,6 +446,16 @@ button:active {
   100% { transform: scale(1); }
 }
 .tc-pick { animation: tc-pick 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* 時刻ダイアルの列。上下の薄れは**この mask だけ**が作る(JS は関与しない)。
+   以前は各マスの style を中央からの距離で塗り分けていたので、指を動かすたび
+   180 個の inline style を書き換えていた ＝「反応が遅い」の正体。 */
+.tc-dial {
+  -webkit-mask-image: linear-gradient(to bottom,
+    transparent 0, rgba(0,0,0,0.25) 14%, #000 38%, #000 62%, rgba(0,0,0,0.25) 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom,
+    transparent 0, rgba(0,0,0,0.25) 14%, #000 38%, #000 62%, rgba(0,0,0,0.25) 86%, transparent 100%);
+}
+.tc-dial::-webkit-scrollbar { display: none; }
 /* 灯り(ツールバーの丸)。色だけを滑らかに。 */
 .tc-lamp {
   transition: background-color 180ms ease, color 180ms ease,
@@ -450,6 +464,7 @@ button:active {
 .tc-lamp:active { transform: scale(0.9); }
 @media (prefers-reduced-motion: reduce) {
   .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in, .tc-sheet-out,
-  .tc-pop-out, .tc-shell-out, .tc-pick { animation: none; }
+  .tc-pop-out, .tc-shell-in, .tc-shell-out, .tc-pick { animation: none; }
   .tc-lamp { transition: none; }
+  [data-composer-shell] { transition: none !important; }
 }

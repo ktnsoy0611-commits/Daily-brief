@@ -411,13 +411,19 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           素通しになって後ろの山が見えた(2026-08-17に実機で報告)。
           ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、その続きに
           なる色でないと「境目」として見えてしまう。 */}
-      <div aria-hidden className={bye ? "tc-shell-out" : undefined} style={{
+      <div aria-hidden className={bye ? "tc-shell-out" : "tc-shell-in"} style={{
         position: "fixed", inset: 0, zIndex: 59, background: LIFT,
         width: "100vw", height: "100lvh", minHeight: "100%",
       }} />
-    <div ref={shellRef} onMouseDown={keepKeyboard} className={bye ? "tc-shell-out" : undefined} style={{
+    <div ref={shellRef} data-composer-shell onMouseDown={keepKeyboard} className={bye ? "tc-shell-out" : "tc-shell-in"} style={{
       position: "fixed", left: 0, right: 0, zIndex: 60, background: CHARCOAL,
       top: 0, height: "100svh",
+      // ★★器の高さ・位置は**間を埋めて**動かす(2026-08-18)。iOS はキーボードが
+      // せり上がる 250ms のあいだに visualViewport の resize を数回しか飛ばさない。
+      // 素のままだと器が1〜2段で跳ね、それが「スムーズでない」の正体だった。
+      // イージングは iOS のシートと同じ。★transform は**掛けない** — 掛けると
+      // 中の position:fixed の下敷きが器を基準にしてしまい、背面が破れる。
+      transition: "height 260ms cubic-bezier(0.32,0.72,0,1), top 260ms cubic-bezier(0.32,0.72,0,1)",
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
@@ -621,14 +627,24 @@ function ShapeStage({ spec, title, tag }: {
   spec: ReturnType<typeof specOf>; title: string; tag: TaskTag;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  // ★★**それまでに見た一番大きい箱**を持ち続ける(2026-08-18)。キーボードが
+  // せり上がると舞台は縮むが、canvas の寸法と倍率をそこで変えると
+  // **1フレームごとに図形を焼き直す**ことになる(4×絞りで1枚50ms級 ＝ カクつきの
+  // 正体)。寸法を据え置けば焼き直しはゼロ。canvas は透明なので、舞台からはみ出た
+  // ぶんは目に見えない。中央寄せなので、舞台が縮むと絵は**自然に上へ動く**。
+  // ※390px 幅では倍率はもともと幅で決まっている(346/5.2 < 690/4.2)ので
+  //   見た目は変わらない。
   const [box, setBox] = useState({ w: 0, h: 0 });
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
-      const r = el.getBoundingClientRect();
-      setBox((p) => (Math.abs(p.w - r.width) < 0.5 && Math.abs(p.h - r.height) < 0.5
-        ? p : { w: r.width, h: r.height }));
+    // ★測るのは `contentRect`(＝**組版上の大きさ**)。`getBoundingClientRect` は
+    // 出るときの animation の scale が乗った値を返すので、最初の1回だけ
+    // 7%小さい箱を掴んでしまう(2026-08-18に判明)。
+    const ro = new ResizeObserver(([e]) => {
+      const r = e.contentRect;
+      setBox((p) => (r.width <= p.w + 0.5 && r.height <= p.h + 0.5
+        ? p : { w: Math.max(p.w, r.width), h: Math.max(p.h, r.height) }));
     });
     ro.observe(el);
     return () => ro.disconnect();

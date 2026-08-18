@@ -6,6 +6,7 @@ import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerF
 import { SHEET_BODY_H, WhenSheet } from "@/components/tasks/WhenSheet";
 import { ComposerToolbar, TOOL_LABEL, type ToolKey } from "@/components/tasks/ComposerToolbar";
 import { CAP, keepKeyboard, Popover, Press } from "@/components/tasks/Popover";
+import { EditableLine, type LineHandle } from "@/components/tasks/EditableLine";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
 import { pushGround } from "@/lib/ground";
@@ -218,7 +219,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   }, []);
 
   // ── 行(1行目=題 / 2行目以降=手順)────────────────────────────
-  const rowsRef = useRef<(HTMLTextAreaElement | null)[]>([]);
+  const rowsRef = useRef<(LineHandle | null)[]>([]);
   const wantRef = useRef<{ i: number; caret: number } | null>(null);
   const activeRow = useRef(0);
   const lines = [draft.title, ...subs.map((s) => s.title)];
@@ -229,7 +230,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     const el = rowsRef.current[0];
     if (!el) return;
     el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
+    el.setCaret(el.length());
   }, []);
 
   useLayoutEffect(() => {
@@ -239,7 +240,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     const el = rowsRef.current[w.i];
     if (!el) return;
     el.focus();
-    el.setSelectionRange(w.caret, w.caret);
+    el.setCaret(w.caret);
   });
 
   // ★★**フォーカスが body へ落ちていたら必ず拾い直す**(2026-08-17・第6巡)。
@@ -260,8 +261,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     const el = rowsRef.current[activeRow.current] ?? rowsRef.current[0];
     if (!el) return;
     el.focus();
-    const n = el.value.length;
-    el.setSelectionRange(n, n);
+    el.setCaret(el.length());
   });
 
   const setLine = (i: number, v: string) => {
@@ -351,11 +351,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     setWhen("closing");
     window.setTimeout(() => setWhen(""), 180);
     const el = liveRow();
-    if (el) {
-      el.focus();
-      const n = el.value.length;
-      el.setSelectionRange(n, n);
-    }
+    if (el) { el.focus(); el.setCaret(el.length()); }
   };
 
   const openTool = (k: ToolKey) => {
@@ -669,11 +665,11 @@ function ShapeStage({ spec, title, tag }: {
 
 // ── 1行。題は大きく、手順は丸い点つきで小さく。高さは中身に合わせて伸びる。 ──
 function Row({ ref, value, head, done, keepFocus, onFocus, onChange, onEnter, onMergeUp, onToggle }: {
-  ref: (el: HTMLTextAreaElement | null) => void;
+  ref: (h: LineHandle | null) => void;
   value: string;
   head: boolean;
   done: boolean;
-  /** true のあいだ、フォーカスが外れたらその場で戻す(下の onBlur を参照)。 */
+  /** true のあいだ、フォーカスが外れたらその場で戻す(EditableLine を参照)。 */
   keepFocus: React.RefObject<boolean>;
   onFocus: () => void;
   onChange: (v: string) => void;
@@ -681,13 +677,6 @@ function Row({ ref, value, head, done, keepFocus, onFocus, onChange, onEnter, on
   onMergeUp: () => void;
   onToggle?: () => void;
 }) {
-  const own = useRef<HTMLTextAreaElement | null>(null);
-  useLayoutEffect(() => {
-    const el = own.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
   return (
     <div className={head ? undefined : "tc-row-in"}
       style={{ display: "flex", alignItems: "flex-start", gap: 9, minHeight: head ? 32 : 22 }}>
@@ -705,44 +694,23 @@ function Row({ ref, value, head, done, keepFocus, onFocus, onChange, onEnter, on
           }} />
         </Press>
       )}
-      <textarea
-        ref={(el) => { own.current = el; ref(el); }}
+      <EditableLine
+        ref={ref}
         value={value}
-        rows={1}
         placeholder={head ? "タスクの名前" : "手順"}
+        keepFocus={keepFocus}
         onFocus={onFocus}
-        // ★★**取りこぼしの受け皿**(2026-08-17・第6巡)。
-        // 「重要度やタグを何度も押しているとキーボードが閉じる」を構造的に
-        // 起こせなくする。ここで**同期的に** focus し直せば、iOS はキーボードを
-        // 閉じない(非同期だと、もう閉じたあとなので開き直せない)。
-        // 別の入力欄(メモ・持ち物)へ移るときと、画面を離れるとき・日程の
-        // シートを開くとき(keepFocus=false)は通す。
-        onBlur={(e) => {
-          if (!keepFocus.current) return;
-          const to = e.relatedTarget as HTMLElement | null;
-          if (to && (to.tagName === "TEXTAREA" || to.tagName === "INPUT")) return;
-          e.currentTarget.focus();
-        }}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          const el = e.currentTarget;
-          if (e.key === "Enter") {
-            e.preventDefault();
-            onEnter(el.selectionStart ?? el.value.length);
-          } else if (e.key === "Backspace" && el.selectionStart === 0 && el.selectionEnd === 0) {
-            e.preventDefault();
-            onMergeUp();
-          }
-        }}
+        onChange={onChange}
+        onEnter={onEnter}
+        onMergeUp={onMergeUp}
         style={{
-          flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none",
-          resize: "none", overflow: "hidden", padding: 0, borderRadius: 0,
           fontFamily: SANS,
           fontSize: head ? 21 : 15,
           fontWeight: head ? 700 : 500,
           lineHeight: head ? 1.34 : 1.5,
           color: done ? ON_GROUND_DIM : ON_GROUND,
           textDecoration: done ? "line-through" : "none",
+          caretColor: ON_GROUND,
         }}
       />
     </div>

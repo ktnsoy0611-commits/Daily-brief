@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { CAP, DIM, LIFT, Press } from "@/components/tasks/Popover";
+import { EditableLine, type LineHandle } from "@/components/tasks/EditableLine";
 import { PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { TASK_TAGS, tagInk } from "@/lib/taskTags";
@@ -81,23 +82,23 @@ export function TextField({ value, multiline, placeholder, onChange }: {
   placeholder: string;
   onChange: (v: string) => void;
 }) {
-  const ref = useRef<HTMLTextAreaElement | null>(null);
+  const ref = useRef<LineHandle | null>(null);
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
+    const h = ref.current;
+    if (!h) return;
+    h.focus();
+    h.setCaret(h.length());
   }, []);
   return (
-    <textarea
-      ref={ref}
+    <EditableLine
+      ref={(h) => { ref.current = h; }}
       value={value}
-      rows={multiline ? 3 : 1}
+      multiline={multiline}
       placeholder={placeholder}
-      onChange={(e) => onChange(multiline ? e.target.value : e.target.value.replace(/\n/g, ""))}
+      onChange={(v) => onChange(multiline ? v : v.replace(/\n/g, ""))}
       style={{
-        width: "100%", background: CELL, border: "none", outline: "none", resize: "none",
-        borderRadius: 16, padding: "12px 14px",
+        width: "100%", background: CELL, borderRadius: 16, padding: "12px 14px",
+        minHeight: multiline ? 76 : undefined,
         fontFamily: SANS, fontSize: 16, fontWeight: 600, lineHeight: 1.5, color: PAPER,
         caretColor: PAPER,
       }}

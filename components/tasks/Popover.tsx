@@ -92,7 +92,9 @@ export function Press({ onPress, disabled, children, style, ...rest }: {
 export const keepKeyboard = (e: React.MouseEvent) => {
   const t = e.target as HTMLElement | null;
   const tag = t?.tagName;
-  if (tag === "TEXTAREA" || tag === "INPUT") return;
+  // ★文字を打つ面は contenteditable(`EditableLine`)。tagName では判らないので
+  // `isContentEditable` で見る。
+  if (t?.isContentEditable || tag === "TEXTAREA" || tag === "INPUT") return;
   e.preventDefault();
 };
 

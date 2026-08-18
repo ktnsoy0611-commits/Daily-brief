@@ -3,8 +3,10 @@
 現行仕様は `docs/project_knowledge.md` が正。経緯は `docs/archive/`。
 このファイルは**常に200行以内**に保つ（更新手順は `CLAUDE.md` の「恒久ルール」）。
 
-- ブランチ … `claude/brief-tab-bind-bugs-9ijd62`。`main` も同じ先頭へ早送り済み
-  （Vercel の本番ブランチ。以後もユーザーの許可を得てから統合する）。
+- ブランチ … `claude/brief-tab-bind-bugs-9ijd62`。
+  ★**毎回 `main` へも push する**（2026-08-18にユーザー確定・確認不要）。
+  `main` が Vercel の本番ブランチで、実機はここを見る。作業ブランチへ
+  push しただけでは**実機に何も届かない**（第9〜11巡はこれで届いていなかった）。
 
 ---
 

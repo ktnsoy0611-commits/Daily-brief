@@ -794,6 +794,11 @@ my-brain の `sources/stats.md` へ書く。Cowork の発掘タスクはこの�
   （そのビルドに永久に凍結される）。安定 URL は
   `daily-brief-lyart-six.vercel.app`。Supabase Auth の Site URL /
   Redirect URLs にもこれを登録してある。
+  ★★**本番ブランチは `main`。毎回ここへ push する**（2026-08-18 にユーザー確定・
+  確認不要）。作業ブランチへ push しただけでは**実機に何も届かない** —
+  第 9〜11 巡はこれで 3 巡ぶん届いておらず、「変更が確認できません」と報告された。
+  作業ブランチへ push したら続けて
+  `git checkout main && git merge --ff-only <branch> && git push -u origin main`。
 - **地図** … Leaflet + CartoDB Positron タイル（`components/LeafletMap.tsx`）。
   座標は Places API（New）で解決（`app/api/resolve-place/route.ts`）。
   Google マップ URL に埋まった `@lat,lng` を正規表現で先に抜き、API 呼び出しを省く。

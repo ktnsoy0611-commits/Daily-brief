@@ -80,17 +80,6 @@ export interface ComposerData {
 const LEAVE_MS = 200;
 /** ポップオーバーが下へ抜ける時間(ms)。globals.css の `tc-pop-out` と合わせる。 */
 const POP_OUT_MS = 160;
-const FOLLOW_MS = 280;
-const FOLLOW_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
-const FOLLOW: React.CSSProperties = {
-  transform: "translate3d(0, calc(-1 * var(--kb, 0px)), 0)",
-  transition: `transform ${FOLLOW_MS}ms ${FOLLOW_EASE}`,
-};
-/** 図形は半分だけ持ち上げる(見えている範囲の中央に居続ける)。 */
-const FOLLOW_HALF: React.CSSProperties = {
-  transform: "translate3d(0, calc(var(--kb, 0px) / -2), 0)",
-  transition: `transform ${FOLLOW_MS}ms ${FOLLOW_EASE}`,
-};
 
 /** 開くと自分の入力欄へフォーカスするもの。ここは行へ戻さない。 */
 const TAKES_FOCUS: ToolKey[] = ["context", "belongings"];
@@ -174,33 +163,46 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     return () => document.removeEventListener("visibilitychange", onHide);
   }, [onCommit]);
 
-  // ★★**キーボードの追従は「合成」だけでやる**(2026-08-18に作り直し)。
+  // ★★**器は「見えている矩形」そのもの**(`visualViewport` の top と height)。
   //
-  // 以前は `visualViewport` のイベントごとに**器の height を書いて**いた。
-  // iOS はキーボードのアニメーション中にイベントを数回しか飛ばさないので
-  // **段階的に高さが跳ぶ**（＝「ガタガタ」と3度報告された）。しかも高さの
-  // 変更はレイアウトを起こすので、中の図形のステージ(ResizeObserver ＋
-  // canvas)まで測り直しになる。
+  // 2026-08-18 に「合成だけで追従する」形へ変えたが、**実機で崩れた**ので
+  // 戻した。崩れた理由は2つ、どちらも iOS のスタンドアロン(ホーム画面へ
+  // 追加した PWA)特有:
   //
-  // いまは **器の高さは 100lvh のまま二度と書かない**。キーボードのぶんは
-  // カスタムプロパティ `--kb` に入れるだけで、動くのは
-  //   ドック(帯＋シート) … translateY(-kb)
-  //   図形               … translateY(-kb/2)  ← 見える範囲の中央に居続ける
-  // の2つの **transform だけ**。transition が粗いイベントの間を補間するので、
-  // イベントが2回しか来なくても滑らかに追従する。
+  //  1. 器を `height: 100lvh` の固定にしたうえで `top` へ `vv.offsetTop` を
+  //     入れていたので、iOS がページを少しでもスクロールすると**そのぶん
+  //     下がはみ出す**(帯のアイコンが画面の下で切れた)。
+  //  2. キーボードのぶんを `innerHeight - vv.height` で出していたが、
+  //     **スタンドアロンでは innerHeight もキーボードと一緒に縮む**。
+  //     差が 0 になるので帯は持ち上がらず、キーボードの裏に隠れて消えた。
   //
-  // ★器自身に transform を掛けないこと（中の position:fixed の背面板が
-  // 包含ブロックごと壊れる）。動かすのはドックと図形だけ。
+  // 見えている矩形へ貼り直すやり方は、レイアウトビューポートが縮もうが
+  // 縮むまいが**常に正しい**。
+  //
+  // ★**setState は使わない**。`visualViewport` の resize / scroll は
+  // キーボードのアニメーション中に何度も飛ぶ。以前はそのたびに state を
+  // 更新していて、入力画面まるごとが再レンダーされていた。
+  // 矩形は **ref 越しに style へ直接書く**(`.app-track` と同じ作法)。
   const shellRef = useRef<HTMLDivElement | null>(null);
+  /** キーボードが無いときの高さ。**見た最大値で自分を較正する**
+   *  (キーボードが出たあとの `innerHeight` は当てにならない — 上記2)。
+   *  ★種は**最初のレンダーで**取る。この画面はタップで作られるので、その
+   *  時点でキーボードはまだ出ていない。effect まで待つと、先に走る
+   *  layout effect の focus でキーボードが開き始めていて低い値を掴む。 */
+  const fullH = useRef(0);
+  if (fullH.current === 0 && typeof window !== "undefined") fullH.current = window.innerHeight;
   useEffect(() => {
     const apply = () => {
       const el = shellRef.current;
       if (!el) return;
       const vv = window.visualViewport;
-      // iOS はキーボードを出すときページ側をスクロールすることがある。
-      // その ぶんは top で吸収する（滅多に動かないので transition は要らない）。
-      el.style.top = `${vv ? vv.offsetTop : 0}px`;
-      const kb = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+      const top = vv ? vv.offsetTop : 0;
+      const height = vv ? vv.height : window.innerHeight;
+      el.style.top = `${top}px`;
+      el.style.height = `${height}px`;
+      // ★帯の下の余白を切り替えるためだけの値。**位置には使わない。**
+      fullH.current = Math.max(fullH.current, height + top);
+      const kb = Math.max(0, fullH.current - height - top);
       el.style.setProperty("--kb", `${Math.round(kb)}px`);
     };
     apply();
@@ -415,7 +417,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       }} />
     <div ref={shellRef} onMouseDown={keepKeyboard} className={bye ? "tc-shell-out" : undefined} style={{
       position: "fixed", left: 0, right: 0, zIndex: 60, background: CHARCOAL,
-      top: 0, height: "100lvh",
+      top: 0, height: "100svh",
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
@@ -463,7 +465,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         {/* ★キーボードのぶんの追従は**アニメーションを持たない外側**に置く。
             `.tc-pop` は transform を animate するので、同じ要素に inline の
             transform を書いても animation に上書きされる(fill-mode: both)。 */}
-        <div data-shape style={{ position: "absolute", inset: 0, ...FOLLOW_HALF }}>
+        <div data-shape style={{ position: "absolute", inset: 0 }}>
           {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
           <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
             <ShapeStage spec={spec} title={preview.title} tag={tag} />
@@ -499,7 +501,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           帯そのものは登場の動き(`.tc-sheet` = transform を animate)を持って
           いるので、同じ要素に追従の transform は書けない。 */}
       <div data-dock className={bye ? "tc-sheet-out" : undefined}
-        style={{ flexShrink: 0, position: "relative", zIndex: 2, ...(bye ? null : FOLLOW) }}>
+        style={{ flexShrink: 0, position: "relative", zIndex: 2 }}>
         {/* ★帯の下を同じ色で埋める。キーボードが動いている最中、帯が持ち上がった
             ぶんの帯状の隙間が一瞬見えるのを防ぐ(色が違うと「境目」になる)。 */}
         <span aria-hidden style={{

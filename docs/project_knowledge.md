@@ -197,17 +197,24 @@ localStorage のキーは `qol-app-state-v1`。
    自分の列は `el.closest("[data-tab-scroll-root]")` で引く。
 7. **共有する定数は `lib/constants.ts` へ。** `AppShell` に置くと
    `Dashboard → AppShell → Dashboard` の循環参照でビルドが落ちる。
-8. ★★**キーボードの追従は `transform` だけでやる。器の高さを書かない。**
-   iOS はキーボードのアニメーション中に `visualViewport` のイベントを数回しか
-   飛ばさない。高さを書き換えると**段階的に跳ぶ**うえ、レイアウトが起きて
-   中の canvas まで測り直しになる（「ガタガタ」と 3 度報告された）。
-   器は `height: 100lvh` のまま固定し、キーボードのぶんは
-   `--kb`（`max(0, innerHeight - vv.height - vv.offsetTop)`）に入れて、
-   **ドックを `translateY(-kb)`・図形を `translateY(-kb/2)`** で動かす。
-   `transition` が粗いイベントの間を補間するので、イベントが 2 回でも滑らか。
-   ★**追従の `transform` は「アニメーションを持たない外側の要素」に置く。**
-   `.tc-sheet` / `.tc-pop-in` は `transform` を animate する（`fill-mode: both`）
-   ので、同じ要素に inline の transform を書いても**上書きされて効かない**。
+8. ★★**全画面の器は `visualViewport` の矩形そのものにする**
+   （`top: vv.offsetTop` / `height: vv.height` を ref 越しに直接書く）。
+   **`100lvh` の固定＋`transform` で追う形にしてはいけない。**
+   2026-08-18 にガタつき対策としてそれをやったら、**実機で入力画面が崩れた**
+   （帯が画面の下で切れる／キーボードの裏に隠れて消える）。理由は 2 つとも
+   iOS のスタンドアロン（ホーム画面へ追加した PWA）特有:
+   - `top` に `vv.offsetTop` を入れて高さを固定すると、iOS がページを少しでも
+     スクロールした瞬間に**そのぶん下がはみ出す**。
+   - **スタンドアロンではレイアウトビューポート自体がキーボードで縮む**ので、
+     `innerHeight - vv.height` は **0 になる**。それを「キーボードの高さ」と
+     して使うと、持ち上げるべきものが一切持ち上がらない。
+   見えている矩形へ貼り直すやり方は、レイアウトビューポートが縮もうが縮むまいが
+   **常に正しい**。高さの書き換えでレイアウトは起きるが、崩れるよりましである。
+   ★「キーボードが出ているか」を知りたいだけなら `--kb` を使う。ただし
+   `innerHeight` ではなく**それまでに見た `vv.height` の最大値**を基準にする
+   （種は最初のレンダーで取る。effect まで待つと focus でもう縮んでいる）。
+   ★検証は **`window.setViewportSize` で縮める場合と、`vv.height` だけを
+   縮める場合の両方**で行うこと。片方だけだとこの不具合を素通しする。
 9. ★★**スクロールする器の中に `Press` を置かない。**
    `Press`（`components/tasks/Popover.tsx`）は iOS のフォーカス移動を止める
    ために**非 passive な `touchstart` で `preventDefault()`** している。
@@ -518,6 +525,13 @@ LOD は代表寸法 `s = √面積 × unit` で決める。`>=48` 3 行 / `30〜
   `Popover`（器と `press`）/ `ViewToggle` / `TaskAddButton`。
 - `components/tabs/GravityTab.tsx`（落として積む）/ `DriftTab.tsx`（円環の
   カバーフロー）。
+  ★**輪の隣が画面からはみ出さない大きさにすること**（2026-08-18 に
+  「左右が若干見切れる」と報告）。いちばん横に長い形（四角）は器の幅を
+  目一杯使うので、**器の幅がそのまま制約**になる。手前から 1 つ隣の位置で
+  `0.707 × SPREAD × 0.866 + (SOLID_W / 2) × 0.866 ≤ 画面の半分 − 8`。
+  いまは `SOLID_W 230 / SPREAD 140` で 390px の画面に 12px の余裕。
+  **どちらかを大きくするときは必ずこの式を確かめ、輪を一周させて実測する**
+  （1 か所だけ見ても分からない）。
 
 ### ★守ること
 - **`ctx.font` は CSS 変数を解決できない。** `var(--font-…)` を含む文字列を

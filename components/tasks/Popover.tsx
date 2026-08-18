@@ -131,10 +131,7 @@ export function Popover({ label, closing, onClose, children }: {
           // **絶対に超えない**。以前は帯の上へ伸ばしていたので、中身が高いと
           // 画面の上へはみ出し、タブの下に潜って触れなくなっていた。
           position: "absolute", left: 10, right: 10, bottom: 8, zIndex: 2,
-          // 帯と一緒にキーボードのぶんだけ持ち上がる。上限もそのぶん縮める。
-          maxHeight: "calc(100% - 8px - var(--kb, 0px))",
-          transform: "translate3d(0, calc(-1 * var(--kb, 0px)), 0)",
-          transition: "transform 280ms cubic-bezier(0.32, 0.72, 0, 1)",
+          maxHeight: "calc(100% - 8px)",
           display: "flex", flexDirection: "column",
         }}
       >

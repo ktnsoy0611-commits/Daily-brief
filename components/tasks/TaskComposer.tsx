@@ -90,8 +90,8 @@ const KB_SETTLE_MS = 200;
 const KB_MIN_STEP = 60;
 /** キーボードに追いつくときの動き。**transform だけ**に掛ける。 */
 const KB_EASE = "transform 280ms cubic-bezier(0.32,0.72,0,1)";
-/** 図形を最初に焼くまでの待ち。器の登場(260ms)が終わってから。 */
-const STAGE_DELAY_MS = 300;
+/** 図形を最初に焼くまでの待ちの上限(ふつうは `animationend` が先に来る)。 */
+const STAGE_DELAY_MS = 460;
 /** ポップオーバーが下へ抜ける時間(ms)。globals.css の `tc-pop-out` と合わせる。 */
 const POP_OUT_MS = 160;
 
@@ -243,6 +243,39 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // 更新していて、入力画面まるごとが再レンダーされていた。
   // 矩形は **ref 越しに style へ直接書く**(`.app-track` と同じ作法)。
   const shellRef = useRef<HTMLDivElement | null>(null);
+  /** キーボードの高さを測るための、動きを持たない目印(下の `view` を参照)。 */
+  const probeRef = useRef<HTMLSpanElement | null>(null);
+  // ★★**出る動きが終わるまで図形を焼かない**(2026-08-18・第17巡)。
+  //   図形を1枚焼くのは 4× 絞りで 130ms 級。以前は「300ms 待つ」で逃がして
+  //   いたが、スライドは 320ms なので**最後の数フレームに焼きが重なって**
+  //   いた(実測でそこだけ 300ms フレームが飛んでいた)。時間で当てずに、
+  //   **動きが終わった合図(`animationend`)**を待つ。念のため時間の保険も置く。
+  const [settled, setSettled] = useState(false);
+  // ★★★**動き出しは「組み立てが終わってから」**(2026-08-18・第17巡)。
+  //
+  // CSS のアニメーションは**時計で進む**。組み立て(React のマウント・レイアウト・
+  // フォーカス)に 283ms かかっているあいだも時計は進むので、手が空いたときには
+  // 320ms のうち 88% が終わっている ＝ **板がいきなり所定の位置に現れる**。
+  // 実機で「ガクッと動く」と言われていたのはこれ。時間で誤魔化さず、
+  // **組み立てが済んだ次のフレームで初めてクラスを付ける**。
+  // それまでは画面の下に置いておく(下の `style`)。
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => setEntered(true)));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  // 出る動きが終わったら、そこで初めて図形を焼く(焼きは 4× 絞りで 130ms 級)。
+  useEffect(() => {
+    if (!entered) return;
+    const el = shellRef.current;
+    const done = () => setSettled(true);
+    el?.addEventListener("animationend", done, { once: true });
+    const t = window.setTimeout(done, STAGE_DELAY_MS);
+    return () => { el?.removeEventListener("animationend", done); window.clearTimeout(t); };
+  }, [entered]);
+  /** 出る前・出ている最中の見た目。板は画面の下から来る。 */
+  const enterStyle: React.CSSProperties | null = entered || bye
+    ? null : { transform: "translate3d(0, 100%, 0)" };
   /** 一度でもキーボードが出たか。出ていないうちは「閉じた」と見なさない。 */
   const kbSeen = useRef(false);
   /** いま出している持ち上げ量(px)。 */
@@ -251,8 +284,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   useLayoutEffect(() => {
     /** 器の下端が、見えている下端よりどれだけ下か。 */
     const measure = () => {
-      const el = shellRef.current;
-      if (!el) return kbRef.current;
       const vv = window.visualViewport;
       // ★★**キーボードの高さは「自分の下端が、見えている下端より
       //    どれだけ下か」で測る**(2026-08-18・第13巡)。
@@ -262,16 +293,20 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       //    第8巡は `innerHeight - vv.height` で測って**前者で 0 になり**、
       //    第9〜12巡は器そのものを縮めて**レイアウトをやり直して**いた。
       const seen = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      // ★★**`getBoundingClientRect` は使わない**(2026-08-18・第16巡)。
-      //    器は出入りで下から上へ**スライドする** ＝ transform が乗るので、
-      //    rect は「いま描かれている場所」を返してしまう。出ている最中に
-      //    測ると `--kb` が 844px になり、帯が画面の外へ飛んだ(実際にそうなった)。
-      //    `offsetTop`/`offsetHeight` は**組版上の値**なので transform を含まない。
-      const bottom = el.offsetHeight ? el.offsetTop + el.offsetHeight : el.getBoundingClientRect().bottom;
-      const kb = Math.round(bottom - seen);
-      // 桁外れの値は捨てる(測り損ねたときに画面を壊さないための保険)。
-      if (kb > el.offsetHeight * 0.7) return kbRef.current;
-      return Math.max(0, kb);
+      // ★★★**測るのは器ではなく「物差し」**(2026-08-18・第17巡)。
+      //
+      //    器は出入りでスライドする ＝ transform が乗るので
+      //    `getBoundingClientRect` は「いま描かれている場所」を返す。第16巡は
+      //    それを避けて `offsetTop + offsetHeight` に替えたが、
+      //    **`position: fixed` の要素の `offsetTop` は端末で意味が揺れる**
+      //    (`offsetParent` が null のときに何を基準にするかは実装まかせ)。
+      //    実機で「アイコンタップで画面が動く」が再発したのはこれが原因。
+      //
+      //    そこで、**動きを一切持たない 0×0 の目印**を器の外に置き、
+      //    その下端を読む。transform も engine の解釈も関わらない。
+      const probe = probeRef.current;
+      const bottom = probe ? probe.getBoundingClientRect().bottom : (vv ? vv.height : window.innerHeight);
+      return Math.max(0, Math.round(bottom - seen));
     };
 
     /** 実際に書き込む。ここだけが `--kb` を動かす。 */
@@ -327,12 +362,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       }, KB_SETTLE_MS);
     };
     apply();
-    // ★見えている矩形が上へずれていたら押し戻す。器は画面に貼り付いて
-    //   いるので、ずれると上のバーが画面の外へ出てしまう。
-    const unshift = () => {
-      const vv = window.visualViewport;
-      if (vv && vv.offsetTop > 0) window.scrollTo(0, 0);
-    };
+    // ★`window.scrollTo(0,0)` で押し戻すのはやめた(2026-08-18・第17巡)。
+    //   html は `overflow: hidden` なので効かないうえ、動いている最中に
+    //   割り込むと**そこで一度つっかえる**。見えている矩形のずれは
+    //   `--kb` の式(`vv.offsetTop + vv.height`)がすでに織り込んでいる。
     // ★★合図をもう1つ持つ(2026-08-18。`--kb` だけでは実機で閉じなかった)。
     // iOS の「完了」は**フォーカスを外す**。受け皿(`pressedRecently`)が
     // 戻さなかった＝画面の外で外れた、ということなので、少し待って
@@ -361,7 +394,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     };
     shellRef.current?.addEventListener("scroll", pin);
     const vv = window.visualViewport;
-    const onVV = () => { unshift(); apply(); };
+    const onVV = () => apply();
     vv?.addEventListener("resize", onVV);
     vv?.addEventListener("scroll", onVV);
     window.addEventListener("resize", onVV);
@@ -569,14 +602,22 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
   const view = (
     <>
+      {/* ★★キーボードの高さを測るためだけの目印(2026-08-18・第17巡)。
+          **アニメーションも transform も持たない**ことが唯一の役目。
+          器はスライドするので器自身を測ってはいけない(measure のコメント)。 */}
+      <span ref={probeRef} aria-hidden style={{
+        position: "fixed", left: 0, bottom: 0, width: 0, height: 0,
+        pointerEvents: "none", zIndex: 58,
+      }} />
       {/* ★下敷き。**画面ぜんぶ**を覆う(zIndex 59)。器は見えている矩形
           (visualViewport)にしか居ないので、これが無いとキーボードの手前の帯が
           素通しになって後ろの山が見えた(2026-08-17に実機で報告)。
           ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、その続きに
           なる色でないと「境目」として見えてしまう。 */}
-      <div aria-hidden className={bye ? "tc-shell-out" : "tc-shell-in"} style={{
+      <div aria-hidden className={bye ? "tc-shell-out" : entered ? "tc-shell-in" : undefined} style={{
         position: "fixed", inset: 0, zIndex: 59, background: LIFT,
         width: "100vw", height: "100lvh", minHeight: "100%",
+        ...enterStyle,
       }} />
     {/* ★★★**器は一度置いたら二度と動かさない**(2026-08-18・第13巡)。
         寸法は録音のオーバーレイ(`VoiceOverlay`)と**同じ書き方**にしてある —
@@ -588,7 +629,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         「ガクッとなる」「幅が変わる」「スクロールの判定が入る」が全部ここから
         出ていた。いまはキーボードのぶんを `--kb` に入れるだけで、動くのは
         **帯と図形の transform だけ**(＝合成のやり直しだけで済む)。 */}
-    <div ref={shellRef} data-composer-shell onMouseDown={keepKeyboard} className={bye ? "tc-shell-out" : "tc-shell-in"} style={{
+    <div ref={shellRef} data-composer-shell onMouseDown={keepKeyboard}
+      className={bye ? "tc-shell-out" : entered ? "tc-shell-in" : undefined} style={{
       position: "fixed", left: 0, top: 0, right: 0, bottom: 0, zIndex: 60, background: CHARCOAL,
       width: "100vw", height: "100lvh", minHeight: "100%",
       display: "flex", flexDirection: "column",
@@ -597,6 +639,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       //   スクロールバーも出す。`clip` は箱そのものを作らない。
       overflow: "clip",
       overscrollBehavior: "none",
+      ...enterStyle,
     }}>
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
@@ -641,7 +684,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         <div data-shape style={{ position: "absolute", inset: 0 }}>
           {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
           <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
-            <ShapeStage spec={spec} title={preview.title} tag={tag} />
+            <ShapeStage spec={spec} title={preview.title} tag={tag} ready={settled} />
           </div>
         </div>
 
@@ -810,20 +853,12 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 }
 
 // ── 図形の舞台。器の大きさを測って、その中央に1つ描く。 ──
-function ShapeStage({ spec, title, tag }: {
+function ShapeStage({ spec, title, tag, ready }: {
   spec: ReturnType<typeof specOf>; title: string; tag: TaskTag;
+  /** 出る動きが終わったか。終わるまで焼かない(呼び側のコメントを参照)。 */
+  ready: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  // ★★**出るアニメーションのあいだは焼かない**(2026-08-18・第13巡)。
-  //   図形を1枚焼くのは 4× 絞りで 50ms 級。開いた直後は、器の登場・帯のせり
-  //   上がり・キーボードの追従が同時に走っているので、そこへ焼きを重ねると
-  //   1フレーム落ちて「引っ掛かり」として見える。落ち着いてから出す。
-  //   (ユーザー確定「必ずしも早く起動するのを優先しなくてよい」)
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const t = window.setTimeout(() => setReady(true), STAGE_DELAY_MS);
-    return () => window.clearTimeout(t);
-  }, []);
   // ★★**それまでに見た一番大きい箱**を持ち続ける(2026-08-18)。キーボードが
   // せり上がると舞台は縮むが、canvas の寸法と倍率をそこで変えると
   // **1フレームごとに図形を焼き直す**ことになる(4×絞りで1枚50ms級 ＝ カクつきの

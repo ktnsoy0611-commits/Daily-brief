@@ -206,17 +206,33 @@ export function ensureGlyphs(face: number, text: string) {
   } catch { /* noop */ }
 }
 
+/** いま「使える」と判定できる面の並び。変わっていないなら捨てる必要は無い。 */
+let readySig: string | null = null;
+const faceSig = () => FONT_FACES.map((_, i) => (checkFace(i, "") ? "1" : "0")).join("");
+
 /** 書体が届いて焼き直しが要るときに呼ばれる。返り値で購読をやめる。 */
 export function onFontsReady(cb: () => void): (() => void) | undefined {
   if (typeof document === "undefined" || !document.fonts) return;
   listeners.add(cb);
-  document.fonts.ready?.then(() => cb()).catch(() => {});
+  if (readySig === null) readySig = faceSig();
+  // ★★**購読しただけで呼び返さないこと**(2026-08-18・第17巡)。
+  // 以前は `document.fonts.ready.then(cb)` を置いていた。これは**もう揃って
+  // いれば即座に解決する**ので、`SolidCanvas` が1枚マウントされるたびに
+  // コールバックが走っていた。そのコールバックは `clearSolidBitmaps()` ＝
+  // **みんなで使っている焼き上がりの全消し**なので、入力画面を開くだけで
+  // 山の絵が全部消え、閉じたあとに焼き直されて**文字が点滅**していた
+  // (実機で報告。Chromium でも閉じた 350ms 後に色数 241→51 と再現)。
+  // 揃っていない面は `requestGlyphs` の `load().then` が拾うので、これは要らない。
+  //
   // ★安全網。こちらが取りに行っていない書体(他の画面のもの)が届いた場合も拾う。
-  // ただし**読み込みが落ち着いたときだけ**動かす。断片が届くたびに動かすと、
-  // 1フレームに数枚しか焼けないアトラスを捨て続けて永久に焼き終わらない
-  // (2026-08-17に実機で「文字が表示されない」として報告された)。
+  // ただし**読み込みが落ち着いたとき**かつ**面の顔ぶれが実際に変わったとき**
+  // だけ動かす。断片が届くたびに動かすと、1フレームに数枚しか焼けない
+  // アトラスを捨て続けて永久に焼き終わらない(2026-08-17に実機で報告)。
   const on = () => {
     if (document.fonts.status !== "loaded") return;
+    const sig = faceSig();
+    if (sig === readySig) return;
+    readySig = sig;
     scheduleFlush();
   };
   document.fonts.addEventListener?.("loadingdone", on);

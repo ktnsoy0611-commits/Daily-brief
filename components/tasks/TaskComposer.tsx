@@ -84,8 +84,11 @@ const LEAVE_MS = 300;
 const KB_UP = 120;
 /** これより低くなったら「キーボードが閉じた」。 */
 const KB_DOWN = 60;
-/** 下がったように見えてから、確かめるまでの待ち。 */
-const KB_SETTLE_MS = 200;
+/** 下がったように見えてから、確かめるまでの待ち。★2回続けて確かめるので
+ *  閉じ始めるまでの「間」はこの2倍。第18巡は 200(＝400ms)にしていたが、
+ *  実機で「閉じる時にワンテンポ遅れる」と言われた。一瞬の谷を弾くのに
+ *  400ms は要らない(iOS がキーボードを畳むのに 250ms かかる)。 */
+const KB_SETTLE_MS = 90;
 /** これより小さい変化は動かさない(予測変換の帯の出し入れ ≒ 40px)。 */
 const KB_MIN_STEP = 60;
 /** 開いた直後、閉じる合図を一切働かせない時間。 */
@@ -144,6 +147,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const keepFocus = useRef(true);
   /** 閉じている最中(動きを見せているあいだ)。 */
   const [bye, setBye] = useState(false);
+  /** 下敷き(器と一緒に滑る板)。閉じるときクラスを直に付けるので ref で持つ。 */
+  const backRef = useRef<HTMLDivElement | null>(null);
 
   const subs = useMemo(() => draft.subtasks ?? [], [draft.subtasks]);
   const weight = draft.weight ?? 2;
@@ -377,16 +382,22 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // 追いかけていたので、開いた瞬間に帯が落ち、閉じると上がり直していた。
     const apply = () => {
       if (!shellRef.current || leftRef.current) return;
-      // ★★**ずれの追従も、開いているあいだは凍らせる**(2026-08-18・第19巡)。
-      //   第18巡はここだけ「いつでも追う」にしていた。ところが iOS は
-      //   **アイコンを叩いて欄が入れ替わるたびに矩形を数十px 上下へ振る**ので、
-      //   `--vvtop` が素のまま書き替わり、中身ごと一瞬で跳ねていた
-      //   (実機で「何回か触ると4回に1回くらい画面がガクッと動く」)。
-      //   ポップオーバーが開いているあいだキーボードは動かない約束なので、
-      //   ずれも動く理由が無い — 見えたぶんは全部その場かぎりの揺れ。
-      //   `--kb` と同じ1本の決まりにする(凍らせる／閉じたら測り直す)。
+      // ★★**ずれを凍らせるのは「ポップオーバーが開いている間」だけ**
+      //   (2026-08-19・第20巡で線を引き直した)。
+      //
+      //   ・ポップオーバー(メモ・持ち物・重要度・タグ) … **キーボードは
+      //     出したまま**にする約束。だからずれも動く理由が無く、見えた動きは
+      //     全部その場かぎりの揺れ。iOS は欄が入れ替わるたびに矩形を数十px
+      //     振るので、素直に書き替えると跳ねる(第19巡の「4回に1回ガクッ」)。
+      //   ・日程のシート … **こちらからキーボードを閉じている**。ずれは本当に
+      //     0 へ戻るので、**追わないと中身が下がったまま取り残される**。
+      //     第19巡でここまで一緒に凍らせてしまい、日程を開くと上のバーが
+      //     画面の真ん中まで落ちた(実機の写真)。
+      //
+      //   持ち上げ量(`--kb`)の方は**どちらでも凍らせる**。シートは自分で
+      //   キーボードを閉じているので、追うと帯が落ちて閉じると上がり直す。
+      if (!toolRef.current) commitShift();
       if (whenRef.current !== "" || toolRef.current) return;
-      commitShift();
       // ★★★**何かが開いているあいだは一切動かさない**(2026-08-18・第16巡)。
       //   日程のシートは**こちらから**キーボードを閉じている。メモ・持ち物・
       //   重要度・タグのポップオーバーは**キーボードを出したまま**にする約束
@@ -662,8 +673,25 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     if (leftRef.current) return;
     leftRef.current = true;
     keepFocus.current = false;
-    (document.activeElement as HTMLElement | null)?.blur();
+    // ★★★**滑り出しは React を待たない**(2026-08-18・第20巡)。
+    //
+    // これまでは `bye` を state で立て、**再描画が終わってから**クラスが
+    // 付いていた。器の中身(行・図形・帯)をまるごと描き直す間は動き出さず、
+    // そのぶんが**そのまま「間」**として見えていた
+    // (実機で「閉じる時のアニメーションがワンテンポ遅れる」と報告)。
+    // 出るときは rAF を2回待つのが正しかった(第18巡)が、**閉じるときは逆** —
+    // 待つ理由が無い。触れた瞬間にクラスだけ直に付け、描き直しは滑りながら
+    // 追いつかせる。`bye` の state は、そのあとの描画で辻褄を合わせる役。
+    for (const el of [backRef.current, shellRef.current]) {
+      if (!el) continue;
+      el.style.transform = "";          // 出るとき用の置き場所を外す
+      el.classList.remove("tc-shell-in");
+      el.classList.add("tc-shell-out");
+    }
     setBye(true);
+    // ★キーボードを閉じるのは**滑り出した後**。iOS はここで矩形を作り直すので、
+    //   先に呼ぶと動き出しがそのぶん遅れる。
+    (document.activeElement as HTMLElement | null)?.blur();
     window.setTimeout(run, LEAVE_MS);
   };
   // キーボードが引っ込んだときは、そのまま書いたものを持って閉じる。
@@ -687,7 +715,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           素通しになって後ろの山が見えた(2026-08-17に実機で報告)。
           ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、その続きに
           なる色でないと「境目」として見えてしまう。 */}
-      <div aria-hidden className={bye ? "tc-shell-out" : entered ? "tc-shell-in" : undefined} style={{
+      <div ref={backRef} aria-hidden className={bye ? "tc-shell-out" : entered ? "tc-shell-in" : undefined} style={{
         position: "fixed", inset: 0, zIndex: 59, background: LIFT,
         width: "100vw", height: "100lvh", minHeight: "100%",
         ...enterStyle,

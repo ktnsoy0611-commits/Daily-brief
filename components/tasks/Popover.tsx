@@ -78,6 +78,18 @@ export function Press({ onPress, disabled, children, style, ...rest }: {
     return () => el.removeEventListener("touchstart", on);
   }, []);
 
+  // ★★**沈む合図は自分で出す**(2026-08-18・第19巡)。`.tc-lamp:active` に
+  //   任せていたが、`touchstart` の既定動作を止めている面では iOS が
+  //   `:active` を当てないことがあり、**押しても何も起きないように見える**
+  //   (実機で「アイコンの反応が悪い」と報告された)。押した瞬間に印を立て、
+  //   離す/取り消しで消す。再レンダーは挟まない(属性を直に書く)。
+  const mark = (on: boolean) => {
+    const el = ref.current;
+    if (!el) return;
+    if (on) el.dataset.pressed = "1";
+    else el.removeAttribute("data-pressed");
+  };
+
   return (
     <div
       ref={ref}
@@ -86,12 +98,21 @@ export function Press({ onPress, disabled, children, style, ...rest }: {
       onPointerDown={(e) => {
         e.preventDefault();
         lastPressAt = Date.now();
+        mark(true);
         if (!off.current) fn.current();
       }}
+      onPointerUp={() => mark(false)}
+      onPointerCancel={() => mark(false)}
+      onPointerLeave={() => mark(false)}
       style={{
         cursor: disabled ? "default" : "pointer",
         userSelect: "none", WebkitUserSelect: "none",
         WebkitTouchCallout: "none",
+        // ★★**`touch-action: none`**(2026-08-18・第19巡)。これが無いと iOS は
+        //   「この指はページを送るためのものか」を見極めるまで `pointerdown` を
+        //   握り、押してから効くまでが目に見えて遅れる。送る余地が無いことを
+        //   先に宣言しておけば、指が触れた瞬間に飛ぶ。
+        touchAction: "none",
         ...style,
       }}
       {...rest}

@@ -490,7 +490,12 @@ button:active {
   transition: background-color 180ms ease, color 180ms ease,
               box-shadow 180ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.tc-lamp:active { transform: scale(0.9); }
+/* ★沈む合図。`:active` は iOS の「touchstart の既定を止めた面」では当たらない
+   ことがあるので、`Press` が自分で立てる `data-pressed` も見る(第19巡)。
+   丸を内側の面に描いている場所(下の帯のアイコン)は、印が親に立つ。 */
+.tc-lamp:active,
+.tc-lamp[data-pressed="1"],
+[data-pressed="1"] > .tc-lamp { transform: scale(0.9); }
 @media (prefers-reduced-motion: reduce) {
   .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in, .tc-sheet-out,
   .tc-pop-out, .tc-shell-in, .tc-shell-out, .tc-pick { animation: none; }

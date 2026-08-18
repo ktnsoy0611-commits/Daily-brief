@@ -94,20 +94,29 @@ export function ComposerToolbar({ open, filled, onOpen, on, onInk, off }: {
       {keys.map((k) => {
         const lit = filled[k] || open === k;
         return (
+          // ★★**押せる面は 44、描く丸は 32**(2026-08-18・第19巡)。
+          //   丸そのものを押せる面にしていたので、指の腹が 6px でも外れると
+          //   帯に当たって何も起きず、「反応が悪い」として報告された。
+          //   `margin: -6px` で**場所は 32 のまま**にし、当たり判定だけ広げる
+          //   (上の 6px は行の下余白 12px の中、下の 6px は帯の下余白の中)。
           <Press
             key={k}
             onPress={() => { haptic(6); onOpen(k); }}
             aria-label={TOOL_LABEL[k]}
             aria-pressed={open === k}
-            className="tc-lamp"
             style={{
+              width: 44, height: 44, margin: -6, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <span className="tc-lamp" style={{
               width: 32, height: 32, borderRadius: "50%",
               background: lit ? on : "transparent",
               boxShadow: lit ? "none" : `inset 0 0 0 1.5px ${off}`,
               display: "flex", alignItems: "center", justifyContent: "center",
-            }}
-          >
-            <Glyph name={k} c={lit ? onInk : off} />
+            }}>
+              <Glyph name={k} c={lit ? onInk : off} />
+            </span>
           </Press>
         );
       })}

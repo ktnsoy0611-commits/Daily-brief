@@ -3,7 +3,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CAP, Press } from "@/components/tasks/Popover";
 import { TimeRange } from "@/components/tasks/TimeRange";
-import { PAPER, RUST, SANS } from "@/lib/constants";
+import { PAPER, RUST, SANS, SCHEME } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 
 // ★日程の入力(2026-08-17・第6巡で作り直し。参照＝TickTick の画像4枚)。
@@ -99,6 +99,8 @@ const ON_G = PAPER;
 const DIM = "rgba(250,250,249,0.44)";
 /** カードの地。 */
 const CELL = "rgba(250,250,249,0.07)";
+/** 赤の相方(淡い赤)。塗った赤の上に乗る文字。 */
+const RUST_INK = SCHEME.red.ink;
 /** 浮かせるもの(カレンダー・ダイアル)の地。 */
 const FLOAT = "#3B3B36";
 /** 今日のマスの塗り。選んでいる日(アクセント)と混ざらないよう沈ませる。 */
@@ -272,10 +274,14 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
       <Press onPress={() => {
         haptic(8); setPop(null);
         onChange({ dueDate: undefined, endDate: undefined, dueTime: undefined, endTime: undefined });
-      }} aria-label="クリア" style={{
+      }} aria-label="クリア" className="tc-lamp" style={{
+        // ★★**文字だけの行から、塗ったボタンへ**(2026-08-18・第19巡にユーザー
+        //   指定「クリアはボタンにして塗りにしてください」)。赤と、その相方の
+        //   淡い赤(`SCHEME.red`)はアプリ共通の一対 — タグの丸と同じ語彙で塗る。
         width: "100%", height: CLEAR_H, borderRadius: 999, flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
-        ...CAP, fontSize: 10.5, color: RUST,
+        background: RUST,
+        ...CAP, fontSize: 10.5, color: RUST_INK,
       }}>クリア</Press>
 
       {/* ── 浮かせるもの ── */}

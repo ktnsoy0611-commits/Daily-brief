@@ -282,6 +282,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const kbRef = useRef(0);
   /** いま出しているずれ(px)。 */
   const vvTopRef = useRef(0);
+  /** キーボードとずれを測り直す。ポップオーバーを閉じた直後に呼ぶ。 */
+  const applyRef = useRef<() => void>(() => {});
   /** いま文字を打っている行。effect の中から ref 越しに読む。 */
   const liveRowRef = useRef<() => HTMLTextAreaElement | null>(() => null);
   const settleRef = useRef(0);
@@ -375,8 +377,15 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // 追いかけていたので、開いた瞬間に帯が落ち、閉じると上がり直していた。
     const apply = () => {
       if (!shellRef.current || leftRef.current) return;
-      // ★ずれの追従は**いつでも**行う(凍らせない)。位置がずれたまま放置すると
-      //   上のバーが画面の外へ出てしまい、それが「レイアウトの崩れ」になる。
+      // ★★**ずれの追従も、開いているあいだは凍らせる**(2026-08-18・第19巡)。
+      //   第18巡はここだけ「いつでも追う」にしていた。ところが iOS は
+      //   **アイコンを叩いて欄が入れ替わるたびに矩形を数十px 上下へ振る**ので、
+      //   `--vvtop` が素のまま書き替わり、中身ごと一瞬で跳ねていた
+      //   (実機で「何回か触ると4回に1回くらい画面がガクッと動く」)。
+      //   ポップオーバーが開いているあいだキーボードは動かない約束なので、
+      //   ずれも動く理由が無い — 見えたぶんは全部その場かぎりの揺れ。
+      //   `--kb` と同じ1本の決まりにする(凍らせる／閉じたら測り直す)。
+      if (whenRef.current !== "" || toolRef.current) return;
       commitShift();
       // ★★★**何かが開いているあいだは一切動かさない**(2026-08-18・第16巡)。
       //   日程のシートは**こちらから**キーボードを閉じている。メモ・持ち物・
@@ -385,8 +394,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       //   実機で「メモや持ち物のアイコンをタップすると画面が動く」と2度
       //   報告された。欄から欄へフォーカスが移ると、iOS は予測変換の帯を
       //   出し入れしたり、見えている矩形をずらしたりする。**開いている間は
-      //   そもそも聞かない**のがいちばん確実。
-      if (whenRef.current !== "" || toolRef.current) return;
+      //   そもそも聞かない**のがいちばん確実(上の `return` が兼ねている)。
       const kb = measure();
       window.clearTimeout(settleRef.current);
       // ★**小さな揺れは無視する**。予測変換の帯の出し入れ(40px 前後)まで
@@ -407,6 +415,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         }, KB_SETTLE_MS);
       }, KB_SETTLE_MS);
     };
+    applyRef.current = apply;
     apply();
     // ★`window.scrollTo(0,0)` で押し戻すのはやめた(2026-08-18・第17巡)。
     //   html は `overflow: hidden` なので効かないうえ、動いている最中に
@@ -636,6 +645,15 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   }, [tool, toolOut]);
   const closeTool = () => { backToRow(); if (tool) setToolOut(tool); setTool(null); };
 
+  // ★★**閉じたら測り直す**(2026-08-18・第19巡)。開いているあいだは `--kb` も
+  //   ずれも凍らせているので、閉じた時点で本当の値へ合わせ直す必要がある。
+  //   凍らせている間の揺れは全部その場かぎりのものなので、ここで一度だけ
+  //   追いつけばよい(揺れのたびに追いかけるから跳ねていた)。
+  useEffect(() => {
+    if (tool || when !== "") return;
+    applyRef.current();
+  }, [tool, when]);
+
   /**
    * 画面を離れる。★**閉じる動きを見せてから**呼び側へ返す(2026-08-18)。
    * 以前は即座に消えていて安っぽかった。`leftRef` が二重の呼び出しを防ぐ。
@@ -709,6 +727,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         flex: 1, minHeight: 0, position: "relative",
         display: "flex", flexDirection: "column",
         transform: "translateY(var(--vvtop, 0px))",
+        // ★帯と同じ間合いで滑らせる(2026-08-18・第19巡)。ずれは本来
+        //   キーボードと一緒に動くものなので、瞬間移動させると跳ねて見える。
+        transition: KB_EASE,
       }}>
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている

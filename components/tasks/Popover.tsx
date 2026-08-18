@@ -36,6 +36,19 @@ import { PAPER, SANS } from "@/lib/constants";
  * 順に飛ぶので、両方で走らせると二重になる)。`touchstart` は
  * **既定動作を止める役だけ**。
  */
+/**
+ * ★最後に**画面の中の**押せる面が押された時刻。
+ *
+ * 「キーボードを閉じたら入力画面も閉じる」を入れた 2026-08-18 から必要に
+ * なった。フォーカスが外れた理由を2つに分ける必要がある:
+ *   ・画面の中を押した → 取りこぼし。**その場で戻す**(いままでどおり)。
+ *   ・画面の外(キーボードの「完了」やスワイプ) → **戻さない**。閉じる合図。
+ * ページの中には iOS の「完了」を知る手がかりが無いので、
+ * 「直前に画面を押していたか」で見分ける。
+ */
+let lastPressAt = 0;
+export const pressedRecently = (ms = 500) => Date.now() - lastPressAt < ms;
+
 export function Press({ onPress, disabled, children, style, ...rest }: {
   onPress: () => void;
   disabled?: boolean;
@@ -60,7 +73,7 @@ export function Press({ onPress, disabled, children, style, ...rest }: {
     const el = ref.current;
     if (!el) return;
     // ★止める役だけ。処理は pointerdown 側で走る。
-    const on = (e: TouchEvent) => { if (e.cancelable) e.preventDefault(); };
+    const on = (e: TouchEvent) => { lastPressAt = Date.now(); if (e.cancelable) e.preventDefault(); };
     el.addEventListener("touchstart", on, { passive: false });
     return () => el.removeEventListener("touchstart", on);
   }, []);
@@ -72,6 +85,7 @@ export function Press({ onPress, disabled, children, style, ...rest }: {
       aria-disabled={disabled || undefined}
       onPointerDown={(e) => {
         e.preventDefault();
+        lastPressAt = Date.now();
         if (!off.current) fn.current();
       }}
       style={{
@@ -92,9 +106,7 @@ export function Press({ onPress, disabled, children, style, ...rest }: {
 export const keepKeyboard = (e: React.MouseEvent) => {
   const t = e.target as HTMLElement | null;
   const tag = t?.tagName;
-  // ★文字を打つ面は contenteditable(`EditableLine`)。tagName では判らないので
-  // `isContentEditable` で見る。
-  if (t?.isContentEditable || tag === "TEXTAREA" || tag === "INPUT") return;
+  if (tag === "TEXTAREA" || tag === "INPUT") return;
   e.preventDefault();
 };
 

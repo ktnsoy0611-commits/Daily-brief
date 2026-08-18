@@ -52,7 +52,7 @@
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
   `WhenSheet`（日程。**ここだけキーボードを閉じる**）/ `ComposerToolbar` /
   `ComposerFields`（重要度・タグ・テキスト）/ `Popover`（器と `Press`＝押せる面）/
-  `EditableLine`（文字を打つ面。contenteditable）/
+  `TimeRange`（時刻。タイムラインで範囲を選ぶ）/
   `SolidCanvas` / `ViewToggle` / `TaskAddButton`。
 - `lib/solid.ts` `lib/solidPaint.ts` `lib/textFit.ts` `lib/taskSize.ts` `lib/taskTags.ts` — 図形・描画・寸法・タグ。
 

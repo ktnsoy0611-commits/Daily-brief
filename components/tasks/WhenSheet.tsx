@@ -1,7 +1,8 @@
 "use client";
 
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CAP, Press } from "@/components/tasks/Popover";
+import { TimeRange } from "@/components/tasks/TimeRange";
 import { PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 
@@ -67,6 +68,8 @@ const WD_H = 18;
 const WEEKS = 6;
 /** 1週の高さ。★キーボードを閉じたので**大きく取れる**(2026-08-17)。 */
 const ROW_MAX = 40;
+/** 丸の下の、開始・終了・今日の点を書く1行の高さ。 */
+const LABEL_H = 10;
 /** 器が縮んだときの下限(保険)。 */
 const ROW_MIN = 24;
 /** カレンダーまるごとの高さ。 */
@@ -99,7 +102,6 @@ const CELL = "rgba(250,250,249,0.07)";
 /** 浮かせるもの(カレンダー・ダイアル)の地。 */
 const FLOAT = "#3B3B36";
 /** 今日のマスの塗り。選んでいる日(アクセント)と混ざらないよう沈ませる。 */
-const TODAY_FILL = "rgba(250,250,249,0.16)";
 /** 期間のあいだの日に敷く色。アクセントを薄く。 */
 const rangeTint = (accent: string) => `color-mix(in srgb, ${accent} 22%, transparent)`;
 
@@ -119,12 +121,13 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
   onCancel: () => void;
   onCommit: () => void;
 }) {
-  const isRange = !!value.endDate || !!value.endTime;
+  // ★★**期日か期間かは「日付」だけで決まる**(2026-08-18)。時刻は期日のときも
+  //   開始〜終了で持つようになったので、`endTime` を見ていると
+  //   **時刻を入れただけで期間へ飛んで**しまう(実際そうなった)。
+  const isRange = !!value.endDate;
   const allDay = !value.dueTime;
   /** いま浮かせているもの。 */
   const [pop, setPop] = useState<null | "cal-start" | "cal-end" | "cal-due" | "time">(null);
-  /** 時刻のダイアルで、開始と終了のどちらを触っているか。 */
-  const [edge, setEdge] = useState<"start" | "end">("start");
   // 浮きを出す位置の基準。**押した相手の隣**に出すために測る(Float を参照)。
   const cardsRef = useRef<HTMLDivElement | null>(null);   // 期間のカードの行
   const timeRef = useRef<HTMLDivElement | null>(null);    // 期日のときの「時刻」の行
@@ -132,17 +135,24 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
   const today = ymd(new Date());
   const set = (p: WhenValue) => onChange({ ...value, ...p });
 
+  /** 時刻の浮きを開け閉めする。★まだ時刻が無いなら**その場で 1 時間を置く**
+   *  (2026-08-18にユーザー確定「デフォルトで間隔を1時間に」)。帯が最初から
+   *  見えていないと、タイムラインは何もつまむものが無い面になってしまう。 */
+  const openTime = () => {
+    if (pop === "time") { setPop(null); return; }
+    if (!value.dueTime) set({ dueTime: "09:00", endTime: "10:00" });
+    else if (!value.endTime) set({ endTime: addHour(value.dueTime) });
+    setPop("time");
+  };
+
   /** 期日 ⇄ 期間 の切り替え。値の形も一緒に整える。 */
   const toRange = (on: boolean) => {
     haptic(6);
     setPop(null);
-    if (on) {
-      const start = value.dueDate ?? today;
-      set({ dueDate: start, endDate: value.dueTime ? undefined : (value.endDate ?? start),
-        dueTime: value.dueTime, endTime: value.dueTime ? (value.endTime ?? addHour(value.dueTime)) : undefined });
-    } else {
-      set({ dueDate: value.dueDate ?? today, endDate: undefined, dueTime: value.dueTime, endTime: undefined });
-    }
+    const start = value.dueDate ?? today;
+    // 期間 … 終わりの日を持つ。期日 … 終わりの日は持たない。時刻はどちらでも同じ。
+    if (on) set({ dueDate: start, endDate: value.endDate ?? start });
+    else set({ dueDate: start, endDate: undefined });
   };
 
   /** 期間のときの「終日」。 */
@@ -151,7 +161,8 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
     setPop(null);
     const start = value.dueDate ?? today;
     if (on) set({ dueDate: start, endDate: value.endDate ?? start, dueTime: undefined, endTime: undefined });
-    else set({ dueDate: start, endDate: undefined, dueTime: "09:00", endTime: "10:00" });
+    // ★終日を切っても**期間のまま**でいる(終わりの日は持ち続ける)。
+    else set({ dueDate: start, endDate: value.endDate ?? start, dueTime: "09:00", endTime: "10:00" });
   };
 
   return (
@@ -200,8 +211,11 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
           <Quick accent={accent} selected={value.dueDate} onPick={(iso) => { haptic(6); set({ dueDate: iso }); }} />
           <MonthGrid accent={accent} selected={value.dueDate}
             onPick={(iso) => { haptic(6); set({ dueDate: iso }); }} />
-          <Row ref={timeRef} label="時刻" value={value.dueTime} accent={accent}
-            onOpen={() => { setEdge("start"); setPop(pop === "time" ? null : "time"); }}
+          {/* ★期日のときも時刻は**開始〜終了**で持つ(2026-08-18にユーザー確定)。
+              期間と操作が同じになり、覚えることが1つ減る。 */}
+          <Row ref={timeRef} label="時刻" accent={accent}
+            value={value.dueTime ? `${value.dueTime} - ${value.endTime ?? addHour(value.dueTime)}` : undefined}
+            onOpen={openTime}
             onClear={value.dueTime ? () => set({ dueTime: undefined, endTime: undefined }) : undefined}
           />
         </>
@@ -228,7 +242,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
               <Card title="時刻" aria="時刻を選ぶ" accent={accent}
                 main={`${value.dueTime ?? "--:--"} - ${value.endTime ?? "--:--"}`}
                 sub={hours(value.dueTime, value.endTime)}
-                open={pop === "time"} onOpen={() => { setEdge("start"); setPop(pop === "time" ? null : "time"); }} />
+                open={pop === "time"} onOpen={openTime} />
               </div>
             </div>
           )}
@@ -259,6 +273,10 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
               if (pop === "cal-end") {
                 const start = value.dueDate ?? today;
                 set(iso < start ? { dueDate: iso, endDate: start } : { endDate: iso });
+              } else if (pop === "cal-due") {
+                // ★終日OFF の「期日」は**1日**。終わりの日も一緒に動かす
+                //   (置いていくと、あとから期間が勝手に伸びたように見える)。
+                set({ dueDate: iso, endDate: iso });
               } else {
                 const end = value.endDate;
                 set(end && iso > end ? { dueDate: end, endDate: iso } : { dueDate: iso });
@@ -270,30 +288,12 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
       )}
       {pop === "time" && (
         <Float anchor={timeRef} fit onClose={() => setPop(null)}>
-          {isRange && !allDay && (
-            <div style={{ display: "flex", gap: 6, marginBottom: 8, flexShrink: 0 }}>
-              {[["start", "開始"], ["end", "終了"]].map(([k, t]) => (
-                <Press key={k} onPress={() => setEdge(k as "start" | "end")}
-                  aria-label={t as string} aria-pressed={edge === k}
-                  style={{
-                    flex: 1, height: 32, borderRadius: 999,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: edge === k ? "rgba(250,250,249,0.18)" : "transparent",
-                    fontFamily: SANS, fontSize: 12.5, fontWeight: 700,
-                    color: edge === k ? ON_G : DIM,
-                  }}>{t as string}</Press>
-              ))}
-            </div>
-          )}
-          {/* ★`edge` で作り直す。列の中央合わせは初回だけなので、
-              key を変えないと開始⇄終了で位置が前のまま残る。 */}
-          <Dial key={edge} accent={accent}
-            value={(edge === "end" ? value.endTime : value.dueTime) ?? "09:00"}
-            onChange={(t) => {
-              if (!isRange) return set({ dueTime: t });
-              if (edge === "end") return set({ endTime: t, dueTime: value.dueTime ?? "09:00" });
-              set({ dueTime: t, endTime: value.endTime ?? addHour(t) });
-            }}
+          {/* ★タイムラインで**範囲**を選ぶ(2026-08-18にユーザー確定)。
+              期日のときも期間のときも同じ形 — 覚えることが1つ減る。 */}
+          <TimeRange accent={accent}
+            start={value.dueTime ?? "09:00"}
+            end={value.endTime ?? addHour(value.dueTime ?? "09:00")}
+            onChange={(a, b) => set({ dueTime: a, endTime: b })}
           />
         </Float>
       )}
@@ -746,8 +746,14 @@ function Days({ y, m, selected, range, onPick, flat, rowH, accent }: {
   while (cells.length < WEEKS * 7) cells.push(null);
   // ★丸は行の高さから決めるが、**数字の大きさは丸に引きずられすぎないこと**。
   // 行が痩せた画面で数字まで比例して縮めると読めなくなる。
-  const size = Math.min(ROW_MAX - 6, rowH - 6);
+  // ★丸の下に**小さなラベルの1行**を必ず空ける(2026-08-18にユーザー確定)。
+  //   ここに「開始」「終了」と、今日の点が入る。行ごとに有無が変わると
+  //   高さが跳ねるので、**いつでも同じだけ**空ける。
+  const size = Math.min(ROW_MAX - LABEL_H, rowH - LABEL_H);
   const digit = Math.min(15, size * 0.46);
+  const rs = range?.start, re = range?.end;
+  /** 期間の両端が別の日のときだけ、開始・終了と書く(1日ならただの選択)。 */
+  const named = !!rs && !!re && rs !== re;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
       {cells.map((d, i) => {
@@ -755,18 +761,19 @@ function Days({ y, m, selected, range, onPick, flat, rowH, accent }: {
         const iso = `${y}-${pad(m + 1)}-${pad(d)}`;
         // ★期間の両端と、そのあいだ(2026-08-18にユーザー指定
         //   「開始で選んだ日が終了の方でも見れるように」)。
-        const rs = range?.start, re = range?.end ?? range?.start;
-        const isEdge = !!rs && (iso === rs || iso === re);
-        const inside = !!rs && !!re && iso > rs && iso < re;
+        const end = re ?? rs;
+        const isEdge = !!rs && (iso === rs || iso === end);
+        const inside = !!rs && !!end && iso > rs && iso < end;
         const on = iso === selected || isEdge;
         const isToday = iso === today;
+        // ★★**今日は塗らない**(2026-08-18にユーザー指摘「今日の表示なのか、
+        //   選択した日の表示なのか分からない」)。塗りは**選んだ日だけ**の印に
+        //   して、今日は**数字の色と下の点**で示す。役割ごとに手段を分ける。
         const cell: React.CSSProperties = {
           width: size, height: size, borderRadius: "50%",
           display: "flex", alignItems: "center", justifyContent: "center",
-          // 選んだ日・期間の両端 … アクセントの塗り
-          // 今日 … ★**塗りの円**(2026-08-18にユーザー指定。囲みはやめた)
-          background: on ? accent : isToday ? TODAY_FILL : "transparent",
-          color: on ? FLOAT : ON_G,
+          background: on ? accent : "transparent",
+          color: on ? FLOAT : isToday ? accent : ON_G,
           fontFamily: SANS, fontSize: digit, fontWeight: on || isToday ? 700 : 500,
         };
         const body = flat
@@ -775,12 +782,43 @@ function Days({ y, m, selected, range, onPick, flat, rowH, accent }: {
             <Press onPress={() => onPick(iso)} aria-label={`${m + 1}月${d}日`} aria-pressed={on}
               className={on ? "tc-lamp tc-pick" : "tc-lamp"} style={cell}>{d}</Press>
           );
+        // 丸の下の1行。開始 / 終了 / 今日の点。
+        const tag = named && iso === rs ? "開始" : named && iso === end ? "終了" : "";
+        // ★ラベルの札は**必要なマスにだけ**作る(2026-08-18)。42マス全部に
+        //   空の札を置くと、日程シートを開くのが 430→650ms へ戻ってしまった
+        //   (この画面の重さは昔から**要素数**が支配的)。場所は
+        //   `paddingBottom` で必ず空けてあるので、有無で高さは跳ねない。
+        const mark = tag || (isToday && !on);
         return (
           <span key={i} style={{
-            display: "flex", justifyContent: "center", alignItems: "center", height: rowH,
-            // あいだの日は薄い帯で繋ぐ(マスいっぱいに敷いて連続して見せる)。
-            background: inside ? rangeTint(accent) : "transparent",
-          }}>{body}</span>
+            // ★入れ子を増やさない。マス1つにつき**丸と札の2つまで**
+            //   (42マスに1つ足すだけで日程シートの開きが 430→650ms になった)。
+            position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
+            height: rowH, paddingBottom: LABEL_H, boxSizing: "border-box",
+            // ★あいだの日は薄い帯で繋ぐ。両端のマスは**半分だけ**敷いて、
+            //   丸から帯が伸びているように見せる(帯が途中で切れていると
+            //   「どこからどこまでか」が読み取りにくい)。
+            background: inside ? rangeTint(accent)
+              : named && iso === rs ? `linear-gradient(to right, transparent 50%, ${rangeTint(accent)} 50%)`
+              : named && iso === end ? `linear-gradient(to right, ${rangeTint(accent)} 50%, transparent 50%)`
+              : "transparent",
+            backgroundClip: "content-box",
+          }}>
+            {body}
+            {mark && (
+              <span aria-hidden style={{
+                position: "absolute", left: 0, right: 0, bottom: 0,
+                height: LABEL_H, lineHeight: `${LABEL_H}px`, textAlign: "center",
+                fontFamily: SANS, fontSize: 8, fontWeight: 700, letterSpacing: "0.04em",
+                color: accent,
+              }}>
+                {tag || <span style={{
+                  display: "inline-block", width: 3.5, height: 3.5, borderRadius: "50%",
+                  background: accent, verticalAlign: "middle",
+                }} />}
+              </span>
+            )}
+          </span>
         );
       })}
     </div>
@@ -804,160 +842,3 @@ function Arrow({ dir, onClick }: { dir: -1 | 1; onClick: () => void }) {
   );
 }
 
-// ── 時刻のダイアル ──────────────────────────────────────────
-// 時 / 分 の2列。`scroll-snap` で1つずつ止まるので、外部ライブラリは不要。
-// 中央のハイライトが「いま選んでいる値」。
-
-const ITEM_H = 36;
-/** 列の幅。★全幅に広げないこと(2026-08-17にユーザー指摘)。 */
-const COL_W = 70;
-/** 見えている行数。★iPhone のアラームと同じ見え方に(2026-08-17にユーザー指定)。 */
-const VISIBLE = 5;
-/** 中央の行までの段数。 */
-const MID = (VISIBLE - 1) / 2;
-/** ダイアルまるごとの高さ(浮きの置き場所の計算に使う)。 */
-const DIAL_H = ITEM_H * VISIBLE;
-/** ★一周させるために並べる周の数。奇数にして真ん中の周を定位置にする。 */
-const LOOPS = 5;
-
-const HOURS = Array.from({ length: 24 }, (_, i) => pad(i));
-const MINUTES = Array.from({ length: 12 }, (_, i) => pad(i * 5));
-
-function Dial({ value, accent, onChange }: {
-  value: string; accent: string; onChange: (t: string) => void;
-}) {
-  const h = Number(value.slice(0, 2));
-  const m = Number(value.slice(3));
-  // ★列は**再レンダーしない**ので、渡す関数は**作り替えない**。
-  //   いまの時刻と受け手は ref 越しに読む(でないと古い値を掴んだままになる)。
-  const now = useRef(value); now.current = value;
-  const emit = useRef(onChange); emit.current = onChange;
-  const pickH = useRef((v: string) => emit.current(`${v}:${now.current.slice(3)}`)).current;
-  const pickM = useRef((v: string) => emit.current(`${now.current.slice(0, 2)}:${v}`)).current;
-  return (
-    <div style={{
-      position: "relative", display: "flex", gap: 6,
-      width: COL_W * 2 + 22, margin: "0 auto", alignItems: "stretch",
-    }}>
-      {/* 中央のハイライト。列の裏に敷く。 */}
-      <span aria-hidden style={{
-        position: "absolute", left: 0, right: 0, top: ITEM_H * MID, height: ITEM_H,
-        borderRadius: 12, background: "rgba(250,250,249,0.12)", pointerEvents: "none",
-      }} />
-      <Column values={HOURS} value={pad(h)} accent={accent} onPick={pickH} />
-      <span aria-hidden style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: SANS, fontSize: 18, fontWeight: 700, color: ON_G, width: 10,
-      }}>:</span>
-      <Column values={MINUTES} value={pad(m - (m % 5))} accent={accent} onPick={pickM} />
-    </div>
-  );
-}
-
-/**
- * ダイアルの1列。
- *
- * ★**真ん中に来た値がそのまま選ばれる**(iPhone のアラームと同じ)。
- * ★★**一周する**(2026-08-18にユーザー指定「一番下までスクロールすると
- *   止まってしまう」)。値を LOOPS 周ぶん並べておき、外側の周へ入ったら
- *   **transition を使わずに**中央の周へ差し戻す(見た目は動かない)。
- * ★★**ワンテンポ遅れさせない**(同指摘)。以前は 120ms 待ってから確定して
- *   いた。いまは**スクロール中に中央の値が変わった瞬間**に確定する。
- *   止まったあとの差し戻しだけデバウンスに残す。
- */
-/**
- * ダイアルの1列。
- *
- * ★**真ん中に来た値がそのまま選ばれる**(iPhone のアラームと同じ)。
- * ★**一周する** … 値を LOOPS 周ぶん並べ、止まったら外側の周から中央の周へ
- *   **transition を使わずに**差し戻す(見た目は1pxも動かない)。
- * ★**待たない** … スクロール中に中央の値が変わった瞬間に確定する。
- *
- * ★★**マスの見た目を `value` に依存させないこと**(2026-08-18)。
- * 依存させていたので、中央の値が変わるたびに親が再レンダーし、
- * **120 + 60 個の inline style を毎回書き換えていた**。それが実機で
- * 「反応が遅い」の正体。選んでいる値は**中央のピル**が示し、上下の薄れは
- * **CSS の mask** が作る(JS は関与しない)。おかげでマスの並びは
- * `useMemo` で作り置きでき、スクロール中の再レンダーは**ゼロ**になる。
- */
-const Column = memo(function Column({ values, accent, value, onPick }: {
-  values: string[]; accent: string;
-  /** 開いたときに中央へ置く値。**以後この props は見ない**(再レンダーしない)。 */
-  value: string;
-  onPick: (v: string) => void;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const timer = useRef(0);
-  /** いま出している値。onPick を無駄に呼ばないための控え。 */
-  const shown = useRef(value);
-  /** 押したときにやることは毎レンダー変わるので ref 越しに読む。 */
-  const pick = useRef(onPick);
-  pick.current = onPick;
-
-  const cycle = values.length * ITEM_H;
-  /** 中央の周の先頭。 */
-  const base = Math.floor(LOOPS / 2) * cycle;
-
-  // 開いたとき、いまの値を中央の周の中央へ。
-  useEffect(() => {
-    const el = ref.current;
-    const i = values.indexOf(value);
-    if (el && i >= 0) el.scrollTop = base + i * ITEM_H;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 中央に来ている値。 */
-  const centered = (el: HTMLDivElement) =>
-    values[((Math.round(el.scrollTop / ITEM_H) % values.length) + values.length) % values.length];
-
-  /** 外側の周に入っていたら中央の周へ戻す。**見た目は1pxも動かない。** */
-  const recenter = (el: HTMLDivElement) => {
-    const off = ((el.scrollTop - base) % cycle + cycle) % cycle;
-    const want = base + off;
-    if (Math.abs(el.scrollTop - want) > 1) el.scrollTop = want;
-  };
-
-  // ★マスは**一度だけ**作る。`value` に依存させないので作り直す理由が無い。
-  const cells = useMemo(() => (
-    Array.from({ length: LOOPS }, (_, r) => values.map((v) => (
-      <span key={`${r}-${v}`} style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: "100%", height: ITEM_H, scrollSnapAlign: "center",
-        fontFamily: SANS, fontSize: 20, fontWeight: 600, color: accent,
-      }}>{v}</span>
-    )))
-  ), [values, accent]);
-
-  return (
-    <div
-      ref={ref}
-      className="tc-dial"
-      onScroll={() => {
-        const el = ref.current;
-        if (!el) return;
-        // ★指が動いているあいだに確定する(待たない)。
-        const v = centered(el);
-        if (v !== shown.current) { shown.current = v; haptic(4); pick.current(v); }
-        // 止まった頃に周を戻す。scrollend が使えない環境のための保険つき。
-        window.clearTimeout(timer.current);
-        timer.current = window.setTimeout(() => recenter(el), 140);
-      }}
-      onScrollEnd={() => { const el = ref.current; if (el) recenter(el); }}
-      style={{
-        width: COL_W, height: DIAL_H, overflowY: "auto", scrollSnapType: "y mandatory",
-        padding: `${ITEM_H * MID}px 0`, scrollbarWidth: "none", WebkitOverflowScrolling: "touch",
-      }}
-    >
-      {/* ★★**ここに `Press` を置かないこと**(2026-08-17に実機で
-          「時刻の設定 UI が操作できない」と報告された)。`Press` は iOS の
-          フォーカス移動を止めるために非 passive な `touchstart` で
-          `preventDefault()` するが、**それはスクロールも打ち消す**。 */}
-      {cells}
-    </div>
-  );
-}, (a, b) => (
-  // ★`value` と `onPick` は**見ない**。値は ref 越しに読み、見た目は中央のピルが
-  //   示すので、スクロール中に再レンダーする理由が 1 つも無い。
-  a.accent === b.accent && a.values.length === b.values.length &&
-  a.values.every((v, i) => v === b.values[i])
-));

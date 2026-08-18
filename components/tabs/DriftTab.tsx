@@ -30,28 +30,33 @@ import type { InboxCandidate, TabProps } from "@/lib/types";
 /**
  * 図形の器。真横から見た長方形なので横長にとる(横幅=タイトルの長さ)。
  *
- * ★★**輪の隣が画面からはみ出さない大きさにすること**(2026-08-18に実機で
- * 「左右が若干見切れる」と報告された)。いちばん横に長い形(四角)は器の幅を
- * 目一杯使うので、器の幅がそのまま制約になる。手前から1つ隣の位置で:
- *
- *   |ずれ| + 器の半分 × 縮み  ≤  画面の半分 − 余白
- *   0.707 × SPREAD × 0.866 + (SOLID_W / 2) × 0.866  ≤  195 − 8
- *
- * いまの値だと 85.7 + 99.6 = 185.3 で、390px の画面に 10px の余裕。
- * **SOLID_W か SPREAD を大きくするときは、この式を必ず確かめること。**
+ * ★★**画面の端で「切り落とす」のではなく「溶かす」**(2026-08-18・第11巡)。
+ * 第10巡では図形と半径を縮めて画面に収めたが、それは求められたことでは
+ * なかった（「半径を小さくしてはみ出さないようにして欲しいわけではなく、
+ * 左右でトリミングされていたのを修正して欲しかった」）。輪なのだから隣は
+ * 画面の外へ回っていくのが正しく、**問題はその境目が直線で切れていたこと**。
+ * 器の `overflow: hidden` はそのままに、**横方向の mask** で端を薄れさせる
+ * (`.drift-ring`)。これで大きさも半径も自由に決められる。
  */
-const SOLID_W = 230;
-const SOLID_H = 146;
+const SOLID_W = 300;
+const SOLID_H = 190;
 /** 輪の1つぶんの角度。件数が多いときは一周に収まるよう詰める。
  *  ★狭くしすぎないこと。角度が小さいと cos がほとんど変わらず、隣の候補が
  *  同じ大きさ・同じ濃さで並んで「輪」ではなく「団子」に見える(実際そうなった)。 */
 const stepFor = (n: number) => Math.min(1.15, (Math.PI * 2) / Math.max(n, 1));
+/** 並びの差を輪の長さ n で折り返して、−n/2 〜 n/2 に収める。 */
+const wrap = (d: number, n: number) => {
+  const m = ((d % n) + n) % n;
+  return m > n / 2 ? m - n : m;
+};
 /** 指をどれだけ動かすと1つ送るか。 */
 const DRAG_PER_ITEM = 150;
 /** 遠近の効き。小さいほど奥のものが強く縮む。 */
 const FOCAL = 1.9;
-/** 輪の半径(手前に来たときの左右の広がり)。★上の式の制約を受ける。 */
-const SPREAD = 140;
+/** 輪の半径(手前に来たときの左右の広がり)。大きいほど図形どうしが離れる。
+ *  ★端は mask で溶けるので、画面幅に縛られない(2026-08-18にユーザー指定
+ *  「回る半径を大きくして、図形同士の間隔をもっと空けてください」)。 */
+const SPREAD = 300;
 /** 払ったあとの惰性。この時間ぶん、離したときの速さで流れ続けるとみなす。 */
 const COAST_MS = 260;
 const SNAP_MIN_MS = 260;
@@ -91,7 +96,9 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
     for (let i = 0; i < n; i++) {
       const el = itemsRef.current[i];
       if (!el) continue;
-      const a = (i - pos) * step;
+      // ★**一周する**(2026-08-18にユーザー指定)。並びの差を輪の長さで
+      // 折り返してから角度にする。最後の次は最初へ、最初の前は最後へ回る。
+      const a = wrap(i - pos, n) * step;
       const z = Math.cos(a);
       const x = Math.sin(a);
       // 遠近。奥(z=-1)ほど小さく、手前(z=1)で等倍。
@@ -108,7 +115,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       // 手前の1つだけ触れる。
       el.style.pointerEvents = Math.abs(a) < step / 2 ? "auto" : "none";
     }
-    const near = Math.max(0, Math.min(n - 1, Math.round(pos)));
+    const near = ((Math.round(pos) % n) + n) % n;
     const label = labelRef.current;
     const title = candidates[near]?.title ?? "";
     // 値が同じなら書かない(毎フレームのレイアウトを避ける)。
@@ -116,7 +123,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
   }, [candidates]);
 
   useEffect(() => {
-    posRef.current = Math.max(0, Math.min(Math.max(count - 1, 0), posRef.current));
+    if (count > 0) posRef.current = wrap(posRef.current, count) + 0;
     apply();
   }, [count, apply]);
 
@@ -127,8 +134,10 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
     const from = posRef.current;
     // 離したときの速さで COAST_MS ぶん流れた先を見て、そこから近いものを選ぶ。
     const projected = from + vel * COAST_MS;
-    const target = Math.max(0, Math.min(n - 1, Math.round(projected)));
-    if (Math.abs(target - from) < 0.001) { setFront(target); return; }
+    // ★端で止めない(一周する)。行き先はそのまま丸めるだけ。
+    const target = Math.round(projected);
+    const land = ((target % n) + n) % n;
+    if (Math.abs(target - from) < 0.001) { setFront(land); return; }
     const dist = Math.abs(target - from);
     const dur = Math.max(SNAP_MIN_MS, Math.min(SNAP_MAX_MS, 220 + dist * 200));
     const t0 = performance.now();
@@ -141,7 +150,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       posRef.current = from + (target - from) * e;
       apply();
       if (k < 1) requestAnimationFrame(tick);
-      else setFront(target);
+      else setFront(land);
     };
     requestAnimationFrame(tick);
   }, [apply]);
@@ -179,12 +188,8 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       d.vel = d.vel * (1 - blend) + v * blend;
       d.lastX = e.clientX;
       d.lastT = now;
-      const n = itemsRef.current.length;
-      let next = d.from - dx / DRAG_PER_ITEM;
-      // 端では引っぱりを弱め、これ以上先が無いことを体で示す。
-      if (next < 0) next = next * 0.32;
-      if (next > n - 1) next = (n - 1) + (next - (n - 1)) * 0.32;
-      posRef.current = next;
+      // ★端は無い(一周する)。引っぱりの抵抗も要らない。
+      posRef.current = d.from - dx / DRAG_PER_ITEM;
       apply();
     };
     const up = (e: PointerEvent) => {
@@ -290,6 +295,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       {/* 円環。手前の1つだけがはっきり見え、左右に払うと回る。 */}
       <div
         onPointerDown={onDown}
+        className="drift-ring"
         style={{ position: "relative", flex: 1, minHeight: 340, touchAction: "pan-y", overflow: "hidden" }}>
         {candidates.map((c, i) => (
           <div

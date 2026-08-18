@@ -88,6 +88,8 @@ const KB_DOWN = 60;
 const KB_SETTLE_MS = 200;
 /** これより小さい変化は動かさない(予測変換の帯の出し入れ ≒ 40px)。 */
 const KB_MIN_STEP = 60;
+/** 開いた直後、閉じる合図を一切働かせない時間。 */
+const OPEN_GUARD_MS = 600;
 /** キーボードに追いつくときの動き。**transform だけ**に掛ける。 */
 const KB_EASE = "transform 280ms cubic-bezier(0.32,0.72,0,1)";
 /** 図形を最初に焼くまでの待ちの上限(ふつうは `animationend` が先に来る)。 */
@@ -243,8 +245,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // 更新していて、入力画面まるごとが再レンダーされていた。
   // 矩形は **ref 越しに style へ直接書く**(`.app-track` と同じ作法)。
   const shellRef = useRef<HTMLDivElement | null>(null);
-  /** キーボードの高さを測るための、動きを持たない目印(下の `view` を参照)。 */
-  const probeRef = useRef<HTMLSpanElement | null>(null);
   // ★★**出る動きが終わるまで図形を焼かない**(2026-08-18・第17巡)。
   //   図形を1枚焼くのは 4× 絞りで 130ms 級。以前は「300ms 待つ」で逃がして
   //   いたが、スライドは 320ms なので**最後の数フレームに焼きが重なって**
@@ -280,37 +280,62 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const kbSeen = useRef(false);
   /** いま出している持ち上げ量(px)。 */
   const kbRef = useRef(0);
+  /** いま出しているずれ(px)。 */
+  const vvTopRef = useRef(0);
+  /** いま文字を打っている行。effect の中から ref 越しに読む。 */
+  const liveRowRef = useRef<() => HTMLTextAreaElement | null>(() => null);
   const settleRef = useRef(0);
+  // ★★★**開いた直後は「守られた時間」**(2026-08-18・第18巡)。
+  //
+  // ＋ボタン(`TaskAddButton`)は**素の `<button>`** で、入力画面の `Press` では
+  // ない。`Press` だけが「画面の中を押した時刻」を記録するので、
+  // **＋から開いた直後は `pressedRecently()` が false** になり、
+  // フォーカスを戻す受け皿が2つとも黙る。そこでフォーカスが一度でも外れると
+  // (ボタンがクリックのあとに取り返す・山が動いていて主スレッドが詰まり
+  // `focus()` が居着かない、など)、`focusout` の合図が「閉じたい」と誤解して
+  // 入力画面を畳んでいた。実機で「gravity で図形が動いている時に＋を押すと
+  // すぐ開いて閉じる」と報告された。
+  //
+  // 開いた直後の focus 外れは「閉じたい」ではありえない。この間は
+  // **必ず戻し、閉じる合図は一切働かせない**。
+  const openedAt = useRef(Date.now());
+  const justOpened = () => Date.now() - openedAt.current < OPEN_GUARD_MS;
+  const justOpenRef = useRef(justOpened);
+  justOpenRef.current = justOpened;
   useLayoutEffect(() => {
-    /** 器の下端が、見えている下端よりどれだけ下か。 */
+    /** キーボードのぶん(px)。**「ずれ」に一切影響されない式**。 */
     const measure = () => {
+      const el = shellRef.current;
       const vv = window.visualViewport;
-      // ★★**キーボードの高さは「自分の下端が、見えている下端より
-      //    どれだけ下か」で測る**(2026-08-18・第13巡)。
-      //    器を実測するので、端末がどちらの流儀でも正しい:
-      //     ・レイアウトごと縮む(iOS のスタンドアロン) … 器も縮むので差は 0。
-      //     ・visualViewport だけ縮む(通常の Safari) … 差がそのまま高さ。
-      //    第8巡は `innerHeight - vv.height` で測って**前者で 0 になり**、
-      //    第9〜12巡は器そのものを縮めて**レイアウトをやり直して**いた。
-      const seen = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      // ★★★**測るのは器ではなく「物差し」**(2026-08-18・第17巡)。
+      if (!el || !vv) return kbRef.current;
+      // ★★★**器の高さから、見えている高さを引くだけ**(2026-08-18・第18巡)。
       //
-      //    器は出入りでスライドする ＝ transform が乗るので
-      //    `getBoundingClientRect` は「いま描かれている場所」を返す。第16巡は
-      //    それを避けて `offsetTop + offsetHeight` に替えたが、
-      //    **`position: fixed` の要素の `offsetTop` は端末で意味が揺れる**
-      //    (`offsetParent` が null のときに何を基準にするかは実装まかせ)。
-      //    実機で「アイコンタップで画面が動く」が再発したのはこれが原因。
+      //  これまで「器の下端 −(vv.offsetTop + vv.height)」で測っていた。
+      //  この式には**見えている矩形のずれ(`vv.offsetTop`)が混ざる**:
+      //   ・ずれが大きいほど `--kb` が小さく出る(156 のずれで 401→245)。
+      //     ずれが更に大きい場面では 60 を割り、**キーボードが出ているのに
+      //     「閉じた」と誤判定して**入力画面を畳んでいた。
+      //   ・帯だけは正しい位置になる(引き算にずれが織り込まれているから)。
+      //     だから「帯は合っているのに上のバーが画面の外」という崩れ方をした。
       //
-      //    そこで、**動きを一切持たない 0×0 の目印**を器の外に置き、
-      //    その下端を読む。transform も engine の解釈も関わらない。
-      const probe = probeRef.current;
-      const bottom = probe ? probe.getBoundingClientRect().bottom : (vv ? vv.height : window.innerHeight);
-      return Math.max(0, Math.round(bottom - seen));
+      //  高さの差だけで出せば、ずれは一切関わらない。端末の流儀も問わない:
+      //   ・レイアウトごと縮む(iOS のスタンドアロン) … 器も縮むので差は 0。
+      //   ・visualViewport だけ縮む(通常の Safari) … 差がそのまま高さ。
+      //
+      //  ★`offsetHeight` は**組版上の高さ**。器はスライドするので
+      //   `getBoundingClientRect` は使えないが(第16巡)、**高さには曖昧さが無い**
+      //   (`offsetTop` と違って `offsetParent` の解釈が関わらない)。
+      return Math.max(0, Math.round(el.offsetHeight - vv.height));
+    };
+
+    /** 見えている矩形が下へずれたぶん(px)。中身ごとこのぶん下げる。 */
+    const shift = () => {
+      const vv = window.visualViewport;
+      return vv ? Math.max(0, Math.round(vv.offsetTop)) : 0;
     };
 
     /** 実際に書き込む。ここだけが `--kb` を動かす。 */
-    const commit = (kb: number) => {
+    const commit = (kb: number, guarded = justOpened()) => {
       const el = shellRef.current;
       if (!el || leftRef.current) return;
       kbRef.current = kb;
@@ -321,10 +346,20 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       // 無いので、**キーボードが引っ込んだこと**そのものを合図にする。
       // ★一度も出ていないうちは何もしない(開いた直後の kb=0 で閉じないため)。
       if (kb > KB_UP) kbSeen.current = true;
-      else if (kbSeen.current && kb < KB_DOWN) {
+      else if (kbSeen.current && kb < KB_DOWN && !guarded) {
         kbSeen.current = false;
         leaveRef.current();
       }
+    };
+
+    /** ずれを書く。位置決めはこれだけで、閉じる判断には一切関わらせない。 */
+    const commitShift = () => {
+      const el = shellRef.current;
+      if (!el || leftRef.current) return;
+      const v = shift();
+      if (v === vvTopRef.current) return;
+      vvTopRef.current = v;
+      el.style.setProperty("--vvtop", `${v}px`);
     };
 
     // ★★★**上がるのは即座に、下がるのは確かめてから**(2026-08-18・第15巡)。
@@ -340,6 +375,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // 追いかけていたので、開いた瞬間に帯が落ち、閉じると上がり直していた。
     const apply = () => {
       if (!shellRef.current || leftRef.current) return;
+      // ★ずれの追従は**いつでも**行う(凍らせない)。位置がずれたまま放置すると
+      //   上のバーが画面の外へ出てしまい、それが「レイアウトの崩れ」になる。
+      commitShift();
       // ★★★**何かが開いているあいだは一切動かさない**(2026-08-18・第16巡)。
       //   日程のシートは**こちらから**キーボードを閉じている。メモ・持ち物・
       //   重要度・タグのポップオーバーは**キーボードを出したまま**にする約束
@@ -355,10 +393,18 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       //   拾うと、打っている最中に帯が細かく上下する。
       if (Math.abs(kb - kbRef.current) < KB_MIN_STEP) return;
       if (kb >= kbRef.current) { commit(kb); return; }
+      // ★**2回続けて下がっていたときだけ**書く(2026-08-18・第18巡)。
+      //   1回の測り直しでは、キーボードが動いている途中の値を掴むことがある。
+      // ★守られているかは**観測した時点**で決める(`gone` と同じ理由)。
+      const guarded = justOpened();
       settleRef.current = window.setTimeout(() => {
         if (leftRef.current || whenRef.current !== "" || toolRef.current) return;
-        const now = measure();
-        if (now < kbRef.current - KB_MIN_STEP) commit(now);
+        if (measure() >= kbRef.current - KB_MIN_STEP) return;
+        settleRef.current = window.setTimeout(() => {
+          if (leftRef.current || whenRef.current !== "" || toolRef.current) return;
+          const now = measure();
+          if (now < kbRef.current - KB_MIN_STEP) commit(now, guarded);
+        }, KB_SETTLE_MS);
       }, KB_SETTLE_MS);
     };
     apply();
@@ -371,15 +417,30 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // 戻さなかった＝画面の外で外れた、ということなので、少し待って
     // 「まだどこにも focus が無い」なら閉じる。`--kb` が動かない端末でも効く。
     const gone = () => {
+      // ★★★**時計ではなく「キーボードがまだ出ているか」で決める**
+      //   (2026-08-18・第18巡)。
+      //
+      // 焦点が外れる理由は2つある:
+      //   ・取りこぼし（＋ボタンが取り返す・主スレッドが詰まって `focus()` が
+      //     居着かない・要素が作り直された）… **キーボードは出たまま**。
+      //   ・ユーザーがキーボードを閉じた … **キーボードが引っ込む**。
+      // だから「少し待って、まだキーボードが出ているのに焦点が無い」なら
+      // それは取りこぼしで、**戻せばよい**。引っ込んでいるなら `--kb` の側の
+      // 合図が閉じる。ここでは閉じない。
+      //
+      // 以前は「開いてから 600ms」という時計で守っていたが、主スレッドが
+      // 詰まると `setTimeout` が何秒も遅れて走るので、外れたのは守られた時間の
+      // 中なのに発火時には過ぎていて閉じてしまった（実測 940ms / 3195ms）。
       window.setTimeout(() => {
-        if (leftRef.current || whenRef.current !== "") return;
-        // ★★**キーボードが一度も出ていないうちは働かせない**(2026-08-18・第15巡)。
-        //   開いた直後に focus が落ちただけで閉じてしまい、実機で
-        //   「追加ボタンを押すと立ち上がってすぐ閉じる」と報告された。
-        if (!kbSeen.current) return;
+        if (leftRef.current || whenRef.current !== "" || toolRef.current) return;
         const a = document.activeElement;
-        const typing = !!a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT");
-        if (!typing) leaveRef.current();
+        if (a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT")) return;
+        if (measure() <= KB_UP) return;   // 引っ込んでいる ＝ 閉じたい意思
+        const row = liveRowRef.current();
+        if (!row) return;
+        row.focus();
+        const n = row.value.length;
+        row.setSelectionRange(n, n);
       }, 260);
     };
     shellRef.current?.addEventListener("focusout", gone);
@@ -449,8 +510,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     if (!keepFocus.current || whenOpen) return;
     const a = document.activeElement;
     if (a && a !== document.body && a.tagName !== "HTML") return;
-    // ★同上。画面の外で外れたぶんは拾い直さない。
-    if (!pressedRecently()) return;
+    // ★同上。画面の外で外れたぶんは拾い直さない(開いた直後だけは必ず戻す)。
+    if (!justOpened() && !pressedRecently()) return;
     const el = rowsRef.current[activeRow.current] ?? rowsRef.current[0];
     if (!el) return;
     el.focus();
@@ -516,6 +577,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
   /** いま書いている行の要素。 */
   const liveRow = () => rowsRef.current[activeRow.current] ?? rowsRef.current[0];
+  liveRowRef.current = liveRow;
 
   // ★★**日程だけはキーボードを閉じる**(2026-08-17にユーザーが方針転換)。
   // カレンダーに高さが要るため。閉じる前の値を控えておき、✕ はそこへ戻す。
@@ -602,13 +664,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
   const view = (
     <>
-      {/* ★★キーボードの高さを測るためだけの目印(2026-08-18・第17巡)。
-          **アニメーションも transform も持たない**ことが唯一の役目。
-          器はスライドするので器自身を測ってはいけない(measure のコメント)。 */}
-      <span ref={probeRef} aria-hidden style={{
-        position: "fixed", left: 0, bottom: 0, width: 0, height: 0,
-        pointerEvents: "none", zIndex: 58,
-      }} />
       {/* ★下敷き。**画面ぜんぶ**を覆う(zIndex 59)。器は見えている矩形
           (visualViewport)にしか居ないので、これが無いとキーボードの手前の帯が
           素通しになって後ろの山が見えた(2026-08-17に実機で報告)。
@@ -641,6 +696,20 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       overscrollBehavior: "none",
       ...enterStyle,
     }}>
+      {/* ★★★**見えている矩形が下へずれたぶん、中身ごと下げる**
+          (2026-08-18・第18巡)。iOS はキーボードを出すとき、見えている矩形
+          そのものを下へずらすことがある(`visualViewport.offsetTop > 0`)。
+          器は画面に貼り付けたまま追っていないので、**器の上端が見えている
+          範囲の外へ出て**、上のバーが消え図形が上で切れていた(実機で報告)。
+          `components/BottomSheet.tsx` には同じ教訓が先に書いてある。
+          ★器そのものは動かさない約束のままにし、**中身を包むこの1枚**だけを
+          動かす(合成のやり直しだけで済む)。出入りのスライドは器が持つので、
+          ここにアニメーションは持たせない。 */}
+      <div data-fit style={{
+        flex: 1, minHeight: 0, position: "relative",
+        display: "flex", flexDirection: "column",
+        transform: "translateY(var(--vvtop, 0px))",
+      }}>
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}
@@ -793,6 +862,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
               head={i === 0}
               done={i > 0 && subs[i - 1].done}
               keepFocus={keepFocus}
+              justOpen={justOpenRef}
               onFocus={() => { activeRow.current = i; }}
               onChange={(v) => setLine(i, v)}
               onEnter={(caret) => splitLine(i, caret)}
@@ -844,6 +914,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           />
         </div>
       )}
+      </div>
     </div>
     </>
   );
@@ -918,13 +989,15 @@ function ShapeStage({ spec, title, tag, ready }: {
 }
 
 // ── 1行。題は大きく、手順は丸い点つきで小さく。高さは中身に合わせて伸びる。 ──
-function Row({ ref, value, head, done, keepFocus, onFocus, onChange, onEnter, onMergeUp, onToggle }: {
+function Row({ ref, value, head, done, keepFocus, justOpen, onFocus, onChange, onEnter, onMergeUp, onToggle }: {
   ref: (el: HTMLTextAreaElement | null) => void;
   value: string;
   head: boolean;
   done: boolean;
   /** true のあいだ、フォーカスが外れたらその場で戻す(下の onBlur を参照)。 */
   keepFocus: React.RefObject<boolean>;
+  /** 開いた直後の「守られた時間」か。この間は無条件に戻す。 */
+  justOpen: React.RefObject<() => boolean>;
   onFocus: () => void;
   onChange: (v: string) => void;
   onEnter: (caret: number) => void;
@@ -973,7 +1046,10 @@ function Row({ ref, value, head, done, keepFocus, onFocus, onChange, onEnter, on
           if (to && (to.tagName === "TEXTAREA" || to.tagName === "INPUT")) return;
           // ★画面の外(キーボードの「完了」やスワイプ)で外れたぶんは**戻さない**。
           //   それは「閉じたい」という意思なので、器の側が受けて画面ごと閉じる。
-          if (!pressedRecently()) return;
+          // ★ただし**開いた直後だけは必ず戻す**(第18巡)。＋は `Press` では
+          //   ないので `pressedRecently()` が false のまま ＝ この受け皿が
+          //   黙ってしまい、開いた瞬間に閉じることがあった。
+          if (!justOpen.current() && !pressedRecently()) return;
           e.currentTarget.focus();
         }}
         onChange={(e) => onChange(e.target.value)}

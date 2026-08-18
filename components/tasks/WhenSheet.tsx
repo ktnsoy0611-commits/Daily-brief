@@ -98,6 +98,10 @@ const DIM = "rgba(250,250,249,0.44)";
 const CELL = "rgba(250,250,249,0.07)";
 /** 浮かせるもの(カレンダー・ダイアル)の地。 */
 const FLOAT = "#3B3B36";
+/** 今日のマスの塗り。選んでいる日(アクセント)と混ざらないよう沈ませる。 */
+const TODAY_FILL = "rgba(250,250,249,0.16)";
+/** 期間のあいだの日に敷く色。アクセントを薄く。 */
+const rangeTint = (accent: string) => `color-mix(in srgb, ${accent} 22%, transparent)`;
 
 const addDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); };
 /** 今週末(次の土曜。今日が土曜ならその日)。 */
@@ -246,6 +250,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
       {pop?.startsWith("cal-") && (
         <Float anchor={cardsRef} onClose={() => setPop(null)}>
           <MonthGrid accent={accent}
+            range={{ start: value.dueDate, end: value.endDate }}
             selected={pop === "cal-end" ? (value.endDate ?? value.dueDate) : value.dueDate}
             onPick={(iso) => {
               haptic(6);
@@ -563,8 +568,11 @@ const AXIS = 8;
 const SLIDE_MS = 220;
 
 
-function MonthGrid({ accent, selected, onPick }: {
-  accent: string; selected?: string; onPick: (iso: string) => void;
+function MonthGrid({ accent, selected, range, onPick }: {
+  accent: string; selected?: string;
+  /** 期間のときの開始〜終了。両端を塗り、あいだを薄く敷く。 */
+  range?: { start?: string; end?: string };
+  onPick: (iso: string) => void;
 }) {
   const base = parse(selected) ?? new Date();
   const [cursor, setCursor] = useState({ y: base.getFullYear(), m: base.getMonth() });
@@ -693,7 +701,7 @@ function MonthGrid({ accent, selected, onPick }: {
               {/* ★隣の月は**押せない**ので、Press ではなく span で軽く描く。
                   3か月ぶんを全部押せるようにすると 126 個になり、開いた瞬間の
                   レイアウトで 200ms 級のひっかかりが出た(実測)。 */}
-              <Days y={mm.y} m={mm.m} selected={selected} onPick={onPick}
+              <Days y={mm.y} m={mm.m} selected={selected} range={range} onPick={onPick}
                 flat={!mm.self} rowH={rowH} accent={accent} />
             </div>
           ))}
@@ -703,8 +711,10 @@ function MonthGrid({ accent, selected, onPick }: {
   );
 }
 
-function Days({ y, m, selected, onPick, flat, rowH, accent }: {
-  y: number; m: number; selected?: string; onPick: (iso: string) => void;
+function Days({ y, m, selected, range, onPick, flat, rowH, accent }: {
+  y: number; m: number; selected?: string;
+  range?: { start?: string; end?: string };
+  onPick: (iso: string) => void;
   /** 隣の月。押せないので軽い描き方にする。 */
   flat?: boolean;
   /** 1週の高さ。器の残りから決まる。 */
@@ -727,24 +737,34 @@ function Days({ y, m, selected, onPick, flat, rowH, accent }: {
       {cells.map((d, i) => {
         if (d === null) return <span key={i} style={{ height: rowH }} />;
         const iso = `${y}-${pad(m + 1)}-${pad(d)}`;
-        const on = iso === selected;
+        // ★期間の両端と、そのあいだ(2026-08-18にユーザー指定
+        //   「開始で選んだ日が終了の方でも見れるように」)。
+        const rs = range?.start, re = range?.end ?? range?.start;
+        const isEdge = !!rs && (iso === rs || iso === re);
+        const inside = !!rs && !!re && iso > rs && iso < re;
+        const on = iso === selected || isEdge;
+        const isToday = iso === today;
         const cell: React.CSSProperties = {
           width: size, height: size, borderRadius: "50%",
           display: "flex", alignItems: "center", justifyContent: "center",
-          background: on ? accent : "transparent",
-          boxShadow: !on && iso === today ? `inset 0 0 0 1.5px ${accent}` : "none",
+          // 選んだ日・期間の両端 … アクセントの塗り
+          // 今日 … ★**塗りの円**(2026-08-18にユーザー指定。囲みはやめた)
+          background: on ? accent : isToday ? TODAY_FILL : "transparent",
           color: on ? FLOAT : ON_G,
-          fontFamily: SANS, fontSize: digit, fontWeight: on ? 700 : 500,
+          fontFamily: SANS, fontSize: digit, fontWeight: on || isToday ? 700 : 500,
         };
+        const body = flat
+          ? <span aria-hidden style={cell}>{d}</span>
+          : (
+            <Press onPress={() => onPick(iso)} aria-label={`${m + 1}月${d}日`} aria-pressed={on}
+              className={on ? "tc-lamp tc-pick" : "tc-lamp"} style={cell}>{d}</Press>
+          );
         return (
-          <span key={i} style={{ display: "flex", justifyContent: "center", alignItems: "center", height: rowH }}>
-            {flat
-              ? <span aria-hidden style={cell}>{d}</span>
-              : (
-                <Press onPress={() => onPick(iso)} aria-label={`${m + 1}月${d}日`} aria-pressed={on}
-                  className="tc-lamp" style={cell}>{d}</Press>
-              )}
-          </span>
+          <span key={i} style={{
+            display: "flex", justifyContent: "center", alignItems: "center", height: rowH,
+            // あいだの日は薄い帯で繋ぐ(マスいっぱいに敷いて連続して見せる)。
+            background: inside ? rangeTint(accent) : "transparent",
+          }}>{body}</span>
         );
       })}
     </div>
@@ -781,6 +801,8 @@ const VISIBLE = 5;
 const MID = (VISIBLE - 1) / 2;
 /** ダイアルまるごとの高さ(浮きの置き場所の計算に使う)。 */
 const DIAL_H = ITEM_H * VISIBLE;
+/** ★一周させるために並べる周の数。奇数にして真ん中の周を定位置にする。 */
+const LOOPS = 5;
 
 function Dial({ value, accent, onChange }: {
   value: string; accent: string; onChange: (t: string) => void;
@@ -810,39 +832,62 @@ function Dial({ value, accent, onChange }: {
 }
 
 /**
- * ダイアルの1列。★**真ん中に来た値がそのまま選ばれる**(2026-08-17にユーザー
- * 指定。Apple のピッカーと同じ)。以前は回したあとタップが要った。
- * scroll が止まったのを見て、中央のindexを確定する。
+ * ダイアルの1列。
+ *
+ * ★**真ん中に来た値がそのまま選ばれる**(iPhone のアラームと同じ)。
+ * ★★**一周する**(2026-08-18にユーザー指定「一番下までスクロールすると
+ *   止まってしまう」)。値を LOOPS 周ぶん並べておき、外側の周へ入ったら
+ *   **transition を使わずに**中央の周へ差し戻す(見た目は動かない)。
+ * ★★**ワンテンポ遅れさせない**(同指摘)。以前は 120ms 待ってから確定して
+ *   いた。いまは**スクロール中に中央の値が変わった瞬間**に確定する。
+ *   止まったあとの差し戻しだけデバウンスに残す。
  */
 function Column({ values, value, accent, onPick }: {
   values: string[]; value: string; accent: string; onPick: (v: string) => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const timer = useRef(0);
-  // 開いたとき、いまの値を中央へ。
+  /** いま出している値。onPick を無駄に呼ばないための控え。 */
+  const shown = useRef(value);
+  shown.current = value;
+
+  const cycle = values.length * ITEM_H;
+  /** 中央の周の先頭。 */
+  const base = Math.floor(LOOPS / 2) * cycle;
+
+  // 開いたとき、いまの値を中央の周の中央へ。
   useEffect(() => {
     const el = ref.current;
     const i = values.indexOf(value);
-    if (el && i >= 0) el.scrollTop = i * ITEM_H;
+    if (el && i >= 0) el.scrollTop = base + i * ITEM_H;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const settle = () => {
-    const el = ref.current;
-    if (!el) return;
-    const i = Math.max(0, Math.min(values.length - 1, Math.round(el.scrollTop / ITEM_H)));
-    if (values[i] !== value) { haptic(4); onPick(values[i]); }
+  /** 中央に来ている値。 */
+  const centered = (el: HTMLDivElement) =>
+    values[((Math.round(el.scrollTop / ITEM_H) % values.length) + values.length) % values.length];
+
+  /** 外側の周に入っていたら中央の周へ戻す。**見た目は1pxも動かない。** */
+  const recenter = (el: HTMLDivElement) => {
+    const off = ((el.scrollTop - base) % cycle + cycle) % cycle;
+    const want = base + off;
+    if (Math.abs(el.scrollTop - want) > 1) el.scrollTop = want;
   };
 
   return (
     <div
       ref={ref}
-      // scrollend が使えない環境(iOS の古い版など)のために、止まった頃を測って拾う。
       onScroll={() => {
+        const el = ref.current;
+        if (!el) return;
+        // ★指が動いているあいだに確定する(待たない)。
+        const v = centered(el);
+        if (v !== shown.current) { shown.current = v; haptic(4); onPick(v); }
+        // 止まった頃に周を戻す。scrollend が使えない環境のための保険つき。
         window.clearTimeout(timer.current);
-        timer.current = window.setTimeout(settle, 120);
+        timer.current = window.setTimeout(() => recenter(el), 140);
       }}
-      onScrollEnd={settle}
+      onScrollEnd={() => { const el = ref.current; if (el) recenter(el); }}
       style={{
         width: COL_W, height: DIAL_H, overflowY: "auto", scrollSnapType: "y mandatory",
         padding: `${ITEM_H * MID}px 0`, scrollbarWidth: "none", WebkitOverflowScrolling: "touch",
@@ -854,8 +899,8 @@ function Column({ values, value, accent, onPick }: {
           `preventDefault()` するが、**それはスクロールも打ち消す**。
           そもそも押す必要が無い — 選ぶのは中央に来た値、つまりスクロール
           位置だけ。 */}
-      {values.map((v) => (
-        <span key={v} aria-hidden={v !== value}
+      {Array.from({ length: LOOPS }, (_, r) => values.map((v) => (
+        <span key={`${r}-${v}`} aria-hidden={v !== value}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: "100%", height: ITEM_H, scrollSnapAlign: "center",
@@ -863,7 +908,7 @@ function Column({ values, value, accent, onPick }: {
             fontWeight: v === value ? 700 : 500,
             color: v === value ? accent : DIM,
           }}>{v}</span>
-      ))}
+      )))}
     </div>
   );
 }

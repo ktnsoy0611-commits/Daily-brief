@@ -166,6 +166,16 @@ function migrate(s: any): AppState {
     merged.inbox = (merged.inbox ?? []).map(migrateSides);
   }
 
+  // ★★**題の無いタスク・候補は捨てる**(2026-08-18に実機で「drift に
+  // タイトルのない図形がある」と報告された)。
+  // 「＋」を押した時点で題が空のまま保存しているので、閉じる処理を通らずに
+  // 終わると(背面へ回る・アプリを落とす)そのまま残り、円環に無題の図形として
+  // 並び続ける。作りかけは閉じるときに消えるので、**読み込んだ時点で題が
+  // 空のものは残骸**とみなしてよい。
+  const titled = (x: { title?: string }) => !!(x?.title ?? "").trim();
+  merged.tasks = (merged.tasks ?? []).filter(titled);
+  merged.inbox = (merged.inbox ?? []).filter(titled);
+
   // ---- 場所(keeps)+作品(records.media)の2コンテナ → Item統一への移行 ----
   // 「場所か作品か」は排他ではなく「種類(kind)×場所の有無(area)」の直交と
   // いう再設計に伴い、両コンテナを単一のitems配列へ畳み込む。

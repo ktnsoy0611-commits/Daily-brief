@@ -73,6 +73,25 @@ export interface ComposerData {
   suggestions?: TaskSuggestion[];
 }
 
+// ★キーボードのぶんを持ち上げる共通の style。`--kb` は器が書く。
+// **transform だけ**で動かす(レイアウトを起こさない)。イージングはシェルの
+// 横スライドと同じもの。**新しいイージングを増やさないこと。**
+/** 閉じる動きの長さ(ms)。 */
+const LEAVE_MS = 200;
+/** ポップオーバーが下へ抜ける時間(ms)。globals.css の `tc-pop-out` と合わせる。 */
+const POP_OUT_MS = 160;
+const FOLLOW_MS = 280;
+const FOLLOW_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+const FOLLOW: React.CSSProperties = {
+  transform: "translate3d(0, calc(-1 * var(--kb, 0px)), 0)",
+  transition: `transform ${FOLLOW_MS}ms ${FOLLOW_EASE}`,
+};
+/** 図形は半分だけ持ち上げる(見えている範囲の中央に居続ける)。 */
+const FOLLOW_HALF: React.CSSProperties = {
+  transform: "translate3d(0, calc(var(--kb, 0px) / -2), 0)",
+  transition: `transform ${FOLLOW_MS}ms ${FOLLOW_EASE}`,
+};
+
 /** 開くと自分の入力欄へフォーカスするもの。ここは行へ戻さない。 */
 const TAKES_FOCUS: ToolKey[] = ["context", "belongings"];
 
@@ -110,6 +129,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // キーボードを閉じない。意図した blur(画面を離れる・日程のシート)のときだけ
   // false にする。
   const keepFocus = useRef(true);
+  /** 閉じている最中(動きを見せているあいだ)。 */
+  const [bye, setBye] = useState(false);
 
   const subs = useMemo(() => draft.subtasks ?? [], [draft.subtasks]);
   const weight = draft.weight ?? 2;
@@ -142,42 +163,45 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
   // 背面へ回るときだけ、保険として途中経過を保存する。
   useEffect(() => {
-    const onHide = () => { if (document.visibilityState === "hidden") onCommit(draftRef.current); };
+    // ★題が空なら保存しない(2026-08-18)。ここで保存すると、作りかけが
+    // 「閉じるときに消す」道を通らずに残り、無題の図形として並び続ける。
+    const onHide = () => {
+      if (document.visibilityState !== "hidden") return;
+      if (!draftRef.current.title.trim()) return;
+      onCommit(draftRef.current);
+    };
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, [onCommit]);
 
-  // ★器を「見えている矩形」に貼り付ける。キーボードが出てページがずれても、
-  // 器は常に画面いっぱいのまま(transform は使わない — 中の position:fixed が
-  // 壊れる)。
+  // ★★**キーボードの追従は「合成」だけでやる**(2026-08-18に作り直し)。
   //
-  // ★★**setState を使わない**(2026-08-17)。`visualViewport` の resize と
-  // scroll はキーボードのアニメーション中に何十回も飛ぶ。以前はそのたびに
-  // state を更新していたため、入力画面まるごと(図形のステージ・ResizeObserver
-  // 込み)が再レンダーされ、「キーボードが出るときに画面が動く・ガクつく」
-  // と報告された。矩形は **ref 越しに style へ直接書く** — React のレンダーは
-  // 1回も走らない(`.app-track` と同じ作法)。
+  // 以前は `visualViewport` のイベントごとに**器の height を書いて**いた。
+  // iOS はキーボードのアニメーション中にイベントを数回しか飛ばさないので
+  // **段階的に高さが跳ぶ**（＝「ガタガタ」と3度報告された）。しかも高さの
+  // 変更はレイアウトを起こすので、中の図形のステージ(ResizeObserver ＋
+  // canvas)まで測り直しになる。
+  //
+  // いまは **器の高さは 100lvh のまま二度と書かない**。キーボードのぶんは
+  // カスタムプロパティ `--kb` に入れるだけで、動くのは
+  //   ドック(帯＋シート) … translateY(-kb)
+  //   図形               … translateY(-kb/2)  ← 見える範囲の中央に居続ける
+  // の2つの **transform だけ**。transition が粗いイベントの間を補間するので、
+  // イベントが2回しか来なくても滑らかに追従する。
+  //
+  // ★器自身に transform を掛けないこと（中の position:fixed の背面板が
+  // 包含ブロックごと壊れる）。動かすのはドックと図形だけ。
   const shellRef = useRef<HTMLDivElement | null>(null);
-  const bandRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const apply = () => {
       const el = shellRef.current;
       if (!el) return;
       const vv = window.visualViewport;
-      const top = vv ? vv.offsetTop : 0;
-      const height = vv ? vv.height : window.innerHeight;
-      el.style.top = `${top}px`;
-      el.style.height = `${height}px`;
-      // ★★キーボードが出ているあいだは**セーフエリアぶんの余白を取らない**
-      // (2026-08-17にユーザー指摘「キーボードとアイコンの隙間が変」)。
-      // iOS は**キーボードが出ていても `env(safe-area-inset-bottom)` を
-      // 34px のまま報告する**ので、そのぶんの死んだ帯がキーボードの真上に
-      // 残っていた。ここも ref 経由で書く(再レンダーを起こさない)。
-      const band = bandRef.current;
-      if (band) {
-        const up = window.innerHeight - height > 80;
-        band.style.paddingBottom = up ? "6px" : "max(6px, env(safe-area-inset-bottom))";
-      }
+      // iOS はキーボードを出すときページ側をスクロールすることがある。
+      // その ぶんは top で吸収する（滅多に動かないので transition は要らない）。
+      el.style.top = `${vv ? vv.offsetTop : 0}px`;
+      const kb = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+      el.style.setProperty("--kb", `${Math.round(kb)}px`);
     };
     apply();
     const vv = window.visualViewport;
@@ -300,6 +324,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // ★★**日程だけはキーボードを閉じる**(2026-08-17にユーザーが方針転換)。
   // カレンダーに高さが要るため。閉じる前の値を控えておき、✕ はそこへ戻す。
   const openWhen = () => {
+    if (tool) setToolOut(tool);
     setTool(null);
     whenBack.current = {
       dueDate: draft.dueDate, endDate: draft.endDate,
@@ -337,17 +362,33 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // ★行へ戻すのは「次に開くものが自分でフォーカスを取らないとき」。
     // メモ・持ち物は開くと自分の欄へフォーカスするので、そこは邪魔しない。
     if (!next || !TAKES_FOCUS.includes(next)) backToRow();
+    if (!next && tool) setToolOut(tool);
     setTool(next);
   };
-  const closeTool = () => { backToRow(); setTool(null); };
 
-  /** 画面を離れるときだけキーボードを閉じる。 */
+  // ★閉じる動きのあいだだけ中身を残す(2026-08-18)。以前は即座に消えていて
+  // 「出るだけで消えない」動きになっていた。
+  const [toolOut, setToolOut] = useState<ToolKey | null>(null);
+  const shownTool = tool ?? toolOut;
+  useEffect(() => {
+    if (tool) { setToolOut(null); return; }
+    if (!toolOut) return;
+    const t = window.setTimeout(() => setToolOut(null), POP_OUT_MS);
+    return () => window.clearTimeout(t);
+  }, [tool, toolOut]);
+  const closeTool = () => { backToRow(); if (tool) setToolOut(tool); setTool(null); };
+
+  /**
+   * 画面を離れる。★**閉じる動きを見せてから**呼び側へ返す(2026-08-18)。
+   * 以前は即座に消えていて安っぽかった。`leftRef` が二重の呼び出しを防ぐ。
+   */
   const leave = (run: () => void) => {
     if (leftRef.current) return;
     leftRef.current = true;
     keepFocus.current = false;
     (document.activeElement as HTMLElement | null)?.blur();
-    run();
+    setBye(true);
+    window.setTimeout(run, LEAVE_MS);
   };
 
   const filled: Record<ToolKey, boolean> = {
@@ -368,11 +409,11 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           素通しになって後ろの山が見えた(2026-08-17に実機で報告)。
           ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、その続きに
           なる色でないと「境目」として見えてしまう。 */}
-      <div aria-hidden style={{
+      <div aria-hidden className={bye ? "tc-shell-out" : undefined} style={{
         position: "fixed", inset: 0, zIndex: 59, background: LIFT,
         width: "100vw", height: "100lvh", minHeight: "100%",
       }} />
-    <div ref={shellRef} onMouseDown={keepKeyboard} style={{
+    <div ref={shellRef} onMouseDown={keepKeyboard} className={bye ? "tc-shell-out" : undefined} style={{
       position: "fixed", left: 0, right: 0, zIndex: 60, background: CHARCOAL,
       top: 0, height: "100lvh",
       display: "flex", flexDirection: "column", overflow: "hidden",
@@ -419,26 +460,31 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         onPress={() => { if (!tool && !whenOpen) leave(() => onClose(draftRef.current)); }}
         style={{ flex: 1, minHeight: 0, position: "relative" }}
       >
-        {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
-        <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
-          <ShapeStage spec={spec} title={preview.title} tag={tag} />
+        {/* ★キーボードのぶんの追従は**アニメーションを持たない外側**に置く。
+            `.tc-pop` は transform を animate するので、同じ要素に inline の
+            transform を書いても animation に上書きされる(fill-mode: both)。 */}
+        <div data-shape style={{ position: "absolute", inset: 0, ...FOLLOW_HALF }}>
+          {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
+          <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
+            <ShapeStage spec={spec} title={preview.title} tag={tag} />
+          </div>
         </div>
 
         {/* ★ポップオーバーは**この領域(上のバーの下〜下の帯の上)の中だけ**に出す。
             以前は帯の上へ伸ばしていたので、中身が高いと画面の上へはみ出して
             タブの下に潜り、下へスワイプしないと触れなかった(2026-08-17に指摘)。 */}
-        {tool && (
-          <Popover label={TOOL_LABEL[tool]} onClose={closeTool}>
-            {tool === "context" && (
+        {shownTool && (
+          <Popover label={TOOL_LABEL[shownTool]} closing={!tool} onClose={closeTool}>
+            {shownTool === "context" && (
               <TextField multiline placeholder="どこで・何を使って" value={draft.context ?? ""}
                 onChange={(v) => set({ context: v.trim() ? v : undefined })} />
             )}
-            {tool === "belongings" && (
+            {shownTool === "belongings" && (
               <TextField placeholder="持っていくもの" value={draft.belongings ?? ""}
                 onChange={(v) => set({ belongings: v.trim() ? v : undefined })} />
             )}
-            {tool === "weight" && <WeightPicker value={weight} onPick={(w) => set({ weight: w })} />}
-            {tool === "tag" && <TagPicker value={liveTag} onPick={(t) => set({ tag: t })} />}
+            {shownTool === "weight" && <WeightPicker value={weight} onPick={(w) => set({ weight: w })} />}
+            {shownTool === "tag" && <TagPicker value={liveTag} onPick={(t) => set({ tag: t })} />}
           </Popover>
         )}
       </Press>
@@ -449,12 +495,27 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
              重なりの文脈になる** — 中の要素に zIndex を振っても背面板には勝てず、
              ツールバーがタップを吸われていた(ポップオーバーを帯の中から
              図形の領域へ移した2026-08-17に発覚)。 */}
-      <div data-band ref={bandRef} className="tc-sheet" onMouseDown={keepKeyboard} style={{
-        flexShrink: 0, position: "relative", zIndex: 2, background: LIFT,
+      {/* ★ドック。**キーボードのぶんを持ち上げるのはここ**(外側)。
+          帯そのものは登場の動き(`.tc-sheet` = transform を animate)を持って
+          いるので、同じ要素に追従の transform は書けない。 */}
+      <div data-dock className={bye ? "tc-sheet-out" : undefined}
+        style={{ flexShrink: 0, position: "relative", zIndex: 2, ...(bye ? null : FOLLOW) }}>
+        {/* ★帯の下を同じ色で埋める。キーボードが動いている最中、帯が持ち上がった
+            ぶんの帯状の隙間が一瞬見えるのを防ぐ(色が違うと「境目」になる)。 */}
+        <span aria-hidden style={{
+          position: "absolute", top: "100%", left: 0, right: 0, height: "60vh", background: LIFT,
+        }} />
+      <div data-band className="tc-sheet" onMouseDown={keepKeyboard} style={{
+        position: "relative", background: LIFT,
         borderRadius: "26px 26px 0 0",
         // 角丸が読めるように、地との境目へ影を落とす。
         boxShadow: "0 -16px 34px rgba(0,0,0,0.34)",
-        padding: "7px 16px max(6px, env(safe-area-inset-bottom))",
+        // ★★キーボードが出ているあいだは**セーフエリアぶんの余白を取らない**
+        // (2026-08-17・18にユーザー指摘「キーボードとアイコンの隙間が変」)。
+        // iOS は**キーボードが出ていても `env(safe-area-inset-bottom)` を
+        // 34px のまま報告する**ので、そのぶんの死んだ帯が真上に残っていた。
+        // `--kb` を引けば JS の分岐なしで切り替わる。
+        padding: "10px 16px max(6px, calc(env(safe-area-inset-bottom) - var(--kb, 0px)))",
       }}>
         {/* Cowork の提案。タップで手順になる。 */}
         {(draft.suggestions?.length ?? 0) > 0 && (
@@ -487,7 +548,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
         {/* 題と手順。1つの縦の並び。★件数が不定なのでここだけは送れるままに
             する(ダイアログではなくリストなので、縦に送れて良い)。 */}
-        <div style={{ maxHeight: "30vh", overflowY: "auto", paddingBottom: 4 }}>
+        {/* ★アイコンとのすき間(2026-08-18にユーザー指摘「詰まりすぎ」)。 */}
+        <div style={{ maxHeight: "30vh", overflowY: "auto", paddingBottom: 12 }}>
           {lines.map((text, i) => (
             <Row
               key={i === 0 ? "title" : subs[i - 1].id}
@@ -515,6 +577,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           open={whenOpen ? "due" : tool} filled={filled} onOpen={openTool}
           on={tagColor(liveTag)} onInk={tagInk(liveTag)} off={ON_GROUND_DIM}
         />
+      </div>
       </div>
 
       {/* ── 日程のシート。★**キーボードを閉じて**下から立ち上がる

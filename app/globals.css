@@ -426,6 +426,22 @@ button:active {
   to   { opacity: 0; transform: translate3d(0, 34px, 0); }
 }
 .tc-sheet-out { animation: tc-fall 180ms cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
+/* ポップオーバーが閉じるとき。出るより速く、下へ抜ける。 */
+@keyframes tc-pop-fall {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translate3d(0, 16px, 0); }
+}
+.tc-pop-out { animation: tc-pop-fall 160ms cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
+/* 入力画面まるごとが閉じるとき。器は薄く、帯は下へ。 */
+@keyframes tc-shell-out { from { opacity: 1; } to { opacity: 0; } }
+.tc-shell-out { animation: tc-shell-out 200ms ease-in both; pointer-events: none; }
+/* 選んだ日のマスが1度だけ弾む。 */
+@keyframes tc-pick {
+  0%   { transform: scale(0.7); }
+  60%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+.tc-pick { animation: tc-pick 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 /* 灯り(ツールバーの丸)。色だけを滑らかに。 */
 .tc-lamp {
   transition: background-color 180ms ease, color 180ms ease,
@@ -433,6 +449,7 @@ button:active {
 }
 .tc-lamp:active { transform: scale(0.9); }
 @media (prefers-reduced-motion: reduce) {
-  .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in, .tc-sheet-out { animation: none; }
+  .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in, .tc-sheet-out,
+  .tc-pop-out, .tc-shell-out, .tc-pick { animation: none; }
   .tc-lamp { transition: none; }
 }

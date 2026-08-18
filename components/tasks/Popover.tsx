@@ -105,8 +105,10 @@ export const CAP: React.CSSProperties = {
   fontFamily: SANS, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.22em",
 };
 
-export function Popover({ label, onClose, children }: {
+export function Popover({ label, closing, onClose, children }: {
   label: string;
+  /** 閉じている最中。下へ抜ける動きを鳴らす。 */
+  closing?: boolean;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -116,25 +118,37 @@ export function Popover({ label, onClose, children }: {
           ★上のバーと下の帯は zIndex 2 でこの板より前に出してある(呼び側)。
           そこを叩いたぶんはここへ来ないので、「アイコンを叩いたら閉じてすぐ
           開き直す」は起きない(2026-08-17)。 */}
-      <Press aria-hidden onPress={onClose} style={{ position: "fixed", inset: 0, zIndex: 1 }} />
+      {/* 抜けている最中はタップを拾わない(閉じ終わる前の空打ちを防ぐ)。 */}
+      {!closing && <Press aria-hidden onPress={onClose} style={{ position: "fixed", inset: 0, zIndex: 1 }} />}
+      {/* ★外側は**置き場所と追従だけ**。`.tc-pop-in` は transform を animate
+          するので、同じ要素にキーボード追従の transform を書くと animation に
+          上書きされてしまう(fill-mode: both)。見える面は内側が持つ。 */}
       <div
-        role="dialog"
-        aria-label={label}
-        className="tc-pop-in"
-        onMouseDown={keepKeyboard}
+        data-pop
         style={{
           // ★下の帯のすぐ上に置き、**高さは中身のぶんだけ**。ただし
           // 「上のバーの下〜下の帯の上」(＝呼び側が親にしている領域)を
           // **絶対に超えない**。以前は帯の上へ伸ばしていたので、中身が高いと
           // 画面の上へはみ出し、タブの下に潜って触れなくなっていた。
+          position: "absolute", left: 10, right: 10, bottom: 8, zIndex: 2,
+          // 帯と一緒にキーボードのぶんだけ持ち上がる。上限もそのぶん縮める。
+          maxHeight: "calc(100% - 8px - var(--kb, 0px))",
+          transform: "translate3d(0, calc(-1 * var(--kb, 0px)), 0)",
+          transition: "transform 280ms cubic-bezier(0.32, 0.72, 0, 1)",
+          display: "flex", flexDirection: "column",
+        }}
+      >
+      <div
+        role="dialog"
+        aria-label={label}
+        className={closing ? "tc-pop-out" : "tc-pop-in"}
+        onMouseDown={keepKeyboard}
+        style={{
           // ★縦スクロールは持たせない(2026-08-17にユーザー指定) — 溢れそうな
-          // ときは中身の側(カレンダー)が縮んで収まる。
-          position: "absolute", left: 10, right: 10, bottom: 8,
-          maxHeight: "calc(100% - 8px)", zIndex: 2,
+          // ときは中身の側が縮んで収まる。
+          flex: "0 1 auto", minHeight: 0,
           background: LIFT, color: PAPER,
           borderRadius: 22, boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
-          // ★詰める(2026-08-17)。キーボードで器が 470px まで縮んだとき、
-          // ここで取った余白のぶんだけカレンダーの1週が痩せる。
           padding: "8px 14px 10px",
           display: "flex", flexDirection: "column", overflow: "hidden",
         }}
@@ -150,6 +164,7 @@ export function Popover({ label, onClose, children }: {
           </Press>
         </div>
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{children}</div>
+      </div>
       </div>
     </>
   );

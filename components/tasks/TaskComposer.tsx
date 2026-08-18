@@ -77,17 +77,17 @@ export interface ComposerData {
 // **transform だけ**で動かす(レイアウトを起こさない)。イージングはシェルの
 // 横スライドと同じもの。**新しいイージングを増やさないこと。**
 /** 閉じる動きの長さ(ms)。 */
-// ★閉じるのは**2段**(2026-08-18・第15巡にユーザー確定)。中身が先に去り、
-// 地はそのあと。合計の時間。
-const LEAVE_MS = 340;
-// ★中身が去りきるのは 140ms(`.tc-gone` / `.tc-gone-flat`)。地はそのあと
-//   200ms かけて薄くなる(`.tc-shell-out` の遅れ)。合わせて LEAVE_MS。
+// ★閉じるのは**下へスライド**(2026-08-18・第16巡にユーザー指定)。
+// `.tc-shell-out`(280ms)と合わせる。
+const LEAVE_MS = 300;
 /** これより高く出たら「キーボードが出ている」。 */
 const KB_UP = 120;
 /** これより低くなったら「キーボードが閉じた」。 */
 const KB_DOWN = 60;
 /** 下がったように見えてから、確かめるまでの待ち。 */
 const KB_SETTLE_MS = 200;
+/** これより小さい変化は動かさない(予測変換の帯の出し入れ ≒ 40px)。 */
+const KB_MIN_STEP = 60;
 /** キーボードに追いつくときの動き。**transform だけ**に掛ける。 */
 const KB_EASE = "transform 280ms cubic-bezier(0.32,0.72,0,1)";
 /** 図形を最初に焼くまでの待ち。器の登場(260ms)が終わってから。 */
@@ -120,6 +120,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const set = (p: Partial<ComposerData>) => setDraft((d) => ({ ...d, ...p }));
 
   const [tool, setTool] = useState<ToolKey | null>(null);
+  /** ポップオーバーが出ているあいだ。`--kb` を凍らせるのに使う。 */
+  const toolRef = useRef<ToolKey | null>(null);
+  toolRef.current = tool;
   // 日程のシート。"" = 出ていない / "open" = 出ている / "closing" = 下へ抜けている最中。
   const [when, setWhen] = useState<"" | "open" | "closing">("");
   // ★キーボードの追従は effect の中(deps 空)から見るので ref で渡す。
@@ -259,7 +262,16 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       //    第8巡は `innerHeight - vv.height` で測って**前者で 0 になり**、
       //    第9〜12巡は器そのものを縮めて**レイアウトをやり直して**いた。
       const seen = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      return Math.max(0, Math.round(el.getBoundingClientRect().bottom - seen));
+      // ★★**`getBoundingClientRect` は使わない**(2026-08-18・第16巡)。
+      //    器は出入りで下から上へ**スライドする** ＝ transform が乗るので、
+      //    rect は「いま描かれている場所」を返してしまう。出ている最中に
+      //    測ると `--kb` が 844px になり、帯が画面の外へ飛んだ(実際にそうなった)。
+      //    `offsetTop`/`offsetHeight` は**組版上の値**なので transform を含まない。
+      const bottom = el.offsetHeight ? el.offsetTop + el.offsetHeight : el.getBoundingClientRect().bottom;
+      const kb = Math.round(bottom - seen);
+      // 桁外れの値は捨てる(測り損ねたときに画面を壊さないための保険)。
+      if (kb > el.offsetHeight * 0.7) return kbRef.current;
+      return Math.max(0, kb);
     };
 
     /** 実際に書き込む。ここだけが `--kb` を動かす。 */
@@ -293,14 +305,25 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // 追いかけていたので、開いた瞬間に帯が落ち、閉じると上がり直していた。
     const apply = () => {
       if (!shellRef.current || leftRef.current) return;
-      if (whenRef.current !== "") return;
+      // ★★★**何かが開いているあいだは一切動かさない**(2026-08-18・第16巡)。
+      //   日程のシートは**こちらから**キーボードを閉じている。メモ・持ち物・
+      //   重要度・タグのポップオーバーは**キーボードを出したまま**にする約束
+      //   なので、そのあいだ持ち上げ量が変わる理由も無い。
+      //   実機で「メモや持ち物のアイコンをタップすると画面が動く」と2度
+      //   報告された。欄から欄へフォーカスが移ると、iOS は予測変換の帯を
+      //   出し入れしたり、見えている矩形をずらしたりする。**開いている間は
+      //   そもそも聞かない**のがいちばん確実。
+      if (whenRef.current !== "" || toolRef.current) return;
       const kb = measure();
       window.clearTimeout(settleRef.current);
+      // ★**小さな揺れは無視する**。予測変換の帯の出し入れ(40px 前後)まで
+      //   拾うと、打っている最中に帯が細かく上下する。
+      if (Math.abs(kb - kbRef.current) < KB_MIN_STEP) return;
       if (kb >= kbRef.current) { commit(kb); return; }
       settleRef.current = window.setTimeout(() => {
-        if (leftRef.current || whenRef.current !== "") return;
+        if (leftRef.current || whenRef.current !== "" || toolRef.current) return;
         const now = measure();
-        if (now < kbRef.current) commit(now);
+        if (now < kbRef.current - KB_MIN_STEP) commit(now);
       }, KB_SETTLE_MS);
     };
     apply();
@@ -578,7 +601,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}
-      <div data-topbar className={bye ? "tc-gone-flat" : undefined} onMouseDown={keepKeyboard} style={{
+      <div data-topbar onMouseDown={keepKeyboard} style={{
         flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
         padding: "max(8px, env(safe-area-inset-top)) 14px 4px",
         position: "relative", zIndex: 2,
@@ -618,7 +641,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         <div data-shape style={{ position: "absolute", inset: 0 }}>
           {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
           <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
-            <ShapeStage spec={spec} title={preview.title} tag={tag} bye={bye} />
+            <ShapeStage spec={spec} title={preview.title} tag={tag} />
           </div>
         </div>
 
@@ -650,7 +673,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       {/* ★ドック。**キーボードのぶんを持ち上げるのはここ**(外側)。
           帯そのものは登場の動き(`.tc-sheet` = transform を animate)を持って
           いるので、同じ要素に追従の transform は書けない。 */}
-      <div data-dock className={bye ? "tc-sheet-out" : undefined}
+      {/* ★出入りの動きは持たない。器まるごとがスライドするので、ここが
+          別の動きを持つと二重になる(2026-08-18・第16巡)。 */}
+      <div data-dock
         style={{
           flexShrink: 0, position: "relative", zIndex: 2,
           // ★★**キーボードのぶんを持ち上げるのはここだけ**(2026-08-18・第13巡)。
@@ -667,7 +692,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         <span aria-hidden style={{
           position: "absolute", top: "100%", left: 0, right: 0, height: "100lvh", background: LIFT,
         }} />
-      <div data-band className="tc-sheet" onMouseDown={keepKeyboard} style={{
+      <div data-band onMouseDown={keepKeyboard} style={{
         position: "relative", background: LIFT,
         borderRadius: "26px 26px 0 0",
         // 角丸が読めるように、地との境目へ影を落とす。
@@ -785,10 +810,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 }
 
 // ── 図形の舞台。器の大きさを測って、その中央に1つ描く。 ──
-function ShapeStage({ spec, title, tag, bye }: {
+function ShapeStage({ spec, title, tag }: {
   spec: ReturnType<typeof specOf>; title: string; tag: TaskTag;
-  /** 閉じている最中。 */
-  bye?: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   // ★★**出るアニメーションのあいだは焼かない**(2026-08-18・第13巡)。
@@ -845,7 +868,7 @@ function ShapeStage({ spec, title, tag, bye }: {
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
       {ready && box.w > 8 && box.h > 8 && (
-      <span className={bye ? "tc-gone" : "tc-row-in"} style={{ display: "block", lineHeight: 0 }}>
+      <span className="tc-row-in" style={{ display: "block", lineHeight: 0 }}>
         <SolidCanvas
           w={box.w} h={box.h}
           // ★倍率を固定する。器に目一杯まで拡大すると、重要度や期限を変えても

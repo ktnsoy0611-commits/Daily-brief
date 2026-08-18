@@ -77,13 +77,15 @@ export interface ComposerData {
 // **transform だけ**で動かす(レイアウトを起こさない)。イージングはシェルの
 // 横スライドと同じもの。**新しいイージングを増やさないこと。**
 /** 閉じる動きの長さ(ms)。 */
-const LEAVE_MS = 200;
+const LEAVE_MS = 240;
 /** これより高く出たら「キーボードが出ている」。 */
 const KB_UP = 120;
 /** これより低くなったら「キーボードが閉じた」。 */
 const KB_DOWN = 60;
-/** 器がキーボードに追いつくときの動き。 */
-const SHELL_EASE = "height 260ms cubic-bezier(0.32,0.72,0,1), top 260ms cubic-bezier(0.32,0.72,0,1)";
+/** キーボードに追いつくときの動き。**transform だけ**に掛ける。 */
+const KB_EASE = "transform 280ms cubic-bezier(0.32,0.72,0,1)";
+/** 図形を最初に焼くまでの待ち。器の登場(260ms)が終わってから。 */
+const STAGE_DELAY_MS = 300;
 /** ポップオーバーが下へ抜ける時間(ms)。globals.css の `tc-pop-out` と合わせる。 */
 const POP_OUT_MS = 160;
 
@@ -195,51 +197,36 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // 更新していて、入力画面まるごとが再レンダーされていた。
   // 矩形は **ref 越しに style へ直接書く**(`.app-track` と同じ作法)。
   const shellRef = useRef<HTMLDivElement | null>(null);
-  /** キーボードが無いときの高さ。**見た最大値で自分を較正する**
-   *  (キーボードが出たあとの `innerHeight` は当てにならない — 上記2)。
-   *  ★種は**最初のレンダーで**取る。この画面はタップで作られるので、その
-   *  時点でキーボードはまだ出ていない。effect まで待つと、先に走る
-   *  layout effect の focus でキーボードが開き始めていて低い値を掴む。 */
-  const fullH = useRef(0);
-  if (fullH.current === 0 && typeof window !== "undefined") fullH.current = window.innerHeight;
   /** 一度でもキーボードが出たか。出ていないうちは「閉じた」と見なさない。 */
   const kbSeen = useRef(false);
-  /** 最初の1回だけ transition 抜きで置く(開いた瞬間に器が伸び縮みしないため)。 */
-  const settled = useRef(false);
   useLayoutEffect(() => {
     const apply = () => {
       const el = shellRef.current;
-      // ★閉じている最中は**もう動かさない**(2026-08-18にユーザー指摘
-      //   「閉じた時に上部の図形が出てきたり、画面が上下に動く」)。
-      //   閉じるときはキーボードも引っ込むので、放っておくと器が 470→844 へ
-      //   伸び、その中で図形が下りてくる動きが見えてしまう。
+      // ★閉じている最中はもう触らない(閉じ際に画面が動いて見えるのを防ぐ)。
       if (!el || leftRef.current) return;
       const vv = window.visualViewport;
-      const top = vv ? vv.offsetTop : 0;
-      const height = vv ? vv.height : window.innerHeight;
-      // ★最初の1回は transition を切って置く。器は `100svh` で描かれてから
-      //   ここで矩形へ貼り直されるので、transition が生きていると
-      //   **開いた瞬間に一度伸び縮みする**(実機で「ガクッとなる」と報告)。
-      if (!settled.current) el.style.transition = "none";
-      el.style.top = `${top}px`;
-      el.style.height = `${height}px`;
-      if (!settled.current) {
-        settled.current = true;
-        // 次のフレームから、キーボードの追従にだけ transition を効かせる。
-        requestAnimationFrame(() => {
-          const e2 = shellRef.current;
-          if (e2 && !leftRef.current) e2.style.transition = SHELL_EASE;
-        });
-      }
-      // ★帯の下の余白を切り替えるためだけの値。**位置には使わない。**
-      fullH.current = Math.max(fullH.current, height + top);
-      const kb = Math.max(0, fullH.current - height - top);
-      el.style.setProperty("--kb", `${Math.round(kb)}px`);
+      // ★★**キーボードの高さは「自分の下端が、見えている下端より
+      //    どれだけ下か」で測る**(2026-08-18・第13巡)。
+      //
+      //    これは器を実測するので、端末がどちらの流儀でも正しい:
+      //     ・レイアウトごと縮む(iOS のスタンドアロン) … 器も縮むので差は 0。
+      //       帯はもともと見えている下端にいる。
+      //     ・visualViewport だけ縮む(通常の Safari) … 器は 844 のまま、
+      //       見えている下端は 470。差 374 ぶん持ち上げればよい。
+      //
+      //    第8巡は `innerHeight - vv.height` で測って**前者で 0 になり**、
+      //    第9〜12巡は器そのものを縮めて**レイアウトをやり直して**いた。
+      //    どちらも要らない。測るだけでよかった。
+      const seen = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      const kb = Math.max(0, Math.round(el.getBoundingClientRect().bottom - seen));
+      el.style.setProperty("--kb", `${kb}px`);
+      // ★見えている矩形が上へずれていたら押し戻す。器は画面に貼り付いて
+      //   いるので、ずれると上のバーが画面の外へ出てしまう。
+      if (vv && vv.offsetTop > 0) window.scrollTo(0, 0);
       // ★★**キーボードを閉じたら入力画面も閉じる**(2026-08-18にユーザー指定
       // 「キーボード上のバーのチェックマークで閉じたら、タスク入力画面も
       // 閉じるようにしてください」)。iOS の「完了」ボタンには専用のイベントが
       // 無いので、**キーボードが引っ込んだこと**そのものを合図にする。
-      // 指でスワイプして閉じたときも同じように閉じる。
       // ★一度も出ていないうちは何もしない(開いた直後の kb=0 で閉じないため)。
       if (kb > KB_UP) kbSeen.current = true;
       else if (kbSeen.current && kb < KB_DOWN) {
@@ -488,20 +475,25 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         position: "fixed", inset: 0, zIndex: 59, background: LIFT,
         width: "100vw", height: "100lvh", minHeight: "100%",
       }} />
+    {/* ★★★**器は一度置いたら二度と動かさない**(2026-08-18・第13巡)。
+        寸法は録音のオーバーレイ(`VoiceOverlay`)と**同じ書き方**にしてある —
+        あれは実機でなめらかだとユーザーが認めた唯一の全画面で、器の寸法を
+        JS が一度も書き換えないことがその理由。
+
+        第8〜12巡はここで `top`/`height` を visualViewport に合わせて書き替えて
+        いた。キーボードが動くたびに**画面まるごとのレイアウトをやり直す**ので、
+        「ガクッとなる」「幅が変わる」「スクロールの判定が入る」が全部ここから
+        出ていた。いまはキーボードのぶんを `--kb` に入れるだけで、動くのは
+        **帯と図形の transform だけ**(＝合成のやり直しだけで済む)。 */}
     <div ref={shellRef} data-composer-shell onMouseDown={keepKeyboard} className={bye ? "tc-shell-out" : "tc-shell-in"} style={{
-      position: "fixed", left: 0, right: 0, zIndex: 60, background: CHARCOAL,
-      top: 0, height: "100svh",
-      // ★★器の高さ・位置は**間を埋めて**動かす(2026-08-18)。iOS はキーボードが
-      // せり上がる 250ms のあいだに visualViewport の resize を数回しか飛ばさない。
-      // 素のままだと器が1〜2段で跳ね、それが「スムーズでない」の正体だった。
-      // イージングは iOS のシートと同じ。★transform は**掛けない** — 掛けると
-      // 中の position:fixed の下敷きが器を基準にしてしまい、背面が破れる。
+      position: "fixed", left: 0, top: 0, right: 0, bottom: 0, zIndex: 60, background: CHARCOAL,
+      width: "100vw", height: "100lvh", minHeight: "100%",
       display: "flex", flexDirection: "column",
-      // ★★**`hidden` ではなく `clip`**(2026-08-18。実機で「まだスクロール
-      //   できる・右にバーが出る」と報告)。`hidden` の箱は**送れる箱**なので、
-      //   iOS はキャレットを見せるためにそこを送ってくるし、スクロールバーも
-      //   出す。`clip` は箱そのものを作らないので、構造的に送れない。
+      // ★★**`hidden` ではなく `clip`**(2026-08-18)。`hidden` の箱は**送れる箱**
+      //   なので、iOS はキャレットを見せるためにそこを送ってくるし、
+      //   スクロールバーも出す。`clip` は箱そのものを作らない。
       overflow: "clip",
+      overscrollBehavior: "none",
     }}>
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
@@ -579,12 +571,22 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           帯そのものは登場の動き(`.tc-sheet` = transform を animate)を持って
           いるので、同じ要素に追従の transform は書けない。 */}
       <div data-dock className={bye ? "tc-sheet-out" : undefined}
-        style={{ flexShrink: 0, position: "relative", zIndex: 2 }}>
-        {/* ★帯の下を埋める板は**置かない**(2026-08-18に撤去)。
-            下敷き(zIndex 59)がすでに画面ぜんぶを LIFT で塗っているので、
-            器の下端より下は放っておいても帯と同じ色になる。置いていたころは
-            **器の中に 60vh のはみ出し**を作っていて、iOS がキャレットを
-            見せようと器ごとスクロールできてしまっていた(実機で報告)。 */}
+        style={{
+          flexShrink: 0, position: "relative", zIndex: 2,
+          // ★★**キーボードのぶんを持ち上げるのはここだけ**(2026-08-18・第13巡)。
+          //   器は動かさないので、これは**合成のやり直しだけ**で済む
+          //   (レイアウトも塗り直しも起きない)。帯そのものは登場の動き
+          //   (`.tc-sheet` = transform を animate)を持っているので、
+          //   同じ要素に追従の transform は書けない。だから外側で持つ。
+          transform: "translateY(calc(-1 * var(--kb, 0px)))",
+          transition: KB_EASE,
+        }}>
+        {/* ★持ち上がったぶんの下を同じ色で埋める。器は `overflow: clip` なので
+            はみ出しても**送れる箱にはならない**(第12巡でここを撤去したが、
+            器を動かさなくなったいまは必要で、かつ安全)。 */}
+        <span aria-hidden style={{
+          position: "absolute", top: "100%", left: 0, right: 0, height: "100lvh", background: LIFT,
+        }} />
       <div data-band className="tc-sheet" onMouseDown={keepKeyboard} style={{
         position: "relative", background: LIFT,
         borderRadius: "26px 26px 0 0",
@@ -671,7 +673,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
              確定し、どちらも押した瞬間にキーボードが戻る。 ── */}
       {when !== "" && (
         <div className={when === "open" ? "tc-sheet" : "tc-sheet-out"} data-when style={{
-          position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 4,
+          // ★キーボードは閉じるので普段 `--kb` は 0。閉じ切る前の一瞬だけ、
+          //   ここが効いてシートがキーボードの裏に隠れずに済む。
+          position: "absolute", left: 0, right: 0, bottom: "var(--kb, 0px)", zIndex: 4,
           background: LIFT, borderRadius: "28px 28px 0 0",
           boxShadow: "0 -18px 40px rgba(0,0,0,0.40)",
           padding: "14px 16px max(14px, env(safe-area-inset-bottom))",
@@ -680,7 +684,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           // 中身なりにすると「期間」で上端が下がり、押す位置が変わるうえ
           // ホバーがシートの外へはみ出していた。
           height: `calc(${SHEET_BODY_H}px + max(14px, env(safe-area-inset-bottom)))`,
-          maxHeight: "calc(100% - 8px)",   // 背の低い端末の保険(カレンダーが痩せる)
+          maxHeight: "calc(100% - var(--kb, 0px) - 8px)",   // 背の低い端末の保険(カレンダーが痩せる)
         }}>
           <WhenSheet
             value={{ dueDate: draft.dueDate, endDate: draft.endDate, dueTime: draft.dueTime, endTime: draft.endTime }}
@@ -704,6 +708,16 @@ function ShapeStage({ spec, title, tag }: {
   spec: ReturnType<typeof specOf>; title: string; tag: TaskTag;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  // ★★**出るアニメーションのあいだは焼かない**(2026-08-18・第13巡)。
+  //   図形を1枚焼くのは 4× 絞りで 50ms 級。開いた直後は、器の登場・帯のせり
+  //   上がり・キーボードの追従が同時に走っているので、そこへ焼きを重ねると
+  //   1フレーム落ちて「引っ掛かり」として見える。落ち着いてから出す。
+  //   (ユーザー確定「必ずしも早く起動するのを優先しなくてよい」)
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setReady(true), STAGE_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, []);
   // ★★**それまでに見た一番大きい箱**を持ち続ける(2026-08-18)。キーボードが
   // せり上がると舞台は縮むが、canvas の寸法と倍率をそこで変えると
   // **1フレームごとに図形を焼き直す**ことになる(4×絞りで1枚50ms級 ＝ カクつきの
@@ -729,6 +743,13 @@ function ShapeStage({ spec, title, tag }: {
   return (
     <div ref={ref} style={{
       position: "absolute", inset: "6px 22px 8px",
+      // ★★キーボードのぶんの**半分**だけ上げる(2026-08-18・第13巡)。
+      //   舞台は「上のバーの下 〜 帯の上」。帯が kb ぶん上がると、見えている
+      //   領域の真ん中は kb/2 だけ上がる。だから絵も kb/2 上げれば
+      //   ちょうど真ん中に居続ける。**寸法は 1px も変わらない**ので、
+      //   図形の焼き直しもレイアウトも起きない(合成のやり直しだけ)。
+      transform: "translateY(calc(var(--kb, 0px) / -2))",
+      transition: KB_EASE,
       // ★★**ここで切る**(2026-08-18)。上の「一番大きい箱を持ち続ける」に
       // したことで、キーボードが出ているあいだ canvas は舞台より背が高くなる。
       // 切らずに置くと**器(overflow:hidden)に本物のはみ出しが生まれ**、iOS が
@@ -740,7 +761,8 @@ function ShapeStage({ spec, title, tag }: {
       overflow: "clip",
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
-      {box.w > 8 && box.h > 8 && (
+      {ready && box.w > 8 && box.h > 8 && (
+      <span className="tc-row-in" style={{ display: "block", lineHeight: 0 }}>
         <SolidCanvas
           w={box.w} h={box.h}
           // ★倍率を固定する。器に目一杯まで拡大すると、重要度や期限を変えても
@@ -748,6 +770,7 @@ function ShapeStage({ spec, title, tag }: {
           unit={Math.min(box.w / STAGE_SPAN_W, box.h / STAGE_SPAN_H)}
           paint={{ spec, view: "name", tag, title }}
         />
+      </span>
       )}
     </div>
   );

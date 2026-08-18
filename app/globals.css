@@ -443,10 +443,13 @@ button:active {
 /* 入力画面まるごとが出るとき。★transform は掛けない(中の position:fixed の
    下敷きが器を基準にしてしまい、背面が破れる)。薄さだけで出す。 */
 @keyframes tc-shell-in { from { opacity: 0; } to { opacity: 1; } }
-.tc-shell-in { animation: tc-shell-in 180ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+/* ★ゆっくりめ(2026-08-18にユーザー指定「必ずしも早く起動するのを優先しなくて
+   よい。安定的に、かつ引っ掛かりなく」)。器の寸法は動かないので、ここは
+   **不透明度だけ**の合成。録音のオーバーレイと同じ手ざわりにする。 */
+.tc-shell-in { animation: tc-shell-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 /* 入力画面まるごとが閉じるとき。器は薄く、帯は下へ。 */
 @keyframes tc-shell-out { from { opacity: 1; } to { opacity: 0; } }
-.tc-shell-out { animation: tc-shell-out 200ms ease-in both; pointer-events: none; }
+.tc-shell-out { animation: tc-shell-out 240ms cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
 /* 選んだ日のマスが1度だけ弾む。 */
 @keyframes tc-pick {
   0%   { transform: scale(0.7); }

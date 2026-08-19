@@ -281,9 +281,11 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   }, [entered]);
   /** 出る前・出ている最中の見た目。板は画面の下から来る。 */
   const enterStyle: React.CSSProperties | null = entered || bye
-    ? null : { transform: "translate3d(0, 100%, 0)" };
+    ? null : { transform: "translate3d(0, 100lvh, 0)" };
   /** 一度でもキーボードが出たか。出ていないうちは「閉じた」と見なさない。 */
   const kbSeen = useRef(false);
+  /** キーボードが出ていないときの高さ(いちばん大きく見えた値を持ち続ける)。 */
+  const fullRef = useRef(0);
   /** キーボードとずれを測り直す。ポップオーバーを閉じた直後に呼ぶ。 */
   const applyRef = useRef<() => void>(() => {});
   /** いま文字を打っている行。effect の中から ref 越しに読む。 */
@@ -342,7 +344,21 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       const vv = window.visualViewport;
       return vv ? vv.height : window.innerHeight;
     };
-    const full = () => Math.max(window.innerHeight, seen());
+    // ★★★**「キーボードが出ていない高さ」は覚えておく**(2026-08-19・第25巡)。
+    //
+    // `window.innerHeight` から引いてはいけない。**iOS のスタンドアロンは
+    // レイアウトビューポートごと縮む**ので(`docs/project_knowledge.md` の
+    // 「B レイアウトごと縮む」)、キーボードが出ると `innerHeight` も一緒に
+    // 小さくなる。すると「出ていない高さ」が「出ている高さ」と同じ値になり、
+    // **一度も「出た」と判定できない** — 実機で「キーボードを閉じても
+    // タスクUIが閉じない」と報告されたのがこれ。
+    // ★いちばん大きく見えた高さを持ち続ける(図形の舞台と同じ考え方)。
+    //   入力画面はキーボードが出る前に組み立てられるので、最初の1回が満尺。
+    const full = () => {
+      const h = Math.max(seen(), window.innerHeight);
+      if (h > fullRef.current) fullRef.current = h;
+      return fullRef.current;
+    };
 
     const place = () => {
       const el = shellRef.current;
@@ -352,13 +368,16 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       const h = `${Math.round(vv.height)}px`;
       el.style.top = top;
       el.style.height = h;
-      // ★★下敷きも**同じ箱**にする(2026-08-19・第24巡)。出入りのスライドは
-      //   `translate3d(0, 100%, 0)` ＝ **自分の高さの 100%** なので、下敷きだけ
-      //   画面いっぱいのままだと**滑る距離が器と違って**しまい、2枚が
-      //   ずれて見える。器の外側(キーボードの裏)は `pushGround(LIFT)` で
-      //   html の地色が同じ色になっているので、覆わなくても継ぎ目は出ない。
-      const back = backRef.current;
-      if (back) { back.style.top = top; back.style.height = h; }
+      // ★★キーボードが出ているあいだは、器の下端は**キーボードの上端**。
+      //   そこにセーフエリア(ホームバー)は無いので、帯の下に 34px 取ると
+      //   そのぶん丸ごと死んだ隙間になる(実機で「アイコンとキーボードまでの
+      //   幅が大きすぎる」と報告・第25巡)。切り替えの印は CSS が見る。
+      if (seen() <= full() - KB_UP) el.dataset.kb = "1";
+      else delete el.dataset.kb;
+      // ★下敷きは**画面いっぱいのまま**動かさない(第25巡)。器と同じ箱にしたら
+      //   キーボードが引っ込んだ跡が覆われず、後ろのアプリの地が一瞬見えた。
+      //   滑る距離は CSS 側で `100lvh` に揃えてある。
+      void backRef;
     };
     placeRef.current = place;
 
@@ -625,6 +644,27 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   }, [tool, toolOut]);
   const closeTool = () => { backToRow(); if (tool) setToolOut(tool); setTool(null); };
 
+  // ★★★**日程のシートが開いているあいだ、図形の舞台を凍らせる**
+  // (2026-08-19・第25巡)。シートは自分でキーボードを閉じるので器が画面いっぱいへ
+  // 伸び、`flex: 1` の舞台もそのぶん広がって**図形が 187px 下へ飛び、シートの
+  // 裏に隠れた**(実機で「when を開いたり閉じたりすると画面が動く」)。
+  // 開く直前の高さを掴んで固定する — `useLayoutEffect` は state が入った直後・
+  // ブラウザが描く前・矩形の resize が届く前に走るので、まだ縮んだ高さが取れる。
+  const stageFrozen = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = shellRef.current?.querySelector<HTMLElement>("[data-stage]")?.parentElement;
+    if (!el) return;
+    if (when !== "") {
+      if (stageFrozen.current == null) stageFrozen.current = el.offsetHeight;
+      el.style.flex = "none";
+      el.style.height = `${stageFrozen.current}px`;
+    } else {
+      stageFrozen.current = null;
+      el.style.flex = "";
+      el.style.height = "";
+    }
+  }, [when]);
+
 
   // ★★**閉じたら測り直す**(2026-08-18・第19巡)。開いているあいだは
   //   ずれも凍らせているので、閉じた時点で本当の値へ合わせ直す必要がある。
@@ -686,9 +726,13 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、その続きに
           なる色でないと「境目」として見えてしまう。 */}
       <div ref={backRef} aria-hidden className={bye ? "tc-shell-out" : entered && !settled ? "tc-shell-in" : undefined} style={{
-        // ★器と**同じ箱**にする(第24巡)。`top`/`height` は `place` が書く。
-        position: "fixed", left: 0, right: 0, top: 0, zIndex: 59, background: LIFT,
-        height: "100lvh",
+        // ★★**画面いっぱいのまま**(第25巡で戻した)。器と同じ箱にしたら、
+        //   器の外(キーボードが引っ込んだ跡)が覆われず、**後ろのアプリの地が
+        //   一瞬見えた**(実機で報告)。滑る距離を揃えるのは CSS の側 —
+        //   出入りの移動量を `100%`(自分の高さ)ではなく **`100lvh`(画面の高さ)**
+        //   にしてあるので、高さの違う 2 枚が**同じ距離だけ**滑る。
+        position: "fixed", inset: 0, zIndex: 59, background: LIFT,
+        width: "100vw", height: "100lvh",
         ...enterStyle,
       }} />
     {/* ★★★**器は一度置いたら二度と動かさない**(2026-08-18・第13巡)。
@@ -813,10 +857,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         borderRadius: "26px 26px 0 0",
         // 角丸が読めるように、地との境目へ影を落とす。
         boxShadow: "0 -16px 34px rgba(0,0,0,0.34)",
-        // ★器が見えている矩形そのものになったので(第24巡)、キーボードが
-        // 出ているあいだ器の下端は**キーボードの上端**。そこにセーフエリアは
-        // 無いので、引き算の小細工は要らない。iOS が `env(...)` を 34px のまま
-        // 報告しても、`min` を取れば死んだ帯は残らない。
+        // ★★キーボードが出ているあいだは**セーフエリアぶんを取らない**
+        // (第25巡)。器の下端はキーボードの上端で、そこにホームバーは無い。
+        // 34px 取ると丸ごと死んだ隙間になる(実機で「アイコンとキーボードまでの
+        // 幅が大きすぎる」)。切り替えは器の `data-kb`(CSS 側・globals.css)。
         padding: "10px 16px max(6px, env(safe-area-inset-bottom))",
       }}>
         {/* Cowork の提案。タップで手順になる。 */}
@@ -983,6 +1027,29 @@ function ShapeStage({ spec, title, tag, ready }: {
   }, [key, alive]);
   const prev = swap?.paint ?? null;
   const ratio = swap?.ratio ?? 1;
+  // ★★★**動きは className では持たせない**(2026-08-19・第25巡)。
+  //
+  // `className={prev ? "swap-in" : "solid-in"}` にしていたので、入れ替えが
+  // 終わって `prev` が消えた瞬間に**登場の動き(不透明度 0→1)が掛け直され**、
+  // 更新のたびに一度光った — 実機で「図形が更新された後に点滅する」と
+  // 報告されたのがこれ。★`key` の入れ替えも同じ理由で禁物(canvas ごと
+  // 作り直されて、まっさらな1フレームが出る)。
+  // だから**要素は据え置き、動きだけを付け外しする**。
+  const liveRef = useRef<HTMLSpanElement | null>(null);
+  const firstRef = useRef(true);
+  useEffect(() => {
+    const el = liveRef.current;
+    if (!el || !alive) return;
+    if (firstRef.current) {          // 初めて出るとき ＝ 登場の動き(1回だけ)
+      firstRef.current = false;
+      el.classList.add("tc-solid-in");
+      return;
+    }
+    if (!swap) return;               // 入れ替えのときだけ掛け直す
+    el.classList.remove("tc-solid-in", "tc-solid-swap-in");
+    void el.offsetWidth;             // reflow を挟まないと animation が再開しない
+    el.classList.add("tc-solid-swap-in");
+  }, [swap, alive]);
 
   return (
     <div ref={ref} data-stage style={{
@@ -1011,8 +1078,13 @@ function ShapeStage({ spec, title, tag, ready }: {
               <SolidCanvas w={box.w} h={box.h} unit={unit} paint={prev} />
             </span>
           )}
-          {/* ★いまの絵。初回は登場の動き、以降は前の大きさから寄ってくる。 */}
-          <span key={key} className={prev ? "tc-solid-swap-in" : "tc-solid-in"} style={{
+          {/* ★いまの絵。初回は登場の動き、以降は前の大きさから寄ってくる。
+              ★★**`key` を変えないこと**(2026-08-19・第25巡)。`key` を
+              入れ替えると `SolidCanvas` ごと作り直され、**新しい canvas は
+              まっさらな状態で1フレーム描かれる** ＝ 更新のたびに点滅した
+              (実機で報告)。動きの掛け直しは下の effect が
+              クラスを外して付け直す(reflow を挟む定石)。 */}
+          <span ref={liveRef} style={{
             display: "block", lineHeight: 0,
             ["--sc-from" as string]: String(ratio),
           }}>

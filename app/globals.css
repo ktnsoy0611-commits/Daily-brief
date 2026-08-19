@@ -476,13 +476,17 @@ button:active {
    として動くので、途中でどちらかが透けて後ろと重なることが構造的に起きない。
    ★器に transform を掛けてよい — 器は画面いっぱいで動かないので、中の
    `position: fixed`(ポップオーバーの背面板)が器基準になっても同じ矩形になる。 */
+/* ★★移動量は `100%`(自分の高さ)ではなく **`100lvh`(画面の高さ)**
+   (2026-08-19・第25巡)。器は見えている矩形の高さ、下敷きは画面いっぱいで
+   **高さが違う**ので、`100%` だと滑る距離が変わって 2 枚がずれ、
+   後ろのアプリの地が一瞬見えた(実機で報告)。絶対量なら必ず揃う。 */
 @keyframes tc-slide-in {
-  from { transform: translate3d(0, 100%, 0); }
+  from { transform: translate3d(0, 100lvh, 0); }
   to   { transform: none; }
 }
 @keyframes tc-slide-out {
   from { transform: none; }
-  to   { transform: translate3d(0, 100%, 0); }
+  to   { transform: translate3d(0, 100lvh, 0); }
 }
 /* ★★`will-change` は**出入りの最中だけ**置く(2026-08-19・第21巡)。
    第17巡に「置かない」と決めたのは、`both` でクラスが動き終わっても外れず
@@ -501,6 +505,10 @@ button:active {
 /* ★第21〜22巡の「出入りの最中は帯と図形の追従を止める」規則は撤去した
    (第24巡)。器が見えている矩形そのものになり、帯も図形も**キーボード追従の
    transform を持たなくなった**ので、止めるものがもう無い。 */
+/* ★★キーボードが出ているあいだ、帯の下にセーフエリアぶんを取らない
+   (第25巡)。器の下端はキーボードの上端で、そこにホームバーは無いので、
+   34px 取ると丸ごと死んだ隙間になる。印は `place()` が器に立てる。 */
+[data-composer-shell][data-kb] [data-band] { padding-bottom: 6px !important; }
 /* 選んだ日のマスが1度だけ弾む。 */
 @keyframes tc-pick {
   0%   { transform: scale(0.7); }

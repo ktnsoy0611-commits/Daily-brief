@@ -9,7 +9,7 @@ import { CAP, keepKeyboard, Popover, Press, pressedRecently } from "@/components
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
-import { isViewportDebug } from "@/lib/debugViewport";
+import { isShiftOff, isViewportDebug } from "@/lib/debugViewport";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
 import { resolveTag, tagAccent, tagColor, tagInk } from "@/lib/taskTags";
@@ -169,7 +169,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const backRef = useRef<HTMLDivElement | null>(null);
   /** ★開発用。実機の数値を隅に出す(直ったら撤去する)。 */
   const [probe, setProbe] = useState(false);
-  useEffect(() => setProbe(isViewportDebug()), []);
+  /** ★開発用。ずれの補正を切る(設定のスイッチ)。 */
+  const shiftOffRef = useRef(false);
+  useEffect(() => { setProbe(isViewportDebug()); shiftOffRef.current = isShiftOff(); }, []);
 
   const subs = useMemo(() => draft.subtasks ?? [], [draft.subtasks]);
   const weight = draft.weight ?? 2;
@@ -417,9 +419,23 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       const el = shellRef.current;
       const vv = window.visualViewport;
       if (!el) return;
-      // ★★**上限で頭打ち**(2026-08-19・第22巡)。何が起きても上のバーが画面の
-      //   真ん中まで落ちることが**構造的に**無くなる。第21巡は根拠の無い値を
-      //   そのまま書けたので、キーボードの高さぶん丸ごと落ちた。
+      // ★開発用。切っているあいだは一切下げない(第23巡)。
+      //   `visualViewport.offsetTop` が当てになる端末かを実機で見分けるため。
+      if (shiftOffRef.current) {
+        if (vvTopRef.current === 0) return;
+        vvTopRef.current = 0;
+        el.style.setProperty("--vvtop", "0px");
+        return;
+      }
+      // ★★**上限で頭打ち**(2026-08-19・第22巡)。
+      //
+      // ★★★**ただし、この上限は効いていない**(第23巡に検証で判明)。基準が
+      //   `vv.offsetTop` 自身なので、**疑っている値そのものが大きいときは
+      //   素通りする**(`offsetTop` を 360 にしたら 360 がそのまま通った)。
+      //   「絶対値 60px で頭打ち」に変えれば止まるが、それは第18〜22巡の
+      //   「ずれをそのまま追う」という**約束の変更**で、既存の判定を9件壊す。
+      //   実機の数値(設定→「画面の数値を出す」)が無いまま決められないので保留。
+      //   **ここが次に決めるところ。**
       const cap = Math.round((vv?.offsetTop ?? 0) + SHIFT_CAP);
       const next = Math.max(0, Math.min(cap, Math.round(v)));
       if (next === vvTopRef.current) return;
@@ -873,6 +889,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       overscrollBehavior: "none",
       ...enterStyle,
     }}>
+      {/* ★開発用の数値表示。**中身を包む面の外**に置く — 中に置くと崩れたとき
+          数値まで一緒に流れて、いちばん知りたいときに読めない(第23巡)。 */}
+      {probe && <ViewportProbe resid={residRef} />}
       {/* ★★★**見えている矩形が下へずれたぶん、中身ごと下げる**
           (2026-08-18・第18巡)。iOS はキーボードを出すとき、見えている矩形
           そのものを下へずらすことがある(`visualViewport.offsetTop > 0`)。
@@ -893,7 +912,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       {/* ★★中身の上端の印(0 高)。ここの rect が「いま実際どこに描かれて
           いるか」で、`vv.offsetTop` との差がずれ残り(第22巡)。 */}
       <span ref={fitTopRef} aria-hidden data-fit-top style={{ display: "block", height: 0 }} />
-      {probe && <ViewportProbe resid={residRef} />}
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}

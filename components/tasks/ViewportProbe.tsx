@@ -63,14 +63,19 @@ export function ViewportProbe({ resid }: { resid: React.RefObject<number> }) {
 
   return (
     <div aria-hidden style={{
+      // ★★**器の直下に置く**(第23巡)。中身を包む面(`[data-fit]`)の中に置いて
+      //   いたので、**崩れると数値まで一緒に流れて**しまい、いちばん知りたい
+      //   ときに読めなかった。ここなら中身がどれだけずれても動かない。
       position: "absolute", left: 8, top: 8, zIndex: 9, pointerEvents: "none",
-      padding: "5px 7px", borderRadius: 8, background: "rgba(0,0,0,0.62)",
-      fontFamily: SANS, fontSize: 9.5, lineHeight: 1.5, letterSpacing: "0.02em",
+      padding: "7px 10px", borderRadius: 10, background: "rgba(0,0,0,0.78)",
+      // ★★**9.5px では実機の写真で読めなかった**(第23巡に実機で報告)。
+      //   開発用なので見た目より読めることを優先する。
+      fontFamily: SANS, fontSize: 15, fontWeight: 700, lineHeight: 1.45,
       color: "#7CF7C6", whiteSpace: "pre", textAlign: "left",
     }}>
       <span ref={satRef} style={{ display: "block", height: "env(safe-area-inset-top)", width: 0 }} />
       <span ref={sabRef} style={{ display: "block", height: "env(safe-area-inset-bottom)", width: 0 }} />
-      {`kb ${v.kb} / lvh ${v.lvh}\nvv ${v.vh} @ ${v.top} / scr ${v.scr}\nfit ${v.fit} / bar ${v.bar ?? "-"} / res ${resid.current}\nsafe ${safe.t}/${safe.b} / sheet ${v.sheet ?? "-"}`}
+      {`kb ${v.kb}  lvh ${v.lvh}\nvv ${v.vh} @ ${v.top}  scr ${v.scr}\nfit ${v.fit}  bar ${v.bar ?? "-"}\nres ${resid.current}  sheet ${v.sheet ?? "-"}\nsafe ${safe.t}/${safe.b}`}
     </div>
   );
 }

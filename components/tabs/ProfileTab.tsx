@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
 import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SERIF } from "@/lib/constants";
-import { isViewportDebug, setViewportDebug } from "@/lib/debugViewport";
+import { isShiftOff, isViewportDebug, setShiftOff, setViewportDebug } from "@/lib/debugViewport";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -197,7 +197,8 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [armedKey, setArmedKey] = useState<string | null>(null);
   // ★開発用。入力画面に実測値を出すか(直ったら撤去する)。
   const [probeOn, setProbeOn] = useState(false);
-  useEffect(() => setProbeOn(isViewportDebug()), []);
+  const [shiftOff, setShiftOff2] = useState(false);
+  useEffect(() => { setProbeOn(isViewportDebug()); setShiftOff2(isShiftOff()); }, []);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const arm = (key: string) => {
     haptic();
@@ -720,6 +721,20 @@ export function ProfileTab({ appState, persist, onClose }: {
             borderRadius: 999, cursor: "pointer",
             fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
           }}>{probeOn ? "数値を出している（切る）" : "数値を出す"}</button>
+
+          {/* ★★実機で「`visualViewport.offsetTop` が当てになるか」を10秒で
+              見分けるスイッチ。切って直るなら、あの値は信じられない。 */}
+          <div style={{ height: 1, background: HAIRLINE, margin: "14px 0" }} />
+          <p style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.7, margin: "0 0 10px" }}>
+            タスク入力画面で、キーボードに合わせた「ずれの補正」をやめます。これを切って画面の崩れが直るなら、iPhone が返している数値の方が当てにならないと分かります。
+          </p>
+          <button onClick={() => { const n = !shiftOff; setShiftOff2(n); setShiftOff(n); }} style={{
+            width: "100%", padding: "11px 0", background: shiftOff ? INK : "transparent",
+            color: shiftOff ? PAPER : INK,
+            border: `1.5px solid ${shiftOff ? INK : "rgba(26,26,24,0.28)"}`,
+            borderRadius: 999, cursor: "pointer",
+            fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
+          }}>{shiftOff ? "ずれの補正を切っている（戻す）" : "ずれの補正を切る"}</button>
         </SettingsCard>
 
         {/* デモ・テストデータの削除。injectDemoで入れたダミーや試行中の記録を

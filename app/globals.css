@@ -434,6 +434,28 @@ button:active {
 .tc-pop    { animation: tc-pop 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .tc-pop-in { animation: tc-rise 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .tc-row-in { animation: tc-fade 220ms ease-out both; }
+/* ★★図形の登場と、情報を足したときの変化(2026-08-19・第21巡)。
+   登場は板が滑り終わってから(焼きは 4× 絞りで 130ms 級。滑りに重ねると必ず
+   フレームが落ちる)。ただの薄れではなく**きちんと現れる**動きにする。
+   変化は**前の絵を残したまま重ねて入れ替える**ので、透ける瞬間が無い
+   (＝点滅にならない)。`--sc-from`/`--sc-to` は前後の大きさの比で、
+   両方の層がいつも同じ見た目の大きさになるように動かす — こうすると
+   ディゾルブではなく「1つの図形が大きくなっていく」ように見える。 */
+@keyframes tc-solid-in {
+  from { opacity: 0; transform: scale(0.86); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes tc-solid-swap-in {
+  from { opacity: 0; transform: scale(var(--sc-from, 1)); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes tc-solid-swap-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: scale(var(--sc-to, 1)); }
+}
+.tc-solid-in       { animation: tc-solid-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tc-solid-swap-in  { animation: tc-solid-swap-in 280ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+.tc-solid-swap-out { animation: tc-solid-swap-out 280ms cubic-bezier(0.32, 0.72, 0, 1) both; }
 /* ★日程のシートが閉じるとき。「シュッと閉じる」(2026-08-17にユーザー指定)。
    出るときより速く、下へ抜ける。 */
 @keyframes tc-fall {
@@ -462,17 +484,28 @@ button:active {
   from { transform: none; }
   to   { transform: translate3d(0, 100%, 0); }
 }
-/* ★`will-change` は置かない(2026-08-18・第17巡)。`both` なのでクラスは
-   動き終わっても外れず、**画面いっぱいの層が居座り続ける**。中に 692×1380 の
-   canvas を抱えているので、そのぶん合成の負担が残る。animation 自体が
-   走っている間は勝手に層へ上がるので、指定は要らない。 */
-.tc-shell-in  { animation: tc-slide-in 320ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+/* ★★`will-change` は**出入りの最中だけ**置く(2026-08-19・第21巡)。
+   第17巡に「置かない」と決めたのは、`both` でクラスが動き終わっても外れず
+   **692×1380 の canvas を抱えた画面いっぱいの層が居座る**からだった。
+   いまは外れる — 出るときは `animationend` でクラスごと落とし(終わりの姿は
+   `transform: none` なので見た目は変わらない)、閉じるときは 300ms 後に
+   要素ごと消える。滑っているあいだだけ層に上がるので、canvas と文字の
+   塗り直しが滑りに混ざらない(「スライドがスムーズに見えない」の手当て)。 */
+.tc-shell-in  { animation: tc-slide-in 320ms cubic-bezier(0.32, 0.72, 0, 1) both; will-change: transform; }
 /* ★★出ていく曲線(2026-08-19・第20巡)。以前の cubic-bezier(0.32,0,0.67,0) は
    **制御点が2つとも y=0**で、最初の3分の1は 0 に張り付いたまま — 60ms たっても
    2% しか動かない。これが実機で「閉じる時のアニメーションがワンテンポ遅れる」
    と言われていた正体。触れた瞬間から動き出して奥へ抜ける曲線にする
    (同じ 60ms で 16%)。 */
-.tc-shell-out { animation: tc-slide-out 280ms cubic-bezier(0.4, 0, 0.2, 1) both; pointer-events: none; }
+.tc-shell-out { animation: tc-slide-out 280ms cubic-bezier(0.4, 0, 0.2, 1) both; pointer-events: none; will-change: transform; }
+/* ★★★**閉じているあいだは「1枚の板」にする**(2026-08-19・第21巡)。
+   キーボードの追従(帯 -kb / 図形 -kb/2 / ずれ)は 280ms の transition を持って
+   いるので、閉じるのと同じ瞬間に値が変わると**板の中で中身が動きながら板が
+   滑る**。実機で「ガクッと不安定な挙動をしながら下にスライド」と言われた。
+   値の側は書かないようにしたが(`commit`)、念のため動き自体もここで止める。 */
+.tc-shell-out [data-fit],
+.tc-shell-out [data-dock],
+.tc-shell-out [data-stage] { transition: none !important; }
 /* 選んだ日のマスが1度だけ弾む。 */
 @keyframes tc-pick {
   0%   { transform: scale(0.7); }
@@ -503,7 +536,8 @@ button:active {
 [data-pressed="1"] > .tc-lamp { transform: scale(0.9); }
 @media (prefers-reduced-motion: reduce) {
   .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in, .tc-sheet-out,
-  .tc-pop-out, .tc-shell-in, .tc-shell-out, .tc-pick { animation: none; }
+  .tc-pop-out, .tc-shell-in, .tc-shell-out, .tc-pick,
+  .tc-solid-in, .tc-solid-swap-in, .tc-solid-swap-out { animation: none; }
   .tc-lamp { transition: none; }
   [data-composer-shell] { transition: none !important; }
 }

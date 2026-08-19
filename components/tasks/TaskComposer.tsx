@@ -7,11 +7,14 @@ import { SHEET_BODY_H, WhenSheet } from "@/components/tasks/WhenSheet";
 import { ComposerToolbar, TOOL_LABEL, type ToolKey } from "@/components/tasks/ComposerToolbar";
 import { CAP, keepKeyboard, Popover, Press, pressedRecently } from "@/components/tasks/Popover";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
+import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
+import { isViewportDebug } from "@/lib/debugViewport";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
 import { resolveTag, tagAccent, tagColor, tagInk } from "@/lib/taskTags";
 import { specOf } from "@/lib/taskSize";
+import type { SolidPaint } from "@/lib/solidPaint";
 import type { SubTask, TaskSuggestion, TaskTag, TaskWeight } from "@/lib/types";
 
 // ★タスクの入力画面(2026-08-16にユーザー指定で作り直し。旧 TaskSheet.tsx =
@@ -84,6 +87,10 @@ const LEAVE_MS = 300;
 const KB_UP = 120;
 /** これより低くなったら「キーボードが閉じた」。 */
 const KB_DOWN = 60;
+/** 図形が入れ替わる動きの長さ(ms)。globals.css の `tc-solid-swap-*` と合わせる。 */
+const SOLID_SWAP_MS = 280;
+/** ずれ(`--vvtop`)を書き換える最小の段。1〜2px の往復で動きが走らないように。 */
+const SHIFT_MIN_STEP = 8;
 /** 下がったように見えてから、確かめるまでの待ち。★2回続けて確かめるので
  *  閉じ始めるまでの「間」はこの2倍。第18巡は 200(＝400ms)にしていたが、
  *  実機で「閉じる時にワンテンポ遅れる」と言われた。一瞬の谷を弾くのに
@@ -149,6 +156,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const [bye, setBye] = useState(false);
   /** 下敷き(器と一緒に滑る板)。閉じるときクラスを直に付けるので ref で持つ。 */
   const backRef = useRef<HTMLDivElement | null>(null);
+  /** ★開発用。実機の数値を隅に出す(直ったら撤去する)。 */
+  const [probe, setProbe] = useState(false);
+  useEffect(() => setProbe(isViewportDebug()), []);
 
   const subs = useMemo(() => draft.subtasks ?? [], [draft.subtasks]);
   const weight = draft.weight ?? 2;
@@ -338,15 +348,18 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     /** 見えている矩形が下へずれたぶん(px)。中身ごとこのぶん下げる。 */
     const shift = () => {
       const vv = window.visualViewport;
-      return vv ? Math.max(0, Math.round(vv.offsetTop)) : 0;
+      // ★★**文書のスクロールも足す**(2026-08-19・第21巡)。iOS はキャレットを
+      //   見せるために**文書ごと動かす**ことがあり、`position: fixed` の器は
+      //   それに引きずられる。`html`/`body` は `overflow: hidden` なので通常
+      //   `scrollY` は 0 — **0 のときは何も変わらない**保険。
+      //   ★これを聞くために `window` の `scroll` も購読する(下)。
+      return Math.max(0, Math.round((vv?.offsetTop ?? 0) + (window.scrollY || 0)));
     };
 
     /** 実際に書き込む。ここだけが `--kb` を動かす。 */
     const commit = (kb: number, guarded = justOpened()) => {
       const el = shellRef.current;
       if (!el || leftRef.current) return;
-      kbRef.current = kb;
-      el.style.setProperty("--kb", `${kb}px`);
       // ★★**キーボードを閉じたら入力画面も閉じる**(2026-08-18にユーザー指定
       // 「キーボード上のバーのチェックマークで閉じたら、タスク入力画面も
       // 閉じるようにしてください」)。iOS の「完了」ボタンには専用のイベントが
@@ -355,8 +368,19 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       if (kb > KB_UP) kbSeen.current = true;
       else if (kbSeen.current && kb < KB_DOWN && !guarded) {
         kbSeen.current = false;
+        // ★★★**去ると決めたら `--kb` は書かない**(2026-08-19・第21巡)。
+        //
+        // 書くと、帯(374px)と図形(187px)が 280ms かけて**下へ動き出す**。
+        // その同じ瞬間に板ぜんぶが下へ滑り出すので、**板の中で中身が動きながら
+        // 板が滑る** — 実機で「ガクッと不安定な挙動をしながら下にスライド」と
+        // 報告された正体はこれ。閉じると決めた瞬間の姿で固めて、**1枚の板**
+        // として滑らせる。帯の下は LIFT の板が 100lvh 敷いてあるので、
+        // 帯が浮いたままでも地色は途切れない(見た目は変わらない)。
         leaveRef.current();
+        return;
       }
+      kbRef.current = kb;
+      el.style.setProperty("--kb", `${kb}px`);
     };
 
     /** ずれを書く。位置決めはこれだけで、閉じる判断には一切関わらせない。 */
@@ -364,7 +388,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       const el = shellRef.current;
       if (!el || leftRef.current) return;
       const v = shift();
-      if (v === vvTopRef.current) return;
+      // ★1〜2px の往復で 280ms の動きが走り続けないようにするだけ。
+      if (Math.abs(v - vvTopRef.current) < SHIFT_MIN_STEP) return;
       vvTopRef.current = v;
       el.style.setProperty("--vvtop", `${v}px`);
     };
@@ -382,21 +407,25 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // 追いかけていたので、開いた瞬間に帯が落ち、閉じると上がり直していた。
     const apply = () => {
       if (!shellRef.current || leftRef.current) return;
-      // ★★**ずれを凍らせるのは「ポップオーバーが開いている間」だけ**
-      //   (2026-08-19・第20巡で線を引き直した)。
+      // ★★★**ずれは凍らせない。いつでも追う**(2026-08-19・第21巡)。
       //
-      //   ・ポップオーバー(メモ・持ち物・重要度・タグ) … **キーボードは
-      //     出したまま**にする約束。だからずれも動く理由が無く、見えた動きは
-      //     全部その場かぎりの揺れ。iOS は欄が入れ替わるたびに矩形を数十px
-      //     振るので、素直に書き替えると跳ねる(第19巡の「4回に1回ガクッ」)。
-      //   ・日程のシート … **こちらからキーボードを閉じている**。ずれは本当に
-      //     0 へ戻るので、**追わないと中身が下がったまま取り残される**。
-      //     第19巡でここまで一緒に凍らせてしまい、日程を開くと上のバーが
-      //     画面の真ん中まで落ちた(実機の写真)。
+      // 第19巡で「開いているあいだは凍らせる」を入れ、第20巡で日程シートだけ
+      // 外した。そのとき「ポップオーバーはキーボードが動かない約束だから
+      // 凍らせたままでよい」と判断したが、**前提が誤り** — 動くのはキーボードの
+      // 高さではなく**見えている矩形のずれ**の方だった。iOS はポップオーバーが
+      // 開いた拍子に(焦点が行を出入りする・キーボードの上の帯が変わる)ずれを
+      // 付け替える。凍らせていたので**古いずれのまま取り残され**、器の中身が
+      // 画面の上へ突き抜けていた — 実機で「アイコンをタップするとレイアウトが
+      // 崩れる」として報告された正体(上のバーが画面の外・帯がキーボードの遥か上)。
       //
-      //   持ち上げ量(`--kb`)の方は**どちらでも凍らせる**。シートは自分で
-      //   キーボードを閉じているので、追うと帯が落ちて閉じると上がり直す。
-      if (!toolRef.current) commitShift();
+      // ★凍らせずに追っても跳ねないための手当ては第20巡で入っている
+      //   (`[data-fit]` に帯と同じ 280ms の間合い)。第19巡の跳ねは**間合いが
+      //   無かったから**で、追うこと自体が悪かったのではない。
+      commitShift();
+      // ★★★持ち上げ量(`--kb`)の方は**開いているあいだ凍らせたまま**。
+      //   あれはキーボードの高さの話で、ポップオーバー中に動く理由が本当に無い
+      //   (日程のシートは自分でキーボードを閉じているので、追うと帯が落ちて
+      //   閉じると上がり直す)。
       if (whenRef.current !== "" || toolRef.current) return;
       // ★★★**何かが開いているあいだは一切動かさない**(2026-08-18・第16巡)。
       //   日程のシートは**こちらから**キーボードを閉じている。メモ・持ち物・
@@ -479,6 +508,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     vv?.addEventListener("resize", onVV);
     vv?.addEventListener("scroll", onVV);
     window.addEventListener("resize", onVV);
+    // ★**文書のスクロールも聞く**(2026-08-19・第21巡)。ここを聞いていなかった
+    //   ので、iOS が文書ごと動かしたぶんは気づけないままだった。
+    window.addEventListener("scroll", onVV, { passive: true });
     const shell = shellRef.current;
     return () => {
       shell?.removeEventListener("focusout", gone);
@@ -486,6 +518,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       vv?.removeEventListener("resize", onVV);
       vv?.removeEventListener("scroll", onVV);
       window.removeEventListener("resize", onVV);
+      window.removeEventListener("scroll", onVV);
       window.clearTimeout(settleRef.current);
     };
   }, []);
@@ -715,7 +748,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           素通しになって後ろの山が見えた(2026-08-17に実機で報告)。
           ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、その続きに
           なる色でないと「境目」として見えてしまう。 */}
-      <div ref={backRef} aria-hidden className={bye ? "tc-shell-out" : entered ? "tc-shell-in" : undefined} style={{
+      <div ref={backRef} aria-hidden className={bye ? "tc-shell-out" : entered && !settled ? "tc-shell-in" : undefined} style={{
         position: "fixed", inset: 0, zIndex: 59, background: LIFT,
         width: "100vw", height: "100lvh", minHeight: "100%",
         ...enterStyle,
@@ -731,7 +764,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         出ていた。いまはキーボードのぶんを `--kb` に入れるだけで、動くのは
         **帯と図形の transform だけ**(＝合成のやり直しだけで済む)。 */}
     <div ref={shellRef} data-composer-shell onMouseDown={keepKeyboard}
-      className={bye ? "tc-shell-out" : entered ? "tc-shell-in" : undefined} style={{
+      className={bye ? "tc-shell-out" : entered && !settled ? "tc-shell-in" : undefined} style={{
       position: "fixed", left: 0, top: 0, right: 0, bottom: 0, zIndex: 60, background: CHARCOAL,
       width: "100vw", height: "100lvh", minHeight: "100%",
       display: "flex", flexDirection: "column",
@@ -759,6 +792,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         //   キーボードと一緒に動くものなので、瞬間移動させると跳ねて見える。
         transition: KB_EASE,
       }}>
+      {probe && <ViewportProbe />}
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}
@@ -1001,8 +1035,39 @@ function ShapeStage({ spec, title, tag, ready }: {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // ★★**情報を足して図形が変わるときの動き**(2026-08-19・第21巡にユーザー指定)。
+  //
+  // 前の絵を**残したまま重ねて**入れ替える。どちらの層も「いつも同じ見た目の
+  // 大きさ」になるように動かすので、ディゾルブではなく**1つの図形が大きく
+  // なっていく**ように見える(重要度を上げた／期日を近づけたのが目で追える)。
+  // ★透ける瞬間を作らないので、点滅にはならない(第17巡の教訓)。
+  const unit = Math.min(box.w / STAGE_SPAN_W, box.h / STAGE_SPAN_H);
+  const paint: SolidPaint = useMemo(() => ({ spec, view: "name", tag, title }), [spec, tag, title]);
+  // 描く中身が変わったかどうかの目印。
+  const key = [spec.sides.join(""), spec.area.toFixed(3), spec.w.toFixed(3),
+    spec.h.toFixed(3), spec.slabs, tag, title].join("|");
+  const paintRef = useRef(paint);
+  paintRef.current = paint;
+  const lastRef = useRef<{ key: string; paint: SolidPaint } | null>(null);
+  const [swap, setSwap] = useState<{ paint: SolidPaint; ratio: number } | null>(null);
+  const alive = ready && box.w > 8 && box.h > 8;
+  useEffect(() => {
+    if (!alive) return;
+    const last = lastRef.current;
+    lastRef.current = { key, paint: paintRef.current };
+    if (!last || last.key === key) return;
+    // 面積の平方根 ＝ 辺の比。行き過ぎた比は詰める(見た目が破綻しないように)。
+    const r = Math.sqrt((last.paint.spec.area || 1) / (paintRef.current.spec.area || 1));
+    setSwap({ paint: last.paint, ratio: Math.min(2.5, Math.max(0.4, r)) });
+    const t = window.setTimeout(() => setSwap(null), SOLID_SWAP_MS);
+    return () => window.clearTimeout(t);
+  }, [key, alive]);
+  const prev = swap?.paint ?? null;
+  const ratio = swap?.ratio ?? 1;
+
   return (
-    <div ref={ref} style={{
+    <div ref={ref} data-stage style={{
       position: "absolute", inset: "6px 22px 8px",
       // ★★キーボードのぶんの**半分**だけ上げる(2026-08-18・第13巡)。
       //   舞台は「上のバーの下 〜 帯の上」。帯が kb ぶん上がると、見えている
@@ -1022,16 +1087,31 @@ function ShapeStage({ spec, title, tag, ready }: {
       overflow: "clip",
       display: "flex", alignItems: "center", justifyContent: "center",
     }}>
-      {ready && box.w > 8 && box.h > 8 && (
-      <span className="tc-row-in" style={{ display: "block", lineHeight: 0 }}>
-        <SolidCanvas
-          w={box.w} h={box.h}
-          // ★倍率を固定する。器に目一杯まで拡大すると、重要度や期限を変えても
-          // 絵の大きさが変わらず「大きさ = 重要度」が読めなくなる。
-          unit={Math.min(box.w / STAGE_SPAN_W, box.h / STAGE_SPAN_H)}
-          paint={{ spec, view: "name", tag, title }}
-        />
-      </span>
+      {alive && (
+        <span style={{ position: "relative", display: "block", lineHeight: 0 }}>
+          {/* ★前の絵。薄れながら新しい大きさへ寄っていく(下に置く)。 */}
+          {prev && (
+            <span aria-hidden className="tc-solid-swap-out" style={{
+              position: "absolute", inset: 0, display: "block", lineHeight: 0,
+              ["--sc-to" as string]: String(1 / ratio),
+            }}>
+              <SolidCanvas w={box.w} h={box.h} unit={unit} paint={prev} />
+            </span>
+          )}
+          {/* ★いまの絵。初回は登場の動き、以降は前の大きさから寄ってくる。 */}
+          <span key={key} className={prev ? "tc-solid-swap-in" : "tc-solid-in"} style={{
+            display: "block", lineHeight: 0,
+            ["--sc-from" as string]: String(ratio),
+          }}>
+            <SolidCanvas
+              w={box.w} h={box.h}
+              // ★倍率を固定する。器に目一杯まで拡大すると、重要度や期限を変えても
+              // 絵の大きさが変わらず「大きさ = 重要度」が読めなくなる。
+              unit={unit}
+              paint={paint}
+            />
+          </span>
+        </span>
       )}
     </div>
   );

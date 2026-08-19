@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
 import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SERIF } from "@/lib/constants";
+import { isViewportDebug, setViewportDebug } from "@/lib/debugViewport";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -194,6 +195,9 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [tab, setTab] = useState<"taste" | "sources" | "other">("taste");
   // URL削除の2段階確認。同時にarmされるのは1つだけ(キーで識別)。数秒で自動解除。
   const [armedKey, setArmedKey] = useState<string | null>(null);
+  // ★開発用。入力画面に実測値を出すか(直ったら撤去する)。
+  const [probeOn, setProbeOn] = useState(false);
+  useEffect(() => setProbeOn(isViewportDebug()), []);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const arm = (key: string) => {
     haptic();
@@ -701,6 +705,21 @@ export function ProfileTab({ appState, persist, onClose }: {
               )}
             </>
           )}
+        </SettingsCard>
+
+        {/* ★開発用。タスク入力画面の隅に、キーボードと矩形の実測値を出す。
+            実機の崩れを数字で見るためのもの。**直ったら撤去する。** */}
+        <SettingsCard label="画面の数値を出す" icon={RotateCcw}>
+          <p style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.7, margin: "0 0 12px" }}>
+            タスク入力画面の左上に、キーボードの高さや画面のずれの実測値を小さく出します。レイアウトが崩れたときにこの画面を撮って送ってもらうためのもので、直ったら外します。
+          </p>
+          <button onClick={() => { const n = !probeOn; setProbeOn(n); setViewportDebug(n); }} style={{
+            width: "100%", padding: "11px 0", background: probeOn ? INK : "transparent",
+            color: probeOn ? PAPER : INK,
+            border: `1.5px solid ${probeOn ? INK : "rgba(26,26,24,0.28)"}`,
+            borderRadius: 999, cursor: "pointer",
+            fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
+          }}>{probeOn ? "数値を出している（切る）" : "数値を出す"}</button>
         </SettingsCard>
 
         {/* デモ・テストデータの削除。injectDemoで入れたダミーや試行中の記録を

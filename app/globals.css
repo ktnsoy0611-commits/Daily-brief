@@ -506,6 +506,13 @@ button:active {
 .tc-shell-out [data-fit],
 .tc-shell-out [data-dock],
 .tc-shell-out [data-stage] { transition: none !important; }
+/* ★★**出るときも同じ**(2026-08-19・第22巡)。板が下から滑ってくる最中に
+   キーボードが立ち上がると、ずれ(`--vvtop`)と持ち上げ量(`--kb`)が変わり、
+   **板の中で中身がもう一度滑る** ＝ 二重の動き。滑っているあいだは止めて、
+   落ち着いてから所定の位置に居ればよい。 */
+.tc-shell-in [data-fit],
+.tc-shell-in [data-dock],
+.tc-shell-in [data-stage] { transition: none !important; }
 /* 選んだ日のマスが1度だけ弾む。 */
 @keyframes tc-pick {
   0%   { transform: scale(0.7); }

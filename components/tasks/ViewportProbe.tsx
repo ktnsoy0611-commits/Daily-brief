@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type React from "react";
 import { SANS } from "@/lib/constants";
 
 // ★★入力画面の隅に、実機の数値を出すだけの部品(2026-08-19・第21巡)。
@@ -11,7 +12,8 @@ import { SANS } from "@/lib/constants";
 //   vv   … 見えている高さ @ 見えている矩形のずれ(`visualViewport`)。
 //   scr  … 文書のスクロール量。0 でなければ器が引きずられている。
 //   fit  … いま中身を下げている量(`--vvtop`)。ずれと一致しているのが正しい。
-//   bar  … 上のバーの上端が、見えている上端から何px下か。**0 が正しい。**
+//   bar  … 上のバーの上端が、見えている上端から何px下か（＝セーフエリア上と一致）。
+//   res  … ★ずれ残り。器が余計に動いているぶん。**0 が正しい。**
 //   safe … セーフエリアの上/下(`env(safe-area-inset-*)`)。
 //   sheet… 日程シートの下端が、見えている下端から何px上か。0 が正しい。
 
@@ -37,7 +39,7 @@ const read = () => {
   };
 };
 
-export function ViewportProbe() {
+export function ViewportProbe({ resid }: { resid: React.RefObject<number> }) {
   const [v, setV] = useState(read);
   const satRef = useRef<HTMLSpanElement | null>(null);
   const sabRef = useRef<HTMLSpanElement | null>(null);
@@ -68,7 +70,7 @@ export function ViewportProbe() {
     }}>
       <span ref={satRef} style={{ display: "block", height: "env(safe-area-inset-top)", width: 0 }} />
       <span ref={sabRef} style={{ display: "block", height: "env(safe-area-inset-bottom)", width: 0 }} />
-      {`kb ${v.kb} / lvh ${v.lvh}\nvv ${v.vh} @ ${v.top} / scr ${v.scr}\nfit ${v.fit} / bar ${v.bar ?? "-"}\nsafe ${safe.t}/${safe.b} / sheet ${v.sheet ?? "-"}`}
+      {`kb ${v.kb} / lvh ${v.lvh}\nvv ${v.vh} @ ${v.top} / scr ${v.scr}\nfit ${v.fit} / bar ${v.bar ?? "-"} / res ${resid.current}\nsafe ${safe.t}/${safe.b} / sheet ${v.sheet ?? "-"}`}
     </div>
   );
 }

@@ -91,6 +91,17 @@ const KB_DOWN = 60;
 const SOLID_SWAP_MS = 280;
 /** ずれ(`--vvtop`)を書き換える最小の段。1〜2px の往復で動きが走らないように。 */
 const SHIFT_MIN_STEP = 8;
+/** ★ずれの上限(見えている上端からの余分)。これ以上は何があっても下げない。 */
+const SHIFT_CAP = 160;
+/** ずれ残りを直す最小の段(px)。★`SHIFT_MIN_STEP` と同じ値にすること —
+ *  小さいと、追従の側が「小さすぎる揺れ」として見送ったぶんを、こちらが
+ *  拾い直してしまい、段を置いた意味が無くなる(第22巡で実際にそうなった)。
+ *  この段は「直すかどうか」を決めるだけで、直すときは残り全部を寄せる。 */
+const CORRECT_MIN_STEP = SHIFT_MIN_STEP;
+/** 1回の落ち着きにつき、直しにいく回数の上限(暴走しない備え)。 */
+const CORRECT_MAX = 2;
+/** 動きが落ち着くまでの待ち(ms)。`KB_EASE` の 280ms より少し長く。 */
+const CORRECT_WAIT_MS = 320;
 /** 下がったように見えてから、確かめるまでの待ち。★2回続けて確かめるので
  *  閉じ始めるまでの「間」はこの2倍。第18巡は 200(＝400ms)にしていたが、
  *  実機で「閉じる時にワンテンポ遅れる」と言われた。一瞬の谷を弾くのに
@@ -299,6 +310,17 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const vvTopRef = useRef(0);
   /** キーボードとずれを測り直す。ポップオーバーを閉じた直後に呼ぶ。 */
   const applyRef = useRef<() => void>(() => {});
+  /** ★`[data-fit]` の先頭に置く 0 高の印。ここが「いま中身の上端がどこか」。 */
+  const fitTopRef = useRef<HTMLSpanElement | null>(null);
+  /** ずれ残りを直す係。落ち着いたら呼ばれる。 */
+  const correctRef = useRef<() => void>(() => {});
+  const correctTimer = useRef(0);
+  const correctLeft = useRef(CORRECT_MAX);
+  /** 最後に測ったずれ残り(開発用の表示が読む)。 */
+  const residRef = useRef(0);
+  /** 出入りの動きが終わったか。effect の中から ref 越しに見る。 */
+  const settledRef = useRef(false);
+  settledRef.current = settled;
   /** いま文字を打っている行。effect の中から ref 越しに読む。 */
   const liveRowRef = useRef<() => HTMLTextAreaElement | null>(() => null);
   const settleRef = useRef(0);
@@ -346,14 +368,21 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     };
 
     /** 見えている矩形が下へずれたぶん(px)。中身ごとこのぶん下げる。 */
+    // ★★★**`window.scrollY` を足してはいけない**(2026-08-19・第22巡)。
+    //
+    // 第21巡で「iOS は文書ごと動かすので器が引きずられる」という**確かめて
+    // いない読み**でこれを足し、「通常 0 なので効かない保険」と書いた。
+    // その前提が誤りだった — `overflow: hidden` は**指で送るのを止めるだけ**で、
+    // **ブラウザが自分で送るのは止められない**(`app/globals.css` に同じ記録が
+    // ある)。iOS はキーボードを出すときキャレットを見せようと文書を送るので
+    // `scrollY` はキーボードの高さに近い値になる。ところが器はそれに
+    // **引きずられていなかった**ので、補正がまるごと余分になり、中身が
+    // 画面の半分ほど下へ落ちた(実機の写真・上のバーが真ん中まで落ちる)。
+    //
+    // ★式で当てるのはここまで。**足りないぶんは測って直す**(下の `correct`)。
     const shift = () => {
       const vv = window.visualViewport;
-      // ★★**文書のスクロールも足す**(2026-08-19・第21巡)。iOS はキャレットを
-      //   見せるために**文書ごと動かす**ことがあり、`position: fixed` の器は
-      //   それに引きずられる。`html`/`body` は `overflow: hidden` なので通常
-      //   `scrollY` は 0 — **0 のときは何も変わらない**保険。
-      //   ★これを聞くために `window` の `scroll` も購読する(下)。
-      return Math.max(0, Math.round((vv?.offsetTop ?? 0) + (window.scrollY || 0)));
+      return Math.max(0, Math.round(vv?.offsetTop ?? 0));
     };
 
     /** 実際に書き込む。ここだけが `--kb` を動かす。 */
@@ -383,15 +412,70 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       el.style.setProperty("--kb", `${kb}px`);
     };
 
+    /** ずれを実際に書き込む。上限で頭打ちにする。 */
+    const writeShift = (v: number) => {
+      const el = shellRef.current;
+      const vv = window.visualViewport;
+      if (!el) return;
+      // ★★**上限で頭打ち**(2026-08-19・第22巡)。何が起きても上のバーが画面の
+      //   真ん中まで落ちることが**構造的に**無くなる。第21巡は根拠の無い値を
+      //   そのまま書けたので、キーボードの高さぶん丸ごと落ちた。
+      const cap = Math.round((vv?.offsetTop ?? 0) + SHIFT_CAP);
+      const next = Math.max(0, Math.min(cap, Math.round(v)));
+      if (next === vvTopRef.current) return;
+      vvTopRef.current = next;
+      el.style.setProperty("--vvtop", `${next}px`);
+    };
+
     /** ずれを書く。位置決めはこれだけで、閉じる判断には一切関わらせない。 */
     const commitShift = () => {
-      const el = shellRef.current;
-      if (!el || leftRef.current) return;
+      if (leftRef.current) return;
       const v = shift();
       // ★1〜2px の往復で 280ms の動きが走り続けないようにするだけ。
       if (Math.abs(v - vvTopRef.current) < SHIFT_MIN_STEP) return;
-      vvTopRef.current = v;
-      el.style.setProperty("--vvtop", `${v}px`);
+      correctLeft.current = CORRECT_MAX;   // 新しい値になったので測り直す権利を戻す
+      writeShift(v);
+      scheduleCorrect();
+    };
+
+    // ★★★**式で当てず、測って直す**(2026-08-19・第22巡)。
+    //
+    // 同じ場所を外し続けている本当の理由は、**iPhone がどう振る舞うかを式で
+    // 当てようとしている**こと。この環境で実機を動かせない以上、式は永久に
+    // 確かめられない。第21巡の `window.scrollY` はその典型で、確かめられない
+    // 読みをそのまま足して、次の巡の不具合になった。
+    //
+    // だから「いくつ下げるべきか」を当てるのをやめ、**いま実際どこに描かれて
+    // いるか**を測って残りを引く:
+    //
+    //   ずれ残り = [data-fit] の先頭の印の rect.top − vv.offsetTop
+    //
+    // ・式が正しければ残りは 0 で、**何もしない**。
+    // ・iOS が器を余計に動かしていれば残りに出るので、**原因が何であれ**
+    //   そのぶんだけ戻る。`scrollY` かどうかを当てる必要が無い。
+    // ・逆に、**根拠なく押し下げることが構造的にできない**(押し下げれば残りに
+    //   出て、次の測定で引き戻される)。
+    //
+    // ★出入りの最中は測らない。器の animation の transform が rect に混ざる
+    //   (第16巡と同じ落とし穴)。
+    const correct = () => {
+      const m = fitTopRef.current;
+      const vv = window.visualViewport;
+      if (!m || !vv || leftRef.current || !settledRef.current) return;
+      if (correctLeft.current <= 0) return;
+      const resid = Math.round(m.getBoundingClientRect().top - vv.offsetTop);
+      residRef.current = resid;
+      if (Math.abs(resid) < CORRECT_MIN_STEP) return;
+      correctLeft.current -= 1;
+      writeShift(vvTopRef.current - resid);
+      scheduleCorrect();
+    };
+    correctRef.current = correct;
+
+    /** 動きが落ち着いてから測る(動いている最中の rect は途中の値)。 */
+    const scheduleCorrect = () => {
+      window.clearTimeout(correctTimer.current);
+      correctTimer.current = window.setTimeout(correct, CORRECT_WAIT_MS);
     };
 
     // ★★★**上がるのは即座に、下がるのは確かめてから**(2026-08-18・第15巡)。
@@ -422,6 +506,11 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       //   (`[data-fit]` に帯と同じ 280ms の間合い)。第19巡の跳ねは**間合いが
       //   無かったから**で、追うこと自体が悪かったのではない。
       commitShift();
+      // ★★ずれ残りの測り直しは**矩形が動いたら必ず**予約する(第22巡)。
+      //   `commitShift` が書いたときだけにしていると、**器の側が勝手に動いた
+      //   場合**(まさに今回の壊れ方)に一度も測りにいかない。予約は debounce
+      //   なので、残りが 0 なら何も起きない。
+      scheduleCorrect();
       // ★★★持ち上げ量(`--kb`)の方は**開いているあいだ凍らせたまま**。
       //   あれはキーボードの高さの話で、ポップオーバー中に動く理由が本当に無い
       //   (日程のシートは自分でキーボードを閉じているので、追うと帯が落ちて
@@ -508,8 +597,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     vv?.addEventListener("resize", onVV);
     vv?.addEventListener("scroll", onVV);
     window.addEventListener("resize", onVV);
-    // ★**文書のスクロールも聞く**(2026-08-19・第21巡)。ここを聞いていなかった
-    //   ので、iOS が文書ごと動かしたぶんは気づけないままだった。
+    // ★文書が動いたら**測り直す合図**として聞く(値として足すのはやめた・第22巡)。
     window.addEventListener("scroll", onVV, { passive: true });
     const shell = shellRef.current;
     return () => {
@@ -520,6 +608,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       window.removeEventListener("resize", onVV);
       window.removeEventListener("scroll", onVV);
       window.clearTimeout(settleRef.current);
+      window.clearTimeout(correctTimer.current);
     };
   }, []);
 
@@ -689,6 +778,15 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   }, [tool, toolOut]);
   const closeTool = () => { backToRow(); if (tool) setToolOut(tool); setTool(null); };
 
+  // ★出入りの動きが終わったら、そこで初めてずれ残りを測る(動いている最中の
+  //   rect には器の animation の transform が混ざる)。
+  useEffect(() => {
+    if (!settled) return;
+    correctLeft.current = CORRECT_MAX;
+    const t = window.setTimeout(() => correctRef.current(), 60);
+    return () => window.clearTimeout(t);
+  }, [settled]);
+
   // ★★**閉じたら測り直す**(2026-08-18・第19巡)。開いているあいだは `--kb` も
   //   ずれも凍らせているので、閉じた時点で本当の値へ合わせ直す必要がある。
   //   凍らせている間の揺れは全部その場かぎりのものなので、ここで一度だけ
@@ -792,7 +890,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         //   キーボードと一緒に動くものなので、瞬間移動させると跳ねて見える。
         transition: KB_EASE,
       }}>
-      {probe && <ViewportProbe />}
+      {/* ★★中身の上端の印(0 高)。ここの rect が「いま実際どこに描かれて
+          いるか」で、`vv.offsetTop` との差がずれ残り(第22巡)。 */}
+      <span ref={fitTopRef} aria-hidden data-fit-top style={{ display: "block", height: 0 }} />
+      {probe && <ViewportProbe resid={residRef} />}
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}

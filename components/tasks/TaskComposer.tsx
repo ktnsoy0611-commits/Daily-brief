@@ -9,8 +9,7 @@ import { CAP, keepKeyboard, Popover, Press, pressedRecently } from "@/components
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
-import { attachLegacyShift } from "@/components/tasks/legacyShift";
-import { isLegacyShift, isViewportDebug } from "@/lib/debugViewport";
+import { isViewportDebug } from "@/lib/debugViewport";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
 import { resolveTag, tagAccent, tagColor, tagInk } from "@/lib/taskTags";
@@ -77,9 +76,6 @@ export interface ComposerData {
   suggestions?: TaskSuggestion[];
 }
 
-// ★キーボードのぶんを持ち上げる共通の style。`--kb` は器が書く。
-// **transform だけ**で動かす(レイアウトを起こさない)。イージングはシェルの
-// 横スライドと同じもの。**新しいイージングを増やさないこと。**
 /** 閉じる動きの長さ(ms)。 */
 // ★閉じるのは**下へスライド**(2026-08-18・第16巡にユーザー指定)。
 // `.tc-shell-out`(280ms)と合わせる。
@@ -95,12 +91,8 @@ const SOLID_SWAP_MS = 280;
  *  実機で「閉じる時にワンテンポ遅れる」と言われた。一瞬の谷を弾くのに
  *  400ms は要らない(iOS がキーボードを畳むのに 250ms かかる)。 */
 const KB_SETTLE_MS = 90;
-/** これより小さい変化は動かさない(予測変換の帯の出し入れ ≒ 40px)。 */
-const KB_MIN_STEP = 60;
 /** 開いた直後、閉じる合図を一切働かせない時間。 */
 const OPEN_GUARD_MS = 600;
-/** キーボードに追いつくときの動き。**transform だけ**に掛ける。 */
-const KB_EASE = "transform 280ms cubic-bezier(0.32,0.72,0,1)";
 /** 図形を最初に焼くまでの待ちの上限(ふつうは `animationend` が先に来る)。 */
 const STAGE_DELAY_MS = 460;
 /** ポップオーバーが下へ抜ける時間(ms)。globals.css の `tc-pop-out` と合わせる。 */
@@ -131,7 +123,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const set = (p: Partial<ComposerData>) => setDraft((d) => ({ ...d, ...p }));
 
   const [tool, setTool] = useState<ToolKey | null>(null);
-  /** ポップオーバーが出ているあいだ。`--kb` を凍らせるのに使う。 */
+  /** ポップオーバーが出ているあいだ。閉じる判断を止めるのに使う。 */
   const toolRef = useRef<ToolKey | null>(null);
   toolRef.current = tool;
   // 日程のシート。"" = 出ていない / "open" = 出ている / "closing" = 下へ抜けている最中。
@@ -157,9 +149,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const backRef = useRef<HTMLDivElement | null>(null);
   /** ★開発用。実機の数値を隅に出す(直ったら撤去する)。 */
   const [probe, setProbe] = useState(false);
-  /** ★開発用。旧方式の「ずれの補正」を試す(設定のスイッチ・次巡で撤去)。 */
-  const [legacy, setLegacy] = useState(false);
-  useEffect(() => { setProbe(isViewportDebug()); setLegacy(isLegacyShift()); }, []);
+  useEffect(() => setProbe(isViewportDebug()), []);
 
   const subs = useMemo(() => draft.subtasks ?? [], [draft.subtasks]);
   const weight = draft.weight ?? 2;
@@ -294,8 +284,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     ? null : { transform: "translate3d(0, 100%, 0)" };
   /** 一度でもキーボードが出たか。出ていないうちは「閉じた」と見なさない。 */
   const kbSeen = useRef(false);
-  /** いま出している持ち上げ量(px)。 */
-  const kbRef = useRef(0);
   /** キーボードとずれを測り直す。ポップオーバーを閉じた直後に呼ぶ。 */
   const applyRef = useRef<() => void>(() => {});
   /** いま文字を打っている行。effect の中から ref 越しに読む。 */
@@ -318,131 +306,122 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const justOpened = () => Date.now() - openedAt.current < OPEN_GUARD_MS;
   const justOpenRef = useRef(justOpened);
   justOpenRef.current = justOpened;
+  // ★★★★**器を「見えている矩形」そのものに合わせる**(2026-08-19・第24巡)。
+  //
+  // ここは第13巡から11巡ぶん壊れ続けた場所。原因は**類推の誤り**だった —
+  // 正典に「器は一度置いたら二度と動かさない。録音のオーバーレイ
+  // (`VoiceOverlay`)と同じ書き方にする。あれが実機で滑らかなのは寸法を
+  // JS が書き換えないからだ」と書いてあったが、**`VoiceOverlay` には入力欄が
+  // 1つも無い**(`components/VoiceStudio.tsx`)。キーボードが出ない画面である。
+  // 滑らかなのは「書き換えないから」ではなく**追う相手が居ないから**。
+  // それをキーボードが主役の画面へ持ち込み、以後
+  // 「器を動かさずに、動いたことにする」代用品(`--kb` / `--vvtop` /
+  // ずれ残りの閉ループ / 上限 / 確かめの二段)を積み上げてきた。
+  //
+  // 代用品は**入力そのもの**が信用できなかった。`--kb` は
+  // 「器の offsetHeight − vv.height」だが、実機では器の高さが思っている値では
+  // なく、帯が画面の最上部まで持ち上がった(実機の写真・第24巡)。
+  //
+  // ★**器の top と height を visualViewport の値そのものにする。** そうすると
+  //   代用品でやっていたことが**全部ただのレイアウト**になる:
+  //     帯   … 縦並びの最後の子 ＝ 自然に見えている下端
+  //     図形 … `flex: 1` の余りぜんぶ ＝ 自然に中央
+  //     ポップオーバー・日程シート … その中の `absolute` ＝ 自然に収まる
+  //
+  // ★**書くのは `resize` のときだけ**(`scroll` では書かない)。iOS は
+  //   キーボードの 250ms の間に数回しか飛ばさないので、レイアウトのやり直しも
+  //   その回数で済む。`height` に transition は掛けない(毎フレーム
+  //   レイアウトをやり直すことになる)。
+  // ★第8〜12巡が同じことをして「重い」と言われた原因は**別で解決済み** —
+  //   図形は「それまでに見た一番大きい箱」を持ち続けて焼き直さず(第13巡)、
+  //   `SolidCanvas` も `paintKey` で焼き上がりを使い回す。`width` も触らない。
+  const placeRef = useRef<() => void>(() => {});
   useLayoutEffect(() => {
-    /** キーボードのぶん(px)。**「ずれ」に一切影響されない式**。 */
-    const measure = () => {
+    /** 見えている高さ。キーボードが無いときの高さは `innerHeight` を上限に見る。 */
+    const seen = () => {
+      const vv = window.visualViewport;
+      return vv ? vv.height : window.innerHeight;
+    };
+    const full = () => Math.max(window.innerHeight, seen());
+
+    const place = () => {
       const el = shellRef.current;
       const vv = window.visualViewport;
-      if (!el || !vv) return kbRef.current;
-      // ★★★**器の高さから、見えている高さを引くだけ**(2026-08-18・第18巡)。
-      //
-      //  これまで「器の下端 −(vv.offsetTop + vv.height)」で測っていた。
-      //  この式には**見えている矩形のずれ(`vv.offsetTop`)が混ざる**:
-      //   ・ずれが大きいほど `--kb` が小さく出る(156 のずれで 401→245)。
-      //     ずれが更に大きい場面では 60 を割り、**キーボードが出ているのに
-      //     「閉じた」と誤判定して**入力画面を畳んでいた。
-      //   ・帯だけは正しい位置になる(引き算にずれが織り込まれているから)。
-      //     だから「帯は合っているのに上のバーが画面の外」という崩れ方をした。
-      //
-      //  高さの差だけで出せば、ずれは一切関わらない。端末の流儀も問わない:
-      //   ・レイアウトごと縮む(iOS のスタンドアロン) … 器も縮むので差は 0。
-      //   ・visualViewport だけ縮む(通常の Safari) … 差がそのまま高さ。
-      //
-      //  ★`offsetHeight` は**組版上の高さ**。器はスライドするので
-      //   `getBoundingClientRect` は使えないが(第16巡)、**高さには曖昧さが無い**
-      //   (`offsetTop` と違って `offsetParent` の解釈が関わらない)。
-      return Math.max(0, Math.round(el.offsetHeight - vv.height));
+      if (!el || !vv || leftRef.current) return;
+      const top = `${Math.round(vv.offsetTop)}px`;
+      const h = `${Math.round(vv.height)}px`;
+      el.style.top = top;
+      el.style.height = h;
+      // ★★下敷きも**同じ箱**にする(2026-08-19・第24巡)。出入りのスライドは
+      //   `translate3d(0, 100%, 0)` ＝ **自分の高さの 100%** なので、下敷きだけ
+      //   画面いっぱいのままだと**滑る距離が器と違って**しまい、2枚が
+      //   ずれて見える。器の外側(キーボードの裏)は `pushGround(LIFT)` で
+      //   html の地色が同じ色になっているので、覆わなくても継ぎ目は出ない。
+      const back = backRef.current;
+      if (back) { back.style.top = top; back.style.height = h; }
     };
+    placeRef.current = place;
 
-    /** 実際に書き込む。ここだけが `--kb` を動かす。 */
-    const commit = (kb: number, guarded = justOpened()) => {
-      const el = shellRef.current;
-      if (!el || leftRef.current) return;
-      // ★★**キーボードを閉じたら入力画面も閉じる**(2026-08-18にユーザー指定
-      // 「キーボード上のバーのチェックマークで閉じたら、タスク入力画面も
-      // 閉じるようにしてください」)。iOS の「完了」ボタンには専用のイベントが
-      // 無いので、**キーボードが引っ込んだこと**そのものを合図にする。
-      // ★一度も出ていないうちは何もしない(開いた直後の kb=0 で閉じないため)。
-      if (kb > KB_UP) kbSeen.current = true;
-      else if (kbSeen.current && kb < KB_DOWN && !guarded) {
+    // ★★**キーボードを閉じたら入力画面も閉じる**(2026-08-18にユーザー指定)。
+    //   `--kb` が無くなったので、合図は見えている高さそのもので持つ。
+    //   ★一度も縮んでいないうちは何もしない(開いた直後に閉じないため)。
+    const judge = (guarded: boolean) => {
+      if (leftRef.current) return;
+      const h = seen();
+      if (h <= full() - KB_UP) { kbSeen.current = true; return; }
+      if (kbSeen.current && h >= full() - KB_DOWN && !guarded) {
         kbSeen.current = false;
-        // ★★★**去ると決めたら `--kb` は書かない**(2026-08-19・第21巡)。
-        //
-        // 書くと、帯(374px)と図形(187px)が 280ms かけて**下へ動き出す**。
-        // その同じ瞬間に板ぜんぶが下へ滑り出すので、**板の中で中身が動きながら
-        // 板が滑る** — 実機で「ガクッと不安定な挙動をしながら下にスライド」と
-        // 報告された正体はこれ。閉じると決めた瞬間の姿で固めて、**1枚の板**
-        // として滑らせる。帯の下は LIFT の板が 100lvh 敷いてあるので、
-        // 帯が浮いたままでも地色は途切れない(見た目は変わらない)。
         leaveRef.current();
         return;
       }
-      kbRef.current = kb;
-      el.style.setProperty("--kb", `${kb}px`);
+      // ★閉じないと決まったので、伸ばすのを我慢していたぶんをここで追いつかせる。
+      place();
     };
 
-    // ★★★**上がるのは即座に、下がるのは確かめてから**(2026-08-18・第15巡)。
-    //
-    // iOS は**欄から欄へフォーカスが移る一瞬**にもキーボードを畳みかける。
-    // 素直に書き替えていたので、メモ・持ち物のアイコンを押すたびに帯が
-    // 374px・図形が 187px 滑って「ガクッと動く」と報告された。
-    // 下がったように見えたら 200ms 待って測り直し、**まだ下がっていたときだけ**
-    // 書く。本当に閉じたときは 200ms 後も 0 なので、閉じる合図は今までどおり出る。
-    //
-    // ★日程のシートが開いているあいだは**一切書かない(凍らせる)**。
-    // あそこは**こちらから**キーボードを閉じているので、追いかける必要が無い。
-    // 追いかけていたので、開いた瞬間に帯が落ち、閉じると上がり直していた。
     const apply = () => {
-      if (!shellRef.current || leftRef.current) return;
-      if (whenRef.current !== "" || toolRef.current) return;
-      // ★★★**何かが開いているあいだは一切動かさない**(2026-08-18・第16巡)。
-      //   日程のシートは**こちらから**キーボードを閉じている。メモ・持ち物・
-      //   重要度・タグのポップオーバーは**キーボードを出したまま**にする約束
-      //   なので、そのあいだ持ち上げ量が変わる理由も無い。
-      //   実機で「メモや持ち物のアイコンをタップすると画面が動く」と2度
-      //   報告された。欄から欄へフォーカスが移ると、iOS は予測変換の帯を
-      //   出し入れしたり、見えている矩形をずらしたりする。**開いている間は
-      //   そもそも聞かない**のがいちばん確実(上の `return` が兼ねている)。
-      const kb = measure();
+      if (leftRef.current) return;
+      // ★★日程のシートが開いているあいだは閉じる判断をしない。
+      //   あそこは**こちらから**キーボードを閉じている(＝器は画面いっぱいに戻る)。
+      const busy = whenRef.current !== "" || toolRef.current;
+      const h = seen();
+      // ★★★**閉じにいく気配のときは器を広げない**(2026-08-19・第24巡)。
+      //   キーボードが引っ込むと器は画面いっぱいへ伸びるが、その直後に
+      //   入力画面ごと滑り降りるので、**伸びてから滑る**＝一度跳ねて見える。
+      //   実機で「キーボードが閉じ切った時にガクッと不安定な挙動をしながら
+      //   下にスライドする」と言われたのがこれ。伸ばさずにそのまま滑らせる。
+      //   閉じないと決まったときは `judge` が追いつかせる。
+      const closing = !busy && kbSeen.current && h >= full() - KB_DOWN;
+      if (!closing) place();
+      if (busy) return;
       window.clearTimeout(settleRef.current);
-      // ★**小さな揺れは無視する**。予測変換の帯の出し入れ(40px 前後)まで
-      //   拾うと、打っている最中に帯が細かく上下する。
-      if (Math.abs(kb - kbRef.current) < KB_MIN_STEP) return;
-      if (kb >= kbRef.current) { commit(kb); return; }
-      // ★**2回続けて下がっていたときだけ**書く(2026-08-18・第18巡)。
-      //   1回の測り直しでは、キーボードが動いている途中の値を掴むことがある。
-      // ★守られているかは**観測した時点**で決める(`gone` と同じ理由)。
+      if (h <= full() - KB_UP) { kbSeen.current = true; return; }
+      if (!kbSeen.current) return;
+      // ★**戻ったように見えたら確かめてから**(第18巡)。一瞬の谷で閉じない。
+      // ★守られているかは**観測した時点**で決める(時計ではなく状態・第18巡)。
       const guarded = justOpened();
       settleRef.current = window.setTimeout(() => {
         if (leftRef.current || whenRef.current !== "" || toolRef.current) return;
-        if (measure() >= kbRef.current - KB_MIN_STEP) return;
+        if (seen() < full() - KB_DOWN) return;
         settleRef.current = window.setTimeout(() => {
           if (leftRef.current || whenRef.current !== "" || toolRef.current) return;
-          const now = measure();
-          if (now < kbRef.current - KB_MIN_STEP) commit(now, guarded);
+          judge(guarded);
         }, KB_SETTLE_MS);
       }, KB_SETTLE_MS);
     };
     applyRef.current = apply;
-    apply();
-    // ★`window.scrollTo(0,0)` で押し戻すのはやめた(2026-08-18・第17巡)。
-    //   html は `overflow: hidden` なので効かないうえ、動いている最中に
-    //   割り込むと**そこで一度つっかえる**。見えている矩形のずれは
-    //   `--kb` の式(`vv.offsetTop + vv.height`)がすでに織り込んでいる。
-    // ★★合図をもう1つ持つ(2026-08-18。`--kb` だけでは実機で閉じなかった)。
-    // iOS の「完了」は**フォーカスを外す**。受け皿(`pressedRecently`)が
-    // 戻さなかった＝画面の外で外れた、ということなので、少し待って
-    // 「まだどこにも focus が無い」なら閉じる。`--kb` が動かない端末でも効く。
+    place();
+
+    // ★★合図をもう1つ持つ。iOS の「完了」は**フォーカスを外す**。
     const gone = () => {
-      // ★★★**時計ではなく「キーボードがまだ出ているか」で決める**
-      //   (2026-08-18・第18巡)。
-      //
-      // 焦点が外れる理由は2つある:
-      //   ・取りこぼし（＋ボタンが取り返す・主スレッドが詰まって `focus()` が
-      //     居着かない・要素が作り直された）… **キーボードは出たまま**。
-      //   ・ユーザーがキーボードを閉じた … **キーボードが引っ込む**。
-      // だから「少し待って、まだキーボードが出ているのに焦点が無い」なら
-      // それは取りこぼしで、**戻せばよい**。引っ込んでいるなら `--kb` の側の
-      // 合図が閉じる。ここでは閉じない。
-      //
-      // 以前は「開いてから 600ms」という時計で守っていたが、主スレッドが
-      // 詰まると `setTimeout` が何秒も遅れて走るので、外れたのは守られた時間の
-      // 中なのに発火時には過ぎていて閉じてしまった（実測 940ms / 3195ms）。
+      // ★★★**時計ではなく「キーボードがまだ出ているか」で決める**(第18巡)。
+      //   焦点が外れる理由は2つある — 取りこぼし(キーボードは出たまま)と、
+      //   ユーザーが閉じた(引っ込む)。前者なら戻せばよく、後者は上の合図が
+      //   閉じる。**ここでは決して閉じない**。
       window.setTimeout(() => {
         if (leftRef.current || whenRef.current !== "" || toolRef.current) return;
         const a = document.activeElement;
         if (a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT")) return;
-        if (measure() <= KB_UP) return;   // 引っ込んでいる ＝ 閉じたい意思
+        if (seen() >= full() - KB_UP) return;   // 引っ込んでいる ＝ 閉じたい意思
         const row = liveRowRef.current();
         if (!row) return;
         row.focus();
@@ -462,30 +441,23 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     };
     shellRef.current?.addEventListener("scroll", pin);
     const vv = window.visualViewport;
-    const onVV = () => apply();
-    vv?.addEventListener("resize", onVV);
-    vv?.addEventListener("scroll", onVV);
-    window.addEventListener("resize", onVV);
-    // ★文書が動いたら**測り直す合図**として聞く(値として足すのはやめた・第22巡)。
-    window.addEventListener("scroll", onVV, { passive: true });
+    const onResize = () => apply();
+    // ★位置だけは `scroll` でも追う(見えている矩形が上下に動くことがある)。
+    //   閉じる判断はしない — あれは高さの話で、`resize` でしか変わらない。
+    const onScroll = () => placeRef.current();
+    vv?.addEventListener("resize", onResize);
+    vv?.addEventListener("scroll", onScroll);
+    window.addEventListener("resize", onResize);
     const shell = shellRef.current;
     return () => {
       shell?.removeEventListener("focusout", gone);
       shell?.removeEventListener("scroll", pin);
-      vv?.removeEventListener("resize", onVV);
-      vv?.removeEventListener("scroll", onVV);
-      window.removeEventListener("resize", onVV);
-      window.removeEventListener("scroll", onVV);
+      vv?.removeEventListener("resize", onResize);
+      vv?.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
       window.clearTimeout(settleRef.current);
     };
   }, []);
-
-  // ★開発用。設定で ON のときだけ旧方式の「ずれの補正」を取り付ける
-  //   (2026-08-19・第24巡。**次巡でこの effect ごと撤去する**)。
-  useEffect(() => {
-    if (!legacy || !shellRef.current) return;
-    return attachLegacyShift(shellRef.current);
-  }, [legacy]);
 
   // ── 行(1行目=題 / 2行目以降=手順)────────────────────────────
   const rowsRef = useRef<(HTMLTextAreaElement | null)[]>([]);
@@ -654,7 +626,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const closeTool = () => { backToRow(); if (tool) setToolOut(tool); setTool(null); };
 
 
-  // ★★**閉じたら測り直す**(2026-08-18・第19巡)。開いているあいだは `--kb` も
+  // ★★**閉じたら測り直す**(2026-08-18・第19巡)。開いているあいだは
   //   ずれも凍らせているので、閉じた時点で本当の値へ合わせ直す必要がある。
   //   凍らせている間の揺れは全部その場かぎりのものなので、ここで一度だけ
   //   追いつけばよい(揺れのたびに追いかけるから跳ねていた)。
@@ -714,24 +686,25 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、その続きに
           なる色でないと「境目」として見えてしまう。 */}
       <div ref={backRef} aria-hidden className={bye ? "tc-shell-out" : entered && !settled ? "tc-shell-in" : undefined} style={{
-        position: "fixed", inset: 0, zIndex: 59, background: LIFT,
-        width: "100vw", height: "100lvh", minHeight: "100%",
+        // ★器と**同じ箱**にする(第24巡)。`top`/`height` は `place` が書く。
+        position: "fixed", left: 0, right: 0, top: 0, zIndex: 59, background: LIFT,
+        height: "100lvh",
         ...enterStyle,
       }} />
     {/* ★★★**器は一度置いたら二度と動かさない**(2026-08-18・第13巡)。
         寸法は録音のオーバーレイ(`VoiceOverlay`)と**同じ書き方**にしてある —
-        あれは実機でなめらかだとユーザーが認めた唯一の全画面で、器の寸法を
-        JS が一度も書き換えないことがその理由。
-
-        第8〜12巡はここで `top`/`height` を visualViewport に合わせて書き替えて
-        いた。キーボードが動くたびに**画面まるごとのレイアウトをやり直す**ので、
-        「ガクッとなる」「幅が変わる」「スクロールの判定が入る」が全部ここから
-        出ていた。いまはキーボードのぶんを `--kb` に入れるだけで、動くのは
-        **帯と図形の transform だけ**(＝合成のやり直しだけで済む)。 */}
+        ★★この類推は**間違いだった**(2026-08-19・第24巡で撤回)。`VoiceOverlay`
+        には入力欄が1つも無く、キーボードが出ない。滑らかなのは「寸法を書き
+        換えないから」ではなく**追う相手が居ないから**。器を動かさずに
+        動いたことにする代用品(`--kb`)を積み上げた結果、11巡ぶん崩れ続けた。
+        いまは `top`/`height` を `visualViewport` に合わせて書く。 */}
     <div ref={shellRef} data-composer-shell onMouseDown={keepKeyboard}
       className={bye ? "tc-shell-out" : entered && !settled ? "tc-shell-in" : undefined} style={{
-      position: "fixed", left: 0, top: 0, right: 0, bottom: 0, zIndex: 60, background: CHARCOAL,
-      width: "100vw", height: "100lvh", minHeight: "100%",
+      // ★★器は**見えている矩形そのもの**(2026-08-19・第24巡)。`top` と
+      //   `height` は JS が `visualViewport` から書く(上の `place`)。ここは
+      //   その初期値。`left`/`right` は固定で、**幅は一度も触らない**。
+      position: "fixed", left: 0, right: 0, top: 0, zIndex: 60, background: CHARCOAL,
+      height: "100lvh",
       display: "flex", flexDirection: "column",
       // ★★**`hidden` ではなく `clip`**(2026-08-18)。`hidden` の箱は**送れる箱**
       //   なので、iOS はキャレットを見せるためにそこを送ってくるし、
@@ -743,28 +716,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       {/* ★開発用の数値表示。**中身を包む面の外**に置く — 中に置くと崩れたとき
           数値まで一緒に流れて、いちばん知りたいときに読めない(第23巡)。 */}
       {probe && <ViewportProbe />}
-      {/* ★★★**中身を包む1枚。ここは動かさない**(2026-08-19・第24巡)。
-
-          第18〜23巡はここへ `translateY(var(--vvtop))` を掛け、
-          `visualViewport.offsetTop` のぶんだけ中身を下げていた。「iOS は
-          見えている矩形を下へずらすのに `position: fixed` の器は追わない」
-          という読みだったが、**実機でその読みが成り立っていなかった** —
-          iPhone は `offsetTop` にキーボードの高さ K を返すのに、器は
-          ずれていない。補正がまるごと余分になり、中身が K だけ下へ落ちる:
-
-            上のバー  y = K       (画面の真ん中)
-            帯の下端  y = 100lvh  (＝キーボードの裏)
-            図形の中心 y = K + (100lvh − K)/2
-
-          報告された崩れ方と3か所とも一致する。Chromium でも `offsetTop`
-          だけを偽装すれば同じ崩れが出る(`scratchpad/vvtop24.mjs`)。
-
-          ★キーボードは `--kb`(＝ `器の offsetHeight − vv.height`)**だけ**が
-          運ぶ。この式には `offsetTop` が一切混ざらない。 */}
-      <div data-fit style={{
-        flex: 1, minHeight: 0, position: "relative",
-        display: "flex", flexDirection: "column",
-      }}>
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}
@@ -850,8 +801,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           //   (レイアウトも塗り直しも起きない)。帯そのものは登場の動き
           //   (`.tc-sheet` = transform を animate)を持っているので、
           //   同じ要素に追従の transform は書けない。だから外側で持つ。
-          transform: "translateY(calc(-1 * var(--kb, 0px)))",
-          transition: KB_EASE,
         }}>
         {/* ★持ち上がったぶんの下を同じ色で埋める。器は `overflow: clip` なので
             はみ出しても**送れる箱にはならない**(第12巡でここを撤去したが、
@@ -864,12 +813,11 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         borderRadius: "26px 26px 0 0",
         // 角丸が読めるように、地との境目へ影を落とす。
         boxShadow: "0 -16px 34px rgba(0,0,0,0.34)",
-        // ★★キーボードが出ているあいだは**セーフエリアぶんの余白を取らない**
-        // (2026-08-17・18にユーザー指摘「キーボードとアイコンの隙間が変」)。
-        // iOS は**キーボードが出ていても `env(safe-area-inset-bottom)` を
-        // 34px のまま報告する**ので、そのぶんの死んだ帯が真上に残っていた。
-        // `--kb` を引けば JS の分岐なしで切り替わる。
-        padding: "10px 16px max(6px, calc(env(safe-area-inset-bottom) - var(--kb, 0px)))",
+        // ★器が見えている矩形そのものになったので(第24巡)、キーボードが
+        // 出ているあいだ器の下端は**キーボードの上端**。そこにセーフエリアは
+        // 無いので、引き算の小細工は要らない。iOS が `env(...)` を 34px のまま
+        // 報告しても、`min` を取れば死んだ帯は残らない。
+        padding: "10px 16px max(6px, env(safe-area-inset-bottom))",
       }}>
         {/* Cowork の提案。タップで手順になる。 */}
         {(draft.suggestions?.length ?? 0) > 0 && (
@@ -946,9 +894,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
              確定し、どちらも押した瞬間にキーボードが戻る。 ── */}
       {when !== "" && (
         <div className={when === "open" ? "tc-sheet" : "tc-sheet-out"} data-when style={{
-          // ★`--kb` は見ない。日程のシートが開いているあいだ `--kb` は
-          //   **凍らせてある**(帯と図形をその場に留めるため)ので、ここが
-          //   参照すると 374px 浮いてしまう。ここはいつも画面の下端。
+          // ★器が見えている矩形そのものなので、ここは**ただの下端**でよい
+          //   (第24巡。`--kb` を見るなという注意書きごと不要になった)。
           position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 4,
           background: LIFT, borderRadius: "28px 28px 0 0",
           boxShadow: "0 -18px 40px rgba(0,0,0,0.40)",
@@ -969,7 +916,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           />
         </div>
       )}
-      </div>
     </div>
     </>
   );
@@ -1041,13 +987,8 @@ function ShapeStage({ spec, title, tag, ready }: {
   return (
     <div ref={ref} data-stage style={{
       position: "absolute", inset: "6px 22px 8px",
-      // ★★キーボードのぶんの**半分**だけ上げる(2026-08-18・第13巡)。
-      //   舞台は「上のバーの下 〜 帯の上」。帯が kb ぶん上がると、見えている
-      //   領域の真ん中は kb/2 だけ上がる。だから絵も kb/2 上げれば
-      //   ちょうど真ん中に居続ける。**寸法は 1px も変わらない**ので、
-      //   図形の焼き直しもレイアウトも起きない(合成のやり直しだけ)。
-      transform: "translateY(calc(var(--kb, 0px) / -2))",
-      transition: KB_EASE,
+      // ★持ち上げは要らない(第24巡)。舞台は器の中の `flex: 1` で、器が
+      //   見えている矩形そのものなので、**余りの真ん中にいるのが自動**。
       // ★★**ここで切る**(2026-08-18)。上の「一番大きい箱を持ち続ける」に
       // したことで、キーボードが出ているあいだ canvas は舞台より背が高くなる。
       // 切らずに置くと**器(overflow:hidden)に本物のはみ出しが生まれ**、iOS が

@@ -166,13 +166,9 @@ export function Popover({ label, closing, onClose, children }: {
           // **絶対に超えない**。以前は帯の上へ伸ばしていたので、中身が高いと
           // 画面の上へはみ出し、タブの下に潜って触れなくなっていた。
           position: "absolute", left: 10, right: 10, bottom: 8, zIndex: 2,
-          // ★★キーボードのぶんだけ持ち上げる(2026-08-18・第13巡)。器は
-          //   動かさなくなったので、舞台の下端はキーボードの裏にある。
-          //   ここは animation を持たない外側なので transform を書ける
-          //   (見える面は内側が `.tc-pop-in` で動かす)。
-          transform: "translateY(calc(-1 * var(--kb, 0px)))",
-          // 持ち上がったぶん、収まる高さも減る。
-          maxHeight: "calc(100% - var(--kb, 0px) - 8px)",
+          // ★持ち上げは要らない(2026-08-19・第24巡)。器が**見えている矩形
+          //   そのもの**になったので、舞台の下端はもうキーボードの裏ではない。
+          maxHeight: "calc(100% - 8px)",
           display: "flex", flexDirection: "column",
         }}
       >

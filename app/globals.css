@@ -498,20 +498,9 @@ button:active {
    と言われていた正体。触れた瞬間から動き出して奥へ抜ける曲線にする
    (同じ 60ms で 16%)。 */
 .tc-shell-out { animation: tc-slide-out 280ms cubic-bezier(0.4, 0, 0.2, 1) both; pointer-events: none; will-change: transform; }
-/* ★★★**閉じているあいだは「1枚の板」にする**(2026-08-19・第21巡)。
-   キーボードの追従(帯 -kb / 図形 -kb/2)は 280ms の transition を持って
-   いるので、閉じるのと同じ瞬間に値が変わると**板の中で中身が動きながら板が
-   滑る**。実機で「ガクッと不安定な挙動をしながら下にスライド」と言われた。
-   値の側は書かないようにしたが(`commit`)、念のため動き自体もここで止める。 */
-.tc-shell-out [data-dock],
-.tc-shell-out [data-stage] { transition: none !important; }
-/* ★★**出るときも同じ**(2026-08-19・第22巡)。板が下から滑ってくる最中に
-   キーボードが立ち上がると持ち上げ量(`--kb`)が変わり、**板の中で中身が
-   もう一度滑る** ＝ 二重の動き。滑っているあいだは止めて、落ち着いてから
-   所定の位置に居ればよい。
-   ★`[data-fit]` は外した(第24巡)。あの面はもう transition を持たない。 */
-.tc-shell-in [data-dock],
-.tc-shell-in [data-stage] { transition: none !important; }
+/* ★第21〜22巡の「出入りの最中は帯と図形の追従を止める」規則は撤去した
+   (第24巡)。器が見えている矩形そのものになり、帯も図形も**キーボード追従の
+   transform を持たなくなった**ので、止めるものがもう無い。 */
 /* 選んだ日のマスが1度だけ弾む。 */
 @keyframes tc-pick {
   0%   { transform: scale(0.7); }

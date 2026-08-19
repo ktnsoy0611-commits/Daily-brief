@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { rowBtn } from "@/components/common";
 import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SERIF } from "@/lib/constants";
-import { isLegacyShift, isViewportDebug, setLegacyShift, setViewportDebug } from "@/lib/debugViewport";
+import { isViewportDebug, setViewportDebug } from "@/lib/debugViewport";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -197,8 +197,7 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [armedKey, setArmedKey] = useState<string | null>(null);
   // ★開発用。入力画面に実測値を出すか(直ったら撤去する)。
   const [probeOn, setProbeOn] = useState(false);
-  const [legacyShift, setLegacyShift2] = useState(false);
-  useEffect(() => { setProbeOn(isViewportDebug()); setLegacyShift2(isLegacyShift()); }, []);
+  useEffect(() => setProbeOn(isViewportDebug()), []);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const arm = (key: string) => {
     haptic();
@@ -722,19 +721,7 @@ export function ProfileTab({ appState, persist, onClose }: {
             fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
           }}>{probeOn ? "数値を出している（切る）" : "数値を出す"}</button>
 
-          {/* ★★旧方式(第18〜23巡)の「ずれの補正」を呼び戻すスイッチ。
-              既定は切ってある。**次巡でこの行ごと撤去する。** */}
-          <div style={{ height: 1, background: HAIRLINE, margin: "14px 0" }} />
-          <p style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.7, margin: "0 0 10px" }}>
-            タスク入力画面の「ずれの補正」を、旧方式（第18〜23巡）に戻します。ふだんは切ったままで構いません。まだ崩れていたときだけ ON にして、どちらがましか見比べてください。
-          </p>
-          <button onClick={() => { const n = !legacyShift; setLegacyShift2(n); setLegacyShift(n); }} style={{
-            width: "100%", padding: "11px 0", background: legacyShift ? INK : "transparent",
-            color: legacyShift ? PAPER : INK,
-            border: `1.5px solid ${legacyShift ? INK : "rgba(26,26,24,0.28)"}`,
-            borderRadius: 999, cursor: "pointer",
-            fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.06em",
-          }}>{legacyShift ? "旧方式で動かしている（戻す）" : "ずれの補正を試す（旧方式）"}</button>
+
         </SettingsCard>
 
         {/* デモ・テストデータの削除。injectDemoで入れたダミーや試行中の記録を

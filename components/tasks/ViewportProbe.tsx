@@ -6,43 +6,32 @@ import { SANS } from "@/lib/constants";
 // ★★入力画面の隅に、実機の数値を出すだけの部品(2026-08-19・第21巡)。
 // **直ったら撤去する**(`lib/debugViewport.ts` と設定のスイッチも一緒に)。
 //
-// 読み方:
-//   kb   … いま持ち上げている量(`--kb`)。キーボード＋その上の帯の高さ。
-//   vv   … 見えている高さ @ 見えている矩形のずれ(`visualViewport`)。
-//   scr  … 文書のスクロール量。0 でなければ器が引きずられている。
-//   bar  … ★上のバーの上端(そのままの rect.top)。**セーフエリア上(safe の左)と
-//        一致していれば正しい。**大きい値なら中身が下へ落ちている。
-//        第23巡までは `vv.offsetTop` を引いていたので、崩れている写真でも 0 と
-//        表示され、いちばん知りたいことが読めなかった。
-//   ★shl … **器の rect.top**。★★doc … html の rect.top。
-//        この2つだけが `vv.offsetTop` を物差しに使っていない。読み方:
-//          shl ≒ 0    … 器は見えている領域に貼り付いている ＝ ずれの補正は不要。
-//          shl ≒ −top … 器が本当に押し上げられている ＝ 補正が要る。
-//        第22巡の「ずれ残り」を消したのは、あれが `印の rect.top − vv.offsetTop`
-//        で、**疑っている値そのものを物差しにしていた**から(必ず 0 になる)。
-//   safe … セーフエリアの上/下(`env(safe-area-inset-*)`)。
-//   sheet… 日程シートの下端が、見えている下端から何px上か。0 が正しい。
+// 読み方（★「器 上/下」が 0 なら、器は見えている矩形とぴったり重なっている）:
+//   vv    … 見えている高さ @ 上へのずれ / inner … window.innerHeight
+//   器上/下 … 器の上端・下端が見えている矩形から何pxずれているか。**両方 0 が正しい。**
+//   bar   … 上のバーの上端が器の上端から何px下か（＝セーフエリア上と一致）
+//   帯    … 帯の下端が見えている下端から何px上か。**0 が正しい。**
+//   sheet … 日程シートの下端が見えている下端から何px上か。**0 が正しい。**
+//   safe  … セーフエリアの上/下
 
 const read = () => {
   const vv = window.visualViewport;
   const shell = document.querySelector<HTMLElement>("[data-composer-shell]");
   const bar = document.querySelector<HTMLElement>("[data-topbar]");
+  const dock = document.querySelector<HTMLElement>("[data-dock]");
   const sheet = document.querySelector<HTMLElement>("[data-when]");
-  const cs = shell ? getComputedStyle(shell) : null;
   const top = vv ? vv.offsetTop : 0;
   const vh = vv ? vv.height : window.innerHeight;
+  const r = shell?.getBoundingClientRect();
   return {
-    kb: cs ? cs.getPropertyValue("--kb").trim() || "0px" : "-",
-    vh: Math.round(vh),
-    top: Math.round(top),
-    scr: Math.round(window.scrollY || 0),
-    lvh: shell ? shell.offsetHeight : 0,
-    // ★引き算をしない。器がずれていなければ、上のバーの上端は
-    //   セーフエリアぶんだけ下 ＝ safe.t と一致する。
-    bar: bar ? Math.round(bar.getBoundingClientRect().top) : null,
-    // ★物差しが循環していない2つ。
-    shl: shell ? Math.round(shell.getBoundingClientRect().top) : null,
-    doc: Math.round(document.documentElement.getBoundingClientRect().top),
+    vh: Math.round(vh), top: Math.round(top), inner: window.innerHeight,
+    // 器の上端/下端が、見えている矩形とどれだけずれているか。**両方 0 が正しい。**
+    st: r ? Math.round(r.top - top) : null,
+    sb: r ? Math.round(r.bottom - (top + vh)) : null,
+    // 上のバーの上端(器の上端から何px下か。＝セーフエリア上と一致するのが正しい)
+    bar: bar && r ? Math.round(bar.getBoundingClientRect().top - r.top) : null,
+    // 帯の下端と、日程シートの下端が見えている下端から何px上か。**0 が正しい。**
+    dock: dock ? Math.round(top + vh - dock.getBoundingClientRect().bottom) : null,
     sheet: sheet ? Math.round(top + vh - sheet.getBoundingClientRect().bottom) : null,
   };
 };
@@ -83,7 +72,7 @@ export function ViewportProbe() {
     }}>
       <span ref={satRef} style={{ display: "block", height: "env(safe-area-inset-top)", width: 0 }} />
       <span ref={sabRef} style={{ display: "block", height: "env(safe-area-inset-bottom)", width: 0 }} />
-      {`kb ${v.kb}  lvh ${v.lvh}\nvv ${v.vh} @ ${v.top}  scr ${v.scr}\nshl ${v.shl ?? "-"}  doc ${v.doc}\nbar ${v.bar ?? "-"}  sheet ${v.sheet ?? "-"}\nsafe ${safe.t}/${safe.b}`}
+      {`vv ${v.vh} @ ${v.top}  inner ${v.inner}\n器 上${v.st ?? "-"} 下${v.sb ?? "-"}\nbar ${v.bar ?? "-"}  帯 ${v.dock ?? "-"}\nsheet ${v.sheet ?? "-"}  safe ${safe.t}/${safe.b}`}
     </div>
   );
 }

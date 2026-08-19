@@ -54,8 +54,7 @@
   `ComposerFields`（重要度・タグ・テキスト）/ `Popover`（器と `Press`＝押せる面）/
   `TimeRange`（時刻。タイムラインで範囲を選ぶ）/
   `SolidCanvas` / `ViewToggle` / `TaskAddButton` /
-  `ViewportProbe`（★開発用の数値表示。`lib/debugViewport.ts` と対。直ったら撤去）/
-  `legacyShift.ts`（★第18〜23巡の「ずれの補正」。既定は切ってある。**次巡で撤去**）。
+  `ViewportProbe`（★開発用の数値表示。`lib/debugViewport.ts` と対。直ったら撤去）。
 - `lib/solid.ts` `lib/solidPaint.ts` `lib/textFit.ts` `lib/taskSize.ts` `lib/taskTags.ts` — 図形・描画・寸法・タグ。
 
 ## ジャーナル（JOURNAL）

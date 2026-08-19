@@ -41,3 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 検証スクリプト(使い捨て・コンテナごとに作り直す)
+/scratchpad

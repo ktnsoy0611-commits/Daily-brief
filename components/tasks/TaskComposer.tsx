@@ -9,7 +9,8 @@ import { CAP, keepKeyboard, Popover, Press, pressedRecently } from "@/components
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
-import { isShiftOff, isViewportDebug } from "@/lib/debugViewport";
+import { attachLegacyShift } from "@/components/tasks/legacyShift";
+import { isLegacyShift, isViewportDebug } from "@/lib/debugViewport";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
 import { resolveTag, tagAccent, tagColor, tagInk } from "@/lib/taskTags";
@@ -89,19 +90,6 @@ const KB_UP = 120;
 const KB_DOWN = 60;
 /** 図形が入れ替わる動きの長さ(ms)。globals.css の `tc-solid-swap-*` と合わせる。 */
 const SOLID_SWAP_MS = 280;
-/** ずれ(`--vvtop`)を書き換える最小の段。1〜2px の往復で動きが走らないように。 */
-const SHIFT_MIN_STEP = 8;
-/** ★ずれの上限(見えている上端からの余分)。これ以上は何があっても下げない。 */
-const SHIFT_CAP = 160;
-/** ずれ残りを直す最小の段(px)。★`SHIFT_MIN_STEP` と同じ値にすること —
- *  小さいと、追従の側が「小さすぎる揺れ」として見送ったぶんを、こちらが
- *  拾い直してしまい、段を置いた意味が無くなる(第22巡で実際にそうなった)。
- *  この段は「直すかどうか」を決めるだけで、直すときは残り全部を寄せる。 */
-const CORRECT_MIN_STEP = SHIFT_MIN_STEP;
-/** 1回の落ち着きにつき、直しにいく回数の上限(暴走しない備え)。 */
-const CORRECT_MAX = 2;
-/** 動きが落ち着くまでの待ち(ms)。`KB_EASE` の 280ms より少し長く。 */
-const CORRECT_WAIT_MS = 320;
 /** 下がったように見えてから、確かめるまでの待ち。★2回続けて確かめるので
  *  閉じ始めるまでの「間」はこの2倍。第18巡は 200(＝400ms)にしていたが、
  *  実機で「閉じる時にワンテンポ遅れる」と言われた。一瞬の谷を弾くのに
@@ -169,9 +157,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const backRef = useRef<HTMLDivElement | null>(null);
   /** ★開発用。実機の数値を隅に出す(直ったら撤去する)。 */
   const [probe, setProbe] = useState(false);
-  /** ★開発用。ずれの補正を切る(設定のスイッチ)。 */
-  const shiftOffRef = useRef(false);
-  useEffect(() => { setProbe(isViewportDebug()); shiftOffRef.current = isShiftOff(); }, []);
+  /** ★開発用。旧方式の「ずれの補正」を試す(設定のスイッチ・次巡で撤去)。 */
+  const [legacy, setLegacy] = useState(false);
+  useEffect(() => { setProbe(isViewportDebug()); setLegacy(isLegacyShift()); }, []);
 
   const subs = useMemo(() => draft.subtasks ?? [], [draft.subtasks]);
   const weight = draft.weight ?? 2;
@@ -308,21 +296,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const kbSeen = useRef(false);
   /** いま出している持ち上げ量(px)。 */
   const kbRef = useRef(0);
-  /** いま出しているずれ(px)。 */
-  const vvTopRef = useRef(0);
   /** キーボードとずれを測り直す。ポップオーバーを閉じた直後に呼ぶ。 */
   const applyRef = useRef<() => void>(() => {});
-  /** ★`[data-fit]` の先頭に置く 0 高の印。ここが「いま中身の上端がどこか」。 */
-  const fitTopRef = useRef<HTMLSpanElement | null>(null);
-  /** ずれ残りを直す係。落ち着いたら呼ばれる。 */
-  const correctRef = useRef<() => void>(() => {});
-  const correctTimer = useRef(0);
-  const correctLeft = useRef(CORRECT_MAX);
-  /** 最後に測ったずれ残り(開発用の表示が読む)。 */
-  const residRef = useRef(0);
-  /** 出入りの動きが終わったか。effect の中から ref 越しに見る。 */
-  const settledRef = useRef(false);
-  settledRef.current = settled;
   /** いま文字を打っている行。effect の中から ref 越しに読む。 */
   const liveRowRef = useRef<() => HTMLTextAreaElement | null>(() => null);
   const settleRef = useRef(0);
@@ -369,24 +344,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       return Math.max(0, Math.round(el.offsetHeight - vv.height));
     };
 
-    /** 見えている矩形が下へずれたぶん(px)。中身ごとこのぶん下げる。 */
-    // ★★★**`window.scrollY` を足してはいけない**(2026-08-19・第22巡)。
-    //
-    // 第21巡で「iOS は文書ごと動かすので器が引きずられる」という**確かめて
-    // いない読み**でこれを足し、「通常 0 なので効かない保険」と書いた。
-    // その前提が誤りだった — `overflow: hidden` は**指で送るのを止めるだけ**で、
-    // **ブラウザが自分で送るのは止められない**(`app/globals.css` に同じ記録が
-    // ある)。iOS はキーボードを出すときキャレットを見せようと文書を送るので
-    // `scrollY` はキーボードの高さに近い値になる。ところが器はそれに
-    // **引きずられていなかった**ので、補正がまるごと余分になり、中身が
-    // 画面の半分ほど下へ落ちた(実機の写真・上のバーが真ん中まで落ちる)。
-    //
-    // ★式で当てるのはここまで。**足りないぶんは測って直す**(下の `correct`)。
-    const shift = () => {
-      const vv = window.visualViewport;
-      return Math.max(0, Math.round(vv?.offsetTop ?? 0));
-    };
-
     /** 実際に書き込む。ここだけが `--kb` を動かす。 */
     const commit = (kb: number, guarded = justOpened()) => {
       const el = shellRef.current;
@@ -414,86 +371,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       el.style.setProperty("--kb", `${kb}px`);
     };
 
-    /** ずれを実際に書き込む。上限で頭打ちにする。 */
-    const writeShift = (v: number) => {
-      const el = shellRef.current;
-      const vv = window.visualViewport;
-      if (!el) return;
-      // ★開発用。切っているあいだは一切下げない(第23巡)。
-      //   `visualViewport.offsetTop` が当てになる端末かを実機で見分けるため。
-      if (shiftOffRef.current) {
-        if (vvTopRef.current === 0) return;
-        vvTopRef.current = 0;
-        el.style.setProperty("--vvtop", "0px");
-        return;
-      }
-      // ★★**上限で頭打ち**(2026-08-19・第22巡)。
-      //
-      // ★★★**ただし、この上限は効いていない**(第23巡に検証で判明)。基準が
-      //   `vv.offsetTop` 自身なので、**疑っている値そのものが大きいときは
-      //   素通りする**(`offsetTop` を 360 にしたら 360 がそのまま通った)。
-      //   「絶対値 60px で頭打ち」に変えれば止まるが、それは第18〜22巡の
-      //   「ずれをそのまま追う」という**約束の変更**で、既存の判定を9件壊す。
-      //   実機の数値(設定→「画面の数値を出す」)が無いまま決められないので保留。
-      //   **ここが次に決めるところ。**
-      const cap = Math.round((vv?.offsetTop ?? 0) + SHIFT_CAP);
-      const next = Math.max(0, Math.min(cap, Math.round(v)));
-      if (next === vvTopRef.current) return;
-      vvTopRef.current = next;
-      el.style.setProperty("--vvtop", `${next}px`);
-    };
-
-    /** ずれを書く。位置決めはこれだけで、閉じる判断には一切関わらせない。 */
-    const commitShift = () => {
-      if (leftRef.current) return;
-      const v = shift();
-      // ★1〜2px の往復で 280ms の動きが走り続けないようにするだけ。
-      if (Math.abs(v - vvTopRef.current) < SHIFT_MIN_STEP) return;
-      correctLeft.current = CORRECT_MAX;   // 新しい値になったので測り直す権利を戻す
-      writeShift(v);
-      scheduleCorrect();
-    };
-
-    // ★★★**式で当てず、測って直す**(2026-08-19・第22巡)。
-    //
-    // 同じ場所を外し続けている本当の理由は、**iPhone がどう振る舞うかを式で
-    // 当てようとしている**こと。この環境で実機を動かせない以上、式は永久に
-    // 確かめられない。第21巡の `window.scrollY` はその典型で、確かめられない
-    // 読みをそのまま足して、次の巡の不具合になった。
-    //
-    // だから「いくつ下げるべきか」を当てるのをやめ、**いま実際どこに描かれて
-    // いるか**を測って残りを引く:
-    //
-    //   ずれ残り = [data-fit] の先頭の印の rect.top − vv.offsetTop
-    //
-    // ・式が正しければ残りは 0 で、**何もしない**。
-    // ・iOS が器を余計に動かしていれば残りに出るので、**原因が何であれ**
-    //   そのぶんだけ戻る。`scrollY` かどうかを当てる必要が無い。
-    // ・逆に、**根拠なく押し下げることが構造的にできない**(押し下げれば残りに
-    //   出て、次の測定で引き戻される)。
-    //
-    // ★出入りの最中は測らない。器の animation の transform が rect に混ざる
-    //   (第16巡と同じ落とし穴)。
-    const correct = () => {
-      const m = fitTopRef.current;
-      const vv = window.visualViewport;
-      if (!m || !vv || leftRef.current || !settledRef.current) return;
-      if (correctLeft.current <= 0) return;
-      const resid = Math.round(m.getBoundingClientRect().top - vv.offsetTop);
-      residRef.current = resid;
-      if (Math.abs(resid) < CORRECT_MIN_STEP) return;
-      correctLeft.current -= 1;
-      writeShift(vvTopRef.current - resid);
-      scheduleCorrect();
-    };
-    correctRef.current = correct;
-
-    /** 動きが落ち着いてから測る(動いている最中の rect は途中の値)。 */
-    const scheduleCorrect = () => {
-      window.clearTimeout(correctTimer.current);
-      correctTimer.current = window.setTimeout(correct, CORRECT_WAIT_MS);
-    };
-
     // ★★★**上がるのは即座に、下がるのは確かめてから**(2026-08-18・第15巡)。
     //
     // iOS は**欄から欄へフォーカスが移る一瞬**にもキーボードを畳みかける。
@@ -507,30 +384,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // 追いかけていたので、開いた瞬間に帯が落ち、閉じると上がり直していた。
     const apply = () => {
       if (!shellRef.current || leftRef.current) return;
-      // ★★★**ずれは凍らせない。いつでも追う**(2026-08-19・第21巡)。
-      //
-      // 第19巡で「開いているあいだは凍らせる」を入れ、第20巡で日程シートだけ
-      // 外した。そのとき「ポップオーバーはキーボードが動かない約束だから
-      // 凍らせたままでよい」と判断したが、**前提が誤り** — 動くのはキーボードの
-      // 高さではなく**見えている矩形のずれ**の方だった。iOS はポップオーバーが
-      // 開いた拍子に(焦点が行を出入りする・キーボードの上の帯が変わる)ずれを
-      // 付け替える。凍らせていたので**古いずれのまま取り残され**、器の中身が
-      // 画面の上へ突き抜けていた — 実機で「アイコンをタップするとレイアウトが
-      // 崩れる」として報告された正体(上のバーが画面の外・帯がキーボードの遥か上)。
-      //
-      // ★凍らせずに追っても跳ねないための手当ては第20巡で入っている
-      //   (`[data-fit]` に帯と同じ 280ms の間合い)。第19巡の跳ねは**間合いが
-      //   無かったから**で、追うこと自体が悪かったのではない。
-      commitShift();
-      // ★★ずれ残りの測り直しは**矩形が動いたら必ず**予約する(第22巡)。
-      //   `commitShift` が書いたときだけにしていると、**器の側が勝手に動いた
-      //   場合**(まさに今回の壊れ方)に一度も測りにいかない。予約は debounce
-      //   なので、残りが 0 なら何も起きない。
-      scheduleCorrect();
-      // ★★★持ち上げ量(`--kb`)の方は**開いているあいだ凍らせたまま**。
-      //   あれはキーボードの高さの話で、ポップオーバー中に動く理由が本当に無い
-      //   (日程のシートは自分でキーボードを閉じているので、追うと帯が落ちて
-      //   閉じると上がり直す)。
       if (whenRef.current !== "" || toolRef.current) return;
       // ★★★**何かが開いているあいだは一切動かさない**(2026-08-18・第16巡)。
       //   日程のシートは**こちらから**キーボードを閉じている。メモ・持ち物・
@@ -624,9 +477,15 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       window.removeEventListener("resize", onVV);
       window.removeEventListener("scroll", onVV);
       window.clearTimeout(settleRef.current);
-      window.clearTimeout(correctTimer.current);
     };
   }, []);
+
+  // ★開発用。設定で ON のときだけ旧方式の「ずれの補正」を取り付ける
+  //   (2026-08-19・第24巡。**次巡でこの effect ごと撤去する**)。
+  useEffect(() => {
+    if (!legacy || !shellRef.current) return;
+    return attachLegacyShift(shellRef.current);
+  }, [legacy]);
 
   // ── 行(1行目=題 / 2行目以降=手順)────────────────────────────
   const rowsRef = useRef<(HTMLTextAreaElement | null)[]>([]);
@@ -794,14 +653,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   }, [tool, toolOut]);
   const closeTool = () => { backToRow(); if (tool) setToolOut(tool); setTool(null); };
 
-  // ★出入りの動きが終わったら、そこで初めてずれ残りを測る(動いている最中の
-  //   rect には器の animation の transform が混ざる)。
-  useEffect(() => {
-    if (!settled) return;
-    correctLeft.current = CORRECT_MAX;
-    const t = window.setTimeout(() => correctRef.current(), 60);
-    return () => window.clearTimeout(t);
-  }, [settled]);
 
   // ★★**閉じたら測り直す**(2026-08-18・第19巡)。開いているあいだは `--kb` も
   //   ずれも凍らせているので、閉じた時点で本当の値へ合わせ直す必要がある。
@@ -891,27 +742,29 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     }}>
       {/* ★開発用の数値表示。**中身を包む面の外**に置く — 中に置くと崩れたとき
           数値まで一緒に流れて、いちばん知りたいときに読めない(第23巡)。 */}
-      {probe && <ViewportProbe resid={residRef} />}
-      {/* ★★★**見えている矩形が下へずれたぶん、中身ごと下げる**
-          (2026-08-18・第18巡)。iOS はキーボードを出すとき、見えている矩形
-          そのものを下へずらすことがある(`visualViewport.offsetTop > 0`)。
-          器は画面に貼り付けたまま追っていないので、**器の上端が見えている
-          範囲の外へ出て**、上のバーが消え図形が上で切れていた(実機で報告)。
-          `components/BottomSheet.tsx` には同じ教訓が先に書いてある。
-          ★器そのものは動かさない約束のままにし、**中身を包むこの1枚**だけを
-          動かす(合成のやり直しだけで済む)。出入りのスライドは器が持つので、
-          ここにアニメーションは持たせない。 */}
+      {probe && <ViewportProbe />}
+      {/* ★★★**中身を包む1枚。ここは動かさない**(2026-08-19・第24巡)。
+
+          第18〜23巡はここへ `translateY(var(--vvtop))` を掛け、
+          `visualViewport.offsetTop` のぶんだけ中身を下げていた。「iOS は
+          見えている矩形を下へずらすのに `position: fixed` の器は追わない」
+          という読みだったが、**実機でその読みが成り立っていなかった** —
+          iPhone は `offsetTop` にキーボードの高さ K を返すのに、器は
+          ずれていない。補正がまるごと余分になり、中身が K だけ下へ落ちる:
+
+            上のバー  y = K       (画面の真ん中)
+            帯の下端  y = 100lvh  (＝キーボードの裏)
+            図形の中心 y = K + (100lvh − K)/2
+
+          報告された崩れ方と3か所とも一致する。Chromium でも `offsetTop`
+          だけを偽装すれば同じ崩れが出る(`scratchpad/vvtop24.mjs`)。
+
+          ★キーボードは `--kb`(＝ `器の offsetHeight − vv.height`)**だけ**が
+          運ぶ。この式には `offsetTop` が一切混ざらない。 */}
       <div data-fit style={{
         flex: 1, minHeight: 0, position: "relative",
         display: "flex", flexDirection: "column",
-        transform: "translateY(var(--vvtop, 0px))",
-        // ★帯と同じ間合いで滑らせる(2026-08-18・第19巡)。ずれは本来
-        //   キーボードと一緒に動くものなので、瞬間移動させると跳ねて見える。
-        transition: KB_EASE,
       }}>
-      {/* ★★中身の上端の印(0 高)。ここの rect が「いま実際どこに描かれて
-          いるか」で、`vv.offsetTop` との差がずれ残り(第22巡)。 */}
-      <span ref={fitTopRef} aria-hidden data-fit-top style={{ display: "block", height: 0 }} />
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}

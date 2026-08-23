@@ -1101,6 +1101,17 @@ export function AppShell() {
           onFinishDay={finishDay}
         />
       )}
+
+      {/* ★★開発用の数値表示(2026-08-19・第31巡)。第29巡は設定画面の中でだけ
+          描いていて、**タブを見ている普通の状態や「作る」の輪を開いた状態では
+          数値がまったく出せなかった**(実機で「タスク入力画面以外で数値が
+          出ない」と報告)。ここは `[data-app-shell]` の直下 — 器そのものが
+          `filter`(退がる演出)を持つと、その中の `position: fixed` は
+          **器を基準に測られる**(CSS の仕様: filter は containing block を
+          作る)ので、入力画面が開いている間は数値が「器の中の話」にすり替わる。
+          その間は入力画面自身が持つ数値表示(`components/tasks/TaskComposer.tsx`)
+          の方が正しいので、ここは黙らせる。 */}
+      {probe && !newTask && <ViewportProbe />}
     </div>
   );
 }

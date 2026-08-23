@@ -75,7 +75,7 @@ export function ViewportProbe() {
   }, []);
 
   return (
-    <div aria-hidden style={{
+    <div aria-hidden data-viewport-probe style={{
       // ★★★**画面そのものに貼る**(第24巡)。器の中の absolute にしていたが、
       //   実機で「崩れすぎて数値が読み取れなかった」と報告された。器ごと
       //   ずれても・何が手前に来ても読めるように、`fixed` の最前面へ置く。

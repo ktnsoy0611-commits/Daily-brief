@@ -20,7 +20,9 @@ import { StockTab } from "@/components/tabs/StockTab";
 import { DriftTab } from "@/components/tabs/DriftTab";
 import { GravityTab } from "@/components/tabs/GravityTab";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
+import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
+import { isViewportDebug } from "@/lib/debugViewport";
 import { setSurfaceOrigin } from "@/lib/motion";
 import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
@@ -811,6 +813,9 @@ export function AppShell() {
   // ★★右端の丸は**作るものを選ぶ入口**(2026-08-19・第28巡にユーザー指定)。
   //   押した丸の場所を控えて、そこから円を広げる(`components/CreateMenu.tsx`)。
   const [menuAt, setMenuAt] = useState<MenuAt | null>(null);
+  /** ★開発用。実機の数値を隅に出す(直ったら撤去する)。 */
+  const [probe, setProbe] = useState(false);
+  useEffect(() => setProbe(isViewportDebug()), []);
   const onRecord = useCallback((from: HTMLElement) => {
     haptic(6);
     const r = from.getBoundingClientRect();
@@ -976,6 +981,12 @@ export function AppShell() {
           <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)} />
         </div>
         {toast && <Toast text={toast} />}
+
+      {/* ★開発用の数値表示。**入力画面を開かなくても読める**ようにした
+          (2026-08-19・第29巡)。画面の下端がページの外かどうかは、入力画面を
+          開いていないときにこそ見たい。設定 →「画面の数値を出す」で出る。
+          ★直ったら `lib/debugViewport.ts` ごと撤去する。 */}
+      {probe && <ViewportProbe />}
       </div>
     );
   }

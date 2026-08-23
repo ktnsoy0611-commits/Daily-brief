@@ -57,9 +57,26 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    // ★★`black-translucent` をやめた(2026-08-19・第29巡)。あれは
+    //   **時計とアイコンを必ず白**にするので、明るい地色(#ECECEA)の上では
+    //   読めない(第26巡の写真で実際に白く潰れていた)。`default` なら黒文字の
+    //   ままで、**画面の下端まで web ビューが届く**ことは変わらない
+    //   (ステータスバーの見た目しか変えない設定なので)。
+    statusBarStyle: "default",
     title: "デイリーブリーフ",
   },
+  // ★★★**`apple-mobile-web-app-capable` を自分で出す**(2026-08-19・第29巡)。
+  //
+  // Next は `appleWebApp.capable` から **`mobile-web-app-capable`(Android 用の
+  // 名前)しか出さない**。iOS はそちらを見ないので、ホーム画面から起動した
+  // アプリが「マニフェスト方式のスタンドアロン」になり、**web ビューが画面の
+  // 下端まで届かない**状態だった。
+  // 実測(実機の写真): 円が y=796.7pt で**どの x でもまっすぐ**切れ、その下
+  // 47pt はページが一切塗れない領域で、iOS が `theme-color` で塗っていた。
+  // 「画面の下端だけ別の扱いになっている」「コンポーネントが途切れる」の正体。
+  // ★この値は**ホーム画面へ追加した時点で端末に焼き込まれる**。反映するには
+  //   一度ホーム画面から消して、追加し直すこと。
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {

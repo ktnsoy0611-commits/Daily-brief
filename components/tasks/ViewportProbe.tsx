@@ -40,13 +40,25 @@ export function ViewportProbe() {
   const [v, setV] = useState(read);
   const satRef = useRef<HTMLSpanElement | null>(null);
   const sabRef = useRef<HTMLSpanElement | null>(null);
+  const fixRef = useRef<HTMLSpanElement | null>(null);
   const [safe, setSafe] = useState({ t: 0, b: 0 });
+  // ★★**画面の下端がページの外かどうか**を決める数値(2026-08-19・第29巡)。
+  //   `fixed; inset: 0` の箱の高さが `screen.height` より小さければ、
+  //   その差ぶんは**ページが一切塗れない領域**(実機で 47pt あった)。
+  const [screen, setScreen] = useState({ fix: 0, dev: 0, dpr: 1, standalone: "?" });
 
   useEffect(() => {
     // ★env() は JS から直接読めないので、その高さの箱を置いて測る。
     const t = satRef.current?.offsetHeight ?? 0;
     const b = sabRef.current?.offsetHeight ?? 0;
     setSafe({ t, b });
+    const nav = navigator as Navigator & { standalone?: boolean };
+    setScreen({
+      fix: Math.round(fixRef.current?.getBoundingClientRect().height ?? 0),
+      dev: Math.round(window.screen.height),
+      dpr: window.devicePixelRatio,
+      standalone: `${nav.standalone ? "A" : "-"}${matchMedia("(display-mode: standalone)").matches ? "M" : "-"}`,
+    });
   }, []);
 
   useEffect(() => {
@@ -72,7 +84,10 @@ export function ViewportProbe() {
     }}>
       <span ref={satRef} style={{ display: "block", height: "env(safe-area-inset-top)", width: 0 }} />
       <span ref={sabRef} style={{ display: "block", height: "env(safe-area-inset-bottom)", width: 0 }} />
-      {`vv ${v.vh} @ ${v.top}  inner ${v.inner}\n器 上${v.st ?? "-"} 下${v.sb ?? "-"}\nbar ${v.bar ?? "-"}  帯 ${v.dock ?? "-"}\nsheet ${v.sheet ?? "-"}  safe ${safe.t}/${safe.b}`}
+      {/* ★`fixed; inset: 0` が実際に何 px あるか。画面の高さより小さければ、
+          その差がページの外(＝下端の帯)。 */}
+      <span ref={fixRef} aria-hidden style={{ position: "fixed", inset: 0, width: 0, pointerEvents: "none" }} />
+      {`vv ${v.vh} @ ${v.top}  inner ${v.inner}\n器 上${v.st ?? "-"} 下${v.sb ?? "-"}\nbar ${v.bar ?? "-"}  帯 ${v.dock ?? "-"}\nsheet ${v.sheet ?? "-"}  safe ${safe.t}/${safe.b}\n★fixed ${screen.fix} / 画面 ${screen.dev}  ${screen.standalone}\n★はみ出し ${screen.dev - screen.fix}`}
     </div>
   );
 }

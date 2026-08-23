@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { useEffect, useRef, useState } from "react";
 import { SANS } from "@/lib/constants";
 
@@ -80,10 +81,10 @@ export function ViewportProbe() {
       //   実機で「崩れすぎて数値が読み取れなかった」と報告された。器ごと
       //   ずれても・何が手前に来ても読めるように、`fixed` の最前面へ置く。
       position: "fixed", left: 8, top: 8, zIndex: 2147483000, pointerEvents: "none",
-      padding: "7px 10px", borderRadius: 10, background: "rgba(0,0,0,0.78)",
+      padding: "8px 12px", borderRadius: RADIUS.lg, background: "rgba(0,0,0,0.78)",
       // ★★**9.5px では実機の写真で読めなかった**(第23巡に実機で報告)。
       //   開発用なので見た目より読めることを優先する。
-      fontFamily: SANS, fontSize: 15, fontWeight: 700, lineHeight: 1.45,
+      fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 700, lineHeight: 1.45,
       color: "#7CF7C6", whiteSpace: "pre", textAlign: "left",
     }}>
       <span ref={satRef} style={{ display: "block", height: "env(safe-area-inset-top)", width: 0 }} />

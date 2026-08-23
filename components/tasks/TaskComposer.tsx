@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
@@ -855,18 +856,18 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         <span style={{ marginLeft: "auto" }} />
         {onDelete && (
           <Press onPress={() => leave(() => { haptic(8); onDelete(); })} aria-label="DELETE" className="tc-lamp" style={{
-            height: 36, padding: "0 15px", borderRadius: 999,
+            height: 36, padding: "0 16px", borderRadius: RADIUS.pill,
             display: "flex", alignItems: "center", justifyContent: "center",
             background: "rgba(250,250,249,0.10)",
-            ...CAP, fontSize: 10, color: ON_GROUND_DIM,
+            ...CAP, fontSize: TYPE.small, color: ON_GROUND_DIM,
           }}>DELETE</Press>
         )}
         {onConfirm && (
           <Press onPress={() => leave(() => { haptic(16); onConfirm(draftRef.current); })}
             aria-label={mode === "candidate" ? "CONFIRM" : "COMPLETE"} className="tc-lamp" style={{
-              height: 36, padding: "0 18px", borderRadius: 999, background: ON_GROUND,
+              height: 36, padding: "0 16px", borderRadius: RADIUS.pill, background: ON_GROUND,
               display: "flex", alignItems: "center", justifyContent: "center",
-              ...CAP, fontSize: 10, color: CHARCOAL,
+              ...CAP, fontSize: TYPE.small, color: CHARCOAL,
             }}>{mode === "candidate" ? "CONFIRM" : "COMPLETE"}</Press>
         )}
       </div>
@@ -944,11 +945,11 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       }}>
         {/* Cowork の提案。タップで手順になる。 */}
         {(draft.suggestions?.length ?? 0) > 0 && (
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6 }}>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8 }}>
             {(draft.suggestions ?? []).map((s) => (
               <span key={s.id} className="tc-row-in" style={{
                 display: "flex", flexShrink: 0, alignItems: "center",
-                borderRadius: 999, background: "rgba(250,250,249,0.10)",
+                borderRadius: RADIUS.pill, background: "rgba(250,250,249,0.10)",
               }}>
                 <button onClick={() => {
                   haptic(8);
@@ -957,8 +958,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
                     suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id),
                   });
                 }} style={{
-                  border: "none", background: "transparent", cursor: "pointer", padding: "0 6px 0 14px", height: 28,
-                  fontFamily: SANS, fontSize: 12.5, color: ON_GROUND, whiteSpace: "nowrap",
+                  border: "none", background: "transparent", cursor: "pointer", padding: "0 8px 0 16px", height: 28,
+                  fontFamily: SANS, fontSize: TYPE.body, color: ON_GROUND, whiteSpace: "nowrap",
                 }}>{s.title}</button>
                 <button onClick={() => set({ suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id) })}
                   aria-label={`${s.title}を却下`}
@@ -998,7 +999,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           ))}
           {draft.note && (
             <p style={{
-              margin: "10px 0 0", fontFamily: SANS, fontSize: 12, lineHeight: 1.55,
+              margin: "12px 0 0", fontFamily: SANS, fontSize: TYPE.body, lineHeight: 1.55,
               color: ON_GROUND_DIM, whiteSpace: "pre-wrap",
             }}>{draft.note}</p>
           )}
@@ -1206,7 +1207,7 @@ function Row({ ref, value, head, done, keepFocus, justOpen, onFocus, onChange, o
   }, [value]);
   return (
     <div className={head ? undefined : "tc-row-in"}
-      style={{ display: "flex", alignItems: "flex-start", gap: 9, minHeight: head ? 32 : 22 }}>
+      style={{ display: "flex", alignItems: "flex-start", gap: 8, minHeight: head ? 32 : 22 }}>
       {!head && (
         // 手順の点。**丸**。タップで済んだ印になる。
         <Press onPress={() => onToggle?.()} aria-label={done ? "手順を戻す" : "手順を済みにする"}
@@ -1215,7 +1216,7 @@ function Row({ ref, value, head, done, keepFocus, justOpen, onFocus, onChange, o
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
           <span style={{
-            width: 9, height: 9, borderRadius: "50%",
+            width: 9, height: 9, borderRadius: RADIUS.circle,
             background: done ? "transparent" : ON_GROUND,
             boxShadow: done ? `inset 0 0 0 1.5px ${ON_GROUND_DIM}` : "none",
           }} />
@@ -1263,7 +1264,9 @@ function Row({ ref, value, head, done, keepFocus, justOpen, onFocus, onChange, o
           flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none",
           resize: "none", overflow: "hidden", padding: 0, borderRadius: 0,
           fontFamily: SANS,
-          fontSize: head ? 21 : 15,
+          // ★下の行は **TYPE.lead(16) 以上**。15 だと iOS がフォーカス時に
+          //   画面を拡大し、キーボードを出したまま触るこの画面では致命的。
+          fontSize: head ? TYPE.head : TYPE.lead,
           fontWeight: head ? 700 : 500,
           lineHeight: head ? 1.34 : 1.5,
           color: done ? ON_GROUND_DIM : ON_GROUND,

@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { TabIcon } from "@/components/TabIcons";
@@ -61,13 +62,13 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
       onPress={() => { haptic(10); run(); }}
       aria-label={label}
       style={{
-        display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10,
-        padding: "9px 4px", color: PAPER,
+        display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12,
+        padding: "8px 4px", color: PAPER,
       }}
     >
-      <span style={{ ...CAP, fontSize: 10 }}>{label}</span>
+      <span style={{ ...CAP, fontSize: TYPE.small }}>{label}</span>
       <span ref={ref} className="tc-lamp" style={{
-        width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+        width: 34, height: 34, borderRadius: RADIUS.circle, flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: `inset 0 0 0 1.5px rgba(250,250,249,0.34)`,
       }}>
@@ -85,7 +86,7 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
       <div ref={discRef} data-create-menu style={{
         position: "absolute",
         left: Math.round(cx - R), top: Math.round(cy - R), width: R * 2, height: R * 2,
-        borderRadius: "50%", background: INK,
+        borderRadius: RADIUS.circle, background: INK,
         display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "flex-end",
         // 丸(タブバーの右端)の上に2つ積む。右端は丸の中心に揃える。
         padding: `0 ${Math.round(R - at.w / 2)}px ${Math.round(R + at.h / 2 + 6)}px 0`,

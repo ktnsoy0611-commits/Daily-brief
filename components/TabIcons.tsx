@@ -1,5 +1,6 @@
 "use client";
 
+import { TYPE } from "@/lib/tokens";
 import { SANS } from "@/lib/constants";
 
 // ★タブバーのアイコン(2026-08-03)。ユーザー提供の幾何アイコン集
@@ -215,7 +216,7 @@ export function TabGlyph({ name, label, color }: { name: TabIconName; label: str
     <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, lineHeight: 1 }}>
       <TabIcon name={name} color={color} size={21} />
       <span style={{
-        fontFamily: SANS, fontSize: 7.5, fontWeight: 700, letterSpacing: "0.06em",
+        fontFamily: SANS, fontSize: TYPE.nano, fontWeight: 700, letterSpacing: "0.06em",
         color, marginRight: "-0.06em", whiteSpace: "nowrap",
       }}>{label}</span>
     </span>

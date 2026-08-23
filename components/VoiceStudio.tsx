@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -674,7 +675,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             ? (side === "L" ? "vs-dial-out-l" : "vs-dial-out-r")
             : (side === "L" ? "vs-dial-in-l" : "vs-dial-in-r")}
           style={{
-            position: "absolute", width: RD, height: RD, borderRadius: "50%",
+            position: "absolute", width: RD, height: RD, borderRadius: RADIUS.circle,
             // ★掴んだ反応で**塗りの色は変えない**。直径が画面幅の約2倍
             // あるため、背景色を変えるだけで巨大な面が塗り直され、
             // transition を付けるとそれが十数フレーム続く(実測でこれだけで
@@ -736,7 +737,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             fontFamily: SANS, fontVariantNumeric: "tabular-nums",
             // ★font-size は遷移させない(遷移中ずっとレイアウトが走る)。
             // 反応は色と太さだけで見せる。
-            fontSize: 17, fontWeight: 700, letterSpacing: "0.02em", color: fg,
+            fontSize: TYPE.lead, fontWeight: 700, letterSpacing: "0.02em", color: fg,
             opacity: active === side ? 1 : 0,
             transition: "opacity var(--t-item) var(--ease-settle)",
           }}
@@ -773,7 +774,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       <div ref={timeRef} style={{
         position: "absolute", zIndex: 2, pointerEvents: "none",
         left: 0, right: 0, top: timeTop, textAlign: "center",
-        fontFamily: SANS, fontSize: 19, fontWeight: 500, lineHeight: 1,
+        fontFamily: SANS, fontSize: TYPE.head, fontWeight: 500, lineHeight: 1,
         letterSpacing: "0.20em", color: mute, fontVariantNumeric: "tabular-nums",
         opacity: (recording || review || sending) ? 1 : 0,
         transition: "opacity var(--t-item) var(--ease-settle)",
@@ -850,7 +851,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             最初の状態へ戻す(録音中でも、切り出し中でも)。
             オーバーレイでは、これがそのまま「元の画面へ戻る」になる
             (右上の閉じるボタンは廃止した)。 */}
-        <div style={{ marginLeft: 14 }}>
+        <div style={{ marginLeft: 16 }}>
           <TransportKey
             label="CANCEL" cross
             pressed={false} enabled={!sending && !leaving}
@@ -907,7 +908,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
         {/* キーが沈む「穴」。出っ張っているときはここが影として見える。 */}
         <div style={{
           position: "absolute", left: 0, bottom: 0, width: KEY_D, height: KEY_D,
-          borderRadius: "50%", background: well,
+          borderRadius: RADIUS.circle, background: well,
         }} />
         <button
           onPointerDown={() => { if (enabled) { setHeld(true); haptic(7); } }}
@@ -920,7 +921,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
           aria-pressed={pressed}
           style={{
             position: "absolute", left: 0, bottom: 0, width: KEY_D, height: KEY_D,
-            borderRadius: "50%", border: "none", padding: 0,
+            borderRadius: RADIUS.circle, border: "none", padding: 0,
             background: enabled ? figure : capOff,
             transform: `translateY(${down ? 0 : -KEY_DEPTH}px)`,
             transition: "transform var(--t-press) var(--ease-press), background var(--t-item) var(--ease-settle)",
@@ -931,7 +932,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
         >
           {bars ? (
             // PAUSE の2本線。
-            <span style={{ display: "flex", gap: 3 }}>
+            <span style={{ display: "flex", gap: 4 }}>
               {[0, 1].map((i) => (
                 <span key={i} style={{
                   width: 3, height: 11,
@@ -950,13 +951,13 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
             // ★REC の赤い線は、**ボタンの丸い面の内側の縁に沿わせる**
             // (ユーザー指定)。中央の小さな輪ではなく、キーいっぱいの円環。
             <span style={{
-              position: "absolute", inset: 4, borderRadius: "50%",
+              position: "absolute", inset: 4, borderRadius: RADIUS.circle,
               border: `1.5px solid ${enabled ? ring : mute}`,
             }} />
           ) : (
             // ランプ。押せるようになると灯る。
             <span style={{
-              width: 8, height: 8, borderRadius: "50%",
+              width: 8, height: 8, borderRadius: RADIUS.circle,
               background: lit ? lamp : lampOff,
               transition: "background var(--t-item) var(--ease-settle)",
             }} />
@@ -964,7 +965,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
         </button>
       </div>
       <span style={{
-        fontFamily: SANS, fontSize: 7.5, fontWeight: 600, letterSpacing: "0.16em",
+        fontFamily: SANS, fontSize: TYPE.nano, fontWeight: 600, letterSpacing: "0.16em",
         color: enabled ? fg : mute, marginRight: "-0.16em",
       }}>{label}</span>
     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { TYPE } from "@/lib/tokens";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Masthead } from "@/components/common";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
@@ -344,20 +345,20 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
       </div>
 
       {/* 手前の候補の題。輪を回すたびに ref 経由で書き換える。 */}
-      <div style={{ textAlign: "center", padding: "0 20px", minHeight: 46 }}>
+      <div style={{ textAlign: "center", padding: "0 24px", minHeight: 46 }}>
         <div ref={labelRef} style={{
-          fontFamily: SANS, fontSize: 15, fontWeight: 700, color: INK, lineHeight: 1.4,
+          fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 700, color: INK, lineHeight: 1.4,
           overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
         }}>{candidates[front]?.title ?? ""}</div>
         {count > 1 && (
-          <div style={{ fontSize: 10.5, color: MUTED, marginTop: 6, letterSpacing: "0.1em" }}>
+          <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: 8, letterSpacing: "0.1em" }}>
             {Math.min(front + 1, count)} / {count}
           </div>
         )}
       </div>
 
       {notes > 0 && (
-        <div style={{ fontSize: 10.5, color: MUTED, textAlign: "center", padding: "8px 0 2px" }}>
+        <div style={{ fontSize: TYPE.small, color: MUTED, textAlign: "center", padding: "8px 0 2px" }}>
           まだ読まれていない声のメモが{notes}件
         </div>
       )}

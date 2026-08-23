@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { Plus } from "lucide-react";
 import { INK, PAPER, SANS, SOFT_SHADOW_LG } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
@@ -23,7 +24,7 @@ export function TaskAddButton({ onAdd, lifted, open }: {
       style={{
         position: "absolute", right: 0, zIndex: 26,
         bottom: lifted ? "calc(var(--nav-h) + 14px)" : 14,
-        width: 54, height: 54, borderRadius: "50%", border: "none",
+        width: 54, height: 54, borderRadius: RADIUS.circle, border: "none",
         // ★丸は下の `<span>` が描く(開いているあいだだけ消すため)。
         background: "transparent", color: INK, cursor: "pointer",
         display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
@@ -39,7 +40,7 @@ export function TaskAddButton({ onAdd, lifted, open }: {
           実機で「2段階ガクッ」になった。丸はもう動かない。 */}
       {!open && (
         <span aria-hidden data-surface style={{
-          position: "absolute", inset: 0, borderRadius: "50%",
+          position: "absolute", inset: 0, borderRadius: RADIUS.circle,
           background: PAPER, boxShadow: SOFT_SHADOW_LG,
         }} />
       )}
@@ -56,9 +57,9 @@ export function DemoSeedButton({ label, onSeed, lifted }: { label: string; onSee
       style={{
         position: "absolute", left: "50%", transform: "translateX(-50%)", zIndex: 26,
         bottom: lifted ? "calc(var(--nav-h) + 22px)" : 22,
-        padding: "10px 18px", borderRadius: 999, border: "1px solid rgba(26,26,24,0.16)",
+        padding: "12px 16px", borderRadius: RADIUS.pill, border: "1px solid rgba(26,26,24,0.16)",
         background: "transparent", color: "rgba(26,26,24,0.5)", cursor: "pointer",
-        fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.06em", whiteSpace: "nowrap",
+        fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, letterSpacing: "0.06em", whiteSpace: "nowrap",
       }}>{label}</button>
   );
 }

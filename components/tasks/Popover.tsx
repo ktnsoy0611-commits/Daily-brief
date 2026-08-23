@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { PAPER, SANS } from "@/lib/constants";
 // ★押せる面は `components/Button.tsx` が唯一の持ち主(第33巡)。
 import { Press } from "@/components/Button";
@@ -36,7 +37,7 @@ export const LIFT = "#33332E";
 export const DIM = "rgba(250,250,249,0.44)";
 
 export const CAP: React.CSSProperties = {
-  fontFamily: SANS, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.22em",
+  fontFamily: SANS, fontSize: TYPE.micro, fontWeight: 700, letterSpacing: "0.22em",
 };
 
 export function Popover({ label, closing, onClose, children }: {
@@ -81,15 +82,15 @@ export function Popover({ label, closing, onClose, children }: {
           // ときは中身の側が縮んで収まる。
           flex: "0 1 auto", minHeight: 0,
           background: LIFT, color: PAPER,
-          borderRadius: 22, boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
-          padding: "8px 14px 10px",
+          borderRadius: RADIUS.xl, boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
+          padding: "8px 16px 12px",
           display: "flex", flexDirection: "column", overflow: "hidden",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexShrink: 0 }}>
           <span style={{ ...CAP, color: DIM }}>{label}</span>
           <Press onPress={onClose} aria-label="閉じる" style={{
-            width: 26, height: 26, borderRadius: "50%", background: "rgba(250,250,249,0.10)",
+            width: 26, height: 26, borderRadius: RADIUS.circle, background: "rgba(250,250,249,0.10)",
             position: "relative", flexShrink: 0,
           }}>
             <span style={{ position: "absolute", left: 7, top: 12, width: 12, height: 1.5, background: PAPER, transform: "rotate(45deg)" }} />

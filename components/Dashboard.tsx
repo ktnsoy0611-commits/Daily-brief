@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { Bookmark, Check, X } from "lucide-react";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
@@ -68,16 +69,16 @@ function SelectedRow({ title, image, color, onRemove }: {
   title: string; image?: string; color?: string; onRemove: () => void;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 11, background: PAPER, borderRadius: 14, padding: "9px 12px 9px 9px", boxShadow: SOFT_SHADOW }}>
-      <div style={{ width: 42, height: 42, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: color ?? "#5A5A54" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, background: PAPER, borderRadius: RADIUS.lg, padding: "8px 12px 8px 8px", boxShadow: SOFT_SHADOW }}>
+      <div style={{ width: 42, height: 42, borderRadius: RADIUS.md, overflow: "hidden", flexShrink: 0, background: color ?? "#5A5A54" }}>
         {image && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={img(image, 100, 100)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         )}
       </div>
-      <div style={{ flex: 1, minWidth: 0, fontFamily: SANS, fontSize: 12.5, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+      <div style={{ flex: 1, minWidth: 0, fontFamily: SANS, fontSize: TYPE.body, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
       <button onClick={() => { haptic(6); onRemove(); }} aria-label={`${title}を外す`} style={{
-        width: 26, height: 26, borderRadius: "50%", border: "none", background: RUST_TINT, color: RUST,
+        width: 26, height: 26, borderRadius: RADIUS.circle, border: "none", background: RUST_TINT, color: RUST,
         display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0,
       }}>
         <X size={13} strokeWidth={2.4} />
@@ -240,22 +241,22 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
         }}>
           {/* 取手が乗るぶんの余白。取手自体は下のモーフ用ピルが担う。 */}
           <div style={{ height: GRIP_H - 24, flexShrink: 0 }} />
-          <div className="dash-rise" style={{ padding: "0 20px 6px", flexShrink: 0 }}>
-            <div style={{ fontFamily: SANS, fontSize: 11, letterSpacing: "0.22em", color: MUTED, fontWeight: 700 }}>{todayLabel()}</div>
+          <div className="dash-rise" style={{ padding: "0 24px 8px", flexShrink: 0 }}>
+            <div style={{ fontFamily: SANS, fontSize: TYPE.small, letterSpacing: "0.22em", color: MUTED, fontWeight: 700 }}>{todayLabel()}</div>
           </div>
 
           {/* 中身(スクロール) */}
-          <div ref={scrollRef} className="no-scrollbar dash-stagger" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "10px 16px 8px" }}>
-            <section style={{ marginBottom: 26 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 4px 10px" }}>
+          <div ref={scrollRef} className="no-scrollbar dash-stagger" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "12px 16px 8px" }}>
+            <section style={{ marginBottom: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 4px 12px" }}>
                 {/* 見出しの言葉は置かず、アイコン＋数字だけで何の集まりかを示す。 */}
                 <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Bookmark size={15} strokeWidth={2.2} color={MUTED} />
-                  <span style={{ fontFamily: SANS, fontSize: 26, fontWeight: 800, color: entries.length ? INK : MUTED, lineHeight: 1 }}>{entries.length}</span>
+                  <span style={{ fontFamily: SANS, fontSize: TYPE.display, fontWeight: 800, color: entries.length ? INK : MUTED, lineHeight: 1 }}>{entries.length}</span>
                 </span>
                 {entries.length > 0 && (
                   <button onClick={() => { haptic(6); onClearSelection(); }} aria-label="すべて外す" style={{
-                    width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer",
+                    width: 28, height: 28, borderRadius: RADIUS.circle, border: "none", cursor: "pointer",
                     background: RUST_TINT, color: RUST, display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
                   }}><X size={14} strokeWidth={2.4} /></button>
                 )}
@@ -270,9 +271,9 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
             </section>
 
             <section>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 4px 10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 4px 12px" }}>
                 <Check size={15} strokeWidth={2.6} color={MUTED} />
-                <span style={{ fontFamily: SANS, fontSize: 26, fontWeight: 800, color: todaysTasks.length ? INK : MUTED, lineHeight: 1 }}>{todaysTasks.length}</span>
+                <span style={{ fontFamily: SANS, fontSize: TYPE.display, fontWeight: 800, color: todaysTasks.length ? INK : MUTED, lineHeight: 1 }}>{todaysTasks.length}</span>
               </div>
               {todaysTasks.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -289,7 +290,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
               disabled={!canFinish}
               aria-label="今日を終える"
               style={{
-                width: 60, height: 60, borderRadius: "50%", border: "none",
+                width: 60, height: 60, borderRadius: RADIUS.circle, border: "none",
                 cursor: canFinish ? "pointer" : "default",
                 background: canFinish ? INK : "rgba(26,26,24,0.14)", color: PAPER,
                 display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
@@ -336,24 +337,24 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
           width: `calc((100% - ${WRITE_SLOT}px) - var(--dash, 0) * (100% - ${WRITE_SLOT}px - ${HANDLE_W}px))`,
           height: PILL_H_EXPR,
           background: "rgba(26,26,24,0.18)",
-          borderRadius: 999,
+          borderRadius: RADIUS.pill,
         }}>
           {/* 紙色は重ねたこの層の不透明度で消す(色そのものを補間するより軽い)。
               opacityは自動で0〜1にクランプされるので、係数だけで
               「dash 0.7 あたりで消えきる」を表現できる。 */}
           <div className="dash-pill-paper" aria-hidden style={{
-            position: "absolute", inset: 0, background: PAPER, borderRadius: 999,
+            position: "absolute", inset: 0, background: PAPER, borderRadius: RADIUS.pill,
             boxShadow: "0 2px 7px rgba(26,26,24,0.14)",
             opacity: "calc(1 - var(--dash, 0) * 1.45)",
           }} />
           <div className="dash-pill-paper" style={{
-            position: "relative", display: "flex", width: "100%", padding: 6,
+            position: "relative", display: "flex", width: "100%", padding: 8,
             opacity: "calc(1 - var(--dash, 0) * 4.5)",
           }}>
             {/* 本物のタブバーと同じ「正方形の枠 + 内接する正円」。 */}
             {app.tabs.map((t) => (
               <div key={t.id} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 }}>
-                <div style={{ width: TAB_MARK, height: TAB_MARK, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: tab === t.id ? INK : "transparent", flexShrink: 0 }}>
+                <div style={{ width: TAB_MARK, height: TAB_MARK, borderRadius: RADIUS.circle, display: "flex", alignItems: "center", justifyContent: "center", background: tab === t.id ? INK : "transparent", flexShrink: 0 }}>
                   <TabGlyph name={t.icon} label={t.en} color={tab === t.id ? PAPER : TAB_ICON_OFF} />
                 </div>
               </div>
@@ -362,7 +363,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
         </div>
         {/* 右の丸ボタンは早めに消える(取手には要らない)。 */}
         <div className="dash-write" aria-hidden style={{
-          flexShrink: 0, borderRadius: "50%", background: INK,
+          flexShrink: 0, borderRadius: RADIUS.circle, background: INK,
           width: "max(0px, calc(52px - var(--dash, 0) * 325px))",
           height: "max(0px, calc(52px - var(--dash, 0) * 325px))",
           marginLeft: "max(0px, calc(10px - var(--dash, 0) * 62px))",

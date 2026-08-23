@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS } from "@/lib/tokens";
 import { Press } from "@/components/Button";
 import { haptic } from "@/lib/helpers";
 
@@ -110,7 +111,7 @@ export function ComposerToolbar({ open, filled, onOpen, on, onInk, off }: {
             }}
           >
             <span className="tc-lamp" style={{
-              width: 32, height: 32, borderRadius: "50%",
+              width: 32, height: 32, borderRadius: RADIUS.circle,
               background: lit ? on : "transparent",
               boxShadow: lit ? "none" : `inset 0 0 0 1.5px ${off}`,
               display: "flex", alignItems: "center", justifyContent: "center",

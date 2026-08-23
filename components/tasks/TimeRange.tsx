@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
@@ -45,9 +46,9 @@ const Grid = memo(function Grid({ line, ink }: { line: string; ink: string }) {
   const rows = useMemo(() => Array.from({ length: 24 }, (_, h) => (
     <div key={h} style={{ display: "flex", alignItems: "flex-start", height: HOUR_H }}>
       <span style={{
-        width: GUTTER, flexShrink: 0, textAlign: "right", paddingRight: 7,
+        width: GUTTER, flexShrink: 0, textAlign: "right", paddingRight: 8,
         transform: "translateY(-6px)",
-        fontFamily: SANS, fontSize: 11, fontWeight: 600, color: ink,
+        fontFamily: SANS, fontSize: TYPE.small, fontWeight: 600, color: ink,
       }}>{h === 0 ? "" : pad(h)}</span>
       <span style={{ flex: 1, height: 1, background: line }} />
     </div>
@@ -168,14 +169,14 @@ export function TimeRange({ start, end, accent, onChange }: {
             style={{
               // ★左右に `LANE` ぶん空ける。ここが「指を滑らせる余白」。
               position: "absolute", left: GUTTER + LANE, right: LANE,
-              borderRadius: 10, background: accent, touchAction: "none",
+              borderRadius: RADIUS.lg, background: accent, touchAction: "none",
               boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
               display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "grab", overflow: "hidden",
             }}
           >
             <span ref={readout} style={{
-              fontFamily: SANS, fontSize: 12.5, fontWeight: 800, letterSpacing: "0.02em",
+              fontFamily: SANS, fontSize: TYPE.body, fontWeight: 800, letterSpacing: "0.02em",
               color: "#26261F", whiteSpace: "nowrap", pointerEvents: "none",
             }} />
             {/* 上下の端。ここをつまむと長さが変わる。 */}
@@ -183,13 +184,13 @@ export function TimeRange({ start, end, accent, onChange }: {
               position: "absolute", top: 0, left: 0, right: 0, height: GRIP,
               touchAction: "none", display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              <span style={{ width: 20, height: 2, borderRadius: 2, background: "rgba(38,38,31,0.45)" }} />
+              <span style={{ width: 20, height: 2, borderRadius: RADIUS.sm, background: "rgba(38,38,31,0.45)" }} />
             </span>
             <span onPointerDown={grab("bottom")} style={{
               position: "absolute", bottom: 0, left: 0, right: 0, height: GRIP,
               touchAction: "none", display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              <span style={{ width: 20, height: 2, borderRadius: 2, background: "rgba(38,38,31,0.45)" }} />
+              <span style={{ width: 20, height: 2, borderRadius: RADIUS.sm, background: "rgba(38,38,31,0.45)" }} />
             </span>
           </div>
         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { TYPE } from "@/lib/tokens";
 import { INK, PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import type { SolidView } from "@/lib/solidPaint";
@@ -23,11 +24,11 @@ export function ViewToggle({ view, onChange }: { view: SolidView; onChange: (v: 
             style={{
               width: CELL, height: CELL, border: "none", cursor: "pointer", padding: 0,
               background: on ? INK : "rgba(26,26,24,0.10)",
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
             }}>
             {v === "name" ? <NameMark on={on} /> : <TagMark on={on} />}
             <span style={{
-              fontFamily: SANS, fontSize: 6, fontWeight: 700, letterSpacing: "0.12em",
+              fontFamily: SANS, fontSize: TYPE.nano, fontWeight: 700, letterSpacing: "0.12em",
               color: on ? PAPER : "rgba(26,26,24,0.5)",
             }}>{v === "name" ? "NAME" : "TAG"}</span>
           </button>

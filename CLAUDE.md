@@ -79,7 +79,8 @@
 - `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋の丸の場所）**。
   CSS 側は `app/globals.css` の `:root`。数字はこの2つだけ。増やさない。
   JS のタイマーは `ms(T_OUT)` のようにここから引く（数字を書き写さない）。
-- `lib/viewportKick.ts` — **iOS の起動直後だけ画面が縮む不具合への対処**（未確証）。
+- `lib/viewportKick.ts` — iOS の起動直後だけ画面が縮む不具合への対処（未確証）。
+  ★**画面の下の帯**は別件で、`--screen-h`（`app/globals.css`）で解決済み。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
@@ -121,6 +122,12 @@
    `Button`。押下は「即座に沈み（`--t-press`）、ゆっくり戻る（`--t-out`）」。
 6. **視覚的階層** … `primary` は1画面に1つ。並び立つ選択肢は `secondary`、
    取り消し・あとでは `ghost`、図だけは `icon`（`aria-label` 必須）。
+7. ★★**画面いっぱいを塗る面は `data-paint` ＋ `height: var(--screen-h)`。**
+   iOS のホーム画面アプリは `innerHeight` が「画面の高さ − 上のセーフエリア」
+   なのに中身は y=0 から描かれるので、`inset: 0` や `100svh` では**画面の
+   下 47px に届かず、そこだけ帯として残る**（第34巡で解決）。
+   ★**塗る面だけ**。タブバー・器・キーボード追従などの**置き場所には
+   使わない**（伸ばすとホームインジケーターへ潜る）。
 
 ## 目盛りが守られているかの機械チェック
 

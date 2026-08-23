@@ -62,8 +62,9 @@ export function AppBackdrop({ appId }: { appId: AppId }) {
   //   計算されようと届かない場所が無くなる。
   if (typeof document === "undefined") return null;
   return createPortal((
-    <div aria-hidden data-backdrop style={{
-      position: "fixed", inset: 0,
+    <div aria-hidden data-backdrop data-paint style={{
+      // ★画面の下の帯まで塗る(第34巡)。`inset: 0` だけだと iOS では 47px 届かない。
+      position: "fixed", inset: 0, height: "var(--screen-h)",
       pointerEvents: "none", zIndex: -1, background: paint,
       // ★時間と曲線は `lib/ground.ts` の1か所から。列の横スライド(.app-track)と
       //   **同じ**にすること。420ms ease だった頃は、列(380ms)・html(即座)と

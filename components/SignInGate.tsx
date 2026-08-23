@@ -64,8 +64,7 @@ export function SignInGate() {
 
   return (
     <div data-paint style={{
-      // ★画面の下の帯まで塗る(第34巡)。`100svh` だと iOS で 47px 届かない。
-      minHeight: "var(--screen-h)", background: BG, display: "flex", flexDirection: "column",
+      minHeight: "100svh", background: BG, display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center", fontFamily: SANS, color: INK, padding: 24,
     }}>
       <div style={{

@@ -802,9 +802,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、そこから
     //   下も同じ色にすると継ぎ目が出ない(CHARCOAL にすると帯の色と食い違う)。
     <div ref={plateRef} data-composer-plate data-paint aria-hidden={false} style={{
-      // ★高さは `--screen-h`(第34巡)。`inset: 0` だと画面の下 47px が塗れず、
-      //   そこだけ帯として残る。板は**塗る面**なので伸ばしてよい(器は伸ばさない)。
-      position: "fixed", inset: 0, height: "var(--screen-h)", zIndex: 59, background: LIFT,
+      position: "fixed", inset: 0, zIndex: 59, background: LIFT,
     }}>
     {/* ★★★**器は一度置いたら二度と動かさない**(2026-08-18・第13巡)。
         寸法は録音のオーバーレイ(`VoiceOverlay`)と**同じ書き方**にしてある —

@@ -189,8 +189,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
   const canFinish = entries.length > 0 || todaysTasks.length > 0;
 
   const body = (
-    // ★高さは `--screen-h`(第34巡)。画面の下の帯まで引き出しが届くように。
-    <div data-paint style={{ position: "fixed", inset: 0, height: "var(--screen-h)", zIndex: 55 }}>
+    <div data-paint style={{ position: "fixed", inset: 0, zIndex: 55 }}>
       {/* 背景。上に覗いている元の画面(=シートの外)をタップすると閉じる。
           シートを84svhにして、この帯を広めに取ってある。 */}
       <div

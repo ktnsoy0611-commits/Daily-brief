@@ -48,6 +48,8 @@ interface Layer { id: number; color: string; level: GroundLevel }
 let stack: Layer[] = [];
 let seq = 0;
 let themeTimer = 0;   // requestAnimationFrame の番号
+/** ★★取りこぼしの保険(2026-08-23・第35巡)。下の `apply` の説明を読むこと。 */
+let themeSettle = 0;
 /** 勝っている色を受け取る人たち(帆布 = AppBackdrop)。 */
 const watchers = new Set<(color: string) => void>();
 
@@ -87,6 +89,15 @@ function apply() {
   // → 毎フレーム自分で混ぜて書く。ページ側の transition と**同じ時間・同じ
   //   曲線**なので、下の帯だけ別の動きに見えることが無くなる。
   window.cancelAnimationFrame(themeTimer);
+  // ★★★**行き先を必ず置く**(2026-08-23・第35巡)。下の補間は
+  //   `requestAnimationFrame` で進むが、**rAF は画面が隠れている間や iOS が
+  //   絞っている間は止まる**。止まったところで固まると、`theme-color` が
+  //   **途中の色のまま残る** — 実機で「入力画面を閉じたのに、上の帯だけ
+  //   入力画面の色(#33332E)のまま」という形で出た(第29巡の写真を実測して判明)。
+  //   時間で必ず行き先を書き込む保険を1つ置く(rAF が動いていれば同じ値なので
+  //   二重に書いても害は無い)。
+  window.clearTimeout(themeSettle);
+  themeSettle = window.setTimeout(() => writeTheme(color), GROUND_MS + 40);
   const from = themeNow || color;
   const t0 = performance.now();
   const step = () => {

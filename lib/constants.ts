@@ -183,7 +183,18 @@ export const BD_LIGHT = "#F3F3F1";
 // 下に余白が残る指摘があったため、その値の一部だけを使うように絞って
 // いる。safe-area自体が無い機種ではmax(4px, 負の値)により最小の4pxへ
 // 収まる。
-export const NAV_BOTTOM_GAP = "max(4px, calc(env(safe-area-inset-bottom) - 26px))";
+//
+// ★★★**`env(safe-area-inset-top)` を足す**(2026-08-23・第35巡)。
+// `statusBarStyle` を `default` にしたことで、web ビューが**画面の下端まで**
+// 広がるようになった(それまでは上のセーフエリアぶん(47px)手前で終わっていた)。
+// そのぶん、下端に貼り付くタブバーが**画面上で 47px 下がる** —
+// 実測(実機の写真): ピルの下端が 783.0pt → 830.0pt、画面下までの余白が
+// 60.7pt → 13.7pt になり、ホームインジケーターに乗ってしまっていた。
+// 伸びたぶんをそのまま足し戻すと、**元とまったく同じ位置**に戻る。
+// ★セーフエリアの無い環境(Chromium・検証)では両方 0 なので、値は 4px のまま
+//   変わらない(見た目も検証も今までどおり)。
+export const NAV_BOTTOM_GAP =
+  "max(4px, calc(env(safe-area-inset-bottom) - 26px + env(safe-area-inset-top)))";
 
 // タブ本文やストック/目標/実行タブの下部固定バーが、フローティングの
 // タブバー(AppShellのnav)の直上に収まるためのオフセット。表示領域を

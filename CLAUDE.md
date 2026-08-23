@@ -80,7 +80,7 @@
   CSS 側は `app/globals.css` の `:root`。数字はこの2つだけ。増やさない。
   JS のタイマーは `ms(T_OUT)` のようにここから引く（数字を書き写さない）。
 - `lib/viewportKick.ts` — iOS の起動直後だけ画面が縮む不具合への対処（未確証）。
-  ★**画面の下の帯**は別件で、`--screen-h`（`app/globals.css`）で解決済み。
+  ★**画面の上下の帯**は別件で、`statusBarStyle: "default"` で解決済み（第35巡）。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
@@ -122,12 +122,14 @@
    `Button`。押下は「即座に沈み（`--t-press`）、ゆっくり戻る（`--t-out`）」。
 6. **視覚的階層** … `primary` は1画面に1つ。並び立つ選択肢は `secondary`、
    取り消し・あとでは `ghost`、図だけは `icon`（`aria-label` 必須）。
-7. ★★**画面いっぱいを塗る面は `data-paint` ＋ `height: var(--screen-h)`。**
-   iOS のホーム画面アプリは `innerHeight` が「画面の高さ − 上のセーフエリア」
-   なのに中身は y=0 から描かれるので、`inset: 0` や `100svh` では**画面の
-   下 47px に届かず、そこだけ帯として残る**（第34巡で解決）。
-   ★**塗る面だけ**。タブバー・器・キーボード追従などの**置き場所には
-   使わない**（伸ばすとホームインジケーターへ潜る）。
+7. ★★**iOS の「上下の帯」は解決済み。触らないこと**（第35巡）。
+   `apple-mobile-web-app-status-bar-style` は **`default`**
+   （`black-translucent` は画面の下 47px がどの要素からも塗れなくなる）。
+   タブバーが下がるぶんは `NAV_BOTTOM_GAP` の `+ env(safe-area-inset-top)` が
+   吸収し、上 47px の色は `theme-color`（`lib/ground.ts`）が地色に揃える。
+   ★**`position: fixed` の面を伸ばして下の帯を埋めようとしないこと** —
+   第34巡に試して実機で1pxも動かなかった。詳しくは
+   `docs/project_knowledge.md` §3「iOS のホーム画面アプリ『上下の帯』」。
 
 ## 目盛りが守られているかの機械チェック
 

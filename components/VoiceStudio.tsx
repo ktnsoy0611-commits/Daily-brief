@@ -995,10 +995,8 @@ export function VoiceOverlay({ voice, open, onClose }: {
   return createPortal(
     <div className="vs-in" data-paint style={{
       position: "fixed", left: 0, top: 0, right: 0, bottom: 0,
-      // ★★高さは `--screen-h`(2026-08-23・第34巡)。`100lvh` は iOS の
-      //   ホーム画面アプリでは「画面の高さ − 上のセーフエリア」になるので、
-      //   画面の下 47px に届かず、そこだけ帯として残っていた。
-      width: "100vw", height: "var(--screen-h)", minHeight: "100%",
+      // 高さも明示しておく(inset だけに頼らない)。
+      width: "100vw", height: "100lvh", minHeight: "100%",
       zIndex: 58, background: DIM_GROUND,
     }}>
       {/* ★器の高さは画面いっぱい。タブの中の器も bleed でここと同じ高さに

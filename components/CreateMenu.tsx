@@ -81,10 +81,8 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
     // ★輪の外を触ったら閉じる。丸そのものより上、入力画面(59)より下。
     <div
       onPointerDown={(e) => { if (e.target === e.currentTarget) { e.preventDefault(); onClose(); } }}
-      // ★高さは `--screen-h`(第34巡)。`inset: 0` だと iOS では画面の下 47px に
-      //   届かず、広がった円がそこでまっすぐ切れる(実機の写真で確認)。
       data-paint
-      style={{ position: "fixed", inset: 0, height: "var(--screen-h)", zIndex: 58 }}
+      style={{ position: "fixed", inset: 0, zIndex: 58 }}
     >
       <div ref={discRef} data-create-menu style={{
         position: "absolute",

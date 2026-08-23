@@ -41,9 +41,7 @@ import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, Journal
 const LOAD_CELL = 56;
 function LoadingScreen() {
   return (
-    // ★読み込み中も画面いっぱいに塗る(第34巡)。`100svh` は iOS のホーム画面
-    //   アプリでは画面の下 47px に届かず、そこだけ帯として残る。
-    <div data-paint style={{ minHeight: "var(--screen-h)", background: BD_GREY, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div data-paint style={{ height: "100svh", background: BD_GREY, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div className="load-grid" style={{ width: LOAD_CELL * 2, height: LOAD_CELL * 2, ["--u" as string]: `${LOAD_CELL}px` }}>
         {/* 重なり順: 円・扇形が下、長方形が上(2x2に伸びたとき全部を覆う)。 */}
         <div className="load-shape load-dot" style={{ background: INK }} />

@@ -191,14 +191,16 @@ export const NAV_BOTTOM_GAP = "max(4px, calc(env(safe-area-inset-bottom) - 26px)
 // まで下げた分、この値も縮めている。navのスタイルを変えたら実測して
 // 合わせ直すこと。NAV_BOTTOM_GAPと同じ値を足しているのは、navが画面下端
 // から浮く量が変わればここに揃えるUIが下端に近づく量も連動させるため。
-export const NAV_OFFSET = `calc(82px + ${NAV_BOTTOM_GAP})`;
+// ★第33巡: `NAV_H` が 76 → 77 になったぶん、ここも 82 → 83(差の 6px は据え置き)。
+export const NAV_OFFSET = `calc(83px + ${NAV_BOTTOM_GAP})`;
 
 // ★タブバーの実高さ(画面の下端からタブバーの上端まで)。
-// アプリの目印の行(5+7=12) + ピル(TAB_MARK + NAV_PILL_PAD*2 = 64) + 下の浮き。
+// アプリの目印の行(丸 5 + 下の余白 8 = 13) + ピル(TAB_MARK + NAV_PILL_PAD*2 = 64)
+// + 下の浮き。★第33巡に目印の行の余白を目盛りへ乗せた(7 → 8)ので 76 → 77。
 // ★★タブバーは**フローから外して**画面の上に浮かせてある(AppShell参照)ので、
 // 「タブバーのぶんの余白」が要る場所はすべてこの値を見ること。ここと
 // globals.css の --nav-h だけが、タブバーの高さを知っている場所。
-export const NAV_H = `calc(76px + ${NAV_BOTTOM_GAP})`;
+export const NAV_H = `calc(77px + ${NAV_BOTTOM_GAP})`;
 // タブ本文の上の余白(セーフエリア込み)。--pad-top として全体へ配る。
 export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";
 

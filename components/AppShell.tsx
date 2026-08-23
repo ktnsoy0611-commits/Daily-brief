@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop, groundOf } from "@/components/AppBackdrop";
@@ -75,8 +76,8 @@ function wrapOf(j: number, pos: number): number {
 function Toast({ text }: { text: string }) {
   return (
     <div key={text} style={{
-      position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: 999,
-      fontSize: 11, letterSpacing: "0.06em", padding: "8px 18px", boxShadow: "0 8px 24px rgba(26,26,24,0.25)", zIndex: 50,
+      position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: RADIUS.pill,
+      fontSize: TYPE.small, letterSpacing: "0.06em", padding: "8px 16px", boxShadow: "0 8px 24px rgba(26,26,24,0.25)", zIndex: 50,
       animation: "toast-in var(--t-item) var(--ease-sheet)",
     }}>{text}</div>
   );
@@ -141,7 +142,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             // 実際に最後の項目がタブバーの裏へ潜って止まった。
             padding: "var(--pad-top) 16px 0",
           }}>
-            {active && memoryMode && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
+            {active && memoryMode && <div style={{ fontSize: TYPE.micro, color: RUST, letterSpacing: "0.05em", padding: "8px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
 
             <>
             {/* minHeight:0が無いと、flexアイテムのデフォルトのmin-height:auto
@@ -249,10 +250,13 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 目印にしている。この目印もトラックに乗っているので、指で
                 引いている最中に「次のアプリの目印」が一緒に流れ込んでくる
                 (だから遷移のアニメーションを別に付ける必要が無い)。 */}
-            <div style={{ display: "flex", gap: 5, paddingBottom: 7 }}>
+            {/* ★この行の高さ(丸 5 + 下の余白 8 = 13)は `NAV_H` の 77px に
+                **組み込まれている**。ここを動かしたら `lib/constants.ts` の
+                `NAV_H` も必ず一緒に直すこと(第33巡に 7 → 8 で 76 → 77)。 */}
+            <div style={{ display: "flex", gap: 4, paddingBottom: 8 }}>
               {APPS.map((d) => (
                 <span key={d.id} style={{
-                  width: d.id === a.id ? 14 : 5, height: 5, borderRadius: 999,
+                  width: d.id === a.id ? 14 : 5, height: 5, borderRadius: RADIUS.pill,
                   background: d.id === a.id ? INK : "rgba(26,26,24,0.22)",
                 }} />
               ))}
@@ -270,7 +274,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             <div
               onPointerDown={onNavPointerDown}
               style={{
-                display: "flex", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 - 32, pointerEvents: "auto",
+                display: "flex", alignItems: "center", gap: 12, width: "100%", maxWidth: 420 - 32, pointerEvents: "auto",
                 touchAction: "none",
               }}
             >
@@ -278,7 +282,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                   選択中の印はその内側にぴったり収まる**正円**で、直径が
                   そのままピルの内側の高さになる。文字は出さず、読み上げ用の
                   ラベルは aria-label に残す。 */}
-              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: 999, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: NAV_PILL_PAD, marginBottom: NAV_BOTTOM_GAP }}>
+              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: RADIUS.pill, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: NAV_PILL_PAD, marginBottom: NAV_BOTTOM_GAP }}>
                 {/* 選択中の印。1枚だけ置いて隣のタブへ滑らせる。 */}
                 <div aria-hidden style={{
                   position: "absolute", top: NAV_PILL_PAD, left: NAV_PILL_PAD, height: TAB_MARK,
@@ -287,7 +291,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                   transition: "transform var(--t-item) var(--ease-sheet)",
                   display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
                 }}>
-                  <div style={{ width: TAB_MARK, height: TAB_MARK, borderRadius: "50%", background: INK }} />
+                  <div style={{ width: TAB_MARK, height: TAB_MARK, borderRadius: RADIUS.circle, background: INK }} />
                 </div>
                 {a.tabs.map((t) => {
                   const active = tab === t.id;
@@ -307,7 +311,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 onClick={(e) => { if (navDragged.current) return; onRecord(e.currentTarget); }}
                 aria-label="作る"
                 style={{
-                  flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
+                  flexShrink: 0, width: 52, height: 52, borderRadius: RADIUS.circle, background: INK, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
                 }}
               >
@@ -895,7 +899,7 @@ export function AppShell() {
   // (2026-08-03)。
   const profileButton = useMemo(() => (
     <button onClick={() => { haptic(5); setShowProfile(true); }} aria-label="設定" style={{
-      width: HEADER_CHIP_SIZE, height: HEADER_CHIP_SIZE, borderRadius: "50%",
+      width: HEADER_CHIP_SIZE, height: HEADER_CHIP_SIZE, borderRadius: RADIUS.circle,
       background: PAPER, border: "none", display: "flex", alignItems: "center", justifyContent: "center",
       cursor: "pointer", color: INK, boxShadow: SOFT_SHADOW, padding: 0, flexShrink: 0,
     }}>
@@ -988,7 +992,7 @@ export function AppShell() {
           overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain", overflowAnchor: "none",
           padding: "max(16px, env(safe-area-inset-top)) 16px 24px",
         }}>
-          {storageMode === "memory" && <div style={{ fontSize: 9, color: RUST, letterSpacing: "0.05em", padding: "6px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
+          {storageMode === "memory" && <div style={{ fontSize: TYPE.micro, color: RUST, letterSpacing: "0.05em", padding: "8px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
           <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)} />
         </div>
         {toast && <Toast text={toast} />}

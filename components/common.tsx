@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-react";
 import { memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
@@ -20,11 +21,11 @@ export function Masthead({ title, dateline, right, corner }: {
   corner?: ReactNode;
 }) {
   return (
-    <header style={{ padding: "10px 4px 18px" }}>
+    <header style={{ padding: "12px 4px 16px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <GeoText text={title} size={30} color={INK} />
-          {dateline && <div style={{ fontSize: 11, color: MUTED, marginTop: 10 }}>{dateline}</div>}
+          {dateline && <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: 12 }}>{dateline}</div>}
         </div>
         {/* 設定(corner)は常に画面の右端。 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -45,7 +46,7 @@ export function Masthead({ title, dateline, right, corner }: {
 // (以前は 9/10/11px と字間がタブごとにばらばらだった)。
 export function SectionLabel({ text, style }: { text: string; style?: CSSProperties }) {
   return (
-    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.2em", color: MUTED, lineHeight: 1.2, ...style }}>
+    <div style={{ fontSize: TYPE.small, fontWeight: 700, letterSpacing: "0.2em", color: MUTED, lineHeight: 1.2, ...style }}>
       {text}
     </div>
   );
@@ -57,9 +58,9 @@ export function SectionLabel({ text, style }: { text: string; style?: CSSPropert
 
 export function Dot({ color, label }: { color: string; label: string }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-      <span style={{ width: 5, height: 5, borderRadius: "50%", background: color, flexShrink: 0 }} />
-      <span style={{ fontSize: 9, color, fontWeight: 700, letterSpacing: "0.05em" }}>{label}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span style={{ width: 5, height: 5, borderRadius: RADIUS.circle, background: color, flexShrink: 0 }} />
+      <span style={{ fontSize: TYPE.micro, color, fontWeight: 700, letterSpacing: "0.05em" }}>{label}</span>
     </span>
   );
 }
@@ -85,7 +86,7 @@ export function PunchHoles() {
     <>
       {HOLE_YS.map((y) => (
         <div key={y} style={{
-          position: "absolute", left: 12, top: y, transform: "translateY(-50%)", width: 10, height: 10, borderRadius: "50%",
+          position: "absolute", left: 12, top: y, transform: "translateY(-50%)", width: 10, height: 10, borderRadius: RADIUS.circle,
           background: "rgba(250,250,249,0.92)",
           boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.38), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 1px rgba(255,255,255,0.3)",
           pointerEvents: "none",
@@ -130,7 +131,7 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
   const fill = color ?? "#5A5A54";
   return (
     <div onClick={onClick} style={{
-      position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: 18, overflow: "hidden",
+      position: "relative", flexShrink: 0, width: size ?? "100%", aspectRatio: ITEM_CARD_ASPECT, borderRadius: RADIUS.xl, overflow: "hidden",
       boxShadow: SOFT_SHADOW, cursor: onClick ? "pointer" : "default", background: image ? fill : `linear-gradient(135deg, ${shade(fill, 14)} 0%, ${fill} 45%, ${shade(fill, -18)} 100%)`,
       outline: planSelected ? `2.5px solid ${BLUE}` : "none", outlineOffset: planSelected ? -2.5 : 0,
     }}>
@@ -156,18 +157,18 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
           合流させた(合流させないとバッジと良かったボタンが同じ場所に
           描画されて衝突する)。 */}
       {(badge || action || onTogglePlanSelect || onToggleGood) && (
-        <div style={{ position: "absolute", top: 8, left: 8, right: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5 }}>
+        <div style={{ position: "absolute", top: 8, left: 8, right: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
           {/* カードのタグは本文と同じ書体(2026-08-03に幾何アルファベットから
               戻した)。棚の見出し(SectionLabel)と同じ字間で揃えている。 */}
           {badge && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.94)", color: INK, fontSize: 8, fontWeight: 800, letterSpacing: "0.14em", borderRadius: 999, padding: "3px 7px 3px 6px", flexShrink: 0 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.94)", color: INK, fontSize: TYPE.micro, fontWeight: 800, letterSpacing: "0.14em", borderRadius: RADIUS.pill, padding: "4px 8px 4px 8px", flexShrink: 0 }}>
               {badge === "wish" ? <Sparkles size={8} color={INK} strokeWidth={2.4} /> : <Bookmark size={8} fill={INK} strokeWidth={0} />}
               <span style={{ marginRight: "-0.14em" }}>{badge === "wish" ? "WISH" : "KEEP"}</span>
             </span>
           )}
           {action && (
             <button onClick={(e) => { e.stopPropagation(); action.onClick(); }} aria-label={action.label} style={{
-              flexShrink: 0, width: 20, height: 20, borderRadius: "50%", border: "none", cursor: "pointer",
+              flexShrink: 0, width: 20, height: 20, borderRadius: RADIUS.circle, border: "none", cursor: "pointer",
               background: "rgba(255,255,255,0.94)", color: INK, display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
             }}>
               <Check size={11} strokeWidth={3} />
@@ -175,7 +176,7 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
           )}
           {onTogglePlanSelect && (
             <button onClick={(e) => { e.stopPropagation(); onTogglePlanSelect(); }} aria-label={planSelected ? "プランの選択から外す" : "プランの候補に選ぶ"} style={{
-              width: 20, height: 20, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0,
+              width: 20, height: 20, borderRadius: RADIUS.circle, border: "none", cursor: "pointer", flexShrink: 0,
               background: planSelected ? BLUE : "rgba(255,255,255,0.94)", color: planSelected ? PAPER : INK,
               display: "flex", alignItems: "center", justifyContent: "center", padding: 0, boxShadow: "0 2px 6px rgba(26,26,24,0.3)",
             }}>
@@ -184,7 +185,7 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
           )}
           {onToggleGood && (
             <button onClick={(e) => { e.stopPropagation(); onToggleGood(); }} aria-label="良かった" style={{
-              width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0,
+              width: 28, height: 28, borderRadius: RADIUS.circle, border: "none", cursor: "pointer", flexShrink: 0,
               background: good ? GOLD : "rgba(26,26,24,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
             }}>
               <Star size={14} fill={good ? "#fff" : "none"} color="#fff" strokeWidth={2} />
@@ -193,9 +194,9 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
         </div>
       )}
       <div style={{ position: "absolute", bottom: 10, left: HOLE_CLEAR, right: 10 }}>
-        {label && <div style={{ fontSize: 8, letterSpacing: "0.14em", color: "rgba(255,255,255,0.7)", marginBottom: 3 }}>{label}</div>}
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 14, color: "#fff", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
-        {sub && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}
+        {label && <div style={{ fontSize: TYPE.micro, letterSpacing: "0.14em", color: "rgba(255,255,255,0.7)", marginBottom: 4 }}>{label}</div>}
+        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, color: "#fff", lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+        {sub && <div style={{ fontSize: TYPE.micro, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>{sub}</div>}
       </div>
     </div>
   );
@@ -226,8 +227,8 @@ export function SelectablePosterCard({ selected, onToggle, size = 132, ...cardPr
     >
       <PosterCard {...cardProps} size={size} onClick={onToggle} />
       {selected && (
-        <div style={{ position: "absolute", inset: 0, borderRadius: 18, background: "rgba(43,63,191,0.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-          <div style={{ width: 30, height: 30, borderRadius: "50%", background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(26,26,24,0.3)" }}>
+        <div style={{ position: "absolute", inset: 0, borderRadius: RADIUS.xl, background: "rgba(43,63,191,0.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+          <div style={{ width: 30, height: 30, borderRadius: RADIUS.circle, background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(26,26,24,0.3)" }}>
             <Check size={16} color={PAPER} strokeWidth={3} />
           </div>
         </div>
@@ -245,7 +246,7 @@ export function AddCardTile({ onClick, aspect = ITEM_CARD_ASPECT, size, label }:
 }) {
   return (
     <button onClick={onClick} aria-label={label} style={{
-      width: size ?? "100%", aspectRatio: aspect, flexShrink: 0, borderRadius: 18, cursor: "pointer",
+      width: size ?? "100%", aspectRatio: aspect, flexShrink: 0, borderRadius: RADIUS.xl, cursor: "pointer",
       border: "1.5px dashed rgba(26,26,24,0.22)", background: PAPER,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
     }}>
@@ -409,7 +410,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
   for (let i = 0; i < items.length; i += rowCap) rows.push(items.slice(i, i + rowCap));
   if (rows.length === 0) rows.push([]); // カードが無くても＋タイルの行を1つ出す
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {rows.map((row, ri) => (
         <StackRow key={ri} items={row} aspect={aspect} cardWidth={cardWidth} cardHeight={cardHeight}
           onOpen={onOpen} onAdd={onAdd} addLabel={addLabel} showAdd={ri === rows.length - 1} />
@@ -420,7 +421,7 @@ export function CardStack({ items, aspect, cardWidth = 108, onOpen, onAdd, addLa
 
 export function Thumb({ seed, onOpen, size = 44 }: { seed: string; onOpen: () => void; size?: number }) {
   return (
-    <button onClick={(e) => { e.stopPropagation(); onOpen(); }} style={{ padding: 0, border: "none", background: "none", cursor: "pointer", flexShrink: 0, borderRadius: 8, overflow: "hidden", width: size, height: size }}>
+    <button onClick={(e) => { e.stopPropagation(); onOpen(); }} style={{ padding: 0, border: "none", background: "none", cursor: "pointer", flexShrink: 0, borderRadius: RADIUS.md, overflow: "hidden", width: size, height: size }}>
       <img src={img(seed, size * 2, size * 2)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
     </button>
   );
@@ -461,32 +462,32 @@ export function BinderModal({ item, onClose, actionSlot }: {
               <img
                 src={img(item.images![0], 720, 450)} alt=""
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                style={{ width: "100%", aspectRatio: "16 / 10", objectFit: "cover", borderRadius: 14, boxShadow: "0 10px 26px rgba(26,26,24,0.18)", display: "block" }}
+                style={{ width: "100%", aspectRatio: "16 / 10", objectFit: "cover", borderRadius: RADIUS.lg, boxShadow: "0 10px 26px rgba(26,26,24,0.18)", display: "block" }}
               />
             </div>
           ) : (item.images ?? []).length > 1 ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 18px" }}>
+            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 16px" }}>
               {(item.images ?? []).map((seed, i) => (
-                <img key={seed} src={img(seed, 300, 380)} alt="" style={{ width: "40%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 8, border: "4px solid #fff", boxShadow: "0 8px 20px rgba(26,26,24,0.3)", transform: `rotate(${rotations[i % 3]}deg)`, marginLeft: i === 0 ? 0 : -22, position: "relative", zIndex: i }} />
+                <img key={seed} src={img(seed, 300, 380)} alt="" style={{ width: "40%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: RADIUS.md, border: "4px solid #fff", boxShadow: "0 8px 20px rgba(26,26,24,0.3)", transform: `rotate(${rotations[i % 3]}deg)`, marginLeft: i === 0 ? 0 : -22, position: "relative", zIndex: i }} />
               ))}
             </div>
           ) : null}
           <OverlayCard>
-            <div style={{ fontSize: 9, letterSpacing: "0.2em", color: MUTED, marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
-            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: (item.detail ?? item.body ?? item.summary) ? 10 : actionSlot ? 12 : 16 }}>{item.title}</div>
+            <div style={{ fontSize: TYPE.micro, letterSpacing: "0.2em", color: MUTED, marginBottom: 4 }}>{item.category ?? item.categoryJp}</div>
+            <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, marginBottom: (item.detail ?? item.body ?? item.summary) ? 10 : actionSlot ? 12 : 16 }}>{item.title}</div>
             {(item.detail ?? item.body ?? item.summary) && (
-              <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.85, color: "#4A4A44", margin: `0 0 ${actionSlot ? 12 : 16}px`, whiteSpace: "pre-wrap" }}>{item.detail ?? item.body ?? item.summary}</p>
+              <p style={{ fontFamily: SANS, fontSize: TYPE.body, lineHeight: 1.85, color: "#4A4A44", margin: `0 0 ${actionSlot ? 12 : 16}px`, whiteSpace: "pre-wrap" }}>{item.detail ?? item.body ?? item.summary}</p>
             )}
             {actionSlot && <div style={{ marginBottom: 16 }}>{actionSlot(requestClose)}</div>}
             {item.meta && item.meta.length > 0 && (
-              <div style={{ borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`, padding: "12px 2px", margin: "0 0 18px", display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`, padding: "12px 2px", margin: "0 0 16px", display: "flex", flexDirection: "column", gap: 8 }}>
                 {item.meta.map((m, i) => (
-                  <div key={i} style={{ fontSize: 12.5, color: "#4A4A44", fontFamily: SANS }}>{m}</div>
+                  <div key={i} style={{ fontSize: TYPE.body, color: "#4A4A44", fontFamily: SANS }}>{m}</div>
                 ))}
               </div>
             )}
             {item.sourceUrl && (
-              <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "13px 0", background: INK, color: PAPER, borderRadius: 999, textDecoration: "none", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em" }}>
+              <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 0", background: INK, color: PAPER, borderRadius: RADIUS.pill, textDecoration: "none", fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.08em" }}>
                 {item.sourceLabel ?? "出典を見る"}
                 <ExternalLink size={13} strokeWidth={2.2} />
               </a>

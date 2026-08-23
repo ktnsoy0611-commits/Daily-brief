@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -188,7 +189,7 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
           // ★跳ね返りカーブを撤去(第33巡)。時間は上の requestClose の待ちと同じ --t-out。
           transition: "transform var(--t-out) var(--ease-settle), opacity var(--t-out) var(--ease-settle)",
         }}>
-          <div onPointerDown={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "6px 4px" }}>
+          <div onPointerDown={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "8px 4px" }}>
             {typeof children === "function" ? children(requestClose) : children}
           </div>
         </div>
@@ -219,7 +220,7 @@ export function closeOnSelfClick(handler: () => void) {
 // それ自体が完結したビジュアルを持つ中身は、これを使わずそのまま浮かせる。
 export function OverlayCard({ children }: { children: ReactNode }) {
   return (
-    <div style={{ background: PAPER, borderRadius: 22, padding: "18px 18px 20px", boxShadow: SOFT_SHADOW_LG }}>
+    <div style={{ background: PAPER, borderRadius: RADIUS.xl, padding: "16px 16px 24px", boxShadow: SOFT_SHADOW_LG }}>
       {children}
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { RADIUS, TYPE } from "@/lib/tokens";
+import { ms as msOf, T_ITEM } from "@/lib/motion";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop, groundOf } from "@/components/AppBackdrop";
@@ -51,11 +52,13 @@ function LoadingScreen() {
   );
 }
 
-// 隣のアプリへ落ち着くまでの時間は globals.css の .app-track が持つ(380ms)。
+// 隣のアプリへ落ち着くまでの時間は globals.css の .app-track が持つ(--t-item)。
 // ダッシュボードのシートの高さ(画面に対する割合)と、落ち着くまでの時間。
 // components/Dashboard.tsx / globals.css と揃えること。
 const DASH_SHEET_RATIO = 0.84;
-const DASH_MS = 360;
+// ★指の速さが取れないときの既定。globals.css の `--dash-ms` の既定値
+//   (= `--t-item`)と**同じ**にする(第33巡)。
+const DASH_MS = msOf(T_ITEM);
 // 指を離したあとの時間の下限・上限(慣性で伸び縮みする)。
 const DASH_MIN_MS = 190;
 const DASH_MAX_MS = 560;

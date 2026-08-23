@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { Check, Sparkles } from "lucide-react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
@@ -42,7 +43,7 @@ const spanLabel = (spanKm: number | null) =>
 
 function chipStyle(active: boolean): React.CSSProperties {
   return {
-    flex: 1, padding: "9px 0", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700,
+    flex: 1, padding: "8px 0", borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700,
     background: active ? INK : "transparent", color: active ? PAPER : "#5A5A54",
     border: `1.5px solid ${active ? INK : "rgba(26,26,24,0.2)"}`,
   };
@@ -53,14 +54,14 @@ function chipStyle(active: boolean): React.CSSProperties {
 function GeneratingIndicator() {
   const base: React.CSSProperties = { position: "absolute", top: "50%", left: 0, willChange: "transform" };
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "26px 0 10px" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "24px 0 12px" }}>
       <div style={{ position: "relative", width: 200, height: 28, overflow: "hidden" }}>
-        <span className="brief-roll-shape" style={{ ...base, marginTop: -8, width: 16, height: 16, borderRadius: "50%", background: RUST, animationDelay: "0s" }} />
+        <span className="brief-roll-shape" style={{ ...base, marginTop: -8, width: 16, height: 16, borderRadius: RADIUS.circle, background: RUST, animationDelay: "0s" }} />
         <span className="brief-roll-shape" style={{ ...base, marginTop: -8, width: 16, height: 16, background: BLUE, animationDelay: "0.6s" }} />
         <span className="brief-roll-shape" style={{ ...base, marginTop: -7, width: 0, height: 0, borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `14px solid ${GOLD}`, animationDelay: "1.2s" }} />
-        <span className="brief-roll-shape" style={{ ...base, marginTop: -5, width: 20, height: 10, borderRadius: 2, background: GREEN, animationDelay: "1.8s" }} />
+        <span className="brief-roll-shape" style={{ ...base, marginTop: -5, width: 20, height: 10, borderRadius: RADIUS.sm, background: GREEN, animationDelay: "1.8s" }} />
       </div>
-      <div style={{ color: MUTED, fontSize: 11.5, letterSpacing: "0.08em" }}>プランを考えています…</div>
+      <div style={{ color: MUTED, fontSize: TYPE.small, letterSpacing: "0.08em" }}>プランを考えています…</div>
     </div>
   );
 }
@@ -71,22 +72,22 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
   const metaBits = [`${plan.stops.length}件`, WEIGHT_DEF[plan.weight].hint, ...(plan.areas.length ? [plan.areas.slice(0, 2).join("・")] : []), ...(span ? [span] : [])];
   return (
     <div>
-      <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 17, lineHeight: 1.35, marginBottom: 6 }}>{plan.title}</div>
-      <div style={{ fontSize: 9.5, letterSpacing: "0.14em", color: MUTED, fontWeight: 700, marginBottom: 10 }}>{metaBits.join(" ・ ")}</div>
+      <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, lineHeight: 1.35, marginBottom: 8 }}>{plan.title}</div>
+      <div style={{ fontSize: TYPE.micro, letterSpacing: "0.14em", color: MUTED, fontWeight: 700, marginBottom: 12 }}>{metaBits.join(" ・ ")}</div>
       {plan.summary && (
-        <p style={{ fontSize: 12.5, lineHeight: 1.85, color: "#5A5A54", marginBottom: 16 }}>{plan.summary}</p>
+        <p style={{ fontSize: TYPE.body, lineHeight: 1.85, color: "#5A5A54", marginBottom: 16 }}>{plan.summary}</p>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 18 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
         {plan.stops.map((stop, idx) => {
           const item = byId.get(stop.id);
           if (!item) return null;
           const IconComp = KIND_ICON[item.kind];
           const hasArea = item.area && item.area !== "—";
           return (
-            <div key={stop.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div key={stop.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
               {/* 回る順番。プランの中身は「順序のある道のり」なので番号を振る。 */}
-              <div style={{ width: 16, flexShrink: 0, fontFamily: SANS, fontWeight: 700, fontSize: 11, color: "#B8B4A6", textAlign: "center" }}>{idx + 1}</div>
-              <div style={{ position: "relative", width: 46, height: 46, borderRadius: 9, overflow: "hidden", flexShrink: 0, background: item.color ?? "#5A5A54" }}>
+              <div style={{ width: 16, flexShrink: 0, fontFamily: SANS, fontWeight: 700, fontSize: TYPE.small, color: "#B8B4A6", textAlign: "center" }}>{idx + 1}</div>
+              <div style={{ position: "relative", width: 46, height: 46, borderRadius: RADIUS.md, overflow: "hidden", flexShrink: 0, background: item.color ?? "#5A5A54" }}>
                 {item.images?.[0] ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={img(item.images[0], 100, 100)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -97,8 +98,8 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
                 )}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, color: INK, fontFamily: SANS, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
-                <div style={{ fontSize: 10, color: MUTED, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: TYPE.body, color: INK, fontFamily: SANS, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
+                <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {stop.note ? stop.note : `${itemKindOf(item.kind).label}${hasArea ? ` ・ ${item.area}` : ""}`}
                 </div>
               </div>
@@ -110,7 +111,7 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
           ストックから消えた行き先がありうる。その分は静かに落とし、
           全部消えた案だけはその旨を出す(空白のまま置かない)。 */}
       {plan.stops.every((s) => !byId.has(s.id)) && (
-        <p style={{ fontSize: 11.5, lineHeight: 1.8, color: MUTED, marginBottom: 16 }}>
+        <p style={{ fontSize: TYPE.small, lineHeight: 1.8, color: MUTED, marginBottom: 16 }}>
           この案の行き先は、もうストックにありません。作り直してください。
         </p>
       )}
@@ -226,22 +227,22 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
         <OverlayCard>
           {loading ? (
             <>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 2 }}>プランを生成</div>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, marginBottom: 2 }}>プランを生成</div>
               <GeneratingIndicator />
             </>
           ) : plans && active ? (
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16 }}>
+                <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead }}>
                   3つの案{selectedArea ? `（${selectedArea}）` : ""}
                 </div>
                 <button onClick={() => { onGenerated(null, selectedArea); }} style={{
-                  border: "none", background: "transparent", cursor: "pointer", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: MUTED, padding: 0,
+                  border: "none", background: "transparent", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, color: MUTED, padding: 0,
                 }}>作り直す</button>
               </div>
               {/* 重さで切り替えるセグメント。3案の違いはここだけなので、
                   軸そのものを操作子にしている。 */}
-              <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
                 {weights.map((w) => (
                   <button key={w} onClick={() => { haptic(6); setActiveWeight(w); }} style={chipStyle(active.weight === w)}>
                     {WEIGHT_DEF[w].label}
@@ -271,11 +272,11 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
                     onClick={() => { if (liveIds.length === 0) return; haptic(12); onApply(liveIds); requestClose(); }}
                     disabled={liveIds.length === 0}
                     style={{
-                      width: "100%", padding: "13px 0", borderRadius: 999, border: "none",
+                      width: "100%", padding: "12px 0", borderRadius: RADIUS.pill, border: "none",
                       cursor: liveIds.length === 0 ? "default" : "pointer",
-                      fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
+                      fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.05em",
                       background: liveIds.length === 0 ? "rgba(26,26,24,0.2)" : INK, color: PAPER,
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                     }}
                   ><Check size={15} strokeWidth={2.6} />選ぶ</button>
                 );
@@ -283,29 +284,29 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
             </>
           ) : (
             <>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: 16, marginBottom: 6 }}>プランを生成</div>
-              <p style={{ fontSize: 11.5, lineHeight: 1.8, color: MUTED, marginBottom: 16 }}>
+              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, marginBottom: 8 }}>プランを生成</div>
+              <p style={{ fontSize: TYPE.small, lineHeight: 1.8, color: MUTED, marginBottom: 16 }}>
                 重さの違う3つの案をつくります。
               </p>
-              <div style={{ fontSize: 9, letterSpacing: "0.15em", color: MUTED, marginBottom: 8 }}>エリア（任意）</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
-                <button onClick={() => setSelectedArea(null)} style={{ ...chipStyle(selectedArea === null), flex: "0 0 auto", padding: "8px 14px" }}>すべて</button>
+              <div style={{ fontSize: TYPE.micro, letterSpacing: "0.15em", color: MUTED, marginBottom: 8 }}>エリア（任意）</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                <button onClick={() => setSelectedArea(null)} style={{ ...chipStyle(selectedArea === null), flex: "0 0 auto", padding: "8px 16px" }}>すべて</button>
                 {areas.map((a) => (
-                  <button key={a} onClick={() => setSelectedArea(a)} style={{ ...chipStyle(selectedArea === a), flex: "0 0 auto", padding: "8px 14px" }}>
+                  <button key={a} onClick={() => setSelectedArea(a)} style={{ ...chipStyle(selectedArea === a), flex: "0 0 auto", padding: "8px 16px" }}>
                     {a}
-                    <span style={{ opacity: 0.6, marginLeft: 5, fontSize: 10 }}>{areaCounts.get(a)}</span>
+                    <span style={{ opacity: 0.6, marginLeft: 4, fontSize: TYPE.small }}>{areaCounts.get(a)}</span>
                   </button>
                 ))}
               </div>
               {error && (
-                <p style={{ fontSize: 11.5, lineHeight: 1.7, color: RUST, marginBottom: 14 }}>{error}</p>
+                <p style={{ fontSize: TYPE.small, lineHeight: 1.7, color: RUST, marginBottom: 16 }}>{error}</p>
               )}
               <button onClick={generate} disabled={target.length === 0} style={{
-                width: "100%", padding: "13px 0", borderRadius: 999, border: "none",
+                width: "100%", padding: "12px 0", borderRadius: RADIUS.pill, border: "none",
                 cursor: target.length === 0 ? "default" : "pointer",
-                fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
+                fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.05em",
                 background: target.length === 0 ? "rgba(26,26,24,0.2)" : INK, color: PAPER,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               }}>
                 <Sparkles size={14} strokeWidth={2.4} />
                 {target.length === 0 ? "対象の候補がありません" : `この${target.length}件から生成する`}

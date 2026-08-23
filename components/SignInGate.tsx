@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { BG, INK, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
@@ -67,14 +68,14 @@ export function SignInGate() {
       alignItems: "center", justifyContent: "center", fontFamily: SANS, color: INK, padding: 24,
     }}>
       <div style={{
-        width: "100%", maxWidth: 340, background: PAPER, borderRadius: 20, boxShadow: SOFT_SHADOW,
-        padding: "28px 22px", boxSizing: "border-box",
+        width: "100%", maxWidth: 340, background: PAPER, borderRadius: RADIUS.xl, boxShadow: SOFT_SHADOW,
+        padding: "32px 24px", boxSizing: "border-box",
       }}>
-        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "0.02em", marginBottom: 6 }}>デイリーブリーフ</div>
+        <div style={{ fontSize: TYPE.head, fontWeight: 700, letterSpacing: "0.02em", marginBottom: 8 }}>デイリーブリーフ</div>
 
         {phase === "sent" || phase === "verifying" ? (
           <>
-            <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.7, margin: "0 0 16px" }}>
+            <p style={{ fontSize: TYPE.body, color: MUTED, lineHeight: 1.7, margin: "0 0 16px" }}>
               <strong style={{ color: INK }}>{email.trim()}</strong> に届いた6桁のコードを入力してください。
             </p>
             <input
@@ -83,18 +84,18 @@ export function SignInGate() {
               onKeyDown={(e) => { if (e.key === "Enter") verify(); }}
               placeholder="123456"
               style={{
-                width: "100%", boxSizing: "border-box", border: `1.5px solid ${INK}`, borderRadius: 12,
-                padding: "12px 14px", fontFamily: SANS, fontSize: 20, letterSpacing: "0.2em", textAlign: "center",
-                outline: "none", marginBottom: 14,
+                width: "100%", boxSizing: "border-box", border: `1.5px solid ${INK}`, borderRadius: RADIUS.lg,
+                padding: "12px 16px", fontFamily: SANS, fontSize: TYPE.head, letterSpacing: "0.2em", textAlign: "center",
+                outline: "none", marginBottom: 16,
               }}
             />
-            {error && <div style={{ fontSize: 11.5, color: "#C1502E", lineHeight: 1.6, margin: "0 0 12px" }}>{error}</div>}
+            {error && <div style={{ fontSize: TYPE.small, color: "#C1502E", lineHeight: 1.6, margin: "0 0 12px" }}>{error}</div>}
             <button
               onClick={verify} disabled={!code.trim() || phase === "verifying"}
               style={{
-                width: "100%", padding: "13px 0", background: code.trim() && phase !== "verifying" ? INK : "rgba(26,26,24,0.2)",
-                color: PAPER, border: "none", borderRadius: 999, cursor: code.trim() && phase !== "verifying" ? "pointer" : "default",
-                fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 10,
+                width: "100%", padding: "12px 0", background: code.trim() && phase !== "verifying" ? INK : "rgba(26,26,24,0.2)",
+                color: PAPER, border: "none", borderRadius: RADIUS.pill, cursor: code.trim() && phase !== "verifying" ? "pointer" : "default",
+                fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 12,
               }}
             >
               {phase === "verifying" ? "確認中…" : "ログイン"}
@@ -103,7 +104,7 @@ export function SignInGate() {
               onClick={() => { setPhase("idle"); setCode(""); setError(""); }}
               style={{
                 width: "100%", padding: "8px 0", background: "transparent", color: MUTED,
-                border: "none", cursor: "pointer", fontFamily: SANS, fontSize: 11.5,
+                border: "none", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small,
               }}
             >
               メールアドレスを入力し直す
@@ -111,7 +112,7 @@ export function SignInGate() {
           </>
         ) : (
           <>
-            <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.7, margin: "0 0 16px" }}>
+            <p style={{ fontSize: TYPE.body, color: MUTED, lineHeight: 1.7, margin: "0 0 16px" }}>
               メールアドレスに確認コードを送ります。パスワードは不要です。
             </p>
             <input
@@ -120,17 +121,17 @@ export function SignInGate() {
               onKeyDown={(e) => { if (e.key === "Enter") send(); }}
               placeholder="you@example.com"
               style={{
-                width: "100%", boxSizing: "border-box", border: `1.5px solid ${INK}`, borderRadius: 12,
-                padding: "12px 14px", fontFamily: SANS, fontSize: 16, outline: "none", marginBottom: 14,
+                width: "100%", boxSizing: "border-box", border: `1.5px solid ${INK}`, borderRadius: RADIUS.lg,
+                padding: "12px 16px", fontFamily: SANS, fontSize: TYPE.lead, outline: "none", marginBottom: 16,
               }}
             />
-            {error && <div style={{ fontSize: 11.5, color: "#C1502E", lineHeight: 1.6, margin: "0 0 12px" }}>{error}</div>}
+            {error && <div style={{ fontSize: TYPE.small, color: "#C1502E", lineHeight: 1.6, margin: "0 0 12px" }}>{error}</div>}
             <button
               onClick={send} disabled={!email.trim() || phase === "sending"}
               style={{
-                width: "100%", padding: "13px 0", background: email.trim() && phase !== "sending" ? INK : "rgba(26,26,24,0.2)",
-                color: PAPER, border: "none", borderRadius: 999, cursor: email.trim() && phase !== "sending" ? "pointer" : "default",
-                fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
+                width: "100%", padding: "12px 0", background: email.trim() && phase !== "sending" ? INK : "rgba(26,26,24,0.2)",
+                color: PAPER, border: "none", borderRadius: RADIUS.pill, cursor: email.trim() && phase !== "sending" ? "pointer" : "default",
+                fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.1em",
               }}
             >
               {phase === "sending" ? "送信中…" : "確認コードを送る"}

@@ -1,5 +1,6 @@
 "use client";
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { ms, T_ITEM } from "@/lib/motion";
 import { ChevronUp, Map as MapIcon, Maximize2, Minimize2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -37,7 +38,7 @@ function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen, on
   const widthPct = 100 - shrink * (100 - MAP_MIN_WIDTH_RATIO * 100);
   return (
     <div style={{
-      position: "relative", width: `${widthPct}%`, aspectRatio: "4 / 3", borderRadius: 16, overflow: "hidden",
+      position: "relative", width: `${widthPct}%`, aspectRatio: "4 / 3", borderRadius: RADIUS.xl, overflow: "hidden",
       flexShrink: 0, border: `1px solid ${HAIRLINE}`,
     }}>
       {/* 背景=実地図(Leaflet+OSM)。ピンはLeafletMap内で自作デザインを重ねる。 */}
@@ -45,7 +46,7 @@ function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen, on
       {/* 地図右下の全画面トグル。地図単体をタブの他の内容(棚・帯)から
           切り離して大きく見たいという要望に応える。 */}
       <button onClick={onOpenFullscreen} aria-label="地図を全画面表示" style={{
-        position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: "50%",
+        position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: RADIUS.circle,
         background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
       }}>
@@ -55,7 +56,7 @@ function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen, on
           画面の大半を占有し続けないよう、その場で閉じられるようにする。
           zIndexは全画面ボタンと同じくLeafletのpane(400番台)より上。 */}
       <button onClick={onCollapse} aria-label="地図をたたむ" style={{
-        position: "absolute", right: 12, top: 12, width: 34, height: 34, borderRadius: "50%",
+        position: "absolute", right: 12, top: 12, width: 34, height: 34, borderRadius: RADIUS.circle,
         background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
       }}>
@@ -98,7 +99,7 @@ function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }:
     }}>
       <LeafletMap items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
       <button onClick={requestClose} aria-label="地図の全画面表示を閉じる" style={{
-        position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: "50%",
+        position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: RADIUS.circle,
         background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
       }}>
@@ -110,8 +111,8 @@ function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }:
 
 function HorizontalShelf({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section style={{ marginBottom: 22 }}>
-      <SectionLabel text={title} style={{ marginBottom: 10 }} />
+    <section style={{ marginBottom: 24 }}>
+      <SectionLabel text={title} style={{ marginBottom: 12 }} />
       <div className="no-scrollbar" style={{ display: "flex", gap: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
         {children}
       </div>
@@ -249,7 +250,7 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
   );
 
   return (
-    <main style={{ paddingTop: 14, paddingBottom: bottomPadding }}>
+    <main style={{ paddingTop: 16, paddingBottom: bottomPadding }}>
       {/* マップだけ画面上部に追従(sticky)させる。下の棚(今週のおすすめ・
           4ドメイン)をスクロールしても、地図は常に見える位置に留まり
           続けてほしいという要望に対応。topは0(=data-tab-scroll-rootの
@@ -300,9 +301,9 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
         // チップを1本置く(nav・戻るチップと同じ「PAPER地+SOFT_SHADOWで浮く
         // 丸チップ」の語彙)。
         <button onClick={() => { haptic(6); setMapOpen(true); }} style={{
-          width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-          background: PAPER, border: "none", borderRadius: 999, padding: "11px 0", cursor: "pointer",
-          fontFamily: SANS, fontSize: 11.5, fontWeight: 700, color: INK, boxShadow: SOFT_SHADOW,
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          background: PAPER, border: "none", borderRadius: RADIUS.pill, padding: "12px 0", cursor: "pointer",
+          fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, color: INK, boxShadow: SOFT_SHADOW,
         }}>
           <MapIcon size={14} strokeWidth={2.2} />
           地図をひらく
@@ -312,17 +313,17 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
       {/* ★プランを生成。プランタブを開いたとき画面の中ほどに来る位置(地図の
           すぐ下、棚の手前)に、単独で大きく置く。地図と棚のあいだが、
           「ここから何をするか」を決める場所として一番自然なため。 */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 9, padding: "6px 0 26px" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "8px 0 24px" }}>
         <button onClick={() => { haptic(10); setPlanSheet(true); }} style={{
           display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-          padding: "15px 30px", borderRadius: 999, border: "none", cursor: "pointer",
-          background: INK, color: PAPER, fontFamily: SANS, fontSize: 13, fontWeight: 700, letterSpacing: "0.08em",
+          padding: "16px 32px", borderRadius: RADIUS.pill, border: "none", cursor: "pointer",
+          background: INK, color: PAPER, fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.08em",
           boxShadow: SOFT_SHADOW_LG,
         }}>
           <Sparkles size={15} strokeWidth={2.4} />
           プランを生成
         </button>
-        <span style={{ fontSize: 10.5, color: MUTED, letterSpacing: "0.04em" }}>
+        <span style={{ fontSize: TYPE.small, color: MUTED, letterSpacing: "0.04em" }}>
 {plans ? "3案" : ""}
         </span>
       </div>
@@ -398,7 +399,7 @@ export function ExecuteTab({ appState, persist, showToast, profileButton, select
         onClose={() => setPinItem(null)}
         actionSlot={pinItem ? ((closeSheet) => (
           <button onClick={() => { toggleDraftItem(pinItem); closeSheet(); }} style={{
-            width: "100%", padding: "12px 0", borderRadius: 999, cursor: "pointer", fontFamily: SANS, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
+            width: "100%", padding: "12px 0", borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.05em",
             background: draftSelection.includes(pinItem.id) ? "transparent" : INK,
             color: draftSelection.includes(pinItem.id) ? RUST : PAPER,
             border: draftSelection.includes(pinItem.id) ? `1.5px solid ${RUST}` : "none",

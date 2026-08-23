@@ -23,6 +23,7 @@
 //     外側からすぐ背表紙が詰めて並ぶよう固定の隙間だけシフトする。
 //     スワイプ中は棚全体がわずかにパカッと開く一瞬のアニメーションが付く。
 
+import { RADIUS, TYPE } from "@/lib/tokens";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { BG, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { haptic, shade } from "@/lib/helpers";
@@ -94,7 +95,7 @@ export type PlaneShape =
 export function PlaneFill({ shape, color }: { shape: PlaneShape; color: string }) {
   switch (shape) {
     case "circle":
-      return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: "50%" }} />;
+      return <div style={{ position: "absolute", inset: 0, background: color, borderRadius: RADIUS.circle }} />;
     case "semicircleUp":
       return <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "50%", background: color, borderRadius: "999px 999px 0 0" }} />;
     case "semicircleDown":
@@ -225,7 +226,7 @@ export const THING_ITEMS_PER_VOLUME = 20;
 // になるため、はみ出す/はみ出さないをはっきりさせている)。
 function TargetMotif({ color = PAPER }: { color?: string }) {
   return (
-    <div style={{ position: "absolute", left: "50%", top: "-24%", transform: "translateX(-50%)", width: "64%", aspectRatio: "1 / 1", borderRadius: "50%", background: color }} />
+    <div style={{ position: "absolute", left: "50%", top: "-24%", transform: "translateX(-50%)", width: "64%", aspectRatio: "1 / 1", borderRadius: RADIUS.circle, background: color }} />
   );
 }
 
@@ -455,15 +456,15 @@ function CoverBody({ eyebrowLabel, title, footer, accentColor, titleColor = INK 
   eyebrowLabel?: string; title: string; footer?: ReactNode; accentColor: string; titleColor?: string;
 }) {
   return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: "12px 14px 12px" }}>
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: "12px 16px 12px" }}>
       {eyebrowLabel && (
-        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7, flexShrink: 0 }}>
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: accentColor, flexShrink: 0 }} />
-          <span style={{ fontSize: 9, letterSpacing: "0.12em", color: accentColor, fontWeight: 700 }}>{eyebrowLabel}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8, flexShrink: 0 }}>
+          <span style={{ width: 5, height: 5, borderRadius: RADIUS.circle, background: accentColor, flexShrink: 0 }} />
+          <span style={{ fontSize: TYPE.micro, letterSpacing: "0.12em", color: accentColor, fontWeight: 700 }}>{eyebrowLabel}</span>
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end" }}>
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: 14.5, lineHeight: 1.3, color: titleColor, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: TYPE.lead, lineHeight: 1.3, color: titleColor, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
       </div>
       {footer && <div style={{ marginTop: 8, flexShrink: 0 }}>{footer}</div>}
     </div>

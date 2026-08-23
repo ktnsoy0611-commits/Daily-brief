@@ -70,7 +70,7 @@
 ## データ・ロジック
 - `lib/types.ts` — **データモデルの正**。`lib/constants.ts` — 色・寸法・書体。
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。
-- `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋と入力画面をつなぐ共有要素）**。
+- `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋の丸の場所）**。
   CSS 側は `app/globals.css` の `:root`。数字はこの2つだけ。増やさない。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。

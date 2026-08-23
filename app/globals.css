@@ -12,7 +12,7 @@
 
   --t-press: 90ms;    /* 押した瞬間。指の反応は 0.1s 以内 */
   --t-in:   700ms;    /* 大きな面が開く */
-  --t-out:  600ms;    /* 閉じる */
+  --t-out:  350ms;    /* 閉じる。★きびきび(2026-08-19・第27巡にユーザー確定) */
   --t-item: 420ms;    /* 中の要素ひとつ */
   --t-step:  50ms;    /* 時間差(視線誘導) */
 }
@@ -496,9 +496,30 @@ button:active {
    第26巡にユーザー指定)。第16巡からの「下からスライドして出て、下へ
    スライドして帰る」(`.tc-shell-in` / `.tc-shell-out` / `@keyframes
    tc-slide-in` / `tc-slide-out`)は**撤去**した — 広がる演出と二重になる。
-   いまの出入りは Framer Motion の共有要素(`layoutId="composer-surface"`)が
-   持つ(`lib/motion.ts` / `components/tasks/TaskComposer.tsx`)。
-   ★下敷きも一緒に撤去。器の地そのものが広がるので、別の板が要らない。 */
+   ★下敷きも一緒に撤去。器の地そのものが広がるので、別の板が要らない。
+
+   ★★★やり方は**器を円で切り抜く**(2026-08-19・第27巡)。
+   Framer Motion の共有要素(`layoutId`)は**撤去した** — layout animation は
+   「測った矩形へ合わせる transform」を焼き付けるが、器は `place()` が
+   `visualViewport` に合わせて高さを書き換え続けるので、**焼き付けた値が
+   すぐ古くなる**(実機で「キーボードの後ろに何も無い」「最後に背景がパッと
+   出てくる」「閉じるとき2段階ガクッ」)。
+   **切り抜きは寸法を持たない。** 器がどう動いても、面も中身も常に器そのもの。
+   要素の受け渡しもゼロなので、途中で測り直す瞬間が構造的に無い。
+
+   ★曲線は `--ease-settle` ではなく **`--ease-sheet`**。`--ease-settle` は
+   350ms で 99% まで行って残り 1% に 350ms かける曲線で、**面が広がって画面を
+   覆う**動きに使うと「端の細い余白だけが長く残る」(実機で報告)。
+   ★半径は器の四隅までの最大距離を**少し超えさせる**(TaskComposer 側で ×1.08)。
+   覆い終わりの円は画面の外まで出ているので、四角い角も、端末の丸い角との
+   ぶつかりも出ない。
+   ★覆い終わったら切り抜きごと外す(`--rev: none`)。以後は器が自由に動ける。 */
+[data-composer-shell] { clip-path: var(--rev, none); }
+[data-composer-shell][data-rev] {
+  transition: clip-path var(--t-in) var(--ease-sheet);
+  will-change: clip-path;
+}
+[data-composer-shell][data-rev="out"] { transition-duration: var(--t-out); }
 /* ★第21〜22巡の「出入りの最中は帯と図形の追従を止める」規則は撤去した
    (第24巡)。器が見えている矩形そのものになり、帯も図形も**キーボード追従の
    transform を持たなくなった**ので、止めるものがもう無い。 */
@@ -577,6 +598,7 @@ button:active {
   .tc-pop-out, .tc-pick,
   .tc-solid-in, .tc-solid-swap-in, .tc-solid-swap-out, .tc-cue { animation: none; }
   [data-overlay] [data-app-shell] { transform: none; filter: none; border-radius: 0; }
+  [data-composer-shell] { clip-path: none !important; }
   .tc-lamp { transition: none; }
   [data-composer-shell] { transition: none !important; }
 }

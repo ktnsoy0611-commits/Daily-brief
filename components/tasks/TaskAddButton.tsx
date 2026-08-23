@@ -1,10 +1,9 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
 import { INK, PAPER, SANS, SOFT_SHADOW_LG } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { setSurfaceOrigin, SURFACE_ID, SURFACE_IN } from "@/lib/motion";
+import { setSurfaceOrigin } from "@/lib/motion";
 
 // ★タスク(候補)を手で足す丸ボタンと、動作確認用のダミー投入。
 // 候補タブ・重力タブの両方が同じものを使うので、置き場所と見た目が必ず揃う。
@@ -25,17 +24,21 @@ export function TaskAddButton({ onAdd, lifted, open }: {
         position: "absolute", right: 0, zIndex: 26,
         bottom: lifted ? "calc(var(--nav-h) + 14px)" : 14,
         width: 54, height: 54, borderRadius: "50%", border: "none",
-        // ★丸そのものは下の共有要素が描く。ここは当たり判定と字だけ。
+        // ★丸は下の `<span>` が描く(開いているあいだだけ消すため)。
         background: "transparent", color: INK, cursor: "pointer",
         display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
       }}>
-      {/* ★★**ここの丸が、そのまま入力画面の地になる**(2026-08-19・第26巡)。
-          同じ `layoutId` を入力画面の地の面も名乗るので、開くと丸が画面いっぱいへ
-          広がり、閉じると同じ場所へ吸い込まれる(画面が切り替わるのではなく、
-          押したものが変形して続く)。★開いているあいだは消しておくこと —
-          同じ `layoutId` が2つ同時に居ると行き先が決まらない。 */}
+      {/* ★★**ここが、入力画面が広がってくる中心**(2026-08-19・第27巡)。
+          押した瞬間に `setSurfaceOrigin` でこの丸の場所を控え、入力画面が
+          その点から円で広がる(`components/tasks/TaskComposer.tsx` の `grow`)。
+          閉じるときも同じ点へ吸い込まれる。
+          ★開いているあいだは消しておく — 入力画面がこの丸から広がってきた
+          ように見せるので、下に丸が残っていると二重に見える。
+          ★★第26巡は Framer Motion の共有要素(`layoutId`)でこの丸そのものを
+          画面いっぱいへ変形させていたが、受け渡しの途中で測り直しが入って
+          実機で「2段階ガクッ」になった。丸はもう動かない。 */}
       {!open && (
-        <motion.span layoutId={SURFACE_ID} transition={SURFACE_IN} aria-hidden data-surface style={{
+        <span aria-hidden data-surface style={{
           position: "absolute", inset: 0, borderRadius: "50%",
           background: PAPER, boxShadow: SOFT_SHADOW_LG,
         }} />

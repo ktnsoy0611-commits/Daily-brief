@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { BD_GREY, JOURNAL_BG } from "@/lib/constants";
-import { GROUND_EASE, GROUND_MS, pushGround } from "@/lib/ground";
+import { GROUND_EASE, GROUND_MS, onGround, pushGround } from "@/lib/ground";
 import type { AppId } from "@/lib/types";
 
 // ★アプリの地(2026-08-11・作り直し)。
@@ -46,14 +46,25 @@ export function AppBackdrop({ appId }: { appId: AppId }) {
   //   (2026-08-19・第26巡。奪えていたのが「一番下だけ背景が適応されない」の正体)。
   useEffect(() => pushGround(ground, "app"), [ground]);
 
-  // ★body直下へポータルで描き、高さは 100lvh(表示領域が最大のときの高さ)。
-  // シェルは 100svh 固定 + overflow:hidden なので、ここへ置かないと、
-  // ツールバーが引っ込んだときの差の帯だけ色が途切れて見える。
+  // ★★**塗る色は自分で決めない**(2026-08-19・第27巡)。積むのはアプリの層
+  //   （いちばん下）だが、**塗るのは積み木の勝者**。入力画面や録音が開けば
+  //   帆布も一緒にその色になる。html・theme-color と必ず同じ色・同じ時間。
+  const [paint, setPaint] = useState(ground);
+  useEffect(() => onGround(setPaint), []);
+
+  // ★body直下へポータルで描き、**`position: fixed; inset: 0`**。
+  // ★★`width: 100vw; height: 100lvh` をやめた(2026-08-19・第27巡)。
+  //   iOS のスタンドアロン(ホーム画面へ追加した PWA)では `lvh` が下の
+  //   セーフエリアを含まないことがあり、そのぶん**帆布が画面の下まで
+  //   届かなかった**。届かない所は端末が manifest の色で塗るので、
+  //   そこだけ別色の帯として残る。`viewport-fit=cover` の固定要素の
+  //   `inset: 0` は**セーフエリアを含む画面全体**なので、`lvh` がどう
+  //   計算されようと届かない場所が無くなる。
   if (typeof document === "undefined") return null;
   return createPortal((
     <div aria-hidden data-backdrop style={{
-      position: "fixed", left: 0, top: 0, width: "100vw", height: "100lvh",
-      pointerEvents: "none", zIndex: -1, background: ground,
+      position: "fixed", inset: 0,
+      pointerEvents: "none", zIndex: -1, background: paint,
       // ★時間と曲線は `lib/ground.ts` の1か所から。列の横スライド(.app-track)と
       //   **同じ**にすること。420ms ease だった頃は、列(380ms)・html(即座)と
       //   三者三様で「遷移したとき背景が同時に切り替わらない」と報告された。

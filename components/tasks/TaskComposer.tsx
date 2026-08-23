@@ -2,7 +2,6 @@
 
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion } from "framer-motion";
 import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
 import { SHEET_BODY_H, WhenSheet } from "@/components/tasks/WhenSheet";
 import { ComposerToolbar, TOOL_LABEL, type ToolKey } from "@/components/tasks/ComposerToolbar";
@@ -12,7 +11,7 @@ import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
 import { isViewportDebug } from "@/lib/debugViewport";
 import { pushGround } from "@/lib/ground";
-import { SURFACE_ID, SURFACE_IN, SURFACE_OUT, surfaceOrigin } from "@/lib/motion";
+import { surfaceOrigin, T_OUT } from "@/lib/motion";
 import { haptic } from "@/lib/helpers";
 import { resolveTag, tagAccent, tagColor, tagInk } from "@/lib/taskTags";
 import { specOf } from "@/lib/taskSize";
@@ -79,9 +78,12 @@ export interface ComposerData {
 }
 
 /** 閉じる動きの長さ(ms)。 */
-// ★閉じるのは**下へスライド**(2026-08-18・第16巡にユーザー指定)。
-// `.tc-shell-out`(280ms)と合わせる。
-const LEAVE_MS = 300;
+// ★★**切り抜きの円が縮む時間と必ず同じにする**(2026-08-19・第27巡)。
+// 第26巡は 300ms のまま `--t-out`(600ms) の動きを流していたので、
+// **閉じる動きが半分で打ち切られていた**(実機で「アニメーションしていません」)。
+// 数字を二重に持たないよう `lib/motion.ts` の `T_OUT` から引く
+// (CSS 側の `--t-out` と対。片方だけ直さないこと)。
+const LEAVE_MS = Math.round(T_OUT * 1000);
 /** これより高く出たら「キーボードが出ている」。 */
 const KB_UP = 120;
 /** これより低くなったら「キーボードが閉じた」。 */
@@ -145,10 +147,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // キーボードを閉じない。意図した blur(画面を離れる・日程のシート)のときだけ
   // false にする。
   const keepFocus = useRef(true);
-  /** 閉じている最中(動きを見せているあいだ)。 */
-  const [bye, setBye] = useState(false);
-  /** 閉じるときに吸い込まれる先(＋の丸の場所)。 */
-  const back = surfaceOrigin();
   /** ★開発用。実機の数値を隅に出す(直ったら撤去する)。 */
   const [probe, setProbe] = useState(false);
   useEffect(() => setProbe(isViewportDebug()), []);
@@ -253,6 +251,67 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // 更新していて、入力画面まるごとが再レンダーされていた。
   // 矩形は **ref 越しに style へ直接書く**(`.app-track` と同じ作法)。
   const shellRef = useRef<HTMLDivElement | null>(null);
+
+  // ★★★**＋から広がって、＋へ戻す = 器を円で切り抜く**(2026-08-19・第27巡)。
+  //
+  // 切り抜きは**寸法を持たない**。`place()` が器の高さをどれだけ書き換えても、
+  // 地の面も中身も常に器そのもの。要素の受け渡しもゼロなので、途中で測り直す
+  // 瞬間が構造的に無い(第26巡の共有要素はここで壊れていた)。
+  // 覆い終わったら切り抜きごと外し、以後は器を自由に動かす。
+  /** ＋の丸の中心と、そこから器の四隅までの最大距離。 */
+  const revGeom = () => {
+    const el = shellRef.current;
+    const o = surfaceOrigin();
+    const r = el ? el.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+    const x = o.x + o.w / 2 - r.left;
+    const y = o.y + o.h / 2 - r.top;
+    const far = Math.max(
+      Math.hypot(x, y), Math.hypot(r.width - x, y),
+      Math.hypot(x, r.height - y), Math.hypot(r.width - x, r.height - y),
+    );
+    // ★四隅を**少し超えさせる**。ぴったりだと、覆い終わりの細い隙間だけが
+    //   長く見える(実機で「画面端に余白が残る状態が長い」と報告)。
+    //   はみ出していれば四角い角も、端末の丸い角とのぶつかりも出ない。
+    return { x, y, r0: o.w / 2, r1: far * 1.08 };
+  };
+  const circle = (r: number, x: number, y: number) => `circle(${Math.round(r)}px at ${Math.round(x)}px ${Math.round(y)}px)`;
+  /** ＋の大きさから器いっぱいへ広げる。 */
+  const grow = () => {
+    const el = shellRef.current;
+    if (!el) return;
+    const g = revGeom();
+    el.style.setProperty("--rev", circle(g.r0, g.x, g.y));
+    delete el.dataset.rev;          // ここは動かさない(始まりの姿を置くだけ)
+    void el.offsetWidth;            // 置いたことを確定させてから
+    el.dataset.rev = "in";
+    el.style.setProperty("--rev", circle(g.r1, g.x, g.y));
+    const done = (e: TransitionEvent) => {
+      if (e.propertyName !== "clip-path" || e.target !== el) return;
+      // ★★広げている途中で閉じられたら**何もしない**。ここで切り抜きを
+      //   外すと、吸い込みが終わった瞬間に入力画面が丸ごと出てしまう。
+      if (el.dataset.rev !== "in") return;
+      el.removeEventListener("transitionend", done);
+      // ★切り抜きごと外す。以後 `place()` が器を動かしても何も邪魔しない。
+      delete el.dataset.rev;
+      el.style.setProperty("--rev", "none");
+    };
+    el.addEventListener("transitionend", done);
+  };
+  /** ＋の大きさへ吸い込む。★長さは `--t-out` と `LEAVE_MS` で必ず揃える。 */
+  const shrink = () => {
+    const el = shellRef.current;
+    if (!el) return;
+    const g = revGeom();
+    el.style.setProperty("--rev", circle(g.r1, g.x, g.y));
+    delete el.dataset.rev;
+    void el.offsetWidth;
+    el.dataset.rev = "out";
+    el.style.setProperty("--rev", circle(g.r0, g.x, g.y));
+  };
+  // ★広げるのは**マウントの1回だけ**。`grow` を依存に入れると毎レンダーで
+  //   広げ直してしまう(文字を打つたびに円が走る)。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { grow(); }, []);
   // ★★**出る動きが終わるまで図形を焼かない**(2026-08-18・第17巡)。
   //   図形を1枚焼くのは 4× 絞りで 130ms 級。以前は「300ms 待つ」で逃がして
   //   いたが、スライドは 320ms なので**最後の数フレームに焼きが重なって**
@@ -680,18 +739,16 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     keepFocus.current = false;
     // ★★★**滑り出しは React を待たない**(2026-08-18・第20巡)。
     //
-    // これまでは `bye` を state で立て、**再描画が終わってから**クラスが
-    // 付いていた。器の中身(行・図形・帯)をまるごと描き直す間は動き出さず、
-    // そのぶんが**そのまま「間」**として見えていた
-    // (実機で「閉じる時のアニメーションがワンテンポ遅れる」と報告)。
-    // 出るときは rAF を2回待つのが正しかった(第18巡)が、**閉じるときは逆** —
-    // 待つ理由が無い。触れた瞬間にクラスだけ直に付け、描き直しは滑りながら
-    // 追いつかせる。`bye` の state は、そのあとの描画で辻褄を合わせる役。
-    // ★★閉じる動きは**共有要素**が持つ(2026-08-19・第26巡)。`bye` が立つと
-    //   入力画面の地の面が外れ、＋の丸が名乗り直すので、Framer Motion が
-    //   その2つを結んで**同じ場所へ吸い込む**。板をスライドさせる仕掛け
-    //   (`tc-shell-in` / `tc-shell-out`)は要らなくなったので撤去した。
-    setBye(true);
+    // これまでは state を立て、**再描画が終わってから**クラスが付いていた。
+    // 器の中身(行・図形・帯)をまるごと描き直す間は動き出さず、そのぶんが
+    // **そのまま「間」**として見えていた(実機で「閉じる時のアニメーションが
+    // ワンテンポ遅れる」と報告)。出るときは rAF を2回待つのが正しかった
+    // (第18巡)が、**閉じるときは逆** — 待つ理由が無い。触れた瞬間に DOM を
+    // 直に書き、描き直しは動きながら追いつかせる。
+    // ★★閉じる動きは**切り抜きの円が縮む**だけ(2026-08-19・第27巡)。
+    //   要素の入れ替えも受け渡しも無いので、途中で測り直す瞬間が無い
+    //   (第26巡は3つの要素をリレーしていて「2段階ガクッ」と報告された)。
+    shrink();
     // ★キーボードを閉じるのは**滑り出した後**。iOS はここで矩形を作り直すので、
     //   先に呼ぶと動き出しがそのぶん遅れる。
     (document.activeElement as HTMLElement | null)?.blur();
@@ -740,31 +797,17 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       overflow: "clip",
       overscrollBehavior: "none",
     }}>
-      {/* ★★★**＋の丸が、そのまま広がってこの地になる**(2026-08-19・第26巡)。
-          `TaskAddButton` の丸と同じ `layoutId` を名乗るので、Framer Motion が
-          2つを結んで丸 → 画面いっぱいの面へ変形させる。閉じる(`bye`)と
-          こちらが外れ、＋が名乗り直すので同じ道を戻って吸い込まれる。
-          ★★**器そのものには `layoutId` を付けないこと。** 器の `top`/`height`
-          は `visualViewport` に合わせて `place()` が持っている(第24巡でようやく
-          合った所)。寸法の持ち主が2つになると必ず壊れる。ここが持つのは
-          **見せ方(丸か面か・どの色か)だけ**。 */}
-      {!bye ? (
-        <motion.div layoutId={SURFACE_ID} transition={SURFACE_IN} aria-hidden data-surface style={{
-          position: "absolute", inset: 0, zIndex: 0,
-          background: CHARCOAL, borderRadius: 0,
-        }} />
-      ) : (
-        // ★★**帰り先はこの中に置く**(2026-08-19・第26巡)。＋ボタン側の丸は
-        //   親の state が戻る 300ms 後にしか現れないので、そこへ渡そうとすると
-        //   **別のコミットになって受け渡しが成立しない**(実測: 丸が 52px から
-        //   52px へ動くだけで、画面いっぱいからは戻ってこなかった)。
-        //   同じコミットで面が外れて丸が名乗るように、控えておいた＋の場所へ
-        //   ここで直に置く。実物の＋はそのあと同じ場所に現れるので繋がって見える。
-        <motion.div layoutId={SURFACE_ID} transition={SURFACE_OUT} aria-hidden data-surface style={{
-          position: "fixed", zIndex: 0, borderRadius: "50%", background: PAPER,
-          left: back.x, top: back.y, width: back.w, height: back.h,
-        }} />
-      )}
+      {/* ★★★**地は動かない。動くのは器の切り抜き**(2026-08-19・第27巡)。
+          ここは `inset: 0` の面をただ塗るだけ — `place()` が器の高さを
+          どう書き換えても、面は必ず器そのものになる。
+          ★★第26巡は Framer Motion の共有要素(`layoutId`)にしていたが、
+          layout animation は「測った矩形へ合わせる transform」を焼き付ける。
+          器は動き続けるので焼き付けた値がすぐ古くなり、実機で
+          **キーボードの後ろに地が無い**状態になった(アイコンを何度か叩くと
+          直る＝そこで測り直される)。**寸法の持ち主を二重にしない。** */}
+      <div aria-hidden data-surface style={{
+        position: "absolute", inset: 0, zIndex: 0, background: CHARCOAL,
+      }} />
       {/* ★開発用の数値表示。**中身を包む面の外**に置く — 中に置くと崩れたとき
           数値まで一緒に流れて、いちばん知りたいときに読めない(第23巡)。 */}
       {probe && <ViewportProbe />}

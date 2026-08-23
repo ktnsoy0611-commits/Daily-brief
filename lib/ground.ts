@@ -42,6 +42,8 @@ interface Layer { id: number; color: string; level: GroundLevel }
 let stack: Layer[] = [];
 let seq = 0;
 let themeTimer = 0;
+/** 勝っている色を受け取る人たち(帆布 = AppBackdrop)。 */
+const watchers = new Set<(color: string) => void>();
 
 /** いま勝っている色。いちばん高い層の、その中で最後に積んだもの。 */
 function top(): string {
@@ -60,6 +62,14 @@ function apply() {
   root.style.transition = `background-color ${GROUND_MS}ms ${GROUND_EASE}`;
   root.style.backgroundColor = color;
 
+  // ★★**帆布も同じ瞬間に同じ色を受け取る**(2026-08-19・第27巡)。
+  //   以前は帆布(zIndex -1)だけが `groundOf(appId)` を直に見ていたので、
+  //   入力画面が開いているあいだ **html は暗いのに帆布はアプリの明るい色**
+  //   という状態になっていた。帆布は html の上にあるから、html の色は
+  //   **帆布の外側 — 画面のいちばん下 — にしか出られない**。
+  //   「一番下だけ背景が適応されない」の残り半分がこれ。
+  for (const w of watchers) w(color);
+
   // theme-color は CSS で補間できない。**滑りの折り返しで1回だけ差し替える** —
   // 即座に書くと「下だけ先に変わる」、終わりに書くと「下だけ遅れて変わる」。
   // 折り返しなら、ずれは最大でも半分で済む。
@@ -76,6 +86,17 @@ function apply() {
   // 最初の1回(まだ何も塗っていない)は待たずに書く。
   if (!stack.length || seq <= 1) write();
   else themeTimer = window.setTimeout(write, GROUND_MS / 2);
+}
+
+/**
+ * 勝っている色を受け取る。**返り値を呼ぶと購読をやめる**。
+ * ★全画面に色を塗る面(帆布)は、自分でアプリの色を決めずに必ずここから貰うこと。
+ */
+export function onGround(cb: (color: string) => void): () => void {
+  watchers.add(cb);
+  const now = top();
+  if (now) cb(now);
+  return () => { watchers.delete(cb); };
 }
 
 /**

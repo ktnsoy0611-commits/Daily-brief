@@ -85,7 +85,7 @@ export interface ComposerData {
 // **閉じる動きが半分で打ち切られていた**(実機で「アニメーションしていません」)。
 // 数字を二重に持たないよう `lib/motion.ts` の `T_OUT` から引く
 // (CSS 側の `--t-out` と対。片方だけ直さないこと)。
-const LEAVE_MS = Math.round(T_OUT * 1000);
+const LEAVE_MS = ms(T_OUT);
 /** これより高く出たら「キーボードが出ている」。 */
 const KB_UP = 120;
 /** これより低くなったら「キーボードが閉じた」。 */

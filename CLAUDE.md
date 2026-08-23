@@ -65,15 +65,20 @@
 - `lib/audioTrim.ts` `lib/dayRecords.ts` — 音声の切り出し・1日分の組み立て。
 
 ## 共通UI
+- `components/Button.tsx` — **押せる面はここだけ**。`Button`（離上で走る／variant・size）と
+  `Press`（入力画面専用。押した瞬間に走る）。
 - `components/common.tsx` — `PosterCard` / `Masthead` / `SectionLabel`。
 - `components/GeoType.tsx` — 幾何アルファベット。`components/TabIcons.tsx` — 面で描いたアイコン。
 - `components/BottomSheet.tsx` / `PlanSelectionBar.tsx` / `PlanGenerateSheet.tsx` / `AddWishSheet.tsx` / `SignInGate.tsx` / `LeafletMap.tsx` / `Binder.tsx`（ゴールのみ）。
 
 ## データ・ロジック
-- `lib/types.ts` — **データモデルの正**。`lib/constants.ts` — 色・寸法・書体。
+- `lib/types.ts` — **データモデルの正**。`lib/constants.ts` — 色・書体・部品の寸法。
+- `lib/tokens.ts` — **余白・文字・角丸の目盛り（`SPACE`/`TYPE`/`RADIUS`）**。
+  数字が不揃いに見えたらここを見る。増やさない。
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。
 - `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋の丸の場所）**。
   CSS 側は `app/globals.css` の `:root`。数字はこの2つだけ。増やさない。
+  JS のタイマーは `ms(T_OUT)` のようにここから引く（数字を書き写さない）。
 - `lib/viewportKick.ts` — **iOS の起動直後だけ画面が縮む不具合への対処**（未確証）。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
@@ -82,6 +87,55 @@
 
 ## サーバー関数（app/api）
 - `cron/build-brief` 夜間生成 / `generate-brief` 実験 / `generate-plan` / `transcribe` / `suggest-subtasks` / `resolve-place` / `mybrain/*`。
+
+# デザインシステム（2026-08-23・第33巡に確定）
+
+## 目標
+
+**Awwwards の「Site of the Day」級の UI/UX。** そこへ届く道は、汎用の UI キットで
+見た目を揃えることではなく、**自分の語彙をひとつも破らないこと**。手で作った顔
+（`GeoType` の幾何アルファベット / `SolidCanvas` の図形 / matter.js / Leaflet）が
+このアプリの価値なので、それを平均的な見た目へ寄せる変更はしない。
+
+## ★入れないもの（2026-08-23にユーザー確定）
+
+| もの | 入れない理由 |
+|---|---|
+| **shadcn/ui・Tailwind** | shadcn は Tailwind + Radix が前提。このプロジェクトは**全インライン style**。加えて中身の大半は canvas と自作 SVG で、汎用キットの効く面が少ない。**目盛り（`lib/tokens.ts`）と `Button` を自前で持つ方が、揃う度も個性も上**。 |
+| **Framer Motion** | そもそも入っていない。要求されがちなイージング `[0.16,1,0.3,1]`・Stagger・押下 0.1s 以内は**すでに CSS の語彙にある**。バンドルを増やす理由が無い。 |
+| **`layoutId`（共有要素）** | 第27巡に**実機の不具合で撤去済み**。矩形を要素へ焼き付けるので、`visualViewport` に追従する入力画面と寸法の持ち主が二重になる。理由は `lib/motion.ts` の冒頭。 |
+
+## 守ること
+
+1. **寸法は `lib/tokens.ts` から引く。** `SPACE`（4の倍数）/ `TYPE`（7段）/
+   `RADIUS`（4段＋pill＋circle）。生の数字を書かない。例外は
+   `docs/project_knowledge.md` §3「寸法の語彙」に挙げた3つだけ。
+2. **入力欄は `TYPE.lead`(16) 以上。** 15 以下だと iOS が勝手に拡大する。
+3. **動きは `app/globals.css` の `:root` と `lib/motion.ts` から引く。**
+   曲線4本・時間5つ・環境ループ5つ。**新しい数字を足さない。**
+   直書きの `cubic-bezier` と `0.3s` を書かない。対称な `ease` / `ease-in-out` は
+   環境ループ以外で使わない。
+4. **JS のタイマーは `ms(T_OUT)` のように語彙から引く。** 数字を書き写すと、
+   CSS だけ変えたときに閉じ切る前に消える。
+5. **押せる面は `components/Button.tsx`。** 入力画面は `Press`、それ以外は
+   `Button`。押下は「即座に沈み（`--t-press`）、ゆっくり戻る（`--t-out`）」。
+6. **視覚的階層** … `primary` は1画面に1つ。並び立つ選択肢は `secondary`、
+   取り消し・あとでは `ghost`、図だけは `icon`（`aria-label` 必須）。
+
+## 目盛りが守られているかの機械チェック
+
+作業を終える前に走らせる。1・2・4 は**0件**、3 は**何も出ない**のが正しい。
+
+```bash
+# 1. 語彙を迂回した cubic-bezier（lib/ground.ts の GROUND_EASE だけは例外）
+grep -rn "cubic-bezier" components lib --include=*.tsx --include=*.ts | grep -v "var(--"
+# 2. 直書きの時間を含む transition
+grep -rnE 'transition[A-Za-z]*: *"[^"]*[0-9]+m?s' components app --include=*.tsx | grep -v "var(--"
+# 3. 目盛りに無い fontSize（TYPE.* 以外の生の数字）
+grep -rhoE 'fontSize: [0-9.]+' components app --include=*.tsx | sort | uniq -c
+# 4. globals.css の直書きの時間
+grep -nE 'transition[^;]*[0-9]+m?s|animation[^;]*[0-9]+m?s' app/globals.css | grep -v "var(--"
+```
 
 # 恒久ルール（全セッション厳守）
 

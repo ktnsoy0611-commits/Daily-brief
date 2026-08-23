@@ -33,6 +33,10 @@ const read = () => {
     // 帯の下端と、日程シートの下端が見えている下端から何px上か。**0 が正しい。**
     dock: dock ? Math.round(top + vh - dock.getBoundingClientRect().bottom) : null,
     sheet: sheet ? Math.round(top + vh - sheet.getBoundingClientRect().bottom) : null,
+    // ★★入力画面が覚えている「満尺の高さ」(2026-08-19・第30巡)。一度大きく
+    //   なったら二度と縮まない前提。アイコンを何度か押しても数字が動かない
+    //   のが正しい — 動くなら iOS 側が visualViewport.height を書き換えている。
+    full: shell?.dataset.full ?? null,
   };
 };
 
@@ -87,7 +91,7 @@ export function ViewportProbe() {
       {/* ★`fixed; inset: 0` が実際に何 px あるか。画面の高さより小さければ、
           その差がページの外(＝下端の帯)。 */}
       <span ref={fixRef} aria-hidden style={{ position: "fixed", inset: 0, width: 0, pointerEvents: "none" }} />
-      {`vv ${v.vh} @ ${v.top}  inner ${v.inner}\n器 上${v.st ?? "-"} 下${v.sb ?? "-"}\nbar ${v.bar ?? "-"}  帯 ${v.dock ?? "-"}\nsheet ${v.sheet ?? "-"}  safe ${safe.t}/${safe.b}\n★fixed ${screen.fix} / 画面 ${screen.dev}  ${screen.standalone}\n★はみ出し ${screen.dev - screen.fix}`}
+      {`vv ${v.vh} @ ${v.top}  inner ${v.inner}  満尺${v.full ?? "-"}\n器 上${v.st ?? "-"} 下${v.sb ?? "-"}\nbar ${v.bar ?? "-"}  帯 ${v.dock ?? "-"}\nsheet ${v.sheet ?? "-"}  safe ${safe.t}/${safe.b}\n★fixed ${screen.fix} / 画面 ${screen.dev}  ${screen.standalone}\n★はみ出し ${screen.dev - screen.fix}`}
     </div>
   );
 }

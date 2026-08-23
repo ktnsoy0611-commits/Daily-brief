@@ -74,6 +74,7 @@
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。
 - `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋の丸の場所）**。
   CSS 側は `app/globals.css` の `:root`。数字はこの2つだけ。増やさない。
+- `lib/viewportKick.ts` — **iOS の起動直後だけ画面が縮む不具合への対処**（未確証）。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。

@@ -436,6 +436,12 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       //   幅が大きすぎる」と報告・第25巡)。切り替えの印は CSS が見る。
       if (seen() <= full() - KB_UP) el.dataset.kb = "1";
       else delete el.dataset.kb;
+      // ★★診断用(2026-08-19・第30巡)。「満尺の高さ」は一度大きくなったら
+      //   二度と縮まない前提で持っている(第25巡)。もし実機で iOS 側が
+      //   `visualViewport.height` を恒久的に縮めるバグを踏んでいた場合、
+      //   ここの値がタップのたびに変わる/異常に大きいままなどで見分けが付く。
+      //   `ViewportProbe` がこれを拾って表示する。
+      el.dataset.full = String(Math.round(full()));
     };
     placeRef.current = place;
 

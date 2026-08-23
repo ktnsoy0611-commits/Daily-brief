@@ -27,6 +27,7 @@ import { setSurfaceOrigin } from "@/lib/motion";
 import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { kickViewport } from "@/lib/viewportKick";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
 import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, Task, VoiceControls } from "@/lib/types";
@@ -399,6 +400,16 @@ export function AppShell() {
     };
     document.addEventListener("scroll", home, { capture: true, passive: true });
     return () => document.removeEventListener("scroll", home, { capture: true });
+  }, []);
+  // ★★iOS の既知の不具合への対処(2026-08-19・第30巡)。ホーム画面から起動した
+  //   直後は、画面の高さを実際より短く報告することがある(`lib/viewportKick.ts`)。
+  //   起動直後と、アプリへ戻ってきた瞬間(バックグラウンドから復帰)の2か所で
+  //   一度ずつ、WebKit にレイアウトのやり直しを強制する。
+  useEffect(() => {
+    kickViewport();
+    const onVisible = () => { if (document.visibilityState === "visible") kickViewport(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
   // ★横スライドの位置はCSS変数で持つ。--app-offset は通し番号が変わったときだけ、
   // --drag は指が動いている間だけ書く(どちらもReactのレンダーを起こさない)。

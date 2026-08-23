@@ -538,7 +538,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
         </div>
       </div>
       {/* full-bleed(タブバーの下まで敷く)なので、ボタンはタブバーのぶん持ち上げる。 */}
-      <TaskAddButton onAdd={addTask} lifted />
+      <TaskAddButton onAdd={addTask} lifted open={!!open} />
       {tasks.length === 0 && <DemoSeedButton label="デモのタスクを入れる" onSeed={seedDemo} lifted />}
       {open && (
         <TaskComposer

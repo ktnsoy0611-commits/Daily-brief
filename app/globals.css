@@ -1,3 +1,22 @@
+/* ★★★**モーションの語彙はここだけ**(2026-08-19・第26巡)。
+   以前は曲線が 8 種類バラバラに散っていて、画面ごとに手ざわりが違った。
+   **4 本へ統合し、時間も名前で持つ。**新しい曲線・新しい数字を増やさないこと。
+
+   考え方 … 初速を高く、終点へ向けて長く滑らかに収束させる(非対称な減速)。
+   対称な ease-in-out は使わない — 動き出しと止まりに機械的な硬さが出る。 */
+:root {
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);   /* 主役。定位置への吸着 */
+  --ease-sheet:  cubic-bezier(0.32, 0.72, 0, 1);  /* 面が出入りする(iOS のシート) */
+  --ease-press:  cubic-bezier(0.4, 0, 1, 1);      /* 押し込み。速く沈む */
+  --ease-exit:   cubic-bezier(0.4, 0, 0.2, 1);    /* 去る */
+
+  --t-press: 90ms;    /* 押した瞬間。指の反応は 0.1s 以内 */
+  --t-in:   700ms;    /* 大きな面が開く */
+  --t-out:  600ms;    /* 閉じる */
+  --t-item: 420ms;    /* 中の要素ひとつ */
+  --t-step:  50ms;    /* 時間差(視線誘導) */
+}
+
 * {
   box-sizing: border-box;
   padding: 0;
@@ -97,7 +116,7 @@ body {
    といった、もともとアニメーション可能なプロパティ」の側にtransitionを掛けている。 */
 .app-track {
   transform: translateX(calc(var(--app-offset, 0%) + var(--drag, 0px)));
-  transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform 380ms var(--ease-sheet);
 }
 /* ★背景は「ベタ塗りの1色」だけになった(2026-08-11)。図形も、去る/来るの
    アニメーションもすべて撤去してある(components/AppBackdrop.tsx)。
@@ -117,7 +136,7 @@ body {
    なので、勢いよく動き出して静かに止まる。 */
 .dash-scrim, .dash-sheet, .dash-grip, .dash-pill, .dash-pill-paper, .dash-write {
   transition-duration: var(--dash-ms, 360ms);
-  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-timing-function: var(--ease-settle);
   transition-property: transform, opacity, width, height, bottom, margin-left, backdrop-filter, -webkit-backdrop-filter, background-color;
 }
 
@@ -129,7 +148,7 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 .dash-rise, .dash-stagger > * {
-  animation: dash-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: dash-rise 420ms var(--ease-settle) both;
 }
 .dash-rise { animation-delay: 60ms; }
 .dash-stagger > *:nth-child(1) { animation-delay: 110ms; }
@@ -182,7 +201,7 @@ a {
    インラインstyleで持つ要素は、インラインが常に優先されるためここでは
    影響を受けない。 */
 button {
-  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
+  transition: transform 0.12s var(--ease-exit), opacity 0.12s ease;
 }
 button:active {
   transform: scale(0.95);
@@ -235,6 +254,8 @@ button:active {
   width: var(--u);
   height: var(--u);
   animation-duration: 3.6s;
+  /* ★ここだけ対称な in-out(4本の語彙の例外)。読み込み中に**同じ形が延々と
+     行き来する**ループなので、行きと帰りの手ざわりが違うと目に付く。 */
   animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
   animation-iteration-count: infinite;
 }
@@ -283,7 +304,7 @@ button:active {
   to   { opacity: 1; transform: none; }
 }
 .tab-in {
-  animation: tab-in 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  animation: tab-in 260ms var(--ease-sheet);
 }
 @media (prefers-reduced-motion: reduce) {
   .tab-in { animation: none; }
@@ -310,7 +331,7 @@ button:active {
 }
 .vs-dial-in-l, .vs-dial-in-r {
   animation-duration: 640ms;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-timing-function: var(--ease-settle);
   animation-fill-mode: backwards;
 }
 .vs-dial-in-l { animation-name: vs-dial-in-l; }
@@ -319,7 +340,7 @@ button:active {
 .vs-dial-in-l.vs-reel-spin, .vs-dial-in-r.vs-reel-spin {
   animation-name: vs-dial-in-l, vs-spin;
   animation-duration: 640ms, 3.2s;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1), linear;
+  animation-timing-function: var(--ease-settle), linear;
   animation-delay: 0ms, 640ms;
   animation-iteration-count: 1, infinite;
   animation-fill-mode: backwards, none;
@@ -341,6 +362,8 @@ button:active {
 }
 .vs-dial-out-l, .vs-dial-out-r {
   animation-duration: 380ms;
+  /* ★ここだけ加速して消える(4本の語彙の例外)。ダイヤルは画面の外へ**捨てる**
+     動きで、`--ease-press` より深く沈ませたい。 */
   animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
   animation-fill-mode: forwards;
 }
@@ -414,7 +437,7 @@ button:active {
 @media (prefers-reduced-motion: reduce) { @keyframes spin { to { transform: none; } } }
 
 /* ── タスクの入力画面(components/tasks/TaskComposer.tsx) ────────────
-   ★動きは全部ここ。イージングはアプリ共通の cubic-bezier(0.16,1,0.3,1)。
+   ★動きは全部ここ。イージングはアプリ共通の var(--ease-settle)。
    毎フレームの計算はゼロ(JSは一切関与しない)。 */
 @keyframes tc-rise {
   from { opacity: 0; transform: translate3d(0, 26px, 0); }
@@ -430,9 +453,9 @@ button:active {
   60%  { transform: scale(1.03); }
   100% { transform: scale(1); }
 }
-.tc-sheet  { animation: tc-rise 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-.tc-pop    { animation: tc-pop 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-.tc-pop-in { animation: tc-rise 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tc-sheet  { animation: tc-rise 300ms var(--ease-settle) both; }
+.tc-pop    { animation: tc-pop 260ms var(--ease-settle) both; }
+.tc-pop-in { animation: tc-rise 280ms var(--ease-settle) both; }
 .tc-row-in { animation: tc-fade 220ms ease-out both; }
 /* ★★図形の登場と、情報を足したときの変化(2026-08-19・第21巡)。
    登場は板が滑り終わってから(焼きは 4× 絞りで 130ms 級。滑りに重ねると必ず
@@ -453,55 +476,29 @@ button:active {
   from { opacity: 1; transform: none; }
   to   { opacity: 0; transform: scale(var(--sc-to, 1)); }
 }
-.tc-solid-in       { animation: tc-solid-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-.tc-solid-swap-in  { animation: tc-solid-swap-in 280ms cubic-bezier(0.32, 0.72, 0, 1) both; }
-.tc-solid-swap-out { animation: tc-solid-swap-out 280ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+.tc-solid-in       { animation: tc-solid-in 260ms var(--ease-settle) both; }
+.tc-solid-swap-in  { animation: tc-solid-swap-in 280ms var(--ease-sheet) both; }
+.tc-solid-swap-out { animation: tc-solid-swap-out 280ms var(--ease-sheet) both; }
 /* ★日程のシートが閉じるとき。「シュッと閉じる」(2026-08-17にユーザー指定)。
    出るときより速く、下へ抜ける。 */
 @keyframes tc-fall {
   from { opacity: 1; transform: none; }
   to   { opacity: 0; transform: translate3d(0, 34px, 0); }
 }
-.tc-sheet-out { animation: tc-fall 180ms cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
+.tc-sheet-out { animation: tc-fall 180ms var(--ease-press) both; pointer-events: none; }
 /* ポップオーバーが閉じるとき。出るより速く、下へ抜ける。 */
 @keyframes tc-pop-fall {
   from { opacity: 1; transform: none; }
   to   { opacity: 0; transform: translate3d(0, 16px, 0); }
 }
-.tc-pop-out { animation: tc-pop-fall 160ms cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
-/* ★★★入力画面まるごとの出入り(2026-08-18・第16巡にユーザー指定)。
-   **下からスライドして出て、下へスライドして帰る**。
-   それまでは「不透明度で出し、中身→地の順に消す」形だったが、実機で
-   3 度「閉じる動きが不安定」と報告された。スライドなら中身と地が**一枚の板**
-   として動くので、途中でどちらかが透けて後ろと重なることが構造的に起きない。
-   ★器に transform を掛けてよい — 器は画面いっぱいで動かないので、中の
-   `position: fixed`(ポップオーバーの背面板)が器基準になっても同じ矩形になる。 */
-/* ★★移動量は `100%`(自分の高さ)ではなく **`100lvh`(画面の高さ)**
-   (2026-08-19・第25巡)。器は見えている矩形の高さ、下敷きは画面いっぱいで
-   **高さが違う**ので、`100%` だと滑る距離が変わって 2 枚がずれ、
-   後ろのアプリの地が一瞬見えた(実機で報告)。絶対量なら必ず揃う。 */
-@keyframes tc-slide-in {
-  from { transform: translate3d(0, 100lvh, 0); }
-  to   { transform: none; }
-}
-@keyframes tc-slide-out {
-  from { transform: none; }
-  to   { transform: translate3d(0, 100lvh, 0); }
-}
-/* ★★`will-change` は**出入りの最中だけ**置く(2026-08-19・第21巡)。
-   第17巡に「置かない」と決めたのは、`both` でクラスが動き終わっても外れず
-   **692×1380 の canvas を抱えた画面いっぱいの層が居座る**からだった。
-   いまは外れる — 出るときは `animationend` でクラスごと落とし(終わりの姿は
-   `transform: none` なので見た目は変わらない)、閉じるときは 300ms 後に
-   要素ごと消える。滑っているあいだだけ層に上がるので、canvas と文字の
-   塗り直しが滑りに混ざらない(「スライドがスムーズに見えない」の手当て)。 */
-.tc-shell-in  { animation: tc-slide-in 320ms cubic-bezier(0.32, 0.72, 0, 1) both; will-change: transform; }
-/* ★★出ていく曲線(2026-08-19・第20巡)。以前の cubic-bezier(0.32,0,0.67,0) は
-   **制御点が2つとも y=0**で、最初の3分の1は 0 に張り付いたまま — 60ms たっても
-   2% しか動かない。これが実機で「閉じる時のアニメーションがワンテンポ遅れる」
-   と言われていた正体。触れた瞬間から動き出して奥へ抜ける曲線にする
-   (同じ 60ms で 16%)。 */
-.tc-shell-out { animation: tc-slide-out 280ms cubic-bezier(0.4, 0, 0.2, 1) both; pointer-events: none; will-change: transform; }
+.tc-pop-out { animation: tc-pop-fall 160ms var(--ease-press) both; pointer-events: none; }
+/* ★★★入力画面まるごとの出入りは**＋から広がって、＋へ戻す**(2026-08-19・
+   第26巡にユーザー指定)。第16巡からの「下からスライドして出て、下へ
+   スライドして帰る」(`.tc-shell-in` / `.tc-shell-out` / `@keyframes
+   tc-slide-in` / `tc-slide-out`)は**撤去**した — 広がる演出と二重になる。
+   いまの出入りは Framer Motion の共有要素(`layoutId="composer-surface"`)が
+   持つ(`lib/motion.ts` / `components/tasks/TaskComposer.tsx`)。
+   ★下敷きも一緒に撤去。器の地そのものが広がるので、別の板が要らない。 */
 /* ★第21〜22巡の「出入りの最中は帯と図形の追従を止める」規則は撤去した
    (第24巡)。器が見えている矩形そのものになり、帯も図形も**キーボード追従の
    transform を持たなくなった**ので、止めるものがもう無い。 */
@@ -509,13 +506,42 @@ button:active {
    (第25巡)。器の下端はキーボードの上端で、そこにホームバーは無いので、
    34px 取ると丸ごと死んだ隙間になる。印は `place()` が器に立てる。 */
 [data-composer-shell][data-kb] [data-band] { padding-bottom: 6px !important; }
+/* ★★★**中の要素は時間差で出す**(2026-08-19・第26巡・要件3)。
+   地が＋から広がるのに追従して、上のバー → 図形 → 帯 の順に、下から 8px
+   上がりながら濃くなる。同時に出すと平坦で、視線の行き先が決まらない。
+   ★第16巡の「中の部品は自前の出入りを持たない」は**板が下へスライドするのと
+   ぶつかる**のが理由だった。いまは板がスライドしない(広がる)ので前提が違う。
+   ★動かすのは opacity と translateY だけ(レイアウトを起こさない)。 */
+@keyframes tc-rise-in {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+.tc-cue { animation: tc-rise-in var(--t-item) var(--ease-settle) both; }
+.tc-cue-1 { animation-delay: var(--t-step); }
+.tc-cue-2 { animation-delay: calc(var(--t-step) * 2); }
+.tc-cue-3 { animation-delay: calc(var(--t-step) * 3); }
+
+/* ★★入力画面が開いているあいだ、後ろのアプリを退がらせる(要件2・奥行き)。
+   ベタ塗りの地(AppBackdrop)はそのままなので、縮んだシェルの周りにその色が
+   出て「奥に敷かれた紙」に見える。 */
+[data-app-shell] {
+  transition: transform var(--t-out) var(--ease-settle),
+              filter var(--t-out) var(--ease-settle),
+              border-radius var(--t-out) var(--ease-settle);
+}
+[data-overlay] [data-app-shell] {
+  transform: scale(0.96);
+  filter: brightness(0.72);
+  border-radius: 22px;
+  transition-duration: var(--t-in);
+}
 /* 選んだ日のマスが1度だけ弾む。 */
 @keyframes tc-pick {
   0%   { transform: scale(0.7); }
   60%  { transform: scale(1.08); }
   100% { transform: scale(1); }
 }
-.tc-pick { animation: tc-pick 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tc-pick { animation: tc-pick 260ms var(--ease-settle) both; }
 /* 時刻ダイアルの列(期日のとき)。上下の薄れは**この mask だけ**が作る。
    以前は各マスの style を中央からの距離で塗り分けていたので、指を動かすたび
    180 個の inline style を書き換えていた ＝「反応が遅い」の正体。 */
@@ -528,19 +554,29 @@ button:active {
 .tc-dial::-webkit-scrollbar { display: none; }
 /* 灯り(ツールバーの丸)。色だけを滑らかに。 */
 .tc-lamp {
-  transition: background-color 180ms ease, color 180ms ease,
-              box-shadow 180ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  /* ★戻りは**時間をかけて静かに**(2026-08-19・第26巡)。 */
+  transition: background-color var(--t-item) var(--ease-settle),
+              color var(--t-item) var(--ease-settle),
+              box-shadow var(--t-item) var(--ease-settle),
+              transform var(--t-out) var(--ease-settle);
 }
 /* ★沈む合図。`:active` は iOS の「touchstart の既定を止めた面」では当たらない
    ことがあるので、`Press` が自分で立てる `data-pressed` も見る(第19巡)。
    丸を内側の面に描いている場所(下の帯のアイコン)は、印が親に立つ。 */
+/* ★★押した瞬間は**即座に**沈む(90ms・0.1s 以内)。離すと上の 600ms で戻る。
+   沈みが速くなったぶん、深さは浅くてよい(0.9 → 0.94)。 */
 .tc-lamp:active,
 .tc-lamp[data-pressed="1"],
-[data-pressed="1"] > .tc-lamp { transform: scale(0.9); }
+[data-pressed="1"] > .tc-lamp {
+  transform: scale(0.94);
+  transition-duration: var(--t-press);
+  transition-timing-function: var(--ease-press);
+}
 @media (prefers-reduced-motion: reduce) {
   .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in, .tc-sheet-out,
-  .tc-pop-out, .tc-shell-in, .tc-shell-out, .tc-pick,
-  .tc-solid-in, .tc-solid-swap-in, .tc-solid-swap-out { animation: none; }
+  .tc-pop-out, .tc-pick,
+  .tc-solid-in, .tc-solid-swap-in, .tc-solid-swap-out, .tc-cue { animation: none; }
+  [data-overlay] [data-app-shell] { transform: none; filter: none; border-radius: 0; }
   .tc-lamp { transition: none; }
   [data-composer-shell] { transition: none !important; }
 }

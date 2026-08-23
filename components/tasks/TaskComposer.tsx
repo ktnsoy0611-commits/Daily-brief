@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
 import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
 import { SHEET_BODY_H, WhenSheet } from "@/components/tasks/WhenSheet";
 import { ComposerToolbar, TOOL_LABEL, type ToolKey } from "@/components/tasks/ComposerToolbar";
@@ -11,6 +12,7 @@ import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
 import { isViewportDebug } from "@/lib/debugViewport";
 import { pushGround } from "@/lib/ground";
+import { SURFACE_ID, SURFACE_IN, SURFACE_OUT, surfaceOrigin } from "@/lib/motion";
 import { haptic } from "@/lib/helpers";
 import { resolveTag, tagAccent, tagColor, tagInk } from "@/lib/taskTags";
 import { specOf } from "@/lib/taskSize";
@@ -145,8 +147,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const keepFocus = useRef(true);
   /** 閉じている最中(動きを見せているあいだ)。 */
   const [bye, setBye] = useState(false);
-  /** 下敷き(器と一緒に滑る板)。閉じるときクラスを直に付けるので ref で持つ。 */
-  const backRef = useRef<HTMLDivElement | null>(null);
+  /** 閉じるときに吸い込まれる先(＋の丸の場所)。 */
+  const back = surfaceOrigin();
   /** ★開発用。実機の数値を隅に出す(直ったら撤去する)。 */
   const [probe, setProbe] = useState(false);
   useEffect(() => setProbe(isViewportDebug()), []);
@@ -173,7 +175,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // 面は帯(LIFT)**なので、CHARCOAL を積むとそこだけ色の違う帯として見え、
   // 「境目が見える」と報告された。下敷き(zIndex 59)も LIFT にして、
   // 器(visualViewport の矩形)の外側は必ず帯と同じ色になるようにする。
-  useEffect(() => pushGround(LIFT), []);
+  useEffect(() => pushGround(LIFT, "overlay"), []);
   // ★★★**開いているあいだ、この画面の外は一切動かさない**(2026-08-18・第14巡)。
   //
   // 「まだスクロールできる」が 3 巡続いた。器の中を `clip` にしても消えなかった
@@ -279,9 +281,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     const t = window.setTimeout(done, STAGE_DELAY_MS);
     return () => { el?.removeEventListener("animationend", done); window.clearTimeout(t); };
   }, [entered]);
-  /** 出る前・出ている最中の見た目。板は画面の下から来る。 */
-  const enterStyle: React.CSSProperties | null = entered || bye
-    ? null : { transform: "translate3d(0, 100lvh, 0)" };
   /** 一度でもキーボードが出たか。出ていないうちは「閉じた」と見なさない。 */
   const kbSeen = useRef(false);
   /** キーボードが出ていないときの高さ(いちばん大きく見えた値を持ち続ける)。 */
@@ -374,10 +373,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       //   幅が大きすぎる」と報告・第25巡)。切り替えの印は CSS が見る。
       if (seen() <= full() - KB_UP) el.dataset.kb = "1";
       else delete el.dataset.kb;
-      // ★下敷きは**画面いっぱいのまま**動かさない(第25巡)。器と同じ箱にしたら
-      //   キーボードが引っ込んだ跡が覆われず、後ろのアプリの地が一瞬見えた。
-      //   滑る距離は CSS 側で `100lvh` に揃えてある。
-      void backRef;
     };
     placeRef.current = place;
 
@@ -692,12 +687,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     // 出るときは rAF を2回待つのが正しかった(第18巡)が、**閉じるときは逆** —
     // 待つ理由が無い。触れた瞬間にクラスだけ直に付け、描き直しは滑りながら
     // 追いつかせる。`bye` の state は、そのあとの描画で辻褄を合わせる役。
-    for (const el of [backRef.current, shellRef.current]) {
-      if (!el) continue;
-      el.style.transform = "";          // 出るとき用の置き場所を外す
-      el.classList.remove("tc-shell-in");
-      el.classList.add("tc-shell-out");
-    }
+    // ★★閉じる動きは**共有要素**が持つ(2026-08-19・第26巡)。`bye` が立つと
+    //   入力画面の地の面が外れ、＋の丸が名乗り直すので、Framer Motion が
+    //   その2つを結んで**同じ場所へ吸い込む**。板をスライドさせる仕掛け
+    //   (`tc-shell-in` / `tc-shell-out`)は要らなくなったので撤去した。
     setBye(true);
     // ★キーボードを閉じるのは**滑り出した後**。iOS はここで矩形を作り直すので、
     //   先に呼ぶと動き出しがそのぶん遅れる。
@@ -720,21 +713,11 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
   const view = (
     <>
-      {/* ★下敷き。**画面ぜんぶ**を覆う(zIndex 59)。器は見えている矩形
-          (visualViewport)にしか居ないので、これが無いとキーボードの手前の帯が
-          素通しになって後ろの山が見えた(2026-08-17に実機で報告)。
-          ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、その続きに
-          なる色でないと「境目」として見えてしまう。 */}
-      <div ref={backRef} aria-hidden className={bye ? "tc-shell-out" : entered && !settled ? "tc-shell-in" : undefined} style={{
-        // ★★**画面いっぱいのまま**(第25巡で戻した)。器と同じ箱にしたら、
-        //   器の外(キーボードが引っ込んだ跡)が覆われず、**後ろのアプリの地が
-        //   一瞬見えた**(実機で報告)。滑る距離を揃えるのは CSS の側 —
-        //   出入りの移動量を `100%`(自分の高さ)ではなく **`100lvh`(画面の高さ)**
-        //   にしてあるので、高さの違う 2 枚が**同じ距離だけ**滑る。
-        position: "fixed", inset: 0, zIndex: 59, background: LIFT,
-        width: "100vw", height: "100lvh",
-        ...enterStyle,
-      }} />
+      {/* ★★下敷き(zIndex 59 の LIFT の板)は**撤去した**(2026-08-19・第26巡)。
+          役目は「器の外(キーボードの裏・セーフエリア)に地色を用意する」ことだったが、
+          いまはそこを `pushGround(LIFT, "overlay")` が html と theme-color で
+          塗っている。**画面いっぱいの不透明な板が居ると、後ろのアプリが退がる
+          のも、＋から地が広がってくるのも見えない。** */}
     {/* ★★★**器は一度置いたら二度と動かさない**(2026-08-18・第13巡)。
         寸法は録音のオーバーレイ(`VoiceOverlay`)と**同じ書き方**にしてある —
         ★★この類推は**間違いだった**(2026-08-19・第24巡で撤回)。`VoiceOverlay`
@@ -743,11 +726,12 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         動いたことにする代用品(`--kb`)を積み上げた結果、11巡ぶん崩れ続けた。
         いまは `top`/`height` を `visualViewport` に合わせて書く。 */}
     <div ref={shellRef} data-composer-shell onMouseDown={keepKeyboard}
-      className={bye ? "tc-shell-out" : entered && !settled ? "tc-shell-in" : undefined} style={{
+      style={{
       // ★★器は**見えている矩形そのもの**(2026-08-19・第24巡)。`top` と
       //   `height` は JS が `visualViewport` から書く(上の `place`)。ここは
       //   その初期値。`left`/`right` は固定で、**幅は一度も触らない**。
-      position: "fixed", left: 0, right: 0, top: 0, zIndex: 60, background: CHARCOAL,
+      // ★器そのものは**透明**。地は下の共有要素(＋から広がってくる面)が描く。
+      position: "fixed", left: 0, right: 0, top: 0, zIndex: 60, background: "transparent",
       height: "100lvh",
       display: "flex", flexDirection: "column",
       // ★★**`hidden` ではなく `clip`**(2026-08-18)。`hidden` の箱は**送れる箱**
@@ -755,15 +739,39 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       //   スクロールバーも出す。`clip` は箱そのものを作らない。
       overflow: "clip",
       overscrollBehavior: "none",
-      ...enterStyle,
     }}>
+      {/* ★★★**＋の丸が、そのまま広がってこの地になる**(2026-08-19・第26巡)。
+          `TaskAddButton` の丸と同じ `layoutId` を名乗るので、Framer Motion が
+          2つを結んで丸 → 画面いっぱいの面へ変形させる。閉じる(`bye`)と
+          こちらが外れ、＋が名乗り直すので同じ道を戻って吸い込まれる。
+          ★★**器そのものには `layoutId` を付けないこと。** 器の `top`/`height`
+          は `visualViewport` に合わせて `place()` が持っている(第24巡でようやく
+          合った所)。寸法の持ち主が2つになると必ず壊れる。ここが持つのは
+          **見せ方(丸か面か・どの色か)だけ**。 */}
+      {!bye ? (
+        <motion.div layoutId={SURFACE_ID} transition={SURFACE_IN} aria-hidden data-surface style={{
+          position: "absolute", inset: 0, zIndex: 0,
+          background: CHARCOAL, borderRadius: 0,
+        }} />
+      ) : (
+        // ★★**帰り先はこの中に置く**(2026-08-19・第26巡)。＋ボタン側の丸は
+        //   親の state が戻る 300ms 後にしか現れないので、そこへ渡そうとすると
+        //   **別のコミットになって受け渡しが成立しない**(実測: 丸が 52px から
+        //   52px へ動くだけで、画面いっぱいからは戻ってこなかった)。
+        //   同じコミットで面が外れて丸が名乗るように、控えておいた＋の場所へ
+        //   ここで直に置く。実物の＋はそのあと同じ場所に現れるので繋がって見える。
+        <motion.div layoutId={SURFACE_ID} transition={SURFACE_OUT} aria-hidden data-surface style={{
+          position: "fixed", zIndex: 0, borderRadius: "50%", background: PAPER,
+          left: back.x, top: back.y, width: back.w, height: back.h,
+        }} />
+      )}
       {/* ★開発用の数値表示。**中身を包む面の外**に置く — 中に置くと崩れたとき
           数値まで一緒に流れて、いちばん知りたいときに読めない(第23巡)。 */}
       {probe && <ViewportProbe />}
       {/* ── 上のバー。閉じる / 削除 / 完了 は常時ここ。
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}
-      <div data-topbar onMouseDown={keepKeyboard} style={{
+      <div data-topbar className="tc-cue tc-cue-1" onMouseDown={keepKeyboard} style={{
         flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
         padding: "max(8px, env(safe-area-inset-top)) 14px 4px",
         position: "relative", zIndex: 2,
@@ -795,7 +803,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
              入っていればそのまま保存され、空なら呼び側が作りかけを消す。 ── */}
       <Press
         onPress={() => { if (!tool && !whenOpen) leave(() => onClose(draftRef.current)); }}
-        style={{ flex: 1, minHeight: 0, position: "relative" }}
+        className="tc-cue tc-cue-2"
+        style={{ flex: 1, minHeight: 0, position: "relative", zIndex: 1 }}
       >
         {/* ★キーボードのぶんの追従は**アニメーションを持たない外側**に置く。
             `.tc-pop` は transform を animate するので、同じ要素に inline の
@@ -837,7 +846,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           いるので、同じ要素に追従の transform は書けない。 */}
       {/* ★出入りの動きは持たない。器まるごとがスライドするので、ここが
           別の動きを持つと二重になる(2026-08-18・第16巡)。 */}
-      <div data-dock
+      <div data-dock className="tc-cue tc-cue-3"
         style={{
           flexShrink: 0, position: "relative", zIndex: 2,
           // ★★**キーボードのぶんを持ち上げるのはここだけ**(2026-08-18・第13巡)。

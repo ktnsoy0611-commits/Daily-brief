@@ -372,6 +372,27 @@ export function AppShell() {
   const posRef = useRef(pos);
   posRef.current = pos;
   const shellRef = useRef<HTMLDivElement>(null);
+  // ★★シェルは絶対に横へも縦へもずれない(2026-08-19・第26巡)。
+  // overflow:hidden でも、ブラウザは「画面の外にある要素へ焦点が移った」とき
+  // 勝手にこの箱をスクロールする(iOS のキーボード表示・要素の可視化)。列は
+  // 3つぶん(幅の3倍)並んでいるので、隣の列のボタンが焦点を取った瞬間に
+  // scrollLeft が数百px になり、**指では二度と戻せない**(overflow:hidden なので
+  // スクロールバーも慣性も無い)。実測で scrollLeft=320 のまま固定され、画面
+  // 全体が左へ 320px ずれた状態になっていた=「レイアウトが崩れたまま直らない」。
+  // 動かされたら即座に 0 へ戻す。ここが唯一の防波堤。
+  // ★シェルはまだ画面に居ないことがある(読み込み中は別の枝を返す)ので、
+  // ref ではなく document の捕捉相で受ける。scroll は上へ伝わらないが、
+  // capture なら祖先でも拾える。
+  useEffect(() => {
+    const home = (e: Event) => {
+      const el = e.target as HTMLElement | null;
+      if (!el || !(el instanceof HTMLElement) || el.dataset.appShell === undefined) return;
+      if (el.scrollLeft !== 0) el.scrollLeft = 0;
+      if (el.scrollTop !== 0) el.scrollTop = 0;
+    };
+    document.addEventListener("scroll", home, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", home, { capture: true });
+  }, []);
   // ★横スライドの位置はCSS変数で持つ。--app-offset は通し番号が変わったときだけ、
   // --drag は指が動いている間だけ書く(どちらもReactのレンダーを起こさない)。
   // ★背景はこの2つを一切見ない。指の動きから切り離し、アプリが確定した
@@ -933,7 +954,7 @@ export function AppShell() {
   }
 
   return (
-    <div ref={shellRef} style={{
+    <div ref={shellRef} data-app-shell style={{
       height: "100svh", overflow: "hidden",
       fontFamily: SANS, color: INK,
       // ★タブバーの高さと本文の上余白は、ここで一度だけCSS変数として配る。

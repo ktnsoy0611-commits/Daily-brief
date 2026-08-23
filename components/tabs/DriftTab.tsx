@@ -361,7 +361,7 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
           まだ読まれていない声のメモが{notes}件
         </div>
       )}
-      <TaskAddButton onAdd={addCandidate} />
+      <TaskAddButton onAdd={addCandidate} open={!!open} />
       {count === 0 && <DemoSeedButton label="デモの候補を入れる" onSeed={seedDemo} />}
       {open && (
         <TaskComposer

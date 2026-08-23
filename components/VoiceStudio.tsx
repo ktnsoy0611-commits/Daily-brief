@@ -987,7 +987,7 @@ export function VoiceOverlay({ voice, open, onClose }: {
   // タブの中で気づかなかったのは、そちらの地色が html と同じだったから。
   // ★地色は lib/ground.ts が唯一の窓口(html の背景 + theme-color)。
   // 自前で prev を覚えるのはやめた — 書き手が複数あると戻らなくなる。
-  useEffect(() => (open ? pushGround(DIM_GROUND) : undefined), [open]);
+  useEffect(() => (open ? pushGround(DIM_GROUND, "overlay") : undefined), [open]);
 
   if (!open || typeof document === "undefined") return null;
   return createPortal(

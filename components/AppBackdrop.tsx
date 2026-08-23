@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { BD_GREY, JOURNAL_BG } from "@/lib/constants";
-import { pushGround } from "@/lib/ground";
+import { GROUND_EASE, GROUND_MS, pushGround } from "@/lib/ground";
 import type { AppId } from "@/lib/types";
 
 // ★アプリの地(2026-08-11・作り直し)。
@@ -41,17 +41,23 @@ export function AppBackdrop({ appId }: { appId: AppId }) {
 
   // ★地色の窓口は lib/ground.ts だけ(html の背景 + theme-color をセットで書く)。
   // ここは「いちばん下の層」を積むだけ。全画面のオーバーレイはこの上へ積む。
-  useEffect(() => pushGround(ground), [ground]);
+  // ★アプリの地は**いちばん下の層**。全画面のオーバーレイ(入力画面・録音)は
+  //   `"overlay"` で積むので、ここが積み直してもあちらの色は奪えない
+  //   (2026-08-19・第26巡。奪えていたのが「一番下だけ背景が適応されない」の正体)。
+  useEffect(() => pushGround(ground, "app"), [ground]);
 
   // ★body直下へポータルで描き、高さは 100lvh(表示領域が最大のときの高さ)。
   // シェルは 100svh 固定 + overflow:hidden なので、ここへ置かないと、
   // ツールバーが引っ込んだときの差の帯だけ色が途切れて見える。
   if (typeof document === "undefined") return null;
   return createPortal((
-    <div aria-hidden style={{
+    <div aria-hidden data-backdrop style={{
       position: "fixed", left: 0, top: 0, width: "100vw", height: "100lvh",
       pointerEvents: "none", zIndex: -1, background: ground,
-      transition: "background 420ms ease",
+      // ★時間と曲線は `lib/ground.ts` の1か所から。列の横スライド(.app-track)と
+      //   **同じ**にすること。420ms ease だった頃は、列(380ms)・html(即座)と
+      //   三者三様で「遷移したとき背景が同時に切り替わらない」と報告された。
+      transition: `background-color ${GROUND_MS}ms ${GROUND_EASE}`,
     }} />
   ), document.body);
 }

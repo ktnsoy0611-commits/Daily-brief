@@ -1,5 +1,6 @@
 "use client";
 
+import { ms, T_ITEM } from "@/lib/motion";
 import { ChevronUp, Map as MapIcon, Maximize2, Minimize2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -69,7 +70,8 @@ function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen, on
 // 実際にアンマウントする」パターンに揃えている(コード全体で開閉アニメーションの
 // 作法を統一するため)。トグルボタンを押した瞬間ではなくズームしながら
 // 開閉させたい、という要望に応える。
-const MAP_FULLSCREEN_MS = 320;
+// ★`--t-item` と同じ(第33巡)。数字は lib/motion.ts が持つ。
+const MAP_FULLSCREEN_MS = ms(T_ITEM);
 function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }: {
   items: Item[];
   selectedIds: string[];
@@ -91,7 +93,7 @@ function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }:
       paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)",
       transform: entered ? "scale(1)" : "scale(0.4)", transformOrigin: "top center",
       opacity: entered ? 1 : 0,
-      transition: `transform ${MAP_FULLSCREEN_MS}ms cubic-bezier(0.32,0.72,0,1), opacity ${MAP_FULLSCREEN_MS - 60}ms ease`,
+      transition: `transform ${MAP_FULLSCREEN_MS}ms var(--ease-sheet), opacity ${MAP_FULLSCREEN_MS}ms var(--ease-sheet)`,
       background: BG,
     }}>
       <LeafletMap items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />

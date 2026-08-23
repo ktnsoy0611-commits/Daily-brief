@@ -1,5 +1,6 @@
 "use client";
 
+import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CHARCOAL, GOLD, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS } from "@/lib/constants";
@@ -109,7 +110,7 @@ const KEY_DEPTH = 4;
  *  高さの数字は lib/constants.ts の NAV_H が唯一の出どころ。 */
 const KEY_BOTTOM = NAV_H;
 /** 円が外へ出ていくアニメーションの長さ(globals.css の vs-dial-out-* と揃える)。 */
-const DIAL_OUT_MS = 380;
+const DIAL_OUT_MS = ms(T_OUT);
 /** ★これ未満の音は棒として描かない。小さい点が並ぶと汚く見えるため
  *  (ユーザー指定)。 */
 const LEVEL_FLOOR = 0.1;
@@ -654,7 +655,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       // 閉じていく間は、円が出ていくのに少し遅れて地も消える。
       ...(onClose ? {
         opacity: leaving ? 0 : 1,
-        transition: `opacity ${DIAL_OUT_MS}ms ease-in`,
+        transition: `opacity ${DIAL_OUT_MS}ms var(--ease-press)`,
         pointerEvents: leaving ? "none" as const : undefined,
       } : null),
     }}>
@@ -692,7 +693,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             // (2枚で約2MB。録音中の描画コストに差が出ないことは実測済み)。
             willChange: "transform",
             transform: active === side ? "scale(1.028)" : "scale(1)",
-            transition: "transform 200ms cubic-bezier(0.16,1,0.3,1)",
+            transition: "transform var(--t-item) var(--ease-settle)",
           }}
         >
           {/* ★回るのはこの層だけ。塗りつぶしの円は回転対称なので静止させる。
@@ -737,7 +738,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             // 反応は色と太さだけで見せる。
             fontSize: 17, fontWeight: 700, letterSpacing: "0.02em", color: fg,
             opacity: active === side ? 1 : 0,
-            transition: "opacity 140ms ease",
+            transition: "opacity var(--t-item) var(--ease-settle)",
           }}
         >00:00</div>
       ))}
@@ -757,7 +758,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           opacity: waveOn ? 1 : 0,
           transform: `translateX(-50%) scaleX(${waveOn ? 1 : 0.5}) translateZ(0)`,
           transition: waveOn
-            ? "opacity 260ms ease-out, transform 340ms cubic-bezier(0.16,1,0.3,1)"
+            ? "opacity var(--t-item) var(--ease-settle), transform var(--t-item) var(--ease-settle)"
             : "opacity 200ms ease-in, transform 240ms ease-in",
           // ★自分だけの合成レイヤーへ上げる。こうしないと、毎フレームの
           // 描き直しが**巨大な円と同じレイヤー**を汚し、円ごと塗り直しになる
@@ -775,7 +776,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         fontFamily: SANS, fontSize: 19, fontWeight: 500, lineHeight: 1,
         letterSpacing: "0.20em", color: mute, fontVariantNumeric: "tabular-nums",
         opacity: (recording || review || sending) ? 1 : 0,
-        transition: "opacity 200ms ease",
+        transition: "opacity var(--t-item) var(--ease-settle)",
       }}>{mmss(0)}</div>
 
       {/* 舞台。指を受ける唯一の面。円の上なら回転、それ以外(と、円の上でも
@@ -922,7 +923,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
             borderRadius: "50%", border: "none", padding: 0,
             background: enabled ? figure : capOff,
             transform: `translateY(${down ? 0 : -KEY_DEPTH}px)`,
-            transition: "transform 90ms cubic-bezier(0.32,0.72,0,1), background 160ms ease",
+            transition: "transform var(--t-press) var(--ease-press), background var(--t-item) var(--ease-settle)",
             cursor: enabled ? "pointer" : "default",
             display: "flex", alignItems: "center", justifyContent: "center",
             userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
@@ -935,7 +936,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
                 <span key={i} style={{
                   width: 3, height: 11,
                   background: lit ? lamp : lampOff,
-                  transition: "background 200ms ease",
+                  transition: "background var(--t-item) var(--ease-settle)",
                 }} />
               ))}
             </span>
@@ -957,7 +958,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
             <span style={{
               width: 8, height: 8, borderRadius: "50%",
               background: lit ? lamp : lampOff,
-              transition: "background 200ms ease",
+              transition: "background var(--t-item) var(--ease-settle)",
             }} />
           )}
         </button>

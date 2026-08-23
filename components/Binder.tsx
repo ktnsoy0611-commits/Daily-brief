@@ -711,7 +711,7 @@ export function Binder3D({ width, aspect = ITEM_CARD_ASPECT, depth, rotateY, sca
       <div style={{
         position: "relative", width: "100%", height: "100%", transformStyle: "preserve-3d", transformOrigin: "50% 100%",
         transform: `scale(${scale}) rotateY(${rotateY}deg)`,
-        transition: transitionMs ? `transform ${transitionMs}ms cubic-bezier(0.22,0.9,0.32,1)` : "none",
+        transition: transitionMs ? `transform ${transitionMs}ms var(--ease-settle)` : "none",
       }}>
         {/* 表紙面(正面)。影を落とすこの箱自体にも中のBinderCoverFaceと
             同じ角丸(開く側=右のみ)を付けておく。overflowはhiddenにせず
@@ -1412,7 +1412,7 @@ export function BinderCoverflowRow({ items, itemWidth = 172, pitch = 46, aspect 
               position: "relative", flex: "0 0 auto", width: pitch, height: itemHeight, scrollSnapAlign: "center",
               zIndex: isDragged ? 1000 : Math.round(focus * 100), touchAction: draggingKey ? "none" : undefined,
               userSelect: "none", WebkitUserSelect: "none",
-              animation: "binder-in 0.3s cubic-bezier(0.22,0.9,0.32,1) both", animationDelay: `${Math.min(i, 12) * 18}ms`,
+              animation: "binder-in var(--t-item) var(--ease-settle) both", animationDelay: `calc(var(--t-step) * ${Math.min(i, 6)})`,
             }}>
             <div style={{
               position: "absolute", left: "50%", bottom: 0, width: itemWidth,

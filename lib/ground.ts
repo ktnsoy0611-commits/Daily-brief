@@ -31,10 +31,16 @@
 
 /** 層の高さ。オーバーレイはアプリより必ず上。 */
 export type GroundLevel = "app" | "overlay";
+// ★時間の数字は `lib/motion.ts` が持つ(第33巡)。
+import { ms, T_ITEM } from "./motion";
+
 const RANK: Record<GroundLevel, number> = { app: 0, overlay: 1 };
 
-/** 地色が動く時間。★`.app-track`(列の横スライド)と**必ず同じ**にすること。 */
-export const GROUND_MS = 380;
+/** 地色が動く時間。★`.app-track`(列の横スライド)と**必ず同じ**にすること。
+ *  そちらは `var(--t-item)` になったので、ここも `lib/motion.ts` から引く(第33巡)。 */
+export const GROUND_MS = ms(T_ITEM);
+/** ★`--ease-sheet` と**同じ曲線**。ここだけ文字列で持つのは、下の `solveEase`
+ *  が theme-color の補間に**数値として**必要とするため(CSS 変数は解けない)。 */
 export const GROUND_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 
 interface Layer { id: number; color: string; level: GroundLevel }

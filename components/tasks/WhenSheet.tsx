@@ -1,5 +1,6 @@
 "use client";
 
+import { ms, T_ITEM } from "@/lib/motion";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Press } from "@/components/Button";
 import { CAP } from "@/components/tasks/Popover";
@@ -592,12 +593,12 @@ function Switch({ on, accent, onToggle }: { on: boolean; accent: string; onToggl
     <Press onPress={onToggle} role="switch" aria-checked={on} aria-label="終日" style={{
       width: 50, height: 30, borderRadius: 999, padding: 3,
       background: on ? accent : "rgba(250,250,249,0.20)",
-      transition: "background-color 180ms ease",
+      transition: "background-color var(--t-item) var(--ease-settle)",
     }}>
       <span style={{
         display: "block", width: 24, height: 24, borderRadius: "50%", background: PAPER,
         transform: `translateX(${on ? 20 : 0}px)`,
-        transition: "transform 200ms cubic-bezier(0.16,1,0.3,1)",
+        transition: "transform var(--t-item) var(--ease-settle)",
       }} />
     </Press>
   );
@@ -612,8 +613,8 @@ function Switch({ on, accent, onToggle }: { on: boolean; accent: string; onToggl
 const SWIPE = 40;
 /** 横か縦かを決める距離(px)。 */
 const AXIS = 8;
-/** 月を送る時間(ms)。 */
-const SLIDE_MS = 220;
+/** 月を送る時間(ms)。★`--t-item` と同じ(第33巡)。 */
+const SLIDE_MS = ms(T_ITEM);
 
 
 function MonthGrid({ accent, selected, range, onPick }: {
@@ -742,7 +743,7 @@ function MonthGrid({ accent, selected, range, onPick }: {
           transform: `translateX(${shift}px)`,
           transition: dragRef.current || snapBack
             ? "none"
-            : `transform ${SLIDE_MS}ms cubic-bezier(0.22,1,0.36,1)`,
+            : `transform ${SLIDE_MS}ms var(--ease-settle)`,
         }}>
           {months.map((mm) => (
             <div key={`${mm.y}-${mm.m}`} style={{ width: live ? (w || "33.3333%") : "100%", flexShrink: 0 }}>

@@ -154,7 +154,7 @@ function InterestChips({ items, onRemove, inputValue, onInputChange, onAdd, plac
           <span key={item.id} style={{
             display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 8px 6px 12px", borderRadius: 999,
             background: armed ? "rgba(183,65,42,0.12)" : "rgba(26,26,24,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: 12,
-            transition: "background 0.15s",
+            transition: "background var(--t-item) var(--ease-settle)",
           }}>
             {item.label}
             {armed ? (

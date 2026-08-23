@@ -12,7 +12,7 @@ import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
 import { isViewportDebug } from "@/lib/debugViewport";
 import { pushGround } from "@/lib/ground";
-import { surfaceOrigin, T_OUT } from "@/lib/motion";
+import { ms, surfaceOrigin, T_OUT } from "@/lib/motion";
 import { haptic } from "@/lib/helpers";
 import { resolveTag, tagAccent, tagColor, tagInk } from "@/lib/taskTags";
 import { specOf } from "@/lib/taskSize";
@@ -100,8 +100,9 @@ const KB_SETTLE_MS = 90;
 const OPEN_GUARD_MS = 600;
 /** 図形を最初に焼くまでの待ちの上限(ふつうは `animationend` が先に来る)。 */
 const STAGE_DELAY_MS = 460;
-/** ポップオーバーが下へ抜ける時間(ms)。globals.css の `tc-pop-out` と合わせる。 */
-const POP_OUT_MS = 160;
+/** ポップオーバーが下へ抜ける時間(ms)。globals.css の `tc-pop-out`(=`--t-out`)
+ *  と**必ず同じ**。数字を書き写さず `lib/motion.ts` から引く(第33巡)。 */
+const POP_OUT_MS = ms(T_OUT);
 
 /** 開くと自分の入力欄へフォーカスするもの。ここは行へ戻さない。 */
 const TAKES_FOCUS: ToolKey[] = ["context", "belongings"];
@@ -673,12 +674,12 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
    */
   const closeWhen = (commit: boolean) => {
     if (!commit) set(whenBack.current);
-    // ★**シュッと閉じる**(2026-08-17にユーザー指定)。すぐ消すのではなく
-    // 180ms で下へ抜かす。キーボードはその場で戻すので、抜けきる前から
-    // 器が縮み始める(シートは下へ逃げているので気にならない)。
+    // ★下へ抜かしてから消す(2026-08-17にユーザー指定)。キーボードはその場で
+    // 戻すので、抜けきる前から器が縮み始める(シートは下へ逃げているので
+    // 気にならない)。時間は globals.css の `tc-sheet-out`(=`--t-out`)と同じ。
     keepFocus.current = true;
     setWhen("closing");
-    window.setTimeout(() => setWhen(""), 180);
+    window.setTimeout(() => setWhen(""), ms(T_OUT));
     const el = liveRow();
     if (el) {
       el.focus();

@@ -12,9 +12,22 @@
 
   --t-press: 90ms;    /* 押した瞬間。指の反応は 0.1s 以内 */
   --t-in:   700ms;    /* 大きな面が開く */
-  --t-out:  350ms;    /* 閉じる。★きびきび(2026-08-19・第27巡にユーザー確定) */
+  /* ★閉じる。2026-08-23・第33巡にユーザー確定で **350ms → 600ms**。
+     第27巡で 600 → 350(「きびきび」)にした判断を、シネマティックな
+     手ざわりを優先して**戻した**。開く 700 / 閉じる 600 の非対称は残る。
+     ★これが今回いちばん体感の変わる数字。戻したくなったらここ1行。 */
+  --t-out:  600ms;
   --t-item: 420ms;    /* 中の要素ひとつ */
   --t-step:  50ms;    /* 時間差(視線誘導) */
+
+  /* ★★**環境の動き**(止まらずに回り続けるもの)は、上の5つの対象外。
+     状態の遷移ではないので「開く/閉じる/押す」の語彙に乗らない。
+     ここも**増やさない**。対称な ease-in-out を許すのはこの5つだけ。 */
+  --t-amb-load:  3.6s;    /* 読み込み中の3つの図形 */
+  --t-amb-reel:  3.2s;    /* 録音のリールが回る */
+  --t-amb-tape:  260ms;   /* テープの送り目 */
+  --t-amb-blink: 1.15s;   /* 録音中の赤 */
+  --t-amb-bob:   5.4s;    /* 候補の円環がゆれる */
 }
 
 * {
@@ -116,7 +129,7 @@ body {
    といった、もともとアニメーション可能なプロパティ」の側にtransitionを掛けている。 */
 .app-track {
   transform: translateX(calc(var(--app-offset, 0%) + var(--drag, 0px)));
-  transition: transform 380ms var(--ease-sheet);
+  transition: transform var(--t-item) var(--ease-sheet);
 }
 /* ★背景は「ベタ塗りの1色」だけになった(2026-08-11)。図形も、去る/来るの
    アニメーションもすべて撤去してある(components/AppBackdrop.tsx)。
@@ -135,7 +148,7 @@ body {
    そのまま続きの動きへ引き継がれる=慣性がある。減速は指数のease-out
    なので、勢いよく動き出して静かに止まる。 */
 .dash-scrim, .dash-sheet, .dash-grip, .dash-pill, .dash-pill-paper, .dash-write {
-  transition-duration: var(--dash-ms, 360ms);
+  transition-duration: var(--dash-ms, var(--t-item));
   transition-timing-function: var(--ease-settle);
   transition-property: transform, opacity, width, height, bottom, margin-left, backdrop-filter, -webkit-backdrop-filter, background-color;
 }
@@ -148,13 +161,13 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 .dash-rise, .dash-stagger > * {
-  animation: dash-rise 420ms var(--ease-settle) both;
+  animation: dash-rise var(--t-item) var(--ease-settle) both;
 }
-.dash-rise { animation-delay: 60ms; }
-.dash-stagger > *:nth-child(1) { animation-delay: 110ms; }
-.dash-stagger > *:nth-child(2) { animation-delay: 170ms; }
-.dash-stagger > *:nth-child(n+3) { animation-delay: 220ms; }
-.dash-rise-3 { animation-delay: 240ms; }
+.dash-rise { animation-delay: var(--t-step); }
+.dash-stagger > *:nth-child(1) { animation-delay: calc(var(--t-step) * 2); }
+.dash-stagger > *:nth-child(2) { animation-delay: calc(var(--t-step) * 3); }
+.dash-stagger > *:nth-child(n+3) { animation-delay: calc(var(--t-step) * 4); }
+.dash-rise-3 { animation-delay: calc(var(--t-step) * 5); }
 @media (prefers-reduced-motion: reduce) {
   .dash-rise, .dash-stagger > * { animation: none; }
 }
@@ -200,12 +213,21 @@ a {
    独自のtransform(地図ピン・選択カードの拡縮・バインダーの回転等)を
    インラインstyleで持つ要素は、インラインが常に優先されるためここでは
    影響を受けない。 */
+/* ★★2026-08-23・第33巡に `.press` と**同じ手ざわり**へ揃えた。
+   以前はここだけ `0.12s var(--ease-exit)`(去る曲線)＋ `scale(0.95)` で、
+   `.press` の「沈み 90ms → 戻り --t-out」と噛み合っていなかった。
+   押した瞬間に**即座に**沈み(--t-press・0.1s 以内)、離すと**時間をかけて
+   静かに**戻る(--t-out)。この1つで、まだ `Button` へ移していない
+   素の `<button>` も同じ手ざわりになる。 */
 button {
-  transition: transform 0.12s var(--ease-exit), opacity 0.12s ease;
+  transition: transform var(--t-out) var(--ease-settle),
+              opacity var(--t-out) var(--ease-settle);
 }
 button:active {
-  transform: scale(0.95);
+  transform: scale(0.94);
   opacity: 0.85;
+  transition-duration: var(--t-press);
+  transition-timing-function: var(--ease-press);
 }
 
 @keyframes toast-in {
@@ -213,13 +235,26 @@ button:active {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* opacityのみ: transformをここに乗せると、願望・実行タブ内の
-   position:fixed な下部バーがこの祖先要素を新しい containing block と
-   見なしてしまい(CSS仕様上、transformを持つ要素は fixed 子要素の基準に
-   なる)、アニメーション中だけ画面外の位置に基準が移ってガクつく。 */
+/* ★★タブを切り替えたときの入場。**opacity だけ。**
+   transform をここに乗せると、願望・実行タブ内の position:fixed な下部バーが
+   この祖先要素を新しい containing block と見なしてしまい(CSS仕様上、transform
+   を持つ要素は fixed 子要素の基準になる)、アニメーション中だけ画面外の位置に
+   基準が移ってガクつく。
+   ★2026-08-23・第33巡 … このファイルの下の方に **`@keyframes tab-in` の2つめ**
+   があり、`translateY(7px)` 付きで**こちらを丸ごと上書きしていた**(後勝ち)。
+   上の理由が効かなくなっていたので、2つめを削除してここへ一本化した。
+   ★この枠は一時的に新しい重なりコンテキストを作るため、内側にzIndexで前へ
+   出したい要素があるタブ(ブリーフの育成カードのフッター)では、枠自体に
+   zIndex を与えて帯より手前へ出している(AppShell.tsx のコメント)。 */
 @keyframes tab-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+.tab-in {
+  animation: tab-in var(--t-item) var(--ease-sheet);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-in { animation: none; }
 }
 
 /* RecordsTabの棚(BinderCoverflowRow)の各バインダーが、左からサッと
@@ -253,7 +288,7 @@ button:active {
   left: 0;
   width: var(--u);
   height: var(--u);
-  animation-duration: 3.6s;
+  animation-duration: var(--t-amb-load);
   /* ★ここだけ対称な in-out(4本の語彙の例外)。読み込み中に**同じ形が延々と
      行き来する**ループなので、行きと帰りの手ざわりが違うと目に付く。 */
   animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
@@ -295,27 +330,12 @@ button:active {
   .load-shape { animation: none; }
 }
 
-/* タブを切り替えたときの入場。中身がほんの少し下から起き上がる。
-   ★この枠は一時的に新しい重なりコンテキストを作るため、内側にzIndexで
-   前へ出したい要素があるタブ(ブリーフの育成カードのフッター)では、
-   枠自体にzIndexを与えて帯より手前へ出している(AppShell.tsx のコメント)。 */
-@keyframes tab-in {
-  from { opacity: 0; transform: translateY(7px); }
-  to   { opacity: 1; transform: none; }
-}
-.tab-in {
-  animation: tab-in 260ms var(--ease-sheet);
-}
-@media (prefers-reduced-motion: reduce) {
-  .tab-in { animation: none; }
-}
-
 /* ★声の記録(components/VoiceStudio.tsx)。純粋幾何学ミニマリズム。
    画面の下部に置いた巨大な円が2つ = カセットのリールの抽象で、そのあいだを
    「テープ」の直線の帯がつなぐ。録音中は円が回り、帯の縞が流れる。 */
 
 @keyframes vs-spin { to { transform: rotate(360deg); } }
-.vs-reel-spin { animation: vs-spin 3.2s linear infinite; }
+.vs-reel-spin { animation: vs-spin var(--t-amb-reel) linear infinite; }
 
 /* ★円が左右から入ってくる。画面を開いたときと、録音を始めた瞬間に流す。
    ★fill-mode は **backwards**。both にすると、入場が終わったあとも最後の
@@ -330,7 +350,7 @@ button:active {
   to   { transform: translateX(0); opacity: 1; }
 }
 .vs-dial-in-l, .vs-dial-in-r {
-  animation-duration: 640ms;
+  animation-duration: var(--t-in);
   animation-timing-function: var(--ease-settle);
   animation-fill-mode: backwards;
 }
@@ -339,9 +359,9 @@ button:active {
 /* 回転(録音中)と入場が同時に掛かるときは、入場を先に見せてから回す。 */
 .vs-dial-in-l.vs-reel-spin, .vs-dial-in-r.vs-reel-spin {
   animation-name: vs-dial-in-l, vs-spin;
-  animation-duration: 640ms, 3.2s;
+  animation-duration: var(--t-in), var(--t-amb-reel);
   animation-timing-function: var(--ease-settle), linear;
-  animation-delay: 0ms, 640ms;
+  animation-delay: 0ms, var(--t-in);
   animation-iteration-count: 1, infinite;
   animation-fill-mode: backwards, none;
 }
@@ -361,7 +381,7 @@ button:active {
   to   { transform: translateX(46%); opacity: 0; }
 }
 .vs-dial-out-l, .vs-dial-out-r {
-  animation-duration: 380ms;
+  animation-duration: var(--t-out);
   /* ★ここだけ加速して消える(4本の語彙の例外)。ダイヤルは画面の外へ**捨てる**
      動きで、`--ease-press` より深く沈ませたい。 */
   animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
@@ -381,15 +401,15 @@ button:active {
   background-size: 18px 100%;
 }
 @keyframes vs-tape { to { background-position-x: 18px; } }
-.vs-tape-run { animation: vs-tape 260ms linear infinite; }
+.vs-tape-run { animation: vs-tape var(--t-amb-tape) linear infinite; }
 
 /* 録音中の印。ベタ塗りの円がゆっくり明滅するだけ。 */
 @keyframes vs-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
-.vs-blink { animation: vs-blink 1.15s ease-in-out infinite; }
+.vs-blink { animation: vs-blink var(--t-amb-blink) ease-in-out infinite; }
 
 /* オーバーレイが出るとき。 */
 @keyframes vs-in { from { opacity: 0; } to { opacity: 1; } }
-.vs-in { animation: vs-in 220ms ease-out; }
+.vs-in { animation: vs-in var(--t-item) var(--ease-settle); }
 
 @media (prefers-reduced-motion: reduce) {
   .vs-reel-spin, .vs-tape-run, .vs-blink, .vs-in,
@@ -406,7 +426,7 @@ button:active {
   0%, 100% { transform: translate3d(0, -7px, 0) rotate(-1.1deg); }
   50%      { transform: translate3d(0, 7px, 0) rotate(1.1deg); }
 }
-.drift-bob { animation: drift-bob 5.4s ease-in-out infinite; will-change: transform; }
+.drift-bob { animation: drift-bob var(--t-amb-bob) ease-in-out infinite; will-change: transform; }
 @media (prefers-reduced-motion: reduce) {
   .drift-bob { animation: none; }
 }
@@ -424,7 +444,7 @@ button:active {
   0%, 100% { transform: translate3d(0, -7px, 0) rotate(-1.1deg); }
   50%      { transform: translate3d(0, 7px, 0) rotate(1.1deg); }
 }
-.drift-bob { animation: drift-bob 5.4s ease-in-out infinite; will-change: transform; }
+.drift-bob { animation: drift-bob var(--t-amb-bob) ease-in-out infinite; will-change: transform; }
 @media (prefers-reduced-motion: reduce) {
   .drift-bob { animation: none; }
 }
@@ -453,10 +473,10 @@ button:active {
   60%  { transform: scale(1.03); }
   100% { transform: scale(1); }
 }
-.tc-sheet  { animation: tc-rise 300ms var(--ease-settle) both; }
-.tc-pop    { animation: tc-pop 260ms var(--ease-settle) both; }
-.tc-pop-in { animation: tc-rise 280ms var(--ease-settle) both; }
-.tc-row-in { animation: tc-fade 220ms ease-out both; }
+.tc-sheet  { animation: tc-rise var(--t-item) var(--ease-settle) both; }
+.tc-pop    { animation: tc-pop var(--t-item) var(--ease-settle) both; }
+.tc-pop-in { animation: tc-rise var(--t-item) var(--ease-settle) both; }
+.tc-row-in { animation: tc-fade var(--t-item) var(--ease-settle) both; }
 /* ★★図形の登場と、情報を足したときの変化(2026-08-19・第21巡)。
    登場は板が滑り終わってから(焼きは 4× 絞りで 130ms 級。滑りに重ねると必ず
    フレームが落ちる)。ただの薄れではなく**きちんと現れる**動きにする。
@@ -476,22 +496,22 @@ button:active {
   from { opacity: 1; transform: none; }
   to   { opacity: 0; transform: scale(var(--sc-to, 1)); }
 }
-.tc-solid-in       { animation: tc-solid-in 260ms var(--ease-settle) both; }
-.tc-solid-swap-in  { animation: tc-solid-swap-in 280ms var(--ease-sheet) both; }
-.tc-solid-swap-out { animation: tc-solid-swap-out 280ms var(--ease-sheet) both; }
+.tc-solid-in       { animation: tc-solid-in var(--t-item) var(--ease-settle) both; }
+.tc-solid-swap-in  { animation: tc-solid-swap-in var(--t-item) var(--ease-sheet) both; }
+.tc-solid-swap-out { animation: tc-solid-swap-out var(--t-item) var(--ease-sheet) both; }
 /* ★日程のシートが閉じるとき。「シュッと閉じる」(2026-08-17にユーザー指定)。
    出るときより速く、下へ抜ける。 */
 @keyframes tc-fall {
   from { opacity: 1; transform: none; }
   to   { opacity: 0; transform: translate3d(0, 34px, 0); }
 }
-.tc-sheet-out { animation: tc-fall 180ms var(--ease-press) both; pointer-events: none; }
+.tc-sheet-out { animation: tc-fall var(--t-out) var(--ease-press) both; pointer-events: none; }
 /* ポップオーバーが閉じるとき。出るより速く、下へ抜ける。 */
 @keyframes tc-pop-fall {
   from { opacity: 1; transform: none; }
   to   { opacity: 0; transform: translate3d(0, 16px, 0); }
 }
-.tc-pop-out { animation: tc-pop-fall 160ms var(--ease-press) both; pointer-events: none; }
+.tc-pop-out { animation: tc-pop-fall var(--t-out) var(--ease-press) both; pointer-events: none; }
 /* ★★★入力画面まるごとの出入りは**＋から広がって、＋へ戻す**(2026-08-19・
    第26巡にユーザー指定)。第16巡からの「下からスライドして出て、下へ
    スライドして帰る」(`.tc-shell-in` / `.tc-shell-out` / `@keyframes
@@ -508,8 +528,8 @@ button:active {
    要素の受け渡しもゼロなので、途中で測り直す瞬間が構造的に無い。
 
    ★曲線は `--ease-settle` ではなく **`--ease-sheet`**。`--ease-settle` は
-   350ms で 99% まで行って残り 1% に 350ms かける曲線で、**面が広がって画面を
-   覆う**動きに使うと「端の細い余白だけが長く残る」(実機で報告)。
+   **前半で 99% まで行き、残り 1% に後半をまるごと使う**曲線で、**面が広がって
+   画面を覆う**動きに使うと「端の細い余白だけが長く残る」(実機で報告)。
    ★半径は器の四隅までの最大距離を**少し超えさせる**(TaskComposer 側で ×1.08)。
    覆い終わりの円は画面の外まで出ているので、四角い角も、端末の丸い角との
    ぶつかりも出ない。
@@ -562,7 +582,7 @@ button:active {
 }
 /* ★★**戻り始めるのは「閉じ終わってから」ではなく「閉じ始めと同時」**
    (2026-08-19・第28巡)。以前は入力画面が消えた瞬間に `[data-overlay]` が
-   外れていたので、**閉じる動き(350ms)→ 一瞬止まる → 明るくなる(350ms)**
+   外れていたので、**閉じる動き(--t-out)→ 一瞬止まる → 明るくなる(--t-out)**
    と直列に見えていた(実機で「一瞬画面が止まる」と報告)。
    閉じ始めに `[data-leaving]` を立て、そこで明るさを戻し始める。 */
 [data-overlay][data-leaving] [data-app-shell] {
@@ -575,7 +595,7 @@ button:active {
   60%  { transform: scale(1.08); }
   100% { transform: scale(1); }
 }
-.tc-pick { animation: tc-pick 260ms var(--ease-settle) both; }
+.tc-pick { animation: tc-pick var(--t-item) var(--ease-settle) both; }
 /* 時刻ダイアルの列(期日のとき)。上下の薄れは**この mask だけ**が作る。
    以前は各マスの style を中央からの距離で塗り分けていたので、指を動かすたび
    180 個の inline style を書き換えていた ＝「反応が遅い」の正体。 */

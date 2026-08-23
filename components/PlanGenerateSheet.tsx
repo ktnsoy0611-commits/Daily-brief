@@ -259,7 +259,7 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
                 style={{
                   touchAction: "pan-y",
                   transform: `translateX(${dragX}px)`,
-                  transition: dragging ? "none" : "transform 0.22s cubic-bezier(0.22,0.61,0.36,1)",
+                  transition: dragging ? "none" : "transform var(--t-item) var(--ease-settle)",
                 }}
               >
                 <PlanDetail key={active.weight} plan={active} byId={byId} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { ms, T_OUT } from "@/lib/motion";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { PAPER, SOFT_SHADOW_LG } from "@/lib/constants";
@@ -102,7 +103,10 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
 
   const requestClose = () => {
     setOpen(false);
-    closeTimerRef.current = window.setTimeout(onClose, 220);
+    // ★閉じる動きを最後まで見せてから外す。**CSS の `--t-out` と同じ値**を
+    //   `lib/motion.ts` から引く(数字を書き写すと、片方だけ変えたときに
+    //   閉じ切る前に消える)。
+    closeTimerRef.current = window.setTimeout(onClose, ms(T_OUT));
   };
 
   // 中身は呼び出し側ごとに構造がバラバラ(フォームや複数カードのグリッドなど)
@@ -159,7 +163,7 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
       background: open ? "rgba(16,16,20,0.4)" : "rgba(16,16,20,0)",
       backdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
       WebkitBackdropFilter: open ? "blur(20px) saturate(1.5)" : "blur(0px)",
-      transition: "background 0.3s ease, backdrop-filter 0.3s ease, -webkit-backdrop-filter 0.3s ease",
+      transition: "background var(--t-out) var(--ease-settle), backdrop-filter var(--t-out) var(--ease-settle), -webkit-backdrop-filter var(--t-out) var(--ease-settle)",
       // requestClose()はsetOpen(false)で背景のフェードアウトを開始した
       // あと、実際にこの要素がアンマウントされるまで220ms待つ(トランジション
       // を最後まで見せるため)。その間もこの要素は画面全体を覆うfixed+
@@ -181,7 +185,8 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
           display: "flex", flexDirection: "column", overflow: "hidden",
           transform: open ? "translateY(0) scale(1)" : "translateY(14px) scale(0.94)",
           opacity: open ? 1 : 0,
-          transition: "transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease",
+          // ★跳ね返りカーブを撤去(第33巡)。時間は上の requestClose の待ちと同じ --t-out。
+          transition: "transform var(--t-out) var(--ease-settle), opacity var(--t-out) var(--ease-settle)",
         }}>
           <div onPointerDown={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "6px 4px" }}>
             {typeof children === "function" ? children(requestClose) : children}

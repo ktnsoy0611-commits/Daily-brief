@@ -539,7 +539,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const topTransform = exit
     ? `translate(${exitX}px, ${drag.dy - 40}px) scale(1) rotate(${exit === "keep" ? 22 : -22}deg)`
     : `translate(${drag.dx}px, ${drag.dy}px) scale(1) rotate(${drag.dx * 0.06}deg)`;
-  const topTransition = exit ? "transform 0.32s cubic-bezier(0.32,0.72,0,1)" : drag.active ? "none" : "transform 0.28s cubic-bezier(0.32,0.72,0,1)";
+  const topTransition = exit ? "transform var(--t-out) var(--ease-sheet)" : drag.active ? "none" : "transform var(--t-item) var(--ease-sheet)";
   // peekの着地(translateY 8→0 / scale 0.95〜1→1)は、以前は「indexが進んで
   // このカードがtop役に切り替わる瞬間」に合わせて起こしていた。しかし
   // それだと『役割の切り替え』と『見た目の値が変わる』が同一のReact
@@ -557,8 +557,8 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
     ? "translate(0, 0px) scale(1) rotate(0deg)"
     : `translate(0, 8px) scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) rotate(0deg)`;
   const peekTransition = exit
-    ? "transform 0.32s cubic-bezier(0.32,0.72,0,1)"
-    : drag.active ? "none" : "transform 0.28s cubic-bezier(0.32,0.72,0,1)";
+    ? "transform var(--t-out) var(--ease-sheet)"
+    : drag.active ? "none" : "transform var(--t-item) var(--ease-sheet)";
   // top(手前)とpeek(次)を別々のDOM要素として固定していると、決定直後に
   // indexが進んだ瞬間、peekだったカードの要素が一旦消えてtop要素として
   // 新規マウントし直され、それまでのtransformが引き継がれずガクッと
@@ -577,7 +577,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
       <Masthead title={appTitle("life")} corner={profileButton} />
       <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
         {deck.map((c, i) => (
-          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background 0.3s" }} />
+          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: 2, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background var(--t-item) var(--ease-settle)" }} />
         ))}
       </div>
 

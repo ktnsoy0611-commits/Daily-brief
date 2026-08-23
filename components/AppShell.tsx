@@ -77,7 +77,7 @@ function Toast({ text }: { text: string }) {
     <div key={text} style={{
       position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: 999,
       fontSize: 11, letterSpacing: "0.06em", padding: "8px 18px", boxShadow: "0 8px 24px rgba(26,26,24,0.25)", zIndex: 50,
-      animation: "toast-in 0.3s cubic-bezier(0.32,0.72,0,1)",
+      animation: "toast-in var(--t-item) var(--ease-sheet)",
     }}>{text}</div>
   );
 }
@@ -284,7 +284,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                   position: "absolute", top: NAV_PILL_PAD, left: NAV_PILL_PAD, height: TAB_MARK,
                   width: `calc((100% - ${NAV_PILL_PAD * 2}px) / ${a.tabs.length})`,
                   transform: `translateX(${Math.max(0, a.tabs.findIndex((t) => t.id === tab)) * 100}%)`,
-                  transition: "transform 320ms cubic-bezier(0.32, 0.72, 0, 1)",
+                  transition: "transform var(--t-item) var(--ease-sheet)",
                   display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
                 }}>
                   <div style={{ width: TAB_MARK, height: TAB_MARK, borderRadius: "50%", background: INK }} />

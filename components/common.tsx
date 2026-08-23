@@ -219,7 +219,8 @@ export function SelectablePosterCard({ selected, onToggle, size = 132, ...cardPr
       onPointerLeave={release}
       style={{
         position: "relative", flexShrink: 0, width: size,
-        transition: pressed ? "transform 0.06s" : "transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
+        // ★沈むのは即座に、戻りは時間をかけて静かに(第33巡。跳ね返りは撤去)。
+        transition: pressed ? "transform var(--t-press) var(--ease-press)" : "transform var(--t-out) var(--ease-settle)",
         transform: pressed ? "scale(0.92)" : selected ? "scale(0.96)" : "scale(1)",
       }}
     >
@@ -366,7 +367,7 @@ function StackRow({ items, aspect, cardWidth, cardHeight, onOpen, onAdd, addLabe
               width: cardWidth, zIndex: isTouched ? 20 : shown.length - i, cursor: "pointer",
               transform: `rotate(${isTouched ? 0 : rotation}deg) scale(${isTouched ? 1.3 : 1})`,
               transformOrigin: "50% 100%",
-              transition: "transform 0.28s cubic-bezier(0.32,0.72,0,1), left 0.28s cubic-bezier(0.32,0.72,0,1), top 0.28s cubic-bezier(0.32,0.72,0,1)",
+              transition: "transform var(--t-item) var(--ease-sheet), left var(--t-item) var(--ease-sheet), top var(--t-item) var(--ease-sheet)",
               filter: isTouched ? "drop-shadow(0 14px 22px rgba(28,28,30,0.22))" : "none",
               touchAction: "none", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
             }}

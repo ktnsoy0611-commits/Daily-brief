@@ -658,10 +658,16 @@ function rebuildWalls(M: typeof import("matter-js"), engine: Engine, w: number, 
   ]);
 }
 
-/** タブバーの高さ(px)。CSS変数から読む — 数字を二重に持たない(§50)。 */
+/** タブバーの高さ(px)。CSS変数から読む — 数字を二重に持たない(§50)。
+ *  ★★`--nav-h` は `[data-app-shell]` に立っている(`AppShell.tsx`)。
+ *  カスタムプロパティは祖先→子孫にしか継承しないので、`document.documentElement`
+ *  (`<html>` = `[data-app-shell]` の**祖先**)から読むと常に空文字になり、
+ *  下の `96px` フォールバックに毎回落ちていた(実機で床が高すぎ、図形が
+ *  タブバーの裏に沈む形で発覚。2026-08-23)。値を持つ要素そのものから読む。 */
 function navHeightPx(): number {
   if (typeof window === "undefined") return 96;
-  const v = getComputedStyle(document.documentElement).getPropertyValue("--nav-h").trim();
+  const shell = document.querySelector("[data-app-shell]") ?? document.documentElement;
+  const v = getComputedStyle(shell).getPropertyValue("--nav-h").trim();
   if (!v) return 96;
   const probe = document.createElement("div");
   probe.style.cssText = `position:absolute;visibility:hidden;height:${v}`;

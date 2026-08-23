@@ -20,7 +20,36 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 `docs/archive/task-app-2026-08.md` §55）。第29〜36巡で「上下の帯」を
 解決した（詳細は `docs/archive/shell-redesign-2026-08.md` §56 — 4巡分の
 間違いと教訓を残してある。同じ手を二度試さないこと）。第36巡でタスクの
-追加口を輪（`CreateMenu`）へ一本化し、基本フォントを統一した。
+追加口を輪（`CreateMenu`）へ一本化し、基本フォントを統一した。第37巡で
+GRAVITYの床(navHeightPx)の実バグを直し、iOSの`theme-color`無効の仕様を確定。
+
+---
+
+## 直近で完了したこと（第37巡）
+
+実機の新しい報告3件を調査。
+
+1. **GRAVITY(タスクの山)の床がタブバーの裏に潜っていた＝実バグ、直した**。
+   `navHeightPx()`が`--nav-h`を`document.documentElement`から読んでいたが、
+   このCSSカスタムプロパティは`[data-app-shell]`に立てている
+   （祖先→子孫にしか継承しないので、祖先の`documentElement`からは常に
+   空文字が返り、`96px`のハードコードされたフォールバックへ毎回落ちていた）。
+   実機(NAV_BOTTOM_GAP=55px前提)では本当は`--nav-h`≈132pxなのに常に96pxで
+   計算していたため、床がタブバーの上端より**36px下**（＝タブバーの裏）に
+   置かれていた。`document.querySelector("[data-app-shell]")`から読むよう修正。
+   `scratchpad/navfix.mjs`で「床の計算値 == 実際のタブバー上端」を確認。
+   ★同じ関数が山の並べ方(`pileOf`の`usableH`)にも使われているので、
+   「タイトルの下に妙な空白が広がる」印象の一部もこれで緩和されるはず。
+2. ★★**iOSの`theme-color`は`default`/`black`では一切読まれない**と判明
+   （Apple公式の既知の制限。第35巡の前提が誤りだった）。入力画面を開いた
+   ときに上47pxが白いままなのは**コードの不具合ではなくiOSの仕様上の制約**。
+   動的に色を追従させられるのは`black-translucent`だけだが、それは
+   撤去済みの下の帯が復活する。両立不可。詳細は`docs/project_knowledge.md`
+   §3の訂正箇所。★**ユーザーへどう見せるかの方針決定が必要**（次の一手参照）。
+3. **輪の開閉・タブ切り替えの「点滅」は未特定**。`.tab-in`のopacityフェード
+   自体は意図した動きだが、実機でどう見えているかは推測の域を出ていない。
+   Chromiumでは確認できない類の症状（Safari特有の合成/フォントスワップ等の
+   可能性はあるが未検証）。**次に実機で再現条件を絞り込む必要あり**。
 
 ---
 
@@ -49,36 +78,33 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
    `FONT_FACES`は対象外）。`app/layout.tsx`に`Noto_Sans_JP`を追加、
    `lib/constants.ts`の`SANS`を書き換え。
 
-### 検証したこと
+### 検証したこと（第36・37巡共通）
 
-- `tsc --noEmit` ✓ / `eslint` ✓ / 本番ビルド ✓
-- 機械チェック（CLAUDE.md「目盛りが守られているかの機械チェック」）4本とも◯
-- 本番ビルド + Playwright（390×797）で以下を確認:
-  - `chin35.mjs`（上下の帯・タブバー位置・theme-color）全項目OK
-  - `menu28.mjs`（輪の開閉・半径配置・RECORD/TASKで正しい画面へ）全項目OK
-    — 閉じるアニメーションが`--t-out`の間DOMに残ることも検証
-  - 既存回帰一式（下記「主な回帰」）… 新規の不合格は無し
-- ★**`scratchpad/plus.mjs`ほか約30本**は、旧「＋」ボタンを空の入力画面を
-  開く入口として使っていただけの試験だったので、輪（作る→TASK）を経由する
-  よう機械的に置き換えた（`fix_plus.pl`）。TaskComposer自体の中身は
-  今回触っていないので、実質的なリスクは低いという判断。
+`tsc`/`eslint`/本番ビルド✓、機械チェック4本✓。`chin35.mjs`(上下の帯・
+theme-color)・`menu28.mjs`(輪の開閉・半径配置)・`navfix.mjs`(床の位置)
+全項目OK、既存回帰一式に新規の不合格なし。旧「＋」ボタンに依存していた
+約30本の試験は輪（作る→TASK）経由へ機械的に置き換えた（`fix_plus.pl`）。
 
 ---
 
 ## 次に着手すること
 
-1. **実機（iOS Safari）での確認**。★特に今回の変更点を重点的に:
-   - タブバーが本当に元の位置(ホームインジケーターに乗らない高さ)へ戻ったか。
-   - 輪の閉じるアニメーションの体感（速すぎ/遅すぎないか）。
-   - RECORD/TASKの文字が斜めに読める配置になっているか、読みにくくないか。
-   - Helvetica + Noto Sansへの統一で、和文と欧文が混ざる場所（数字・タグ名等）
-     の継ぎ目が不自然でないか。
-   - ★**ホーム画面から一度消して追加し直してから**見ること（`theme_color`等
-     の焼き込みのため）。
-2. ★**`v7.mjs` が落ちるのを追う**（第33巡からの積み残し）。日程シートを開いた
+1. ★★★**入力画面を開いたときの上47pxの白い帯 — 方針決定待ち**。
+   iOSの制約で`theme-color`が`default`/`black`では効かないため
+   （§3参照）、コードだけでは解決できない。ユーザーに選択肢を提示済み
+   （① `default`のまま・白い帯は仕様として受け入れる ②
+   `black-translucent`に戻し下の帯を再び許容する ③ 入力画面側を
+   「上だけ意図的に明るいヘッダー」としてデザインし直す）。回答が来たら着手。
+2. **輪の開閉・タブ切り替えの「点滅」を実機で切り分ける**。Chromiumでは
+   再現しない。次に実機で見るときは「どのタイミングで」「何色から何色へ」
+   点滅するかを具体的に聞く（動画があれば一番早い）。
+3. **実機（iOS Safari）での再確認**。★GRAVITYの床の修正／タブバー位置／
+   輪の閉じ方・半径配置／フォント統一、いずれも前回未確認。
+   ★**ホーム画面から一度消して追加し直してから**見ること。
+4. ★**`v7.mjs` が落ちるのを追う**（第33巡からの積み残し）。日程シートを開いた
    あと、器のキーボード判定が「閉じた」と誤解して入力画面ごと閉じている
    ように見える。**実バグの可能性がある。**
-3. **Cowork のプロンプト更新**（`COWORK-ROUTINES.md`）… 候補の項目を
+5. **Cowork のプロンプト更新**（`COWORK-ROUTINES.md`）… 候補の項目を
    `いつ`（★**日付で書かせる**。YYYY-MM-DD）/ `道具・場所` / `持ち物` /
    `タグ`（英字5つ）へ揃える。日付で書かれないと期日にならず、
    `lib/inboxImport.ts` がメモへ回す。
@@ -112,7 +138,7 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 lib/constants.ts                   ★NAV_BOTTOM_GAP(比率式)／SANS(Helvetica+Noto Sans)
 app/layout.tsx                     ★Noto_Sans_JPの読み込み／appleWebApp.statusBarStyle
 components/CreateMenu.tsx          ★輪。閉じるアニメーション／半径配置(legibleAngle)
-components/tabs/GravityTab.tsx     ＋を撤去。draft分岐も削除しpatch/complete/removeへ一本化
+components/tabs/GravityTab.tsx     ＋を撤去。★navHeightPx()の読み取り元を修正(第37巡)
 components/tabs/DriftTab.tsx       同上(候補側)
 components/tasks/TaskAddButton.tsx TaskAddButton本体を撤去。DemoSeedButtonのみ残る
 lib/ground.ts                      地色。優先度つきの積み木・onGround・GROUND_EASE

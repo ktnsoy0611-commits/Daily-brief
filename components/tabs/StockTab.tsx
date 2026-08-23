@@ -3,10 +3,11 @@
 import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Package, Palette, UtensilsCrossed } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
-import { BinderModal, CardStack, type IconType, Masthead, PosterCard, rowBtn, SectionLabel } from "@/components/common";
+import { Button } from "@/components/Button";
+import { BinderModal, CardStack, type IconType, Masthead, PosterCard, SectionLabel } from "@/components/common";
 import { TabIcon } from "@/components/TabIcons";
 import { appTitle } from "@/lib/apps";
-import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, RUST_EDGE, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
+import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
 import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
 
@@ -380,11 +381,11 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
           const selected = selection.itemIds.includes(itemDetail!.id);
           return (
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-              <button onClick={() => toggleItemSelection(itemDetail!.id)} style={selected ? rowBtn("transparent", BLUE, BLUE) : rowBtn(INK, PAPER)}>
+              <Button variant={selected ? "secondary" : "primary"} tone={selected ? BLUE : undefined} onClick={() => toggleItemSelection(itemDetail!.id)}>
                 {selected ? "＋ 追加済み" : "＋ プランに追加"}
-              </button>
-              <button onClick={() => { markItemDone(itemDetail!.id); close(); }} style={rowBtn("transparent", INK, "rgba(26,26,24,0.3)")}>{itemKindOf(itemDetail!.kind).doneActionLabel}</button>
-              <button onClick={() => { removeItem(itemDetail!.id); close(); }} style={rowBtn("transparent", RUST, RUST_EDGE)}>削除</button>
+              </Button>
+              <Button variant="secondary" tone={INK} onClick={() => { markItemDone(itemDetail!.id); close(); }}>{itemKindOf(itemDetail!.kind).doneActionLabel}</Button>
+              <Button variant="secondary" tone={RUST} onClick={() => { removeItem(itemDetail!.id); close(); }}>削除</Button>
             </div>
           );
         }} />
@@ -398,12 +399,12 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
         actionSlot={(close) => (
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
             {!wishDetailBound && wishDetail?.status !== "fulfilled" && (
-              <button onClick={() => { updateWish(wishDetail!.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() }); close(); }} style={rowBtn(INK, PAPER)}>叶えた！</button>
+              <Button variant="primary" onClick={() => { updateWish(wishDetail!.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() }); close(); }}>叶えた！</Button>
             )}
             {!wishDetailBound && (
-              <button onClick={() => { makeGoal(wishDetail!); close(); }} style={rowBtn("transparent", GREEN, GREEN)}>ゴールにする</button>
+              <Button variant="secondary" tone={GREEN} onClick={() => { makeGoal(wishDetail!); close(); }}>ゴールにする</Button>
             )}
-            <button onClick={() => { removeWish(wishDetail!.id); close(); }} style={rowBtn("transparent", RUST, RUST_EDGE)}>削除</button>
+            <Button variant="secondary" tone={RUST} onClick={() => { removeWish(wishDetail!.id); close(); }}>削除</Button>
           </div>
         )} />
     </>

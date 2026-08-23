@@ -64,10 +64,6 @@ export function Dot({ color, label }: { color: string; label: string }) {
   );
 }
 
-export function rowBtn(bg: string, color: string, border?: string): CSSProperties {
-  return { background: bg, color, cursor: "pointer", border: `1px solid ${border ?? bg}`, borderRadius: 999, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", padding: "7px 12px", fontFamily: SANS };
-}
-
 export function keepStatus(k: { status: string }) {
   if (k.status === "planned") return { label: "マガジン掲載中", color: BLUE };
   if (k.status === "done") return { label: "実行済み", color: MUTED };

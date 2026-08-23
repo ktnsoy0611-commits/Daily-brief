@@ -3,7 +3,7 @@
 import { Activity, BarChart3, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
-import { rowBtn } from "@/components/common";
+import { Button } from "@/components/Button";
 import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SERIF } from "@/lib/constants";
 import { isViewportDebug, setViewportDebug } from "@/lib/debugViewport";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -177,7 +177,7 @@ function InterestChips({ items, onRemove, inputValue, onInputChange, onAdd, plac
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <input value={inputValue} onChange={(e) => onInputChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onAdd()}
           placeholder={placeholder} style={settingsInputStyle} />
-        <button onClick={onAdd} style={rowBtn(INK, PAPER)}>追加</button>
+        <Button variant="primary" onClick={onAdd}>追加</Button>
       </div>
     </>
   );
@@ -608,7 +608,7 @@ export function ProfileTab({ appState, persist, onClose }: {
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <input value={fixedInput} onChange={(e) => setFixedInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addFixedSource()}
                 placeholder="URLを貼り付け" style={settingsInputStyle} />
-              <button onClick={addFixedSource} style={rowBtn(INK, PAPER)}>登録</button>
+              <Button variant="primary" onClick={addFixedSource}>登録</Button>
             </div>
           </SettingsCard>
 
@@ -632,7 +632,7 @@ export function ProfileTab({ appState, persist, onClose }: {
           <div style={{ display: "flex", gap: 8, marginTop: favVisible.length === 0 && discovered.length === 0 ? 0 : 12 }}>
             <input value={srcInput} onChange={(e) => setSrcInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSource()}
               placeholder="URLを貼り付け" style={settingsInputStyle} />
-            <button onClick={addSource} style={rowBtn(INK, PAPER)}>登録</button>
+            <Button variant="primary" onClick={addSource}>登録</Button>
           </div>
         </SettingsCard>
         </>)}

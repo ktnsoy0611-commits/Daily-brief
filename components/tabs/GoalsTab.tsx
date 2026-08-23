@@ -4,7 +4,8 @@ import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { GoalBinderCard, goalAccent, GOAL_BASE } from "@/components/Binder";
-import { AddCardTile, Masthead, rowBtn } from "@/components/common";
+import { Button } from "@/components/Button";
+import { AddCardTile, Masthead } from "@/components/common";
 import { appTitle } from "@/lib/apps";
 import { GOAL_CARD_ASPECT, HAIRLINE, INK, MUTED, PAPER, RUST, SANS } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
@@ -58,7 +59,7 @@ function GoalDetailSheet({ goal, draft, onDraftChange, onManualAdd, onRemove, on
         <div style={{ display: "flex", gap: 8 }}>
           <input value={draft} onChange={(e) => onDraftChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onManualAdd()}
             placeholder="今の様子を書き足す" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: 12.5, padding: "6px 2px", outline: "none" }} />
-          <button onClick={onManualAdd} style={rowBtn(INK, PAPER)}>記録</button>
+          <Button variant="primary" onClick={onManualAdd}>記録</Button>
         </div>
       </OverlayCard>
     </BottomSheet>

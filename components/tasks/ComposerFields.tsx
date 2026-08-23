@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CAP, DIM, LIFT, Press } from "@/components/tasks/Popover";
+import { Press } from "@/components/Button";
+import { CAP, DIM, LIFT } from "@/components/tasks/Popover";
 import { PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { TASK_TAGS, tagInk } from "@/lib/taskTags";

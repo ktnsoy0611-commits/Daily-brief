@@ -1,7 +1,8 @@
 "use client";
 
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CAP, Press } from "@/components/tasks/Popover";
+import { Press } from "@/components/Button";
+import { CAP } from "@/components/tasks/Popover";
 import { TimeRange } from "@/components/tasks/TimeRange";
 import { PAPER, RUST, SANS, SCHEME } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";

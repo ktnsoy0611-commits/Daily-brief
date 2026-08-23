@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { PAPER, SANS } from "@/lib/constants";
+// ★押せる面は `components/Button.tsx` が唯一の持ち主(第33巡)。
+import { Press } from "@/components/Button";
 
 // ★入力画面(TaskComposer)のポップオーバーの器。入力エリアの**すぐ上**に、
 // 角丸の面を1枚立ち上げる。丸みはアプリ共通の 22。
@@ -17,108 +18,6 @@ import { PAPER, SANS } from "@/lib/constants";
 // 伸ばしていたので、中身が高いと**画面の上へはみ出して**タブの下に潜り、
 // 下へスワイプしないと触れなかった。領域そのものを枠にすれば構造的に
 // はみ出せない。**縦スクロールも持たせない** — 中身をこの高さに収める。
-
-/**
- * ★★**入力画面の押せる面はこれ**(2026-08-17・第6巡)。`<button>` は使わない。
- *
- * 以前の `press()`(`<button>` + `pointerdown` の `preventDefault`)では実機で
- * 取りこぼしが残った(「何度も押しているとキーボードが閉じる」)。原因は2つ:
- *
- *  1. **`<button>` はタップすると、いま focus している欄を Safari が blur する**。
- *     `div` は(tabindex が無ければ)フォーカスを受け取れないので、そもそも
- *     移動先が無い。
- *  2. iOS でフォーカス移動を確実に止められるのは **`touchstart` の
- *     `preventDefault`**。ところが React は root の `touchstart` を **passive**
- *     で張るため、React の `onTouchStart` からは preventDefault できない。
- *     素の listener を `{ passive: false }` で張り直す。
- *
- * 処理を走らせるのは `pointerdown` の側だけ(iOS は pointerdown → touchstart の
- * 順に飛ぶので、両方で走らせると二重になる)。`touchstart` は
- * **既定動作を止める役だけ**。
- */
-/**
- * ★最後に**画面の中の**押せる面が押された時刻。
- *
- * 「キーボードを閉じたら入力画面も閉じる」を入れた 2026-08-18 から必要に
- * なった。フォーカスが外れた理由を2つに分ける必要がある:
- *   ・画面の中を押した → 取りこぼし。**その場で戻す**(いままでどおり)。
- *   ・画面の外(キーボードの「完了」やスワイプ) → **戻さない**。閉じる合図。
- * ページの中には iOS の「完了」を知る手がかりが無いので、
- * 「直前に画面を押していたか」で見分ける。
- */
-let lastPressAt = 0;
-export const pressedRecently = (ms = 500) => Date.now() - lastPressAt < ms;
-
-export function Press({ onPress, disabled, children, style, ...rest }: {
-  onPress: () => void;
-  disabled?: boolean;
-  children?: React.ReactNode;
-  style?: React.CSSProperties;
-  className?: string;
-  "aria-label"?: string;
-  "aria-pressed"?: boolean;
-  "aria-checked"?: boolean;
-  "aria-hidden"?: boolean;
-  role?: string;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  // 押したときにやることは毎レンダー変わるので ref 越しに読む
-  // (listener を張り替えないため)。
-  const fn = useRef(onPress);
-  fn.current = onPress;
-  const off = useRef(disabled);
-  off.current = disabled;
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    // ★止める役だけ。処理は pointerdown 側で走る。
-    const on = (e: TouchEvent) => { lastPressAt = Date.now(); if (e.cancelable) e.preventDefault(); };
-    el.addEventListener("touchstart", on, { passive: false });
-    return () => el.removeEventListener("touchstart", on);
-  }, []);
-
-  // ★★**沈む合図は自分で出す**(2026-08-18・第19巡)。`.tc-lamp:active` に
-  //   任せていたが、`touchstart` の既定動作を止めている面では iOS が
-  //   `:active` を当てないことがあり、**押しても何も起きないように見える**
-  //   (実機で「アイコンの反応が悪い」と報告された)。押した瞬間に印を立て、
-  //   離す/取り消しで消す。再レンダーは挟まない(属性を直に書く)。
-  const mark = (on: boolean) => {
-    const el = ref.current;
-    if (!el) return;
-    if (on) el.dataset.pressed = "1";
-    else el.removeAttribute("data-pressed");
-  };
-
-  return (
-    <div
-      ref={ref}
-      role={rest.role ?? "button"}
-      aria-disabled={disabled || undefined}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        lastPressAt = Date.now();
-        mark(true);
-        if (!off.current) fn.current();
-      }}
-      onPointerUp={() => mark(false)}
-      onPointerCancel={() => mark(false)}
-      onPointerLeave={() => mark(false)}
-      style={{
-        cursor: disabled ? "default" : "pointer",
-        userSelect: "none", WebkitUserSelect: "none",
-        WebkitTouchCallout: "none",
-        // ★★**`touch-action: none`**(2026-08-18・第19巡)。これが無いと iOS は
-        //   「この指はページを送るためのものか」を見極めるまで `pointerdown` を
-        //   握り、押してから効くまでが目に見えて遅れる。送る余地が無いことを
-        //   先に宣言しておけば、指が触れた瞬間に飛ぶ。
-        touchAction: "none",
-        ...style,
-      }}
-      {...rest}
-    >{children}</div>
-  );
-}
 
 /**
  * 保険。器のルートに掛けて、ボタン以外(余白・ラベル)を叩いたときにも

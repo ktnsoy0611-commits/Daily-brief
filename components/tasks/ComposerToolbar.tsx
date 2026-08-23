@@ -1,6 +1,6 @@
 "use client";
 
-import { Press } from "@/components/tasks/Popover";
+import { Press } from "@/components/Button";
 import { haptic } from "@/lib/helpers";
 
 // ★入力画面(TaskComposer)の下の帯。5つの項目を面で描いたアイコンで並べる

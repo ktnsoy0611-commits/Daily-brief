@@ -3,7 +3,8 @@
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { TabIcon } from "@/components/TabIcons";
-import { CAP, Press } from "@/components/tasks/Popover";
+import { Press } from "@/components/Button";
+import { CAP } from "@/components/tasks/Popover";
 import { INK, PAPER } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 

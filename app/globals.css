@@ -587,6 +587,11 @@ button:active {
 }
 .tc-dial::-webkit-scrollbar { display: none; }
 /* 灯り(ツールバーの丸)。色だけを滑らかに。 */
+/* ★★★**押した手ざわりはここだけ**(2026-08-23・第33巡に `.tc-lamp` から改名)。
+   `.tc-lamp` は入力画面(task composer)由来の名前で、アプリ全体の押下を表す
+   名前としてふさわしくなかった。`components/Button.tsx` の `Button` / `Press`
+   が付ける。**古い名前も当分は受ける**(既存の18箇所を一度に書き換えない)。 */
+.press,
 .tc-lamp {
   /* ★戻りは**時間をかけて静かに**(2026-08-19・第26巡)。 */
   transition: background-color var(--t-item) var(--ease-settle),
@@ -599,6 +604,9 @@ button:active {
    丸を内側の面に描いている場所(下の帯のアイコン)は、印が親に立つ。 */
 /* ★★押した瞬間は**即座に**沈む(90ms・0.1s 以内)。離すと上の 600ms で戻る。
    沈みが速くなったぶん、深さは浅くてよい(0.9 → 0.94)。 */
+.press:active,
+.press[data-pressed="1"],
+[data-pressed="1"] > .press,
 .tc-lamp:active,
 .tc-lamp[data-pressed="1"],
 [data-pressed="1"] > .tc-lamp {
@@ -612,6 +620,6 @@ button:active {
   .tc-solid-in, .tc-solid-swap-in, .tc-solid-swap-out, .tc-cue { animation: none; }
   [data-overlay] [data-app-shell] { filter: none; }
   [data-composer-plate], [data-create-menu] { clip-path: none !important; }
-  .tc-lamp { transition: none; }
+  .press, .tc-lamp { transition: none; }
   [data-composer-shell] { transition: none !important; }
 }

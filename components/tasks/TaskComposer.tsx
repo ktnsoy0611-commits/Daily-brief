@@ -192,6 +192,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     const prevBody = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     root.dataset.overlay = "1";
+    delete root.dataset.leaving;
 
     /** 指の下に「本当に送れる箱」があるか。 */
     const scrollable = (from: EventTarget | null) => {
@@ -214,6 +215,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       document.removeEventListener("touchmove", stop);
       document.body.style.overflow = prevBody;
       delete root.dataset.overlay;
+      delete root.dataset.leaving;
     };
   }, []);
 
@@ -251,6 +253,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // 更新していて、入力画面まるごとが再レンダーされていた。
   // 矩形は **ref 越しに style へ直接書く**(`.app-track` と同じ作法)。
   const shellRef = useRef<HTMLDivElement | null>(null);
+  /** 画面いっぱいの板(切り抜きの円を持つ)。器はこの子。 */
+  const plateRef = useRef<HTMLDivElement | null>(null);
 
   // ★★★**＋から広がって、＋へ戻す = 器を円で切り抜く**(2026-08-19・第27巡)。
   //
@@ -260,7 +264,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   // 覆い終わったら切り抜きごと外し、以後は器を自由に動かす。
   /** ＋の丸の中心と、そこから器の四隅までの最大距離。 */
   const revGeom = () => {
-    const el = shellRef.current;
+    const el = plateRef.current;
     const o = surfaceOrigin();
     const r = el ? el.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
     const x = o.x + o.w / 2 - r.left;
@@ -277,7 +281,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   const circle = (r: number, x: number, y: number) => `circle(${Math.round(r)}px at ${Math.round(x)}px ${Math.round(y)}px)`;
   /** ＋の大きさから器いっぱいへ広げる。 */
   const grow = () => {
-    const el = shellRef.current;
+    const el = plateRef.current;
     if (!el) return;
     const g = revGeom();
     el.style.setProperty("--rev", circle(g.r0, g.x, g.y));
@@ -299,7 +303,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   };
   /** ＋の大きさへ吸い込む。★長さは `--t-out` と `LEAVE_MS` で必ず揃える。 */
   const shrink = () => {
-    const el = shellRef.current;
+    const el = plateRef.current;
     if (!el) return;
     const g = revGeom();
     el.style.setProperty("--rev", circle(g.r1, g.x, g.y));
@@ -749,6 +753,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     //   要素の入れ替えも受け渡しも無いので、途中で測り直す瞬間が無い
     //   (第26巡は3つの要素をリレーしていて「2段階ガクッ」と報告された)。
     shrink();
+    // ★★**後ろのアプリは「閉じ始めと同時」に明るさを戻し始める**(第28巡)。
+    //   以前は入力画面が消えてから `[data-overlay]` が外れていたので、
+    //   閉じる動き → 一瞬止まる → 明るくなる、と直列に見えていた。
+    document.documentElement.dataset.leaving = "1";
     // ★キーボードを閉じるのは**滑り出した後**。iOS はここで矩形を作り直すので、
     //   先に呼ぶと動き出しがそのぶん遅れる。
     (document.activeElement as HTMLElement | null)?.blur();
@@ -769,12 +777,24 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
   };
 
   const view = (
-    <>
-      {/* ★★下敷き(zIndex 59 の LIFT の板)は**撤去した**(2026-08-19・第26巡)。
-          役目は「器の外(キーボードの裏・セーフエリア)に地色を用意する」ことだったが、
-          いまはそこを `pushGround(LIFT, "overlay")` が html と theme-color で
-          塗っている。**画面いっぱいの不透明な板が居ると、後ろのアプリが退がる
-          のも、＋から地が広がってくるのも見えない。** */}
+    // ★★★**画面いっぱいの板を必ず1枚敷く**(2026-08-19・第28巡)。
+    //
+    // 器(下の `data-composer-shell`)は **`visualViewport` の矩形**なので、
+    // **キーボードの高さぶん、画面の下に器の外が残る**。iOS のキーボードの
+    // 上に出る帯(^ v ✓ の操作バー)は**半透明**で、その裏に「器の外」が
+    // 透けて見える — そこに居るのは後ろのアプリなので、実機で
+    // **「キーボードの後ろにアプリが見えている」**と3度報告された。
+    // `pushGround(LIFT, "overlay")` は html と theme-color を塗るが、
+    // html は**アプリのシェルの下**なので、そこには出られない。
+    //
+    // ★第26巡はこの板を「後ろが退がるのが見えなくなる」と言って撤去したが、
+    //   それは板に切り抜きが無かったから。**板も器も同じ円で切り抜く**
+    //   (円はこの板が持ち、器はその子)なら、広がる途中は後ろがちゃんと見える。
+    // ★色は **LIFT(帯の色)**。器の下端に見えているのは帯なので、そこから
+    //   下も同じ色にすると継ぎ目が出ない(CHARCOAL にすると帯の色と食い違う)。
+    <div ref={plateRef} data-composer-plate aria-hidden={false} style={{
+      position: "fixed", inset: 0, zIndex: 59, background: LIFT,
+    }}>
     {/* ★★★**器は一度置いたら二度と動かさない**(2026-08-18・第13巡)。
         寸法は録音のオーバーレイ(`VoiceOverlay`)と**同じ書き方**にしてある —
         ★★この類推は**間違いだった**(2026-08-19・第24巡で撤回)。`VoiceOverlay`
@@ -787,8 +807,10 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
       // ★★器は**見えている矩形そのもの**(2026-08-19・第24巡)。`top` と
       //   `height` は JS が `visualViewport` から書く(上の `place`)。ここは
       //   その初期値。`left`/`right` は固定で、**幅は一度も触らない**。
-      // ★器そのものは**透明**。地は下の共有要素(＋から広がってくる面)が描く。
-      position: "fixed", left: 0, right: 0, top: 0, zIndex: 60, background: "transparent",
+      // ★器そのものは**透明**。地は中の面(`data-surface`)が描く。
+      // ★★板の子なので `absolute`。板は `fixed; inset: 0` なので、`top` に
+      //   書く値の意味(画面の上端からの距離)は今までと変わらない。
+      position: "absolute", left: 0, right: 0, top: 0, zIndex: 1, background: "transparent",
       height: "100lvh",
       display: "flex", flexDirection: "column",
       // ★★**`hidden` ではなく `clip`**(2026-08-18)。`hidden` の箱は**送れる箱**
@@ -898,12 +920,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           //   (`.tc-sheet` = transform を animate)を持っているので、
           //   同じ要素に追従の transform は書けない。だから外側で持つ。
         }}>
-        {/* ★持ち上がったぶんの下を同じ色で埋める。器は `overflow: clip` なので
-            はみ出しても**送れる箱にはならない**(第12巡でここを撤去したが、
-            器を動かさなくなったいまは必要で、かつ安全)。 */}
-        <span aria-hidden style={{
-          position: "absolute", top: "100%", left: 0, right: 0, height: "100lvh", background: LIFT,
-        }} />
+        {/* ★帯の下を埋める板は**器の外**(`data-composer-plate`)が持つように
+            なった(第28巡)。ここに置くと器の `overflow: clip` で切られるので、
+            キーボードの裏には届かなかった。 */}
       <div data-band onMouseDown={keepKeyboard} style={{
         position: "relative", background: LIFT,
         borderRadius: "26px 26px 0 0",
@@ -1013,7 +1032,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         </div>
       )}
     </div>
-    </>
+    </div>
   );
 
   if (typeof document === "undefined") return null;

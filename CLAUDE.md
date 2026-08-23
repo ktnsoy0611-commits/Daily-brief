@@ -37,6 +37,8 @@
 - `components/AppShell.tsx` — 3アプリの横スライド・タブ・共有state・ダッシュボードの司令塔。
 - `components/AppBackdrop.tsx` — アプリごとの地色（`groundOf` が唯一の出どころ）。
 - `components/Dashboard.tsx` — 下から引き上げる引き出し。「今日を終える」。
+- `components/CreateMenu.tsx` — タブバー右端の丸から広がる輪（RECORD / TASK）。
+  **タスクの追加はどのアプリからでもここから**。
 - `lib/apps.ts` — アプリとタブの定義（**タブ構成の正**）。
 
 ## ブリーフ（EXPLORE）

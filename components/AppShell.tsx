@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop, groundOf } from "@/components/AppBackdrop";
+import { CreateMenu, type MenuAt } from "@/components/CreateMenu";
 import { TAB_ICON_OFF, TabGlyph, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
@@ -18,13 +19,15 @@ import { RecordTab } from "@/components/tabs/RecordTab";
 import { StockTab } from "@/components/tabs/StockTab";
 import { DriftTab } from "@/components/tabs/DriftTab";
 import { GravityTab } from "@/components/tabs/GravityTab";
+import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
+import { setSurfaceOrigin } from "@/lib/motion";
 import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
-import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, VoiceControls } from "@/lib/types";
+import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, Task, VoiceControls } from "@/lib/types";
 
 // 読み込み待機画面。2x2のグリッドの上を、黒い幾何学が動き回る
 // (globals.css の load-rect / load-dot / load-fan)。背景と同じ語彙で、
@@ -92,7 +95,7 @@ interface AppColumnProps {
   tabProps: TabProps;
   goTab: (id: TabId) => void;
   onNavPointerDown: (e: ReactPointerEvent) => void;
-  onRecord: () => void;
+  onRecord: (from: HTMLElement) => void;
   navDragged: React.MutableRefObject<boolean>;
 }
 
@@ -292,12 +295,14 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                   );
                 })}
               </div>
-              {/* ★右端の丸ボタンは**録音**。3つのアプリすべてで同じ位置・
-                  同じ意味の常設ボタンにしてある(ユーザー指定)。どのタブから
-                  押しても、いまの画面が暗くなって声の記録が開く。 */}
+              {/* ★★右端の丸ボタンは**作るものを選ぶ入口**(2026-08-19・第28巡に
+                  ユーザー指定)。押すとこの丸から円が広がって RECORD と TASK が
+                  出る(`components/CreateMenu.tsx`)。3つのアプリすべてで同じ
+                  位置・同じ意味の常設ボタンで、**タスクの追加もどのアプリからでも
+                  できる**ようになった。 */}
               <button
-                onClick={() => { if (navDragged.current) return; onRecord(); }}
-                aria-label="録音する"
+                onClick={(e) => { if (navDragged.current) return; onRecord(e.currentTarget); }}
+                aria-label="作る"
                 style={{
                   flexShrink: 0, width: 52, height: 52, borderRadius: "50%", background: INK, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
@@ -803,10 +808,32 @@ export function AppShell() {
   const [studioOpen, setStudioOpen] = useState(false);
   const recorderRef = useRef(recorder);
   recorderRef.current = recorder;
-  const onRecord = useCallback(() => {
+  // ★★右端の丸は**作るものを選ぶ入口**(2026-08-19・第28巡にユーザー指定)。
+  //   押した丸の場所を控えて、そこから円を広げる(`components/CreateMenu.tsx`)。
+  const [menuAt, setMenuAt] = useState<MenuAt | null>(null);
+  const onRecord = useCallback((from: HTMLElement) => {
     haptic(6);
-    setStudioOpen(true);
+    const r = from.getBoundingClientRect();
+    setMenuAt({ x: r.left, y: r.top, w: r.width, h: r.height });
   }, []);
+  const openStudio = useCallback(() => { haptic(6); setStudioOpen(true); }, []);
+
+  // ★★**タスクの追加は3つのアプリのどこからでも**(同巡)。以前はタスクアプリの
+  //   ＋ からしか作れなかった。ここで持つのは「まだ保存していない下書き」1つだけで、
+  //   題が付いたまま閉じたときに初めて `tasks` の先頭へ入る
+  //   (タスクアプリの ＋ と同じ約束。`components/tabs/GravityTab.tsx`)。
+  const [newTask, setNewTask] = useState<Task | null>(null);
+  const openNewTask = useCallback((from: Element | null) => {
+    setSurfaceOrigin(from);
+    setNewTask({ id: `task-${Date.now()}`, title: "", done: false, createdAt: new Date().toISOString(), weight: 2 });
+  }, []);
+  const saveNewTask = useCallback((base: Task, d: ComposerData, done: boolean) => {
+    setNewTask(null);
+    if (!appState || !d.title.trim()) return;      // 題が無いまま閉じたら何も無かったことに
+    const next: AppState = structuredClone(appState);
+    next.tasks = [{ ...base, ...d, done }, ...(next.tasks ?? [])];
+    persist(next);
+  }, [appState, persist]);
   const closeStudio = useCallback(() => {
     // 録音中/確認中のまま閉じたら、その録音は捨てる。
     if (recorderRef.current.state === "recording" || recorderRef.current.state === "review") recorderRef.current.cancel();
@@ -1009,8 +1036,31 @@ export function AppShell() {
 
       {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}
 
+      {/* ★★どのアプリからでも「作る」。右端の丸から円が広がって選ばせる。 */}
+      {menuAt && (
+        <CreateMenu
+          at={menuAt}
+          onClose={() => setMenuAt(null)}
+          onRecord={openStudio}
+          onTask={openNewTask}
+        />
+      )}
+
       {/* ★どのアプリからでも開く、声の記録の全画面オーバーレイ。 */}
       <VoiceOverlay voice={voice} open={studioOpen} onClose={closeStudio} />
+
+      {/* ★どのアプリからでも作れるタスク。題が付いたまま閉じたら山へ入る。 */}
+      {newTask && (
+        <TaskComposer
+          key={newTask.id}
+          data={newTask}
+          mode="task"
+          onCommit={(d) => setNewTask((x) => (x ? { ...x, ...d } : x))}
+          onConfirm={(d) => saveNewTask(newTask, d, true)}
+          onDelete={() => setNewTask(null)}
+          onClose={(d) => saveNewTask(newTask, d, false)}
+        />
+      )}
 
       {/* ★ダッシュボード。タブバーを上へ引き上げる(または選択の目印をタップ
           する)と、3つのアプリのどこからでも開く共通の引き出し。選んでいる

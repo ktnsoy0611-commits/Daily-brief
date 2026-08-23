@@ -514,12 +514,13 @@ button:active {
    覆い終わりの円は画面の外まで出ているので、四角い角も、端末の丸い角との
    ぶつかりも出ない。
    ★覆い終わったら切り抜きごと外す(`--rev: none`)。以後は器が自由に動ける。 */
-[data-composer-shell] { clip-path: var(--rev, none); }
-[data-composer-shell][data-rev] {
+/* ★作るものを選ぶ輪(components/CreateMenu.tsx)も**まったく同じ作法**。 */
+[data-composer-plate], [data-create-menu] { clip-path: var(--rev, none); }
+[data-composer-plate][data-rev], [data-create-menu][data-rev] {
   transition: clip-path var(--t-in) var(--ease-sheet);
   will-change: clip-path;
 }
-[data-composer-shell][data-rev="out"] { transition-duration: var(--t-out); }
+[data-composer-plate][data-rev="out"] { transition-duration: var(--t-out); }
 /* ★第21〜22巡の「出入りの最中は帯と図形の追従を止める」規則は撤去した
    (第24巡)。器が見えている矩形そのものになり、帯も図形も**キーボード追従の
    transform を持たなくなった**ので、止めるものがもう無い。 */
@@ -542,19 +543,31 @@ button:active {
 .tc-cue-2 { animation-delay: calc(var(--t-step) * 2); }
 .tc-cue-3 { animation-delay: calc(var(--t-step) * 3); }
 
-/* ★★入力画面が開いているあいだ、後ろのアプリを退がらせる(要件2・奥行き)。
-   ベタ塗りの地(AppBackdrop)はそのままなので、縮んだシェルの周りにその色が
-   出て「奥に敷かれた紙」に見える。 */
+/* ★★入力画面が開いているあいだ、後ろのアプリを**暗くする**(要件2・奥行き)。
+   ベタ塗りの地(AppBackdrop)も一緒に暗くなるので、画面全体が一段沈む。
+   ★★★**縮小はやめた**(2026-08-19・第28巡にユーザー指定)。`scale(0.96)` と
+   角丸 22px は、戻るときに「閉じ切ってからパッと戻る」のが目立つうえ、
+   縮んだ矩形の外に別の色が出るぶん継ぎ目が増える。落とすのは明度だけ。
+   ★シェルに transform が乗らなくなったので、中の `position: fixed`
+   (Toast・ダッシュボード・Leaflet)が画面基準のままでいられる利点もある。 */
 [data-app-shell] {
-  transition: transform var(--t-out) var(--ease-settle),
-              filter var(--t-out) var(--ease-settle),
-              border-radius var(--t-out) var(--ease-settle);
+  /* ★曲線は切り抜きの円と**同じ `--ease-sheet`**(第28巡)。`--ease-settle` は
+     前半で 99% まで行ってしまうので、円がまだ縮んでいる途中で明るさだけ
+     戻り切って「パッと戻った」ように見える。2つは一緒に動かす。 */
+  transition: filter var(--t-out) var(--ease-sheet);
 }
 [data-overlay] [data-app-shell] {
-  transform: scale(0.96);
   filter: brightness(0.72);
-  border-radius: 22px;
   transition-duration: var(--t-in);
+}
+/* ★★**戻り始めるのは「閉じ終わってから」ではなく「閉じ始めと同時」**
+   (2026-08-19・第28巡)。以前は入力画面が消えた瞬間に `[data-overlay]` が
+   外れていたので、**閉じる動き(350ms)→ 一瞬止まる → 明るくなる(350ms)**
+   と直列に見えていた(実機で「一瞬画面が止まる」と報告)。
+   閉じ始めに `[data-leaving]` を立て、そこで明るさを戻し始める。 */
+[data-overlay][data-leaving] [data-app-shell] {
+  filter: none;
+  transition-duration: var(--t-out);
 }
 /* 選んだ日のマスが1度だけ弾む。 */
 @keyframes tc-pick {
@@ -597,8 +610,8 @@ button:active {
   .tc-sheet, .tc-pop, .tc-pop-in, .tc-row-in, .tc-sheet-out,
   .tc-pop-out, .tc-pick,
   .tc-solid-in, .tc-solid-swap-in, .tc-solid-swap-out, .tc-cue { animation: none; }
-  [data-overlay] [data-app-shell] { transform: none; filter: none; border-radius: 0; }
-  [data-composer-shell] { clip-path: none !important; }
+  [data-overlay] [data-app-shell] { filter: none; }
+  [data-composer-plate], [data-create-menu] { clip-path: none !important; }
   .tc-lamp { transition: none; }
   [data-composer-shell] { transition: none !important; }
 }

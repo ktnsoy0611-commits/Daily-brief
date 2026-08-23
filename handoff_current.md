@@ -16,106 +16,65 @@
 UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 
 第24巡でキーボード追従を根から作り直し、第26巡でその上にモーションの語彙を
-作り、第33巡でデザインシステムを正規化した。**第35巡で「上下の帯」を
-解決した** — `statusBarStyle` を `default` にし、副作用の2つ（タブバーが
-47px 下がる／上 47px が `theme-color` の帯になる）をそれぞれ潰した。
+作り、第33巡でデザインシステムを正規化した（詳細は
+`docs/archive/task-app-2026-08.md` §55）。第29〜36巡で「上下の帯」を
+解決した（詳細は `docs/archive/shell-redesign-2026-08.md` §56 — 4巡分の
+間違いと教訓を残してある。同じ手を二度試さないこと）。第36巡でタスクの
+追加口を輪（`CreateMenu`）へ一本化し、基本フォントを統一した。
 
 ---
 
-## 直近で完了したこと（第35巡）★上下の帯を解決
+## 直近で完了したこと（第36巡）
 
-**第34巡の `--screen-h` は実機で効かなかった**（写真の実測で円の下端は
-796.7pt のまま1pxも動かず）。「`position: fixed` の面を伸ばせばビューポートの
-外も描かれる」という前提が誤りだった。撤去して、**実際に効いた
-`statusBarStyle: "default"`（第29巡）へ戻した**。
+1. **タブバーの位置がまだ下がったまま**という報告を受け、`NAV_BOTTOM_GAP`の
+   `+ env(safe-area-inset-top)`（第35巡）が実機で**効いていなかった**と発覚
+   （実機写真の画素比較。`default`ではこの値が0になるらしい）。
+   `env(safe-area-inset-bottom)`を比率(2.382)で使う式へ差し替え。
+   `scratchpad/chin35.mjs`で式そのものを`lib/constants.ts`から読んで検算
+   （セーフエリア0→4px／実機相当34pt→55px）。詳細は
+   `docs/project_knowledge.md` §3、教訓は上記archive §56。
+2. **`CreateMenu`（作るものを選ぶ輪）に閉じるアニメーションを追加**。
+   外を触る／項目を選ぶ、どちらも即座に消さず、丸へ吸い込む円を`--t-out`
+   かけて縮めてから外す（`data-rev="out"`。入力画面の`shrink`/`leave`と対）。
+3. **RECORD/TASKを輪の中心(押した丸)から円周へ向かう半径の線上に配置**。
+   文字も半径の角度へ傾けるが、90〜270°(左半分)は天地が逆に見えるので
+   `legibleAngle()`で180°戻す。★**回転を持つ要素と`.tc-cue`(登場の時間差)を
+   同じ要素に乗せると、アニメーションの終値`transform:none`が回転を消して
+   しまう**バグを実際に踏んで直した(`components/CreateMenu.tsx`のコメント参照)。
+4. **タスクの＋ボタン（`TaskAddButton`）を撤去**。GRAVITY・DRIFT両方。
+   DRIFT(候補)側も「候補の追加はAIだけが行い、ユーザーは承認/却下するだけ」
+   というユーザー方針の確認を取ってから撤去した。`GravityTab`/`DriftTab`の
+   下書き(draft)分岐も、＋が無くなり到達不能になったぶん一緒に削除。
+5. **基本のUIフォントをHelvetica + Noto Sansへ統一**（タスク図形の文字
+   `FONT_FACES`は対象外）。`app/layout.tsx`に`Noto_Sans_JP`を追加、
+   `lib/constants.ts`の`SANS`を書き換え。
 
-実測で分かった対比（390×844 の端末）:
+### 検証したこと
 
-| | 画面の下 47px | 画面の上 47px |
-|---|---|---|
-| `black-translucent` | **どの要素も塗れない帯** | 中身が描かれる |
-| `default` | 中身が描かれる ✓ | iOS が `theme-color` で塗る |
-
-- ★`default` の副作用①**タブバーが 47px 下がる**（実測: ピルの下端
-  783.0 → 830.0pt でホームインジケーターに乗っていた）→ `NAV_BOTTOM_GAP` に
-  **`+ env(safe-area-inset-top)`** を足して戻した。伸びた量と戻す量が同じなので
-  **元と同じ位置**。セーフエリアの無い Chromium では両方 0 で値は変わらない
-- ★★副作用②**上 47px が `theme-color` の帯**になる。これはうちの色なので
-  地色に合っていれば見えない。第29巡に「黒い帯」と見えたのは iOS の仕様ではなく
-  **入力画面の色 `#33332E` が残っていた**もの（写真の実測で判明）。原因は
-  `theme-color` の補間が `requestAnimationFrame` 頼みだったこと —
-  **rAF は画面が隠れている間や iOS が絞っている間は止まる**ので、止まった
-  ところの色で固まっていた。`GROUND_MS + 40` の `setTimeout` で行き先を必ず
-  書き込む保険を置いた
-- 検証 `scratchpad/chin35.mjs` を新設（第34巡の `chin34.mjs` は撤去）。**rAF を殺した状態で
-  入力画面を閉じても `theme-color` が地色へ着地するか**を見る（第29巡の症状を
-  そのまま試験にした）
-- ★`drift2` は輪の送りがまれに2つ進む**ゆらぎ**があった（3回連続で通ることを
-  確認。実装の問題ではなく指の当て方の再現性）
-
-## 直近で完了したこと（第33巡）★デザインシステムの正規化
-
-きっかけは「スペーシング・ボタン・タイポが不規則」という体感。実測すると
-**真因は仕組み不足ではなく、第26巡の語彙が守られていなかったこと**だった
-（`fontSize` 約25種類 / 直書き `cubic-bezier` 17箇所 / 共通ボタン部品が無い）。
-
-- `lib/tokens.ts` を新設 … `SPACE`（4の倍数）/ `TYPE`（7段）/ `RADIUS`。
-  **寸法の語彙の持ち主はここだけ**。目盛りの外に居てよい3つの例外も明記。
-- `components/Button.tsx` を新設 … 押下の作法が3流派に分かれていたので集約。
-  `Press`（入力画面専用・押した瞬間に走る）と `Button`（離上で走る・
-  `variant` × `size`）。`common.tsx` の `rowBtn()` は吸収して削除。
-- **モーションを語彙へ寄せ切った** … 直書きの `cubic-bezier` 17箇所と
-  約20種類の直書きの時間を `var(--*)` へ。跳ね返るカーブ
-  `cubic-bezier(0.34,1.56,0.64,1)`（規約違反）を撤去。環境の無限ループは
-  `--t-amb-*` へ分離し、そこだけ `ease-in-out` を許した。
-- ★**`--t-out` を 350ms → 600ms**（2026-08-23にユーザー確定）。第27巡の
-  「きびきび」をシネマティックな手ざわりを優先して戻した。**今回いちばん
-  体感の変わる数字。** 戻すなら `app/globals.css` と `lib/motion.ts` の2つ同時。
-- JS のタイマーが CSS とずれないよう `lib/motion.ts` に `ms()` を足し、
-  `BottomSheet` の閉じ待ち / `LEAVE_MS` / `POP_OUT_MS` / `GROUND_MS` /
-  `DIAL_OUT_MS` / `MAP_FULLSCREEN_MS` / `SLIDE_MS` / `DASH_MS` を参照へ変えた。
-- `CLAUDE.md` に**デザインシステムの章**と**grep の機械チェック**を追加。
-  「shadcn/ui・Tailwind・Framer Motion・`layoutId` を入れない理由」も明記。
-
-### ついでに直った実バグ（3件）
-
-1. **`@keyframes tab-in` の二重定義**。後勝ちしていた方が `translateY` を
-   持っていて、もう一方の「transform を乗せると下部固定バーがガクつく」という
-   理由付きコメントを無効化していた。opacity のみへ一本化。
-2. **入力欄の自動ズーム**。`input`/`textarea` の文字が 12〜15 のまま残っている
-   欄が7つあった。iOS は 15 以下の入力欄にフォーカスすると画面を拡大し、
-   以後レイアウトが崩れたまま戻らない。すべて 16 以上にした。
-3. **`DASH_MS`(360) が `--dash-ms` の既定値(420) と食い違っていた**。指の
-   速さが取れないときだけ使われる値なので気づきにくかった。
-
-### 検証したこと / していないこと
-
-- `npm run build` ✓ / `tsc --noEmit` ✓ / `eslint` ✓（残る警告は既存の `<img>` 3件）
-- **本番ビルド**（`npx next start`）＋ Playwright で 390×797・コンソールエラー
-  **0件**。ブリーフ / ストック / プラン / ゴール / 設定 の各画面と、タブの
-  切り替え・トースト・`Button` の primary が正しく出ることを確認した。
-- ★**dev サーバーでは読み込み画面から進まない**（`next/font` とプロキシの
-  既知の相性。`docs/project_knowledge.md` §8 参照）。**検証は本番ビルドで行う。**
-- ★**実機は未検証**（この環境で WebKit を動かせない構造的な制約）。
+- `tsc --noEmit` ✓ / `eslint` ✓ / 本番ビルド ✓
+- 機械チェック（CLAUDE.md「目盛りが守られているかの機械チェック」）4本とも◯
+- 本番ビルド + Playwright（390×797）で以下を確認:
+  - `chin35.mjs`（上下の帯・タブバー位置・theme-color）全項目OK
+  - `menu28.mjs`（輪の開閉・半径配置・RECORD/TASKで正しい画面へ）全項目OK
+    — 閉じるアニメーションが`--t-out`の間DOMに残ることも検証
+  - 既存回帰一式（下記「主な回帰」）… 新規の不合格は無し
+- ★**`scratchpad/plus.mjs`ほか約30本**は、旧「＋」ボタンを空の入力画面を
+  開く入口として使っていただけの試験だったので、輪（作る→TASK）を経由する
+  よう機械的に置き換えた（`fix_plus.pl`）。TaskComposer自体の中身は
+  今回触っていないので、実質的なリスクは低いという判断。
 
 ---
 
 ## 次に着手すること
 
-1. **実機（iOS Safari）での確認**。★今回は「見た目の数字」を全面的に動かして
-   いるので、いつもより広く見ること。
-   - ★★**閉じる動きが 350ms → 600ms になった手ざわり**。ボトムシート・
-     ポップオーバー・作るものを選ぶ輪・入力画面。**遅すぎたら
-     `--t-out` と `T_OUT` の2つを戻すだけ**（他は全部そこから引いている）。
-   - ★**全体がわずかに大きく・ゆったりした**はず（本文 12 → 13px、
-     補助 10.5 → 11px、入力欄が 16px）。詰まって見える所・溢れる所が無いか。
-   - ★**タブバーの高さが 76 → 77px**（目印の行の余白を目盛りに乗せたため）。
-     下部固定バーがタブバーへ潜っていないか。
-   - ★★★**上下の帯が消えたか**（第35巡の本題）。①下の帯（輪の円が下で
-     まっすぐ切れないか）②上の帯（入力画面を開いて閉じたあと、上に暗い帯が
-     残らないか）③**タブバーが元の位置に戻っているか**（ホームインジケーターに
-     乗っていないか）。★**ホーム画面から一度消して追加し直してから**見ること。
-   - キーボードの後ろ … 操作バー（`^ v ✓`）の裏まで帯と同じ色か。
+1. **実機（iOS Safari）での確認**。★特に今回の変更点を重点的に:
+   - タブバーが本当に元の位置(ホームインジケーターに乗らない高さ)へ戻ったか。
+   - 輪の閉じるアニメーションの体感（速すぎ/遅すぎないか）。
+   - RECORD/TASKの文字が斜めに読める配置になっているか、読みにくくないか。
+   - Helvetica + Noto Sansへの統一で、和文と欧文が混ざる場所（数字・タグ名等）
+     の継ぎ目が不自然でないか。
+   - ★**ホーム画面から一度消して追加し直してから**見ること（`theme_color`等
+     の焼き込みのため）。
 2. ★**`v7.mjs` が落ちるのを追う**（第33巡からの積み残し）。日程シートを開いた
    あと、器のキーボード判定が「閉じた」と誤解して入力画面ごと閉じている
    ように見える。**実バグの可能性がある。**
@@ -124,6 +83,8 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
    `タグ`（英字5つ）へ揃える。日付で書かれないと期日にならず、
    `lib/inboxImport.ts` がメモへ回す。
    ★**プロンプトの全文を提示して承認を得てから**実装する。
+   （2026-08-23に一度提案したが、ユーザーから「先に上下の帯を直して」と
+   保留された。次に着手してよい。）
 
 ---
 
@@ -131,10 +92,6 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 
 - **実機 Safari の未検証** … 第33巡の見た目の変更全般、タスクアプリ全般、
   ジャーナルの円のドラッグとマイクの解放。
-- ★画面の上下の帯は**第35巡で解決した**（`statusBarStyle: "default"` ＋
-  `NAV_BOTTOM_GAP` の足し戻し ＋ `theme-color` の着地保険）。
-  ★**`black-translucent` へ戻さないこと／`position: fixed` を伸ばして
-  下の帯を埋めようとしないこと**（第34巡に試して実機で1pxも動かなかった）。
 - ジャーナル・ウィッシュ・ストックの行先が未定／1日の終わりに3アプリを
   1枚のポスターへプレスする（§38）は未着手。
 - **完成時に撤去** … `lib/taskDemo.ts`「デモを入れる」ボタン、`ProfileTab` の
@@ -142,6 +99,8 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
   （`lib/debugViewport.ts` / `components/tasks/ViewportProbe.tsx`）。
 - `.tc-lamp` は `.press` の別名として当分残してある（既存の18箇所を一度に
   書き換えないため）。手が空いたら `.press` へ寄せて別名を消す。
+- `drift2` は輪の送りがまれに2つ進む**ゆらぎ**がある（3回連続で通ることは
+  確認済み。実装の問題ではなく指の当て方の再現性）。
 
 ---
 
@@ -150,17 +109,15 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 ★全体のファイル地図は `CLAUDE.md`。ここは**いま手を入れている所だけ**。
 
 ```
-lib/tokens.ts                      ★寸法の語彙(SPACE / TYPE / RADIUS)。第33巡に新設
-lib/motion.ts                      ★動きの語彙(JS)。曲線・時間・ms()・＋の丸の場所
-app/globals.css                    ★動きの語彙(CSS)の :root ／振付／.press(沈む合図)
-components/Button.tsx              ★押せる面(Button / Press)。第33巡に新設
-lib/ground.ts                      ★地色。優先度つきの積み木・onGround・GROUND_EASE
-lib/viewportKick.ts                ★iOS の起動直後だけ縮む不具合への対処(未確証)
+lib/constants.ts                   ★NAV_BOTTOM_GAP(比率式)／SANS(Helvetica+Noto Sans)
+app/layout.tsx                     ★Noto_Sans_JPの読み込み／appleWebApp.statusBarStyle
+components/CreateMenu.tsx          ★輪。閉じるアニメーション／半径配置(legibleAngle)
+components/tabs/GravityTab.tsx     ＋を撤去。draft分岐も削除しpatch/complete/removeへ一本化
+components/tabs/DriftTab.tsx       同上(候補側)
+components/tasks/TaskAddButton.tsx TaskAddButton本体を撤去。DemoSeedButtonのみ残る
+lib/ground.ts                      地色。優先度つきの積み木・onGround・GROUND_EASE
 components/AppShell.tsx            列の横スライド／タブバー／輪の入口／NAV_H
-components/BottomSheet.tsx         ★閉じ待ち(ms(T_OUT))と CSS の時間が対
-components/CreateMenu.tsx          作るものを選ぶ輪(RECORD / TASK)
 components/tasks/TaskComposer.tsx  入力画面。★板＋器の top/height 追従／LEAVE_MS
-components/tasks/Popover.tsx       ポップオーバーの器(Press は Button.tsx へ移した)
 components/tasks/ViewportProbe.tsx ★開発用の数値表示（直ったら撤去）
 ```
 
@@ -184,11 +141,16 @@ Playwright は `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`、実体は
 撃たないこと — `Press` は**押した瞬間**に走るので、同じ操作が2回走って
 開いたシートがすぐ閉じる（第34巡に `v6` で踏んだ）。出入りの最中は同じ器が
 2枚居ることがあるので、`querySelectorAll` の**最後**を掴むこと。
+★**タスクの新規作成は「作る」→「TASK」の2クリックが唯一の入口**
+（第36巡に＋を撤去したため）。`button[aria-label="作る"]`は3アプリぶん
+DOMに存在するので、`boundingBox().x`が画面内(0〜390)のものだけを選ぶこと
+（`menu28.mjs`の`makeBtn()`が実装例）。
 
 主な回帰（`scratchpad/`）… `chin35`（上下の帯）/ `ground26`（地色）/
-`motion26`（動き）/ `rect24`（器の追従）/ `menu28`（作るものの輪）/
-`probe31`（数値表示）/ `when25` `pop21` `when20` `tap` `plus` `geo4`
-`v6`〜`v15` `blink` `bake` `swipe` `seam` `junk` `text` `drift2` /
+`motion26`（動き）/ `rect24`（器の追従）/ `menu28`（作るものの輪。閉じる動き・
+半径配置も含む）/ `probe31`（数値表示）/ `when25` `pop21` `when20` `tap`
+`geo4` `v5`〜`v15`(`v9`はport 3000決め打ちで別件・`v7`は既知の不具合)
+`blink` `bake` `swipe` `seam` `junk` `text` `drift2` /
 単体 `solid.test` `tag.test` `inbox.test`。
 ★`v7` は落ちたまま（下記「次に着手すること」）。`drift2` はまれにゆらぐ。
 

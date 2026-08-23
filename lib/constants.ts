@@ -46,7 +46,11 @@ export const SWIPE_THRESHOLD = 90;
 // マガジン風(明朝体の見出し+Playfairの斜体数字)の縛りは撤廃し、ミニマルで
 // リッチな1書体構成に統一した。SERIF/DISPLAYという名前は既存コード互換の
 // ために残しているが、実体はどちらもSANSを指す(見出しも本文も同じサンセリフ)。
-export const SANS = "var(--font-zen-kaku-gothic-new), sans-serif";
+// ★★基本のUIフォントはHelvetica + Noto Sansに統一(2026-08-23にユーザー指定)。
+// Helveticaは端末のシステム書体(読み込み不要)。和文はHelveticaにグリフが
+// 無いので、次点のNoto Sans JP(`app/layout.tsx` で読み込み)へ自動的に
+// 委ねられる。タスクの図形に載る文字(`FONT_FACES`)はこの対象外。
+export const SANS = '"Helvetica Neue", Helvetica, var(--font-noto-sans-jp), "Noto Sans JP", sans-serif';
 export const SERIF = SANS;
 export const DISPLAY = SANS;
 
@@ -184,17 +188,32 @@ export const BD_LIGHT = "#F3F3F1";
 // いる。safe-area自体が無い機種ではmax(4px, 負の値)により最小の4pxへ
 // 収まる。
 //
-// ★★★**`env(safe-area-inset-top)` を足す**(2026-08-23・第35巡)。
+// ★★★**`env(safe-area-inset-top)` を足す試みは失敗した**
+// (2026-08-23・第35巡で追加 → 同日ユーザー報告で判明・第36巡で撤回)。
 // `statusBarStyle` を `default` にしたことで、web ビューが**画面の下端まで**
 // 広がるようになった(それまでは上のセーフエリアぶん(47px)手前で終わっていた)。
 // そのぶん、下端に貼り付くタブバーが**画面上で 47px 下がる** —
 // 実測(実機の写真): ピルの下端が 783.0pt → 830.0pt、画面下までの余白が
 // 60.7pt → 13.7pt になり、ホームインジケーターに乗ってしまっていた。
-// 伸びたぶんをそのまま足し戻すと、**元とまったく同じ位置**に戻る。
-// ★セーフエリアの無い環境(Chromium・検証)では両方 0 なので、値は 4px のまま
-//   変わらない(見た目も検証も今までどおり)。
+//
+// `env(safe-area-inset-top)` で足し戻そうとしたが、**`default` では
+// この値が 0 になるらしい**(実測: 足した前後でピルの位置が 0.1pt も
+// 動かなかった。`default` は「web ビューが物理的にステータスバーの下に
+// 無い」モードなので、そこに「不安全な領域」という概念自体が無い=
+// 補正すべき隙間がそもそも存在しない、という理屈で説明はつく)。
+//
+// ★★**足し戻す信号が無いので、`env(safe-area-inset-bottom)` を比率で
+// 使う。** これは実機でだけ非ゼロ(34pt)になる値で、Chromium・検証環境
+// では常に 0 なので、そこでの見た目・既存の検証は**今までどおり 4px**の
+// ままになる。実機だけ、必要な 47pt ぶんを足す比率(2.382)を掛ける
+// (34 × 2.382 − 26 ＝ 55 ＝ 元の 8px ＋ 47px)。
+// ★★★**この比率は今の端末(セーフエリア下 34pt)専用の逆算値。**
+// 別の端末(例: Dynamic Island で下 34pt・上 59pt のような機種)では
+// 比が変わるので合わなくなる。ずれたら「画面の数値を出す」の
+// `safe` の値と実機の写真を見比べて、
+// `目標(旧の55px相当) ÷ 実測のsafe-bottom` へこの数字を計算し直すこと。
 export const NAV_BOTTOM_GAP =
-  "max(4px, calc(env(safe-area-inset-bottom) - 26px + env(safe-area-inset-top)))";
+  "max(4px, calc(env(safe-area-inset-bottom) * 2.382 - 26px))";
 
 // タブ本文やストック/目標/実行タブの下部固定バーが、フローティングの
 // タブバー(AppShellのnav)の直上に収まるためのオフセット。表示領域を

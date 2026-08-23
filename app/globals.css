@@ -548,7 +548,7 @@ button:active {
   transition: clip-path var(--t-in) var(--ease-sheet);
   will-change: clip-path;
 }
-[data-composer-plate][data-rev="out"] { transition-duration: var(--t-out); }
+[data-composer-plate][data-rev="out"], [data-create-menu][data-rev="out"] { transition-duration: var(--t-out); }
 /* ★第21〜22巡の「出入りの最中は帯と図形の追従を止める」規則は撤去した
    (第24巡)。器が見えている矩形そのものになり、帯も図形も**キーボード追従の
    transform を持たなくなった**ので、止めるものがもう無い。 */

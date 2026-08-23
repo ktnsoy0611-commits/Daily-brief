@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Anton, Dela_Gothic_One, M_PLUS_1, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
+import { Anton, Dela_Gothic_One, M_PLUS_1, Noto_Sans_JP, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
 import "./globals.css";
 
 // ミニマルなデザインへの刷新に伴い、明朝体(Zen Old Mincho)とPlayfair
@@ -8,6 +8,16 @@ const zenKakuGothicNew = Zen_Kaku_Gothic_New({
   variable: "--font-zen-kaku-gothic-new",
   weight: ["400", "500", "700"],
   subsets: ["latin"],
+  preload: false,
+});
+
+// ★★基本のUIフォント(2026-08-23にユーザー指定)。Helvetica(端末が持つ
+// システム書体、読み込み不要)を欧文・数字に、和文はここで読み込む
+// Noto Sans JPに任せる(`lib/constants.ts` の `SANS` が並べる順)。
+// タスクの図形に載る文字(`FONT_FACES`)はこの対象外(ユーザー確定)。
+const notoSansJP = Noto_Sans_JP({
+  variable: "--font-noto-sans-jp",
+  weight: ["400", "500", "700"],
   preload: false,
 });
 
@@ -111,7 +121,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja" className={[
-      zenKakuGothicNew.variable, anton.variable,
+      zenKakuGothicNew.variable, anton.variable, notoSansJP.variable,
       zenMaruGothic.variable, delaGothicOne.variable, mplus1.variable,
     ].join(" ")}>
       <body>{children}</body>

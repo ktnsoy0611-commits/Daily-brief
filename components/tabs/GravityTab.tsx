@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Body, Engine } from "matter-js";
 import { Masthead } from "@/components/common";
-import { DemoSeedButton, TaskAddButton } from "@/components/tasks/TaskAddButton";
+import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { ViewToggle } from "@/components/tasks/ViewToggle";
 import { appTitle } from "@/lib/apps";
@@ -134,7 +134,6 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   // 以前は作った瞬間に保存していたので、**押した時点で山が丸ごと落とし直って**
   // いた(実機で報告)。入力画面はレコードと同じただのオーバーレイであって、
   // 開け閉めで後ろが動いてはいけない。題が付いて閉じたときに初めて山へ入る。
-  const [draft, setDraft] = useState<Task | null>(null);
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<SolidView>("name");
   const viewRef = useRef<SolidView>("name");
@@ -146,7 +145,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   const tasks = useMemo(() => (appState.tasks ?? []).filter((t) => !t.done), [appState.tasks]);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
-  const open = draft ?? (appState.tasks ?? []).find((t) => t.id === openId) ?? null;
+  const open = (appState.tasks ?? []).find((t) => t.id === openId) ?? null;
 
   const draw = useCallback(() => {
     const cv = canvasRef.current;
@@ -462,43 +461,14 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
     if (task) { Object.assign(task, final); task.done = true; task.doneAt = new Date().toISOString(); }
     persist(next);
     setOpenId(null);
-    setDraft(null);
     showToast("完了しました");
   };
 
   const remove = (id: string) => {
     setOpenId(null);
-    // 下書きはまだ保存していないので、捨てるだけでよい。
-    if (draft && draft.id === id) { setDraft(null); return; }
     const next: AppState = structuredClone(appState);
     next.tasks = next.tasks.filter((x) => x.id !== id);
     persist(next);
-  };
-
-  // 手でタスクを足す。空のまま作って開き、題を書いてもらう。
-  const addTask = () => {
-    const id = `task-${Date.now()}`;
-    // ★保存しない・山も動かさない。ここで持つだけ(上のコメントを参照)。
-    setDraft({ id, title: "", done: false, createdAt: new Date().toISOString(), weight: 2 });
-    setOpenId(id);
-  };
-
-  // 閉じるときに下書きをまとめて保存する。★題が空のままなら作りかけを消す。
-  // (入力画面は1文字ごとには返さない — 保存と山の作り直しが毎打鍵走るため)
-  const closeSheet = (id: string, final: ComposerData) => {
-    setOpenId(null);
-    const d = draft;
-    if (d && d.id === id) {
-      setDraft(null);
-      // 題が無いまま閉じたら、何も無かったことにする(保存もしていない)。
-      if (!final.title.trim()) return;
-      // 題が付いた ＝ ここで初めて山へ入る。1つだけが上から落ちてくる。
-      const next: AppState = structuredClone(appState);
-      next.tasks = [{ ...d, ...final }, ...(next.tasks ?? [])];
-      persist(next);
-      return;
-    }
-    patch(id, final);
   };
 
   const seedDemo = () => {
@@ -537,21 +507,16 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
           <ViewToggle view={view} onChange={setView} />
         </div>
       </div>
-      {/* full-bleed(タブバーの下まで敷く)なので、ボタンはタブバーのぶん持ち上げる。 */}
-      <TaskAddButton onAdd={addTask} lifted open={!!open} />
       {tasks.length === 0 && <DemoSeedButton label="デモのタスクを入れる" onSeed={seedDemo} lifted />}
       {open && (
         <TaskComposer
           key={open.id}
           data={open}
           mode="task"
-          // ★下書き(まだ保存していないもの)は、保存ではなく手元へ書き戻す。
-          onCommit={(d) => (draft && draft.id === open.id
-            ? setDraft((x) => (x ? { ...x, ...d } : x))
-            : patch(open.id, d))}
-          onConfirm={(d) => { setDraft(null); complete(open, d); }}
+          onCommit={(d) => patch(open.id, d)}
+          onConfirm={(d) => complete(open, d)}
           onDelete={() => remove(open.id)}
-          onClose={(d) => closeSheet(open.id, d)}
+          onClose={(d) => patch(open.id, d)}
         />
       )}
     </main>

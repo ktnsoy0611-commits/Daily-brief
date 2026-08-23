@@ -124,11 +124,16 @@
    `Button`。押下は「即座に沈み（`--t-press`）、ゆっくり戻る（`--t-out`）」。
 6. **視覚的階層** … `primary` は1画面に1つ。並び立つ選択肢は `secondary`、
    取り消し・あとでは `ghost`、図だけは `icon`（`aria-label` 必須）。
-7. ★★**iOS の「上下の帯」は解決済み。触らないこと**（第35巡）。
+7. ★★**iOS の「上下の帯」は解決済み。触らないこと**（第35〜37巡）。
    `apple-mobile-web-app-status-bar-style` は **`default`**
    （`black-translucent` は画面の下 47px がどの要素からも塗れなくなる）。
-   タブバーが下がるぶんは `NAV_BOTTOM_GAP` の `+ env(safe-area-inset-top)` が
-   吸収し、上 47px の色は `theme-color`（`lib/ground.ts`）が地色に揃える。
+   タブバーが下がるぶんは `NAV_BOTTOM_GAP` が `env(safe-area-inset-bottom)`
+   を比率で使って吸収する（`env(safe-area-inset-top)` は `default` では 0
+   になり使えない）。★★上 47px は**常に固定の白地に黒文字**（iOS の制約で
+   `theme-color` を一切読まない。`default`/`black` は静的固定、動的に色を
+   追従できるのは `black-translucent` だけであり、それは下の帯の復活と
+   両立しない）。**ユーザー確定で「白い帯は許容する」**（2026-08-23）。
+   これ以上この件を追わないこと。
    ★**`position: fixed` の面を伸ばして下の帯を埋めようとしないこと** —
    第34巡に試して実機で1pxも動かなかった。詳しくは
    `docs/project_knowledge.md` §3「iOS のホーム画面アプリ『上下の帯』」。

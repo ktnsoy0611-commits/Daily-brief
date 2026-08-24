@@ -2,12 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Body, Engine } from "matter-js";
-import { Masthead } from "@/components/common";
+import { LayerName } from "@/components/tasks/LayerName";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { ViewToggle } from "@/components/tasks/ViewToggle";
-import { appTitle } from "@/lib/apps";
-import { TAB_PAD_TOP } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline, type SolidSpec } from "@/lib/solid";
 import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint, type SolidView } from "@/lib/solidPaint";
@@ -55,8 +53,10 @@ const FILL = 0.58;
  *  無くメリハリが消える」状態になっていた。
  *  0.70 だと 16件はそのまま全部出て、40件では10件に絞られて最大137px になる。 */
 const SCALE_MIN = 0.70;
-/** 見出し(Masthead + ビュー切替)が占める高さ。山はここまで積み上がらない。 */
-const MASTHEAD_H = 108;
+/** 見出し(アプリ名の札 + 層の名前 + ビュー切替)が占める高さ。山はここまで
+ *  積み上がらない。内訳 = 上の余白 16 + 札 `MAST_H`(58) + 逃がし 8 + 切替 40。
+ *  ★第38巡に 108 → 124(札がカメラの器へ移り、層の見出しが1段下がったぶん)。 */
+const MASTHEAD_H = 124;
 /** いちばん大きい1枚が、画面の幅・高さのどこまでを占めてよいか。 */
 const FIT_W = 0.86;
 const FIT_H = 0.62;
@@ -114,7 +114,11 @@ const sameShape = (a: SolidSpec, b: SolidSpec) =>
   a.sides.length === b.sides.length
   && Math.abs(a.w - b.w) < 1e-6 && Math.abs(a.h - b.h) < 1e-6;
 
-export function GravityTab({ appState, persist, profileButton, showToast, appActive }: TabProps & { appActive?: boolean }) {
+export function GravityTab({ appState, persist, showToast, appActive, dragged }: TabProps & {
+  appActive?: boolean;
+  /** 縦へ払ったあとの tap を落とすための札(`TaskSpace` が持つ)。 */
+  dragged?: React.MutableRefObject<boolean>;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // まだ焼けていない立体が残っているか。残っている間はループを止めない。
   const pendingBakeRef = useRef(false);
@@ -480,6 +484,8 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
 
   // 積んである物体をタップして開く。
   const onTap = (e: React.PointerEvent) => {
+    // 縦へ払ったときは開かない(カメラの移動が目的だった)。
+    if (dragged?.current) return;
     const M = matterRef.current;
     const engine = engineRef.current;
     const cv = canvasRef.current;
@@ -493,7 +499,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
   };
 
   return (
-    <main className="full-bleed" style={{ position: "relative", flex: 1, minHeight: 0 }}>
+    <div style={{ position: "absolute", inset: 0 }}>
       <div ref={wrapRef} style={{ position: "absolute", inset: 0 }}>
         <canvas
           ref={canvasRef}
@@ -501,12 +507,9 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", willChange: "transform", touchAction: "manipulation" }}
         />
       </div>
-      <div style={{ position: "absolute", top: TAB_PAD_TOP, left: 16, right: 16, pointerEvents: "none", zIndex: 2 }}>
-        <Masthead title={appTitle("tasks")} corner={<span style={{ pointerEvents: "auto" }}>{profileButton}</span>} />
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
-          <ViewToggle view={view} onChange={setView} />
-        </div>
-      </div>
+      {/* ★アプリ名の札(TASK)と設定は `TaskSpace` が画面に固定して持つ。
+          ここが持つのは**この層のもの**だけ ― 層の名前とビュー切替。 */}
+      <LayerName text="GRAVITY" right={<ViewToggle view={view} onChange={setView} />} />
       {tasks.length === 0 && <DemoSeedButton label="デモのタスクを入れる" onSeed={seedDemo} lifted />}
       {open && (
         <TaskComposer
@@ -519,7 +522,7 @@ export function GravityTab({ appState, persist, profileButton, showToast, appAct
           onClose={(d) => patch(open.id, d)}
         />
       )}
-    </main>
+    </div>
   );
 }
 

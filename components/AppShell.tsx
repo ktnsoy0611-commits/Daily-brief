@@ -19,9 +19,8 @@ import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordTab } from "@/components/tabs/RecordTab";
 import { StockTab } from "@/components/tabs/StockTab";
-import { DriftTab } from "@/components/tabs/DriftTab";
-import { GravityTab } from "@/components/tabs/GravityTab";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
+import { TaskSpace } from "@/components/tasks/TaskSpace";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
@@ -109,6 +108,9 @@ interface AppColumnProps {
 const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, goTab, onNavPointerDown, onRecord, navDragged }: AppColumnProps) {
   // ★1画面で完結し、スクロールさせないタブ。
   const scrollLocked = tab === "brief" || tab === "journal-record";
+  // ★タスクアプリは4層が1本の縦の空間に積まれているので、タブごとの
+  //   入場アニメーションも作り直しもしない(下の枠を参照)。
+  const isTasks = a.id === "tasks";
   return (
         <div style={{
           position: "relative", isolation: "isolate", width: `${100 / APPS.length}%`, height: "100%",
@@ -171,7 +173,12 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 なっても失うものが無い。他のタブは枠にzIndexを付けないため、
                 従来どおり帯の下に潜り、ぼかしが正しく効く。 */}
             {mounted && (
-              <div key={tab} className="tab-in" style={{
+              // ★★タスクアプリだけ **key を固定し、`tab-in` を外す**(第38巡)。
+              //   4層は1本の縦の空間にまとめて居るので、タブが変わっても
+              //   中身は作り直さない — 作り直すと matter.js の山が毎回崩れ、
+              //   カメラが動く先に何も無い状態になる。opacity のフェードも
+              //   カメラのパンと二重になるので掛けない。
+              <div key={isTasks ? "tasks" : tab} className={isTasks ? undefined : "tab-in"} style={{
                 display: "flex", flexDirection: "column", minHeight: 0,
                 // ★flex-basis は auto(=中身の高さ)。`flex: 1`(basis 0)にすると、
                 // この枠は「空いている高さ」に固定され、中身が長いタブでは
@@ -191,10 +198,11 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 {tab === "stock" && <StockTab {...tabProps} />}
                 {tab === "goals" && <GoalsTab {...tabProps} />}
                 {tab === "execute" && <ExecuteTab {...tabProps} />}
-                {tab === "tasks-drift" && <DriftTab {...tabProps} appActive={active} />}
-                {/* ★重力タブも active(このアプリが表示中か)を受け取る。物理の
-                    rAF を「表示中かつ起きている物体があるとき」だけ回すため。 */}
-                {tab === "tasks-gravity" && <GravityTab {...tabProps} appActive={active} />}
+                {/* ★タスクアプリは**4層をまとめて持つ1枚の器**(縦のカメラ)。
+                    タブを押しても指で払っても、起きるのはカメラの上下移動だけ。
+                    active(このアプリが表示中か)は、物理の rAF と候補の揺れを
+                    「表示中のときだけ」回すために各層まで降りていく。 */}
+                {isTasks && <TaskSpace {...tabProps} tab={tab} appActive={active} />}
                 {/* ★active(このアプリが表示中か)を明示的に渡す。円の入場アニメーションの
                     合図に使う。IntersectionObserver で見え方から推測する方式は、実機で
                     一度も発火せず「円が出てこない」不具合になった。 */}
@@ -856,7 +864,13 @@ export function AppShell() {
     const next: AppState = structuredClone(appState);
     next.tasks = [{ ...base, ...d, done }, ...(next.tasks ?? [])];
     persist(next);
-  }, [appState, persist]);
+    // ★★**落ちるところを見せる**(第38巡にユーザー確定)。輪から作ったタスクは
+    //   重さを持つので、行き先は必ず地上(GRAVITY)。**タスクアプリを見ている
+    //   ときだけ**カメラをそこへ降ろす — 他のアプリに居るときに勝手に画面が
+    //   変わるのは、頼んでいない移動なのでしない(次に開いたときには静かに
+    //   積まれている)。降りた先で `GravityTab` が画面の上端の外から落とす。
+    if (appId === "tasks" && !done) goTab("tasks-gravity");
+  }, [appState, persist, appId, goTab]);
   const closeStudio = useCallback(() => {
     // 録音中/確認中のまま閉じたら、その録音は捨てる。
     if (recorderRef.current.state === "recording" || recorderRef.current.state === "review") recorderRef.current.cancel();

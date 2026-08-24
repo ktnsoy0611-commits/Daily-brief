@@ -27,7 +27,7 @@
   --t-amb-reel:  3.2s;    /* 録音のリールが回る */
   --t-amb-tape:  260ms;   /* テープの送り目 */
   --t-amb-blink: 1.15s;   /* 録音中の赤 */
-  --t-amb-bob:   5.4s;    /* 候補の円環がゆれる */
+  --t-amb-bob:   5.4s;    /* 候補が浮遊してゆれる */
 
   /* ★★**`--screen-h` は撤去した**(2026-08-23・第34巡で入れ、同巡で撤回)。
      「`innerHeight` に上のセーフエリアを足せば、`position: fixed` の面が
@@ -426,10 +426,11 @@ button:active {
 }
 
 /* インボックスの候補がふわふわ漂う動き。上下にゆっくり揺れるだけの
-   控えめなもの(飛び回ると読めなくなるため)。 */
-/* ★候補の立体が、その場でふわふわ浮いている感じ。輪の回転(JSがtransformを
-   書く外側のdiv)とぶつからないよう、**内側のdiv**に掛ける。CSSのkeyframesなので
-   毎フレームの計算はゼロ。 */
+   控えめなもの(飛び回ると読めなくなるため)。
+   ★候補は DRIFT 層に**散らして浮かべて**ある(第38巡に円環をやめた)。
+   散らす位置(JSがleft/topを書く外側のdiv)とぶつからないよう、**内側のdiv**へ
+   掛ける。CSSのkeyframesなので毎フレームの計算はゼロ。1つずつ
+   animation-delay を id からずらして、揃って揺れないようにする。 */
 @keyframes drift-bob {
   0%, 100% { transform: translate3d(0, -7px, 0) rotate(-1.1deg); }
   50%      { transform: translate3d(0, 7px, 0) rotate(1.1deg); }
@@ -445,19 +446,30 @@ button:active {
   66% { transform: translate(-8px, 8px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* ★候補の立体が、その場でふわふわ浮いている感じ。輪の回転(JSがtransformを
-   書く外側のdiv)とぶつからないよう、**内側のdiv**に掛ける。CSSのkeyframesなので
-   毎フレームの計算はゼロ。 */
-@keyframes drift-bob {
-  0%, 100% { transform: translate3d(0, -7px, 0) rotate(-1.1deg); }
-  50%      { transform: translate3d(0, 7px, 0) rotate(1.1deg); }
-}
-.drift-bob { animation: drift-bob var(--t-amb-bob) ease-in-out infinite; will-change: transform; }
-@media (prefers-reduced-motion: reduce) {
-  .drift-bob { animation: none; }
+  @keyframes inbox-drift { 0%, 100% { transform: none; } }
 }
 
-@keyframes inbox-drift { 0%, 100% { transform: none; } }
+/* ── タスクアプリの縦のカメラ(components/tasks/TaskSpace.tsx) ──────────
+   DRIFT(浮遊層) / GRAVITY(地上) を **1本の縦の空間**に積み、画面の切り替えでは
+   なく**カメラの上下移動**として見せる(第38巡)。層を出し入れするのではなく、
+   4層ぶんの高さを持つこの器を translateY で動かす。
+
+   ★★**CSS の 3D 変形(perspective / preserve-3d / rotateX/rotateY)は使わない。**
+   このコードベースは CSS の 3D で Safari の描画崩れを5回踏んでいる。真上を
+   見下ろす表現(TOP VIEW)も、第2段階で scaleY のすり替えとして作る。
+
+   `--cam` は層の番号(0 = いちばん上の DRIFT)。指で引いている間だけ小数になる。
+   ★指の追従で React の state を動かさないこと(§14)。ハンドラはこの器へ
+   `--cam` を書くだけで、再レンダーは一度も起きない。 */
+.task-cam {
+  transform: translateY(calc(var(--cam, 0) * -100%));
+  transition: transform var(--t-item) var(--ease-settle);
+  will-change: transform;
+}
+/* 指で引いているあいだは追従。落ち着かせる時間を挟むと指から遅れる。 */
+.task-cam[data-drag] { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .task-cam { transition: none; }
 }
 
 /* 提案を考えている間のくるくる。タスク詳細の「手配を確認する」で使う。 */

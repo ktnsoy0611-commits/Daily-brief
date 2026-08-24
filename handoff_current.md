@@ -1,4 +1,4 @@
-# 現在地（2026-08-23）
+# 現在地（2026-08-24）
 
 現行仕様は `docs/project_knowledge.md` が正。経緯は `docs/archive/`。
 このファイルは**常に200行以内**に保つ（更新手順は `CLAUDE.md` の「恒久ルール」）。
@@ -22,82 +22,75 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 間違いと教訓を残してある。同じ手を二度試さないこと）。第36巡でタスクの
 追加口を輪（`CreateMenu`）へ一本化し、基本フォントを統一した。第37巡で
 GRAVITYの床(navHeightPx)の実バグを直し、iOSの`theme-color`無効の仕様を確定。
+★**第38巡でタスクアプリを「縦の空間＋カメラ」へ作り替えはじめた**（2段階の
+第1段階が完了）。仕様は `docs/project_knowledge.md` §4「縦の空間とカメラ」。
 
 ---
 
-## 直近で完了したこと（第37巡）
+## 直近で完了したこと（第38巡）— タスクアプリの縦のカメラ・第1段階
 
-実機の新しい報告3件を調査。
+ユーザー確定: **4タブへ増やす / DRIFTは浮遊する図形へ作り直す /
+落下はタスクアプリに居るときだけ / 2段階（カメラ→新画面）で進める**。
 
-1. **GRAVITY(タスクの山)の床がタブバーの裏に潜っていた＝実バグ、直した**。
-   `navHeightPx()`が`--nav-h`を`document.documentElement`から読んでいたが、
-   このCSSカスタムプロパティは`[data-app-shell]`に立てている
-   （祖先→子孫にしか継承しないので、祖先の`documentElement`からは常に
-   空文字が返り、`96px`のハードコードされたフォールバックへ毎回落ちていた）。
-   実機(NAV_BOTTOM_GAP=55px前提)では本当は`--nav-h`≈132pxなのに常に96pxで
-   計算していたため、床がタブバーの上端より**36px下**（＝タブバーの裏）に
-   置かれていた。`document.querySelector("[data-app-shell]")`から読むよう修正。
-   `scratchpad/navfix.mjs`で「床の計算値 == 実際のタブバー上端」を確認。
-   ★同じ関数が山の並べ方(`pileOf`の`usableH`)にも使われているので、
-   「タイトルの下に妙な空白が広がる」印象の一部もこれで緩和されるはず。
-2. ★★**iOSの`theme-color`は`default`/`black`では一切読まれない**と判明
-   （Apple公式の既知の制限。第35巡の前提が誤りだった）。入力画面を開いた
-   ときに上47pxが白いままなのは**コードの不具合ではなくiOSの仕様上の制約**。
-   動的に色を追従させられるのは`black-translucent`だけだが、それは
-   撤去済みの下の帯が復活する。両立不可。詳細は`docs/project_knowledge.md`
-   §3の訂正箇所。★**ユーザーへどう見せるかの方針決定が必要**（次の一手参照）。
-3. **輪の開閉・タブ切り替えの「点滅」は未特定**。`.tab-in`のopacityフェード
-   自体は意図した動きだが、実機でどう見えているかは推測の域を出ていない。
-   Chromiumでは確認できない類の症状（Safari特有の合成/フォントスワップ等の
-   可能性はあるが未検証）。**次に実機で再現条件を絞り込む必要あり**。
+1. **`components/tasks/TaskSpace.tsx` を新設**（縦のカメラの器）。DRIFT と
+   GRAVITY を1本の縦の空間へ積み、タブでも指でもカメラが上下する。
+   `--cam` は CSS カスタムプロパティで駆動（React の state を通さない）。
+   3D 変形は使わない（`translateY` だけ）。
+2. **DRIFT の円環カバーフローを撤去**し、**散らして浮遊する形**へ作り直した。
+   散らし方は「ゆらいだ格子」。★ずらす量は**マス1つの寸法**に掛けること
+   （器の幅に掛けて右端が画面外へ出た。直した）。円環の経緯と教訓は
+   `docs/archive/task-app-2026-08.md` §56 へ退避。
+3. **アプリ名の札（`Masthead`）をカメラの器へ引き上げ**、層の側は
+   `LayerName.tsx`（DRIFT / GRAVITY）を持つだけにした。札が2枚すれ違うのを防ぐ。
+4. **`AppShell` のタスクアプリだけ `key` を固定し `tab-in` を外した**。
+   タブごとに作り直すと matter.js の山が毎回崩れる。
+5. **輪から作ったタスクは、タスクアプリを見ているときだけ GRAVITY へ降りる**
+   （`saveNewTask`）。落下そのものは既存の `makePiece` がやっている。
+6. ★**入力画面が開いている間はカメラを掴ませない**ガードを入れた。
+   オーバーレイは器の内側に出るので、素通しだとカレンダーをなぞるたびに
+   空間ごと動いた（ガードを外して**試験が赤くなることも確認済み**）。
+
+### 検証したこと
+
+`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓。
+新規 `scratchpad/space38.mjs`（8群24項目）全部OK — 層の積み方・札が1枚で
+カメラの外・候補が重ならず浮く・タブでの上下・指での追従と吸着・行き止まりの
+抵抗・**床がタブバーの上端と一致**・入力画面中はカメラが動かない。
+★**実機は未確認**。
 
 ---
 
-## 直近で完了したこと（第36巡）
+## 直近で完了したこと（第37巡・要点だけ）
 
-1. **タブバーの位置がまだ下がったまま**という報告を受け、`NAV_BOTTOM_GAP`の
-   `+ env(safe-area-inset-top)`（第35巡）が実機で**効いていなかった**と発覚
-   （実機写真の画素比較。`default`ではこの値が0になるらしい）。
-   `env(safe-area-inset-bottom)`を比率(2.382)で使う式へ差し替え。
-   `scratchpad/chin35.mjs`で式そのものを`lib/constants.ts`から読んで検算
-   （セーフエリア0→4px／実機相当34pt→55px）。詳細は
-   `docs/project_knowledge.md` §3、教訓は上記archive §56。
-2. **`CreateMenu`（作るものを選ぶ輪）に閉じるアニメーションを追加**。
-   外を触る／項目を選ぶ、どちらも即座に消さず、丸へ吸い込む円を`--t-out`
-   かけて縮めてから外す（`data-rev="out"`。入力画面の`shrink`/`leave`と対）。
-3. **RECORD/TASKを輪の中心(押した丸)から円周へ向かう半径の線上に配置**。
-   文字も半径の角度へ傾けるが、90〜270°(左半分)は天地が逆に見えるので
-   `legibleAngle()`で180°戻す。★**回転を持つ要素と`.tc-cue`(登場の時間差)を
-   同じ要素に乗せると、アニメーションの終値`transform:none`が回転を消して
-   しまう**バグを実際に踏んで直した(`components/CreateMenu.tsx`のコメント参照)。
-4. **タスクの＋ボタン（`TaskAddButton`）を撤去**。GRAVITY・DRIFT両方。
-   DRIFT(候補)側も「候補の追加はAIだけが行い、ユーザーは承認/却下するだけ」
-   というユーザー方針の確認を取ってから撤去した。`GravityTab`/`DriftTab`の
-   下書き(draft)分岐も、＋が無くなり到達不能になったぶん一緒に削除。
-5. **基本のUIフォントをHelvetica + Noto Sansへ統一**（タスク図形の文字
-   `FONT_FACES`は対象外）。`app/layout.tsx`に`Noto_Sans_JP`を追加、
-   `lib/constants.ts`の`SANS`を書き換え。
-
-### 検証したこと（第36・37巡共通）
-
-`tsc`/`eslint`/本番ビルド✓、機械チェック4本✓。`chin35.mjs`(上下の帯・
-theme-color)・`menu28.mjs`(輪の開閉・半径配置)・`navfix.mjs`(床の位置)
-全項目OK、既存回帰一式に新規の不合格なし。旧「＋」ボタンに依存していた
-約30本の試験は輪（作る→TASK）経由へ機械的に置き換えた（`fix_plus.pl`）。
+1. **GRAVITYの床がタブバーの裏に潜っていた＝実バグ、直した**。
+   `navHeightPx()` が `--nav-h` を `documentElement` から読んでいたが、この
+   カスタムプロパティは `[data-app-shell]` に立っている（祖先からは常に空文字が
+   返り、`96px` のフォールバックへ毎回落ちていた）。実機では本来 ≈132px。
+2. ★★**iOSの`theme-color`は`default`/`black`では一切読まれない**（Apple公式の
+   既知の制限）。上47pxの白い帯は**iOSの制約**で、**ユーザー確定で許容**。
+   ★これ以上この件を追わないこと。
+3. **輪の開閉・タブ切り替えの「点滅」は未特定**（Chromiumでは再現しない）。
 
 ---
 
 ## 次に着手すること
 
-1. ★入力画面を開いたときの上47pxの白い帯 — **ユーザー確定: 許容する**
-   （2026-08-23）。`default`のままでよい。iOSの制約(§3)でコード側の対応は
-   無い。★これ以上この件を追わないこと。
-2. **輪の開閉・タブ切り替えの「点滅」を実機で切り分ける**。Chromiumでは
-   再現しない。次に実機で見るときは「どのタイミングで」「何色から何色へ」
-   点滅するかを具体的に聞く（動画があれば一番早い）。
-3. **実機（iOS Safari）での再確認**。★GRAVITYの床の修正／タブバー位置／
-   輪の閉じ方・半径配置／フォント統一、いずれも前回未確認。
+1. ★★**第1段階を実機で確認してもらう**（縦のカメラ・DRIFT の浮遊）。
+   ここが通ってから第2段階へ進む、という段取りでユーザーと合意している。
    ★**ホーム画面から一度消して追加し直してから**見ること。
+2. ★**第2段階 — TOP VIEW と UNDERGROUND**。設計は
+   `docs/project_knowledge.md` §4「縦の空間とカメラ」の表と、
+   計画（`/root/.claude/plans/`）にある。要点:
+   - `lib/apps.ts` を4タブへ（`tasks-top` / `tasks-under`）。
+     `TASK_LAYERS`（`TaskSpace.tsx`）と**並びを必ず揃える**。
+   - `components/TabIcons.tsx` に `holes` / `strata` を足す（面だけで描く）。
+   - GRAVITY→TOP VIEW は「床を外す→図形が落ちて消える→`scaleY` のすり替え」。
+     ★`rotateX` は使わない。
+   - TOP VIEW の日付は `GeoType`（0-9対応）、穴の濃淡は件数、日付の組み立ては
+     `WhenSheet` の `ymd()` を使う。
+   - UNDERGROUND は `clip-path` の円で穴から広げ、地色は `pushGround`。
+3. **輪の開閉・タブ切り替えの「点滅」を実機で切り分ける**。Chromiumでは
+   再現しない。「どのタイミングで」「何色から何色へ」を具体的に聞く。
 4. ★**`v7.mjs` が落ちるのを追う**（第33巡からの積み残し）。日程シートを開いた
    あと、器のキーボード判定が「閉じた」と誤解して入力画面ごと閉じている
    ように見える。**実バグの可能性がある。**
@@ -122,8 +115,9 @@ theme-color)・`menu28.mjs`(輪の開閉・半径配置)・`navfix.mjs`(床の�
   （`lib/debugViewport.ts` / `components/tasks/ViewportProbe.tsx`）。
 - `.tc-lamp` は `.press` の別名として当分残してある（既存の18箇所を一度に
   書き換えないため）。手が空いたら `.press` へ寄せて別名を消す。
-- `drift2` は輪の送りがまれに2つ進む**ゆらぎ**がある（3回連続で通ることは
-  確認済み。実装の問題ではなく指の当て方の再現性）。
+- **層の名前（DRIFT / GRAVITY）の見え方は実機で要確認**。設定の丸のすぐ下に
+  置いてあり、Chromium では収まっているがセーフエリアが効く実機では詰まる
+  可能性がある（`components/tasks/LayerName.tsx`）。
 
 ---
 
@@ -135,8 +129,10 @@ theme-color)・`menu28.mjs`(輪の開閉・半径配置)・`navfix.mjs`(床の�
 lib/constants.ts                   ★NAV_BOTTOM_GAP(比率式)／SANS(Helvetica+Noto Sans)
 app/layout.tsx                     ★Noto_Sans_JPの読み込み／appleWebApp.statusBarStyle
 components/CreateMenu.tsx          ★輪。閉じるアニメーション／半径配置(legibleAngle)
-components/tabs/GravityTab.tsx     ＋を撤去。★navHeightPx()の読み取り元を修正(第37巡)
-components/tabs/DriftTab.tsx       同上(候補側)
+components/tasks/TaskSpace.tsx     ★★縦のカメラの器。層の並び・--cam・縦のドラッグ
+components/tasks/LayerName.tsx     ★層の名前(DRIFT/GRAVITY)。層と一緒に流れる
+components/tabs/GravityTab.tsx     地上の層。★navHeightPx()の読み取り元を修正(第37巡)
+components/tabs/DriftTab.tsx       ★浮遊の層。円環をやめ、ゆらいだ格子で散らす
 components/tasks/TaskAddButton.tsx TaskAddButton本体を撤去。DemoSeedButtonのみ残る
 lib/ground.ts                      地色。優先度つきの積み木・onGround・GROUND_EASE
 components/AppShell.tsx            列の横スライド／タブバー／輪の入口／NAV_H
@@ -169,13 +165,16 @@ Playwright は `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`、実体は
 DOMに存在するので、`boundingBox().x`が画面内(0〜390)のものだけを選ぶこと
 （`menu28.mjs`の`makeBtn()`が実装例）。
 
-主な回帰（`scratchpad/`）… `chin35`（上下の帯）/ `ground26`（地色）/
+主な回帰（`scratchpad/`）… **`space38`（★縦のカメラ。第38巡）**/
+`chin35`（上下の帯）/ `ground26`（地色）/
 `motion26`（動き）/ `rect24`（器の追従）/ `menu28`（作るものの輪。閉じる動き・
 半径配置も含む）/ `probe31`（数値表示）/ `when25` `pop21` `when20` `tap`
 `geo4` `v5`〜`v15`(`v9`はport 3000決め打ちで別件・`v7`は既知の不具合)
-`blink` `bake` `swipe` `seam` `junk` `text` `drift2` /
+`blink` `bake` `swipe` `seam` `junk` `text` /
 単体 `solid.test` `tag.test` `inbox.test`。
-★`v7` は落ちたまま（下記「次に着手すること」）。`drift2` はまれにゆらぐ。
+★`v7` は落ちたまま（上記「次に着手すること」）。
+★`drift2`（円環の送り）は**第38巡に円環ごと無くなったので破棄**。
+代わりが `space38` の [3]（候補が重ならずに浮いていること）。
 
 ## ユーザー側の作業（アプリの外）
 

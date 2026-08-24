@@ -234,6 +234,13 @@ export const NAV_H = `calc(77px + ${NAV_BOTTOM_GAP})`;
 // タブ本文の上の余白(セーフエリア込み)。--pad-top として全体へ配る。
 export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";
 
+// ★Masthead(アプリ名の札。components/common.tsx)の高さ。
+// タスクアプリは4層を1本の縦の空間に積むので、アプリ名の札は**層ではなく
+// カメラの器が画面に固定して**持つ(components/tasks/TaskSpace.tsx)。層の側は
+// このぶんだけ下げてから自分の見出し(層の名前・ビュー切替)を置く。
+// 内訳 = 上下の padding(12 + 16) + GeoText の size(30)。
+export const MAST_H = 58;
+
 // ---- 興味の自動検出（プロトタイプ: キーワード頻度。現在は未使用） --
 // 好み/興味は「興味・好み」1リストへ統合し、チップ本体はCoworkの週次分析が
 // taste-state.md で所有する(HANDOFF §8.14 優先度3)。この頻度検出ルールは

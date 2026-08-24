@@ -49,8 +49,13 @@
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
 
 ## タスク（TASK）
-- `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。
-- `components/tabs/DriftTab.tsx` — 候補の円環カバーフロー。
+**4層が1本の縦の空間**に積まれ、画面の切り替えではなく**カメラの上下移動**で行き来する
+（第38巡）。上から DRIFT →GRAVITY →（第2段階で TOP VIEW →UNDERGROUND）。
+- `components/tasks/TaskSpace.tsx` — **縦のカメラの器**。層の並び・`--cam` の駆動・
+  縦のドラッグ・画面に固定した `Masthead` はここ1つ。**タブ構成を足したらここも直す**。
+- `components/tasks/LayerName.tsx` — 層の名前（DRIFT / GRAVITY）。層と一緒に流れる。
+- `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。地上の層。
+- `components/tabs/DriftTab.tsx` — 候補が散らばって浮遊する層（第38巡に円環をやめた）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
   `WhenSheet`（日程。**ここだけキーボードを閉じる**）/ `ComposerToolbar` /
   `ComposerFields`（重要度・タグ・テキスト）/ `Popover`（器と `Press`＝押せる面）/

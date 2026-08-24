@@ -1,67 +1,53 @@
 "use client";
 
-import { TYPE } from "@/lib/tokens";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Masthead } from "@/components/common";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { LayerName } from "@/components/tasks/LayerName";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
-import { appTitle } from "@/lib/apps";
-import { INK, MUTED, SANS } from "@/lib/constants";
+import { MAST_H, MUTED, NAV_H, TAB_PAD_TOP } from "@/lib/constants";
 import { haptic, hashStr } from "@/lib/helpers";
 import { demoCandidates } from "@/lib/taskDemo";
 import { specOf } from "@/lib/taskSize";
 import { resolveTag } from "@/lib/taskTags";
+import { SPACE, TYPE } from "@/lib/tokens";
 import type { InboxCandidate, TabProps } from "@/lib/types";
 
-// ★候補タブ(DRIFT)。まだ確定していないタスクの候補が、**円環に並んで**
-// 奥行き方向へ広がっている。手前の1つだけがはっきり見え、左右に払うと
-// 輪が回って次の候補が手前へ来る(2026-08-12にユーザー指定)。
+// ★候補の層(DRIFT)。まだ確定していないタスクの候補が、**この層いっぱいに
+// 散らばって浮遊している**。第38巡に円環カバーフローをやめた。
+//
+// なぜやめたか … 縦の空間(components/tasks/TaskSpace.tsx)を作ったことで、
+// DRIFT は「GRAVITY の**真上**にある浮遊層」という位置を持った。輪は
+// 「手前の1つを選ぶ」ための形で、奥行き方向の物語しか語れない。層として
+// 見下ろせる場所になった以上、**漂っているものが漂っているように見える**方が
+// 正しい。確定するとその場から真下(GRAVITY)へ落ちていく、という筋も通る。
 //
 // ★CSS の 3D 変形(perspective / preserve-3d / rotateY)は使わない。
-// 円環上の位置と遠近の縮みを JS で計算し、**2Dの translate と scale だけ**を
-// 与える。このコードベースは CSS の 3D で Safari の描画崩れを5回踏んでいる。
-//
-// ★指の動きで React の state を動かさない(§14 の性能の落とし穴)。回転は
-// ref + rAF で各要素の style を直接書き、落ち着いたときだけ state を更新する。
+// このコードベースは CSS の 3D で Safari の描画崩れを5回踏んでいる。
 //
 // 候補の**大きさは揃える**。重さ(重要度 × 切迫度)を持つのは確定してからで、
 // 漂っているうちはまだ量られていない、という区別を形で示す。
 
-/**
- * 図形の器。真横から見た長方形なので横長にとる(横幅=タイトルの長さ)。
- *
- * ★★**画面の端で切らない**(2026-08-18・第12巡にユーザー指定)。
- * 第10巡では図形と半径を縮めて画面に収め、第11巡では mask で溶かしたが、
- * どちらも求められたことではなかった。**輪なのだから隣は画面の外へ
- * そのままはみ出していく**のが正しい。器の横方向の切り取りをやめる。
- * これで大きさも半径も画面幅に縛られない。
- */
-const SOLID_W = 300;
-const SOLID_H = 190;
-/** 輪の1つぶんの角度。件数が多いときは一周に収まるよう詰める。
- *  ★狭くしすぎないこと。角度が小さいと cos がほとんど変わらず、隣の候補が
- *  同じ大きさ・同じ濃さで並んで「輪」ではなく「団子」に見える(実際そうなった)。 */
-const stepFor = (n: number) => Math.min(1.15, (Math.PI * 2) / Math.max(n, 1));
-/** 並びの差を輪の長さ n で折り返して、−n/2 〜 n/2 に収める。 */
-const wrap = (d: number, n: number) => {
-  const m = ((d % n) + n) % n;
-  return m > n / 2 ? m - n : m;
-};
-/** 指をどれだけ動かすと1つ送るか。 */
-const DRAG_PER_ITEM = 150;
-/** 遠近の効き。小さいほど奥のものが強く縮む。 */
-const FOCAL = 1.9;
-/** 輪の半径(手前に来たときの左右の広がり)。大きいほど図形どうしが離れる。
- *  ★端は mask で溶けるので、画面幅に縛られない(2026-08-18にユーザー指定
- *  「回る半径を大きくして、図形同士の間隔をもっと空けてください」)。 */
-const SPREAD = 300;
-/** 払ったあとの惰性。この時間ぶん、離したときの速さで流れ続けるとみなす。 */
-const COAST_MS = 260;
-const SNAP_MIN_MS = 260;
-const SNAP_MAX_MS = 680;
+/** 図形の縦横比(真横から見た立面。横幅=タイトルの長さなので横長にとる)。 */
+const ASPECT = 1.5;
+/** マスに対して図形が占める割合。1.0 だと隣とくっついて見える。 */
+const FILL = 0.94;
+/** ★マスの中でどれだけ散らすか(**マス1つの寸法**に対する割合)。規則的な
+ *  格子に見えないようにするためで、これ以上散らすと隣と重なる。
+ *  ★★器の幅ではなく**マスの幅**に掛けること。器に掛けると、3列のときの
+ *  ずれが器の12%(=44px)にもなり、右端の候補が画面の外へ出た。 */
+const JITTER = 0.16;
+/** 下に置くもの(声のメモの件数・デモの種)の高さ。ここには散らさない。 */
+const FOOT_H = 24;
 
-export function DriftTab({ appState, persist, profileButton, showToast, goTab, appActive }: TabProps & { appActive?: boolean }) {
+/** 件数から、何列に散らすかを決める。 */
+const colsFor = (n: number) => (n <= 2 ? 1 : n <= 6 ? 2 : 3);
+
+export function DriftTab({ appState, persist, showToast, goTab, appActive, dragged }: TabProps & {
+  appActive?: boolean;
+  /** 縦へ払ったあとの tap を落とすための札(`TaskSpace` が持つ)。 */
+  dragged?: React.MutableRefObject<boolean>;
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
   const inbox = appState.inbox;
   // ★タスクの候補だけを出す(2026-08-12にユーザー確定)。ジャーナル・ウィッシュ・
@@ -71,142 +57,57 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
   const open = candidates.find((c) => c.id === openId) ?? null;
   const count = candidates.length;
 
-  // 輪の回転。posRef は連続値(0 = 先頭が手前)。
-  const posRef = useRef(0);
-  const itemsRef = useRef<(HTMLDivElement | null)[]>([]);
-  const labelRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{
-    id: number; x: number; y: number; from: number; axis: "" | "x" | "y"; moved: boolean;
-    // 惰性のための速さ(index/ms)。直近の動きを平滑化して持つ。
-    vel: number; lastX: number; lastT: number;
-  } | null>(null);
-  const glideRef = useRef(0);
-  const [front, setFront] = useState(0);
-
-  // 円環上の位置を各要素へ書き込む。**React は通さない**。
-  const apply = useCallback(() => {
-    const n = itemsRef.current.length;
-    if (!n) return;
-    const step = stepFor(n);
-    const pos = posRef.current;
-    for (let i = 0; i < n; i++) {
-      const el = itemsRef.current[i];
-      if (!el) continue;
-      // ★**一周する**(2026-08-18にユーザー指定)。並びの差を輪の長さで
-      // 折り返してから角度にする。最後の次は最初へ、最初の前は最後へ回る。
-      const a = wrap(i - pos, n) * step;
-      const z = Math.cos(a);
-      const x = Math.sin(a);
-      // 遠近。奥(z=-1)ほど小さく、手前(z=1)で等倍。
-      const scale = FOCAL / (FOCAL + (1 - z));
-      const tx = x * SPREAD * scale;
-      el.style.transform = `translate(-50%, -50%) translate(${tx.toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
-      // **手前の1つだけがはっきり見える**ようにする。離れるほど急に薄くなり、
-      // 真後ろへ回ったものは消える。輪が奥へ広がって見えるよう、消し切らない。
-      const d = Math.abs(a) / step;
-      const fade = 1 / (1 + d * 2.3);
-      const behind = Math.max(0, Math.min(1, (z + 0.95) / 1.2));
-      el.style.opacity = (fade * behind).toFixed(3);
-      el.style.zIndex = String(Math.round(z * 100) + 100);
-      // 手前の1つだけ触れる。
-      el.style.pointerEvents = Math.abs(a) < step / 2 ? "auto" : "none";
-    }
-    const near = ((Math.round(pos) % n) + n) % n;
-    const label = labelRef.current;
-    const title = candidates[near]?.title ?? "";
-    // 値が同じなら書かない(毎フレームのレイアウトを避ける)。
-    if (label && label.textContent !== title) label.textContent = title;
-  }, [candidates]);
-
+  // 散らす器の実寸。図形の px 寸法を出すのに要る。
+  const fieldRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
-    if (count > 0) posRef.current = wrap(posRef.current, count) + 0;
-    apply();
-  }, [count, apply]);
+    const el = fieldRef.current;
+    if (!el) return;
+    const read = () => {
+      const r = el.getBoundingClientRect();
+      setSize((s) => (Math.abs(s.w - r.width) < 0.5 && Math.abs(s.h - r.height) < 0.5 ? s : { w: r.width, h: r.height }));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-  // 指を離したあと、**惰性を乗せて**いちばん近い候補へ寄せる。
-  // 速く払えばいくつも送られ、そっと離せば隣で止まる。
-  const glide = useCallback((vel: number) => {
-    const n = itemsRef.current.length;
-    const from = posRef.current;
-    // 離したときの速さで COAST_MS ぶん流れた先を見て、そこから近いものを選ぶ。
-    const projected = from + vel * COAST_MS;
-    // ★端で止めない(一周する)。行き先はそのまま丸めるだけ。
-    const target = Math.round(projected);
-    const land = ((target % n) + n) % n;
-    if (Math.abs(target - from) < 0.001) { setFront(land); return; }
-    const dist = Math.abs(target - from);
-    const dur = Math.max(SNAP_MIN_MS, Math.min(SNAP_MAX_MS, 220 + dist * 200));
-    const t0 = performance.now();
-    const id = ++glideRef.current;
-    const tick = () => {
-      if (glideRef.current !== id) return; // 新しい操作が始まったら降りる
-      const k = Math.min(1, (performance.now() - t0) / dur);
-      // ease-out。勢いよく出て、するすると止まる。
-      const e = 1 - Math.pow(1 - k, 3);
-      posRef.current = from + (target - from) * e;
-      apply();
-      if (k < 1) requestAnimationFrame(tick);
-      else setFront(land);
-    };
-    requestAnimationFrame(tick);
-  }, [apply]);
-
-  const onDown = (e: React.PointerEvent) => {
-    if (count < 2) return;
-    glideRef.current++; // 流れている途中なら、そこで掴んで止める
-    dragRef.current = {
-      id: e.pointerId, x: e.clientX, y: e.clientY, from: posRef.current, axis: "", moved: false,
-      vel: 0, lastX: e.clientX, lastT: performance.now(),
-    };
-  };
-
-  // ★追従は window に張る。指が舞台の外へ出た瞬間に要素側の
-  // onPointerMove は呼ばれなくなり、ジェスチャーが途中で死ぬため(§7.26)。
-  useEffect(() => {
-    const move = (e: PointerEvent) => {
-      const d = dragRef.current;
-      if (!d || e.pointerId !== d.id) return;
-      const dx = e.clientX - d.x;
-      const dy = e.clientY - d.y;
-      // 最初の8pxでどちらの軸かを決め、決まった軸だけを見る。
-      if (!d.axis) {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-        d.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-        if (d.axis === "y") { dragRef.current = null; return; }
-      }
-      d.moved = true;
-      // 速さ(index/ms)を平滑化しながら持つ。指を止めてから離したときに
-      // 惰性が残らないよう、間が空いたら鈍らせる。
-      const now = performance.now();
-      const dt = Math.max(1, now - d.lastT);
-      const v = -(e.clientX - d.lastX) / DRAG_PER_ITEM / dt;
-      const blend = Math.min(1, dt / 90);
-      d.vel = d.vel * (1 - blend) + v * blend;
-      d.lastX = e.clientX;
-      d.lastT = now;
-      // ★端は無い(一周する)。引っぱりの抵抗も要らない。
-      posRef.current = d.from - dx / DRAG_PER_ITEM;
-      apply();
-    };
-    const up = (e: PointerEvent) => {
-      const d = dragRef.current;
-      if (!d || e.pointerId !== d.id) return;
-      const moved = d.moved;
-      // 指を止めてから離したときは惰性ゼロ(最後に動いたときの速さが
-      // 残り続けるのを防ぐ。声の記録のダイヤルで踏んだのと同じ罠)。
-      const vel = performance.now() - d.lastT > 90 ? 0 : d.vel;
-      dragRef.current = null;
-      if (moved) { haptic(6); glide(vel); }
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-    };
-  }, [apply, glide]);
+  // ★散らし方は**ゆらいだ格子**。件数から列と行を決め、マスの真ん中へ置いて
+  //   から id 由来の値でずらす。完全な乱数にすると必ずどこかが重なるし、
+  //   素の格子だと「浮遊」に見えない。ずらす量は id から決まるので、
+  //   開くたびに散らばり方が変わることはない。
+  const spots = useMemo(() => {
+    const n = candidates.length;
+    if (!n || size.w <= 0 || size.h <= 0) return [];
+    const cols = colsFor(n);
+    const rows = Math.ceil(n / cols);
+    const cw = size.w / cols;
+    const ch = size.h / rows;
+    // マスに収まる最大の図形(縦横比を保つ)。
+    let bw = cw * FILL;
+    let bh = bw / ASPECT;
+    if (bh > ch * FILL) { bh = ch * FILL; bw = bh * ASPECT; }
+    return candidates.map((c, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const h = hashStr(c.id);
+      // -0.5〜0.5 のばらけた2つ。桁を分けて取り出す。
+      const jx = (((h >> 2) & 255) / 255 - 0.5) * 2 * JITTER;
+      const jy = (((h >> 11) & 255) / 255 - 0.5) * 2 * JITTER;
+      // ★ずらしたあとも器の中に必ず居ること。図形は中心で置くので、
+      //   半分ぶんが端からはみ出さない範囲へ押し戻す。
+      const clamp = (v: number, half: number) => Math.min(1 - half, Math.max(half, v));
+      return {
+        c,
+        w: bw, h: bh,
+        left: clamp((col + 0.5 + jx) / cols, bw / 2 / size.w) * 100,
+        top: clamp((row + 0.5 + jy) / rows, bh / 2 / size.h) * 100,
+        // 揺れが揃わないよう、始まりを id からずらす。
+        delay: -((h >> 3) % 54) / 10,
+      };
+    });
+  }, [candidates, size]);
 
   const patch = (id: string, p: Partial<ComposerData>) => {
     const next = structuredClone(appState);
@@ -226,7 +127,9 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
     setOpenId(null);
   };
 
-  // ★確定 = 重さを持ち、重力の側へ落ちていく。
+  // ★確定 = 重さを持ち、重力の側へ落ちていく。カメラも一緒に降りる
+  //   (`goTab` が `TaskSpace` の `--cam` を動かす)。降りた先では
+  //   `GravityTab` が画面の上端の外から図形を落としてくる。
   const confirm = (c: InboxCandidate, final: ComposerData) => {
     const next = structuredClone(appState);
     const now = new Date().toISOString();
@@ -257,30 +160,26 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
   };
 
   return (
-    <main style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <Masthead title={appTitle("tasks")} corner={profileButton} />
+    <div style={{ position: "absolute", inset: 0 }}>
+      <LayerName text="DRIFT" />
 
-      {/* 円環。手前の1つだけがはっきり見え、左右に払うと回る。 */}
+      {/* 浮遊の場。上はアプリ名の札と層の名前、下はタブバーぶんを空ける。 */}
       <div
-        onPointerDown={onDown}
-        className="bleed-x"
-        // ★★**薄れさせない。画面の端まで出して、そこで終わり**(2026-08-18に
-        //    ユーザー指定「マスクせず、そのままはみ出してください」)。
-        //    輪はこの面いっぱい(＝画面の幅そのもの)なので、ここで切るのは
-        //    画面の端で切るのと同じ ＝ 見た目は「画面の外へ出ていった」になる。
-        //    ★`hidden` ではなく **`clip`**。`hidden` は「送れる箱」なので、
-        //    はみ出したぶんを iOS が横に送れてしまう(入力画面で踏んだのと同じ罠)。
-        style={{ position: "relative", flex: 1, minHeight: 340, touchAction: "pan-y",
-          overflow: "clip" }}>
-        {candidates.map((c, i) => (
-          <div
-            key={c.id}
-            ref={(el) => { itemsRef.current[i] = el; }}
-            style={{ position: "absolute", left: "50%", top: "50%", willChange: "transform, opacity" }}>
-            {/* ふわふわは内側に掛ける。外側は輪の回転(JSがtransformを書く)。 */}
+        ref={fieldRef}
+        style={{
+          position: "absolute",
+          top: `calc(${TAB_PAD_TOP} + ${MAST_H}px + ${SPACE.xxl}px)`,
+          left: SPACE.sm, right: SPACE.sm,
+          bottom: `calc(${NAV_H} + ${FOOT_H}px)`,
+        }}>
+        {spots.map(({ c, w, h, left, top, delay }) => (
+          <div key={c.id} style={{
+            position: "absolute", left: `${left}%`, top: `${top}%`,
+            transform: "translate(-50%, -50%)",
+          }}>
+            {/* ふわふわは内側に掛ける。外側は散らした場所(JSがleft/topを書く)。 */}
             <div className="drift-bob" style={{
-              animationDuration: `${4.6 + (hashStr(c.id) % 22) / 10}s`,
-              animationDelay: `-${(hashStr(c.id) >> 3) % 40 / 10}s`,
+              animationDelay: `${delay}s`,
               // ★このアプリを見ていない間は止める。列は常にマウントされたまま
               // なので、放っておくと裏でずっと合成し続ける(実測で他アプリに
               // いる間も 118ms/1.5秒 の負荷が出ていた)。
@@ -288,14 +187,15 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
             }}>
               <button
                 onClick={() => {
-                  if (dragRef.current?.moved) return;
+                  // 縦へ払ったときは開かない(カメラの移動が目的だった)。
+                  if (dragged?.current) return;
                   haptic(8);
                   setOpenId(c.id);
                 }}
                 aria-label={`${c.title || "無題の候補"}を開く`}
                 style={{ border: "none", background: "none", padding: 0, cursor: "pointer", display: "block" }}>
                 <SolidCanvas
-                  w={SOLID_W} h={SOLID_H}
+                  w={w} h={h}
                   paint={{
                     spec: specOf(c), view: "name", title: c.title,
                     // ★タグ無しの図形は作らない(2026-08-16確定)。
@@ -308,25 +208,18 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
         ))}
       </div>
 
-      {/* 手前の候補の題。輪を回すたびに ref 経由で書き換える。 */}
-      <div style={{ textAlign: "center", padding: "0 24px", minHeight: 46 }}>
-        <div ref={labelRef} style={{
-          fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 700, color: INK, lineHeight: 1.4,
-          overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-        }}>{candidates[front]?.title ?? ""}</div>
-        {count > 1 && (
-          <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: 8, letterSpacing: "0.1em" }}>
-            {Math.min(front + 1, count)} / {count}
+      <div style={{
+        position: "absolute", left: 16, right: 16, bottom: `calc(${NAV_H} + ${SPACE.sm}px)`,
+        textAlign: "center",
+      }}>
+        {notes > 0 && (
+          <div style={{ fontSize: TYPE.small, color: MUTED }}>
+            まだ読まれていない声のメモが{notes}件
           </div>
         )}
+        {count === 0 && <DemoSeedButton label="デモの候補を入れる" onSeed={seedDemo} />}
       </div>
 
-      {notes > 0 && (
-        <div style={{ fontSize: TYPE.small, color: MUTED, textAlign: "center", padding: "8px 0 2px" }}>
-          まだ読まれていない声のメモが{notes}件
-        </div>
-      )}
-      {count === 0 && <DemoSeedButton label="デモの候補を入れる" onSeed={seedDemo} />}
       {open && (
         <TaskComposer
           key={open.id}
@@ -338,6 +231,6 @@ export function DriftTab({ appState, persist, profileButton, showToast, goTab, a
           onClose={(d) => patch(open.id, d)}
         />
       )}
-    </main>
+    </div>
   );
 }

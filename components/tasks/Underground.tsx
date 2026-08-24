@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
-import { UnderCylinder } from "@/components/tasks/UnderCylinder";
+import { UnderHole } from "@/components/tasks/UnderHole";
 import { HELV, NAV_H, SANS, SWISS_LG, TAB_PAD_TOP } from "@/lib/constants";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
@@ -11,7 +11,7 @@ import type { AppState, Task } from "@/lib/types";
 
 // ★地中(UNDERGROUND)。地表の穴に潜った先。**穴の中**のイメージで、左に穴の
 // 断面を模した少しだけ傾いたシリンダー(薄いグレー)があり、そこへその日の
-// タスクが図形になって落ちて積もる(`UnderCylinder`)。右に日付と一覧。
+// タスクが図形になって落ちて積もり、最後に曜日の蓋が降る(`UnderHole`)。右に一覧。
 //
 // 上の3層は「どれをやるか」を形と大きさで選ぶ面。ここは**その日を片付ける**面
 // なので、地色は黒く、光の量が違う。日付はスイス・スタイルの大きな Helvetica。
@@ -26,7 +26,6 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 /** 地中の地色。真っ黒ではなく、土の色。 */
 const SOIL = "#141412";
 /** シリンダーの地(薄いグレー)。 */
-const CYL = "#3A3A37";
 /** 黒地の上の文字。 */
 const ON_SOIL = "rgba(250,250,249,0.94)";
 const ON_SOIL_DIM = "rgba(250,250,249,0.40)";
@@ -98,7 +97,7 @@ export function Underground({ appState, persist, iso, active }: {
         top: `calc(${TAB_PAD_TOP} + 120px)`, bottom: `calc(${NAV_H} + ${SPACE.md}px)`,
         paddingLeft: SPACE.sm,
       }}>
-        <UnderCylinder tasks={undone} active={active} tint={CYL} />
+        <UnderHole tasks={undone} weekday={d ? WD_EN[d.getDay()] : ""} active={active} />
       </div>
 
       {/* ── 右: その日の一覧(読むための面)。 ── */}

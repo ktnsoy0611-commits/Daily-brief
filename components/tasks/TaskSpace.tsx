@@ -60,6 +60,16 @@ const CAM_SPAN = 100 * (1 + LAYER_GAP);
  *  (短すぎるとパンではなく「飛んだ」に見える)。 */
 const CAM_K_MIN = 0.34;
 
+// ★★遷移を**二段に分ける**ための刻み(第41巡・ユーザー指定)。
+//   GRAVITY→TOP … 図形が落ちて消える → **それから**カメラが下を向く。
+//   TOP→UNDER  … 真下を向いた視点が真横へ戻る → **それから**下へパンし、
+//                 地面の断面が下から上がってくる。
+/** 図形が落ちて画面から消えるのを待つ時間。 */
+const DROP_MS = 540;
+/** 二段遷移の1フェーズぶんの `--cam-k`(＝時間の割合)。 */
+const PHASE_K = 0.72;
+
+
 /** 風の筋。★**少しだけ**(ユーザー指定)。読むものの前に出る飾りなので
  *  濃さは 0.2 未満。位置と濃さは固定 — 毎回ばらけると、乗り物ではなく
  *  「毎回ちがう絵」に見える。 */
@@ -109,6 +119,10 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
   // ★いま潜っている日。地表の穴をたたくと決まる。タブから直接 UNDER へ
   //   来たときは今日にする(どこへ潜ったのか分からない状態を作らない)。
   const [diveIso, setDiveIso] = useState<string | null>(null);
+  // ★床の開閉。二段遷移の中で TaskSpace が**位相を合わせて**切り替える
+  //   (idx から直に決めると、床が落ちるのがカメラの pitch とズレる)。
+  const [floorOpen, setFloorOpen] = useState(idx >= 2);
+  const timersRef = useRef<number[]>([]);
   const dragRef = useRef<{
     id: number; x: number; y: number; from: number; axis: "" | "x" | "y";
     vel: number; lastY: number; lastT: number;
@@ -155,7 +169,47 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
     windTimer.current = window.setTimeout(() => el.removeAttribute("data-blow"), ms(T_CAM) * k);
   }, []);
 
-  // タブが変わったら、カメラをその層へ落ち着かせる。
+  // ★二段遷移のスケジューラ。タブで層が変わるたびに位相を組む。
+  const schedule = useCallback((from: number, to: number) => {
+    const cam = camRef.current;
+    if (!cam) return;
+    timersRef.current.forEach(window.clearTimeout);
+    timersRef.current = [];
+    const at = (t: number, fn: () => void) => timersRef.current.push(window.setTimeout(fn, t));
+    const camK = (k: number) => cam.style.setProperty("--cam-k", String(k));
+    const camTo = (v: number) => cam.style.setProperty("--cam", String(v));
+    const down = to > from;
+    setUnder(to === 3);
+
+    // 隣り合っていない飛び(タブで一気に跳ぶ)は素直に同時。
+    if (Math.abs(to - from) !== 1) {
+      camK(Math.min(1, Math.abs(to - from))); camTo(to);
+      setPlan(to === 2); setFloorOpen(to >= 2); blow(down ? "down" : "up", 1);
+      return;
+    }
+    if (from === 1 && to === 2) {
+      // GRAVITY → TOP。まず床を開けて図形を落とし、消えてからカメラが下を向く。
+      setFloorOpen(true); setPlan(false); camTo(1);
+      at(DROP_MS, () => { camK(PHASE_K); camTo(2); setPlan(true); blow("down", PHASE_K); });
+    } else if (from === 2 && to === 1) {
+      // TOP → GRAVITY。カメラが起き上がって戻り、そのあと図形が降り直す。
+      camK(PHASE_K); camTo(1); setPlan(false); blow("up", PHASE_K);
+      at(ms(T_CAM) * PHASE_K, () => setFloorOpen(false));
+    } else if (from === 2 && to === 3) {
+      // TOP → UNDER。真下→真横へ起き上がってから、下へパン(断面が上がる)。
+      setPlan(false); camK(PHASE_K); camTo(2);
+      at(ms(T_CAM) * PHASE_K, () => { camK(PHASE_K); camTo(3); blow("down", PHASE_K); });
+    } else if (from === 3 && to === 2) {
+      // UNDER → TOP。上へパンしてから、真横→真下へ伏せる。
+      camK(PHASE_K); camTo(2); setPlan(false); blow("up", PHASE_K);
+      at(ms(T_CAM) * PHASE_K, () => setPlan(true));
+    } else {
+      // DRIFT ↔ GRAVITY。立面どうし。ただのパン。
+      camK(1); camTo(to); setPlan(false); setFloorOpen(false); blow(down ? "down" : "up", 1);
+    }
+  }, [blow, setPlan, setUnder]);
+
+  // タブが変わったら、カメラをその層へ二段で落ち着かせる。
   useEffect(() => {
     const prev = prevRef.current;
     prevRef.current = idx;
@@ -163,17 +217,18 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
     const cam = camRef.current;
     if (!cam) return;
     cam.removeAttribute("data-drag");
-    // ★指で動かした直後はここが書かない。書くと転がっている最中に
-    //   `--cam-k`(=時間)が変わり、パンの途中で速さが飛ぶ。
+    // ★指で動かした直後はここが書かない(ドラッグ側が済ませている)。
     const wasDrag = byDragRef.current;
     byDragRef.current = false;
     if (wasDrag || prev === idx) return;
-    cam.style.setProperty("--cam-k", String(Math.min(1, Math.abs(idx - prev))));
-    cam.style.setProperty("--cam", String(idx));
-    setPlan(idx === 2);
-    setUnder(idx === 3);
-    blow(idx > prev ? "down" : "up", 1);
-  }, [idx, blow, setPlan, setUnder]);
+    schedule(prev, idx);
+  }, [idx, schedule]);
+
+  // 起動時の位相合わせ(タブから深く入って来たとき用)。
+  useEffect(() => { setPlan(idx === 2); setUnder(idx === 3); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 後始末(位相のタイマーを残さない)。
+  useEffect(() => () => timersRef.current.forEach(window.clearTimeout), []);
 
   // タブから直接 UNDER へ来たときの行き先。
   useEffect(() => { if (idx === 3 && !diveIso) setDiveIso(todayKey()); }, [idx, diveIso]);
@@ -278,6 +333,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       cam?.style.setProperty("--cam", String(next));
       setPlan(next === 2);
       setUnder(next === 3);
+      setFloorOpen(next >= 2);
       if (next !== d.from) {
         byDragRef.current = true;
         haptic(8);
@@ -327,7 +383,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
         <Layer at={1} face="elev">
           {/* ★見下ろしへ向かうときは**床を開ける**。図形は重力のまま下へ
               落ちて画面から消える ― 消すのではなく、落ちて無くなる。 */}
-          <GravityTab {...tabProps} appActive={appActive} dragged={draggedRef} floorOpen={idx >= 2} />
+          <GravityTab {...tabProps} appActive={appActive} dragged={draggedRef} floorOpen={floorOpen} />
         </Layer>
 
         <Layer at={2} face="plan">

@@ -25,36 +25,38 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 
 ---
 
-## 直近で完了したこと（第40巡）— カメラの pitch ＋ TOP/UNDER のデザイン
+## 直近で完了したこと（第41巡）— 遷移を二段に ＋ UNDER を穴の断面へ
 
-ユーザー指定に沿って、遷移の「カメラが動く感じ」と TOP/UNDER の見た目を作り直した。
+ユーザー指定に沿って、遷移の位相と UNDER の見た目を作り直した。
 
-1. ★★**カメラの pitch を `perspective` + `rotateX` に**（`scaleY` のすり替えを
-   やめた）。GRAVITY↔TOP と TOP↔UNDER で視点が実際に**うつむく/起き上がる**。
-   遷移の途中で穴が**楕円**になるのが手ごたえ。`data-plan` は TOP に居るとき
-   （`--cam` 1.5〜2.5）だけ。UNDER は立面なので TOP を離れると起き上がる。
-   ★3D は Safari で5回焼けた組み合わせ（深い rotateY×角丸×影×clip）だけを
-   避ける形で使う（素の層・clip を重ねない・0deg で着地）。**穴を広げる
-   `clip-path` は廃止**した（回転層に clip を重ねないため）。
-2. **TOP をカレンダーへ**（`TopView.tsx`）。月曜始まり・`MON〜SUN`・その月の
-   1〜末日。穴は黒、数字は白い Helvetica、件数は白い小四角。左下に月の頭文字＋
-   数字＋年（大きな Helvetica）。横に払って前後の月。
-3. **UNDER を「穴の中」へ**（`Underground.tsx` ＋ 新規 `UnderCylinder.tsx`）。
-   左に**少し傾いた薄いグレーのシリンダー**、その日のタスクが図形になって
-   落ちて積もる（1日ぶんの小さな matter.js）。右に一覧。日付は大きな Helvetica。
-4. **Helvetica の並び `HELV`** と、スイスの大きな見出し `SWISS_XL/LG/MD` を
-   `lib/constants.ts` に足した（`TYPE` の目盛りの外の「部品の寸法」例外）。
-
-### ★踏んだ罠
-- シリンダーが**空のまま**だった。図形が寝たあとループを止めており、書体が
-  届いても描き直されなかった。書体が揃うまでループを止めないようにした。
-- シリンダーの図形が筒からあふれた → `UNIT` を小さくし、筒の形に切り抜いた。
+1. ★★**遷移を二段に**（`TaskSpace` の `schedule()`）。pitch と pan を同時に
+   動かすと「別画面へ切替」に見えたので位相を分けた:
+   - **GRAVITY→TOP** … 図形が落ちて消える(`DROP_MS`、立面のまま)→ それから
+     カメラが下を向く(pitch＋pan)。
+   - **TOP→UNDER** … 真下→真横へ起き上がる(pitch だけ)→ それから下へパン
+     (断面が下から上がる)。逆向きは各々の逆順。DRIFT↔GRAVITY は pitch 無し。
+   - タブ操作のときだけ二段が走る（`byDragRef` で見分け。ドラッグは同時のまま）。
+   - 床の開閉(`floorOpen`)は idx から直に決めず `TaskSpace` の state で位相合わせ。
+2. **UNDER を「穴の断面」へ**（`UnderHole.tsx`。`UnderCylinder` は撤去）。
+   シリンダーをやめ、キャンバスに**抽象的なグレーの角丸帯**を塗るだけに。
+   図形は**幅を帯の太さに合わせて一律**にして**一段に一個**積む。落とし切ったら
+   **曜日の蓋（TUE 等）が降って蓋をする**。
+3. Chromium で確認 … GRAVITY→TOP は「落ちる→穴が楕円から円へ」、TOP→UNDER は
+   「穴が楕円へ伸びる→断面が下から上がる」、UNDER は帯に一段一個＋曜日の蓋。
 
 ### 検証
-`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓（大きな Helvetica は
-`SWISS_*` 定数にしたので fontSize の生数字は0件）。`space38.mjs`（13群）と
-`bugs38.mjs` 全部OK。Chromium で pitch の楕円化・シリンダーの積もりを目視確認。
-★★**実機 Safari は未確認**（`perspective`+`rotateX` は要確認）。
+`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓。`space38`(13群)・`bugs38`
+全部OK（遷移が長くなったぶん待ち時間を延ばした）。★★**実機 Safari 未確認**。
+
+---
+
+## 直近で完了したこと（第40巡・要点だけ）
+
+カメラの pitch を `scaleY` から **`perspective`+`rotateX`** に変え、遷移中に穴が
+楕円になる手ごたえを出した（`--t-cam`/`--ease-cam` と同じ時間・曲線）。TOP を
+スイスのカレンダー（月曜始まり・黒い穴・Helvetica）へ、UNDER を穴の中の姿へ
+初版。`HELV` と `SWISS_XL/LG/MD` を constants に足した。★3D は Safari で5回
+焼けた組み合わせ（深い rotateY×角丸×影×clip）だけを避ける形で使う。
 
 ---
 
@@ -67,21 +69,17 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 第2段階のタブ4つ化・立面↔見下ろしのすり替え（当時 scaleY。第40巡で pitch へ）・
 TOP/UNDER の初版を入れた。★層の中の寸法は `offsetWidth/offsetHeight` で測る
 （`getBoundingClientRect` は変形後の箱を返す）。
-## 直近で完了したこと（第38巡・要点だけ）— 縦のカメラ
-
-1. **`components/tasks/TaskSpace.tsx`**（縦のカメラの器）を新設。`--cam` は CSS
-   カスタムプロパティで駆動（state を通さない）。3D 変形は使わない。
-2. **DRIFT の円環を撤去**し、散らして浮遊する形へ（ゆらいだ格子）。経緯は
-   `docs/archive/task-app-2026-08.md` §56。
-3. アプリ名の札をカメラの器へ引き上げ、層は `LayerName` を持つだけに。
-4. `AppShell` はタスクアプリだけ `key` 固定・`tab-in` なし（山を作り直さない）。
-5. **層のあいだに空き**（`LAYER_GAP` 0.4）＋ **`--t-cam`(1400ms) / `--ease-cam`
-   （対称のS字）を語彙へ足した**。規約2つの明示的な例外で、`TaskSpace` の外へ
-   持ち出さない（理由は `:root` と §3・§4）。パン中は風（効果線）が流れる。
-6. ★罠 … 器の移動量だけ 140% にして `Layer` の間隔を 100% のままにし、床が
-   タブバーより 338px 高くなった。**積む間隔とカメラの移動量は同じ数から作る。**
 
 ---
+
+## 直近で完了したこと（第38巡・要点だけ）— 縦のカメラ
+
+`TaskSpace`（縦のカメラの器）を新設。`--cam` を CSS 変数で駆動（state を通さ
+ない）、層のあいだに空き（`LAYER_GAP` 0.4）、`--t-cam`(1400)/`--ease-cam`（対称の
+S字）を語彙の例外として足した。DRIFT の円環を撤去し散らして浮かべる形へ
+（経緯は `docs/archive/task-app-2026-08.md` §56）。札はカメラの器へ引き上げ、層は
+`LayerName` を持つだけに。`AppShell` はタスクだけ `key` 固定・`tab-in` なし。
+パン中は風（効果線）。
 
 ## 直近で完了したこと（第37巡・要点だけ）
 
@@ -146,8 +144,8 @@ components/tasks/LayerName.tsx     ★層の名前。層と一緒に流れる
 components/tabs/DriftTab.tsx       ★浮遊の層。円環をやめ、ゆらいだ格子で散らす
 components/tabs/GravityTab.tsx     地上の層。★床の開け閉め(floorOpen)
 components/tasks/TopView.tsx       ★見下ろし。黒い穴のカレンダー(月曜始まり・Helvetica)
-components/tasks/Underground.tsx   ★地中。左にシリンダー・右に一覧。黒地
-components/tasks/UnderCylinder.tsx ★穴の断面のシリンダー。図形が落ちて積もる(matter.js)
+components/tasks/Underground.tsx   ★地中。左に穴の断面・右に一覧。黒地
+components/tasks/UnderHole.tsx     ★穴の断面(抽象的なグレー帯)。一段一個＋曜日の蓋(matter.js)
 app/globals.css                    ★.task-layer の pitch(perspective+rotateX)
 lib/motion.ts                      ★surfaceOrigin の帰り先=右下の丸([data-create-anchor])
 components/tasks/TaskAddButton.tsx TaskAddButton本体を撤去。DemoSeedButtonのみ残る

@@ -60,8 +60,8 @@
   Helvetica）。横に払って前後の月。左下に月の見出し。
 - `components/tasks/Underground.tsx` — 地中（黒地）。左に傾いたシリンダー、右に
   その日の一覧。**ここだけ暗い**。
-- `components/tasks/UnderCylinder.tsx` — 穴の断面のシリンダー（matter.js）。
-  その日のタスクが図形になって落ちて積もる。傾きは CSS の 2D 回転。
+- `components/tasks/UnderHole.tsx` — 穴の断面（抽象的なグレーの縦の帯・matter.js）。
+  その日のタスクが図形になって**一段に一個**落ちて積もり、最後に曜日の蓋が降る。
   ★層の中で寸法を測るときは `offsetWidth/offsetHeight`（`getBoundingClientRect` は
   変形後の箱を返すので、`rotateX` で倒れた層では潰れて見える）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/

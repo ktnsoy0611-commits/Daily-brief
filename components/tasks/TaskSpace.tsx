@@ -22,10 +22,12 @@ import type { TabId, TabProps } from "@/lib/types";
 //   ・TOP→UNDER  … 穴が**下へ消え**、地面の断面が**上から降りてくる**
 //                   (真横のカメラが地中へ潜っていく)。
 //
-// ★★**CSS の 3D 変形(perspective / preserve-3d / rotateX/rotateY)は使わない。**
-// このコードベースは CSS の 3D で Safari の描画崩れを5回踏んでいる。視点の
-// pitch(見下ろし)は **scaleY の圧縮**で錯覚として作る ― 遠くから見た地面ほど
-// 縦に潰れて見える、を「地面が起き上がる/伏せる」に使う。
+// ★視点の pitch(見下ろし/立体感)は **perspective + rotateX** で作る
+// (第43巡・ユーザーが「パースを効かせて立体感を」と要求)。第40巡の rotateX は
+// **傾く向きが逆**(手前に倒れてくる板)で却下されたが、今回は「奥へ受け身に
+// 倒れる(遠い縁が縮む)」＋「下から上がってくる translateY」を**合わせて**使う
+// ので、床が奥へ退いていく本物のパースになる。回す層は角丸も影も clip も持たない
+// 素の面なので、Safari で焼けた深い rotateY×角丸×影×clip の組み合わせは踏まない。
 //
 // ★指の追従で React の state を動かさない(§14)。層の transform は ref 越しに
 // 直に書く。再レンダーは起きない。
@@ -40,8 +42,14 @@ export const layerIndexOf = (tab: TabId): number => {
 
 /** 画面の外へ完全に逃がす縦の移動量(%)。100 より大きくして端まで隠す。 */
 const OFF = 122;
-/** 見下ろし/伏せの圧縮(scaleY)。小さいほど強く潰れる(＝視点が寝ている)。 */
-const FS = 0.14;
+/** 遠近の強さ(px)。小さいほどパースが強く効く(立体感)。 */
+const P = 620;
+/** 地面(TOP)が寝ているときの pitch。奥へ受け身に倒れる(＝遠い縁が縮む)。 */
+const RX_FLOOR = 74;
+/** 壁(GRAVITY)が見下ろしへ移るとき奥へ退く角度。 */
+const RX_WALL = -52;
+/** 地中(UNDER)が下から立ち上がるときの角度(控えめ)。 */
+const RX_UNDER = -34;
 
 /**
  * ★★層ごとの**居場所の表**。`[translateY(%), scaleY]` を4つの局面
@@ -54,23 +62,30 @@ const FS = 0.14;
  * ・UNDER … 地中。TOP からは**上から**降りてくる(潜っていく視点)。
  */
 const SCENES: [number, number][][] = [
-  // DRIFT (origin center)          drift        gravity      top          under
-  [[0, 1], [-OFF, 1], [-2 * OFF, 1], [-3 * OFF, 1]],
-  // GRAVITY (origin top)
-  [[OFF, 1], [0, 1], [-OFF, FS], [-2 * OFF, FS]],
-  // TOP (origin bottom)
-  [[2 * OFF, FS], [OFF, FS], [0, 1], [OFF, FS]],
-  // UNDER (origin center)
-  [[-2 * OFF, 1], [-2 * OFF, 1], [-OFF, 1], [0, 1]],
+  // 各層 `[translateY(%), rotateX(度)]` を4局面ぶん。値は**単調**で、隠れた層が
+  // 遷移中に画面を横切らない。★UNDER は**下から**立ち上がる(下へ潜るカメラに
+  // 対して地面が下から出てくる。第43巡にユーザー指定で向きを反転)。
+  // DRIFT (origin center)          drift        gravity        top             under
+  [[0, 0], [-OFF, 0], [-2 * OFF, 0], [-3 * OFF, 0]],
+  // GRAVITY (origin bottom)。見下ろしへ移るとき奥へ退く。
+  [[OFF, 0], [0, 0], [-OFF, RX_WALL], [-2 * OFF, RX_WALL]],
+  // TOP (origin bottom)。寝ているとき奥へ倒れて遠い縁が縮む。正対で真上から。
+  [[2 * OFF, RX_FLOOR], [OFF, RX_FLOOR], [0, 0], [OFF, RX_FLOOR]],
+  // UNDER (origin top)。下から立ち上がる。
+  [[2 * OFF, 0], [2 * OFF, 0], [OFF, RX_UNDER], [0, 0]],
 ];
-/** 各層の圧縮の軸。立面は上端、見下ろしは下端(手前)から潰す。 */
-const ORIGIN = ["50% 50%", "50% 0%", "50% 100%", "50% 50%"];
+/** 各層の傾きの軸。 */
+const ORIGIN = ["50% 50%", "50% 100%", "50% 100%", "50% 0%"];
 
 // ★★遷移を**二段に分ける**ための刻み(第41巡・ユーザー指定)。
 /** 図形が落ちて画面から消えるのを待つ時間。 */
 const DROP_MS = 540;
 /** 二段遷移の1フェーズぶんの `--cam-k`(＝時間の割合)。 */
 const PHASE_K = 0.72;
+/** ★二段のあいだの待ち。フル(PHASE_K×--t-cam)だと前半が終わってから後半が
+ *  始まり、あいだに**空白の間**ができる。前半が抜けかけたあたりで後半を
+ *  始めて、途切れなく繋ぐ。 */
+const SEQ_MS = 560;
 /** 動く割合が小さいときの下限(短すぎると「飛んだ」に見える)。 */
 const CAM_K_MIN = 0.34;
 
@@ -103,6 +118,9 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
   const draggedRef = useRef(false);
   const [diveIso, setDiveIso] = useState<string | null>(null);
   const [floorOpen, setFloorOpen] = useState(idx >= 2);
+  // ★地中の図形を落とし始めてよいか。地面が画面に入ってくる位相で true にして、
+  //   落下がアニメーションの終わりごろに終わるようにする(ユーザー指定)。
+  const [underDrop, setUnderDrop] = useState(idx === 3);
   const timersRef = useRef<number[]>([]);
   const dragRef = useRef<{
     id: number; x: number; y: number; from: number; axis: "" | "x" | "y";
@@ -114,9 +132,9 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
   const prevRef = useRef(idx);
 
   /** 1層の transform を書く(ref 越し。再レンダーしない)。 */
-  const setLayer = useCallback((i: number, ty: number, sy: number) => {
+  const setLayer = useCallback((i: number, ty: number, rx: number) => {
     const el = layerRefs.current[i];
-    if (el) el.style.transform = `translateY(${ty.toFixed(2)}%) scaleY(${sy.toFixed(4)})`;
+    if (el) el.style.transform = `perspective(${P}px) translateY(${ty.toFixed(2)}%) rotateX(${rx.toFixed(2)}deg)`;
   }, []);
   /** 全層をある局面の居場所へ。CSS の transition が補間する。 */
   const applyScene = useCallback((scene: number, k = 1) => {
@@ -163,11 +181,13 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
     const at = (t: number, fn: () => void) => timersRef.current.push(window.setTimeout(fn, t));
     const down = to > from;
     setUnder(to === 3);
+    if (to !== 3) setUnderDrop(false);   // 地中を離れたら落下を止める
 
     if (Math.abs(to - from) !== 1) {
       // 隣り合わない飛び(タブで一気に跳ぶ)は素直に同時。
       applyScene(to, Math.min(1, Math.abs(to - from)));
       setFloorOpen(to >= 2);
+      if (to === 3) setUnderDrop(true);
       blow(down ? "down" : "up", 1);
       return;
     }
@@ -182,16 +202,17 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       applyScene(1, PHASE_K); blow("up", PHASE_K);
       at(ms(T_CAM) * PHASE_K, () => setFloorOpen(false));
     } else if (from === 2 && to === 3) {
-      // TOP → UNDER。まず穴が下へ消える(TOP だけ下へ抜く)。それから地面の断面
-      //   (UNDER)が上から降りてくる = 真横のカメラが潜っていく。
+      // TOP → UNDER。まず穴が下へ消える(TOP だけ下へ抜く。カメラが正面を向く)。
+      //   それからカメラが地面へ沈む = 地中の断面が**下から**上がってくる。
+      //   図形は地面が入ってくる位相(下の applyScene)で落とし始める。
       cam.style.setProperty("--cam-k", String(PHASE_K));
       setLayer(2, SCENES[2][3][0], SCENES[2][3][1]);   // TOP → 下へ抜ける
-      at(ms(T_CAM) * PHASE_K, () => { applyScene(3, PHASE_K); blow("down", PHASE_K); });
+      at(SEQ_MS, () => { applyScene(3, PHASE_K); setUnderDrop(true); blow("down", PHASE_K); });
     } else if (from === 3 && to === 2) {
-      // UNDER → TOP。まず地中が上へ抜ける(潜りから戻る)。それから穴が下から上がる。
+      // UNDER → TOP。まず地中が下へ沈む(潜りから浮上)。それから穴が下から上がる。
       cam.style.setProperty("--cam-k", String(PHASE_K));
-      setLayer(3, SCENES[3][2][0], SCENES[3][2][1]);   // UNDER → 上へ抜ける
-      at(ms(T_CAM) * PHASE_K, () => { applyScene(2, PHASE_K); blow("up", PHASE_K); });
+      setLayer(3, SCENES[3][2][0], SCENES[3][2][1]);   // UNDER → 下へ沈める
+      at(SEQ_MS, () => { applyScene(2, PHASE_K); blow("up", PHASE_K); });
     } else {
       // DRIFT ↔ GRAVITY。立面どうし。ただのパン。
       applyScene(to, 1); setFloorOpen(false); blow(down ? "down" : "up", 1);
@@ -290,6 +311,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       applyScene(next, k);
       setUnder(next === 3);
       setFloorOpen(next >= 2);
+      setUnderDrop(next === 3);
       if (next !== d.from) {
         byDragRef.current = true;
         haptic(8);
@@ -333,7 +355,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
           <TopView tasks={tabProps.appState.tasks ?? []} onDive={dive} />
         </Layer>
         <Layer i={3} refCb={layerRef(3)}>
-          <Underground appState={tabProps.appState} persist={tabProps.persist} iso={diveIso} active={idx === 3} />
+          <Underground appState={tabProps.appState} persist={tabProps.persist} iso={diveIso} active={idx === 3} drop={underDrop} />
         </Layer>
       </div>
 

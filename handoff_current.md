@@ -25,46 +25,43 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 
 ---
 
-## 直近で完了したこと（第42巡）— カメラを per-layer の2Dへ ＋ UNDER に地表
+## 直近で完了したこと（第43巡）— パースを足し、UNDER の入り方・断面を直した
 
-ユーザーの3点の指摘（カメラの動きがイメージと違う／UNDER のシリンダーをやめ地表
-と繋げる）に沿って作り直した。
+ユーザーの指摘に沿って調整:
 
-1. ★★**カメラを per-layer の2Dへ**（`perspective`+`rotateX` をやめた。あれは
-   「手前に倒れる板」に見えた）。4層を**各層の translateY＋scaleY**で動かし、
-   「どちらから入り、どちらへ抜けるか」を層ごとに決める（`SCENES` の表）:
-   - **GRAVITY→TOP** … 図形を落として消す → カメラが真下へティルト = **穴が下から
-     上がってくる**（TOP を下から昇らせて scaleY で伸ばす）。
-   - **TOP→UNDER** … 穴が**下へ消え** → 真横のカメラが地中へ潜る＝地面の断面
-     （UNDER）が**上から降りてくる**。
-   - 見下ろしの pitch は scaleY の圧縮で作る（3D は使わない）。二段の位相と床の
-     開閉は従来どおり。ドラッグは `SCENES` を線形補間。
-2. **UNDER に地表を足した**。画面上部に明るい帯（地表）＋**黒字で日付・曜日**、
-   そこから穴の断面（グレー）が**地表と繋がって**降りる。**曜日の蓋は枠なしの
-   テキスト**に。図形は幅を穴の太さに合わせて一律＝一段に一個。
-3. Chromium で確認 … GRAVITY→TOP「穴が下から上がる」、TOP→UNDER「穴が下へ消え
-   →地中が上から降りる」、UNDER の地表・断面・一段一個・枠なし曜日。
+1. ★★**カメラにパース（`perspective`+`rotateX`）を足した**。第42巡の scaleY だけ
+   では立体感が弱かった。向きは「**奥へ受け身に倒す＋下から上がる**」＝床が奥へ
+   退く本物のパース（第40巡の「手前に倒れる板」の逆）。`P`=620・`RX_FLOOR`=74 等。
+   角丸/影/clip を持たない素の面にだけ掛けて Safari の古傷を避ける。
+2. ★**TOP→UNDER の入り方を反転**。カメラが地面へ**沈む**ので、地中の断面は
+   **下から**上がってくる（第42巡は上からで逆だった）。前後の空白の間を詰めるため
+   `SEQ_MS`(560) で位相を繋ぐ。
+3. ★**図形を穴に落とす時機**を合わせた（`underDrop`）。地面が画面に入ってくる位相で
+   落とし始め、アニメーションの終わりごろ落下し切る。
+4. UNDER の**地表の境目のグラデーションを外し**（硬い線）、**穴の断面を平行四辺形へ**
+   （少し傾け・底は水平・角丸なし）。**曜日の蓋は枠なしのテキスト**は第42巡から継続。
 
 ### 検証
-`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓、`space38`(13群)・`bugs38` を
-per-layer 用に書き換えて全部OK。★実機 Safari 未確認（今回は 3D をやめたので古傷外）。
+`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓、`space38`(13群)・`bugs38`
+全部OK。Chromium で「床が奥へ退くパース」「穴が下から上がる」「図形が穴へ落ちる」
+「地表の硬い境目・傾いた断面」を目視確認。★★**実機 Safari 未確認**（今回 rotateX を
+使うので、このコードベースの 3D の古傷が要確認。素の面にだけ掛けている)。
 
 ---
 
-## 直近で完了したこと（第41巡・要点だけ）
+## 直近で完了したこと（第42巡・要点だけ）
 
-遷移を二段に分け（`schedule()`。図形を落としてからカメラを向ける等。タブ操作の
-ときだけ。ドラッグは同時）、UNDER をシリンダーから**抽象的なグレーの穴の断面**へ
-（`UnderHole`。一段に一個・曜日の蓋）。★このときのカメラは `perspective`+`rotateX`
-だったが、第42巡に per-layer の2Dへ差し替えた。
+カメラを per-layer の2D（各層の translateY＋scaleY）へ。「どちらから入り/抜けるか」を
+層ごとに決める `SCENES`。UNDER に地表（明るい帯＋黒字の日付）を足した。★第43巡で
+パース（rotateX）を足し、UNDER の入り方を反転。
 
 ---
 
-## 直近で完了したこと（第40巡・要点だけ）
+## 直近で完了したこと（第40〜41巡・要点だけ）
 
-カメラの pitch を `scaleY` から `perspective`+`rotateX` に変え、TOP をスイスの
-カレンダー（月曜始まり・黒い穴・Helvetica）へ、UNDER を穴の中の姿へ初版。`HELV`
-と `SWISS_XL/LG/MD` を constants に足した。★rotateX は第42巡に撤回（per-layer 2D）。
+遷移を二段に分け（`schedule()`。図形を落としてからカメラを向ける等）、TOP を
+スイスのカレンダー（月曜始まり・黒い穴・Helvetica）へ、UNDER を穴の断面へ
+（`UnderHole`。一段一個・曜日の蓋）。`HELV`/`SWISS_*` を constants に足した。
 
 ---
 
@@ -80,9 +77,9 @@ per-layer 用に書き換えて全部OK。★実機 Safari 未確認（今回は
 
 ## 直近で完了したこと（第38巡・要点だけ）— 縦のカメラ
 
-`TaskSpace`（縦のカメラの器）を新設。`--cam` を CSS 変数で駆動（state を通さ
-ない）、層のあいだに空き（`LAYER_GAP` 0.4）、`--t-cam`(1400)/`--ease-cam`（対称の
-S字）を語彙の例外として足した。DRIFT の円環を撤去し散らして浮かべる形へ
+`TaskSpace`（縦のカメラの器）を新設（当時は `--cam` で駆動。第42巡に per-layer へ）。
+`--t-cam`(1400)/`--ease-cam`（対称の S字）を語彙の例外として足した。DRIFT の円環を
+撤去し散らして浮かべる形へ
 （経緯は `docs/archive/task-app-2026-08.md` §56）。札はカメラの器へ引き上げ、層は
 `LayerName` を持つだけに。`AppShell` はタスクだけ `key` 固定・`tab-in` なし。
 パン中は風（効果線）。
@@ -98,14 +95,15 @@ GRAVITY の床がタブバーの裏に潜る実バグを直した（`navHeightPx
 
 ## 次に着手すること
 
-1. ★★**実機で確認してもらう**（第38〜42巡ぶんが未確認）。カメラの4つの動き
-   （DRIFT↔GRAVITY／GRAVITY↔TOP で穴が下から／TOP↔UNDER で断面が上から）、
-   カレンダー、UNDER の地表＋穴の断面＋一段一個。★第42巡で 3D をやめ 2D の
-   translateY/scaleY だけにしたので、Safari の 3D の古傷からは外れているはず。
+1. ★★**実機で確認してもらう**（第38〜43巡ぶんが未確認）。カメラの動き
+   （GRAVITY↔TOP で穴が下から・床が奥へ退くパース／TOP↔UNDER で断面が下から）、
+   カレンダー、UNDER の地表＋傾いた断面＋図形の落下。★第43巡で **`rotateX` を
+   使う**ので、このコードベースの 3D の古傷（深い rotateY×角丸×影×clip）を実機で
+   要確認 ― ただし素の面にだけ掛けているので該当しないはず。
    ★**ホーム画面から追加し直してから**見ること。
 2. **触れる数字**（`TaskSpace.tsx`／`:root`）… カメラの長さ `--t-cam`(1400ms)・
-   位相 `PHASE_K`(0.72)／`DROP_MS`(540)・見下ろしの潰し `FS`(0.14)・逃がし量
-   `OFF`(122)・スワイプ `SNAP_RATIO`(0.14)/`FLICK_V`(0.28)。
+   位相 `PHASE_K`(0.72)／`DROP_MS`(540)／`SEQ_MS`(560)・パース `P`(620)/
+   `RX_FLOOR`(74)・逃がし `OFF`(122)・穴の傾き `SKEW`(0.10・UnderHole)。
 3. **輪の開閉・タブ切り替えの「点滅」を実機で切り分ける**。Chromium では
    再現しない。「どのタイミングで」「何色から何色へ」を具体的に聞く。
 4. ★**`v7.mjs` が落ちるのを追う**（第33巡からの積み残し）。日程シートを開いた
@@ -148,7 +146,7 @@ components/tabs/GravityTab.tsx     地上の層。★床の開け閉め(floorOpe
 components/tasks/TopView.tsx       ★見下ろし。黒い穴のカレンダー(月曜始まり・Helvetica)
 components/tasks/Underground.tsx   ★地中。左に穴の断面・右に一覧。黒地
 components/tasks/UnderHole.tsx     ★穴の断面(抽象的なグレー帯)。一段一個＋曜日の蓋(matter.js)
-app/globals.css                    ★.task-layer の transition(per-layer 2D)
+app/globals.css                    ★.task-layer の transition(per-layer + rotateX)
 lib/motion.ts                      ★surfaceOrigin の帰り先=右下の丸([data-create-anchor])
 components/tasks/TaskAddButton.tsx TaskAddButton本体を撤去。DemoSeedButtonのみ残る
 lib/ground.ts                      地色。優先度つきの積み木・onGround・GROUND_EASE

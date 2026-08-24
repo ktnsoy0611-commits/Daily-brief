@@ -27,6 +27,8 @@ const DROP_EVERY = 150;
 const MAX_PIECES = 6;
 /** 蓋(曜日)の高さ、帯の幅に対する比。 */
 const LID_RATIO = 0.42;
+/** ★穴の傾き。上端を左へ**少しだけ**ずらして傾ける(底は水平のまま＝平行)。 */
+const SKEW = 0.10;
 
 interface Piece {
   body: Body;
@@ -39,18 +41,20 @@ interface Piece {
   h: number;
 }
 
-interface Ctrl { update: (tasks: Task[], weekday: string, active: boolean) => void }
+interface Ctrl { update: (tasks: Task[], weekday: string, active: boolean, drop: boolean) => void }
 
 const paintOf = (t: Task): SolidPaint => ({
   spec: specOf(t), view: "tag", title: t.title,
   tag: resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note),
 });
 
-export function UnderHole({ tasks, weekday, active }: {
+export function UnderHole({ tasks, weekday, active, drop }: {
   tasks: Task[];
   /** 蓋に降ってくる曜日(例 "TUE")。 */
   weekday: string;
   active: boolean;
+  /** 図形を落とし始めてよいか。地面が画面に入ってくる位相で true(`TaskSpace`)。 */
+  drop?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -72,6 +76,8 @@ export function UnderHole({ tasks, weekday, active }: {
     let raf = 0;
     let dropTimer = 0;
     let live = false;
+    let dropping = false;
+    let lastKey = "";
 
     // 帯の幅(＝図形の一律の幅)と、器の中の左端。
     const shaftW = () => Math.min(size.w, size.h * 0.34);
@@ -100,12 +106,18 @@ export function UnderHole({ tasks, weekday, active }: {
       if (!ctx) return false;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      // 断面の帯(抽象的なグレー)。上端は開いた穴なので少しだけ丸める。
+      // ★断面の帯(抽象的なグレー)。**少し傾け・底は水平・角丸なし**。上端を
+      //   左へ SKEW*h ずらした平行四辺形(左右の壁が傾き、上下は水平)。
       const sw = shaftW();
       const sx = shaftX();
-      // ★上端は**地表と繋がる**ので平ら(角丸なし)。下端だけ丸める。
+      const dx = h * SKEW;
       ctx.fillStyle = SHAFT;
-      roundRectPath(ctx, sx, 0, sw, h, [0, 0, Math.min(16, sw * 0.14), Math.min(16, sw * 0.14)]);
+      ctx.beginPath();
+      ctx.moveTo(sx - dx, 0);
+      ctx.lineTo(sx + sw - dx, 0);
+      ctx.lineTo(sx + sw, h);
+      ctx.lineTo(sx, h);
+      ctx.closePath();
       ctx.fill();
       let pending = false;
       for (const p of pieces) {
@@ -173,7 +185,7 @@ export function UnderHole({ tasks, weekday, active }: {
       wake();
     };
     const pump = () => {
-      if (!M || !engine || !live) return;
+      if (!M || !engine || !live || !dropping) return;
       const t = queue.shift();
       if (t) { dropShape(t); dropTimer = window.setTimeout(pump, DROP_EVERY); }
       else if (lidWord && !pieces.some((p) => p.lid !== undefined)) {
@@ -189,18 +201,23 @@ export function UnderHole({ tasks, weekday, active }: {
       queue = dayTasks.slice(0, MAX_PIECES);
       lidWord = wd;
       window.clearTimeout(dropTimer);
-      if (live) pump();
     };
 
     let pendingDay: Task[] | null = null;
     let pendingWd = "";
     let pendingActive = false;
+    let pendingDrop = false;
     ctrlRef.current = {
-      update: (dayTasks, wd, on) => {
-        if (!M) { pendingDay = dayTasks; pendingWd = wd; pendingActive = on; return; }
+      update: (dayTasks, wd, on, dr) => {
+        if (!M) { pendingDay = dayTasks; pendingWd = wd; pendingActive = on; pendingDrop = dr; return; }
         live = on;
-        if (on) { setDay(dayTasks, wd); wake(); }
-        else { running = false; cancelAnimationFrame(raf); window.clearTimeout(dropTimer); }
+        if (!on) { dropping = false; running = false; cancelAnimationFrame(raf); window.clearTimeout(dropTimer); return; }
+        const k = dayTasks.map((t) => t.id).join(",");
+        if (k !== lastKey) { setDay(dayTasks, wd); lastKey = k; }
+        wake();   // 表示中は帯を描くために回す(まだ落とさなくても)
+        // ★落とし始めの合図。地面が入ってくる位相で dr=true が来る。
+        if (dr && !dropping) { dropping = true; pump(); }
+        else if (!dr) { dropping = false; window.clearTimeout(dropTimer); }
       },
     };
 
@@ -211,7 +228,7 @@ export function UnderHole({ tasks, weekday, active }: {
       engine = M.Engine.create({ enableSleeping: true });
       engine.gravity.y = 1.6;
       walls();
-      if (pendingDay) ctrlRef.current?.update(pendingDay, pendingWd, pendingActive);
+      if (pendingDay) ctrlRef.current?.update(pendingDay, pendingWd, pendingActive, pendingDrop);
     })();
 
     const ro = new ResizeObserver(() => {
@@ -233,9 +250,9 @@ export function UnderHole({ tasks, weekday, active }: {
   }, []);
 
   useEffect(() => {
-    ctrlRef.current?.update(tasks, weekday, active);
+    ctrlRef.current?.update(tasks, weekday, active, drop !== false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, active]);
+  }, [key, active, drop]);
 
   return (
     <div ref={wrapRef} style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -244,19 +261,6 @@ export function UnderHole({ tasks, weekday, active }: {
   );
 }
 
-function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: [number, number, number, number]) {
-  ctx.beginPath();
-  ctx.moveTo(x + r[0], y);
-  ctx.lineTo(x + w - r[1], y);
-  ctx.arcTo(x + w, y, x + w, y + r[1], r[1]);
-  ctx.lineTo(x + w, y + h - r[2]);
-  ctx.arcTo(x + w, y + h, x + w - r[2], y + h, r[2]);
-  ctx.lineTo(x + r[3], y + h);
-  ctx.arcTo(x, y + h, x, y + h - r[3], r[3]);
-  ctx.lineTo(x, y + r[0]);
-  ctx.arcTo(x, y, x + r[0], y, r[0]);
-  ctx.closePath();
-}
 
 function makeBody(
   M: typeof import("matter-js"), paint: SolidPaint, x: number, y: number, unit: number,

@@ -30,11 +30,13 @@ const ON_SOIL = "rgba(250,250,249,0.94)";
 const ON_SOIL_DIM = "rgba(250,250,249,0.40)";
 const SEAM = "rgba(250,250,249,0.10)";
 
-export function Underground({ appState, persist, iso, active }: {
+export function Underground({ appState, persist, iso, active, drop }: {
   appState: AppState;
   persist: (next: AppState) => void;
   iso: string | null;
   active: boolean;
+  /** 図形を落とし始めてよいか(地面が画面に入ってくる位相で true)。 */
+  drop?: boolean;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -76,9 +78,7 @@ export function Underground({ appState, persist, iso, active }: {
     <div style={{ position: "absolute", inset: 0, background: SOIL, overflow: "hidden" }}>
       {/* ── 地表(明るい帯)。ここより下が地中(土)。穴の断面はこの下端から降りる。 ── */}
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: SURFACE, background: BD_GREY }}>
-        {/* 地表と土の境目を柔らかく(断面が地表から続くように見せる)。 */}
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 20,
-          background: `linear-gradient(to bottom, transparent, ${SOIL})`, opacity: 0.5 }} />
+        {/* ★境目はぼかさない(ユーザー指定)。地表と土は硬い線で分ける。 */}
         {/* 日付・曜日は**黒字**で地表の左に。 */}
         <div style={{ position: "absolute", top: `calc(${TAB_PAD_TOP} + ${SPACE.sm}px)`, left: SPACE.lg }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm }}>
@@ -101,7 +101,7 @@ export function Underground({ appState, persist, iso, active }: {
         top: SURFACE, bottom: `calc(${NAV_H} + ${SPACE.md}px)`,
         paddingLeft: SPACE.sm,
       }}>
-        <UnderHole tasks={undone} weekday={wd} active={active} />
+        <UnderHole tasks={undone} weekday={wd} active={active} drop={drop !== false} />
       </div>
 
       {/* ── 右: その日の一覧(読むための面)。 ── */}

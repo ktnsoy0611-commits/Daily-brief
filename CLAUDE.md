@@ -134,9 +134,10 @@
    環境ループ以外で使わない。
    ★唯一の例外が **`--t-cam` / `--ease-cam`（タスクのカメラ専用）**。
    `components/tasks/TaskSpace.tsx` の外へ持ち出さないこと（第38巡）。
-   ★★**CSS の 3D は使わない**（`perspective`/`rotateX` は第40巡に試して
-   「手前に倒れる板」に見えユーザーが却下。第42巡に per-layer の translateY＋
-   scaleY へ戻した）。詳細は `docs/project_knowledge.md` §4「カメラ」。
+   ★★**`perspective`+`rotateX` は TaskSpace の `.task-layer` だけの例外**
+   （第43巡・ユーザーが「パースを効かせて立体感を」と要求）。向きは「奥へ受け身に
+   倒す＋下から上がる」＝床が奥へ退くパース。角丸/影/clip を持たない素の面にだけ
+   掛けて Safari の古傷を避ける。詳細は `docs/project_knowledge.md` §4「カメラ」。
 4. **JS のタイマーは `ms(T_OUT)` のように語彙から引く。** 数字を書き写すと、
    CSS だけ変えたときに閉じ切る前に消える。
 5. **押せる面は `components/Button.tsx`。** 入力画面は `Press`、それ以外は

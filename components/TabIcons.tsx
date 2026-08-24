@@ -15,7 +15,7 @@ import { SANS } from "@/lib/constants";
 
 export type TabIconName =
   | "list" | "pie" | "layers" | "pin"
-  | "drift" | "pile"
+  | "drift" | "pile" | "holes" | "strata"
   | "pen" | "dots" | "cassette"
   | "sparkle" | "plus" | "gear" | "record";
 
@@ -113,6 +113,37 @@ function shapes(name: TabIconName, c: string) {
           <g fill={c}>
             <rect x="2.6" y="10.2" width="9.2" height="6.4" rx="1.2" />
             <rect x="2.6" y="18" width="18.8" height="3.4" rx="1.2" />
+          </g>
+        </>
+      );
+    // 日付(TOP VIEW) = 真上から見下ろした、規則的に並ぶ穴。
+    // 濃さ2段は「その日に入っている量の差」を表す(実際の盤もそう塗る)。
+    case "holes":
+      return (
+        <>
+          <g opacity={PALE} fill={c}>
+            <circle cx="6.4" cy="6.4" r="2.9" />
+            <circle cx="17.6" cy="6.4" r="2.9" />
+            <circle cx="12" cy="17.6" r="2.9" />
+          </g>
+          <g fill={c}>
+            <circle cx="12" cy="6.4" r="2.9" />
+            <circle cx="6.4" cy="17.6" r="2.9" />
+            <circle cx="17.6" cy="17.6" r="2.9" />
+          </g>
+        </>
+      );
+    // 地中(UNDERGROUND) = 横に重なった地層の断面。下ほど厚い。
+    case "strata":
+      return (
+        <>
+          <g opacity={PALE} fill={c}>
+            <rect x="2.6" y="3.2" width="18.8" height="2.6" />
+            <rect x="2.6" y="8" width="18.8" height="1.8" />
+          </g>
+          <g fill={c}>
+            <rect x="2.6" y="12" width="18.8" height="3.6" />
+            <rect x="2.6" y="17.4" width="18.8" height="4" />
           </g>
         </>
       );

@@ -50,12 +50,16 @@
 
 ## タスク（TASK）
 **4層が1本の縦の空間**に積まれ、画面の切り替えではなく**カメラの上下移動**で行き来する
-（第38巡）。上から DRIFT →GRAVITY →（第2段階で TOP VIEW →UNDERGROUND）。
+（第38巡）。上から DRIFT →GRAVITY →TOP VIEW →UNDERGROUND。
 - `components/tasks/TaskSpace.tsx` — **縦のカメラの器**。層の並び・`--cam` の駆動・
   縦のドラッグ・画面に固定した `Masthead` はここ1つ。**タブ構成を足したらここも直す**。
-- `components/tasks/LayerName.tsx` — 層の名前（DRIFT / GRAVITY）。層と一緒に流れる。
-- `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。地上の層。
+- `components/tasks/LayerName.tsx` — 層の名前（DRIFT / GRAVITY / TOP）。層と一緒に流れる。
 - `components/tabs/DriftTab.tsx` — 候補が散らばって浮遊する層（第38巡に円環をやめた）。
+- `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。地上の層。
+- `components/tasks/TopView.tsx` — 見下ろし。日付の黒い穴が並ぶ。横に払って縮尺。
+- `components/tasks/Underground.tsx` — 地中。その日の一覧（黒地）。**ここだけ暗い**。
+  ★層の中で寸法を測るときは `offsetWidth/offsetHeight`（`getBoundingClientRect` は
+  変形後の箱を返すので、`scaleY` で畳まれた層では潰れて見える）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
   `WhenSheet`（日程。**ここだけキーボードを閉じる**）/ `ComposerToolbar` /
   `ComposerFields`（重要度・タグ・テキスト）/ `Popover`（器と `Press`＝押せる面）/

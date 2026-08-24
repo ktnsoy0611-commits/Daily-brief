@@ -64,8 +64,14 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, dragg
     const el = fieldRef.current;
     if (!el) return;
     const read = () => {
-      const r = el.getBoundingClientRect();
-      setSize((s) => (Math.abs(s.w - r.width) < 0.5 && Math.abs(s.h - r.height) < 0.5 ? s : { w: r.width, h: r.height }));
+      // ★★`getBoundingClientRect()` は**変形後**の箱を返す。層は見下ろしへ
+      //   移るあいだ `scaleY` で畳まれるので、これで測ると器が数十pxの
+      //   高さに見え、割り付けが崩れる(実際に踏んだ: 593px の器が 38px に
+      //   見えて、穴が7列の細い1行になった)。**変形を含まない**
+      //   `offsetWidth/offsetHeight` で測ること。
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      setSize((s) => (Math.abs(s.w - w) < 0.5 && Math.abs(s.h - h) < 0.5 ? s : { w, h }));
     };
     read();
     const ro = new ResizeObserver(read);
@@ -228,7 +234,15 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, dragg
           onCommit={(d) => patch(open.id, d)}
           onConfirm={(d) => confirm(open, d)}
           onDelete={() => drop(open.id)}
-          onClose={(d) => patch(open.id, d)}
+          // ★★閉じたら**必ず開いている印を下ろす**(2026-08-24)。
+          //   `patch` は書いて保存するだけで、`openId` を下ろさなかったため
+          //   `TaskComposer` が**一度も外れなかった**。実害が2つ出ていた:
+          //     ・吸い込みの円は半径0まで縮まない(帰り先の丸の大きさで止まる)
+          //       ので、外れないまま**黒い丸が残って見えた**。
+          //     ・入力画面が html に立てる `[data-overlay]` も外れず、
+          //       タスクアプリの器が触りを握れないまま = **上下スワイプが
+          //       効かない**。実機で報告された2件は、どちらもこれ1つが原因。
+          onClose={(d) => { patch(open.id, d); setOpenId(null); }}
         />
       )}
     </div>

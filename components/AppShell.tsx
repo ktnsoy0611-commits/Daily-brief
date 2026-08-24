@@ -321,6 +321,11 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
               <button
                 onClick={(e) => { if (navDragged.current) return; onRecord(e.currentTarget); }}
                 aria-label="作る"
+                // ★★全画面の面(入力画面・録音)が**帰っていく先**。控えが無いときの
+                //   行き先をここから引くので、印を外さないこと(`lib/motion.ts` の
+                //   `surfaceOrigin`)。黒い丸なので、吸い込まれた円がそのまま
+                //   このボタンに重なって消える ― どこか途中で消えるのではなく。
+                data-create-anchor
                 style={{
                   flexShrink: 0, width: 52, height: 52, borderRadius: RADIUS.circle, background: INK, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,

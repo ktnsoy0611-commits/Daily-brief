@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Masthead } from "@/components/common";
+import { TopView } from "@/components/tasks/TopView";
+import { Underground } from "@/components/tasks/Underground";
 import { DriftTab } from "@/components/tabs/DriftTab";
 import { GravityTab } from "@/components/tabs/GravityTab";
 import { appTitle } from "@/lib/apps";
 import { INK, TAB_PAD_TOP } from "@/lib/constants";
 import { T_CAM, ms } from "@/lib/motion";
-import { haptic } from "@/lib/helpers";
+import { haptic, todayKey } from "@/lib/helpers";
 import type { TabId, TabProps } from "@/lib/types";
 
 // ★★タスクアプリの**縦のカメラ**(第38巡)。
@@ -30,8 +32,10 @@ import type { TabId, TabProps } from "@/lib/types";
 /** ★層の並び。**この配列の順が、そのまま上→下**。
  *  `lib/apps.ts` のタブの並びと必ず揃えること(タブバーの印とカメラが
  *  同じ向きへ動くのはこれが揃っているから)。
- *  第2段階でここへ `tasks-top` / `tasks-under` が続く。 */
-export const TASK_LAYERS: TabId[] = ["tasks-drift", "tasks-gravity"];
+ *
+ *  上2つ(DRIFT / GRAVITY)は**立面**、下2つ(TOP / UNDER)は見下ろしと断面。
+ *  境目(1↔2)でだけ、カメラが真下を向く演出が入る(`data-plan`)。 */
+export const TASK_LAYERS: TabId[] = ["tasks-drift", "tasks-gravity", "tasks-top", "tasks-under"];
 
 export const layerIndexOf = (tab: TabId): number => {
   const i = TASK_LAYERS.indexOf(tab);
@@ -75,10 +79,17 @@ const STREAKS = [
   { left: 94, w: 1, o: 0.10, a: 40, b: 88 },
 ];
 
-/** 次の層へ送るのに要る、画面の高さに対する割合。 */
-const SNAP_RATIO = 0.18;
-/** これ以上の速さ(px/ms)で払ったら、距離が足りなくても送る。 */
-const FLICK_V = 0.45;
+/**
+ * 次の層へ送るのに要る指の移動量(**画面**の高さに対する割合)。
+ * ★★層1つぶん(`CAM_SPAN`)ではなく**画面**で測ること。層のあいだに空きを
+ * 作ったので、割合で見ると同じ 0.18 でも要る指の距離が 152px → 212px へ
+ * 伸びていて、実機で「上下スワイプがなかなか効かない」状態になっていた。
+ * 送る判断は**指の実際の移動量**の話で、世界がどれだけ広いかとは別。
+ */
+const SNAP_RATIO = 0.14;
+/** これ以上の速さ(px/ms)で払ったら、距離が足りなくても送る。
+ *  ★0.45 は「勢いよく払う」でないと届かなかった(同上)。 */
+const FLICK_V = 0.28;
 /** 指を止めてから離したとみなす間(ms)。惰性を残さないための足切り。 */
 const FLICK_IDLE_MS = 90;
 /** 縦か横かを決める距離。 */
@@ -95,6 +106,10 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
   const idxRef = useRef(idx);
   // ★縦へ払ったあとの tap を落とすための札。各層へ配る。
   const draggedRef = useRef(false);
+  // ★いま潜っている日。地表の穴をたたくと決まる。タブから直接 UNDER へ
+  //   来たときは今日にする(どこへ潜ったのか分からない状態を作らない)。
+  const [diveIso, setDiveIso] = useState<string | null>(null);
+  const underRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
     id: number; x: number; y: number; from: number; axis: "" | "x" | "y";
     vel: number; lastY: number; lastT: number;
@@ -105,6 +120,28 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
   const byDragRef = useRef(false);
   // 直前の層。タブを押されたときに、どちら向きへ動いたかを知るのに要る。
   const prevRef = useRef(idx);
+
+  /**
+   * ★地中に居るか。**触りをコンテンツへ返す**ための合図。
+   * 地中は「読むための面」で、縦の指はリストを送るもの。ここで器が
+   * `touch-action: none` を握ったままだと、**その日の一覧が1行も送れない**。
+   * 送れる先が無いところ(リストの上端で下へ引く等)では、そのままカメラの
+   * ドラッグが効くので、上の層へ戻る道も残る。
+   */
+  const setUnder = useCallback((on: boolean) => {
+    const cam = camRef.current;
+    if (!cam) return;
+    if (on === cam.hasAttribute("data-under")) return;
+    if (on) cam.setAttribute("data-under", ""); else cam.removeAttribute("data-under");
+  }, []);
+
+  /** ★真下を向いているか(層2より下)。立面 → 平面のすり替えの合図。 */
+  const setPlan = useCallback((on: boolean) => {
+    const cam = camRef.current;
+    if (!cam) return;
+    if (on === cam.hasAttribute("data-plan")) return;
+    if (on) cam.setAttribute("data-plan", ""); else cam.removeAttribute("data-plan");
+  }, []);
 
   /** 層のあいだを通り抜けるあいだだけ風を流す。 */
   const blow = useCallback((dir: "down" | "up", k: number) => {
@@ -134,10 +171,44 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
     if (wasDrag || prev === idx) return;
     cam.style.setProperty("--cam-k", String(Math.min(1, Math.abs(idx - prev))));
     cam.style.setProperty("--cam", String(idx));
+    setPlan(idx >= 2);
+    setUnder(idx === 3);
     blow(idx > prev ? "down" : "up", 1);
-  }, [idx, blow]);
+  }, [idx, blow, setPlan, setUnder]);
+
+  // タブから直接 UNDER へ来たときの行き先。
+  useEffect(() => { if (idx === 3 && !diveIso) setDiveIso(todayKey()); }, [idx, diveIso]);
 
   useEffect(() => () => window.clearTimeout(windTimer.current), []);
+
+  /**
+   * ★地表の穴をたたいた = **その穴へ潜る**。
+   * カメラを地中へ降ろすのと同時に、地中の面を**たたいた穴の場所から円で
+   * 広げる**。円だけだと「どこから来たか」しか出ず、カメラだけだと
+   * 「どの穴か」が出ない。2つ揃って初めて「その穴に潜った」に見える。
+   * ★`clip-path` の円で切り抜く(矩形を要素へ焼き付ける layoutId 相当の
+   *   やり方は第27巡に撤去済み)。
+   */
+  const dive = useCallback((iso: string, from: DOMRect) => {
+    setDiveIso(iso);
+    const el = underRef.current;
+    const host = rootRef.current;
+    if (el && host) {
+      const r = host.getBoundingClientRect();
+      const x = Math.round(from.left + from.width / 2 - r.left);
+      const y = Math.round(from.top + from.height / 2 - r.top);
+      const far = Math.max(
+        Math.hypot(x, y), Math.hypot(r.width - x, y),
+        Math.hypot(x, r.height - y), Math.hypot(r.width - x, r.height - y),
+      );
+      el.style.setProperty("--dive", `circle(${Math.round(from.width / 2)}px at ${x}px ${y}px)`);
+      el.removeAttribute("data-dive");
+      void el.offsetWidth;
+      el.setAttribute("data-dive", "");
+      el.style.setProperty("--dive", `circle(${Math.round(far * 1.08)}px at ${x}px ${y}px)`);
+    }
+    goTab("tasks-under");
+  }, [goTab]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (dragRef.current) return;
@@ -190,6 +261,8 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       const raw = d.from - dy / spanOf();
       const cam = raw < 0 ? raw * RUBBER : raw > last ? last + (raw - last) * RUBBER : raw;
       camRef.current?.style.setProperty("--cam", cam.toFixed(4));
+      // 立面と見下ろしの境目(1↔2)を跨いだ瞬間に倒す/起こす。
+      setPlan(cam >= 1.5);
     };
 
     const up = (e: PointerEvent) => {
@@ -201,7 +274,9 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       // 指を止めてから離したときは惰性ゼロ(最後に動いたときの速さが残り
       // 続けるのを防ぐ。声の記録のダイヤルで踏んだのと同じ罠)。
       const vel = performance.now() - d.lastT > FLICK_IDLE_MS ? 0 : d.vel;
-      const moved = -(e.clientY - d.y) / spanOf();
+      // ★送る判断は**画面**の高さで測る(上の SNAP_RATIO)。追従(--cam)は
+      //   世界の側(spanOf)で測る。ここを取り違えると指が届かない。
+      const moved = -(e.clientY - d.y) / (rootRef.current?.getBoundingClientRect().height || window.innerHeight);
       const flick = Math.abs(vel) > FLICK_V;
       let next = d.from;
       if (flick) next = d.from + (vel < 0 ? 1 : -1);
@@ -216,6 +291,8 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       // ★行き先は必ず自分で書く。タブが変わらないとき(行き止まり・戻り)は
       //   下の goTab が走らないので、ここが唯一の戻し役になる。
       cam?.style.setProperty("--cam", String(next));
+      setPlan(next >= 2);
+      setUnder(next === 3);
       if (next !== d.from) {
         byDragRef.current = true;
         haptic(8);
@@ -241,7 +318,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       window.removeEventListener("pointercancel", up);
       window.removeEventListener("touchmove", touchMove);
     };
-  }, [goTab, blow]);
+  }, [goTab, blow, setPlan, setUnder]);
 
   return (
     <main
@@ -256,14 +333,31 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
         onPointerDown={onPointerDown}
         style={{ position: "absolute", inset: 0, ["--cam" as string]: idx, ["--cam-span" as string]: `${CAM_SPAN}%` }}>
 
-        <Layer at={0}>
+        <Layer at={0} face="elev">
           <DriftTab {...tabProps} appActive={appActive} dragged={draggedRef} />
         </Layer>
 
         {/* ★重力層も active(このアプリが表示中か)を受け取る。物理の rAF を
             「表示中かつ起きている物体があるとき」だけ回すため。 */}
-        <Layer at={1}>
-          <GravityTab {...tabProps} appActive={appActive} dragged={draggedRef} />
+        <Layer at={1} face="elev">
+          {/* ★見下ろしへ向かうときは**床を開ける**。図形は重力のまま下へ
+              落ちて画面から消える ― 消すのではなく、落ちて無くなる。 */}
+          <GravityTab {...tabProps} appActive={appActive} dragged={draggedRef} floorOpen={idx >= 2} />
+        </Layer>
+
+        <Layer at={2} face="plan">
+          <TopView tasks={tabProps.appState.tasks ?? []} onDive={dive} />
+        </Layer>
+
+        <Layer at={3} face="plan">
+          <div ref={underRef} className="cam-dive" style={{ position: "absolute", inset: 0 }}>
+            <Underground
+              appState={tabProps.appState}
+              persist={tabProps.persist}
+              iso={diveIso}
+              active={idx === 3}
+            />
+          </div>
         </Layer>
       </div>
 
@@ -285,7 +379,10 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       {/* ★アプリ名の札は**カメラに乗らない**(画面に固定)。層と一緒に流すと、
           同じ「TASK」の札が2枚すれ違って見える。層の名前は層の側が持つ。 */}
       <div style={{ position: "absolute", top: TAB_PAD_TOP, left: 16, right: 16, pointerEvents: "none", zIndex: 3 }}>
-        <Masthead title={appTitle("tasks")} corner={<span style={{ pointerEvents: "auto" }}>{profileButton}</span>} />
+        {/* ★地中では**アプリ名を出さない**。札は `INK` で描くので黒い地に
+            沈むうえ、地中が自分で持つ大きな日付とぶつかる。設定の丸だけ残す
+            (白い丸なので黒地でも読める)。 */}
+        <Masthead title={idx === 3 ? "" : appTitle("tasks")} corner={<span style={{ pointerEvents: "auto" }}>{profileButton}</span>} />
       </div>
     </main>
   );
@@ -298,9 +395,15 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
  * 止まる(実際に踏んだ: 器を 140% 動かすのに層は 100% 間隔のままで、
  * GRAVITY が画面の 40% ぶん上へ行き、床がタブバーより 338px 高くなった)。
  */
-function Layer({ at, children }: { at: number; children: React.ReactNode }) {
+function Layer({ at, children, face }: { at: number; children: React.ReactNode; face: "elev" | "plan" }) {
   return (
-    <div style={{ position: "absolute", left: 0, right: 0, top: `${at * CAM_SPAN}%`, height: "100%" }}>
+    <div
+      className="task-layer"
+      // ★立面(elev)か見下ろし(plan)か。境目を跨ぐと CSS 側が scaleY で
+      //   すれ違わせる(`app/globals.css` の「立面 → 見下ろし のすり替え」)。
+      data-elev={face === "elev" ? "" : undefined}
+      data-plan-face={face === "plan" ? "" : undefined}
+      style={{ position: "absolute", left: 0, right: 0, top: `${at * CAM_SPAN}%`, height: "100%" }}>
       {children}
     </div>
   );

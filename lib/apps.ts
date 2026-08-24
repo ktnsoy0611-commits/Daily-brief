@@ -44,8 +44,12 @@ export const APPS: AppDef[] = [
     label: "タスク",
     en: "TASK",
     tabs: [
+      // ★★並びが**そのまま上→下**。下の層へ行くほど印が右へ滑る。
+      //   `components/tasks/TaskSpace.tsx` の `TASK_LAYERS` と必ず揃えること。
       { id: "tasks-drift", label: "候補", en: "DRIFT", icon: "drift" },
       { id: "tasks-gravity", label: "タスク", en: "GRAVITY", icon: "pile" },
+      { id: "tasks-top", label: "日付", en: "TOP", icon: "holes" },
+      { id: "tasks-under", label: "地中", en: "UNDER", icon: "strata" },
     ],
   },
   {

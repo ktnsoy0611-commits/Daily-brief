@@ -458,7 +458,9 @@ export type LifeTabId = "brief" | "stock" | "goals" | "execute";
 // 廃止した。「何が差し迫っているか」は日付の文字ではなく**物体の大きさと
 // 山の高さ**が語る。drift=未確定の候補が無重力で漂う / gravity=確定した
 // タスクが落ちて積み上がる。
-export type TasksTabId = "tasks-drift" | "tasks-gravity";
+// ★4層が1本の縦の空間に積まれている。**並びがそのまま上→下**
+// (components/tasks/TaskSpace.tsx の TASK_LAYERS と必ず揃える)。
+export type TasksTabId = "tasks-drift" | "tasks-gravity" | "tasks-top" | "tasks-under";
 // アーカイブ(旧・独立タブ)はジャーナルへ統合した。「レコード」=カセット
 // プレイヤーをタップして声で記録する、「今日」=その日の記録、
 // 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10)。

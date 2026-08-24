@@ -73,13 +73,32 @@ export function setSurfaceOrigin(el: Element | null): void {
 }
 
 /**
- * 円が広がる中心(＝閉じるときに吸い込まれる先)。★控えが無いとき
- * (＋以外から開いた・別のタブに居る)は **画面下端の中央**を終点にする —
- * どこへ帰るか分からないより、一貫した場所へ吸い込まれる方が落ち着いて見える。
+ * 円が広がる中心(＝閉じるときに吸い込まれる先)。
+ *
+ * ★★控えが無いとき(図形を直接たたいて開いたとき)は **右下の「作る」の丸**
+ * (`[data-create-anchor]`)へ帰す(2026-08-24にユーザー指定「毎回右下の
+ * アイコンにアニメーションして戻っていくように」)。
+ *
+ * ★以前は「画面下端の中央」を終点にしていたが、そこには**何も無い**。
+ * 吸い込みは円の半径をボタンの大きさまで縮めて終わる(0 にはしない)ので、
+ * 帰り先に黒い丸が無いと **入力画面の地の色をした 54px の円がぽつんと
+ * 残って見えた**(実機で報告)。丸は「黒いボタンの上に重なって消える」ことで
+ * 初めて消えて見える。**行き先は必ず実在する丸にすること。**
  */
 export function surfaceOrigin(): SurfaceOrigin {
   if (origin) return origin;
+  if (typeof document !== "undefined") {
+    // ★3アプリぶん DOM に居るので、**画面の中に見えている**ものを選ぶ。
+    const w = window.innerWidth;
+    for (const el of Array.from(document.querySelectorAll("[data-create-anchor]"))) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.left >= -1 && r.right <= w + 1) {
+        return { x: r.left, y: r.top, w: r.width, h: r.height };
+      }
+    }
+  }
+  // どうしても見つからないときだけ、右下のおおよその場所。
   const w = typeof window === "undefined" ? 390 : window.innerWidth;
   const h = typeof window === "undefined" ? 844 : window.innerHeight;
-  return { x: w / 2 - 27, y: h - 96, w: 54, h: 54 };
+  return { x: w - 78, y: h - 96, w: 52, h: 52 };
 }

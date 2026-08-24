@@ -114,10 +114,12 @@ const sameShape = (a: SolidSpec, b: SolidSpec) =>
   a.sides.length === b.sides.length
   && Math.abs(a.w - b.w) < 1e-6 && Math.abs(a.h - b.h) < 1e-6;
 
-export function GravityTab({ appState, persist, showToast, appActive, dragged }: TabProps & {
+export function GravityTab({ appState, persist, showToast, appActive, dragged, floorOpen }: TabProps & {
   appActive?: boolean;
   /** 縦へ払ったあとの tap を落とすための札(`TaskSpace` が持つ)。 */
   dragged?: React.MutableRefObject<boolean>;
+  /** ★床を開けるか。見下ろし(TOP VIEW)へ向かうあいだ真になる。 */
+  floorOpen?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // まだ焼けていない立体が残っているか。残っている間はループを止めない。
@@ -314,6 +316,28 @@ export function GravityTab({ appState, persist, showToast, appActive, dragged }:
   }, [wake, planPile]);
   dropAllRef.current = dropAll;
 
+  // ★★床の開け閉め(第38巡)。見下ろし(TOP VIEW)へ向かうときは床を外して
+  //   山を落とし、地上へ戻ってきたら床を張り直して**もう一度落とし直す**。
+  //   落ちて出ていったものを拾い上げるのではなく、上から降らせ直す ―
+  //   地上へ戻る = もう一度積む、という筋の方が自然で、`dropAll` が既に
+  //   その仕事をしている。
+  const floorOpenRef = useRef(false);
+  const firstFloorRef = useRef(true);
+  useEffect(() => {
+    const open = floorOpen === true;
+    if (floorOpenRef.current === open) return;
+    floorOpenRef.current = open;
+    // 初回(まだ何も無い)は何もしない。
+    if (firstFloorRef.current) { firstFloorRef.current = false; if (!open) return; }
+    const M = matterRef.current;
+    const engine = engineRef.current;
+    const { w, h } = sizeRef.current;
+    if (!M || !engine || !w) return;
+    rebuildWalls(M, engine, w, h, !open);
+    if (open) wake();
+    else dropAllRef.current();
+  }, [floorOpen, wake]);
+
   // ★ネーム / タグの切り替えは**載る文字が変わるだけ**(2026-08-16にユーザー
   // 確定)。形も位置も同じなので、山は一切動かさず絵だけ差し替える。
   useEffect(() => {
@@ -333,24 +357,26 @@ export function GravityTab({ appState, persist, showToast, appActive, dragged }:
       const M = await import("matter-js");
       if (disposed) return;
       matterRef.current = M;
-      const r = el.getBoundingClientRect();
-      sizeRef.current = { w: r.width, h: r.height };
+      // ★変形後ではなく**レイアウトの寸法**で測る(層は見下ろしへ移るあいだ
+      //   scaleY で畳まれるので、rect で測ると物理の器が潰れる)。
+      sizeRef.current = { w: el.offsetWidth, h: el.offsetHeight };
       const engine = M.Engine.create({ enableSleeping: true });
       engine.gravity.y = 1.4;
       engineRef.current = engine;
-      rebuildWalls(M, engine, r.width, r.height);
+      rebuildWalls(M, engine, sizeRef.current.w, sizeRef.current.h);
       draw();
       setReady(true);
     };
     setup();
 
     const ro = new ResizeObserver(() => {
-      const r = el.getBoundingClientRect();
-      if (Math.abs(r.width - sizeRef.current.w) < 0.5 && Math.abs(r.height - sizeRef.current.h) < 0.5) return;
-      sizeRef.current = { w: r.width, h: r.height };
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (Math.abs(w - sizeRef.current.w) < 0.5 && Math.abs(h - sizeRef.current.h) < 0.5) return;
+      sizeRef.current = { w, h };
       const M = matterRef.current;
       const engine = engineRef.current;
-      if (M && engine) { rebuildWalls(M, engine, r.width, r.height); wake(); }
+      if (M && engine) { rebuildWalls(M, engine, w, h, !floorOpenRef.current); wake(); }
     });
     ro.observe(el);
     return () => {
@@ -519,7 +545,15 @@ export function GravityTab({ appState, persist, showToast, appActive, dragged }:
           onCommit={(d) => patch(open.id, d)}
           onConfirm={(d) => complete(open, d)}
           onDelete={() => remove(open.id)}
-          onClose={(d) => patch(open.id, d)}
+          // ★★閉じたら**必ず開いている印を下ろす**(2026-08-24)。
+          //   `patch` は書いて保存するだけで、`openId` を下ろさなかったため
+          //   `TaskComposer` が**一度も外れなかった**。実害が2つ出ていた:
+          //     ・吸い込みの円は半径0まで縮まない(帰り先の丸の大きさで止まる)
+          //       ので、外れないまま**黒い丸が残って見えた**。
+          //     ・入力画面が html に立てる `[data-overlay]` も外れず、
+          //       タスクアプリの器が触りを握れないまま = **上下スワイプが
+          //       効かない**。実機で報告された2件は、どちらもこれ1つが原因。
+          onClose={(d) => { patch(open.id, d); setOpenId(null); }}
         />
       )}
     </div>
@@ -649,13 +683,16 @@ export function pileOf(
 /** 器の左右と床。器の大きさが変わるたびに作り直す。
  *  床はタブバーの下ではなく、その少し上に置く(タブバーの裏に積まれると
  *  何が積まれているのか見えなくなるため)。 */
-function rebuildWalls(M: typeof import("matter-js"), engine: Engine, w: number, h: number) {
+function rebuildWalls(M: typeof import("matter-js"), engine: Engine, w: number, h: number, withFloor = true) {
   const old = M.Composite.allBodies(engine.world).filter((b) => b.isStatic);
   M.Composite.remove(engine.world, old);
   const T = 200;
   const floorY = h - navHeightPx();
+  // ★床を外すと、山はそのまま重力で下へ落ちて画面から出ていく。物体を
+  //   消すのではなく**落として無くす** ― 見下ろしへ移る前置きなので、
+  //   「消えた」ではなく「落ちた」に見えないと意味が無い。
   M.Composite.add(engine.world, [
-    M.Bodies.rectangle(w / 2, floorY + T / 2, w + T * 2, T, { isStatic: true, friction: 0.6 }),
+    ...(withFloor ? [M.Bodies.rectangle(w / 2, floorY + T / 2, w + T * 2, T, { isStatic: true, friction: 0.6 })] : []),
     M.Bodies.rectangle(-T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4 }),
     M.Bodies.rectangle(w + T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4 }),
   ]);

@@ -49,23 +49,19 @@
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
 
 ## タスク（TASK）
-**4層が1本の縦の空間**に積まれ、画面の切り替えではなく**カメラの上下移動**で行き来する
-（第38巡）。上から DRIFT →GRAVITY →TOP VIEW →UNDERGROUND。
-- `components/tasks/TaskSpace.tsx` — **縦のカメラの器**。層の並び・`--cam` の駆動・
-  縦のドラッグ・画面に固定した `Masthead` はここ1つ。**タブ構成を足したらここも直す**。
-- `components/tasks/LayerName.tsx` — 層の名前（DRIFT / GRAVITY / TOP）。層と一緒に流れる。
+**タスク図形は常に GRAVITY 空間にだけ在る**（第52巡に TOP/UNDER と縦のカメラを破棄）。
+別画面へ遷移せず、スワイプで**GRAVITY の物理法則を一時的に変える**ことで詳細リスト
+（ALIGN）と俯瞰（TIMELINE）を見せる。タブは DRIFT（候補）＋ GRAVITY の2つ。
+- `components/tabs/GravityTab.tsx` — **タスクの本体**。matter.js の山（pile）と、
+  **3つの物理モード**（`pile` / `align` / `timeline`）。左端→右スワイプで ALIGN
+  （面積の降順に整列＋右に詳細リスト、残り日数を特大に）、下→上スワイプで TIMELINE
+  （巨大な曜日 TODAY/WED… が仕切りとして立ち、図形が日付レーンへ吸着・横スクロール）。
+  逆方向のスワイプで山へ戻る。モードは重力の切替＋アトラクタ（毎フレーム目標へ寄せる）。
+- `components/tasks/TaskSpace.tsx` — **薄い器**。GRAVITY を常時マウント（山を保つ）、
+  DRIFT タブのときだけ上に重ね、画面に固定した `Masthead`（TASK）を持つだけ。
+- `components/tasks/LayerName.tsx` — 層の名前（GRAVITY / DRIFT）を右上に置く。
 - `components/tabs/DriftTab.tsx` — 候補が**無重力で漂う**層（1枚の canvas＋matter.js）。
   ホールドで図形を運び、右下から出る**口＝完了 / ゴミ箱＝削除**へ落とす（第44巡）。
-- `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。地上の層。
-- `components/tasks/TopView.tsx` — 見下ろし。黒い穴のカレンダー（月曜始まり・
-  Helvetica）。横に払って前後の月。左下に月の見出し。
-- `components/tasks/Underground.tsx` — 地中。上に地表（明るい帯・黒字の日付）、
-  左に穴の断面、右にその日の一覧。**ここだけ暗い**。
-- `components/tasks/UnderHole.tsx` — 穴の断面（抽象的なグレーの縦の帯・matter.js）。
-  地表と繋がり、その日のタスクが**一段に一個**落ちて積もり、最後に曜日の文字
-  （枠なし）が降って蓋をする。
-  ★層の中で寸法を測るときは `offsetWidth/offsetHeight`（`getBoundingClientRect` は
-  変形後の箱を返すので、`scaleY` で潰れた層では縮んで見える）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
   `WhenSheet`（日程。**ここだけキーボードを閉じる**）/ `ComposerToolbar` /
   `ComposerFields`（重要度・タグ・テキスト）/ `Popover`（器と `Press`＝押せる面）/
@@ -132,13 +128,11 @@
 3. **動きは `app/globals.css` の `:root` と `lib/motion.ts` から引く。**
    曲線4本・時間5つ・環境ループ5つ。**新しい数字を足さない。**
    直書きの `cubic-bezier` と `0.3s` を書かない。対称な `ease` / `ease-in-out` は
-   環境ループ以外で使わない。
-   ★唯一の例外が **`--t-cam` / `--ease-cam`（タスクのカメラ専用）**。
-   `components/tasks/TaskSpace.tsx` の外へ持ち出さないこと（第38巡）。
-   ★★**`perspective`+`rotateX` は TaskSpace の `.task-layer` だけの例外**
-   （第43巡・ユーザーが「パースを効かせて立体感を」と要求）。向きは「奥へ受け身に
-   倒す＋下から上がる」＝床が奥へ退くパース。角丸/影/clip を持たない素の面にだけ
-   掛けて Safari の古傷を避ける。詳細は `docs/project_knowledge.md` §4「カメラ」。
+   環境ループ以外で使わない。CSS の 3D 変形（`perspective`/`rotateX/Y`）も使わない。
+   ★第52巡に**縦のカメラを撤去**し、カメラ専用の `--t-cam` / `--ease-cam` と
+   `perspective`+`rotateX` の例外も**無くなった**。GRAVITY の物理モード（ALIGN/
+   TIMELINE）の動きは既存の語彙（`--t-item`/`--t-in`/`--ease-*`）と matter.js の
+   アトラクタで作る（力の係数は matter の座標系なので生数字でよい）。
 4. **JS のタイマーは `ms(T_OUT)` のように語彙から引く。** 数字を書き写すと、
    CSS だけ変えたときに閉じ切る前に消える。
 5. **押せる面は `components/Button.tsx`。** 入力画面は `Press`、それ以外は

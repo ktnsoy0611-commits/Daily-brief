@@ -20,62 +20,42 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 第29〜36巡で「上下の帯」を解決（`docs/archive/shell-redesign-2026-08.md` §56 —
 同じ手を二度試さないこと）。第36巡で追加口を輪へ一本化。第37巡で GRAVITY の
 床の実バグを直し、iOS の `theme-color` 無効を確定。
-★**第38〜39巡でタスクアプリを「縦の空間＋カメラ」へ作り替え、4層すべてを
-実装した**。仕様は `docs/project_knowledge.md` §4「縦の空間とカメラ」。
+第38〜44巡でタスクアプリを「縦の空間＋カメラ」＋4層（DRIFT/GRAVITY/TOP/UNDER）
+にしたが、★**第52巡にそれを大きく作り替えた**（下記）。現行仕様は
+`docs/project_knowledge.md` §4「GRAVITY の物理モード」。
 
 ---
 
-## 直近で完了したこと（第44巡）— UNDER の入り方・DRIFT の無重力・穴の物理
+## 直近で完了したこと（第52巡）— TOP/UNDER 破棄、GRAVITY を物理モード化
 
-ユーザーの4点指定:
+「図形が GRAVITY に積まれているのに同時に別画面（TOP/UNDER）にも在る」のは物理の
+メタファーとして破綻、というユーザー指摘。**TOP/UNDER と縦のカメラを完全に破棄**し、
+タスク図形は**常に GRAVITY 空間にだけ在る**ようにした。詳細リスト・俯瞰は画面遷移
+ではなく **GRAVITY 内の物理モード**（matter.js の重力切替＋アトラクタ）で見せる。
 
-1. ★**UNDER は真横の断面**なので、パース（rotateX）をやめ**下から真っ直ぐ
-   スライド**するだけにした（UNDER 行を全シーン `rotateX=0`・`ORIGIN[3]`=`50% 50%`。
-   `RX_UNDER` 定数を撤去）。
-2. ★★**DRIFT を無重力の場へ作り直した**（`DriftTab` 全面書換）。規定の格子をやめ、
-   1枚の canvas＋matter.js（重力0）で候補を**漂わせる**。図形を**ホールドで運べる**
-   （`static` 化）。無重力なので放すと滑る（`FLING`）。
-3. ★★**口とゴミ箱**。ホールドすると右下の黒い丸から**口（上）とゴミ箱（下）**が
-   滑り出し、**口で離す＝完了（accept）/ ゴミ箱で離す＝削除（reject）**。ホバーで
-   `.hot`（口は開く・ゴミ箱は震える・色）、離すと `[data-fire]`（噛む・落ちる）。
-   CSS は `.drift-target`（`app/globals.css`）。時間は語彙から。
-4. ★**UNDER の穴の物理を効かせた**。左右の壁を平行四辺形の傾き（`SKEW`）に
-   合わせ、`FILL` を 0.86→**0.96**（穴の幅≒図形の幅）に。傾いた断面でも図形が
-   宙に浮かず一段に一個積む。
+1. ★★**GRAVITY をモード化**（`GravityTab`。`modeRef`=pile/align/timeline）。既存の
+   山（pile）の機構はそのまま土台に。`align`/`timeline` では重力0＋`isSensor`で
+   各 body を毎フレーム目標へ lerp、`pile` へ戻すとき重力を戻して `dropAll` で降らせ直す。
+2. ★**ALIGN PRESS**（左端→右）… 面積の降順に左へ一列＋右にスイス体の詳細リスト。
+   **残り日数を特大**（`SWISS_XL` の数字＋小 `DAYS`。今日=TODAY/過ぎ=OVER/なし=—）。
+3. ★**MAGNETIC TIMELINE**（下→上）… 巨大な曜日（TODAY/WED/THU…英字3文字）が仕切りに
+   立ち、図形が `dueDate` の日付レーンへ吸着。左右スワイプで横スクロール。
+   リスケジュールは `reschedule(id, ymd)` フックまで（ドラッグの詰めは段階的）。
+4. ★**掃除**… `TaskSpace` を薄い器へ（GRAVITY 常時マウント＋DRIFT を重ねるだけ）。
+   `TopView`/`Underground`/`UnderHole` を削除、`lib/apps.ts` から TOP/UNDER タブと
+   `TabIcons` の holes/strata を削除、`.task-layer`/`.cam-*` と `--t-cam`/`--ease-cam`/
+   `T_CAM`/`EASE_CAM` を撤去（例外語彙が無くなった）。
 
 ### 検証
-`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓、`space38`(13群)・`bugs38`
-全部OK（[3]・[13] を canvas 物理に合わせて書き直した）。Chromium で「UNDER が
-下から真っ直ぐ上がる」「図形が漂う」「ホールドで口/ゴミ箱が出てホバー反応・
-落として完了/削除」を目視・数値で確認。★★**実機 Safari 未確認**。
+`tsc`/`eslint`/機械チェック4本/本番ビルド ✓。新規 `scratchpad/modes52.mjs`（Playwright）で
+ALIGN（面積降順に整列・残り日数が特大72px）・TIMELINE（曜日3つ立つ・TODAY 先頭・横
+スクロール）・pile へ戻る、を確認。★★**実機 Safari 未確認**。
+★v1 の粗さ: TIMELINE のレーン内で図形が1つ帯の外へ寄ることがある（要磨き）。
 
----
-
-## 直近で完了したこと（第42〜43巡・要点だけ）
-
-カメラを per-layer（各層 `[translateY%, rotateX°]` の `SCENES`）へ。第43巡に
-**`perspective`+`rotateX`** を足して立体感を強めた（奥へ倒す＋下から上がる＝床が
-奥へ退くパース。`P`=620・`RX_FLOOR`=74。角丸/影/clip の無い素の面だけに掛ける）。
-UNDER に地表（明るい帯＋黒字の日付）／穴の断面（傾いた平行四辺形・硬い境目）。
-★第44巡で UNDER のパースは撤去（真横の断面のため）。
-
----
-
-## 直近で完了したこと（第40〜41巡・要点だけ）
-
-遷移を二段に分け（`schedule()`。図形を落としてからカメラを向ける等）、TOP を
-スイスのカレンダー（月曜始まり・黒い穴・Helvetica）へ、UNDER を穴の断面へ
-（`UnderHole`。一段一個・曜日の蓋）。`HELV`/`SWISS_*` を constants に足した。
-
----
-
-## 直近で完了したこと（第39巡・要点だけ）
-
-★実機報告の2件（閉じたあと黒い丸が残る／上下スワイプが効かない）は**原因が1つ** ―
-入力画面の `onClose` が `openId` を下ろさず `TaskComposer` が一度も外れなかった。
-下ろすようにし、吸い込みの帰り先を右下の「作る」の丸へ、器に `touch-action: none`
-（入力中と地中は auto）を置いて直した。タブを4つ化。★層の中の寸法は
-`offsetWidth/offsetHeight` で測る（`getBoundingClientRect` は変形後の箱を返す）。
+### （参考）第44巡までの要点
+UNDER を真横スライドに・DRIFT を無重力＋口/ゴミ箱に・穴の物理（いずれも第52巡の
+GRAVITY 集約で TOP/UNDER 側は退役。DRIFT の無重力＋口/ゴミ箱は現役）。詳細は
+`docs/archive/task-app-2026-08.md`。
 
 ---
 
@@ -91,27 +71,22 @@ UNDER に地表（明るい帯＋黒字の日付）／穴の断面（傾いた�
 
 ## 次に着手すること
 
-1. ★★**実機で確認してもらう**（第38〜44巡ぶんが未確認）。カメラの動き
-   （GRAVITY↔TOP で穴が下から・床が奥へ退くパース／TOP↔UNDER で断面が**下から
-   真っ直ぐ**）、カレンダー、UNDER の地表＋傾いた断面＋穴の物理、**DRIFT の無重力＋
-   ホールドで口/ゴミ箱へ**。★GRAVITY↔TOP は **`rotateX` を使う**ので 3D の古傷
-   （深い rotateY×角丸×影×clip）を要確認 ― 素の面だけに掛けているので該当しないはず。
+1. ★★**実機で確認してもらう**（第52巡ぶん）。GRAVITY の **ALIGN**（左端→右で
+   面積降順に整列＋残り日数特大）・**TIMELINE**（下→上で曜日が立ち日付レーンへ吸着・
+   横スクロール）・逆スワイプで山へ戻る。**DRIFT の無重力＋口/ゴミ箱**も継続。
+   ★左端→右スワイプが隣アプリへの横払いと混線しないか要注意。
    ★**ホーム画面から追加し直してから**見ること。
-2. **触れる数字**… カメラ（`TaskSpace.tsx`／`:root`）: `--t-cam`(1400ms)・
-   `PHASE_K`(0.72)／`DROP_MS`(540)／`SEQ_MS`(560)・`P`(620)/`RX_FLOOR`(74)・`OFF`(122)。
-   DRIFT（`DriftTab.tsx`）: `HOLD_MS`(150)・`TAP_MOVE`(8)・`FLING`(0.9)・
-   `DRIFT_MIN/MAX`(0.16/1.0)・`W_RATIO/W_MAX`(0.30/148)。
-   穴（`UnderHole.tsx`）: `SKEW`(0.10)・`FILL`(0.96)。
-3. **輪の開閉・タブ切り替えの「点滅」を実機で切り分ける**。Chromium では
-   再現しない。「どのタイミングで」「何色から何色へ」を具体的に聞く。
-4. ★**`v7.mjs` が落ちるのを追う**（第33巡からの積み残し）。日程シートを開いた
-   あと、器のキーボード判定が「閉じた」と誤解して入力画面ごと閉じているように
-   見える。**実バグの可能性がある。**
-5. **Cowork のプロンプト更新**（`COWORK-ROUTINES.md`）… 候補の項目を
-   `いつ`（★**日付で書かせる**。YYYY-MM-DD）/ `道具・場所` / `持ち物` /
-   `タグ`（英字5つ）へ揃える。日付で書かれないと期日にならず、
-   `lib/inboxImport.ts` がメモへ回す。
-   ★**プロンプトの全文を提示して承認を得てから**実装する。
+2. ★**TIMELINE のレーン内の縦の詰め**を磨く（図形が1つ帯の外へ寄る v1 の粗さ）。
+   ドラッグでの**リスケジュール**（`reschedule` フックは用意済み）を仕上げる。
+3. **触れる数字**（`GravityTab.tsx`）… ジェスチャー `EDGE_PX`(26)・`SWIPE_PX`(44)・
+   `TAP_MOVE`(8)。アトラクタ `ATTRACT_K`(0.18)・`ANGLE_K`(0.80)・`SETTLE_PX`(0.5)。
+   ALIGN `ALIGN_BAND_MAX`(132)・`ALIGN_ROW_MAX`(108)。TIMELINE `LANES_VISIBLE`(3)・
+   `HORIZON`(14)・`LANE_PITCH`(64)・`LANE_HEAD_H`(84)。
+   DRIFT（`DriftTab.tsx`）: `HOLD_MS`(150)・`TAP_MOVE`(8)・`FLING`(0.9)。
+4. **DRIFT を GRAVITY へ集約するか**（今回は2タブのまま。ユーザーと別途相談）。
+5. **Cowork のプロンプト更新**（`COWORK-ROUTINES.md`）… 候補の `いつ` を**日付で
+   書かせる**（YYYY-MM-DD。TIMELINE のレーンは `dueDate` で束ねる）。日付が無いと
+   期日にならず `lib/inboxImport.ts` がメモへ回す。★**全文を提示して承認を得てから**。
 
 ## 未解決・持ち越し
 
@@ -124,8 +99,9 @@ UNDER に地表（明るい帯＋黒字の日付）／穴の断面（傾いた�
   （`lib/debugViewport.ts` / `components/tasks/ViewportProbe.tsx`）。
 - `.tc-lamp` は `.press` の別名として当分残してある（既存の18箇所を一度に
   書き換えないため）。手が空いたら `.press` へ寄せて別名を消す。
-- **層の名前（`LayerName`）の見え方**と、**地中から指で上へ戻る道の弱さ**
-  （一覧が送れる間はカメラを掴めない。タブバーからは戻れる）は実機で要確認。
+- **TIMELINE のレーン内の縦の詰め**が甘い（図形が1つ帯の外へ寄る）。要磨き。
+- **左端→右スワイプ（ALIGN）が隣アプリへの横払いと混線しないか**実機で要確認。
+- **DRIFT を GRAVITY へ集約するか**（今回は2タブのまま。別途相談）。
 
 ---
 
@@ -137,15 +113,12 @@ UNDER に地表（明るい帯＋黒字の日付）／穴の断面（傾いた�
 lib/constants.ts                   ★NAV_BOTTOM_GAP(比率式)／SANS(Helvetica+Noto Sans)
 app/layout.tsx                     ★Noto_Sans_JPの読み込み／appleWebApp.statusBarStyle
 components/CreateMenu.tsx          ★輪。閉じるアニメーション／半径配置(legibleAngle)
-components/tasks/TaskSpace.tsx     ★★縦のカメラの器。層の並び・--cam・縦のドラッグ
-components/tasks/LayerName.tsx     ★層の名前。層と一緒に流れる
+components/tabs/GravityTab.tsx     ★★タスク本体。物理モード(pile/align/timeline)・ジェスチャー・詳細DOM・曜日DOM
+components/tasks/TaskSpace.tsx     ★薄い器。GRAVITY常時マウント＋DRIFTを重ねる＋固定Masthead
+components/tasks/LayerName.tsx     層の名前(GRAVITY/DRIFT)を右上に
 components/tabs/DriftTab.tsx       ★無重力の場(canvas+matter.js)。ホールド→口/ゴミ箱
-components/tabs/GravityTab.tsx     地上の層。★床の開け閉め(floorOpen)
-components/tasks/TopView.tsx       ★見下ろし。黒い穴のカレンダー(月曜始まり・Helvetica)
-components/tasks/Underground.tsx   ★地中。左に穴の断面・右に一覧。黒地
-components/tasks/UnderHole.tsx     ★穴の断面(抽象的なグレー帯)。一段一個＋曜日の蓋(matter.js)
-app/globals.css                    ★.task-layer の transition(per-layer + rotateX)
-lib/motion.ts                      ★surfaceOrigin の帰り先=右下の丸([data-create-anchor])
+app/globals.css                    ★.mode-panel/.mode-lanes の入場keyframes(cam-* は撤去)
+lib/motion.ts                      ★T_CAM/EASE_CAM 撤去／surfaceOrigin の帰り先=右下の丸
 components/tasks/TaskAddButton.tsx TaskAddButton本体を撤去。DemoSeedButtonのみ残る
 lib/ground.ts                      地色。優先度つきの積み木・onGround・GROUND_EASE
 components/AppShell.tsx            列の横スライド／タブバー／輪の入口／NAV_H
@@ -178,17 +151,13 @@ Playwright は `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`、実体は
 DOMに存在するので、`boundingBox().x`が画面内(0〜390)のものだけを選ぶこと
 （`menu28.mjs`の`makeBtn()`が実装例）。
 
-主な回帰（`scratchpad/`）… **`space38`（★4層のカメラ）/ `bugs38`（★実機報告の
-2件: 吸い込みの行き先・上下スワイプ）**/
-`chin35`（上下の帯）/ `ground26`（地色）/
-`motion26`（動き）/ `rect24`（器の追従）/ `menu28`（作るものの輪。閉じる動き・
-半径配置も含む）/ `probe31`（数値表示）/ `when25` `pop21` `when20` `tap`
-`geo4` `v5`〜`v15`(`v9`はport 3000決め打ちで別件・`v7`は既知の不具合)
-`blink` `bake` `swipe` `seam` `junk` `text` /
-単体 `solid.test` `tag.test` `inbox.test`。
-★`v7` は落ちたまま（上記「次に着手すること」）。`drift2`（円環の送り）は
-第38巡に破棄。DRIFT の回帰は `space38` の [3]（漂い・ホールドで的が出る）と
-`drift-verify.mjs`（口/ゴミ箱へ落として完了/削除、`.hot`・`[data-fire]` を見る）。
+主な回帰（`scratchpad/`）… **`modes52`（★GRAVITY の物理モード: ALIGN 整列＋残り日数・
+TIMELINE 曜日＋レーン・横スクロール・pile へ戻る）/ `drift-verify`（DRIFT の口/ゴミ箱）**/
+`chin35`（上下の帯）/ `ground26`（地色）/ `motion26`（動き）/ `rect24`（器の追従）/
+`menu28`（作るものの輪）/ `when25` `pop21` `when20` `tap` `geo4` `blink` `swipe`。
+★`space38`/`bugs38`（4層カメラ前提）は**第52巡でカメラ撤去により無効**。
+`v5`〜`v15` のうち `v7` は既知の不具合で落ちたまま・`v9` は port 3000 決め打ち。
+（scratchpad は gitignore。テストはローカルのみ）。
 
 ## ユーザー側の作業（アプリの外）
 

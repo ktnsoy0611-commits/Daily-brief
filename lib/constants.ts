@@ -57,13 +57,14 @@ export const SANS = '"Helvetica Neue", Helvetica, var(--font-noto-sans-jp), "Not
 // Noto の字面に寄って、Helvetica の均一なグリッドが崩れるため。
 export const HELV = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
-// ★TOP / UNDER のスイス見出し(**表示専用の大きな Helvetica**)。`TYPE` の目盛りは
-// 本文のためのもので display(26)止まり。ブルータリズム/スイスの大きな見出しは
-// その外に居る ― `TAB_MARK`(52) などと同じ「部品の寸法」の例外(2026-08-24 に
-// ユーザーがこの見た目を指定)。★増やさない。使うのは TopView / Underground だけ。
-export const SWISS_XL = 72;   // 月の頭文字
-export const SWISS_LG = 64;   // 地中の日付
-export const SWISS_MD = 28;   // 月の数字
+// ★スイス見出し(**表示専用の大きな Helvetica**)。`TYPE` の目盛りは本文のための
+// もので display(26)止まり。ブルータリズム/スイスの大きな見出しはその外に居る ―
+// `TAB_MARK`(52) などと同じ「部品の寸法」の例外(2026-08-24 にユーザーがこの
+// 見た目を指定)。★増やさない。使うのは GRAVITY の ALIGN/TIMELINE の特大タイポ
+// (残り日数の数字・巨大な曜日ラベル。`GravityTab`)。
+export const SWISS_XL = 72;   // 残り日数の数字・曜日の見出し
+export const SWISS_LG = 64;   // (予備)
+export const SWISS_MD = 28;   // (予備)
 export const SERIF = SANS;
 export const DISPLAY = SANS;
 

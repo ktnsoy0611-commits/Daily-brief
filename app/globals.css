@@ -20,23 +20,9 @@
   --t-item: 420ms;    /* 中の要素ひとつ */
   --t-step:  50ms;    /* 時間差(視線誘導) */
 
-  /* ★★**カメラのパン専用の2つ**(2026-08-24・第38巡にユーザー確定で語彙を広げた)。
-     使ってよいのは `components/tasks/TaskSpace.tsx` の縦の空間だけ。
-
-     なぜ上の5つで足りないか … DRIFT は**宇宙**で、GRAVITY は**地上**。
-     この2つの間には距離があり、そこをカメラがひと息に降りていく、という
-     のがタスクアプリの空間の意味(直接そう描きはしない)。`--t-in`(700ms)の
-     「面が開く」速さで着いてしまうと、隣の画面へ切り替わっただけに見えて
-     距離が消える。**時間そのものが距離の表現**なので、ここだけ長く取る。
-
-     ★★`--ease-cam` は**対称**で、「対称な ease-in-out は環境ループ以外で
-     使わない」という第26巡の決めごとの**唯一の例外**。理由 … 上の4本は
-     どれも「初速が高い非対称の減速」で、UIの部品が定位置へ吸着する動き。
-     カメラは部品ではなく**乗り物**で、重いものが止まった状態から動き出し、
-     速度に乗り、また止まる。ゆっくり始まって加速して、ゆっくり終わる形
-     でないと「大胆にパンした」に見えない。★これを他の場所へ持ち出さないこと。 */
-  --t-cam:    1400ms;
-  --ease-cam: cubic-bezier(0.83, 0, 0.17, 1);
+  /* ★第52巡に**カメラ専用の `--t-cam` / `--ease-cam` を撤去**した。縦のカメラを
+     やめ、GRAVITY の物理モード(ALIGN/TIMELINE)へ作り替えたため、乗り物のための
+     長い対称カーブは要らなくなった。曲線4本・時間5つに戻る。 */
 
   /* ★★**環境の動き**(止まらずに回り続けるもの)は、上の5つの対象外。
      状態の遷移ではないので「開く/閉じる/押す」の語彙に乗らない。
@@ -467,33 +453,32 @@ button:active {
   @keyframes inbox-drift { 0%, 100% { transform: none; } }
 }
 
-/* ── タスクアプリのカメラ(components/tasks/TaskSpace.tsx) ──────────────
-   4層 DRIFT(浮遊) / GRAVITY(地上) / TOP(見下ろし) / UNDER(地中) を、**各層
-   それぞれの translateY と scaleY** で動かす(第42巡に per-layer の2Dへ)。
-   カメラは1つの器を動かすのではなく、層ごとの出入りが合わさって視点の動きに
-   見える、という作り。「どちらから入り、どちらへ抜けるか」を層ごとに決められる。
+/* ── GRAVITY の物理モードの重なり(components/tabs/GravityTab.tsx) ──────
+   第52巡に**縦のカメラを撤去**(TOP/UNDER を破棄)。タスク図形は常に GRAVITY に
+   だけ在り、詳細リスト(ALIGN)と俯瞰(TIMELINE)は matter.js の物理モードで見せる。
+   図形そのものは canvas の物理が動かす。ここは**その上に重ねる DOM**
+   (ALIGN の詳細リスト・TIMELINE の巨大な曜日ラベル)の出入りだけ。 */
 
-   ★★**CSS の 3D 変形(perspective / preserve-3d / rotateX/rotateY)は使わない。**
-   このコードベースは CSS の 3D で Safari の描画崩れを5回踏んでいる。見下ろしの
-   pitch は **scaleY の圧縮**で作る(遠くの地面ほど縦に潰れて見える、を
-   「地面が起き上がる/伏せる」に使う)。居場所は JS が `TaskSpace` の `SCENES`
-   から ref 越しに transform を書く。`--cam-k` は「今回どれだけ動くか」の割合。 */
-.task-cam:not([data-drag]) .task-layer {
-  transition: transform calc(var(--cam-k, 1) * var(--t-cam)) var(--ease-cam);
+/* ALIGN … 図形が左へ整列するのに合わせ、右の詳細行が順にスライドインする。
+   1行ずつ `--i` ぶん遅らせる(段差)。時間・曲線は共通の語彙から。 */
+.mode-panel .mode-row {
+  animation: mode-row-in var(--t-item) var(--ease-settle) both;
+  animation-delay: calc(var(--i, 0) * var(--t-step));
 }
-/* 指で引いているあいだは追従。落ち着かせる時間を挟むと指から遅れる。 */
-.task-cam[data-drag] .task-layer { transition: none; }
+@keyframes mode-row-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
 
-/* ★★**縦のジェスチャーはこの器のもの**だとブラウザに先に伝える(実機で
-   「上下スワイプがなかなか効かない」)。これが無いと iOS は指が下りた瞬間に
-   自分の送りを始め、pointermove が pointercancel に化けて掴む前に死ぬ。
-   ★★入力画面が開いている間と地中は `auto` へ戻す(オーバーレイは内側に出る/
-   地中は一覧を送るため)。印は `[data-overlay]` をそのまま見る。 */
-.task-cam { touch-action: none; }
-[data-overlay] .task-cam, .task-cam[data-under] { touch-action: auto; }
+/* TIMELINE … 巨大な曜日が下から立ち上がる(仕切り)。閉じると倒れる。 */
+.mode-lanes { animation: mode-lanes-rise var(--t-in) var(--ease-sheet) both; }
+@keyframes mode-lanes-rise {
+  from { opacity: 0; transform: translateY(120%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .task-cam .task-layer { transition: none; }
+  .mode-panel .mode-row, .mode-lanes { animation: none; }
 }
 
 /* ── DRIFT の「掴んで捨てる/食べる」ターゲット(components/tabs/DriftTab.tsx) ──
@@ -529,50 +514,6 @@ button:active {
   .drift-target, .drift-target .mouth-lip { transition: none; }
   .drift-target.hot[data-kind="trash"] svg, .drift-target[data-fire],
   .drift-target[data-fire] .mouth-lip, .drift-target[data-fire] svg { animation: none; }
-}
-
-/* ── パン中の風(効果線) ────────────────────────────────────────────
-   カメラが層のあいだを通り抜けている間だけ、画面に**細い縦の筋**が流れる。
-   降りているときは筋が上へ、昇っているときは下へ ― 止まっている粒の横を
-   自分が動いている、という見え方。★**少しだけ**(ユーザー指定)。読むものの
-   前に出る飾りなので、濃さは筋ごとに 0.2 未満に留める。
-   ★時間と曲線はカメラと同じものを引く。別々に持つと、風だけがカメラより
-   先に着いたり遅れたりして「板に貼った絵」に見える。 */
-.cam-wind { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-/* ★筋の**箱はみな同じ高さ**にして、見えている部分だけをグラデーションの
-   止め位置(`--a`〜`--b`)で変える。箱の高さを筋ごとに変えると、下の
-   translate の % は「その要素自身の高さ」が基準なので進む量がばらばらになり、
-   カメラと合わなくなる。★長さを揃えたまま流すと、筋の端が**一直線に揃って
-   カーテンのように見えた**(実際にそうなった)ので、長さと位置は必ずばらす。 */
-.cam-streak {
-  position: absolute; top: 0; height: 60%; width: 2px; opacity: 0;
-  background: linear-gradient(to bottom,
-    transparent var(--a), var(--streak) calc(var(--a) + 7%),
-    var(--streak) calc(var(--b) - 7%), transparent var(--b));
-}
-.cam-wind[data-blow] .cam-streak {
-  animation: cam-streak-down calc(var(--cam-k, 1) * var(--t-cam)) var(--ease-cam) both;
-}
-.cam-wind[data-blow="up"] .cam-streak { animation-name: cam-streak-up; }
-
-/* 降りる = 筋は下から上へ。translate の % は**その筋自身の高さ**が基準
-   (器の 60%)なので、器の外(下)から器の外(上)まで出すには 170% / -105%。 */
-@keyframes cam-streak-down {
-  0%   { transform: translateY(170%); opacity: 0; }
-  18%  { opacity: 1; }
-  82%  { opacity: 1; }
-  100% { transform: translateY(-105%); opacity: 0; }
-}
-@keyframes cam-streak-up {
-  0%   { transform: translateY(-105%); opacity: 0; }
-  18%  { opacity: 1; }
-  82%  { opacity: 1; }
-  100% { transform: translateY(170%); opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .task-cam { transition: none; }
-  .cam-wind { display: none; }
 }
 
 /* 提案を考えている間のくるくる。タスク詳細の「手配を確認する」で使う。 */

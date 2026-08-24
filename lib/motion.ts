@@ -24,19 +24,9 @@ export const T_OUT = 0.6;
 export const T_ITEM = 0.42;
 export const T_STEP = 0.05;
 
-/**
- * ★★**カメラのパン専用**(2026-08-24・第38巡にユーザー確定)。CSS の
- * `--t-cam` / `--ease-cam` と同じ値。使ってよいのは
- * `components/tasks/TaskSpace.tsx` の縦の空間だけ。
- *
- * DRIFT(宇宙)と GRAVITY(地上)のあいだには距離があり、**時間そのものが
- * その距離の表現**なので、上の5つより長く取る。`EASE_CAM` は**対称**で、
- * 「対称な ease-in-out は環境ループ以外で使わない」の唯一の例外
- * (カメラは定位置へ吸着する部品ではなく**乗り物**。動き出し・加速・停止が要る)。
- * ★他の場所へ持ち出さないこと。理由の全文は `app/globals.css` の `:root`。
- */
-export const T_CAM = 1.4;
-export const EASE_CAM = [0.83, 0, 0.17, 1] as const;
+// ★第52巡に**カメラ専用の語彙 `T_CAM` / `EASE_CAM` を撤去**した。縦のカメラを
+//   やめ、GRAVITY の物理モード(ALIGN/TIMELINE)へ作り替えたため、乗り物の
+//   ための長い対称カーブは要らなくなった。曲線4本・時間5つに戻る。
 
 /**
  * ★**JS のタイマーが CSS の動きと噛み合うため**のミリ秒版(第33巡)。

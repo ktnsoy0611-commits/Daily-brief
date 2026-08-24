@@ -44,12 +44,11 @@ export const APPS: AppDef[] = [
     label: "タスク",
     en: "TASK",
     tabs: [
-      // ★★並びが**そのまま上→下**。下の層へ行くほど印が右へ滑る。
-      //   `components/tasks/TaskSpace.tsx` の `TASK_LAYERS` と必ず揃えること。
+      // ★第52巡に TOP/UNDER を破棄。タスク図形は常に GRAVITY にだけ在り、詳細リスト
+      //   (ALIGN)・俯瞰(TIMELINE)は GRAVITY 内の物理モードで見せる(GravityTab)。
+      //   DRIFT(候補の無重力の場)は当面タブとして残す(GRAVITY への集約は別途)。
       { id: "tasks-drift", label: "候補", en: "DRIFT", icon: "drift" },
       { id: "tasks-gravity", label: "タスク", en: "GRAVITY", icon: "pile" },
-      { id: "tasks-top", label: "日付", en: "TOP", icon: "holes" },
-      { id: "tasks-under", label: "地中", en: "UNDER", icon: "strata" },
     ],
   },
   {

@@ -54,7 +54,8 @@
 - `components/tasks/TaskSpace.tsx` — **縦のカメラの器**。層の並び・`--cam` の駆動・
   縦のドラッグ・画面に固定した `Masthead` はここ1つ。**タブ構成を足したらここも直す**。
 - `components/tasks/LayerName.tsx` — 層の名前（DRIFT / GRAVITY / TOP）。層と一緒に流れる。
-- `components/tabs/DriftTab.tsx` — 候補が散らばって浮遊する層（第38巡に円環をやめた）。
+- `components/tabs/DriftTab.tsx` — 候補が**無重力で漂う**層（1枚の canvas＋matter.js）。
+  ホールドで図形を運び、右下から出る**口＝完了 / ゴミ箱＝削除**へ落とす（第44巡）。
 - `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。地上の層。
 - `components/tasks/TopView.tsx` — 見下ろし。黒い穴のカレンダー（月曜始まり・
   Helvetica）。横に払って前後の月。左下に月の見出し。

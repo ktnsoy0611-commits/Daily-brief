@@ -19,8 +19,9 @@ import type { Task } from "@/lib/types";
 
 /** 断面の帯の色(抽象的なグレー)。 */
 const SHAFT = "#403F3B";
-/** 図形が帯の幅のどれだけを占めるか(＝一律。横に2つ並ばない太さ)。 */
-const FILL = 0.86;
+/** 図形が帯の幅のどれだけを占めるか。★穴の大きさ≒図形の幅(ユーザー指定)なので
+ *  ほぼ 1。少しだけ余白を残して壁に噛まないようにする。 */
+const FILL = 0.96;
 /** 落とす間隔(ms)。1つずつ落ちてくるのが見えるように。 */
 const DROP_EVERY = 150;
 /** 穴に入れるタスクの上限(帯からあふれない数)。 */
@@ -90,11 +91,18 @@ export function UnderHole({ tasks, weekday, active, drop }: {
       const { h } = size;
       const sw = shaftW();
       const sx = shaftX();
+      const dx = h * SKEW;               // 上端の左ずれ(平行四辺形の傾き)
+      const th = Math.atan2(dx, h);      // 壁の傾き(鉛直から)
       const T = 200;
+      const opts = { isStatic: true, friction: 0.5, frictionStatic: 0.7 };
+      // ★左右の壁は平行四辺形の斜辺に沿わせる(傾いた矩形)。床は水平のまま。
+      const left = M.Bodies.rectangle(sx - dx / 2 - T / 2, h / 2, T, h * 2.2, opts);
+      M.Body.setAngle(left, th);
+      const right = M.Bodies.rectangle(sx + sw - dx / 2 + T / 2, h / 2, T, h * 2.2, opts);
+      M.Body.setAngle(right, th);
       M.Composite.add(engine.world, [
-        M.Bodies.rectangle(sx + sw / 2, h + T / 2 - 1, sw, T, { isStatic: true, friction: 0.8 }),
-        M.Bodies.rectangle(sx - T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4 }),
-        M.Bodies.rectangle(sx + sw + T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4 }),
+        M.Bodies.rectangle(sx + sw / 2, h + T / 2 - 1, sw + T, T, { isStatic: true, friction: 0.8 }),
+        left, right,
       ]);
     };
 
@@ -166,7 +174,9 @@ export function UnderHole({ tasks, weekday, active, drop }: {
       const unit = (shaftW() * FILL) / wUnits;
       const bw = (b.maxX - b.minX) * unit;
       const bh = (b.maxY - b.minY) * unit;
-      const cx = shaftX() + shaftW() / 2;
+      // 上の開口(左へ dx ずれている)の中央へ落とす。
+      const dxTop = size.h * SKEW;
+      const cx = shaftX() + shaftW() / 2 - dxTop;
       const { body, ox, oy } = makeBody(M, paint, cx, -bh - 8, unit);
       M.Composite.add(engine.world, body);
       pieces.push({ body, paint, ox, oy, w: unit, h: bh });

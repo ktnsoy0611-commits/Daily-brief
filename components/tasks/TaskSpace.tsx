@@ -48,8 +48,8 @@ const P = 620;
 const RX_FLOOR = 74;
 /** 壁(GRAVITY)が見下ろしへ移るとき奥へ退く角度。 */
 const RX_WALL = -52;
-/** 地中(UNDER)が下から立ち上がるときの角度(控えめ)。 */
-const RX_UNDER = -34;
+// ★UNDER は**真横から断面を見ている**ので pitch を掛けない。黒い地中の面が
+//   単純に下から上へスライドして入ってくるだけ(第44巡にユーザー指定)。
 
 /**
  * ★★層ごとの**居場所の表**。`[translateY(%), scaleY]` を4つの局面
@@ -71,11 +71,11 @@ const SCENES: [number, number][][] = [
   [[OFF, 0], [0, 0], [-OFF, RX_WALL], [-2 * OFF, RX_WALL]],
   // TOP (origin bottom)。寝ているとき奥へ倒れて遠い縁が縮む。正対で真上から。
   [[2 * OFF, RX_FLOOR], [OFF, RX_FLOOR], [0, 0], [OFF, RX_FLOOR]],
-  // UNDER (origin top)。下から立ち上がる。
-  [[2 * OFF, 0], [2 * OFF, 0], [OFF, RX_UNDER], [0, 0]],
+  // UNDER (rotateX なし)。下から上へ単純にスライド。
+  [[2 * OFF, 0], [2 * OFF, 0], [OFF, 0], [0, 0]],
 ];
 /** 各層の傾きの軸。 */
-const ORIGIN = ["50% 50%", "50% 100%", "50% 100%", "50% 0%"];
+const ORIGIN = ["50% 50%", "50% 100%", "50% 100%", "50% 50%"];
 
 // ★★遷移を**二段に分ける**ための刻み(第41巡・ユーザー指定)。
 /** 図形が落ちて画面から消えるのを待つ時間。 */
@@ -346,7 +346,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
 
       <div ref={camRef} className="task-cam" onPointerDown={onPointerDown} style={{ position: "absolute", inset: 0 }}>
         <Layer i={0} refCb={layerRef(0)}>
-          <DriftTab {...tabProps} appActive={appActive} dragged={draggedRef} />
+          <DriftTab {...tabProps} appActive={appActive} active={idx === 0} dragged={draggedRef} />
         </Layer>
         <Layer i={1} refCb={layerRef(1)}>
           <GravityTab {...tabProps} appActive={appActive} dragged={draggedRef} floorOpen={floorOpen} />

@@ -496,6 +496,41 @@ button:active {
   .task-cam .task-layer { transition: none; }
 }
 
+/* ── DRIFT の「掴んで捨てる/食べる」ターゲット(components/tabs/DriftTab.tsx) ──
+   候補の図形を**掴んでいるあいだ**だけ、右下から丸い的が出てくる。上=口(食べる=
+   タスクにする)/下=ゴミ箱(捨てる)。ホバーで反応し、離すと action のアニメ。 */
+.drift-target {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: #1A1A18;                       /* INK */
+  display: flex; align-items: center; justify-content: center;
+  transform: translateX(84px) scale(0.5); opacity: 0;
+  transition: transform var(--t-item) var(--ease-settle),
+              opacity var(--t-item) var(--ease-settle),
+              background var(--t-press) var(--ease-press);
+  box-shadow: 0 6px 18px rgba(26,26,24,0.22);
+}
+.drift-target.in { transform: translateX(0) scale(1); opacity: 1; }
+/* ホバー中(hot): 大きく反応。口は開き、ゴミ箱は震える。色でも応える。 */
+.drift-target.hot { transform: translateX(0) scale(1.2); }
+.drift-target.hot[data-kind="mouth"] { background: #04624A; }   /* forest */
+.drift-target.hot[data-kind="trash"] { background: #EE1B33; }   /* RUST */
+.drift-target .mouth-lip { transform-box: fill-box; transform-origin: center; transition: transform var(--t-item) var(--ease-settle); }
+.drift-target.hot[data-kind="mouth"] .mouth-lip { transform: scaleY(2.1); }
+.drift-target.hot[data-kind="trash"] svg { animation: trash-wiggle 0.4s var(--ease-settle) infinite; }
+@keyframes trash-wiggle { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+/* 離した瞬間(fire): 口は噛む、ゴミ箱は一度沈む。的も脈打つ。 */
+.drift-target[data-fire] { animation: target-pulse 0.42s var(--ease-settle); }
+@keyframes target-pulse { 0% { transform: scale(1.2); } 40% { transform: scale(1.42); } 100% { transform: scale(1); } }
+.drift-target[data-fire][data-kind="mouth"] .mouth-lip { animation: mouth-chomp 0.42s var(--ease-settle); }
+@keyframes mouth-chomp { 0% { transform: scaleY(2.1); } 45% { transform: scaleY(0.28); } 100% { transform: scaleY(1); } }
+.drift-target[data-fire][data-kind="trash"] svg { animation: trash-drop 0.42s var(--ease-settle); }
+@keyframes trash-drop { 0% { transform: translateY(-4px) rotate(0); } 45% { transform: translateY(3px) rotate(8deg); } 100% { transform: translateY(0) rotate(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .drift-target, .drift-target .mouth-lip { transition: none; }
+  .drift-target.hot[data-kind="trash"] svg, .drift-target[data-fire],
+  .drift-target[data-fire] .mouth-lip, .drift-target[data-fire] svg { animation: none; }
+}
+
 /* ── パン中の風(効果線) ────────────────────────────────────────────
    カメラが層のあいだを通り抜けている間だけ、画面に**細い縦の筋**が流れる。
    降りているときは筋が上へ、昇っているときは下へ ― 止まっている粒の横を

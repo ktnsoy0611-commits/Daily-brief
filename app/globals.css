@@ -20,6 +20,24 @@
   --t-item: 420ms;    /* 中の要素ひとつ */
   --t-step:  50ms;    /* 時間差(視線誘導) */
 
+  /* ★★**カメラのパン専用の2つ**(2026-08-24・第38巡にユーザー確定で語彙を広げた)。
+     使ってよいのは `components/tasks/TaskSpace.tsx` の縦の空間だけ。
+
+     なぜ上の5つで足りないか … DRIFT は**宇宙**で、GRAVITY は**地上**。
+     この2つの間には距離があり、そこをカメラがひと息に降りていく、という
+     のがタスクアプリの空間の意味(直接そう描きはしない)。`--t-in`(700ms)の
+     「面が開く」速さで着いてしまうと、隣の画面へ切り替わっただけに見えて
+     距離が消える。**時間そのものが距離の表現**なので、ここだけ長く取る。
+
+     ★★`--ease-cam` は**対称**で、「対称な ease-in-out は環境ループ以外で
+     使わない」という第26巡の決めごとの**唯一の例外**。理由 … 上の4本は
+     どれも「初速が高い非対称の減速」で、UIの部品が定位置へ吸着する動き。
+     カメラは部品ではなく**乗り物**で、重いものが止まった状態から動き出し、
+     速度に乗り、また止まる。ゆっくり始まって加速して、ゆっくり終わる形
+     でないと「大胆にパンした」に見えない。★これを他の場所へ持ち出さないこと。 */
+  --t-cam:    1400ms;
+  --ease-cam: cubic-bezier(0.83, 0, 0.17, 1);
+
   /* ★★**環境の動き**(止まらずに回り続けるもの)は、上の5つの対象外。
      状態の遷移ではないので「開く/閉じる/押す」の語彙に乗らない。
      ここも**増やさない**。対称な ease-in-out を許すのはこの5つだけ。 */
@@ -460,16 +478,65 @@ button:active {
 
    `--cam` は層の番号(0 = いちばん上の DRIFT)。指で引いている間だけ小数になる。
    ★指の追従で React の state を動かさないこと(§14)。ハンドラはこの器へ
-   `--cam` を書くだけで、再レンダーは一度も起きない。 */
+   `--cam` を書くだけで、再レンダーは一度も起きない。
+
+   ★★層と層のあいだには**空きがある**(`--cam-span` が 100% より大きい)。
+   DRIFT と GRAVITY は隣り合ったページではなく、離れた2つの場所なので、
+   間を通り抜ける時間が要る。`--cam` は層の番号のままで、1つぶんの移動量が
+   `--cam-span`(器が JS から書く)。
+
+   `--cam-k` は「今回どれだけ動くか」の割合。指を離した位置から行き先までが
+   近いときに、まるまる `--t-cam` かけると最後のひと押しだけが妙に遅い。 */
 .task-cam {
-  transform: translateY(calc(var(--cam, 0) * -100%));
-  transition: transform var(--t-item) var(--ease-settle);
+  transform: translateY(calc(var(--cam, 0) * -1 * var(--cam-span, 100%)));
+  transition: transform calc(var(--cam-k, 1) * var(--t-cam)) var(--ease-cam);
   will-change: transform;
 }
 /* 指で引いているあいだは追従。落ち着かせる時間を挟むと指から遅れる。 */
 .task-cam[data-drag] { transition: none; }
+
+/* ── パン中の風(効果線) ────────────────────────────────────────────
+   カメラが層のあいだを通り抜けている間だけ、画面に**細い縦の筋**が流れる。
+   降りているときは筋が上へ、昇っているときは下へ ― 止まっている粒の横を
+   自分が動いている、という見え方。★**少しだけ**(ユーザー指定)。読むものの
+   前に出る飾りなので、濃さは筋ごとに 0.2 未満に留める。
+   ★時間と曲線はカメラと同じものを引く。別々に持つと、風だけがカメラより
+   先に着いたり遅れたりして「板に貼った絵」に見える。 */
+.cam-wind { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+/* ★筋の**箱はみな同じ高さ**にして、見えている部分だけをグラデーションの
+   止め位置(`--a`〜`--b`)で変える。箱の高さを筋ごとに変えると、下の
+   translate の % は「その要素自身の高さ」が基準なので進む量がばらばらになり、
+   カメラと合わなくなる。★長さを揃えたまま流すと、筋の端が**一直線に揃って
+   カーテンのように見えた**(実際にそうなった)ので、長さと位置は必ずばらす。 */
+.cam-streak {
+  position: absolute; top: 0; height: 60%; width: 2px; opacity: 0;
+  background: linear-gradient(to bottom,
+    transparent var(--a), var(--streak) calc(var(--a) + 7%),
+    var(--streak) calc(var(--b) - 7%), transparent var(--b));
+}
+.cam-wind[data-blow] .cam-streak {
+  animation: cam-streak-down calc(var(--cam-k, 1) * var(--t-cam)) var(--ease-cam) both;
+}
+.cam-wind[data-blow="up"] .cam-streak { animation-name: cam-streak-up; }
+
+/* 降りる = 筋は下から上へ。translate の % は**その筋自身の高さ**が基準
+   (器の 60%)なので、器の外(下)から器の外(上)まで出すには 170% / -105%。 */
+@keyframes cam-streak-down {
+  0%   { transform: translateY(170%); opacity: 0; }
+  18%  { opacity: 1; }
+  82%  { opacity: 1; }
+  100% { transform: translateY(-105%); opacity: 0; }
+}
+@keyframes cam-streak-up {
+  0%   { transform: translateY(-105%); opacity: 0; }
+  18%  { opacity: 1; }
+  82%  { opacity: 1; }
+  100% { transform: translateY(170%); opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .task-cam { transition: none; }
+  .cam-wind { display: none; }
 }
 
 /* 提案を考えている間のくるくる。タスク詳細の「手配を確認する」で使う。 */

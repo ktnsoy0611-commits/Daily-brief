@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Masthead } from "@/components/common";
 import { DriftTab } from "@/components/tabs/DriftTab";
 import { GravityTab } from "@/components/tabs/GravityTab";
 import { appTitle } from "@/lib/apps";
-import { TAB_PAD_TOP } from "@/lib/constants";
+import { INK, TAB_PAD_TOP } from "@/lib/constants";
+import { T_CAM, ms } from "@/lib/motion";
 import { haptic } from "@/lib/helpers";
 import type { TabId, TabProps } from "@/lib/types";
 
@@ -37,6 +38,43 @@ export const layerIndexOf = (tab: TabId): number => {
   return i < 0 ? 0 : i;
 };
 
+/**
+ * ★★層と層の**あいだの空き**(画面の高さに対する割合)。
+ *
+ * DRIFT と GRAVITY は隣り合ったページではなく、**離れた2つの場所**
+ * (上は宇宙、下は地上 — 直接そうは描かない)。間に何も無いと、どれだけ
+ * 時間をかけても「切り替わった」に見えてしまう。**通り抜ける空間が実際に
+ * 有ること**が、距離の表現の本体で、時間はその裏付け。
+ * 1つぶんの移動量 = 画面 1 + この空き。
+ */
+const LAYER_GAP = 0.4;
+/** 層1つぶんの移動量(画面の高さに対する%)。CSS へ `--cam-span` として渡す。 */
+const CAM_SPAN = 100 * (1 + LAYER_GAP);
+
+/** ★動く割合が小さいときは、そのぶん短く。行き先が目の前なのに `--t-cam`
+ *  まるまるかけると、最後のひと押しだけが妙に遅い。下限は付ける
+ *  (短すぎるとパンではなく「飛んだ」に見える)。 */
+const CAM_K_MIN = 0.34;
+
+/** 風の筋。★**少しだけ**(ユーザー指定)。読むものの前に出る飾りなので
+ *  濃さは 0.2 未満。位置と濃さは固定 — 毎回ばらけると、乗り物ではなく
+ *  「毎回ちがう絵」に見える。 */
+const STREAKS = [
+  // left = 横の位置 / w = 太さ / o = 濃さ / a〜b = 箱の中で見えている範囲(%)
+  { left: 6,  w: 2, o: 0.14, a: 8,  b: 52 },
+  { left: 14, w: 1, o: 0.07, a: 46, b: 92 },
+  { left: 23, w: 2, o: 0.18, a: 22, b: 60 },
+  { left: 31, w: 1, o: 0.09, a: 62, b: 98 },
+  { left: 39, w: 2, o: 0.12, a: 4,  b: 40 },
+  { left: 47, w: 1, o: 0.06, a: 36, b: 84 },
+  { left: 55, w: 2, o: 0.16, a: 14, b: 46 },
+  { left: 63, w: 1, o: 0.08, a: 54, b: 96 },
+  { left: 71, w: 2, o: 0.13, a: 28, b: 72 },
+  { left: 79, w: 1, o: 0.07, a: 68, b: 100 },
+  { left: 87, w: 2, o: 0.17, a: 10, b: 44 },
+  { left: 94, w: 1, o: 0.10, a: 40, b: 88 },
+];
+
 /** 次の層へ送るのに要る、画面の高さに対する割合。 */
 const SNAP_RATIO = 0.18;
 /** これ以上の速さ(px/ms)で払ったら、距離が足りなくても送る。 */
@@ -61,15 +99,45 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
     id: number; x: number; y: number; from: number; axis: "" | "x" | "y";
     vel: number; lastY: number; lastT: number;
   } | null>(null);
+  const windRef = useRef<HTMLDivElement | null>(null);
+  const windTimer = useRef(0);
+  // 指がもう `--cam` を書いたか(下の effect が二重に書いて時間を変えないように)。
+  const byDragRef = useRef(false);
+  // 直前の層。タブを押されたときに、どちら向きへ動いたかを知るのに要る。
+  const prevRef = useRef(idx);
+
+  /** 層のあいだを通り抜けるあいだだけ風を流す。 */
+  const blow = useCallback((dir: "down" | "up", k: number) => {
+    const el = windRef.current;
+    if (!el) return;
+    window.clearTimeout(windTimer.current);
+    // ★続けて払われたときに**必ず頭から流し直す**。属性を外しただけでは
+    //   同じ animation が走り続けるので、一度消して強制的に組み直す。
+    el.removeAttribute("data-blow");
+    void el.offsetWidth;
+    el.setAttribute("data-blow", dir);
+    windTimer.current = window.setTimeout(() => el.removeAttribute("data-blow"), ms(T_CAM) * k);
+  }, []);
 
   // タブが変わったら、カメラをその層へ落ち着かせる。
   useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = idx;
     idxRef.current = idx;
     const cam = camRef.current;
     if (!cam) return;
     cam.removeAttribute("data-drag");
+    // ★指で動かした直後はここが書かない。書くと転がっている最中に
+    //   `--cam-k`(=時間)が変わり、パンの途中で速さが飛ぶ。
+    const wasDrag = byDragRef.current;
+    byDragRef.current = false;
+    if (wasDrag || prev === idx) return;
+    cam.style.setProperty("--cam-k", String(Math.min(1, Math.abs(idx - prev))));
     cam.style.setProperty("--cam", String(idx));
-  }, [idx]);
+    blow(idx > prev ? "down" : "up", 1);
+  }, [idx, blow]);
+
+  useEffect(() => () => window.clearTimeout(windTimer.current), []);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (dragRef.current) return;
@@ -91,7 +159,10 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
   // ★追従は window に張る。指が舞台の外へ出た瞬間に要素側の onPointerMove は
   //   呼ばれなくなり、ジェスチャーが途中で死ぬため(§7.26)。
   useEffect(() => {
-    const heightOf = () => rootRef.current?.getBoundingClientRect().height || window.innerHeight;
+    // ★指の1:1追従は**世界の側**で測る。層1つぶんは画面1つではなく
+    //   `CAM_SPAN`(画面 + あいだの空き)なので、画面いっぱい引いても
+    //   層1つには届かない ― それが「遠い」という手ざわりになる。
+    const spanOf = () => (rootRef.current?.getBoundingClientRect().height || window.innerHeight) * (CAM_SPAN / 100);
     const last = TASK_LAYERS.length - 1;
 
     const move = (e: PointerEvent) => {
@@ -116,7 +187,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       d.lastY = e.clientY;
       d.lastT = now;
       // ★指を**上**へ払うと、空間が上へ流れて**下の層**が出てくる(= cam が増える)。
-      const raw = d.from - dy / heightOf();
+      const raw = d.from - dy / spanOf();
       const cam = raw < 0 ? raw * RUBBER : raw > last ? last + (raw - last) * RUBBER : raw;
       camRef.current?.style.setProperty("--cam", cam.toFixed(4));
     };
@@ -130,16 +201,27 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       // 指を止めてから離したときは惰性ゼロ(最後に動いたときの速さが残り
       // 続けるのを防ぐ。声の記録のダイヤルで踏んだのと同じ罠)。
       const vel = performance.now() - d.lastT > FLICK_IDLE_MS ? 0 : d.vel;
-      const moved = -(e.clientY - d.y) / heightOf();
+      const moved = -(e.clientY - d.y) / spanOf();
       const flick = Math.abs(vel) > FLICK_V;
       let next = d.from;
       if (flick) next = d.from + (vel < 0 ? 1 : -1);
       else if (Math.abs(moved) > SNAP_RATIO) next = d.from + (moved > 0 ? 1 : -1);
       next = Math.max(0, Math.min(last, next));
+      const cam = camRef.current;
+      // ★残りの距離ぶんだけ時間を取る。指がもう半分連れてきているのに
+      //   まるまる `--t-cam` かけると、そこから先だけが妙に遅い。
+      const now = parseFloat(cam?.style.getPropertyValue("--cam") || String(d.from)) || 0;
+      const k = Math.max(CAM_K_MIN, Math.min(1, Math.abs(next - now)));
+      cam?.style.setProperty("--cam-k", String(k));
       // ★行き先は必ず自分で書く。タブが変わらないとき(行き止まり・戻り)は
       //   下の goTab が走らないので、ここが唯一の戻し役になる。
-      camRef.current?.style.setProperty("--cam", String(next));
-      if (next !== d.from) { haptic(8); goTab(TASK_LAYERS[next]); }
+      cam?.style.setProperty("--cam", String(next));
+      if (next !== d.from) {
+        byDragRef.current = true;
+        haptic(8);
+        blow(next > d.from ? "down" : "up", k);
+        goTab(TASK_LAYERS[next]);
+      }
     };
 
     // ★縦へ引いている間だけ、ブラウザ側のスクロール/ゴムを止める。
@@ -159,7 +241,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       window.removeEventListener("pointercancel", up);
       window.removeEventListener("touchmove", touchMove);
     };
-  }, [goTab]);
+  }, [goTab, blow]);
 
   return (
     <main
@@ -172,7 +254,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
         ref={camRef}
         className="task-cam"
         onPointerDown={onPointerDown}
-        style={{ position: "absolute", inset: 0, ["--cam" as string]: idx }}>
+        style={{ position: "absolute", inset: 0, ["--cam" as string]: idx, ["--cam-span" as string]: `${CAM_SPAN}%` }}>
 
         <Layer at={0}>
           <DriftTab {...tabProps} appActive={appActive} dragged={draggedRef} />
@@ -185,6 +267,21 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
         </Layer>
       </div>
 
+      {/* ★層のあいだを通り抜けている間だけ流れる風。カメラには**乗らない**
+          (画面に固定) ― 止まっている粒の横を自分が動いている、という
+          見え方にするため。 */}
+      <div ref={windRef} className="cam-wind" aria-hidden style={{ zIndex: 2 }}>
+        {STREAKS.map((s) => (
+          // 筋の形(縦のグラデーション)は CSS 側。ここが渡すのは**色だけ**で、
+          // 濃さは筋ごとに変える。地の色は `INK` から作るので出どころは1つ。
+          <div key={s.left} className="cam-streak" style={{
+            left: `${s.left}%`, width: s.w,
+            ["--streak" as string]: `color-mix(in srgb, ${INK} ${Math.round(s.o * 100)}%, transparent)`,
+            ["--a" as string]: `${s.a}%`, ["--b" as string]: `${s.b}%`,
+          }} />
+        ))}
+      </div>
+
       {/* ★アプリ名の札は**カメラに乗らない**(画面に固定)。層と一緒に流すと、
           同じ「TASK」の札が2枚すれ違って見える。層の名前は層の側が持つ。 */}
       <div style={{ position: "absolute", top: TAB_PAD_TOP, left: 16, right: 16, pointerEvents: "none", zIndex: 3 }}>
@@ -194,10 +291,16 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
   );
 }
 
-/** 縦の空間の中の1層。上から順に画面1つぶんずつ積む。 */
+/**
+ * 縦の空間の中の1層。
+ * ★★積む間隔は画面1つぶん(`100%`)ではなく **`CAM_SPAN`**。カメラの移動量と
+ * 必ず同じ数から作ること — 片方だけ変えると、カメラが層の**手前や奥**で
+ * 止まる(実際に踏んだ: 器を 140% 動かすのに層は 100% 間隔のままで、
+ * GRAVITY が画面の 40% ぶん上へ行き、床がタブバーより 338px 高くなった)。
+ */
 function Layer({ at, children }: { at: number; children: React.ReactNode }) {
   return (
-    <div style={{ position: "absolute", left: 0, right: 0, top: `${at * 100}%`, height: "100%" }}>
+    <div style={{ position: "absolute", left: 0, right: 0, top: `${at * CAM_SPAN}%`, height: "100%" }}>
       {children}
     </div>
   );

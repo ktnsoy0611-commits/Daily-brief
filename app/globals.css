@@ -467,85 +467,33 @@ button:active {
   @keyframes inbox-drift { 0%, 100% { transform: none; } }
 }
 
-/* ── タスクアプリの縦のカメラ(components/tasks/TaskSpace.tsx) ──────────
-   DRIFT(浮遊層) / GRAVITY(地上) を **1本の縦の空間**に積み、画面の切り替えでは
-   なく**カメラの上下移動**として見せる(第38巡)。層を出し入れするのではなく、
-   4層ぶんの高さを持つこの器を translateY で動かす。
+/* ── タスクアプリのカメラ(components/tasks/TaskSpace.tsx) ──────────────
+   4層 DRIFT(浮遊) / GRAVITY(地上) / TOP(見下ろし) / UNDER(地中) を、**各層
+   それぞれの translateY と scaleY** で動かす(第42巡に per-layer の2Dへ)。
+   カメラは1つの器を動かすのではなく、層ごとの出入りが合わさって視点の動きに
+   見える、という作り。「どちらから入り、どちらへ抜けるか」を層ごとに決められる。
 
    ★★**CSS の 3D 変形(perspective / preserve-3d / rotateX/rotateY)は使わない。**
-   このコードベースは CSS の 3D で Safari の描画崩れを5回踏んでいる。真上を
-   見下ろす表現(TOP VIEW)も、第2段階で scaleY のすり替えとして作る。
-
-   `--cam` は層の番号(0 = いちばん上の DRIFT)。指で引いている間だけ小数になる。
-   ★指の追従で React の state を動かさないこと(§14)。ハンドラはこの器へ
-   `--cam` を書くだけで、再レンダーは一度も起きない。
-
-   ★★層と層のあいだには**空きがある**(`--cam-span` が 100% より大きい)。
-   DRIFT と GRAVITY は隣り合ったページではなく、離れた2つの場所なので、
-   間を通り抜ける時間が要る。`--cam` は層の番号のままで、1つぶんの移動量が
-   `--cam-span`(器が JS から書く)。
-
-   `--cam-k` は「今回どれだけ動くか」の割合。指を離した位置から行き先までが
-   近いときに、まるまる `--t-cam` かけると最後のひと押しだけが妙に遅い。 */
-.task-cam {
-  transform: translateY(calc(var(--cam, 0) * -1 * var(--cam-span, 100%)));
+   このコードベースは CSS の 3D で Safari の描画崩れを5回踏んでいる。見下ろしの
+   pitch は **scaleY の圧縮**で作る(遠くの地面ほど縦に潰れて見える、を
+   「地面が起き上がる/伏せる」に使う)。居場所は JS が `TaskSpace` の `SCENES`
+   から ref 越しに transform を書く。`--cam-k` は「今回どれだけ動くか」の割合。 */
+.task-cam:not([data-drag]) .task-layer {
   transition: transform calc(var(--cam-k, 1) * var(--t-cam)) var(--ease-cam);
-  will-change: transform;
 }
 /* 指で引いているあいだは追従。落ち着かせる時間を挟むと指から遅れる。 */
-.task-cam[data-drag] { transition: none; }
+.task-cam[data-drag] .task-layer { transition: none; }
 
-/* ★★**縦のジェスチャーはこの器のもの**だと、ブラウザに先に伝えておく
-   (2026-08-24・実機で「上下スワイプがなかなか効かない」)。
-   これが無いと iOS は指が下りた瞬間に自分の送り(スクロール/ゴム)を始め、
-   こちらの pointermove は pointercancel に化けて**掴む前に死ぬ**。
-   `touchmove` を非 passive で止めるだけでは間に合わない ― 判断は指が
-   下りた時点で済んでいる。
-   ★★ただし入力画面が開いている間は `auto` へ戻すこと。オーバーレイは
-   この器の**内側**に出るので、`none` を掛けたままだとカレンダーもダイアルも
-   送れなくなる(祖先の touch-action は子孫にも効く)。印は入力画面が html へ
-   立てる `[data-overlay]` をそのまま見る ― 判定の出どころを増やさない。 */
+/* ★★**縦のジェスチャーはこの器のもの**だとブラウザに先に伝える(実機で
+   「上下スワイプがなかなか効かない」)。これが無いと iOS は指が下りた瞬間に
+   自分の送りを始め、pointermove が pointercancel に化けて掴む前に死ぬ。
+   ★★入力画面が開いている間と地中は `auto` へ戻す(オーバーレイは内側に出る/
+   地中は一覧を送るため)。印は `[data-overlay]` をそのまま見る。 */
 .task-cam { touch-action: none; }
-[data-overlay] .task-cam { touch-action: auto; }
-/* ★地中は「読むための面」。縦の指はその日の一覧を送るものなので、触りを
-   コンテンツへ返す。送れる先が無いところではカメラのドラッグがそのまま
-   効くので、上の層へ戻る道は残る。 */
-.task-cam[data-under] { touch-action: auto; }
-
-/* ── カメラの pitch(立面 ↔ 見下ろし) ────────────────────────────────
-   ★★ここは**唯一 `perspective` + `rotateX` を使う場所**(2026-08-24 にユーザーが
-   「見下げ視点へカメラが動いている感じ」を明示的に要求)。層の並びは
-   DRIFT(立面) → GRAVITY(立面) → TOP(見下ろし) → UNDER(立面。穴の中)で、
-   境目でカメラが実際に**うつむく/起き上がる**のが見えるようにする。
-
-   ★★このコードベースは CSS の 3D で Safari の描画崩れを5回踏んでいるが、その
-   全ては**深い `rotateY(90)` × 角丸 × 影 × `clip-path`** の組み合わせだった
-   (`docs/archive/ui-binder-2026-07.md`)。ここは:
-     ・角丸も box-shadow も持たない**素の層**にだけ掛ける、
-     ・`clip-path` を回転層に**重ねない**(穴を広げる円の切り抜きは廃止した)、
-     ・0deg で必ず**着地する**(回りっぱなしにしない)、
-   の3つを守ることで、その組み合わせを避ける。`perspective()` は層ごとに
-   transform 関数の中で持つ(器に掛けると縦パンの translateY まで歪む)。
-
-   `data-plan` は**カメラが TOP(見下ろし)に居るとき**だけ真。TOP は 2 番目の層
-   なので、GRAVITY↔TOP と TOP↔UNDER の**両方**の境目で pitch が起きる。
-   時間と曲線はカメラの pan と同じ ― 別に持つと傾きだけ先に着く。 */
-.task-layer {
-  transition: transform calc(var(--cam-k, 1) * var(--t-cam)) var(--ease-cam);
-  backface-visibility: hidden;
-}
-/* 立面の層(DRIFT/GRAVITY/UNDER)。ふだんは正対(rotateX 0)。カメラが見下ろしへ
-   移るあいだ、足元を軸に**うつ伏せ**に倒れて地平線へ畳まれる。 */
-.task-layer[data-elev] { transform-origin: 50% 100%; transform: perspective(950px) rotateX(0deg); }
-.task-cam[data-plan] .task-layer[data-elev] { transform: perspective(950px) rotateX(84deg); }
-/* 見下ろしの層(TOP)。ふだんは地平線の向こうへ倒れて edge-on(見えない)。
-   カメラが見下ろしに着くと、手前の縁を軸に**起き上がって**正対する
-   = 真上から覗き込んでいる見え方。 */
-.task-layer[data-plan-face] { transform-origin: 50% 100%; transform: perspective(950px) rotateX(-84deg); }
-.task-cam[data-plan] .task-layer[data-plan-face] { transform: perspective(950px) rotateX(0deg); }
+[data-overlay] .task-cam, .task-cam[data-under] { touch-action: auto; }
 
 @media (prefers-reduced-motion: reduce) {
-  .task-layer { transition: none; }
+  .task-cam .task-layer { transition: none; }
 }
 
 /* ── パン中の風(効果線) ────────────────────────────────────────────

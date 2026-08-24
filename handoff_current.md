@@ -25,50 +25,56 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 
 ---
 
-## 直近で完了したこと（第41巡）— 遷移を二段に ＋ UNDER を穴の断面へ
+## 直近で完了したこと（第42巡）— カメラを per-layer の2Dへ ＋ UNDER に地表
 
-ユーザー指定に沿って、遷移の位相と UNDER の見た目を作り直した。
+ユーザーの3点の指摘（カメラの動きがイメージと違う／UNDER のシリンダーをやめ地表
+と繋げる）に沿って作り直した。
 
-1. ★★**遷移を二段に**（`TaskSpace` の `schedule()`）。pitch と pan を同時に
-   動かすと「別画面へ切替」に見えたので位相を分けた:
-   - **GRAVITY→TOP** … 図形が落ちて消える(`DROP_MS`、立面のまま)→ それから
-     カメラが下を向く(pitch＋pan)。
-   - **TOP→UNDER** … 真下→真横へ起き上がる(pitch だけ)→ それから下へパン
-     (断面が下から上がる)。逆向きは各々の逆順。DRIFT↔GRAVITY は pitch 無し。
-   - タブ操作のときだけ二段が走る（`byDragRef` で見分け。ドラッグは同時のまま）。
-   - 床の開閉(`floorOpen`)は idx から直に決めず `TaskSpace` の state で位相合わせ。
-2. **UNDER を「穴の断面」へ**（`UnderHole.tsx`。`UnderCylinder` は撤去）。
-   シリンダーをやめ、キャンバスに**抽象的なグレーの角丸帯**を塗るだけに。
-   図形は**幅を帯の太さに合わせて一律**にして**一段に一個**積む。落とし切ったら
-   **曜日の蓋（TUE 等）が降って蓋をする**。
-3. Chromium で確認 … GRAVITY→TOP は「落ちる→穴が楕円から円へ」、TOP→UNDER は
-   「穴が楕円へ伸びる→断面が下から上がる」、UNDER は帯に一段一個＋曜日の蓋。
+1. ★★**カメラを per-layer の2Dへ**（`perspective`+`rotateX` をやめた。あれは
+   「手前に倒れる板」に見えた）。4層を**各層の translateY＋scaleY**で動かし、
+   「どちらから入り、どちらへ抜けるか」を層ごとに決める（`SCENES` の表）:
+   - **GRAVITY→TOP** … 図形を落として消す → カメラが真下へティルト = **穴が下から
+     上がってくる**（TOP を下から昇らせて scaleY で伸ばす）。
+   - **TOP→UNDER** … 穴が**下へ消え** → 真横のカメラが地中へ潜る＝地面の断面
+     （UNDER）が**上から降りてくる**。
+   - 見下ろしの pitch は scaleY の圧縮で作る（3D は使わない）。二段の位相と床の
+     開閉は従来どおり。ドラッグは `SCENES` を線形補間。
+2. **UNDER に地表を足した**。画面上部に明るい帯（地表）＋**黒字で日付・曜日**、
+   そこから穴の断面（グレー）が**地表と繋がって**降りる。**曜日の蓋は枠なしの
+   テキスト**に。図形は幅を穴の太さに合わせて一律＝一段に一個。
+3. Chromium で確認 … GRAVITY→TOP「穴が下から上がる」、TOP→UNDER「穴が下へ消え
+   →地中が上から降りる」、UNDER の地表・断面・一段一個・枠なし曜日。
 
 ### 検証
-`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓。`space38`(13群)・`bugs38`
-全部OK（遷移が長くなったぶん待ち時間を延ばした）。★★**実機 Safari 未確認**。
+`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓、`space38`(13群)・`bugs38` を
+per-layer 用に書き換えて全部OK。★実機 Safari 未確認（今回は 3D をやめたので古傷外）。
+
+---
+
+## 直近で完了したこと（第41巡・要点だけ）
+
+遷移を二段に分け（`schedule()`。図形を落としてからカメラを向ける等。タブ操作の
+ときだけ。ドラッグは同時）、UNDER をシリンダーから**抽象的なグレーの穴の断面**へ
+（`UnderHole`。一段に一個・曜日の蓋）。★このときのカメラは `perspective`+`rotateX`
+だったが、第42巡に per-layer の2Dへ差し替えた。
 
 ---
 
 ## 直近で完了したこと（第40巡・要点だけ）
 
-カメラの pitch を `scaleY` から **`perspective`+`rotateX`** に変え、遷移中に穴が
-楕円になる手ごたえを出した（`--t-cam`/`--ease-cam` と同じ時間・曲線）。TOP を
-スイスのカレンダー（月曜始まり・黒い穴・Helvetica）へ、UNDER を穴の中の姿へ
-初版。`HELV` と `SWISS_XL/LG/MD` を constants に足した。★3D は Safari で5回
-焼けた組み合わせ（深い rotateY×角丸×影×clip）だけを避ける形で使う。
+カメラの pitch を `scaleY` から `perspective`+`rotateX` に変え、TOP をスイスの
+カレンダー（月曜始まり・黒い穴・Helvetica）へ、UNDER を穴の中の姿へ初版。`HELV`
+と `SWISS_XL/LG/MD` を constants に足した。★rotateX は第42巡に撤回（per-layer 2D）。
 
 ---
 
 ## 直近で完了したこと（第39巡・要点だけ）
 
-★実機報告の2件（閉じたあと黒い丸が残る／上下スワイプが効かない）は**原因が1つ**
-だった ― 入力画面の `onClose` が `openId` を下ろさず `TaskComposer` が一度も
-外れなかった。下ろすようにし、吸い込みの帰り先を右下の「作る」の丸へ、器に
-`touch-action: none`（入力中と地中は auto）を置いて直した。
-第2段階のタブ4つ化・立面↔見下ろしのすり替え（当時 scaleY。第40巡で pitch へ）・
-TOP/UNDER の初版を入れた。★層の中の寸法は `offsetWidth/offsetHeight` で測る
-（`getBoundingClientRect` は変形後の箱を返す）。
+★実機報告の2件（閉じたあと黒い丸が残る／上下スワイプが効かない）は**原因が1つ** ―
+入力画面の `onClose` が `openId` を下ろさず `TaskComposer` が一度も外れなかった。
+下ろすようにし、吸い込みの帰り先を右下の「作る」の丸へ、器に `touch-action: none`
+（入力中と地中は auto）を置いて直した。タブを4つ化。★層の中の寸法は
+`offsetWidth/offsetHeight` で測る（`getBoundingClientRect` は変形後の箱を返す）。
 
 ---
 
@@ -92,15 +98,14 @@ GRAVITY の床がタブバーの裏に潜る実バグを直した（`navHeightPx
 
 ## 次に着手すること
 
-1. ★★**実機で確認してもらう**（第38〜40巡ぶんが未確認）。とくに
-   ★**`perspective`+`rotateX` の pitch が Safari で崩れないか**（このコードベースの
-   3D の古傷。Chromium では楕円化まで確認済み）。縦のカメラ／風／4層のタブ／
-   カレンダー／シリンダーの積もり。★**ホーム画面から追加し直してから**見ること。
-2. **触れる数字**（実機で振れる所）:
-   - パンの長さ … `app/globals.css` の `--t-cam`（いま 1400ms）1行。
-   - 層の遠さ … `TaskSpace.tsx` の `LAYER_GAP`（いま 0.4）。
-   - 風の濃さ … `TaskSpace.tsx` の `STREAKS` の `o`（いま 0.06〜0.18）。
-   - スワイプの効き … `SNAP_RATIO`(0.14) / `FLICK_V`(0.28)。
+1. ★★**実機で確認してもらう**（第38〜42巡ぶんが未確認）。カメラの4つの動き
+   （DRIFT↔GRAVITY／GRAVITY↔TOP で穴が下から／TOP↔UNDER で断面が上から）、
+   カレンダー、UNDER の地表＋穴の断面＋一段一個。★第42巡で 3D をやめ 2D の
+   translateY/scaleY だけにしたので、Safari の 3D の古傷からは外れているはず。
+   ★**ホーム画面から追加し直してから**見ること。
+2. **触れる数字**（`TaskSpace.tsx`／`:root`）… カメラの長さ `--t-cam`(1400ms)・
+   位相 `PHASE_K`(0.72)／`DROP_MS`(540)・見下ろしの潰し `FS`(0.14)・逃がし量
+   `OFF`(122)・スワイプ `SNAP_RATIO`(0.14)/`FLICK_V`(0.28)。
 3. **輪の開閉・タブ切り替えの「点滅」を実機で切り分ける**。Chromium では
    再現しない。「どのタイミングで」「何色から何色へ」を具体的に聞く。
 4. ★**`v7.mjs` が落ちるのを追う**（第33巡からの積み残し）。日程シートを開いた
@@ -123,11 +128,8 @@ GRAVITY の床がタブバーの裏に潜る実バグを直した（`navHeightPx
   （`lib/debugViewport.ts` / `components/tasks/ViewportProbe.tsx`）。
 - `.tc-lamp` は `.press` の別名として当分残してある（既存の18箇所を一度に
   書き換えないため）。手が空いたら `.press` へ寄せて別名を消す。
-- **層の名前の見え方は実機で要確認**。設定の丸のすぐ下に置いてあり、Chromium
-  では収まっているがセーフエリアが効く実機では詰まる可能性がある
-  （`components/tasks/LayerName.tsx`）。
-- **地中から上の層へ指で戻る道が弱い**。一覧が送れる間はカメラを掴めない
-  （タブバーからは戻れる）。実機で不便なら一覧の上端でだけ掴む等を足す。
+- **層の名前（`LayerName`）の見え方**と、**地中から指で上へ戻る道の弱さ**
+  （一覧が送れる間はカメラを掴めない。タブバーからは戻れる）は実機で要確認。
 
 ---
 
@@ -146,7 +148,7 @@ components/tabs/GravityTab.tsx     地上の層。★床の開け閉め(floorOpe
 components/tasks/TopView.tsx       ★見下ろし。黒い穴のカレンダー(月曜始まり・Helvetica)
 components/tasks/Underground.tsx   ★地中。左に穴の断面・右に一覧。黒地
 components/tasks/UnderHole.tsx     ★穴の断面(抽象的なグレー帯)。一段一個＋曜日の蓋(matter.js)
-app/globals.css                    ★.task-layer の pitch(perspective+rotateX)
+app/globals.css                    ★.task-layer の transition(per-layer 2D)
 lib/motion.ts                      ★surfaceOrigin の帰り先=右下の丸([data-create-anchor])
 components/tasks/TaskAddButton.tsx TaskAddButton本体を撤去。DemoSeedButtonのみ残る
 lib/ground.ts                      地色。優先度つきの積み木・onGround・GROUND_EASE

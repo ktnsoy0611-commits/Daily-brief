@@ -58,12 +58,13 @@
 - `components/tabs/GravityTab.tsx` — 落として積む（matter.js）。地上の層。
 - `components/tasks/TopView.tsx` — 見下ろし。黒い穴のカレンダー（月曜始まり・
   Helvetica）。横に払って前後の月。左下に月の見出し。
-- `components/tasks/Underground.tsx` — 地中（黒地）。左に傾いたシリンダー、右に
-  その日の一覧。**ここだけ暗い**。
+- `components/tasks/Underground.tsx` — 地中。上に地表（明るい帯・黒字の日付）、
+  左に穴の断面、右にその日の一覧。**ここだけ暗い**。
 - `components/tasks/UnderHole.tsx` — 穴の断面（抽象的なグレーの縦の帯・matter.js）。
-  その日のタスクが図形になって**一段に一個**落ちて積もり、最後に曜日の蓋が降る。
+  地表と繋がり、その日のタスクが**一段に一個**落ちて積もり、最後に曜日の文字
+  （枠なし）が降って蓋をする。
   ★層の中で寸法を測るときは `offsetWidth/offsetHeight`（`getBoundingClientRect` は
-  変形後の箱を返すので、`rotateX` で倒れた層では潰れて見える）。
+  変形後の箱を返すので、`scaleY` で潰れた層では縮んで見える）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
   `WhenSheet`（日程。**ここだけキーボードを閉じる**）/ `ComposerToolbar` /
   `ComposerFields`（重要度・タグ・テキスト）/ `Popover`（器と `Press`＝押せる面）/
@@ -131,12 +132,11 @@
    曲線4本・時間5つ・環境ループ5つ。**新しい数字を足さない。**
    直書きの `cubic-bezier` と `0.3s` を書かない。対称な `ease` / `ease-in-out` は
    環境ループ以外で使わない。
-   ★唯一の例外が **`--t-cam` / `--ease-cam`（カメラのパン専用）**。
+   ★唯一の例外が **`--t-cam` / `--ease-cam`（タスクのカメラ専用）**。
    `components/tasks/TaskSpace.tsx` の外へ持ち出さないこと（第38巡）。
-   ★★**`perspective` + `rotateX`（カメラの pitch）も TaskSpace/globals の
-   `.task-layer` だけの例外**（第40巡・ユーザー要求）。3D は Safari で5回
-   焼けた組み合わせ（深い rotateY×角丸×影×clip）だけを避ける形で使う。詳細は
-   `docs/project_knowledge.md` §4「カメラの pitch」。**他へ広げない。**
+   ★★**CSS の 3D は使わない**（`perspective`/`rotateX` は第40巡に試して
+   「手前に倒れる板」に見えユーザーが却下。第42巡に per-layer の translateY＋
+   scaleY へ戻した）。詳細は `docs/project_knowledge.md` §4「カメラ」。
 4. **JS のタイマーは `ms(T_OUT)` のように語彙から引く。** 数字を書き写すと、
    CSS だけ変えたときに閉じ切る前に消える。
 5. **押せる面は `components/Button.tsx`。** 入力画面は `Press`、それ以外は

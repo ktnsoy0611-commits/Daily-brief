@@ -3,21 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { UnderHole } from "@/components/tasks/UnderHole";
-import { HELV, NAV_H, SANS, SWISS_LG, TAB_PAD_TOP } from "@/lib/constants";
+import { BD_GREY, HELV, INK, MUTED, NAV_H, SANS, SWISS_LG, TAB_PAD_TOP } from "@/lib/constants";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
 import { SPACE, TYPE } from "@/lib/tokens";
 import type { AppState, Task } from "@/lib/types";
 
-// ★地中(UNDERGROUND)。地表の穴に潜った先。**穴の中**のイメージで、左に穴の
-// 断面を模した少しだけ傾いたシリンダー(薄いグレー)があり、そこへその日の
-// タスクが図形になって落ちて積もり、最後に曜日の蓋が降る(`UnderHole`)。右に一覧。
+// ★地中(UNDERGROUND)。地表の穴に潜った先。**画面上部に地表(明るい帯)**が
+// 見え、その左に**黒字で日付・曜日**。そこから下へ**穴の断面(グレーの帯)が
+// 地表と繋がって**降り、その日のタスクが図形になって落ちて積もる(`UnderHole`)。
+// 図形を落とし切ると曜日の文字(枠なし)が降ってきて蓋をする。右にその日の一覧。
 //
 // 上の3層は「どれをやるか」を形と大きさで選ぶ面。ここは**その日を片付ける**面
-// なので、地色は黒く、光の量が違う。日付はスイス・スタイルの大きな Helvetica。
-//
-// ★CSS の 3D 変形は使わない。潜った感じは、カメラの pitch(`TaskSpace`)と
-// 地色の黒さが作る。
+// なので、地の色は黒く(土)、光の量が違う。日付はスイスの大きな Helvetica。
 
 const WD_EN = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const parse = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -25,7 +23,8 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** 地中の地色。真っ黒ではなく、土の色。 */
 const SOIL = "#141412";
-/** シリンダーの地(薄いグレー)。 */
+/** 地表(明るい帯)の下端 = 穴の断面が始まる線。ここで地表と断面が繋がる。 */
+const SURFACE = `calc(${TAB_PAD_TOP} + 116px)`;
 /** 黒地の上の文字。 */
 const ON_SOIL = "rgba(250,250,249,0.94)";
 const ON_SOIL_DIM = "rgba(250,250,249,0.40)";
@@ -72,38 +71,43 @@ export function Underground({ appState, persist, iso, active }: {
     setOpenId(null);
   };
 
+  const wd = d ? WD_EN[d.getDay()] : "";
   return (
     <div style={{ position: "absolute", inset: 0, background: SOIL, overflow: "hidden" }}>
-      {/* ── 日付の見出し。スイス・スタイルの大きな Helvetica。 ── */}
-      <div style={{
-        position: "absolute", top: `calc(${TAB_PAD_TOP} + ${SPACE.md}px)`, left: SPACE.lg, right: SPACE.lg,
-      }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm }}>
-          <span style={{ fontFamily: HELV, fontSize: SWISS_LG, fontWeight: 700, color: ON_SOIL, lineHeight: 0.82, letterSpacing: "-0.04em" }}>
-            {d ? d.getDate() : "—"}
-          </span>
-          <span style={{ fontFamily: HELV, fontSize: TYPE.small, fontWeight: 700, letterSpacing: "0.14em", color: ON_SOIL_DIM }}>
-            {d ? WD_EN[d.getDay()] : ""}
-          </span>
-        </div>
-        <div style={{ fontFamily: HELV, fontSize: TYPE.small, fontWeight: 500, letterSpacing: "0.12em", color: ON_SOIL_DIM, marginTop: 2 }}>
-          {d ? `${d.getFullYear()}.${pad2(d.getMonth() + 1)}` : ""}　·　UNDER
+      {/* ── 地表(明るい帯)。ここより下が地中(土)。穴の断面はこの下端から降りる。 ── */}
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: SURFACE, background: BD_GREY }}>
+        {/* 地表と土の境目を柔らかく(断面が地表から続くように見せる)。 */}
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 20,
+          background: `linear-gradient(to bottom, transparent, ${SOIL})`, opacity: 0.5 }} />
+        {/* 日付・曜日は**黒字**で地表の左に。 */}
+        <div style={{ position: "absolute", top: `calc(${TAB_PAD_TOP} + ${SPACE.sm}px)`, left: SPACE.lg }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm }}>
+            <span style={{ fontFamily: HELV, fontSize: SWISS_LG, fontWeight: 700, color: INK, lineHeight: 0.82, letterSpacing: "-0.04em" }}>
+              {d ? d.getDate() : "—"}
+            </span>
+            <span style={{ fontFamily: HELV, fontSize: TYPE.small, fontWeight: 700, letterSpacing: "0.14em", color: INK }}>
+              {wd}
+            </span>
+          </div>
+          <div style={{ fontFamily: HELV, fontSize: TYPE.micro, fontWeight: 500, letterSpacing: "0.12em", color: MUTED, marginTop: 2 }}>
+            {d ? `${d.getFullYear()}.${pad2(d.getMonth() + 1)}` : ""}
+          </div>
         </div>
       </div>
 
-      {/* ── 左: 穴の中のシリンダー。その日のタスクが落ちて積もる。 ── */}
+      {/* ── 左: 穴の断面。地表の下端から降り、その日のタスクが落ちて積もる。 ── */}
       <div style={{
         position: "absolute", left: 0, width: "44%",
-        top: `calc(${TAB_PAD_TOP} + 120px)`, bottom: `calc(${NAV_H} + ${SPACE.md}px)`,
+        top: SURFACE, bottom: `calc(${NAV_H} + ${SPACE.md}px)`,
         paddingLeft: SPACE.sm,
       }}>
-        <UnderHole tasks={undone} weekday={d ? WD_EN[d.getDay()] : ""} active={active} />
+        <UnderHole tasks={undone} weekday={wd} active={active} />
       </div>
 
       {/* ── 右: その日の一覧(読むための面)。 ── */}
       <div data-under-list style={{
         position: "absolute", right: 0, width: "56%",
-        top: `calc(${TAB_PAD_TOP} + 120px)`, bottom: `calc(${NAV_H} + ${SPACE.md}px)`,
+        top: `calc(${SURFACE} + ${SPACE.sm}px)`, bottom: `calc(${NAV_H} + ${SPACE.md}px)`,
         paddingRight: SPACE.lg, paddingLeft: SPACE.sm,
         overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
       }}>

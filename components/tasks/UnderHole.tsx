@@ -9,10 +9,10 @@ import { specOf } from "@/lib/taskSize";
 import { resolveTag } from "@/lib/taskTags";
 import type { Task } from "@/lib/types";
 
-// ★穴の断面(第41巡)。地中に開いた穴を**断面で抽象化**したグレーの縦の帯。
-// 選んだ日のタスクが図形になって上から落ち、**一段に一個**ずつ積もる
-// (図形の幅は穴の太さと同じ＝横に2つ並べない)。最後に**曜日の文字**(TUE 等)が
-// 降ってきて、穴に**蓋をする**。
+// ★穴の断面(第41巡→第42巡)。地表から地中へ通じる穴を**断面で抽象化**した
+// グレーの縦の帯(上端は地表と繋がるので平ら)。選んだ日のタスクが図形になって
+// 上から落ち、**一段に一個**ずつ積もる(図形の幅は穴の太さと同じ＝横に2つ
+// 並べない)。最後に**曜日の文字**(枠なし・TUE 等)が降ってきて、穴に**蓋をする**。
 //
 // ★物理は真下向き。3D は使わない。毎フレームのコストは物体ごとに drawImage
 // または塗り1回。物理と描画のループは**この1つの effect の閉包**に持つ。
@@ -103,8 +103,9 @@ export function UnderHole({ tasks, weekday, active }: {
       // 断面の帯(抽象的なグレー)。上端は開いた穴なので少しだけ丸める。
       const sw = shaftW();
       const sx = shaftX();
+      // ★上端は**地表と繋がる**ので平ら(角丸なし)。下端だけ丸める。
       ctx.fillStyle = SHAFT;
-      roundRectPath(ctx, sx, 0, sw, h, [Math.min(18, sw * 0.14), Math.min(18, sw * 0.14), 0, 0]);
+      roundRectPath(ctx, sx, 0, sw, h, [0, 0, Math.min(16, sw * 0.14), Math.min(16, sw * 0.14)]);
       ctx.fill();
       let pending = false;
       for (const p of pieces) {
@@ -112,15 +113,13 @@ export function UnderHole({ tasks, weekday, active }: {
         ctx.translate(p.body.position.x, p.body.position.y);
         ctx.rotate(p.body.angle);
         if (p.lid !== undefined) {
-          // 曜日の蓋。帯の幅の角丸ブロックに、白い Helvetica。
-          ctx.fillStyle = "#26261F";
-          roundRectPath(ctx, -p.w / 2, -p.h / 2, p.w, p.h, [p.h * 0.22, p.h * 0.22, p.h * 0.22, p.h * 0.22]);
-          ctx.fill();
+          // ★曜日の蓋。**枠なし**でテキストそのもの(ユーザー指定)。当たり判定の
+          //   箱は描かず、文字だけを白い Helvetica で置く。
           ctx.fillStyle = PAPER;
-          ctx.font = `700 ${Math.round(p.h * 0.5)}px ${HELV}`;
+          ctx.font = `700 ${Math.round(p.h * 0.82)}px ${HELV}`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.letterSpacing = "2px";
+          ctx.letterSpacing = "1px";
           ctx.fillText(p.lid, 0, 1);
         } else if (p.paint) {
           let bmp = peekSolidBitmap(p.paint, p.w, dpr);

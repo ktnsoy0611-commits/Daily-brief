@@ -46,25 +46,30 @@ export const SWIPE_THRESHOLD = 90;
 // マガジン風(明朝体の見出し+Playfairの斜体数字)の縛りは撤廃し、ミニマルで
 // リッチな1書体構成に統一した。SERIF/DISPLAYという名前は既存コード互換の
 // ために残しているが、実体はどちらもSANSを指す(見出しも本文も同じサンセリフ)。
-// ★★基本のUIフォントはHelvetica + Noto Sansに統一(2026-08-23にユーザー指定)。
-// Helveticaは端末のシステム書体(読み込み不要)。和文はHelveticaにグリフが
-// 無いので、次点のNoto Sans JP(`app/layout.tsx` で読み込み)へ自動的に
-// 委ねられる。タスクの図形に載る文字(`FONT_FACES`)はこの対象外。
-export const SANS = '"Helvetica Neue", Helvetica, var(--font-noto-sans-jp), "Noto Sans JP", sans-serif';
-// ★★純 Helvetica の並び(和文フォールバックを**含めない**)。ラテン文字と
-// 数字だけを、スイス・スタイルで置く場所で使う ― TOP VIEW の日付、月の見出し。
-// SANS と分けてあるのは、和文フォールバックが混じると数字の骨格が
-// Noto の字面に寄って、Helvetica の均一なグリッドが崩れるため。
-export const HELV = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+// ★★**欧文は Archivo、和文は Noto Sans JP**(2026-08-24・第53巡にユーザー確定)。
+// 「ブルータリズム/スイスに合う、太めで幅が少し詰まった、洗練された書体」という
+// 指定に対して Archivo(可変フォント)を選んだ。幅は `app/globals.css` の
+// `font-variation-settings: "wdth" 88` で全体を少し詰め、太さは使う場所で指定する。
+// 和文は Archivo にグリフが無いので、次点の Noto Sans JP へ自動的に委ねられる
+// (この**並び順**が「欧文だけ Archivo」を作っている)。
+// タスクの図形に載る文字(`FONT_FACES`)はこの対象外。
+export const SANS = 'var(--font-archivo), "Archivo", var(--font-noto-sans-jp), "Noto Sans JP", sans-serif';
+// ★★**欧文だけの並び**(和文フォールバックを**含めない**)。ラテン文字と数字だけを
+// スイス・スタイルで置く場所で使う ― 残り日数の数字・曜日の見出し・#タグ。
+// SANS と分けてあるのは、和文フォールバックが混じると数字の骨格が Noto の字面に
+// 寄って、均一なグリッドが崩れるため。
+// ★旧名 `HELV`(素の Helvetica)から改名(第53巡)。名前が中身と食い違わないように。
+export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, sans-serif';
 
-// ★スイス見出し(**表示専用の大きな Helvetica**)。`TYPE` の目盛りは本文のための
-// もので display(26)止まり。ブルータリズム/スイスの大きな見出しはその外に居る ―
+// ★スイス見出し(**表示専用の大きな欧文**)。`TYPE` の目盛りは本文のためのもので
+// display(26)止まり。ブルータリズム/スイスの大きな見出しはその外に居る ―
 // `TAB_MARK`(52) などと同じ「部品の寸法」の例外(2026-08-24 にユーザーがこの
-// 見た目を指定)。★増やさない。使うのは GRAVITY の ALIGN/TIMELINE の特大タイポ
-// (残り日数の数字・巨大な曜日ラベル。`GravityTab`)。
-export const SWISS_XL = 72;   // 残り日数の数字・曜日の見出し
-export const SWISS_LG = 64;   // (予備)
-export const SWISS_MD = 28;   // (予備)
+// 見た目を指定)。★**3つから増やさない**。使うのは GRAVITY の ALIGN/TIMELINE。
+// ★第53巡に実務値へ。72 は「残り日数が大きすぎる」というユーザー指摘で、
+//   残り日数は 44/28 の二段(焦点だけ大きい)にし、72 は曜日の見出し専用にした。
+export const SWISS_XL = 72;   // TIMELINE の曜日の見出し
+export const SWISS_LG = 44;   // ALIGN の**焦点**の残り日数
+export const SWISS_MD = 28;   // ALIGN の焦点以外の残り日数
 export const SERIF = SANS;
 export const DISPLAY = SANS;
 

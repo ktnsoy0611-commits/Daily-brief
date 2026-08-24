@@ -30,6 +30,9 @@
 - ユーザーは実機 iPhone で最終確認する。Chromium で問題なくても実機で直っていないことがある。
 - **デザイン・文言の変更、AI のプロンプトの変更は、事前に文面を提示して承認を得てから**行う。
 - Tailwind 不使用（すべてインライン style）。コミットメッセージは日本語で「何をなぜ」。
+- **欧文は Archivo**（可変フォント。幅は `body` の `font-variation-settings: "wdth" 88`、
+  太さは使う場所で指定）、**和文は Noto Sans JP**。`SANS` / `LATIN`（旧 `HELV`）は
+  `lib/constants.ts`。★`app/layout.tsx` で `weight` を固定で渡さないこと。
 
 # ファイル地図
 
@@ -54,9 +57,11 @@
 （ALIGN）と俯瞰（TIMELINE）を見せる。タブは DRIFT（候補）＋ GRAVITY の2つ。
 - `components/tabs/GravityTab.tsx` — **タスクの本体**。matter.js の山（pile）と、
   **3つの物理モード**（`pile` / `align` / `timeline`）。左端→右スワイプで ALIGN
-  （面積の降順に整列＋右に詳細リスト、残り日数を特大に）、下→上スワイプで TIMELINE
-  （巨大な曜日 TODAY/WED… が仕切りとして立ち、図形が日付レーンへ吸着・横スクロール）。
-  逆方向のスワイプで山へ戻る。モードは重力の切替＋アトラクタ（毎フレーム目標へ寄せる）。
+  （**左に円弧**で図形が並び、右に文字。中央が大きく、上下スワイプで回る）、
+  下→上スワイプで TIMELINE（**地面から巨大な曜日が指に連れて伸び**、図形が日付レーンへ
+  下から詰まる）。逆方向のスワイプで山へ戻る。
+  ★★モード中は **body の位置で描かない** — レイアウトが決めた**スロットへ絵の中心を
+  置く**（`ox/oy` 補正をやめたのがズレの根治。詳しくは `docs/project_knowledge.md` §4）。
 - `components/tasks/TaskSpace.tsx` — **薄い器**。GRAVITY を常時マウント（山を保つ）、
   DRIFT タブのときだけ上に重ね、画面に固定した `Masthead`（TASK）を持つだけ。
 - `components/tasks/LayerName.tsx` — 層の名前（GRAVITY / DRIFT）を右上に置く。

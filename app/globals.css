@@ -98,6 +98,12 @@ body {
    (body に色を敷くと、body直下の負のz-indexにある背景が隠れる)。 */
 body {
   background-color: transparent;
+  /* ★★欧文(Archivo)を**少し詰める**(2026-08-24・第53巡にユーザー指定
+     「太めで、幅が少し詰まったフォント」)。Archivo は可変フォントで幅の軸
+     (`wdth` 62〜125)を持つので、100 ではなく 88 を既定にする。
+     ★和文(Noto Sans JP)はこの軸を持たないので無視される。canvas に描く
+     図形の文字(`ctx.font`)にも掛からない。太さは使う場所で指定する。 */
+  font-variation-settings: "wdth" 88;
 }
 
 /* ★★画面の四隅まで敷きたいタブ本文はこれを付けるだけ(2026-08-12)。
@@ -454,31 +460,24 @@ button:active {
 }
 
 /* ── GRAVITY の物理モードの重なり(components/tabs/GravityTab.tsx) ──────
-   第52巡に**縦のカメラを撤去**(TOP/UNDER を破棄)。タスク図形は常に GRAVITY に
-   だけ在り、詳細リスト(ALIGN)と俯瞰(TIMELINE)は matter.js の物理モードで見せる。
-   図形そのものは canvas の物理が動かす。ここは**その上に重ねる DOM**
-   (ALIGN の詳細リスト・TIMELINE の巨大な曜日ラベル)の出入りだけ。 */
+   タスク図形は常に GRAVITY にだけ在り、詳細リスト(ALIGN)と俯瞰(TIMELINE)は
+   matter.js の物理モードで見せる。図形そのものは canvas が描く。ここは**その上に
+   重ねる DOM**(ALIGN の文字の行・TIMELINE の巨大な曜日)の見え方だけ。
 
-/* ALIGN … 図形が左へ整列するのに合わせ、右の詳細行が順にスライドインする。
-   1行ずつ `--i` ぶん遅らせる(段差)。時間・曲線は共通の語彙から。 */
-.mode-panel .mode-row {
-  animation: mode-row-in var(--t-item) var(--ease-settle) both;
-  animation-delay: calc(var(--i, 0) * var(--t-step));
-}
-@keyframes mode-row-in {
-  from { opacity: 0; transform: translateX(16px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
+   ★★位置は **JS が毎フレーム ref 越しに transform を書く**(円弧の回転に文字が
+   追従する/曜日の帯が指に追う)。**ここで transform のアニメーションを持たない**
+   こと — 持つと JS の書き込みと奪い合って行が飛ぶ。 */
+.mode-panel .mode-row { will-change: transform, opacity; }
 
-/* TIMELINE … 巨大な曜日が下から立ち上がる(仕切り)。閉じると倒れる。 */
-.mode-lanes { animation: mode-lanes-rise var(--t-in) var(--ease-sheet) both; }
-@keyframes mode-lanes-rise {
-  from { opacity: 0; transform: translateY(120%); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mode-panel .mode-row, .mode-lanes { animation: none; }
+/* TIMELINE の曜日 … **画面の下(図形が落ちる地面)でぺたんこに潰れている文字が、
+   指に連れて縦に伸びてくる**(2026-08-24・第53巡にユーザー指定)。伸び具合
+   `--tl`(0.04〜1) は JS がドラッグから書く。原点を下端にすると、地面から
+   生えるように立ち上がる。 */
+.tl-band span {
+  display: block;
+  transform: scaleY(var(--tl, 1));
+  transform-origin: bottom center;
+  will-change: transform;
 }
 
 /* ── DRIFT の「掴んで捨てる/食べる」ターゲット(components/tabs/DriftTab.tsx) ──

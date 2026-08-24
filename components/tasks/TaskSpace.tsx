@@ -109,7 +109,6 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
   // ★いま潜っている日。地表の穴をたたくと決まる。タブから直接 UNDER へ
   //   来たときは今日にする(どこへ潜ったのか分からない状態を作らない)。
   const [diveIso, setDiveIso] = useState<string | null>(null);
-  const underRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
     id: number; x: number; y: number; from: number; axis: "" | "x" | "y";
     vel: number; lastY: number; lastT: number;
@@ -171,7 +170,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
     if (wasDrag || prev === idx) return;
     cam.style.setProperty("--cam-k", String(Math.min(1, Math.abs(idx - prev))));
     cam.style.setProperty("--cam", String(idx));
-    setPlan(idx >= 2);
+    setPlan(idx === 2);
     setUnder(idx === 3);
     blow(idx > prev ? "down" : "up", 1);
   }, [idx, blow, setPlan, setUnder]);
@@ -182,31 +181,15 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
   useEffect(() => () => window.clearTimeout(windTimer.current), []);
 
   /**
-   * ★地表の穴をたたいた = **その穴へ潜る**。
-   * カメラを地中へ降ろすのと同時に、地中の面を**たたいた穴の場所から円で
-   * 広げる**。円だけだと「どこから来たか」しか出ず、カメラだけだと
-   * 「どの穴か」が出ない。2つ揃って初めて「その穴に潜った」に見える。
-   * ★`clip-path` の円で切り抜く(矩形を要素へ焼き付ける layoutId 相当の
-   *   やり方は第27巡に撤去済み)。
+   * ★地表の穴をたたいた = **その穴へ潜る**。行き先の日を控えて、カメラを
+   * 地中(UNDER)へ降ろす。見下ろし → 立面の**視点の起き上がり**は
+   * `data-plan` が外れることで CSS が pitch させる ― それが「穴の中へ潜って
+   * 視点が立面へ戻った」の見え方になる(第40巡にユーザー指定)。
+   * ★以前の「穴の場所から円を広げる `clip-path`」は廃止した。回転する層に
+   *   clip を重ねるのは、このコードベースが Safari で5回踏んだ組み合わせ。
    */
-  const dive = useCallback((iso: string, from: DOMRect) => {
+  const dive = useCallback((iso: string) => {
     setDiveIso(iso);
-    const el = underRef.current;
-    const host = rootRef.current;
-    if (el && host) {
-      const r = host.getBoundingClientRect();
-      const x = Math.round(from.left + from.width / 2 - r.left);
-      const y = Math.round(from.top + from.height / 2 - r.top);
-      const far = Math.max(
-        Math.hypot(x, y), Math.hypot(r.width - x, y),
-        Math.hypot(x, r.height - y), Math.hypot(r.width - x, r.height - y),
-      );
-      el.style.setProperty("--dive", `circle(${Math.round(from.width / 2)}px at ${x}px ${y}px)`);
-      el.removeAttribute("data-dive");
-      void el.offsetWidth;
-      el.setAttribute("data-dive", "");
-      el.style.setProperty("--dive", `circle(${Math.round(far * 1.08)}px at ${x}px ${y}px)`);
-    }
     goTab("tasks-under");
   }, [goTab]);
 
@@ -262,7 +245,9 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       const cam = raw < 0 ? raw * RUBBER : raw > last ? last + (raw - last) * RUBBER : raw;
       camRef.current?.style.setProperty("--cam", cam.toFixed(4));
       // 立面と見下ろしの境目(1↔2)を跨いだ瞬間に倒す/起こす。
-      setPlan(cam >= 1.5);
+      // ★見下ろしは TOP(cam≈2)の周りだけ。GRAVITY→TOP と TOP→UNDER の
+      //   両方の境目で pitch が起きる。
+      setPlan(cam > 1.5 && cam < 2.5);
     };
 
     const up = (e: PointerEvent) => {
@@ -291,7 +276,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       // ★行き先は必ず自分で書く。タブが変わらないとき(行き止まり・戻り)は
       //   下の goTab が走らないので、ここが唯一の戻し役になる。
       cam?.style.setProperty("--cam", String(next));
-      setPlan(next >= 2);
+      setPlan(next === 2);
       setUnder(next === 3);
       if (next !== d.from) {
         byDragRef.current = true;
@@ -349,15 +334,13 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
           <TopView tasks={tabProps.appState.tasks ?? []} onDive={dive} />
         </Layer>
 
-        <Layer at={3} face="plan">
-          <div ref={underRef} className="cam-dive" style={{ position: "absolute", inset: 0 }}>
-            <Underground
-              appState={tabProps.appState}
-              persist={tabProps.persist}
-              iso={diveIso}
-              active={idx === 3}
-            />
-          </div>
+        <Layer at={3} face="elev">
+          <Underground
+            appState={tabProps.appState}
+            persist={tabProps.persist}
+            iso={diveIso}
+            active={idx === 3}
+          />
         </Layer>
       </div>
 

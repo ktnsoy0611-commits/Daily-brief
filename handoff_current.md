@@ -25,61 +25,48 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 
 ---
 
-## 直近で完了したこと（第39巡）— 実機の2件を修正 ＋ 第2段階
+## 直近で完了したこと（第40巡）— カメラの pitch ＋ TOP/UNDER のデザイン
 
-### ★★実機で報告された2件は、**どちらも原因が1つ**だった
+ユーザー指定に沿って、遷移の「カメラが動く感じ」と TOP/UNDER の見た目を作り直した。
 
-`onClose` が書いて保存するだけで `openId` を下ろしておらず、`TaskComposer` が
-**一度も外れなかった**（`DriftTab` / `GravityTab` の両方。元からの不具合）。
-
-1. **「閉じたあと黒い丸が残る」** … 吸い込みの円は半径0まで縮まない（帰り先の
-   丸の大きさで止まる）ので、外れないまま黒い丸が残って見えていた。
-2. **「上下スワイプがなかなか効かない」** … 入力画面が html に立てる
-   `[data-overlay]` も外れず、器が触りを握れないまま（`touch-action` が `auto`
-   のまま）だった。一度タスクを開くと以後ずっと効かない状態。
-
-あわせて直したこと:
-- `surfaceOrigin()` の既定の帰り先を **右下の「作る」の丸**（`[data-create-anchor]`）
-  へ。以前は「画面下端の中央」で、そこには**何も無い**。丸は黒いボタンに
-  重なって初めて消えて見える。★**行き先は必ず実在する黒い丸にすること。**
-- 器に `touch-action: none` を置いた（入力画面が開いている間と地中は `auto`）。
-  これが無いと iOS は指が下りた瞬間に自分の送りを始め、`pointermove` が
-  `pointercancel` に化けて**掴む前に死ぬ**。
-- 送る判断を**画面**の高さで測るよう戻した（層のあいだに空きを作ったぶん、
-  同じ 0.18 でも要る指の距離が 152px → 212px に伸びていた）。0.14 ＋ 払いの
-  速さも 0.45 → 0.28。
-
-### 第2段階（TOP VIEW / UNDERGROUND）
-
-- **タブを4つへ**（DRIFT / GRAVITY / TOP / UNDER）。`TabIcons` に `holes` /
-  `strata` を追加。`TasksTabId` も4つへ。
-- **立面 → 見下ろしのすり替え**。★`rotateX` は使わず、2つの層の `scaleY` を
-  すれ違わせる。同時に GRAVITY は**床を外して**図形を落とし、戻ったら
-  `dropAll()` で降らせ直す。
-- **TOP VIEW** … 黒い穴＋`GeoType` の数字。横に払って 3日 / 1週 / 4週。
-  ★列の数は**器の形から決める**（`packCols`）。7列固定にしたら1週が細い1行に
-  なった。数字の大きさは `geoTextWidth` から逆算（2桁が円からはみ出す）。
-- **UNDERGROUND** … 穴の場所から円が広がり、地色は `pushGround` で黒へ。
-  左に図形・右に題と詳細。★ここだけ器が触りをコンテンツへ返す（一覧が送れる）。
-  ★アプリ名の札を出さない（黒地に黒い字が沈み、大きな日付とぶつかる）。
+1. ★★**カメラの pitch を `perspective` + `rotateX` に**（`scaleY` のすり替えを
+   やめた）。GRAVITY↔TOP と TOP↔UNDER で視点が実際に**うつむく/起き上がる**。
+   遷移の途中で穴が**楕円**になるのが手ごたえ。`data-plan` は TOP に居るとき
+   （`--cam` 1.5〜2.5）だけ。UNDER は立面なので TOP を離れると起き上がる。
+   ★3D は Safari で5回焼けた組み合わせ（深い rotateY×角丸×影×clip）だけを
+   避ける形で使う（素の層・clip を重ねない・0deg で着地）。**穴を広げる
+   `clip-path` は廃止**した（回転層に clip を重ねないため）。
+2. **TOP をカレンダーへ**（`TopView.tsx`）。月曜始まり・`MON〜SUN`・その月の
+   1〜末日。穴は黒、数字は白い Helvetica、件数は白い小四角。左下に月の頭文字＋
+   数字＋年（大きな Helvetica）。横に払って前後の月。
+3. **UNDER を「穴の中」へ**（`Underground.tsx` ＋ 新規 `UnderCylinder.tsx`）。
+   左に**少し傾いた薄いグレーのシリンダー**、その日のタスクが図形になって
+   落ちて積もる（1日ぶんの小さな matter.js）。右に一覧。日付は大きな Helvetica。
+4. **Helvetica の並び `HELV`** と、スイスの大きな見出し `SWISS_XL/LG/MD` を
+   `lib/constants.ts` に足した（`TYPE` の目盛りの外の「部品の寸法」例外）。
 
 ### ★踏んだ罠
+- シリンダーが**空のまま**だった。図形が寝たあとループを止めており、書体が
+  届いても描き直されなかった。書体が揃うまでループを止めないようにした。
+- シリンダーの図形が筒からあふれた → `UNIT` を小さくし、筒の形に切り抜いた。
 
-**層の中で寸法を測るのに `getBoundingClientRect()` を使っていた。** これは
-**変形後**の箱を返すので、`scaleY(0.06)` で畳まれた層では 593px の器が 38px に
-見え、TOP VIEW の穴が7列の細い1行になった。`offsetWidth/offsetHeight` で測る。
-
-### 検証したこと
-
-`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓。
-`scratchpad/space38.mjs`（13群55項目）全部OK ― 4層の積み方・傾き・穴の並びと
-濃淡・潜る・地色の出入り・触りの受け渡しまで。
-新規 `scratchpad/bugs38.mjs` で**実機報告の2件**を名指しで確認（吸い込みの
-行き先が右下の丸であること／閉じたら本当に外れること／126px の払いで送れて
-32px のそっとした動きでは送らないこと）。★**実機は未確認**。
+### 検証
+`tsc` / `eslint` / 本番ビルド ✓、機械チェック4本 ✓（大きな Helvetica は
+`SWISS_*` 定数にしたので fontSize の生数字は0件）。`space38.mjs`（13群）と
+`bugs38.mjs` 全部OK。Chromium で pitch の楕円化・シリンダーの積もりを目視確認。
+★★**実機 Safari は未確認**（`perspective`+`rotateX` は要確認）。
 
 ---
 
+## 直近で完了したこと（第39巡・要点だけ）
+
+★実機報告の2件（閉じたあと黒い丸が残る／上下スワイプが効かない）は**原因が1つ**
+だった ― 入力画面の `onClose` が `openId` を下ろさず `TaskComposer` が一度も
+外れなかった。下ろすようにし、吸い込みの帰り先を右下の「作る」の丸へ、器に
+`touch-action: none`（入力中と地中は auto）を置いて直した。
+第2段階のタブ4つ化・立面↔見下ろしのすり替え（当時 scaleY。第40巡で pitch へ）・
+TOP/UNDER の初版を入れた。★層の中の寸法は `offsetWidth/offsetHeight` で測る
+（`getBoundingClientRect` は変形後の箱を返す）。
 ## 直近で完了したこと（第38巡・要点だけ）— 縦のカメラ
 
 1. **`components/tasks/TaskSpace.tsx`**（縦のカメラの器）を新設。`--cam` は CSS
@@ -98,23 +85,19 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 
 ## 直近で完了したこと（第37巡・要点だけ）
 
-1. **GRAVITYの床がタブバーの裏に潜っていた＝実バグ、直した**。
-   `navHeightPx()` が `--nav-h` を `documentElement` から読んでいたが、この
-   カスタムプロパティは `[data-app-shell]` に立っている（祖先からは常に空文字が
-   返り、`96px` のフォールバックへ毎回落ちていた）。実機では本来 ≈132px。
-2. ★★**iOSの`theme-color`は`default`/`black`では一切読まれない**（Apple公式の
-   既知の制限）。上47pxの白い帯は**iOSの制約**で、**ユーザー確定で許容**。
-   ★これ以上この件を追わないこと。
-3. **輪の開閉・タブ切り替えの「点滅」は未特定**（Chromiumでは再現しない）。
+GRAVITY の床がタブバーの裏に潜る実バグを直した（`navHeightPx()` の読み取り元）。
+★iOS の `theme-color` は `default`/`black` では読まれず、上47pxの白い帯は
+**ユーザー確定で許容**（これ以上追わない）。輪/タブの「点滅」は未特定
+（Chromium で再現せず）。
 
 ---
 
 ## 次に着手すること
 
-1. ★★**実機で確認してもらう**（第38・39巡ぶんがまとめて未確認）。
-   縦のカメラ／DRIFT の浮遊／パンの長さと風／4層のタブ／見下ろしと地中／
-   ★**報告された2件（黒い丸・上下スワイプ）が本当に直っているか**。
-   ★**ホーム画面から一度消して追加し直してから**見ること。
+1. ★★**実機で確認してもらう**（第38〜40巡ぶんが未確認）。とくに
+   ★**`perspective`+`rotateX` の pitch が Safari で崩れないか**（このコードベースの
+   3D の古傷。Chromium では楕円化まで確認済み）。縦のカメラ／風／4層のタブ／
+   カレンダー／シリンダーの積もり。★**ホーム画面から追加し直してから**見ること。
 2. **触れる数字**（実機で振れる所）:
    - パンの長さ … `app/globals.css` の `--t-cam`（いま 1400ms）1行。
    - 層の遠さ … `TaskSpace.tsx` の `LAYER_GAP`（いま 0.4）。
@@ -145,9 +128,8 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 - **層の名前の見え方は実機で要確認**。設定の丸のすぐ下に置いてあり、Chromium
   では収まっているがセーフエリアが効く実機では詰まる可能性がある
   （`components/tasks/LayerName.tsx`）。
-- **地中から上の層へ指で戻る道が弱い**。地中は触りをコンテンツへ返して
-  いるので、一覧が送れる間はカメラを掴めない（タブバーからは戻れる）。
-  実機で不便なら、一覧の上端でだけ掴む等を足す。
+- **地中から上の層へ指で戻る道が弱い**。一覧が送れる間はカメラを掴めない
+  （タブバーからは戻れる）。実機で不便なら一覧の上端でだけ掴む等を足す。
 
 ---
 
@@ -163,8 +145,10 @@ components/tasks/TaskSpace.tsx     ★★縦のカメラの器。層の並び・
 components/tasks/LayerName.tsx     ★層の名前。層と一緒に流れる
 components/tabs/DriftTab.tsx       ★浮遊の層。円環をやめ、ゆらいだ格子で散らす
 components/tabs/GravityTab.tsx     地上の層。★床の開け閉め(floorOpen)
-components/tasks/TopView.tsx       ★見下ろし。穴の並びは packCols が器から決める
-components/tasks/Underground.tsx   ★地中。黒地・その日の一覧。触りはコンテンツへ
+components/tasks/TopView.tsx       ★見下ろし。黒い穴のカレンダー(月曜始まり・Helvetica)
+components/tasks/Underground.tsx   ★地中。左にシリンダー・右に一覧。黒地
+components/tasks/UnderCylinder.tsx ★穴の断面のシリンダー。図形が落ちて積もる(matter.js)
+app/globals.css                    ★.task-layer の pitch(perspective+rotateX)
 lib/motion.ts                      ★surfaceOrigin の帰り先=右下の丸([data-create-anchor])
 components/tasks/TaskAddButton.tsx TaskAddButton本体を撤去。DemoSeedButtonのみ残る
 lib/ground.ts                      地色。優先度つきの積み木・onGround・GROUND_EASE

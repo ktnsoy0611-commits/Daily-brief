@@ -51,6 +51,19 @@ export const SWIPE_THRESHOLD = 90;
 // 無いので、次点のNoto Sans JP(`app/layout.tsx` で読み込み)へ自動的に
 // 委ねられる。タスクの図形に載る文字(`FONT_FACES`)はこの対象外。
 export const SANS = '"Helvetica Neue", Helvetica, var(--font-noto-sans-jp), "Noto Sans JP", sans-serif';
+// ★★純 Helvetica の並び(和文フォールバックを**含めない**)。ラテン文字と
+// 数字だけを、スイス・スタイルで置く場所で使う ― TOP VIEW の日付、月の見出し。
+// SANS と分けてあるのは、和文フォールバックが混じると数字の骨格が
+// Noto の字面に寄って、Helvetica の均一なグリッドが崩れるため。
+export const HELV = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+
+// ★TOP / UNDER のスイス見出し(**表示専用の大きな Helvetica**)。`TYPE` の目盛りは
+// 本文のためのもので display(26)止まり。ブルータリズム/スイスの大きな見出しは
+// その外に居る ― `TAB_MARK`(52) などと同じ「部品の寸法」の例外(2026-08-24 に
+// ユーザーがこの見た目を指定)。★増やさない。使うのは TopView / Underground だけ。
+export const SWISS_XL = 72;   // 月の頭文字
+export const SWISS_LG = 64;   // 地中の日付
+export const SWISS_MD = 28;   // 月の数字
 export const SERIF = SANS;
 export const DISPLAY = SANS;
 

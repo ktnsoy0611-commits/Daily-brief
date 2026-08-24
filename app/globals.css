@@ -512,30 +512,40 @@ button:active {
    効くので、上の層へ戻る道は残る。 */
 .task-cam[data-under] { touch-action: auto; }
 
-/* ── 立面 → 見下ろし のすり替え(GRAVITY ↔ TOP VIEW) ──────────────────
-   ★★**`rotateX` は使わない。** 真上を向く動きは、2つの層の `scaleY` を
-   すれ違わせて**錯覚として**作る:
-     ・立面の層(GRAVITY)は**足元へ**畳まれて、地平線の1本の線になる。
-     ・見下ろしの層(TOP VIEW)は**地平線から**手前へ開いていく。
-   視線が下へ倒れていくときに実際に起きる見え方をそのまま2Dで書いたもので、
-   3D 変形が要らないのはこのため(このコードベースは CSS の 3D で Safari の
-   描画崩れを5回踏んでいる)。
-   時間と曲線はカメラと同じものを引く ― 別に持つと、傾きだけがカメラより
-   先に着いて「途中で絵が差し替わった」に見える。 */
-.task-layer { transition: transform calc(var(--cam-k, 1) * var(--t-cam)) var(--ease-cam); }
-.task-cam[data-plan] .task-layer[data-elev] { transform: scaleY(0.06); transform-origin: 50% 100%; }
-.task-layer[data-plan-face] { transform: scaleY(0.06); transform-origin: 50% 0; }
-.task-cam[data-plan] .task-layer[data-plan-face] { transform: scaleY(1); }
+/* ── カメラの pitch(立面 ↔ 見下ろし) ────────────────────────────────
+   ★★ここは**唯一 `perspective` + `rotateX` を使う場所**(2026-08-24 にユーザーが
+   「見下げ視点へカメラが動いている感じ」を明示的に要求)。層の並びは
+   DRIFT(立面) → GRAVITY(立面) → TOP(見下ろし) → UNDER(立面。穴の中)で、
+   境目でカメラが実際に**うつむく/起き上がる**のが見えるようにする。
 
-/* ── 穴へ潜る(TOP VIEW → UNDERGROUND) ────────────────────────────────
-   たたいた穴の場所から円を広げて、地中の面で覆う。★切り抜きは**寸法を
-   持たない**ので、器がどう動いても面と中身は常に器そのもの
-   (`lib/motion.ts` の冒頭 ― 矩形を要素へ焼き付けるやり方は撤去済み)。 */
-.cam-dive { clip-path: var(--dive, none); }
-.cam-dive[data-dive] { transition: clip-path calc(var(--cam-k, 1) * var(--t-cam)) var(--ease-cam); }
+   ★★このコードベースは CSS の 3D で Safari の描画崩れを5回踏んでいるが、その
+   全ては**深い `rotateY(90)` × 角丸 × 影 × `clip-path`** の組み合わせだった
+   (`docs/archive/ui-binder-2026-07.md`)。ここは:
+     ・角丸も box-shadow も持たない**素の層**にだけ掛ける、
+     ・`clip-path` を回転層に**重ねない**(穴を広げる円の切り抜きは廃止した)、
+     ・0deg で必ず**着地する**(回りっぱなしにしない)、
+   の3つを守ることで、その組み合わせを避ける。`perspective()` は層ごとに
+   transform 関数の中で持つ(器に掛けると縦パンの translateY まで歪む)。
+
+   `data-plan` は**カメラが TOP(見下ろし)に居るとき**だけ真。TOP は 2 番目の層
+   なので、GRAVITY↔TOP と TOP↔UNDER の**両方**の境目で pitch が起きる。
+   時間と曲線はカメラの pan と同じ ― 別に持つと傾きだけ先に着く。 */
+.task-layer {
+  transition: transform calc(var(--cam-k, 1) * var(--t-cam)) var(--ease-cam);
+  backface-visibility: hidden;
+}
+/* 立面の層(DRIFT/GRAVITY/UNDER)。ふだんは正対(rotateX 0)。カメラが見下ろしへ
+   移るあいだ、足元を軸に**うつ伏せ**に倒れて地平線へ畳まれる。 */
+.task-layer[data-elev] { transform-origin: 50% 100%; transform: perspective(950px) rotateX(0deg); }
+.task-cam[data-plan] .task-layer[data-elev] { transform: perspective(950px) rotateX(84deg); }
+/* 見下ろしの層(TOP)。ふだんは地平線の向こうへ倒れて edge-on(見えない)。
+   カメラが見下ろしに着くと、手前の縁を軸に**起き上がって**正対する
+   = 真上から覗き込んでいる見え方。 */
+.task-layer[data-plan-face] { transform-origin: 50% 100%; transform: perspective(950px) rotateX(-84deg); }
+.task-cam[data-plan] .task-layer[data-plan-face] { transform: perspective(950px) rotateX(0deg); }
 
 @media (prefers-reduced-motion: reduce) {
-  .task-layer, .cam-dive[data-dive] { transition: none; }
+  .task-layer { transition: none; }
 }
 
 /* ── パン中の風(効果線) ────────────────────────────────────────────

@@ -92,6 +92,22 @@ body {
      このプロパティは継承するので、ここで一度切れば全体に効く。押した
      ことのフィードバックは、アイコンの色とhapticが担っている。 */
   -webkit-tap-highlight-color: transparent;
+  /* ★★**長押しで iOS の選択メニューを出さない**(2026-08-24・第55巡)。
+     タスクの図形は**長押しで掴む**操作なので、そのあいだ iOS が
+     「コピー / 調べる / 翻訳」のバルーンと青い選択を出してしまい、
+     操作ごと奪われていた(実機の写真で発覚)。ここは読むための文書ではなく
+     道具の面なので、既定を「選択しない」にして、**入力欄だけ戻す**(下)。 */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ★文字を選べないと困るのは**入力欄だけ**。ここだけ既定へ戻す。 */
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* ★body は必ず透明。理由は上の background-color のコメントを参照

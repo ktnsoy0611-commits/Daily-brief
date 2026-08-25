@@ -1,4 +1,4 @@
-# 現在地（2026-08-24）
+# 現在地（2026-08-25）
 
 現行仕様は `docs/project_knowledge.md` が正。経緯は `docs/archive/`。
 このファイルは**常に200行以内**に保つ（更新手順は `CLAUDE.md` の「恒久ルール」）。
@@ -26,70 +26,73 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 
 ---
 
-## 直近で完了したこと（第54巡）— 5つの指摘に対応
+## 直近で完了したこと（第55巡）— 動きを「バネと物理」で作り直し
 
-1. ★**ALIGN の向きを入れ替えた** … **文字が円弧に沿って回り、図形は平行を保つ**
-   （第53巡はこの逆だった）。中央の図形と文字をさらに大きく（`FOCUS_BOOST` 0.72）。
-   ★焼く単位にブーストを掛けていたため焦点が膨らんで文字へめり込んでいたのを修正。
-2. ★★**ALIGN の開閉アニメーション** … 入りは「山が右上へ弧を描いて順に抜ける →
-   円弧の下から円に沿って上がって埋まる → 着いた行から文字が右からスライドイン」。
-   閉じは「文字は右へ・図形は左へはけ、山へ落とし直す」。時間は全部 `motion.ts` から。
-3. ★**TIMELINE** … 図形を大きく（`TL_MAX_H` 76）、左右スワイプに慣性、
-   開閉のアニメ（開き=山が落ちて上から各曜日の列へ降る／閉じ=下へ落として落とし直す）、
-   **曜日タップで左端そのまま右へ広がる詳細パネル**（`clip-path` で開く）。
-4. ★**GRAVITY でも図形を掴める** … 長押し→運ぶ、口=完了/ゴミ箱=削除。
-   すぐ動かせばスワイプ（掴みでモードの入口を塞がない）。口/ゴミ箱は
-   `components/tasks/DropTargets.tsx` へ切り出して DRIFT と共通化。
-5. ★**DRIFT** … タブバーの下へ潜る不具合を修正（**canvas は full-bleed で画面より
-   大きい**ので、画面の座標へ変換してから壁を置く）。投げたら**減速して止まる**
-   （速さの下限をやめ空気抵抗へ）。図形を大きく、初期位置を画面中央のひまわり配置に。
-   ★DRIFT を見ている間、下の GRAVITY の層名・ビュー切替・デモのボタンが透けて
-   出て押す面まで奪っていたのを `visibility: hidden` で塞いだ（`TaskSpace`）。
+1. ★★**掴みが他の図形をすり抜けていた**（実機で発覚）… `setStatic` ＋ `setPosition`
+   の瞬間移動をやめ、**`setVelocity` で指へ運ぶ**。動く物体のままなので周りを
+   押しのけて山が崩れる。掴んでいる間は `enableSleeping = false`（眠っている物体は
+   当たり判定が起きない）。離した勢いはそのまま投げに残る。
+2. ★**長押しで iOS の選択メニューが出ていた** … `app/globals.css` の `html, body` に
+   `user-select: none` / `-webkit-touch-callout: none`。入力欄だけ `text` へ戻す。
+3. ★★**動きの土台を「バネ」にした**（新規 `lib/spring.ts`）… `t/持ち時間` の補間は
+   全部が同時に始まり同時に止まるので安っぽい。canvas の図形と物理の座標系だけ
+   減衰振動で解く。係数は4つ（`K_TRAVEL`/`D_TRAVEL`/`K_SETTLE`/`D_SETTLE`）。
+   ★**CSS の transition は従来どおり曲線4本・時間5つのまま。**
+4. ★★**ALIGN の出入りを作り直した** … 3次ベジエの**パス**に沿い、遅れの間隔を
+   **減衰**させて（`LEAD_GAP × GAP_DECAY^i`）**最初の1つがぽつんと動き、あとは
+   次々と流れ出す**。接線に直交する**蛇行**（`MEANDER·4u(1-u)·sin`）は中ほどで振れ、
+   出口では消えて一列に揃う。進みはバネなので慣性が出る。
+5. ★★★**TIMELINE を本物の落下に作り直した**（今回いちばん大きい）…
+   指の動きに落下を対応させない。**指は合図**で、伸びが閾値を超えたら
+   **GRAVITY の床が抜け**、山はそのまま重力で落ちる。画面の下へ出た図形を
+   **その日の列の真上へ引き上げて離す**（`recycle`）ので、「落ちながら、すでに落ちた
+   図形が上から順に振り分けられる」がそのまま出る。レーンごとの床と壁を静的な物体で
+   置き、図形は**物理で下から積み上がる**。
+   - ★**当たり判定の層**（`CAT_*`/`setFilter`）… 落下中はレーンの器をすり抜ける。
+     これが無いと床を抜いた瞬間にその場で受け止められ、振り分けが起きない。
+     ★`fromVertices` の複合 body は**各 `part`** の filter を見る（親だけでは効かない）。
+   - ★列に入ったら `setInertia(Infinity)` で回らなくする（傾くと曜日の列が読めない）。
+   - **日付の無いタスクは出さない**。図形を大きく（レーン幅の 0.94）。
+6. ★**曜日をたたくと** … たたいた曜日が**左端＋`PAD_L`(20)** へ来て、**曜日の間隔が
+   空き、その隙間に詳細**が出る。隙間と横スクロールは**どちらもバネ**で、`laneLeft(i)`
+   が器・図形・曜日の札・詳細の**唯一の出どころ**（CSS の transition で札だけ別に
+   動かすとズレる）。
+7. ★**曜日の濃さを「画面での位置」で決めるようにした** … 絶対の日付番号で決めていた
+   ので、横へ送ると全部が薄墨になって読めなかった。今日だけ `RUST`。
 
 ### 検証
-`tsc`/`eslint`/機械チェック4本/本番ビルド ✓。`scratchpad/r54.mjs`(11項目) と
-`scratchpad/drift54.mjs`(3項目) 全部OK — 掴んで口へ落とすと未完了が1件減る／文字が
-円弧に沿う／焦点が大きい／曜日タップで左端そのまま右へ広がる／下へ払うと山へ戻る／
-DRIFT が床の上に収まり中央に湧いて減速して止まる。★★**実機 Safari 未確認**。
+`tsc`/`eslint`/機械チェック4本/本番ビルド ✓。`scratchpad/r55.mjs`（14項目）全部OK —
+選択が出ない／掴むと周りが動く／ALIGN の出がぽつぽつ減る（＝連なり）／TIMELINE が
+落ちてレーンに積む／曜日タップで左端＋20 と隙間の詳細／横スワイプ／下へ払うと山へ。
+目視は `scratchpad/x-*.png`（落下の途中・着地後・詳細）と `a-1..6.png`（ALIGN の出）。
+★★**実機 Safari 未確認**。
 
-### （参考）第52〜53巡の要点
+### （参考）第52〜54巡の要点
+第54巡: ALIGN の向きを入れ替え（文字が円弧・図形は平行）、開閉の段取り、TIMELINE の
+慣性と曜日タップの詳細、GRAVITY の掴み＋口/ゴミ箱（`DropTargets` へ共通化）、DRIFT が
+タブ下へ潜る不具合（canvas は full-bleed で画面より大きい）と減速して止まる投げ。
 第52巡: TOP/UNDER と縦のカメラを破棄し、タスク図形を GRAVITY 空間だけに集約。詳細
 リストと俯瞰を「画面遷移」から「物理モード」へ。タブは DRIFT＋GRAVITY の2つ。
 第53巡: 欧文を **Archivo**（幅 88%）へ。**スロット描画**（絵の中心をスロットへ置く）で
 図形のズレを根治。残り日数は種類で大きさを決める（期日なしは `SOMEDAY`）。
 
-### （参考）第44巡までの要点
-UNDER を真横スライドに・DRIFT を無重力＋口/ゴミ箱に・穴の物理（いずれも第52巡の
-GRAVITY 集約で TOP/UNDER 側は退役。DRIFT の無重力＋口/ゴミ箱は現役）。詳細は
-`docs/archive/task-app-2026-08.md`。
-
----
-
-## 直近で完了したこと（第37〜38巡・要点だけ）
-
-第38巡: `TaskSpace`（縦のカメラの器）を新設し、`--t-cam`/`--ease-cam` を語彙の
-例外に。札は器へ・層は `LayerName` のみ。`AppShell` はタスクだけ `key` 固定・
-`tab-in` なし。パン中は風（効果線）。経緯は `docs/archive/task-app-2026-08.md` §56。
-第37巡: GRAVITY の床がタブバーの裏に潜る実バグを修正。★iOS の `theme-color` は
-`default`/`black` では読まれず、上47pxの白い帯は**ユーザー確定で許容**（追わない）。
-
----
 
 ## 次に着手すること
 
-1. ★★**実機で確認してもらう**（第54巡ぶん）。**ALIGN**（文字が円弧に沿う／図形は平行／
-   中央が大きい／入りと閉じの段取り）、**TIMELINE**（曜日が立ち上がり上から降る／横の
-   慣性／曜日タップで右へ広がる詳細）、**GRAVITY の掴み**（長押し→口/ゴミ箱）、
-   **DRIFT**（タブ下へ潜らない・減速して止まる・大きさ・中央から）。
-   ★**ホーム画面から追加し直してから**見ること。
+1. ★★**実機で確認してもらう**（第55巡ぶん）。**掴んだ図形が他を押しのけるか**／
+   **長押しで選択メニューが出ないか**／**ALIGN の出**（1つ→ずらずら→蛇行→一列）／
+   **TIMELINE**（床が抜けて落ち、上から曜日ごとに振り分けられて積む／曜日タップで
+   左端＋余白と隙間の詳細／横スワイプ）。★**ホーム画面から追加し直してから**見ること。
 2. ★**TIMELINE のリスケジュール**（別の曜日レーンへドラッグして `dueDate` を書換）は
-   未実装。構造（スロット・レーンの当たり判定）は揃っているので次はここ。
-3. **触れる数字**（`GravityTab.tsx`）… 掴み `HOLD_MS`(150)・`FLING`(0.6)、
-   ジェスチャー `EDGE_PX`(30)・`SWIPE_PX`(44)。ALIGN `ARC_R`(290)・`ARC_APEX_X`(88)・
-   `ROW_H`(112)・`ALIGN_MAX_H`(104)/`_W`(148)・`FOCUS_BOOST`(0.72)・`TEXT_GAP`(96)・
-   `ARC_ENTER_TH`(1.45)。TIMELINE `TL_MAX_H`(76)・`LANE_PITCH`(88)・`LANE_HEAD_H`(92)・
-   `TL_SPAN`(240)・`TL_FALL`(0.45)・`WORLD_DECAY`(0.94)。段取りの時間は `motion.ts` から
-   （`A_OUT`/`A_IN`/`A_TXT`/`A_STEP`・連なりの頭打ち `STAG_MAX`)。
+   未実装。レーンの器と当たり判定の層は揃っているので次はここ。
+3. **触れる数字**（`GravityTab.tsx`）… 掴み `HOLD_MS`(150)・`GRAB_K`(0.34)/
+   `GRAB_MAX`(34)・`FLING`(0.6)、ジェスチャー `EDGE_PX`(30)・`SWIPE_PX`(44)。
+   ALIGN の出入り `LEAD_GAP`(210)・`GAP_DECAY`(0.72)・`MEANDER`(46)・`WAVES`(1.35)、
+   円弧 `ARC_R`(290)・`ARC_APEX_X`(88)・`ROW_H`(112)・`ALIGN_MAX_H`(104)/`_W`(148)・
+   `FOCUS_BOOST`(0.72)・`TEXT_GAP`(96)。
+   TIMELINE `TL_FILL`(0.94)・`LANE_HEAD_H`(92)・`WALL_T`(24)・`RECYCLE_Y`(150)・
+   `TL_SPAN`(240)・`TL_TRIGGER`(0.45)・`GAP_W`(232)・`PAD_L`(20)・`LANES_VISIBLE`(3)。
+   バネの係数は `lib/spring.ts` の4つだけ。
    DRIFT（`DriftTab.tsx`）… `W_RATIO`(0.34)/`W_MAX`(150)/`FIT_N`(6)・`DRIFT_AIR`(0.016)。
    書体の幅は `app/globals.css` の `body { font-variation-settings }`。
 4. **DRIFT を GRAVITY へ集約するか**（今回は2タブのまま。ユーザーと別途相談）。
@@ -125,7 +128,8 @@ components/tabs/GravityTab.tsx     ★★タスク本体。物理モード(pile/
 components/tasks/TaskSpace.tsx     ★薄い器。GRAVITY常時マウント＋DRIFTを重ねる＋固定Masthead
 components/tasks/DropTargets.tsx   ★口とゴミ箱(DRIFT/GRAVITY 共通)。targetAt/fireTarget
 components/tabs/DriftTab.tsx       ★無重力の場(canvas+matter.js)。ホールド→口/ゴミ箱
-app/globals.css                    ★body の wdth 88／.tl-band(曜日が伸びる --tl)
+app/globals.css                    ★body の wdth 88／.tl-band(曜日が伸びる --tl)／★user-select:none
+lib/spring.ts                      ★★canvas の図形の動きの土台(バネ)。係数は4つ
 lib/motion.ts                      ★T_CAM/EASE_CAM 撤去／surfaceOrigin の帰り先=右下の丸
 components/tasks/TaskAddButton.tsx TaskAddButton本体を撤去。DemoSeedButtonのみ残る
 lib/ground.ts                      地色。優先度つきの積み木・onGround・GROUND_EASE
@@ -166,8 +170,9 @@ Playwright は `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`、実体は
 DOMに存在するので、`boundingBox().x`が画面内(0〜390)のものだけを選ぶこと
 （`menu28.mjs`の`makeBtn()`が実装例）。
 
-主な回帰（`scratchpad/`）… **`r54`（★掴んで口へ＝完了・文字が円弧・焦点・曜日タップの
-詳細・山へ戻る）/ `drift54`（★DRIFT が床の上・中央・減速して止まる）/ `modes53`（書体・
+主な回帰（`scratchpad/`）… **`r55`（★選択が出ない・掴むと周りが動く・ALIGN の連なり・
+TIMELINE の落下と積み・曜日タップ・横スワイプ）/ `r54`（掴んで口へ＝完了・文字が円弧・
+焦点）/ `drift54`（★DRIFT が床の上・中央・減速して止まる）/ `modes53`（書体・
 黒い棒の再発防止・曜日の指追従）**/
 `chin35`（上下の帯）/ `ground26`（地色）/ `motion26`（動き）/ `rect24`（器の追従）/
 `menu28`（作るものの輪）/ `when25` `pop21` `when20` `tap` `geo4` `blink` `swipe`。

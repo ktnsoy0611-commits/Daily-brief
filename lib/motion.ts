@@ -55,6 +55,21 @@ export const ms = (seconds: number) => Math.round(seconds * 1000);
 export interface SurfaceOrigin { x: number; y: number; w: number; h: number }
 let origin: SurfaceOrigin | null = null;
 
+/**
+ * ★右下の「作る」の丸(`[data-create-anchor]`)の矩形。**3アプリぶん DOM に居る**ので、
+ * **画面の中に見えている**ものを選ぶ。全画面の面の帰り先(`surfaceOrigin`)と、
+ * 掴んだときに出る口/ブラックホールの**出どころ**(`DropTargets`)が共有する。
+ */
+export function createAnchorRect(): DOMRect | null {
+  if (typeof document === "undefined") return null;
+  const w = window.innerWidth;
+  for (const el of Array.from(document.querySelectorAll("[data-create-anchor]"))) {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.left >= -1 && r.right <= w + 1) return r;
+  }
+  return null;
+}
+
 /** ＋を押した瞬間に、その丸の場所を控える。 */
 export function setSurfaceOrigin(el: Element | null): void {
   if (!el) { origin = null; return; }
@@ -77,16 +92,8 @@ export function setSurfaceOrigin(el: Element | null): void {
  */
 export function surfaceOrigin(): SurfaceOrigin {
   if (origin) return origin;
-  if (typeof document !== "undefined") {
-    // ★3アプリぶん DOM に居るので、**画面の中に見えている**ものを選ぶ。
-    const w = window.innerWidth;
-    for (const el of Array.from(document.querySelectorAll("[data-create-anchor]"))) {
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.left >= -1 && r.right <= w + 1) {
-        return { x: r.left, y: r.top, w: r.width, h: r.height };
-      }
-    }
-  }
+  const r = createAnchorRect();
+  if (r) return { x: r.left, y: r.top, w: r.width, h: r.height };
   // どうしても見つからないときだけ、右下のおおよその場所。
   const w = typeof window === "undefined" ? 390 : window.innerWidth;
   const h = typeof window === "undefined" ? 844 : window.innerHeight;

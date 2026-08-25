@@ -509,36 +509,109 @@ button:active {
 /* ── DRIFT の「掴んで捨てる/食べる」ターゲット(components/tabs/DriftTab.tsx) ──
    候補の図形を**掴んでいるあいだ**だけ、右下から丸い的が出てくる。上=口(食べる=
    タスクにする)/下=ゴミ箱(捨てる)。ホバーで反応し、離すと action のアニメ。 */
+/* ── 掴んでいるあいだ出てくる的(components/tasks/DropTargets.tsx) ──────
+   ★★第57巡に作り直し。**右下の「作る」の丸から分離して出てくる**(--ox/--oy は
+   その丸までの差。JS が show の瞬間に測って入れる)。近さは `--near`(0..1)で、
+   口の開き・寄り・ブラックホールの回転の速さ・塵の濃さを全部これが動かす。
+   ★時間と曲線は語彙から。回り続けるものは**環境ループ**(--t-amb-*)に乗せ、
+   速い回転は既存の環境ループの**比**で作る(新しい数字を足さない)。 */
 .drift-target {
-  width: 52px; height: 52px; border-radius: 50%;
+  width: 56px; height: 56px; border-radius: 50%;
   background: #1A1A18;                       /* INK */
   display: flex; align-items: center; justify-content: center;
-  transform: translateX(84px) scale(0.5); opacity: 0;
-  transition: transform var(--t-item) var(--ease-settle),
+  /* 出る前は「作る」の丸の中に畳まれている。 */
+  transform: translate(var(--ox, 84px), var(--oy, 0px)) scale(0.18);
+  opacity: 0;
+  transition: transform var(--t-in) var(--ease-settle),
               opacity var(--t-item) var(--ease-settle),
               background var(--t-press) var(--ease-press);
   box-shadow: 0 6px 18px rgba(26,26,24,0.22);
 }
-.drift-target.in { transform: translateX(0) scale(1); opacity: 1; }
-/* ホバー中(hot): 大きく反応。口は開き、ゴミ箱は震える。色でも応える。 */
-.drift-target.hot { transform: translateX(0) scale(1.2); }
+.drift-target.in {
+  transform: translate(var(--lx, 0px), var(--ly, 0px)) scale(1);
+  opacity: 1;
+}
+/* ブラックホールは口より一拍おくれて出る(--t-step ぶん)。帰りは一緒に畳む。 */
+.drift-target[data-kind="trash"].in { transition-delay: var(--t-step); }
+/* 的の上に来たら色でも応える。 */
 .drift-target.hot[data-kind="mouth"] { background: #04624A; }   /* forest */
 .drift-target.hot[data-kind="trash"] { background: #EE1B33; }   /* RUST */
-.drift-target .mouth-lip { transform-box: fill-box; transform-origin: center; transition: transform var(--t-item) var(--ease-settle); }
-.drift-target.hot[data-kind="mouth"] .mouth-lip { transform: scaleY(2.1); }
-.drift-target.hot[data-kind="trash"] svg { animation: trash-wiggle 0.4s var(--ease-settle) infinite; }
-@keyframes trash-wiggle { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
-/* 離した瞬間(fire): 口は噛む、ゴミ箱は一度沈む。的も脈打つ。 */
-.drift-target[data-fire] { animation: target-pulse 0.42s var(--ease-settle); }
-@keyframes target-pulse { 0% { transform: scale(1.2); } 40% { transform: scale(1.42); } 100% { transform: scale(1); } }
-.drift-target[data-fire][data-kind="mouth"] .mouth-lip { animation: mouth-chomp 0.42s var(--ease-settle); }
-@keyframes mouth-chomp { 0% { transform: scaleY(2.1); } 45% { transform: scaleY(0.28); } 100% { transform: scaleY(1); } }
-.drift-target[data-fire][data-kind="trash"] svg { animation: trash-drop 0.42s var(--ease-settle); }
-@keyframes trash-drop { 0% { transform: translateY(-4px) rotate(0); } 45% { transform: translateY(3px) rotate(8deg); } 100% { transform: translateY(0) rotate(0); } }
+
+/* ── 口 ───────────────────────────────────────────────────
+   上下の唇。閉じているときは1本の線。`--near` で開き、器ごと指の方へ寄る。
+   何もしていない間も**わずかに呼吸している**(環境ループ)。 */
+.drift-target .mouth-jaw {
+  transform-box: fill-box; transform-origin: center;
+  animation: mouth-breathe var(--t-amb-bob) ease-in-out infinite;
+}
+.drift-target .lip {
+  transform-box: fill-box; transform-origin: center;
+  transition: transform var(--t-item) var(--ease-settle);
+}
+.drift-target .lip-up { transform: translateY(calc(var(--near, 0) * -5px)); }
+.drift-target .lip-lo { transform: translateY(calc(var(--near, 0) *  5px)); }
+@keyframes mouth-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.07); }
+}
+/* 離した瞬間 ― 噛む。 */
+.drift-target[data-fire] { animation: target-pulse var(--t-item) var(--ease-settle); }
+@keyframes target-pulse {
+  0%   { transform: translate(var(--lx, 0px), var(--ly, 0px)) scale(1.16); }
+  40%  { transform: translate(var(--lx, 0px), var(--ly, 0px)) scale(1.4); }
+  100% { transform: translate(var(--lx, 0px), var(--ly, 0px)) scale(1); }
+}
+.drift-target[data-fire][data-kind="mouth"] .lip-up { animation: chomp-up var(--t-item) var(--ease-settle); }
+.drift-target[data-fire][data-kind="mouth"] .lip-lo { animation: chomp-lo var(--t-item) var(--ease-settle); }
+@keyframes chomp-up { 0% { transform: translateY(-5px); } 45% { transform: translateY(1.5px); } 100% { transform: none; } }
+@keyframes chomp-lo { 0% { transform: translateY(5px); }  45% { transform: translateY(-1.5px); } 100% { transform: none; } }
+
+/* ── ブラックホール ────────────────────────────────────────
+   降着円盤が2枚、逆向きに回り続ける(環境ループ。対称なカーブが許されるのはここだけ)。
+   近づくと**4倍の速さ**へ ― 新しい時間は足さず、既存の環境ループの比で作る。 */
+.drift-target .bh-disc {
+  transform-box: fill-box; transform-origin: center;
+  animation: bh-spin var(--t-amb-reel) linear infinite;
+}
+.drift-target .bh-disc-b { animation-direction: reverse; animation-duration: calc(var(--t-amb-reel) * 1.5); }
+.drift-target[data-kind="trash"] .bh-disc {
+  animation-duration: calc(var(--t-amb-reel) / (1 + var(--near, 0) * 3));
+}
+.drift-target[data-kind="trash"] .bh-disc-b {
+  animation-duration: calc(var(--t-amb-reel) * 1.5 / (1 + var(--near, 0) * 3));
+}
+@keyframes bh-spin { to { transform: rotate(360deg); } }
+/* 塵 ― 外から中心へ螺旋で吸い込まれて消える。近くないときは出ない。 */
+.drift-target .bh-dust { opacity: var(--near, 0); }
+.drift-target .dust {
+  transform-box: fill-box; transform-origin: center;
+  animation: bh-dust calc(var(--t-amb-reel) / 2) linear infinite;
+}
+.drift-target .d0 { animation-delay: calc(var(--t-amb-reel) / -2 * 0.00); }
+.drift-target .d1 { animation-delay: calc(var(--t-amb-reel) / -2 * 0.17); }
+.drift-target .d2 { animation-delay: calc(var(--t-amb-reel) / -2 * 0.34); }
+.drift-target .d3 { animation-delay: calc(var(--t-amb-reel) / -2 * 0.50); }
+.drift-target .d4 { animation-delay: calc(var(--t-amb-reel) / -2 * 0.67); }
+.drift-target .d5 { animation-delay: calc(var(--t-amb-reel) / -2 * 0.84); }
+@keyframes bh-dust {
+  0%   { transform: rotate(0deg) translateX(15px) scale(1); opacity: 0; }
+  18%  { opacity: 1; }
+  100% { transform: rotate(300deg) translateX(2px) scale(0.3); opacity: 0; }
+}
+/* 離した瞬間 ― 一気に吸い込む。 */
+.drift-target[data-fire][data-kind="trash"] .bh-core { animation: bh-gulp var(--t-item) var(--ease-settle); }
+@keyframes bh-gulp {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(2.1); }
+  100% { transform: scale(1); }
+}
+.drift-target .bh-core { transform-box: fill-box; transform-origin: center; }
+
 @media (prefers-reduced-motion: reduce) {
-  .drift-target, .drift-target .mouth-lip { transition: none; }
-  .drift-target.hot[data-kind="trash"] svg, .drift-target[data-fire],
-  .drift-target[data-fire] .mouth-lip, .drift-target[data-fire] svg { animation: none; }
+  .drift-target, .drift-target .lip { transition: none; }
+  .drift-target .mouth-jaw, .drift-target .bh-disc, .drift-target .dust,
+  .drift-target[data-fire], .drift-target[data-fire] .lip,
+  .drift-target[data-fire] .bh-core { animation: none; }
 }
 
 /* 提案を考えている間のくるくる。タスク詳細の「手配を確認する」で使う。 */

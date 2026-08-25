@@ -5,7 +5,7 @@ import type { Body, Engine } from "matter-js";
 import { LayerName } from "@/components/tasks/LayerName";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
-import { DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
+import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
 import { MUTED, NAV_H, navHeightPx } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline } from "@/lib/solid";
@@ -298,6 +298,10 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
     const targetHit = (cx: number, cy: number): DropTarget => {
       return targetAt(mouthRef.current, trashRef.current, cx, cy);
     };
+    /** 運んでいる間 ― 当たり判定に加えて**近さ**も的へ書く。 */
+    const targetAim = (cx: number, cy: number): DropTarget => {
+      return aimTargets(mouthRef.current, trashRef.current, cx, cy);
+    };
     const enterHold = () => {
       if (!grab || !M) return;
       grab.held = true;
@@ -344,7 +348,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       const ny = ((e.clientY - grab.lastY) / dt) * (1000 / 60);
       if (Math.hypot(nx, ny) > 0.4) { grab.vx = nx; grab.vy = ny; grab.vT = e.timeStamp; }
       grab.lastX = e.clientX; grab.lastY = e.clientY; grab.lastT = e.timeStamp;
-      const t = targetHit(e.clientX, e.clientY);
+      const t = targetAim(e.clientX, e.clientY);
       setHover((cur) => (cur === t ? cur : t));
     };
     const onUp = (e: PointerEvent) => {

@@ -66,8 +66,9 @@
 - `components/tasks/TaskSpace.tsx` — **薄い器**。GRAVITY を常時マウント（山を保つ）、
   DRIFT タブのときだけ上に重ね、画面に固定した `Masthead`（TASK）を持つだけ。
 - `components/tasks/LayerName.tsx` — 層の名前（GRAVITY / ALIGN / TIMELINE / DRIFT）。
-- `components/tasks/DropTargets.tsx` — **口とゴミ箱**（掴んでいる間だけ右下から出る）。
-  DRIFT と GRAVITY の共通部品。当たり判定 `targetAt` と合図 `fireTarget` もここ。
+- `components/tasks/DropTargets.tsx` — **口とブラックホール**（掴んでいる間だけ
+  「作る」の丸から分離して出る）。DRIFT と GRAVITY の共通部品。当たり判定 `targetAt`、
+  **近さ** `aimTargets`、合図 `fireTarget` もここ。
 - `components/tabs/DriftTab.tsx` — 候補が**無重力で漂う**層（1枚の canvas＋matter.js）。
   ホールドで図形を運び、右下から出る**口＝完了 / ゴミ箱＝削除**へ落とす（第44巡）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Body, Engine, World } from "matter-js";
 import { LayerName } from "@/components/tasks/LayerName";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
-import { DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
+import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { ViewToggle } from "@/components/tasks/ViewToggle";
 import { ymd } from "@/components/tasks/WhenSheet";
@@ -15,8 +15,8 @@ import { canvasFont, onFontsReady, primeAdvances } from "@/lib/textFit";
 import { allTagFaces, allTagLabels, resolveTag, tagColor } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
-import { INK, LATIN, MUTED, NAV_H, navHeightPx, PAPER, RUST, SANS, SWISS_MD, SWISS_XL } from "@/lib/constants";
-import { ms, T_IN, T_ITEM, T_OUT } from "@/lib/motion";
+import { INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_MD, SWISS_XL } from "@/lib/constants";
+import { ms, T_IN, T_ITEM } from "@/lib/motion";
 import { D_SETTLE, D_TRAVEL, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring } from "@/lib/spring";
 import { SPACE, TYPE } from "@/lib/tokens";
 import type { AppState, TabProps, Task } from "@/lib/types";
@@ -49,6 +49,14 @@ const PHYS_VERTS = 12;
 const BAKE_BUDGET = 1;
 const GLYPH_BUDGET = 4;
 const CULL_PX = 30;
+/** ★地面をタブバーの上端からどれだけ浮かせるか(2026-08-25・第57巡にユーザー確定
+ *  「地面が低すぎる」)。★**床の位置の出どころはここだけ** — `fieldOf` も
+ *  `rebuildWalls` もこれを通す(数字を二重に持たない)。 */
+const GROUND_LIFT = SPACE.xxl;
+const floorYOf = (h: number) => h - navHeightPx() - GROUND_LIFT;
+/** ★曜日の帯(DOM)の下端。**物理の床と同じだけ**上げないと、図形が帯から浮いて
+ *  積まれる(第57巡に地面を上げたとき踏んだ)。`bandTopY()` と対。 */
+const BAND_BOTTOM = `calc(${NAV_H} + ${SPACE.xl + GROUND_LIFT}px)`;
 
 type Mode = "pile" | "align" | "timeline";
 /** 段取りの局面。null = 物理／落ち着いている。 */
@@ -66,7 +74,7 @@ const GRAB_MAX = 34;
 // ALIGN … 左の円弧
 /** ★第56巡に**ほぼ縦の列**へ(290→1400)。可視域 ±280px で x の振れは約 28px …
  *  「縦列だけどちょっとカーブしている」。輪に見えていたのを列に戻す。 */
-const ARC_R = 1400;
+const ARC_R = 950;
 const ARC_APEX_X = 96;
 /** DOM の行の**箱の高さ**(中身を上下中央に置くための器)。
  *  ★間隔の役目は持たない(下の PITCH_* が持つ)。 */
@@ -84,18 +92,24 @@ const TEXT_GAP = 100;
 const PITCH_TIGHT = 72;
 const PITCH_SPREAD = 110;
 const arcLen = (d: number) => PITCH_TIGHT * d + PITCH_SPREAD * (d / Math.sqrt(1 + d * d));
-const SCROLL_DECAY = 0.92;
-const SNAP_K = 0.18;
 const FLICK_K = 0.9;
 /** ★★連なりの間隔。**減衰する**ので「最初の1つがぽつんと動き、そのあと次々と
  *  流れ出す」。一定間隔だと行進になってしまう。 */
 const LEAD_GAP = 210;
 const GAP_DECAY = 0.72;
-/** 出ていく道の蛇行(振れ幅と波の数)。中ほどで振れ、出口で消えて一列に揃う。 */
-const MEANDER = 46;
-const WAVES = 1.35;
-/** 二段目(円弧へ上がる)を始めるまで。抜け切る前に繋いで間を空けない。 */
-const A_T0 = Math.round(ms(T_OUT) * 0.5);
+/** ★★出ていく**1本の道**(第57巡)。第55巡は図形ごとに別々のベジエを引いて蛇行させて
+ *  いたので、**一筋にまとまる瞬間が構造的に無かった**(ユーザー指摘「結局バラバラに
+ *  画面外にいってしまう」)。全部が同じ道を通り、道の上の間隔が揃っていく。 */
+const STREAM_MS = ms(T_IN) + ms(T_ITEM);
+/** 揃ったときの1つぶんの間隔(道の長さに対する比)。 */
+const STREAM_GAP = 0.115;
+/** 入りの待ち行列。円弧の**下に並んで**から順に上がる(px。同じ点から一斉に
+ *  上がると入口で団子になる)。 */
+const ENTRY_QUEUE = 74;
+/** ★2段目(円弧へ上がる)を始める所。ここまでに図形は**完全に画面の外**に居る
+ *  (`cine(0.72)` ≒ 0.94)。早すぎると出が途中で消える。 */
+const A_HANDOFF = 0.72;
+const A_T0 = Math.round(STREAM_MS * A_HANDOFF);
 
 // TIMELINE
 const LANES_VISIBLE = 3;
@@ -138,6 +152,8 @@ function setFilter(b: Body, f: { category: number; mask: number }) {
   for (const part of b.parts) part.collisionFilter = { ...part.collisionFilter, ...f };
   b.collisionFilter = { ...b.collisionFilter, ...f };
 }
+/** 横の投げをどれだけ先まで伸ばしてからレーンを決めるか。 */
+const WORLD_FLING = 9;
 /** 曜日を開いたときの隙間(詳細の文字が入る)と、左端の余白。 */
 const GAP_W = 232;
 const PAD_L = 20;
@@ -207,6 +223,16 @@ function rubberRise(raw: number): number {
   return 1 + (room * over) / (over + room);
 }
 
+/** ★★**極端でシネマティックな緩急**(第57巡にユーザー指定「最初は遅く加速して、
+ *  最後がまた遅くなる」)。`t³/(t³+(1-t)³)` は 0 と 1 の両端で傾きがほぼ 0、
+ *  中ほどで一気に伸びる。★これは **canvas の図形の座標系だけ**の道具で、
+ *  バネと同じ扱い(`lib/tokens.ts` の例外)。CSS の transition には持ち込まない。 */
+function cine(t: number): number {
+  const u = Math.max(0, Math.min(1, t));
+  const a = u * u * u; const b = (1 - u) * (1 - u) * (1 - u);
+  return a / (a + b);
+}
+
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
 /** ★連なりの遅れ。間隔が**減衰**していく(最初だけ間があき、あとは次々)。 */
@@ -219,10 +245,6 @@ function startAt(i: number): number {
 const bez = (a: number, b: number, c: number, d: number, t: number) => {
   const u = 1 - t;
   return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
-};
-const bezD = (a: number, b: number, c: number, d: number, t: number) => {
-  const u = 1 - t;
-  return 3 * u * u * (b - a) + 6 * u * t * (c - b) + 3 * t * t * (d - c);
 };
 
 export function GravityTab({ appState, persist, showToast, appActive, active = true, dragged }: TabProps & {
@@ -263,8 +285,9 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   const inSRef = useRef<Map<string, Spring>>(new Map());
   const bakeUnitRef = useRef(UNIT);
   const scrollRef = useRef(0);
-  const scrollVRef = useRef(0);
-  const aDragRef = useRef(false);
+  /** 指が動かす目標と、それを追うバネ(＝実際の位置 `scrollRef`)。 */
+  const scrollTargetRef = useRef(0);
+  const scrollSRef = useRef<Spring>(spring(0));
   const [focusIdx, setFocusIdx] = useState(0);
   const focusRef = useRef(0);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -283,6 +306,9 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   /** 指を離したあとの戻り。★`--tl` はドラッグ中は `riseRef`、離したらこのバネが書く。 */
   const riseSRef = useRef<Spring>(spring(0));
   const riseDragRef = useRef(false);
+  /** 伸びの速さ(1ステップぶん)と、それを測った時刻。 */
+  const riseVRef = useRef(0);
+  const riseTRef = useRef(0);
   const tlDragRef = useRef(false);
   /** 床が抜けたか(＝物理が始まったか)。 */
   const openedRef = useRef(false);
@@ -293,6 +319,9 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   const laneBodiesRef = useRef<Body[]>([]);
   const laneXPrevRef = useRef<number[]>([]);
   const wDragRef = useRef(false);
+  /** 横の投げ(1ステップぶんの速さ)と、それを測った時刻。 */
+  const wVRef = useRef(0);
+  const wTRef = useRef(0);
   const tlUnitRef = useRef(UNIT);
 
   // 掴む
@@ -315,8 +344,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
 
   const fieldOf = useCallback(() => {
     const { h } = sizeRef.current;
-    const floor = h - navHeightPx();
-    return { top: MASTHEAD_H, floor };
+    return { top: MASTHEAD_H, floor: floorYOf(h) };
   }, []);
   /** ★ALIGN で焦点を置く高さ。器のど真ん中に置くと、先頭に居るとき**上半分が
    *  丸ごと空く**(上に行が無いため)。少し上へ寄せて、下の行をもう1〜2件見せる。 */
@@ -392,7 +420,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
           ctx.save();
           ctx.translate(p.body.position.x, p.body.position.y);
           ctx.rotate(p.body.angle);
-          ctx.font = canvasFont(800, p.wordFs ?? 32, LATIN);
+          ctx.font = canvasFont(800, p.wordFs ?? 32, SANS);
           ctx.fillStyle = MUTED;
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText(p.word, 0, 0);
@@ -470,25 +498,21 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     if (n !== focusRef.current) { focusRef.current = n; setFocusIdx(n); }
   }, []);
 
-  /** ★山から右上へ抜ける道。S字＋蛇行で「一連の流れ」に見せる。 */
-  const flyPath = useCallback((fr: Slot, u: number, phase: number) => {
-    const { w } = sizeRef.current;
-    const p0x = fr.x, p0y = fr.y;
-    const p3x = w + 200, p3y = -200;
-    const p1x = fr.x + 40, p1y = fr.y - 240;      // まず持ち上がり
-    const p2x = w * 0.55, p2y = -30;              // それから右上へ抜ける
-    const t = clamp01(u);
-    let x = bez(p0x, p1x, p2x, p3x, t);
-    let y = bez(p0y, p1y, p2y, p3y, t);
-    // 接線に直交する向きへ振る。振れは中ほどで最大、出口で 0(＝一列に揃う)。
-    const dx = bezD(p0x, p1x, p2x, p3x, t);
-    const dy = bezD(p0y, p1y, p2y, p3y, t);
-    const len = Math.hypot(dx, dy) || 1;
-    const amp = MEANDER * 4 * t * (1 - t);
-    const s = Math.sin(t * Math.PI * 2 * WAVES + phase) * amp;
-    x += (-dy / len) * s;
-    y += (dx / len) * s;
-    return { x, y };
+  /** ★★**みんなが通る1本の道**。集合点(画面の左下寄り)から右上の外へ抜ける。
+   *  引数は道の上の位置(0..1)。 */
+  const streamAt = useCallback((t01: number) => {
+    const { w, h } = sizeRef.current;
+    const t = clamp01(t01);
+    const p0x = w * 0.16, p0y = h * 0.72;         // 集合点(山のあたり)
+    const p1x = w * 0.20, p1y = h * 0.30;         // まず持ち上がる
+    const p2x = w * 0.72, p2y = h * 0.14;         // それから右上へ
+    const p3x = w + 240, p3y = -220;              // 画面の外
+    return {
+      x: bez(p0x, p1x, p2x, p3x, t),
+      y: bez(p0y, p1y, p2y, p3y, t),
+      // 出口へ向かうほど小さく(遠ざかる)。
+      k: lerp(1, 0.62, t),
+    };
   }, []);
 
   // ── TIMELINE の器(レーンの床と壁) ──────────────────────────
@@ -566,14 +590,20 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       // 大きさをレーン用へ入れ替える(画面の外なので継ぎ目は見えない)。
       if (Math.abs(p.unit - tlUnitRef.current) > 0.5) swapUnit(M, engine.world, p, tlUnitRef.current);
       const cx = laneLeft(p.lane) + laneW / 2;
-      M.Body.setPosition(p.body, { x: cx + (frac(p.id) - 0.5) * laneW * 0.22, y: -RECYCLE_Y });
-      M.Body.setVelocity(p.body, { x: 0, y: 0 });
-      M.Body.setAngularVelocity(p.body, 0);
-      M.Body.setAngle(p.body, 0);
-      // ★列に入ったら**回らない**(慣性を無限に)。落ちる・積む・押し合うは物理のまま
-      //   だが、傾いて着地すると曜日の列が読めなくなる。
-      M.Body.setInertia(p.body, Infinity);
+      // ★★投入を**ばらす**(第57巡)。全部が同じ高さ・速度0・角度0で入ると、隣同士が
+      //   寸分違わず同じ速さで落ちて**アニメーションに見える**(ユーザー指摘)。
+      //   id から高さ・初速・回り方を散らすと、同じ列でも一つずつ違う落ち方になる。
+      const r1 = frac(p.id); const r2 = frac(p.id + "y"); const r3 = frac(p.id + "w");
+      M.Body.setPosition(p.body, {
+        x: cx + (r1 - 0.5) * laneW * 0.30,
+        y: -RECYCLE_Y * (0.7 + r2 * 1.6),
+      });
+      M.Body.setVelocity(p.body, { x: (r1 - 0.5) * 1.6, y: r2 * 2.2 });
+      M.Body.setAngle(p.body, (r3 - 0.5) * 0.9);
+      M.Body.setAngularVelocity(p.body, (r3 - 0.5) * 0.16);
       // ★ここからはレーンの器と噛み合う層へ移す(＝振り分け済み)。
+      //   ★回転は**止めない** — 落ちる・転がる・傾いたまま積まれるまで、山とまったく
+      //   同じ物理にする(第57巡にユーザー確定)。
       setFilter(p.body, FILTER_HELD);
       M.Sleeping.set(p.body, false);
     }
@@ -616,8 +646,6 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       // ★曜日の札は**レーンの器と同じ式**で置く(`laneLeft` は世界のスクロールを
       //   含むので、strip がすでに引いたぶんを足し戻す)。
       const off = worldRef.current.p;
-      const laneW0 = laneWOf();
-      const sel0 = expandedRef.current;
       for (let i = 0; i < daysRef.current.length; i += 1) {
         const el = dayRefs.current[i];
         if (!el) continue;
@@ -625,8 +653,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         el.style.transform = `translateX(${(left + off).toFixed(1)}px)`;
         // ★濃さは**画面での位置**で決める(左ほど濃い)。絶対の日付番号で決めると、
         //   横へ送ったとたん全部が薄墨になって読めなくなる(第55巡)。
-        const k = Math.max(0, Math.round(left / laneW0));
-        el.style.setProperty("--wd", i === 0 ? RUST : (sel0 === i ? INK : gradeInk(k)));
+        el.style.setProperty("--wd", i === 0 ? RUST : INK);
       }
       const sel = expandedRef.current;
       const det = detailRef.current;
@@ -637,17 +664,14 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     if (m === "pile" && !ph) return false;
 
     // ── ALIGN ──
-    if (m === "align" && !ph && !aDragRef.current) {
-      const last = list.length - 1;
-      if (Math.abs(scrollVRef.current) > 0.0015) {
-        scrollRef.current += scrollVRef.current; scrollVRef.current *= SCROLL_DECAY; moving = true;
-      } else {
-        scrollVRef.current = 0;
-        const n = Math.max(0, Math.min(last, Math.round(scrollRef.current)));
-        const d = n - scrollRef.current;
-        if (Math.abs(d) > 0.002) { scrollRef.current += d * SNAP_K; moving = true; } else scrollRef.current = n;
-      }
-      scrollRef.current = Math.max(-0.4, Math.min(last + 0.4, scrollRef.current));
+    if (m === "align" && !ph) {
+      // ★★指は**目標だけ**を動かし、実際の位置はバネが追う(第57巡)。動き出しに
+      //   粘りが出て、止まりもゆっくり収まる ― 指と 1:1 だと慣性がまったく無い。
+      const sp = scrollSRef.current;
+      const tg = scrollTargetRef.current;
+      springTo(sp, tg, K_TRAVEL, D_TRAVEL);
+      if (!settled(sp, tg, 0.0015)) moving = true;
+      scrollRef.current = sp.p;
       syncFocus();
     }
     layoutAlign();
@@ -662,20 +686,30 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         const it = list[i];
         const sl = slots.get(it.id); const fr = from.get(it.id);
         if (!sl || !fr) continue;
-        const outS = outSRef.current.get(it.id) ?? spring(0);
         const inS = inSRef.current.get(it.id) ?? spring(0);
-        outSRef.current.set(it.id, outS); inSRef.current.set(it.id, inS);
+        inSRef.current.set(it.id, inS);
         const d0 = startAt(i);
-        if (t >= d0) springTo(outS, 1, K_TRAVEL, D_TRAVEL);
         if (t >= A_T0 + d0) springTo(inS, 1, K_TRAVEL, D_TRAVEL);
         if (inS.p <= 0.002) {
-          const p = flyPath(fr, outS.p, frac(it.id) * Math.PI * 2);
-          cur.set(it.id, { x: p.x, y: p.y, s: fr.s, a: fr.a * (1 - clamp01(outS.p)), o: 1 });
+          // ★★出は**1本の道**。`cine` の極端な緩急で進み(遅→速→遅)、
+          //   走りながら道へ吸い寄せられ(`join`)、道の上の間隔が
+          //   てんでばらばらから**等間隔の一列**へ揃っていく(`conv`)。
+          const u = cine(clamp01((t - d0) / STREAM_MS));
+          const join = clamp01(u / 0.42);                 // 前半で道に乗る
+          const conv = clamp01((u - 0.15) / 0.6);         // 少し遅れて間隔が揃う
+          const own = u * 0.9;                            // その図形の進み
+          const line = u - STREAM_GAP * i * conv;         // 一列に揃ったときの位置
+          const p = streamAt(lerp(own, line, conv));
+          cur.set(it.id, {
+            x: lerp(fr.x, p.x, join), y: lerp(fr.y, p.y, join),
+            s: fr.s * lerp(1, p.k, join), a: fr.a * (1 - join), o: 1,
+          });
           done = false;
         } else {
           const u = clamp01(inS.p);
           const thEnd = Math.atan2(sl.y - mid, sl.x - cx);
-          const th = lerp(enterTh, thEnd, u);
+          // ★入口は**番号ぶん円弧の下**。同じ点から一斉に上がると団子になる。
+          const th = lerp(enterTh + (ENTRY_QUEUE * i) / ARC_R, thEnd, u);
           cur.set(it.id, {
             x: cx + ARC_R * Math.cos(th), y: mid + ARC_R * Math.sin(th),
             s: lerp(sl.s * 0.68, sl.s, u), a: 0, o: lerp(0.15, sl.o, u),
@@ -732,7 +766,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       }
     }
     return moving;
-  }, [alignMid, syncFocus, layoutAlign, flyPath, syncLanes, recycle, laneLeft, laneWOf, arcEnterTh]);
+  }, [alignMid, syncFocus, layoutAlign, streamAt, syncLanes, recycle, laneLeft, laneWOf, arcEnterTh]);
 
   useEffect(() => {
     loopRef.current = () => {
@@ -903,7 +937,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     if (!list.length) return;
     bakeUnitRef.current = bakeUnitFor(list, ALIGN_MAX_H, ALIGN_MAX_W);
     itemsRef.current = list; setItems(list);
-    scrollRef.current = 0; scrollVRef.current = 0;
+    scrollRef.current = 0; scrollTargetRef.current = 0; scrollSRef.current = spring(0);
     focusRef.current = 0; setFocusIdx(0);
     slotRef.current = new Map();
     snapshot(list); layoutAlign();
@@ -959,23 +993,31 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       // 山に居なかったものは、はじめから自分の列の真上へ置いて落とす。
       const p = makePiece(M, t, viewRef.current, w, i, tlUnitRef.current);
       setFilter(p.body, FILTER_HELD);
-      M.Body.setInertia(p.body, Infinity);
+      const r1 = frac(t.id); const r2 = frac(t.id + "y"); const r3 = frac(t.id + "w");
       M.Body.setPosition(p.body, {
-        x: laneW * lane + laneW / 2 + (frac(t.id) - 0.5) * laneW * 0.22,
-        y: bandTop - RECYCLE_Y - i * 40,
+        x: laneW * lane + laneW / 2 + (r1 - 0.5) * laneW * 0.30,
+        y: bandTop - RECYCLE_Y * (1 + r2 * 2.4) - i * 30,
       });
-      M.Body.setVelocity(p.body, { x: 0, y: 0 });
+      M.Body.setVelocity(p.body, { x: (r1 - 0.5) * 1.6, y: 0 });
+      M.Body.setAngle(p.body, (r3 - 0.5) * 0.9);
+      M.Body.setAngularVelocity(p.body, (r3 - 0.5) * 0.16);
       M.Composite.add(engine.world, p.body);
       next.push({ ...p, lane });
     });
     // ★★タスクが無い日には「自由」のブロックを落とす(第56巡にユーザー指定)。
     //   空白のままだと、俯瞰したときに**空いている理由**が読めない。
     const busy = new Set(dated.map((t) => t.dueDate as string));
+    const freeFs = freeFontSize(laneW);            // ★語によらず1つ
     ds.forEach((key, lane) => {
       if (busy.has(key)) return;
-      const wp = makeWordPiece(M, key, laneW, laneW * lane + laneW / 2, bandTop - RECYCLE_Y - lane * 26);
+      const r = frac(key + "free");
+      const wp = makeWordPiece(M, key, laneW, freeFs,
+        laneW * lane + laneW / 2 + (r - 0.5) * laneW * 0.2,
+        bandTop - RECYCLE_Y * (1 + r * 2.2) - lane * 24);
       if (!wp) return;
       setFilter(wp.body, FILTER_HELD);
+      M.Body.setAngle(wp.body, (r - 0.5) * 0.5);
+      M.Body.setAngularVelocity(wp.body, (r - 0.5) * 0.1);
       M.Composite.add(engine.world, wp.body);
       next.push({ ...wp, lane });
     });
@@ -1127,6 +1169,19 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       moved: boolean; lastX: number; lastY: number; vy: number;
     } | null = null;
 
+    /** ★曜日の伸びを**指のフレームで直接** `--tl` へ書く。rAF を待つと1フレーム
+     *  遅れ、速い払いでは置いていかれる(第57巡にユーザー指摘)。伸びの速さも控えて、
+     *  離したときのバネの初速に渡す。 */
+    const pullTo = (v: number, tms: number) => {
+      riseDragRef.current = true;
+      const dt = Math.max(8, tms - riseTRef.current);
+      riseVRef.current = ((v - riseRef.current) / dt) * (1000 / 60);
+      riseTRef.current = tms;
+      riseRef.current = v;
+      const band = bandRef.current;
+      if (band) band.style.setProperty("--tl", String(TL_FLAT + (1 - TL_FLAT) * v));
+    };
+
     const beginHold = () => {
       const gr = grabRef.current; const M = matterRef.current; const engine = engineRef.current;
       if (!gr || !M || !engine) return;
@@ -1159,7 +1214,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         }
       }
       g = { id: e.pointerId, x: e.clientX, y: e.clientY, edge, axis: "", moved: false, lastX: e.clientX, lastY: e.clientY, vy: 0 };
-      if (modeRef.current === "align") { aDragRef.current = true; scrollVRef.current = 0; }
+      if (modeRef.current === "align") { scrollTargetRef.current = scrollRef.current; scrollSRef.current.v = 0; }
       if (modeRef.current === "timeline") wDragRef.current = false;
     };
 
@@ -1191,7 +1246,8 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
           }
           gr.vx = e.clientX - gr.lastX; gr.vy = e.clientY - gr.lastY;
           gr.lastX = e.clientX; gr.lastY = e.clientY;
-          const t = targetAt(mouthRef.current, trashRef.current, e.clientX, e.clientY);
+          // ★近さも一緒に的へ書く(口が開いて寄る／ブラックホールが速く回る)。
+          const t = aimTargets(mouthRef.current, trashRef.current, e.clientX, e.clientY);
           setHover((cur) => (cur === t ? cur : t));
           wake(); g.lastX = e.clientX; g.lastY = e.clientY;
           return;
@@ -1205,24 +1261,30 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
           tlDragRef.current = true;
           modeRef.current = "timeline"; setMode("timeline");
         }
-        riseDragRef.current = true;
-        riseRef.current = rubberRise(-dy / TL_SPAN);
+        pullTo(rubberRise(-dy / TL_SPAN), e.timeStamp);
         if (!openedRef.current && riseRef.current >= TL_TRIGGER) openTimeline();
         wake();
       } else if (m === "timeline" && tlDragRef.current && g.axis === "y") {
-        riseDragRef.current = true;
-        riseRef.current = rubberRise(-dy / TL_SPAN);
+        pullTo(rubberRise(-dy / TL_SPAN), e.timeStamp);
         if (!openedRef.current && riseRef.current >= TL_TRIGGER) openTimeline();
         wake();
       } else if (m === "align" && !phaseRef.current && g.axis === "y") {
         const d = e.clientY - g.lastY;
-        scrollRef.current -= d / PITCH_TIGHT; g.vy = d; syncFocus(); wake();
+        const last = Math.max(0, itemsRef.current.length - 1);
+        scrollTargetRef.current = Math.max(-0.4, Math.min(last + 0.4, scrollTargetRef.current - d / PITCH_TIGHT));
+        g.vy = d; wake();
       } else if (m === "timeline" && !tlDragRef.current && g.axis === "x" && expandedRef.current === null) {
         const laneW = laneWOf();
         const max = Math.max(0, laneW * (daysRef.current.length - LANES_VISIBLE));
         wDragRef.current = true;
         const nx = Math.max(0, Math.min(max, worldRef.current.p - (e.clientX - g.lastX)));
-        worldRef.current.v = nx - worldRef.current.p;
+        // ★速さは**時間で割って1ステップぶんへ**そろえる(120Hz で半分にならない／
+        //   離す直前に指が止まっても直近の値が残る)。DRIFT の投げと同じ作法。
+        const dt = Math.max(8, e.timeStamp - wTRef.current);
+        const nv = ((nx - worldRef.current.p) / dt) * (1000 / 60);
+        if (Math.abs(nv) > 0.3) wVRef.current = nv;
+        wTRef.current = e.timeStamp;
+        worldRef.current.v = nv;
         worldRef.current.p = nx;
         worldTargetRef.current = nx;
         wake();
@@ -1233,7 +1295,6 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     const up = (e: PointerEvent) => {
       if (!g || e.pointerId !== g.id) return;
       const d = g; g = null;
-      aDragRef.current = false;
       const dx = e.clientX - d.x; const dy = e.clientY - d.y;
       const m = modeRef.current;
 
@@ -1258,8 +1319,9 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       if (tlDragRef.current) {
         tlDragRef.current = false;
         if (openedRef.current) {
-          // ★瞬間で 1 に飛ばさず、**いま伸びている所からバネで**規定へ戻す。
-          riseSRef.current = spring(riseRef.current);
+          // ★瞬間で 1 に飛ばさず、**いま伸びている所から・いまの速さのまま**
+          //   バネへ引き渡す。速く払って離すと少し行き過ぎてから規定へ収まる。
+          riseSRef.current = spring(riseRef.current, riseVRef.current);
           riseDragRef.current = false;
           haptic(10);
         } else { modeRef.current = "pile"; setMode("pile"); riseRef.current = 0; riseDragRef.current = true; }
@@ -1271,7 +1333,13 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         if (d.edge && d.axis === "x" && dx > SWIPE_PX && !phaseRef.current) enterAlign();
       } else if (m === "align" && !phaseRef.current) {
         if (d.axis === "x" && dx < -SWIPE_PX) leaveAlign();
-        else if (d.axis === "y") { scrollVRef.current = -(d.vy * FLICK_K) / PITCH_TIGHT; wake(); }
+        else if (d.axis === "y") {
+          // 投げたぶんだけ先へ送り、**整数の位置**を目標にする(あとはバネが収める)。
+          const last = Math.max(0, itemsRef.current.length - 1);
+          const proj = scrollTargetRef.current - (d.vy * FLICK_K) / PITCH_TIGHT;
+          scrollTargetRef.current = Math.max(0, Math.min(last, Math.round(proj)));
+          wake();
+        }
       } else if (m === "timeline") {
         if (d.axis === "y" && dy > SWIPE_PX) {
           if (expandedRef.current !== null) { expandedRef.current = null; setExpanded(null); wake(); }
@@ -1280,7 +1348,16 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
           wDragRef.current = false;
           const laneW = laneWOf();
           const max = Math.max(0, laneW * (daysRef.current.length - LANES_VISIBLE));
-          worldTargetRef.current = Math.max(0, Math.min(max, Math.round(worldRef.current.p / laneW) * laneW));
+          // ★★**投げを先に伸ばしてから**レーンを決める(第57巡)。いきなり最寄りへ
+          //   丸めると、半レーンぶんの払いは**必ず元へ戻る**(ユーザー指摘の「引き
+          //   戻される」)。速い払いは切り上げ／切り捨てで**最低1レーンは送る**。
+          const v = wVRef.current;
+          const proj = worldRef.current.p + v * WORLD_FLING;
+          const idx = Math.abs(v) > 2
+            ? (v > 0 ? Math.ceil(proj / laneW) : Math.floor(proj / laneW))
+            : Math.round(proj / laneW);
+          wVRef.current = 0;
+          worldTargetRef.current = Math.max(0, Math.min(max, idx * laneW));
           wake();
         }
       }
@@ -1361,7 +1438,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         <>
           <div ref={bandRef} className="tl-band"
             style={{
-              position: "absolute", left: 0, right: 0, bottom: `calc(${NAV_H} + ${SPACE.xl}px)`,
+              position: "absolute", left: 0, right: 0, bottom: BAND_BOTTOM,
               // ★`overflow: visible` … 引っ張ると文字が規定より上へ伸びるので、
               //   ここで切ると伸びが見えない。画面外へは外側の `main.full-bleed`
               //   (`overflow: clip`)が抑える。
@@ -1380,8 +1457,9 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
                     fontFamily: LATIN, fontWeight: 800, fontSize: laneFs, lineHeight: 0.86,
                     fontVariationSettings: `"wdth" ${WD_WDTH}`,
                     letterSpacing: "-0.04em", whiteSpace: "nowrap", paddingBottom: SPACE.xs,
-                    // 濃さは毎フレーム `--wd` に入る(画面での位置で決まる)。
-                    color: `var(--wd, ${i === 0 ? RUST : gradeInk(i)})`,
+                    // ★曜日は**黒**(第57巡にユーザー指定)。今日だけ RUST。
+                    //   薄墨の階調はやめた(横へ送ると全部が読めなくなっていた)。
+                    color: `var(--wd, ${i === 0 ? RUST : INK})`,
                     opacity: expanded !== null && expanded !== i ? 0.28 : 1,
                     transition: "opacity var(--t-item) var(--ease-settle)",
                   }}>{weekdayOf(d)}</span>
@@ -1394,7 +1472,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
           {expandedDay && (
             <div ref={detailRef} className="tl-detail" style={{
               position: "absolute", left: 0, width: GAP_W - SPACE.lg * 2,
-              bottom: `calc(${NAV_H} + ${SPACE.xl}px)`, zIndex: 3, pointerEvents: "none", willChange: "transform",
+              bottom: BAND_BOTTOM, zIndex: 3, pointerEvents: "none", willChange: "transform",
             }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm, marginBottom: SPACE.md }}>
                 <span style={{ fontFamily: LATIN, fontWeight: 800, fontSize: TYPE.head, letterSpacing: "-0.02em", color: expanded === 0 ? RUST : INK }}>
@@ -1437,12 +1515,6 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   );
 }
 
-/** 画面での位置(0=いちばん左)から曜日の濃さ。★左ほど濃く、右へ退いていく。 */
-function gradeInk(i: number): string {
-  const a = Math.max(0.16, 0.5 - i * 0.15);
-  return `color-mix(in srgb, ${INK} ${Math.round(a * 100)}%, ${PAPER})`;
-}
-
 function primeTagMetrics() {
   if (typeof window === "undefined") return;
   const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 32));
@@ -1460,28 +1532,36 @@ function swapUnit(M: typeof import("matter-js"), world: World, p: Piece, unit: n
   M.Composite.add(world, body);
 }
 
+/** ★★「自由」の字の大きさを**語によらず1つ**に決める(第57巡にユーザー指定
+ *  「各言語で大きさを合わせて」)。語ごとに幅から出すと `FRI` だけ巨大になる。
+ *  **いちばん幅を食う語**がレーンの内寸に収まる大きさを全部で使う。
+ *  ★書体は `SANS`(Archivo ＋ Noto Sans JP) — `自由` は Archivo にグリフが無い。 */
+function freeFontSize(laneW: number): number {
+  const probe = document.createElement("canvas").getContext("2d");
+  if (!probe) return 24;
+  const room = laneInner(laneW) * FREE_FILL;
+  const base = 64;
+  probe.font = canvasFont(800, base, SANS);
+  let widest = 1;
+  for (const w of FREE_WORDS) widest = Math.max(widest, probe.measureText(w).width);
+  return Math.max(14, Math.min(SWISS_XL, Math.round((base * room) / widest)));
+}
+
 /** ★「自由」のブロックを作る。文字の箱を測って、その大きさの物体にする。
  *  書体が届く前に測ると箱がずれるので、**開くたびに測り直す**(`openTimeline` から)。 */
 function makeWordPiece(
-  M: typeof import("matter-js"), dateKey: string, laneW: number, x: number, y: number,
+  M: typeof import("matter-js"), dateKey: string, laneW: number, fs: number, x: number, y: number,
 ): Piece | null {
   const word = freeWordOf(dateKey);
   const probe = document.createElement("canvas").getContext("2d");
   if (!probe) return null;
-  // レーンの**内寸**に収まる字の大きさを、実測の字幅から決める。
-  const room = laneInner(laneW) * FREE_FILL;
-  const base = 64;
-  probe.font = canvasFont(800, base, LATIN);
-  const wAt = probe.measureText(word).width || 1;
-  const fs = Math.max(14, Math.min(SWISS_XL, Math.round((base * room) / wAt)));
-  probe.font = canvasFont(800, fs, LATIN);
+  probe.font = canvasFont(800, fs, SANS);
   const m = probe.measureText(word);
   const bw = Math.min(laneInner(laneW) * 0.94, Math.max(8, m.width) + FREE_PAD);
   const bh = Math.max(8, (m.actualBoundingBoxAscent || fs * 0.72) + (m.actualBoundingBoxDescent || fs * 0.1)) + FREE_PAD * 2;
   const body = M.Bodies.rectangle(x, y, bw, bh, {
     restitution: 0.02, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012,
   });
-  M.Body.setInertia(body, Infinity);
   const spec = specOf({ id: dateKey, title: word });
   return {
     id: `free:${dateKey}`, body, spec,
@@ -1558,7 +1638,7 @@ function rebuildWalls(
   const old = M.Composite.allBodies(engine.world).filter((b) => b.isStatic && !alive.has(b));
   M.Composite.remove(engine.world, old);
   const T = 200;
-  const floorY = h - navHeightPx();
+  const floorY = floorYOf(h);
   // ★★画面の左右の壁は**列に収まった図形を通す**(第56巡)。TIMELINE のレーンは
   //   画面の外まで続いていて、3日目より先の列は右の壁の**中**に居る。壁が効くと
   //   そこへ落ちた図形が押し戻され、隣のレーンへ紛れ込む(実機の写真で発覚)。

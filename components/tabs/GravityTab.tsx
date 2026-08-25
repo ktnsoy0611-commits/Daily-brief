@@ -95,9 +95,12 @@ const PITCH_TIGHT = 54;
 const PITCH_SPREAD = 124;
 const arcLen = (d: number) => PITCH_TIGHT * d + PITCH_SPREAD * (d / Math.sqrt(1 + d * d));
 /** ★★連鎖の減衰。焦点からの距離ぶんだけ**やわらかく**なるので、中央の間隔がまず
- *  縮み、それに次が追い、さらに次が追う ― という伝わり方になる(第58巡にユーザー指定)。 */
-const CHAIN = 0.72;
-const CHAIN_MAX = 6;
+ *  縮み、それに次が追い、さらに次が追う ― という伝わり方になる(第58巡にユーザー指定)。
+ *  ★★★第61巡に**控えめへ**(「勢いによって間隔が詰まる効果が少し強すぎる」)。
+ *  0.72^6 = 0.14 だと外の行が柔らかすぎて、払うたびに全部が寄り集まって見えた。
+ *  0.86^4 = 0.55 なら、伝わり方は残したまま詰まる量が半分以下になる。 */
+const CHAIN = 0.86;
+const CHAIN_MAX = 4;
 /** ★★連なりの間隔。**減衰する**ので「最初の1つがぽつんと動き、そのあと次々と
  *  流れ出す」。一定間隔だと行進になってしまう。 */
 const LEAD_GAP = 210;
@@ -165,11 +168,19 @@ const RECYCLE_Y = 150;
  *  「落ちながら、上から曜日ごとに振り分けられる」が起きない(第55巡)。 */
 const CAT_WALL = 0x0001;   // 画面の左右の壁と山の床
 const CAT_FALL = 0x0002;   // まだ振り分けられていない、落下中の図形
-const CAT_LANE = 0x0004;   // レーンの床と仕切り
+const CAT_LANE = 0x0004;   // レーンの**仕切り**(縦の壁)
 const CAT_HELD = 0x0008;   // レーンに収まった図形
+const CAT_FLOOR = 0x0010;  // レーンの**床**(仕切りと別にした。下記)
 const FILTER_FALL = { category: CAT_FALL, mask: CAT_WALL | CAT_FALL };
 const FILTER_LANE = { category: CAT_LANE, mask: CAT_HELD };
-const FILTER_HELD = { category: CAT_HELD, mask: CAT_LANE | CAT_HELD };
+const FILTER_FLOOR = { category: CAT_FLOOR, mask: CAT_HELD };
+const FILTER_HELD = { category: CAT_HELD, mask: CAT_LANE | CAT_HELD | CAT_FLOOR };
+/** ★★★「自由」の板だけの層(第61巡) ―**レーンの床としか当たらない**。
+ *  板は語を大きく組むぶん**レーンの内寸より広い**ので、仕切りと当たると必ず
+ *  噛んで落ちてこない(第59〜61巡に3度踏んだ)。かといって内寸に収めると字が
+ *  小さくなる。タスクが無い日にしか出ないので**仕切りをすり抜けてよい** —
+ *  自分の列の床の上に、大きいまま、回りながら落ちて着く。 */
+const FILTER_WORD = { category: CAT_HELD, mask: CAT_FLOOR };
 /** 山に居るときの層(既定に戻す)。 */
 const FILTER_PILE = { category: CAT_WALL, mask: 0xFFFFFFFF };
 /** ★層を変える。**`parts` にも入れる** — `Bodies.fromVertices` が作る複合の body は
@@ -184,40 +195,47 @@ const WORLD_FLING = 9;
 const GAP_W = 232;
 const PAD_L = 20;
 
-/** ★★上へのスワイプの**出どころで行き先が変わる**(第60巡)。
- *  ・地面際(下から `TL_GRAB_H` px)から上へ … TIMELINE(**地面を掴んで引き上げる**。
- *    曜日が指に連れて地面から伸びてくるので、掴む所は地面でなければ嘘になる)。
- *  ・それより上から上へ … **DRIFT へ移る**(ユーザー指定)。図形が上へ吹き飛び、
- *    効果線が走り抜けたところでタブが変わる。
- *  この切り分けは ALIGN が「左端から右へ」で開くのと同じ作法 ―
- *  **端から引くと空間が変わり、真ん中から払うと場所が変わる**。 */
-const TL_GRAB_H = 132;
-/** 効果線を伴って吹き飛ぶ時間と、そのとき上向きにかける重力の倍率・本数。
- *  ★★係数は「`WARP_MS` のあいだに画面の高さぶんだけ上がる」で決めてある。
- *  強くしすぎると**数フレームで消えて**効果線しか見えない(第60巡に実測)。 */
+/** ★★縦のスワイプ ―**向きで行き先が決まる**(第61巡にユーザー確定)。
+ *    上 … TIMELINE(地面から曜日が指に連れて伸びる。**どこから払っても**同じ)。
+ *    下 … **DRIFT へ移る**(候補の層は山の**上**に在るので、指で世界を下へ送ると
+ *          そこへ上がる)。図形は効果線を伴って**下へ**吹き飛ぶ。
+ *  ★第60巡は上を「地面際=TIMELINE / それ以外=DRIFT」と割ったが、向き自体が
+ *  逆だった(ユーザー指摘)。切り分けは要らない。 */
+/** 効果線を伴って吹き飛ぶ時間と、かける重力の倍率・本数。
+ *  ★★係数は「`WARP_MS` のあいだに画面の高さぶんだけ動く」で決めてある。
+ *  強くしすぎると**数フレームで消えて**効果線しか見えない(第60巡に実測)。
+ *  ★★★`WARP_MS` は**効果線の濃さの目盛り**であって、タブを変える時刻ではない
+ *  (第61巡)。切り替えは**全部が場の外へ出てから** ― 固定の時刻で切ると、
+ *  図形がまだ画面に居るうちに切り替わる(「途中で終わってしまう」の正体)。 */
 const WARP_MS = ms(T_OUT);
 const WARP_G = 2;
 const WARP_LINES = 26;
+/** 諦めの上限(ここまで来たら図形が残っていても切り替える)。 */
+const WARP_MAX_MS = WARP_MS * 3;
 
 const WD3 = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
+/** ★文字ブロックの太さ(第61巡にユーザー指定「太く」)。Archivo は可変なので
+ *  `wght` がそのまま効く。canvas は `font-variation-settings` を持てないので、
+ *  太さは `ctx.font` の weight で出す。 */
+const WORD_WEIGHT = 900;
 /** ★GRAVITY の山へ落とす曜日は**綴りのまま**(第60巡にユーザー指定「曜日の英語」)。
  *  TIMELINE の3文字は列の見出しで、こちらは山に転がる一枚の板 ― 役が違う。 */
 const WD_FULL = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
-/** 板の寸法 … 幅は画面幅に対して、高さはその幅に対して。 */
-const PILE_WORD_W = 0.46;
-const PILE_WORD_H = 0.40;
+/** 山の文字ブロックの**字を組む幅**(画面幅に対する割合)。高さは塗りから決まる。 */
+const PILE_WORD_W = 0.66;
 
 /** ★★タスクが無い日に落とす「自由」のブロック(2026-08-25・第56巡にユーザー確定)。
  *  タスクの図形が「色の面＋載った文字」なのに対して、これは**文字そのものが図形**。
  *  日付から選ぶので**同じ日はいつも同じ語**になる。 */
 const FREE_WORDS = ["FREE", "自由", "LIBRE", "FREI", "LIBERO", "LIVRE", "VRIJ", "FRI", "VAPAA", "VOLNY"] as const;
 const freeWordOf = (dateKey: string) => FREE_WORDS[Math.floor(frac(dateKey + "free") * FREE_WORDS.length) % FREE_WORDS.length];
-/** 「自由」の板 …**図形と同じ寸法**(第58巡にユーザー指定。★第60巡に「もう少し
- *  大きく」でもう一段)。幅はレーンの内寸の `FREE_FILL`、高さはその `FREE_H` 倍。
- *  ★板は回さない(`setInertia(Infinity)`)ので、**幅だけ**内寸に収まればよい ―
- *  対角がはみ出しても噛まない(第59巡)。 */
-const FREE_FILL = 0.94;
-const FREE_H = 0.92;
+/** 「自由」の字を組む幅 … レーンの内寸に対する割合。
+ *  ★★★**板は回る**(第61巡)ので、条件は「**対角**がレーンの内寸に収まる」。
+ *  ★★★仕切りをすり抜ける(`FILTER_WORD`)ので、**内寸に縛られない**(第61巡)。
+ *  1.0 を少し超えてよい ― レーンの幅(内寸＋仕切り)にはまだ収まる。
+ *  第59〜61巡は「内寸に収める」と「大きく組む」を同時に満たそうとして3度失敗した。
+ *  当たり判定の層を分けたので、両方が成り立つ。 */
+const FREE_FILL = 1.02;
 /** 横に詰めてよい下限(これ以上は潰さない)。 */
 const FREE_SQUEEZE = 0.50;
 const FREE_PAD = 8;
@@ -237,8 +255,20 @@ interface Piece {
   wordFs?: number;
   wordSx?: number;
   wordInk?: string;
+  /** ★塗りの中心が原点からどれだけずれているか(描くときに引く)。 */
+  wordDx?: number;
+  wordDy?: number;
+  /** ★書体 … 日付・曜日は `LATIN`、「自由」は `SANS`(`自由` は Archivo にグリフが無い)。 */
+  wordFam?: string;
 }
 interface Item { id: string; task: Task; paint: SolidPaint; spec: SolidSpec; tag: string }
+/** ★★ALIGN で**図形と一緒に飛んでいくだけ**の文字ブロック(第61巡)。
+ *  日付・曜日の板は円弧のスロットを持たない(タスクではない)ので、道を走り切ったら
+ *  そこで描くのをやめる。第60巡はモードが変わった瞬間に消えていた(ユーザー指摘)。 */
+interface Fly {
+  word: string; fs: number; sx: number; dx: number; dy: number; fam: string; ink: string;
+  from: { x: number; y: number; a: number };
+}
 /** ALIGN で絵を置く場所。x/y は**絵の中心**。 */
 interface Slot { x: number; y: number; s: number; a: number; o: number }
 
@@ -331,6 +361,10 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const seedRef = useRef("0");
   /** ★DRIFT へ吹き飛ぶ進み(0..1)。描くときの効果線の濃さと長さがこれを読む。 */
   const warpRef = useRef(0);
+  /** ★ALIGN の入りで、図形と一緒に飛んでいく文字ブロック。 */
+  const flyRef = useRef<Fly[]>([]);
+  /** 上と対の、いまの位置(毎フレーム `advance` が書き、`draw` が読む)。 */
+  const flyCurRef = useRef<Slot[]>([]);
   const goTabRef = useRef(goTab);
   goTabRef.current = goTab;
   // ★★NAME / TAG の切り替えは**廃止**(第60巡にユーザー指定「不要」)。図形の顔は
@@ -508,6 +542,23 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         }
         put(0, 0, cu.o);
       }
+      // ★★図形と一緒に飛んでいく日付・曜日の板(第61巡)。図形と同じ道・同じ緩急。
+      for (let k = 0; k < flyRef.current.length; k += 1) {
+        const f = flyRef.current[k]; const cu = flyCurRef.current[k];
+        if (!cu || cu.o <= 0.01) continue;
+        ctx.save();
+        ctx.globalAlpha = cu.o;
+        ctx.translate(cu.x, cu.y);
+        ctx.rotate(cu.a);
+        ctx.scale(cu.s, cu.s);
+        ctx.font = canvasFont(WORD_WEIGHT, f.fs, f.fam);
+        ctx.fillStyle = f.ink;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.translate(-f.dx, -f.dy);
+        ctx.scale(f.sx, 1);
+        ctx.fillText(f.word, 0, 0);
+        ctx.restore();
+      }
       pendingBakeRef.current = budget === 0 || glyphBudget === 0
         || itemsRef.current.some((it) => !peekSolidBitmap(it.paint, bakeUnit, bakeDpr));
     } else {
@@ -523,13 +574,13 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         for (let i = 0; i < WARP_LINES; i += 1) {
           const r1 = frac(`warp${i}`); const r2 = frac(`warp${i}b`); const r3 = frac(`warp${i}c`);
           const len = h * (0.10 + r2 * 0.42) * env;
-          // 下から上へ。速い線ほど先に抜ける。
-          const y = h * 1.2 - h * 1.9 * clamp01(wu) * (0.7 + r3 * 0.9);
+          // ★上から下へ(図形と同じ向き。第61巡)。速い線ほど先に抜ける。
+          const y = -h * 0.2 + h * 1.9 * clamp01(wu) * (0.7 + r3 * 0.9);
           ctx.globalAlpha = env * (0.07 + r3 * 0.15);
           ctx.lineWidth = 1 + r2 * 2.4;
           ctx.beginPath();
           ctx.moveTo(w * r1, y);
-          ctx.lineTo(w * r1, y - len);
+          ctx.lineTo(w * r1, y + len);
           ctx.stroke();
         }
         ctx.restore();
@@ -541,10 +592,12 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
           ctx.save();
           ctx.translate(p.body.position.x, p.body.position.y);
           ctx.rotate(p.body.angle);
-          ctx.font = canvasFont(800, p.wordFs ?? 32, SANS);
+          ctx.font = canvasFont(WORD_WEIGHT, p.wordFs ?? 32, p.wordFam ?? SANS);
           ctx.fillStyle = p.wordInk ?? MUTED;
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.scale(p.wordSx ?? 1, 1);          // 板の幅へ詰める(コンデンス体として)
+          // ★塗りの中心を物体の中心へ(詰めた後の座標系で引くので dx は sx 済み)。
+          ctx.translate(-(p.wordDx ?? 0), -(p.wordDy ?? 0));
+          ctx.scale(p.wordSx ?? 1, 1);          // 決めた幅へ詰める(コンデンス体として)
           ctx.fillText(p.word, 0, 0);
           ctx.restore();
           continue;
@@ -680,10 +733,13 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     const top = bandTopY();
     const bodies: Body[] = [];
     const o = { isStatic: true, friction: 0.6, restitution: 0.02, collisionFilter: FILTER_LANE };
+    // ★床は仕切りと**別の層**(第61巡)。「自由」の板は床としか当たらない ―
+    //   板は内寸より広いので、仕切りと当たると必ず噛む。
+    const of = { ...o, collisionFilter: FILTER_FLOOR };
     for (let i = 0; i < n; i += 1) {
       const left = laneLeft(i);
       // 床
-      bodies.push(M.Bodies.rectangle(left + laneW / 2, top + WALL_T / 2, laneW, WALL_T, o));
+      bodies.push(M.Bodies.rectangle(left + laneW / 2, top + WALL_T / 2, laneW, WALL_T, of));
       // 左の壁(いちばん右のレーンだけ右の壁も足す)
       bodies.push(M.Bodies.rectangle(left, top - 400, WALL_T, 900, o));
       if (i === n - 1) bodies.push(M.Bodies.rectangle(left + laneW, top - 400, WALL_T, 900, o));
@@ -743,7 +799,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       if (p.body.position.y < h + 120) continue;
       if (p.lane < 0) continue;
       // 大きさをレーン用へ入れ替える(画面の外なので継ぎ目は見えない)。
-      if (Math.abs(p.unit - tlUnitRef.current) > 0.5) swapUnit(M, engine.world, p, tlUnitRef.current);
+      // ★「自由」の板は入れ替えない ― `swapUnit` は `paint` から**図形の**body を
+      //   作り直すので、板が図形に化けてしまう。
+      if (!p.word && Math.abs(p.unit - tlUnitRef.current) > 0.5) swapUnit(M, engine.world, p, tlUnitRef.current);
       const cx = laneLeft(p.lane) + laneW / 2;
       // ★★投入を**ばらす**(第57巡)。全部が同じ高さ・速度0・角度0で入ると、隣同士が
       //   寸分違わず同じ速さで落ちて**アニメーションに見える**(ユーザー指摘)。
@@ -759,7 +817,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       // ★ここからはレーンの器と噛み合う層へ移す(＝振り分け済み)。
       //   ★回転は**止めない** — 落ちる・転がる・傾いたまま積まれるまで、山とまったく
       //   同じ物理にする(第57巡にユーザー確定)。
-      setFilter(p.body, FILTER_HELD);
+      setFilter(p.body, p.word ? FILTER_WORD : FILTER_HELD);
       M.Sleeping.set(p.body, false);
     }
   }, [laneLeft, laneWOf]);
@@ -830,7 +888,16 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     //   回している)。ここは**進みを数えて効果線に渡し、抜け切ったらタブを変える**だけ。
     if (ph === "warp") {
       warpRef.current = clamp01(t / WARP_MS);
-      if (warpRef.current >= 1) { phaseRef.current = null; warpRef.current = 0; goTabRef.current("tasks-drift"); }
+      // ★★切り替えは**時刻ではなく「全部が場の外へ出たか」**(第61巡)。固定の時刻で
+      //   切ると、図形がまだ画面に居るうちにタブが変わる ―「アニメーションが途中で
+      //   終わって切り替わる」(ユーザー指摘)の正体。暴走よけに上限だけ置く。
+      // ★**最後の1pxが下端を抜けた瞬間**で見る(`bounds` は物体の実際の外接矩形)。
+      //   中心と `girth` で見ると、画面が空になってから 0.5 秒ほど何も無い時間ができる。
+      const hh = sizeRef.current.h;
+      const gone = piecesRef.current.every((p) => p.body.bounds.min.y > hh);
+      if (gone || t > WARP_MAX_MS) {
+        phaseRef.current = null; warpRef.current = 0; goTabRef.current("tasks-drift");
+      }
       return true;
     }
 
@@ -967,7 +1034,25 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       //   なので短く ― 長くすると、絵はもう着いているのに**指が効かない時間**になる
       //   (第60巡。第59巡は `+ ms(T_IN) + ms(T_ITEM)` で 0.7 秒ぶん余計だった)。
       const txtEnd = startAt(list.length - 1) + STREAM_MS * lastSpan * A_HANDOFF + ms(T_ITEM);
-      if (done && t > txtEnd) phaseRef.current = null;
+      // ★★日付・曜日の板も**同じ道を、図形の後ろに続いて**飛ぶ(第61巡)。
+      //   円弧のスロットは持たないので、道を走り切ったらそこで消える。
+      for (let k = 0; k < flyRef.current.length; k += 1) {
+        const f = flyRef.current[k];
+        const i = list.length + k;                    // 図形の後ろに続く番号
+        const q = streamQ(i);
+        const span = 1 + STREAM_GAP * q;
+        const u = cine(clamp01((t - startAt(i)) / (STREAM_MS * span))) * span;
+        const n = u / span;
+        const join = clamp01(n / 0.42);
+        const conv = clamp01((n - 0.15) / 0.6);
+        const pt = streamAt(lerp(u * 0.9, u - STREAM_GAP * q * conv, conv));
+        flyCurRef.current[k] = {
+          x: lerp(f.from.x, pt.x, join), y: lerp(f.from.y, pt.y, join),
+          s: lerp(1, pt.k, join), a: f.from.a * (1 - join), o: 1 - clamp01((n - 0.86) / 0.14),
+        };
+        if (n < 1) done = false;
+      }
+      if (done && t > txtEnd) { phaseRef.current = null; flyRef.current = []; flyCurRef.current = []; }
     } else if (ph === "align-out") {
       // ★★閉じも**入りと同じ作り**(第60巡)。1本の道(`homeAt`)へ順に乗り、
       //   道の上の間隔が揃いながら(`conv`)、`cine` の緩急で画面の外へ抜ける。
@@ -998,7 +1083,12 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         if (n < 1) done = false;
       }
       moving = true;
-      if (done) { phaseRef.current = null; dropAllRef.current(); modeRef.current = "pile"; setMode("pile"); itemsRef.current = []; setItems([]); }
+      if (done) {
+        phaseRef.current = null; dropAllRef.current();
+        modeRef.current = "pile"; setMode("pile");
+        itemsRef.current = []; setItems([]);
+        flyRef.current = []; flyCurRef.current = [];
+      }
     } else if (m === "align") {
       for (const it of list) { const sl = slots.get(it.id); if (sl) cur.set(it.id, sl); }
       // ★連鎖が伝わりきるまで回し続ける(外側の行はいちばん遅れて着く)。
@@ -1239,6 +1329,14 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     focusRef.current = 0; setFocusIdx(0);
     slotRef.current = new Map();
     snapshot(list); layoutAlign();
+    // ★★日付・曜日の板も**一緒に飛ばす**(第61巡にユーザー指定「消えずに、一緒に
+    //   飛んでいくように」)。円弧には入らないので、いまの位置だけ控えて道を走らせる。
+    flyRef.current = piecesRef.current.filter((p) => p.word).map((p) => ({
+      word: p.word as string, fs: p.wordFs ?? 32, sx: p.wordSx ?? 1,
+      dx: p.wordDx ?? 0, dy: p.wordDy ?? 0, fam: p.wordFam ?? SANS, ink: p.wordInk ?? MUTED,
+      from: { x: p.body.position.x, y: p.body.position.y, a: p.body.angle },
+    }));
+    flyCurRef.current = flyRef.current.map((f) => ({ x: f.from.x, y: f.from.y, s: 1, a: f.from.a, o: 1 }));
     modeRef.current = "align"; setMode("align");
     phaseRef.current = "align-in"; t0Ref.current = performance.now();
     const engine = engineRef.current;
@@ -1312,13 +1410,18 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       if (busy.has(key)) return;
       const r = frac(key + "free");
       // ★★こちらも**画面の上から**落とす(第60巡)。
-      const freeW = laneInner(laneW) * FREE_FILL;
-      const wp = makeWordPiece(M, freeWordOf(key), `free:${key}`, freeW, freeW * FREE_H, freeFs,
+      const wp = makeWordPiece(M, freeWordOf(key), `free:${key}`, laneInner(laneW) * FREE_FILL, freeFs,
         laneW * lane + laneW / 2 + (r - 0.5) * laneW * 0.2,
-        -RECYCLE_Y * (0.7 + r * 1.8) - lane * 24, MUTED);
+        -RECYCLE_Y * (0.7 + r * 1.8) - lane * 24, MUTED, SANS);
       if (!wp) return;
-      setFilter(wp.body, FILTER_HELD);
-      M.Body.setVelocity(wp.body, { x: 0, y: r * 2.2 });
+      setFilter(wp.body, FILTER_WORD);
+      // ★図形と同じく**回りながら**落ちる(第61巡。回転を止めていたのが
+      //   「角度が変わらずゆっくり降りてくる」の正体)。
+      // ★初速と回りは**控えめに**。平たい板は 0° か 180° に落ち着くので、強く回すと
+      //   半分が逆さまになって読めない。図形と同じ物理のまま、読める側へ寄せる。
+      M.Body.setVelocity(wp.body, { x: (r - 0.5) * 1.2, y: r * 2.2 });
+      M.Body.setAngle(wp.body, (r - 0.5) * 0.45);
+      M.Body.setAngularVelocity(wp.body, (r - 0.5) * 0.07);
       M.Composite.add(engine.world, wp.body);
       next.push({ ...wp, lane });
     });
@@ -1524,7 +1627,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     const wrap = wrapRef.current; const root = rootRef.current;
     if (!wrap || !root) return;
     let g: {
-      id: number; x: number; y: number; edge: boolean; low: boolean; axis: "" | "x" | "y";
+      id: number; x: number; y: number; edge: boolean; axis: "" | "x" | "y";
       moved: boolean; lastX: number; lastY: number; vy: number;
     } | null = null;
 
@@ -1564,9 +1667,6 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       if (dragged) dragged.current = false;
       const r = wrap.getBoundingClientRect();
       const edge = e.clientX - r.left < EDGE_PX;
-      // ★★地面際か(＝地面を掴んで引き上げられる所か)。ここから上へ払えば TIMELINE、
-      //   それより上から払えば DRIFT へ移る(第60巡)。
-      const low = e.clientY - r.top > floorYOf(r.height) - TL_GRAB_H;
       if (modeRef.current !== "align" && !phaseRef.current && !edge) {
         const p = pieceAt(e.clientX - r.left, e.clientY - r.top);
         // ★「自由」のブロックは掴まない(完了も削除もできないため)。
@@ -1578,7 +1678,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
           };
         }
       }
-      g = { id: e.pointerId, x: e.clientX, y: e.clientY, edge, low, axis: "", moved: false, lastX: e.clientX, lastY: e.clientY, vy: 0 };
+      g = { id: e.pointerId, x: e.clientX, y: e.clientY, edge, axis: "", moved: false, lastX: e.clientX, lastY: e.clientY, vy: 0 };
       if (modeRef.current === "align") scrollRef.current.v = 0;
       if (modeRef.current === "timeline") wDragRef.current = false;
     };
@@ -1620,9 +1720,10 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       }
 
       const m = modeRef.current;
-      if (m === "pile" && !phaseRef.current && g.axis === "y" && dy < 0 && !g.low) {
-        // ★★地面から離れた所からの上払いは **DRIFT へ移る**(第60巡)。
-        if (-dy > SWIPE_PX) enterDrift();
+      if (m === "pile" && !phaseRef.current && g.axis === "y" && dy > 0) {
+        // ★★下へ払うと **DRIFT へ移る**(第61巡にユーザー確定)。候補の層は山の**上**に
+        //   在るので、世界を下へ送るとそこへ上がる ― 図形は下へ吹き飛ぶ。
+        if (dy > SWIPE_PX) enterDrift();
       } else if (m === "pile" && !phaseRef.current && g.axis === "y" && dy < 0) {
         // ★曜日が指に追従して伸びる。伸び切る手前で**床が抜ける**(＝合図)。
         if (!tlDragRef.current) {
@@ -1949,58 +2050,84 @@ function swapUnit(M: typeof import("matter-js"), world: World, p: Piece, unit: n
  *  「各言語で大きさを合わせて」)。語ごとに幅から出すと `FRI` だけ巨大になる。
  *  **いちばん幅を食う語**がレーンの内寸に収まる大きさを全部で使う。
  *  ★書体は `SANS`(Archivo ＋ Noto Sans JP) — `自由` は Archivo にグリフが無い。 */
-function wordFontSize(words: readonly string[], bw: number, bh: number): number {
-  const probe = document.createElement("canvas").getContext("2d");
+/** 測る用の canvas(使い回す)。 */
+let wordProbe: CanvasRenderingContext2D | null = null;
+const probeCtx = () => (wordProbe ??= document.createElement("canvas").getContext("2d"));
+
+/** ★★★**塗りの矩形**を測る(2026-08-25・第61巡)。
+ *  `textAlign:"center"` / `textBaseline:"middle"` で置いたときの原点から見た、
+ *  実際にインクが乗る範囲と、その**中心のずれ**を返す。
+ *  ★大文字や数字は em の中で上に寄るので、`middle` の原点と塗りの中心は**一致しない**。
+ *  ここを補正しないと、物体の中心と字の中心がずれる。 */
+function inkBoxOf(word: string, fs: number, sx: number, fam: string): { w: number; h: number; dx: number; dy: number } {
+  const probe = probeCtx();
+  if (!probe) return { w: fs * word.length * 0.6, h: fs * 0.72, dx: 0, dy: 0 };
+  probe.font = canvasFont(WORD_WEIGHT, fs, fam);
+  probe.textAlign = "center"; probe.textBaseline = "middle";
+  const m = probe.measureText(word);
+  const l = m.actualBoundingBoxLeft ?? m.width / 2;
+  const r = m.actualBoundingBoxRight ?? m.width / 2;
+  const a = m.actualBoundingBoxAscent ?? fs * 0.36;
+  const d = m.actualBoundingBoxDescent ?? fs * 0.12;
+  return {
+    w: (l + r) * sx, h: a + d,
+    dx: ((r - l) / 2) * sx,          // 塗りの中心が原点からどれだけ右か
+    dy: (d - a) / 2,                 // 同じく下か(大文字は負＝上に寄る)
+  };
+}
+
+/** ★字の大きさは「**塗りの幅**が `room` に収まる」で決める(第61巡)。
+ *  箱の高さで縛らない ― 高さは塗りから決まるようになったので。 */
+function wordFontSize(words: readonly string[], room: number, fam: string): number {
+  const probe = probeCtx();
   if (!probe) return 24;
-  const room = bw - FREE_PAD * 2;
   const base = 64;
-  probe.font = canvasFont(800, base, SANS);
+  probe.font = canvasFont(WORD_WEIGHT, base, fam);
   let widest = 1;
   for (const w of words) widest = Math.max(widest, probe.measureText(w).width);
-  // ★★**板いっぱいに組む**(第58巡「図形と同じサイズに」)。高さを基準に取り、
-  //   横は `FREE_SQUEEZE` まで詰めてよいことにする ― 曜日を `wdth 58` で
-  //   細く大きく組んでいるのと同じ考え方(コンデンス体として読ませる)。
-  const byW = (base * room) / widest / FREE_SQUEEZE;
-  const byH = (bh - FREE_PAD) / 0.78;
-  return Math.max(14, Math.min(SWISS_XL, Math.round(Math.min(byW, byH))));
+  // ★横は `FREE_SQUEEZE` まで詰めてよい ― 曜日を `wdth 58` で細く大きく組んで
+  //   いるのと同じ考え方(コンデンス体として読ませる)。
+  return Math.max(14, Math.min(SWISS_XL, Math.round((base * room) / widest / FREE_SQUEEZE)));
 }
-const freeFontSize = (laneW: number) => {
-  const bw = laneInner(laneW) * FREE_FILL;
-  return wordFontSize(FREE_WORDS, bw, bw * FREE_H);
-};
+const freeFontSize = (laneW: number) => wordFontSize(FREE_WORDS, laneInner(laneW) * FREE_FILL, SANS);
 
-/** その語を板の幅へ収めるための横の詰め(1 = 詰めない)。 */
-function wordSqueeze(word: string, fs: number, bw: number): number {
-  const probe = document.createElement("canvas").getContext("2d");
+/** その語を決めた幅へ収めるための横の詰め(1 = 詰めない)。 */
+function wordSqueeze(word: string, fs: number, room: number, fam: string): number {
+  const probe = probeCtx();
   if (!probe) return 1;
-  probe.font = canvasFont(800, fs, SANS);
-  const room = bw - FREE_PAD * 2;
+  probe.font = canvasFont(WORD_WEIGHT, fs, fam);
   const w = probe.measureText(word).width || 1;
   return Math.max(FREE_SQUEEZE, Math.min(1, room / w));
 }
 
-/** ★文字のブロックを作る。文字の箱を測って、その大きさの物体にする。
- *  書体が届く前に測ると箱がずれるので、**落とすたびに測り直す**。
+/** ★★文字のブロックを作る。**物体は「文字の塗り」そのもの**(第61巡)。
+ *  第60巡までは「画面幅の 46% × その 40%」という決め打ちの矩形だったので、
+ *  `8/25` のような短い語では**箱が塗りよりずっと大きく**、掴めない所で当たっていた
+ *  (ユーザー指摘「当たり判定が文字の塗りから離れすぎ」)。塗りを実測して、
+ *  それに `FREE_PAD` だけ遊びを足したものを物体にする。
+ *  ★塗りの中心が物体の中心に来るよう、描くときに `wordDx/wordDy` を引く。
  *  TIMELINE の「自由」(灰)と、GRAVITY の日付・曜日(黒)の**両方**がこれを使う。 */
 function makeWordPiece(
   M: typeof import("matter-js"), word: string, id: string,
-  bw: number, bh: number, fs: number, x: number, y: number, ink: string,
+  room: number, fs: number, x: number, y: number, ink: string, fam: string,
 ): Piece | null {
-  const probe = document.createElement("canvas").getContext("2d");
-  if (!probe) return null;
+  const sx = wordSqueeze(word, fs, room, fam);
+  const ink0 = inkBoxOf(word, fs, sx, fam);
+  const bw = Math.max(8, ink0.w + FREE_PAD * 2);
+  const bh = Math.max(8, ink0.h + FREE_PAD * 2);
   const body = M.Bodies.rectangle(x, y, bw, bh, {
-    restitution: 0.02, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012,
+    restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012,
   });
-  // ★★板は**回さない**(第59巡)。幅 bw・高さ bh の板は**対角**がレーンの内寸を
-  //   超えるので、回れると壁に噛んで途中で止まる(「下まで落ちてこない」の正体)。
-  //   文字は水平のほうが読めるので、回さないほうが正しい。
-  M.Body.setInertia(body, Infinity);
+  // ★★★**回る**(第61巡に第59巡の対症療法を撤回)。回転を止めていたので
+  //   「角度が変わらずゆっくり降りてくる」＝物体に見えなかった(ユーザー指摘)。
+  //   噛まない条件は「**回っても内寸に収まる**」＝ 対角 ≤ レーンの内寸。
+  //   箱が塗りぴったりになったので、`FREE_FILL` を絞れば余裕で収まる。
   const spec = specOf({ id, title: word });
   return {
     id, body, spec,
     paint: { spec, view: "name", title: word },
     girth: Math.min(bw, bh), ox: 0, oy: 0, unit: fs, lane: -1, word, wordFs: fs,
-    wordSx: wordSqueeze(word, fs, bw), wordInk: ink,
+    wordSx: sx, wordInk: ink, wordDx: ink0.dx, wordDy: ink0.dy, wordFam: fam,
   };
 }
 
@@ -2034,19 +2161,25 @@ function pileWordPieces(
 ): Piece[] {
   const d = new Date();
   const words = [`${d.getMonth() + 1}/${d.getDate()}`, WD_FULL[d.getDay()]];
-  const bw = w * PILE_WORD_W;
-  const bh = bw * PILE_WORD_H;
+  const room = w * PILE_WORD_W;
   // ★大きさは**2枚で1つ**(語の長さで字面が変わらない)。
-  const fs = wordFontSize(words, bw, bh);
+  const fs = wordFontSize(words, room, LATIN);
   const out: Piece[] = [];
   words.forEach((word, i) => {
     const id = `pw:${i}`;
     const r1 = frac(id + seed); const r2 = frac(id + seed + "y");
-    const p = makeWordPiece(M, word, id, bw, bh, fs,
-      Math.max(bw / 2 + 6, Math.min(w - bw / 2 - 6, w * 0.16 + r1 * w * 0.68)),
-      -bh - i * 150 - r2 * 120, INK);
+    const p = makeWordPiece(M, word, id, room, fs,
+      w * 0.5, -200 - i * 170 - r2 * 120, INK, LATIN);
     if (!p) return;
+    // ★横は**箱が決まってから**画面の中へ収める(塗りぴったりなので幅は語ごとに違う)。
+    const half = (p.body.bounds.max.x - p.body.bounds.min.x) / 2;
+    M.Body.setPosition(p.body, {
+      x: Math.max(half + 6, Math.min(w - half - 6, w * 0.16 + r1 * w * 0.68)),
+      y: p.body.position.y,
+    });
     M.Body.setVelocity(p.body, { x: (r1 - 0.5) * 1.2, y: 0 });
+    M.Body.setAngle(p.body, (frac(id + seed + "a") - 0.5) * 0.5);
+    M.Body.setAngularVelocity(p.body, (frac(id + seed + "a") - 0.5) * 0.05);
     out.push(p);
   });
   return out;

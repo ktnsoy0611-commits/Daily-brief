@@ -58,9 +58,9 @@
 - `components/tabs/GravityTab.tsx` — **タスクの本体**。matter.js の山（pile）と、
   **3つの物理モード**（`pile` / `align` / `timeline`）。左端→右スワイプで ALIGN
   （**左に円弧**で図形が並び、右に文字。中央が大きく、上下スワイプで回る）、
-  **地面際**から上スワイプで TIMELINE（**地面から巨大な曜日が指に連れて伸び**、図形が
-  日付レーンへ下から詰まる）、**それより上**から上スワイプで**効果線を伴って DRIFT へ**。
-  逆方向のスワイプで山へ戻る。★山は**表に出るたびに落とし直す**（毎回ちがう並び）。
+  **上**スワイプで TIMELINE（**地面から巨大な曜日が指に連れて伸び**、図形が
+  日付レーンへ下から詰まる）、**下**スワイプで**効果線を伴って DRIFT へ**
+  （DRIFT からは**上**スワイプで戻る）。★山は**表に出るたびに落とし直す**（毎回ちがう並び）。
   その日の**日付と曜日の英語**も、枠の無い黒い文字の板として一緒に落ちる。
   ★★モード中は **body の位置で描かない** — レイアウトが決めた**スロットへ絵の中心を
   置く**（`ox/oy` 補正をやめたのがズレの根治。詳しくは `docs/project_knowledge.md` §4）。
@@ -73,6 +73,8 @@
   **近さ** `aimTargets`、合図 `fireTarget` もここ。
 - `components/tabs/DriftTab.tsx` — 候補が**無重力で漂う**層（1枚の canvas＋matter.js）。
   ホールドで図形を運び、右下から出る**口＝完了 / ゴミ箱＝削除**へ落とす（第44巡）。
+  上スワイプで**効果線を伴って GRAVITY へ**。★★**場は自分の寸法だけで決める**
+  （画面の座標を測らない。列が動くとずれる。第61巡に根治）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
   `WhenSheet`（日程。**ここだけキーボードを閉じる**）/ `ComposerToolbar` /
   `ComposerFields`（重要度・タグ・テキスト）/ `Popover`（器と `Press`＝押せる面）/
@@ -111,6 +113,8 @@
   ★**画面の上下の帯**は別件で、`statusBarStyle: "default"` で解決済み（第35巡）。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
+- **フィルムのグレイン**は `app/globals.css` の `body::after` の1枚だけ。
+  強さは `:root` の **`--grain`**（既定 0.045）。静止させること（動かすと常時再描画）。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
 - `lib/myBrainPaths.ts` — **my-brain のパスを知っている唯一の場所**。`myBrain.ts` / `myBrainWrite.ts` / `myBrainSyncClient.ts`。
 

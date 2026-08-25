@@ -6,8 +6,9 @@ import { LayerName } from "@/components/tasks/LayerName";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
-import { MUTED, NAV_H, navHeightPx } from "@/lib/constants";
+import { INK, MUTED, NAV_H, navHeightPx } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
+import { ms, T_OUT } from "@/lib/motion";
 import { rectOf, sectionOutline } from "@/lib/solid";
 import { peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint } from "@/lib/solidPaint";
 import { demoCandidates } from "@/lib/taskDemo";
@@ -60,6 +61,19 @@ const GRAB_MAX = 34;
 const FLICK_WINDOW = 90;
 /** 消える演出の速さ(0→1)。 */
 const GONE_STEP = 0.09;
+/** ★★上へ払って **GRAVITY へ移る**(第61巡にユーザー指定)。GRAVITY の下スワイプ
+ *  (DRIFT へ)の相方で、**往復できる**ようにする。無重力の場なので、ワープの間だけ
+ *  重力を上向きにして候補を吹き飛ばし、効果線を上へ走らせる。
+ *  ★係数は GravityTab と同じ考え方 ―「`WARP_MS` のあいだに場の高さぶんだけ動く」。
+ *  ★★タブが変わるのは**全部が場の外へ出てから**(時刻で切ると途中で終わる)。 */
+const WARP_MS = ms(T_OUT);
+const WARP_MAX_MS = WARP_MS * 3;
+const WARP_G = 2.8;
+const WARP_LINES = 26;
+/** 縦の払いと見なす距離(GravityTab の `SWIPE_PX` と同じ数)。 */
+const SWIPE_PX = 44;
+/** 軸を決める距離(GravityTab の `AXIS_PX` と同じ数)。 */
+const AXIS_PX = 10;
 
 interface Piece { id: string; body: Body; paint: SolidPaint; ox: number; oy: number; unit: number; gone: number; gx: number; gy: number }
 interface Ctrl { sync: (list: InboxCandidate[]) => void; setActive: (on: boolean) => void }
@@ -89,6 +103,8 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
   const trashRef = useRef<HTMLDivElement | null>(null);
   const mouthRef = useRef<HTMLDivElement | null>(null);
   const ctrlRef = useRef<Ctrl | null>(null);
+  const goTabRef = useRef(goTab);
+  goTabRef.current = goTab;
   const listKey = candidates.map((c) => c.id).join(",");
 
   // データ操作を物理の閉包から最新の形で呼ぶための窓口。
@@ -149,39 +165,36 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       vx: number; vy: number; vT: number; holdT: number;
     } | null = null;
 
-    /** 使える範囲(**canvas の座標**)。★★器は `full-bleed` なので、canvas は画面より
-     *  上下左右へはみ出している(実測 422×894 @ -16,-16)。`size.h` をそのまま床に
-     *  すると**タブバーの裏まで**器が広がり、図形が潜り込む(第54巡のユーザー指摘)。
-     *  画面の座標を canvas の座標へ**必ず変換**してから壁を置く。 */
+    /** ★★★使える範囲(**canvas の座標**)。**自分の寸法だけで決める** — 画面の座標を
+     *  測ってはいけない(第61巡に作り直し)。
+     *
+     *  第58・60巡はここで `wrap.getBoundingClientRect()` を読み、画面の座標を canvas の
+     *  座標へ変換していた。ところが `AppShell` の列は**一周ループのために
+     *  `translateX(±300%)` がアプリを切り替えた瞬間に飛ぶ**し、`mountedApps` は
+     *  アイドルで後から増えるので、**測った瞬間と実際に見えている瞬間がずれる**。
+     *  第58巡は「原点が動いたぶん図形を運ぶ」、第60巡は「流すのを matter が来てから」と
+     *  タイミングを合わせにいったが、どちらも対症療法で実機では直らなかった
+     *  （第61巡のユーザー報告「まだ直っていない」＋写真）。
+     *
+     *  ★GRAVITY は同じ器に居ながらこの症状が一度も出ていない ― `sizeRef`(自分の
+     *  `offsetWidth/Height`)しか見ておらず、**列がどこに居ようと座標が変わらない**から。
+     *  そちらに揃える。器は `full-bleed` なので canvas は画面より左右 16px ずつ広く、
+     *  上下はちょうど画面ぶん(上の余白と下のタブを負のマージンで打ち消している)。
+     *  だから横は**幅の差から**内側へ寄せ、縦は `FIELD_TOP` とタブの高さで挟む。 */
     const fieldOf = () => {
-      const r = wrap.getBoundingClientRect();
-      return {
-        left: -r.left,
-        right: window.innerWidth - r.left,
-        top: FIELD_TOP - r.top,
-        bottom: (window.innerHeight - navHeightPx()) - r.top,
-      };
+      const { w, h } = size;
+      const pad = Math.max(0, (w - (window.innerWidth || w)) / 2);
+      return { left: pad, right: w - pad, top: FIELD_TOP, bottom: h - navHeightPx() };
     };
-    /** 前回 `walls()` を張ったときの場の原点。**列が動いたぶんを図形へ運ぶ**ために持つ。 */
-    let lastField: { left: number; top: number } | null = null;
+    /** ★GRAVITY へ吹き飛んでいる間の進み(0..1)と、始めた時刻。0 なら普段どおり。 */
+    let warp = 0;
+    let warpT0 = 0;
+    /** 空きを掴んだときの縦の払い(軸ロック付き)。 */
+    let swipe: { id: number; x: number; y: number; axis: "" | "x" | "y" } | null = null;
+
     const walls = () => {
-      if (!M || !engine) return;
+      if (!M || !engine || size.w < 1 || size.h < 1) return;
       const { left, right, top, bottom } = fieldOf();
-      // ★★★列は**画面の外でマウントされる**(第58巡)。`AppShell` の `mountedApps` は
-      //   `["life"]` から始まり、タスクの列は requestIdleCallback で**あとから**、
-      //   まだ `translateX(±100%)` の位置に居るときに組まれる。`fieldOf()` は画面の
-      //   座標を canvas の座標へ変換するので、そのとき張った壁と湧かせた図形は
-      //   **画面幅ぶんずれた場所**に置かれる。`ResizeObserver` は寸法しか見ないので、
-      //   あとで列が入ってきても直らない ―「初回だけ配置がおかしくて操作できない」の
-      //   正体。**原点が動いたぶんだけ図形も運ぶ**ことで、列がどこに居ても直る。
-      if (lastField) {
-        const dx = left - lastField.left;
-        const dy = top - lastField.top;
-        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-          for (const p of pieces) M.Body.translate(p.body, { x: dx, y: dy });
-        }
-      }
-      lastField = { left, top };
       const old = M.Composite.allBodies(engine.world).filter((b) => b.isStatic);
       M.Composite.remove(engine.world, old);
       const T = 80;
@@ -201,19 +214,20 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       const paint = paintOf(c);
       const b = shapeBounds(paint);
       const wu = Math.max(1e-3, b.maxX - b.minX);
-      // ★大きさは**画面の幅**から決める(canvas は full-bleed で 32px 広い)。
-      //   ★★件数が多いときは**その分だけ縮める**。大きいまま詰め込むと、無重力で
-      //   押し合って壁をすり抜け、画面の外へ出てしまう(第54巡に実測)。少数のときは
-      //   目一杯大きいままなので、「小さすぎる」という指摘には応えられている。
-      const crowd = Math.min(1, Math.sqrt(FIT_N / Math.max(1, total)));
-      const unit = (Math.min(W_MAX, window.innerWidth * W_RATIO) * crowd) / wu;
-      const hw = ((b.maxX - b.minX) * unit) / 2;
-      const hh = ((b.maxY - b.minY) * unit) / 2;
       // ★★湧くのは**画面の真ん中あたり**(第54巡にユーザー指定)。四隅から始めると
       //   端に貼り付いたまま気づかれない。★ただし**同じ点に重ねない** — 大きな図形が
       //   重なって湧くと、物理が押し合って壁をすり抜け画面の外へ飛ぶ(実測)。
       //   中心を囲む**ひまわり配置**(黄金角)で、真ん中に寄せつつ均等にばらす。
       const { left, right, top, bottom } = fieldOf();
+      // ★大きさは**場の幅**から決める(第61巡。`window.innerWidth` を混ぜない ―
+      //   場と大きさの出どころは1つにしておく)。
+      //   ★★件数が多いときは**その分だけ縮める**。大きいまま詰め込むと、無重力で
+      //   押し合って壁をすり抜け、画面の外へ出てしまう(第54巡に実測)。少数のときは
+      //   目一杯大きいままなので、「小さすぎる」という指摘には応えられている。
+      const crowd = Math.min(1, Math.sqrt(FIT_N / Math.max(1, total)));
+      const unit = (Math.min(W_MAX, (right - left) * W_RATIO) * crowd) / wu;
+      const hw = ((b.maxX - b.minX) * unit) / 2;
+      const hh = ((b.maxY - b.minY) * unit) / 2;
       const midX = (left + right) / 2, midY = (top + bottom) / 2;
       const rx = Math.max(0, (right - left) / 2 - hw - 8);
       const ry = Math.max(0, (bottom - top) / 2 - hh - 8);
@@ -263,6 +277,26 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       if (!ctx) return false;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
+      // ★★効果線(第61巡)。GRAVITY へ吹き飛ぶ間だけ、上から下ではなく**下から上へ**
+      //   線が走り抜ける(図形と同じ向き)。図形の**後ろ**に引く。
+      if (warp > 0) {
+        const env = Math.sin(Math.min(1, warp) * Math.PI);
+        ctx.save();
+        ctx.strokeStyle = INK;
+        ctx.lineCap = "round";
+        for (let i = 0; i < WARP_LINES; i += 1) {
+          const r1 = frac(`warp${i}`); const r2 = frac(`warp${i}b`); const r3 = frac(`warp${i}c`);
+          const len = h * (0.10 + r2 * 0.42) * env;
+          const y = h * 1.2 - h * 1.9 * Math.min(1, warp) * (0.7 + r3 * 0.9);
+          ctx.globalAlpha = env * (0.07 + r3 * 0.15);
+          ctx.lineWidth = 1 + r2 * 2.4;
+          ctx.beginPath();
+          ctx.moveTo(w * r1, y);
+          ctx.lineTo(w * r1, y - len);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
       let pending = false;
       for (const p of pieces) {
         let bx = p.body.position.x, by = p.body.position.y, sc = 1, alpha = 1;
@@ -290,12 +324,21 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         for (const p of pieces.filter((x) => x.gone >= 1)) M.Composite.remove(engine.world, p.body);
         pieces = pieces.filter((x) => x.gone < 1);
       }
-      clampDrift();
+      if (warp === 0) clampDrift();      // ★ワープ中は速さを抑えない(抜けられなくなる)
       M.Engine.update(engine, 1000 / 60);
+      if (warp > 0) {
+        const t = performance.now() - warpT0;
+        warp = Math.max(1e-4, Math.min(1, t / WARP_MS));
+        // ★★切り替えは**時刻ではなく「全部が場の外へ出たか」**。時刻で切ると
+        //   図形がまだ画面に居るうちにタブが変わる(第61巡のユーザー指摘)。
+        // ★**最後の1pxが上端を抜けた瞬間**で見る(中心で見ると空の時間ができる)。
+        const gone = pieces.every((p) => p.body.bounds.max.y < 0);
+        if (gone || t > WARP_MAX_MS) { warp = 0; goTabRef.current("tasks-gravity"); }
+      }
       const pending = draw();
       // ★全部が止まって、消える演出も無く、焼き待ちも無ければループを止める
       //   (減速して止まる作りになったので、止まったら本当に静かになる)。
-      const moving = pieces.some((p) => p.gone > 0
+      const moving = warp > 0 || pieces.some((p) => p.gone > 0
         || Math.hypot(p.body.velocity.x, p.body.velocity.y) > 0.04
         || Math.abs(p.body.angularVelocity) > 0.002);
       if (running && live && (moving || pending || !!grab)) raf = requestAnimationFrame(step);
@@ -322,17 +365,39 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
     const enterHold = () => {
       if (!grab || !M) return;
       grab.held = true;
+      swipe = null;                        // ★長押しが成立したら払いではない
       haptic(10);
       setHolding(true);
       // ★★`setStatic` にしないこと(第56巡)。静止物にすると当たり判定が消えて他の
       //   図形をすり抜けるうえ、離した瞬間の速度が**物理には無い**ので投げが死ぬ。
       //   動く物体のまま、毎フレーム指へ向かう速度を与える(GRAVITY と同じ)。
     };
+    /** ★★上へ払って **GRAVITY へ移る**(第61巡)。無重力の場なので、ワープの間だけ
+     *  重力を上向きにして、全部の候補へ上向きの初速を与える。効果線は `draw` が引く。 */
+    const enterGravity = () => {
+      if (!M || !engine || warp > 0) return;
+      warp = 1e-4; warpT0 = performance.now();
+      engine.gravity.y = -WARP_G;
+      for (const p of pieces) {
+        M.Body.setVelocity(p.body, {
+          x: (frac(p.id + "wx") - 0.5) * 3,
+          y: -(6 + frac(p.id + "wy") * 5),
+        });
+        M.Body.setAngularVelocity(p.body, (frac(p.id + "wr") - 0.5) * 0.22);
+      }
+      haptic(12); wake();
+    };
+
     const onDown = (e: PointerEvent) => {
       if (document.documentElement.hasAttribute("data-overlay") || grab) return;
       const { x, y } = pointAt(e);
       const piece = hitPiece(x, y);
-      if (!piece) return;                 // 空きは掴まない → カメラのパンに任せる
+      // ★★**縦の払いはどこから始めてもよい**(第61巡)。図形の上でも、掴む前に
+      //   動き出したら払いに変わる ― DRIFT は図形で埋まっているので、空きからしか
+      //   払えないと上スワイプ(GRAVITY へ)が実質使えない。GRAVITY と同じ作法:
+      //   **長押ししてから動かす**と運ぶ、**すぐ動かす**と空間の払い。
+      if (warp === 0) swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
+      if (!piece) return;                  // 空きは掴まない → 払いに任せる
       e.stopPropagation();                 // 図形の上ではカメラを動かさない
       grab = {
         id: e.pointerId, piece, ox: piece.body.position.x - x, oy: piece.body.position.y - y,
@@ -342,11 +407,22 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       };
     };
     const onMove = (e: PointerEvent) => {
-      if (!grab || e.pointerId !== grab.id || !M) return;
-      if (!grab.moved && Math.hypot(e.clientX - grab.downX, e.clientY - grab.downY) > TAP_MOVE) {
-        grab.moved = true;
-        if (!grab.held) { window.clearTimeout(grab.holdT); enterHold(); }
+      // ★まだ掴んでいない図形は、動き出した時点で手放して**払い**に譲る。
+      if (grab && !grab.held && e.pointerId === grab.id
+          && Math.hypot(e.clientX - grab.downX, e.clientY - grab.downY) > TAP_MOVE) {
+        window.clearTimeout(grab.holdT); grab = null;
       }
+      if (swipe && e.pointerId === swipe.id && !grab?.held) {
+        const dx = e.clientX - swipe.x; const dy = e.clientY - swipe.y;
+        if (!swipe.axis) {
+          if (Math.abs(dx) < AXIS_PX && Math.abs(dy) < AXIS_PX) return;
+          swipe.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        }
+        if (swipe.axis === "y" && -dy > SWIPE_PX) { swipe = null; grab = null; enterGravity(); }
+        return;
+      }
+      if (!grab || e.pointerId !== grab.id || !M) return;
+      if (!grab.moved) grab.moved = true;
       if (!grab.held) return;
       if (dragged) dragged.current = true;
       const { x, y } = pointAt(e);
@@ -369,6 +445,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       setHover((cur) => (cur === t ? cur : t));
     };
     const onUp = (e: PointerEvent) => {
+      if (swipe && e.pointerId === swipe.id) swipe = null;
       if (!grab || e.pointerId !== grab.id) return;
       window.clearTimeout(grab.holdT);
       const g = grab; grab = null;
@@ -403,7 +480,9 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       const w = wrap.offsetWidth, h = wrap.offsetHeight;
       if (Math.abs(w - size.w) < 0.5 && Math.abs(h - size.h) < 0.5) return;
       size = { w, h };
-      if (M && engine) { walls(); wake(); }
+      // ★最初に**有効な寸法**を拾ったところが、場を作れる最初の機会。壁だけでなく
+      //   溜めていた候補も流すこと(寸法が 0 のうちは `flush` が何もできない)。
+      if (M && engine) { walls(); flush(); wake(); }
     });
     ro.observe(wrap);
 
@@ -416,17 +495,17 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
     //   列だけが捨てられて**画面に何も出ない**状態が固定していた(ユーザー報告)。
     const flush = () => {
       if (!M || !engine || !live || !pending) return;
+      if (size.w < 1 || size.h < 1) return;   // ★寸法が来るまでは置き場所が決まらない
       const q = pending; pending = null; sync(q);
     };
     ctrlRef.current = {
-      // ★見えていない間は**湧かせない**(場が画面の外なので、置いた場所が全部ずれる)。
-      //   溜めておいて、見えるようになってから流す。
+      // ★見えていない間は**湧かせない**(まだ寸法が来ていないことがある)。
+      //   溜めておいて、場が作れるようになってから流す。
       sync: (list) => { if (!M || !live) { pending = list; return; } sync(list); },
       setActive: (on) => {
         pendingLive = on;
         live = on;
         if (on) {
-          // ★隠れている間に列が動いていても、ここで場を測り直して図形ごと運ぶ。
           size = { w: wrap.offsetWidth, h: wrap.offsetHeight };
           if (M && engine) { walls(); flush(); wake(); }
         } else { running = false; cancelAnimationFrame(raf); }

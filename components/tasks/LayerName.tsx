@@ -16,7 +16,7 @@ import { SPACE, TYPE } from "@/lib/tokens";
  */
 export function LayerName({ text, right }: { text: string; right?: React.ReactNode }) {
   return (
-    <div style={{
+    <div data-layer={text} style={{
       position: "absolute", top: `calc(${TAB_PAD_TOP} + ${MAST_H}px + ${SPACE.sm}px)`, left: 16, right: 16, zIndex: 2,
       display: "flex", alignItems: "center", justifyContent: "flex-end", gap: SPACE.md, pointerEvents: "none",
     }}>

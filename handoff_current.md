@@ -1,4 +1,4 @@
-# 現在地（2026-08-25・第60巡）
+# 現在地（2026-08-25・第61巡）
 
 現行仕様は `docs/project_knowledge.md` が正。経緯は `docs/archive/`。
 このファイルは**常に200行以内**に保つ（更新手順は `CLAUDE.md` の「恒久ルール」）。
@@ -14,97 +14,92 @@
 
 3つのアプリのうち**ブリーフ（EXPLORE）は実運用中**、タスクとジャーナルは
 UI が出来た段階で、Cowork の仕分けとの往復はこれから。
-
-第24巡でキーボード追従、第26巡でモーションの語彙、第33巡でデザインシステムを
-正規化。第29〜36巡で「上下の帯」を解決（`docs/archive/shell-redesign-2026-08.md`
-§56 — **同じ手を二度試さないこと**）。第38〜44巡の「縦の空間＋カメラ」4層は
-★**第52巡に破棄**。現行仕様は `docs/project_knowledge.md` §4。
+第24巡でキーボード追従、第26巡でモーションの語彙、第33巡でデザインシステムを正規化。
+第29〜36巡で「上下の帯」を解決（`docs/archive/shell-redesign-2026-08.md` §56 —
+**同じ手を二度試さないこと**）。第38〜44巡の4層カメラは★**第52巡に破棄**。
+現行仕様は `docs/project_knowledge.md` §4。
 
 ---
 
-## 直近で完了したこと（第60巡）— DRIFT の空表示、ALIGN の作法、上スワイプで DRIFT へ
+## 直近で完了したこと（第61巡）— DRIFT の座標の根治、上下スワイプ、文字の当たり判定、グレイン
 
-### ★★DRIFT に何も出なくなっていたバグ（ユーザー報告。ダミーは消えていない）
-1. **原因** … 見えていない間は湧かせないので候補を `pending` に溜めるが、第58巡は
-   `setActive` の中で **`pending` を無条件に空にしてから `sync` を呼んで**いた。
-   DRIFT は**既定のタブ**なので `setActive(true)` は `import("matter-js")` より先に
-   走る ― `sync` は `!M` で素通りし、列だけ捨てられて**永久に空**になっていた。
-2. **直し** … 流す条件を **1か所（`flush()`）に集め**、`setActive` と matter の
-   読み込み完了の**両方**から同じ関数を呼ぶ。
+第60巡ぶんの実機確認で7件。うち3件は「直したはずが直っていない」もので、
+いずれも**対症療法で押さえていたのが崩れた**ものだった。
 
-### ALIGN（誇張を弱め・指の追従を上げ・閉じを入りと揃える）
-3. 誇張をもう一段弱く … `SQUASH_MAX` 0.11→**0.07** / `SQUASH_REF` 42→**48** /
-   `SMEAR_A` 0.09→**0.065** / `SMEAR_LEN` 0.45→**0.40** / `SMEAR_MIN` 18→**22**。
-4. 指の追従を普通寄りへ … `SCROLL_GAIN` 0.2→**0.55**、釣り合いで `FLICK_K` 0.18→**0.14**
-   （`flickThrow` は両方を掛けるので、効きを上げると投げは勝手に伸びる）。
-5. ★★**閉じも「1本の道」**（`homeAt`）… 円弧のあたりから**左下へ画面のはるか外**まで
-   抜ける3次ベジエを、入りとまったく同じ段取り（`startAt`→`join`→`conv`→`cine`）で
-   走らせる。★第59巡までは「x を -260 へバネで寄せるだけ」で**速さが `SMEAR_MIN` に
-   届かず伸びも残像も出ていなかった** ―「閉じのストレッチが無さすぎる」の正体。
-   誇張は**係数ではなく道の長さと緩急で**出す。
-6. ★★**出入りの長さの頭打ち**（`STREAM_Q_MAX`=6）。素の `i` を使うと道の長さが
-   **タスクの数だけ伸び**、16個で約4秒・30個なら8秒。その間ジェスチャーが効かず
-   実質フリーズだった（実測して発覚）。あわせて**入りの途中でも左払いで閉じられる**
-   ようにし、入り終わりの下限（`txtEnd`）から余分な 0.7 秒を落とした。
+### ★★★DRIFT の初回の配置（3度目でようやく根治）
+1. **原因** … DRIFT だけが `getBoundingClientRect()` で**画面の座標を測って**物理の場を
+   置いていた。`AppShell` の列は一周ループのため `translateX(±300%)` が**アプリを
+   切り替えた瞬間に飛ぶ**し、アイドルで後からマウントされる ―「測った瞬間」と
+   「実際に見えている瞬間」がずれる。第58巡（原点の差分を運ぶ）も第60巡
+   （流すのを matter が来てから）も**タイミングを合わせにいった対症療法**だった。
+2. **直し** … GRAVITY と同じ「**自分の寸法だけで決まる canvas ローカル座標**」へ。
+   `left = (w - innerWidth)/2` / `right = w - left` / `top = FIELD_TOP` /
+   `bottom = h - navHeightPx()`。`lastField` の補正は丸ごと撤去。
+   図形の大きさも**場の幅**から出す（`window.innerWidth` を混ぜない）。
+   ★教訓 … **同じ器に居るのに片方だけ壊れるときは、座標の出どころを疑う。**
 
-### TIMELINE
-7. ★★「自由」が**画面の上（負の y）から落ちる**ように。第59巡までは帯の上端から
-   数えていたので**画面の真ん中あたりに現れて**いた（「途中から急に現れる」の正体）。
-   日付のあるタスクの投入も同じ罠だったので一緒に直した。
-8. 「自由」を大きく … `FREE_FILL` 0.90→**0.94** / `FREE_H` 0.78→**0.92**。
+### 上下スワイプ（向きを直し、往復にし、抜け切ってから切り替える）
+3. **上＝TIMELINE／下＝DRIFT／DRIFT から上＝GRAVITY**。第60巡は向きが逆だったので、
+   `TL_GRAB_H`（地面際かどうかの切り分け）ごと撤去した。上スワイプはどこからでも。
+4. ★★**切り替えは「時刻」ではなく「全部が場の外へ出たとき」**。`WARP_MS` は
+   効果線の濃さの目盛りにだけ使う。判定は**外接矩形**（中心と `girth` で見ると
+   画面が空になってから 0.5 秒ほど何も無い時間ができる）。上限だけ `WARP_MS × 3`。
+5. ★DRIFT でも**すぐ動かせば払い、長押しすれば運ぶ**（GRAVITY と同じ作法）。
+   図形で埋まっている層なので、空きからしか払えないと上スワイプが実質使えない。
 
-### GRAVITY
-9. ★**表に出るたびに山を落とし直す**（毎回ちがう並び）。ばらつきは `makePiece` に
-   渡す**その回の種**で作る。ALIGN / TIMELINE を開いたまま離れても山からやり直す。
-   ★傾きと回りは控えめ（±0.25rad）― 強いと逆さまに積まれて名前が読めない。
-10. ★**その日の日付（`8/25`）と曜日の英語（`TUESDAY`）**を、「自由」と同じ
-    **枠の無い黒い文字の板**として一緒に落とす。タスクではないので、山を組み直す
-    各所で `p.word` は `alive` の判定から除外し、`recycleToPile` の最後で作り直す。
-11. **NAME / TAG の切り替えを撤去**（`components/tasks/ViewToggle.tsx` ごと削除）。
-12. ★★**上スワイプの行き先を出どころで分ける** … **地面際**（床から 132px）から
-    上へ＝TIMELINE（曜日は地面から伸びるので掴む所は地面でなければ嘘）、
-    **それより上**から上へ＝**効果線を伴って DRIFT へ**（`enterDrift`）。
-    画面の切り替えではなく**物理で吹き飛ばす**（床を抜き、重力を上向きに裏返す）。
-    ★係数は「`WARP_MS` のあいだに画面の高さぶんだけ上がる」で決める。強くしすぎると
-    数フレームで空になり**効果線しか見えない**（最初の版で踏んだ）。
+### 日付・曜日の板（当たり判定・太さ・大きさ）
+6. ★★**物体は「文字の塗り」そのもの**。`measureText` の実測から箱を作り、
+   `textBaseline:"middle"` の原点と塗りの中心のずれ（`wordDx/wordDy`）を描くときに引く。
+   第60巡までは決め打ちの矩形だったので `8/25` は箱が塗りの3倍あった。
+7. 太さ `800 → 900`、書体 `LATIN`、字を組む幅 `0.46 → 0.66`。
+
+### ALIGN
+8. ★**日付・曜日の板も一緒に飛ぶ**（`flyRef`）。円弧のスロットは持たないので、
+   図形の後ろに続く番号で同じ道を走り、終点で消える。
+9. 指の追従をもう一段（`SCROLL_GAIN` 0.55 → **0.85**、`FLICK_K` 0.14 → **0.11**）。
+10. 連鎖を控えめに（`CHAIN` 0.72 → **0.86** / `CHAIN_MAX` 6 → **4**）。
+
+### TIMELINE の「自由」（3度目でようやく根治）
+11. ★★★**板は「レーンの床」としか当たらない**（`FILTER_WORD`）。当たり判定の層を
+    `CAT_LANE`（仕切り）と `CAT_FLOOR`（床）に分けた。「内寸に収める」と
+    「大きく組む」は同時に満たせない ― 第56巡は押し出され、第59巡は回転を殺して
+    「物体に見えない」になり、第61巡は塗りぴったりにしてもなお `FREE_PAD` で
+    内寸を超えた。**層を分ける**のが正しい答えだった。大きいまま、回りながら落ちる。
+12. `recycle()` が板に `swapUnit` を掛けないよう塞いだ（板が図形に化ける）。
+
+### グレイン
+13. `app/globals.css` の `body::after` 1枚。**強さは `--grain`（0.045）だけ**。
+    静止・`mix-blend-mode` 無し（iOS で固定レイヤーに blend は合成し直しになる）。
 
 ### 検証
 - `tsc` / `eslint` / 機械チェック4本（1・2・4 は0件、3 は何も出ない）。
-- `scratchpad/r60.mjs`（390×797）… 12項目。**3回連続で全部OK**。
+- `scratchpad/r61.mjs`（390×797）… 17項目。**3回連続で全部OK**。
+  ★[1] は**アプリを一周させてから** DRIFT を見る（列の `translateX` が飛ぶ経路を通す）。
 
 ---
 
 ## 次に着手すること
 
-1. ★★**実機で確認してもらう**（第60巡ぶん）。**DRIFT に候補が出るか**／
-   **ALIGN の指の追従**（速すぎ／遅すぎ）と**閉じの伸び**／**自由が上から落ちるか**／
-   **山が毎回ちがうか**／**日付と曜日の板の大きさと置き場所**／
-   **上スワイプで DRIFT へ移るときの効果線**。
+1. ★★**実機で確認してもらう**（第61巡ぶん）。**DRIFT の初回**（一周してから開く）／
+   **上下スワイプの往復と効果線**（途中で切れないか）／**日付・曜日の板**（太さ・
+   大きさ・当たり判定）／**ALIGN の追従と、板が一緒に飛ぶか**／
+   **自由が回りながら床まで落ちるか**／**グレインの濃さ**。
    ★**ホーム画面から追加し直してから**見ること。
+   ★グレインを濃く/薄くしたいときは `app/globals.css` の `--grain` 1行。
    ★スクロールが良ければ **TIMELINE の横送りも `lib/scroll.ts` へ寄せる**。
 2. ★**TIMELINE のリスケジュール**（別の曜日レーンへドラッグして `dueDate` を書換）は
    未実装。レーンの器と当たり判定の層は揃っているので次はここ。
-3. **触れる数字**（`GravityTab.tsx`）… 地面 `GROUND_LIFT`(32)・重力 `GRAVITY_Y`(1.4)、
-   掴み `HOLD_MS`(150)・`GRAB_K`(0.34)/`GRAB_MAX`(34)、`EDGE_PX`(30)・`SWIPE_PX`(44)、
-   ★上スワイプの分かれ目 `TL_GRAB_H`(132)、ワープ `WARP_MS`(=`ms(T_OUT)`)/`WARP_G`(2)/
-   `WARP_LINES`(26)。
-   ALIGN の出入り `LEAD_GAP`(210)・`GAP_DECAY`(0.72)・`STREAM_GAP`(0.115)・
-   ★`STREAM_Q_MAX`(6)・`A_HANDOFF`(0.72)・`ENTRY_QUEUE`(74)・`D_IN`(0.12)、
-   伸び `SQUASH_REF`(48)/`SQUASH_MAX`(0.07)、残像 `SMEAR_MIN`(22)/`_N`(2)/`_LEN`(0.40)/`_A`(0.065)。
-   並び `ARC_R`(700)・`ARC_APEX_X`(96)・`PITCH_TIGHT`(54)/`PITCH_SPREAD`(124)・
-   `ROW_H`(128)・`ALIGN_MAX_H`(132)/`_W`(176)・`FOCUS_BOOST`(1.25)・`TEXT_GAP`(100)・
-   `alignMid`(0.34)・連鎖 `CHAIN`(0.72)/`CHAIN_MAX`(6)。
-   ★**スクロールの強さは `lib/scroll.ts` の `SCROLL_GAIN`(0.55)/`FLICK_K`(0.14) だけ**。
-   TIMELINE `TL_FILL`(0.94)・`LANE_HEAD_H`(92)・`WALL_T`(16)・`RECYCLE_Y`(150)・
-   `TL_SPAN`(240)・`TL_TRIGGER`(0.45)・`TL_STRETCH`(1.9)・`WORLD_FLING`(9)・
-   `WD_WDTH`(58)/`WD_ADV`(0.54)・`GAP_W`(232)・`PAD_L`(20)・`LANES_VISIBLE`(3)・
-   `FREE_FILL`(0.94)/`FREE_H`(0.92)/`FREE_SQUEEZE`(0.50)、
-   ★山の文字の板 `PILE_WORD_W`(0.46)/`PILE_WORD_H`(0.40)。
-   バネの係数は `lib/spring.ts` の4つだけ。
-   的（`DropTargets.tsx`）… `NEAR_R`(150)・`LEAN`(9)・`PAD`(14)・器 72px。
-   DRIFT（`DriftTab.tsx`）… `W_RATIO`(0.34)/`W_MAX`(150)/`FIT_N`(6)・`DRIFT_AIR`(0.016)・
-   `DRIFT_MAX`(26＝壁抜け止め)・`FLING`(1.0)・`FLICK_WINDOW`(90)。
-   書体の幅は `app/globals.css` の `body { font-variation-settings }`。
+3. **触れる数字** … ★**強さを触る所は少ないほどよい**。
+   - スクロール … `lib/scroll.ts` の `SCROLL_GAIN`(0.85) / `FLICK_K`(0.11) の**2つだけ**。
+   - グレイン … `app/globals.css` の `--grain`(0.045) の**1つだけ**。
+   - バネ … `lib/spring.ts` の**4つだけ**。
+   - `GravityTab.tsx` … ワープ `WARP_G`(2)/`WARP_LINES`(26)、連鎖 `CHAIN`(0.86)/`CHAIN_MAX`(4)、
+     伸び `SQUASH_MAX`(0.07)/残像 `SMEAR_A`(0.065)、出入り `STREAM_Q_MAX`(6)/`A_HANDOFF`(0.72)、
+     並び `ARC_R`(700)/`PITCH_TIGHT`(54)/`FOCUS_BOOST`(1.25)、
+     自由 `FREE_FILL`(1.02)/`FREE_SQUEEZE`(0.50)、文字 `WORD_WEIGHT`(900)/`PILE_WORD_W`(0.66)、
+     地面 `GROUND_LIFT`(32)/重力 `GRAVITY_Y`(1.4)/`SWIPE_PX`(44)。
+   - `DriftTab.tsx` … `W_RATIO`(0.34)/`W_MAX`(150)/`DRIFT_AIR`(0.016)/`FLING`(1.0)/`WARP_G`(2.8)。
+   ★どれも**その場のコメントに理由が書いてある**。数字だけ動かす前に読むこと。
 4. **DRIFT を GRAVITY へ集約するか**（今回は2タブのまま。ユーザーと別途相談）。
 5. **Cowork のプロンプト更新**（`COWORK-ROUTINES.md`）… 候補の `いつ` を**日付で
    書かせる**（YYYY-MM-DD。TIMELINE のレーンは `dueDate` で束ねる）。日付が無いと
@@ -114,9 +109,9 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 
 - **実機 Safari の未検証** … タスクアプリ全般、ジャーナルの円のドラッグとマイク。
 - ジャーナル・ウィッシュ・ストックの行先が未定（§38 のポスターも未着手）。
+- `.tc-lamp` は `.press` の別名。手が空いたら `.press` へ寄せる。
 - **完成時に撤去** … `lib/taskDemo.ts`「デモを入れる」ボタン、`ProfileTab` の
   「ブリーフ生成の実験」、「画面の数値を出す」（`lib/debugViewport.ts` / `ViewportProbe`）。
-- `.tc-lamp` は `.press` の別名として残してある。手が空いたら `.press` へ寄せる。
 - **左端→右スワイプ（ALIGN）が隣アプリへの横払いと混線しないか**実機で要確認。
 - ★**ALIGN の入りは、図形の数だけ長くなる**（頭打ちを入れて最大 ~2.6 秒）。
   その間**縦スワイプは効かない**（図形がまだ所定の位置に居ないため）。左払いでの
@@ -124,6 +119,9 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 - ★**日付・曜日の板は日をまたいでも入れ替わらない**（`dropAll` が走るまで古い日付の
   まま）。GRAVITY は表に出るたび落とし直すので実害は小さいが、開きっぱなしで
   日付が変わると古いまま残る。
+- ★**「自由」は平たい板なので、たまに逆さまに着地する**（0° か 180° に落ち着く）。
+  初速と回りを控えめにして減らしてあるが、物理に任せている以上ゼロにはならない。
+  気になるなら「着地したら水平へ寄せる」を足すことになる（未実装）。
 
 ---
 
@@ -132,30 +130,28 @@ UI が出来た段階で、Cowork の仕分けとの往復はこれから。
 ★全体のファイル地図は `CLAUDE.md`。ここは**いま手を入れている所だけ**。
 
 ```
-lib/constants.ts                   ★SANS/LATIN(Archivo+Noto Sans)／SWISS_*／NAV_BOTTOM_GAP
-app/layout.tsx                     ★Archivo(axes:wdth)/Noto_Sans_JPの読み込み／statusBarStyle
-components/CreateMenu.tsx          ★輪。閉じるアニメーション／半径配置(legibleAngle)
-components/tabs/GravityTab.tsx     ★★タスク本体。物理モード(pile/align/timeline)・ジェスチャー・詳細DOM・曜日DOM
-components/tasks/TaskSpace.tsx     ★薄い器。GRAVITY常時マウント＋DRIFTを重ねる＋固定Masthead
-components/tasks/DropTargets.tsx   ★★口とブラックホール(DRIFT/GRAVITY 共通)。aimTargets(近さ)/targetAt
-components/tabs/DriftTab.tsx       ★無重力の場(canvas+matter.js)。ホールド→口/ゴミ箱
-app/globals.css                    ★body の wdth 88／.tl-band(曜日が伸びる --tl)／★user-select:none
-lib/scroll.ts                      ★★スクロールの語彙(指1:1＋投げ＋減衰＋吸着)。強さは2つ
-lib/spring.ts                      ★★canvas の図形の動きの土台(バネ)。係数は4つ
-lib/motion.ts                      ★T_CAM/EASE_CAM 撤去／surfaceOrigin の帰り先=右下の丸
-components/AppShell.tsx            列の横スライド／タブバー／輪の入口／NAV_H
-components/tasks/TaskComposer.tsx  入力画面。★板＋器の top/height 追従／LEAVE_MS
-★`components/tasks/ViewToggle.tsx` は第60巡に削除（NAME/TAG の切り替えを撤去）
+components/tabs/DriftTab.tsx       ★★★場は自分の寸法だけ(根治)／上スワイプ→GRAVITY＋効果線
+components/tabs/GravityTab.tsx     ★★タスク本体。上下スワイプ／ワープの終わり方／文字の板／
+                                     ALIGNで板も飛ぶ／連鎖／自由は床としか当たらない
+lib/scroll.ts                      ★スクロールの語彙。強さは SCROLL_GAIN と FLICK_K の2つ
+lib/spring.ts                      ★canvas の図形の動きの土台(バネ)。係数は4つ
+app/globals.css                    ★グレイン(body::after ＋ --grain)／.tl-band(--tl)／user-select
+components/tasks/LayerName.tsx     層の名前。★検証用に data-layer を持つ
+components/tasks/DropTargets.tsx   口とブラックホール(DRIFT/GRAVITY 共通)
+components/tasks/TaskSpace.tsx     薄い器。GRAVITY常時マウント＋DRIFTを重ねる
+components/AppShell.tsx            列の横スライド(★一周ループで translateX が飛ぶ)／タブバー
+lib/constants.ts                   SANS/LATIN(Archivo+Noto Sans)／SWISS_*／NAV_BOTTOM_GAP
+lib/motion.ts                      動きの語彙(曲線4本・時間5つ)
+components/tasks/ViewportProbe.tsx ★開発用の数値表示（直ったら撤去）
 ```
 
 ## 検証の作法
 
 ```bash
 # ★検証は必ず本番ビルドで（dev は next/font とプロキシの相性で真っ白になる）
-# ★★フォントの取得が**時々失敗する**。必ずリトライを噛ませ、**ログで成否を確かめる**
-#   （第52巡は古い .next を掴んだまま検証して時間を溶かした）。★`pkill` 等が非0を
-#   返すと**以降の行が走らない**シェルなので、掃除は `|| true` を付ける。
-#   ★`kill` はポートが空くまで待つこと（空かないと古いビルドを見続ける・第60巡）。
+# ★★フォントの取得が時々失敗する。リトライを噛ませ、**ログで成否を確かめる**。
+#   ★掃除は `|| true`（非0で以降が走らないシェル）。★`kill` はポートが空くまで待つ
+#   （空かないと古いビルドを見続ける・第60巡）。
 rm -rf .next
 for i in 1 2 3 4 5; do NODE_OPTIONS=--use-env-proxy npm run build > /tmp/b.log 2>&1; \
   grep -q "Compiled successfully" /tmp/b.log && break; done
@@ -167,24 +163,29 @@ npx next start -p 3201
 
 Playwright は `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`、実体は
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`。ビューポートは **390×797**
-（実機の `innerHeight`。物理は 844 で差の 47 が「下の帯」。第35巡に
-`statusBarStyle: "default"` にして web ビューは下端まで届くが `innerHeight` は 797）。
+（実機の `innerHeight`。物理は 844 で差の 47 が「下の帯」・第35巡）。
 ★**継続アニメーションのある要素は `locator.click()` が待ち続ける**ので、
-`dispatchEvent` で `pointerdown`/`pointerup` を直接撃つ。★`click` まで撃たないこと —
-`Press` は**押した瞬間**に走るので同じ操作が2回走る（第34巡）。出入りの最中は同じ器が
-2枚居ることがあるので `querySelectorAll` の**最後**を掴むこと。
+`dispatchEvent` で `pointerdown`/`pointerup` を直接撃つ。★`click` まで撃たないこと
+（`Press` は押した瞬間に走るので2回走る・第34巡）。出入りの最中は同じ器が2枚居るので
+`querySelectorAll` の**最後**を掴む。
 ★**タスクの新規作成は「作る」→「TASK」の2クリックが唯一の入口**（第36巡に＋を撤去）。
 `button[aria-label="作る"]`は3アプリぶんDOMに在るので、`boundingBox().x`が
 画面内(0〜390)のものだけを選ぶ（`menu28.mjs`の`makeBtn()`が実装例）。
 
-主な回帰（`scratchpad/`）… **`r60`（★DRIFT に候補が出る・切替の削除・山が毎回ちがう・
-上スワイプの分かれ目と効果線・自由が上から落ちる・ALIGN の追従と閉じ）/
+主な回帰（`scratchpad/`）… **`r61`（★DRIFT の初回＝一周してから・上下スワイプの往復と
+効果線・文字の板・ALIGN で板も飛ぶ・自由・グレイン）＋ `free61`（自由が床まで）/
+`r60`（切替の削除・山が毎回ちがう・自由が上から落ちる）/
 `r59`（出が止まらない・誇張の係数・スクロールの効き・閉じの段取り）/
 `r58`（DRIFT の初回・無重力・
 的の形・連鎖）/ `r57`（地面・一筋の出と緩急・黒い曜日・落下の物理）/
 `r56` / `r55` / `drift54` / `modes53`**/
+★★`r61` の作法 … **層の名前は `[data-layer]` から読む**。DOM を文字で走査すると
+タブバーの "GRAVITY"/"DRIFT" を拾う。★DRIFT のとき GRAVITY は
+`visibility: hidden` で**画面に残っている**ので、`getComputedStyle` で弾くこと
+（これを忘れて2巡ぶん誤判定した）。
 ★`r60` の作法 … ALIGN は**入りが終わるまで縦スワイプが効かない**（数が多いほど長い）。
-判定を書くときは十分待つこと。
+判定を書くときは十分待つこと。★**数える方を先に、スクリーンショットは後に**
+（撮ってから数えると、速い動きはもう終わっている）。
 ★`r59` の作法 … 掴み損ねたときは**動かしてから**離すこと（そのまま離すとタップ扱いで
 入力画面が開き、以降の操作が全部塞がる）。
 ★`r58` の作法 … **タスクアプリの既定タブは DRIFT**なので、デモのタスクを入れる前に
@@ -192,8 +193,7 @@ Playwright は `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`、実体は
 `chin35`（上下の帯）/ `ground26`（地色）/ `motion26`（動き）/ `rect24`（器の追従）/
 `menu28`（作るものの輪）/ `when25` `pop21` `when20` `tap` `geo4` `blink` `swipe`。
 ★`space38`/`bugs38`（4層カメラ前提）と `modes52` は無効。
-（scratchpad は gitignore。テストはローカルのみ）。
-
+（scratchpad は gitignore）。
 ## ユーザー側の作業（アプリの外）
 
 - Cowork に**毎晩のタスク「1日を仕分ける」**を設置する（例: 02:00 JST）。

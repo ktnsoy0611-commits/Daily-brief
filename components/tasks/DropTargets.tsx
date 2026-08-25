@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { NAV_H, PAPER } from "@/lib/constants";
+import { INK, NAV_H, RUST } from "@/lib/constants";
 import { createAnchorRect } from "@/lib/motion";
 import { SPACE } from "@/lib/tokens";
 
@@ -10,13 +10,14 @@ import { SPACE } from "@/lib/tokens";
 //   上 = 口         … 飲み込む。DRIFT では「タスクにする」、GRAVITY では「完了」。
 //   下 = ブラックホール … 捨てる。どちらの層でも「削除」。
 //
-// ★★★第57巡の作り直し(「丸の中に図が描いてあるだけ」というユーザー指摘)。
-//  1. **右下の「作る」の丸から分離して出てくる**。`createAnchorRect()` でその丸の
-//     場所を測り、そこからの差を `--ox`/`--oy` に入れて CSS が飛ばす。
-//  2. **近さを連続値で持つ**(`aimTargets` が `--near` を毎フレーム書く)。
-//     真偽だけだと「近づけると開く / 回転が速くなる」が作れない。
-//  3. 口は**上下の唇**。近づくと開き、指の方へ少し寄る。常にわずかに呼吸している。
-//  4. ゴミ箱は**ブラックホール**。ゆっくり回り、近づくと速く回って塵が舞う。
+// ★★★第58巡 …**形そのものが UI**(ユーザー指定)。黒い丸の台も影も無い。
+//   口は**唇だけ**の墨色のシルエット、ブラックホールは**穴そのもの**。
+//   第57巡までは「丸の中に図が描いてあるだけ」だった。
+//
+// ・**右下の「作る」の丸から分離して出てくる**(`createAnchorRect()` で測った差を
+//   `--ox`/`--oy` に入れて CSS が飛ばす)。
+// ・**近さを連続値で持つ**(`aimTargets` が `--near` を毎フレーム書く)。真偽だけだと
+//   「近づけると開く / 回転が速くなる」が作れない。
 //
 // 見た目と動きは `app/globals.css` の `.drift-target`。ここは器と当たり判定だけ。
 
@@ -88,7 +89,6 @@ export function DropTargets({ show, hover, mouthRef, trashRef }: {
   //   残る)。1フレームだけ置いて、変数が入ってから `.in` を付ける。
   const [armed, setArmed] = useState(false);
   // ★出どころ ―「作る」の丸の中心までの差を測って `--ox`/`--oy` へ。
-  //   出るときも帰るときも**黒い丸から生えて、黒い丸へ吸い込まれる**ように見える。
   //   ★★的そのものを `getBoundingClientRect` で測らないこと — 的には
   //   `transform: translate(var(--ox)…) scale(0.18)` が**すでに掛かっている**ので、
   //   測ると自分の変形ぶんだけずれた値が返る(第57巡に踏んだ)。器の矩形と
@@ -114,8 +114,8 @@ export function DropTargets({ show, hover, mouthRef, trashRef }: {
 
   return (
     <div ref={wrapRef} style={{
-      position: "absolute", right: SPACE.lg - 2, bottom: `calc(${NAV_H} + ${SPACE.md}px)`,
-      display: "flex", flexDirection: "column", gap: SPACE.md + 2,
+      position: "absolute", right: SPACE.sm, bottom: `calc(${NAV_H} + ${SPACE.md}px)`,
+      display: "flex", flexDirection: "column", alignItems: "center", gap: SPACE.lg,
       pointerEvents: "none", zIndex: 4,
     }}>
       <div ref={mouthRef} className={`drift-target${armed ? " in" : ""}${hover === "mouth" ? " hot" : ""}`} data-kind="mouth">
@@ -128,38 +128,39 @@ export function DropTargets({ show, hover, mouthRef, trashRef }: {
   );
 }
 
-/** ★口。上下の唇。閉じているときは1本の線、近づくと開く(`--near`)。 */
+/** ★口 ―**唇だけ**。閉じているときは横に長い一文字、近づくと上下へ開く。 */
 function Mouth() {
   return (
-    <svg width={34} height={34} viewBox="0 0 34 34" aria-hidden focusable="false">
+    <svg width={72} height={72} viewBox="0 0 72 72" aria-hidden focusable="false">
       <g className="mouth-jaw">
-        <path className="lip lip-up" d="M5 17 Q17 9.5 29 17 Q17 14.5 5 17 Z" fill={PAPER} />
-        <path className="lip lip-lo" d="M5 17 Q17 19.5 29 17 Q17 24.5 5 17 Z" fill={PAPER} />
+        {/* 上唇 ― 山なりに厚い。 */}
+        <path className="lip lip-up" d="M6 36 Q36 12 66 36 Q36 27 6 36 Z" fill={INK} />
+        {/* 下唇 ― ふっくら。 */}
+        <path className="lip lip-lo" d="M6 36 Q36 45 66 36 Q36 62 6 36 Z" fill={INK} />
       </g>
     </svg>
   );
 }
 
-/** ★ブラックホール。中心の穴＋降着円盤(弧)＋吸い込まれる塵。
- *  回転は `app/globals.css`(環境ループ)。近づくと速くなる。 */
+/** ★ブラックホール ―**穴そのもの**。事象の地平面(黒い円)に降着円盤の弧が巻く。
+ *  回転は `app/globals.css`(環境ループ)。近づくと速くなり、塵が吸い込まれる。 */
 function BlackHole() {
   return (
-    <svg width={34} height={34} viewBox="0 0 34 34" aria-hidden focusable="false">
-      {/* 降着円盤 ― 太さ違いの弧が2枚、逆向きに回る。 */}
+    <svg width={72} height={72} viewBox="0 0 72 72" aria-hidden focusable="false">
       <g className="bh-disc bh-disc-a">
-        <path d="M17 3.5 A13.5 13.5 0 0 1 30.5 17" fill="none" stroke={PAPER} strokeWidth={3} strokeLinecap="round" />
-        <path d="M17 30.5 A13.5 13.5 0 0 1 3.5 17" fill="none" stroke={PAPER} strokeWidth={3} strokeLinecap="round" />
+        <path d="M36 6 A30 30 0 0 1 66 36" fill="none" stroke={INK} strokeWidth={7} strokeLinecap="round" />
+        <path d="M36 66 A30 30 0 0 1 6 36" fill="none" stroke={INK} strokeWidth={7} strokeLinecap="round" />
       </g>
       <g className="bh-disc bh-disc-b">
-        <path d="M17 7.5 A9.5 9.5 0 0 1 26.5 17" fill="none" stroke={PAPER} strokeWidth={1.6} strokeLinecap="round" opacity={0.72} />
-        <path d="M17 26.5 A9.5 9.5 0 0 1 7.5 17" fill="none" stroke={PAPER} strokeWidth={1.6} strokeLinecap="round" opacity={0.72} />
+        <path d="M36 14 A22 22 0 0 1 58 36" fill="none" stroke={INK} strokeWidth={3.4} strokeLinecap="round" opacity={0.66} />
+        <path d="M36 58 A22 22 0 0 1 14 36" fill="none" stroke={INK} strokeWidth={3.4} strokeLinecap="round" opacity={0.66} />
       </g>
-      {/* 事象の地平面 ― 光を通さない穴。 */}
-      <circle className="bh-core" cx={17} cy={17} r={5.4} fill="#000" />
+      {/* 光を通さない穴。★台ではなく**これが的の本体**。 */}
+      <circle className="bh-core" cx={36} cy={36} r={13} fill="#000" />
       {/* 塵 ― 外から中心へ螺旋で吸い込まれて消える(近づいたときだけ)。 */}
       <g className="bh-dust">
         {[0, 1, 2, 3, 4, 5].map((i) => (
-          <circle key={i} className={`dust d${i}`} cx={17} cy={17} r={1.15} fill={PAPER} />
+          <circle key={i} className={`dust d${i}`} cx={36} cy={36} r={2} fill={RUST} />
         ))}
       </g>
     </svg>

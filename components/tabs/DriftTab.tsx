@@ -162,9 +162,26 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         bottom: (window.innerHeight - navHeightPx()) - r.top,
       };
     };
+    /** 前回 `walls()` を張ったときの場の原点。**列が動いたぶんを図形へ運ぶ**ために持つ。 */
+    let lastField: { left: number; top: number } | null = null;
     const walls = () => {
       if (!M || !engine) return;
       const { left, right, top, bottom } = fieldOf();
+      // ★★★列は**画面の外でマウントされる**(第58巡)。`AppShell` の `mountedApps` は
+      //   `["life"]` から始まり、タスクの列は requestIdleCallback で**あとから**、
+      //   まだ `translateX(±100%)` の位置に居るときに組まれる。`fieldOf()` は画面の
+      //   座標を canvas の座標へ変換するので、そのとき張った壁と湧かせた図形は
+      //   **画面幅ぶんずれた場所**に置かれる。`ResizeObserver` は寸法しか見ないので、
+      //   あとで列が入ってきても直らない ―「初回だけ配置がおかしくて操作できない」の
+      //   正体。**原点が動いたぶんだけ図形も運ぶ**ことで、列がどこに居ても直る。
+      if (lastField) {
+        const dx = left - lastField.left;
+        const dy = top - lastField.top;
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          for (const p of pieces) M.Body.translate(p.body, { x: dx, y: dy });
+        }
+      }
+      lastField = { left, top };
       const old = M.Composite.allBodies(engine.world).filter((b) => b.isStatic);
       M.Composite.remove(engine.world, old);
       const T = 80;
@@ -393,12 +410,19 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
     let pending: InboxCandidate[] | null = null;
     let pendingLive = false;
     ctrlRef.current = {
-      sync: (list) => { if (!M) { pending = list; return; } sync(list); },
+      // ★見えていない間は**湧かせない**(場が画面の外なので、置いた場所が全部ずれる)。
+      //   溜めておいて、見えるようになってから流す。
+      sync: (list) => { if (!M || !live) { pending = list; return; } sync(list); },
       setActive: (on) => {
         pendingLive = on;
         live = on;
-        if (on) wake();
-        else { running = false; cancelAnimationFrame(raf); }
+        if (on) {
+          // ★隠れている間に列が動いていても、ここで場を測り直して図形ごと運ぶ。
+          size = { w: wrap.offsetWidth, h: wrap.offsetHeight };
+          walls();
+          if (pending) { const q = pending; pending = null; sync(q); }
+          wake();
+        } else { running = false; cancelAnimationFrame(raf); }
       },
     };
 
@@ -408,9 +432,9 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       size = { w: wrap.offsetWidth, h: wrap.offsetHeight };
       engine = M.Engine.create({ enableSleeping: false });
       engine.gravity.x = 0; engine.gravity.y = 0;
-      walls();
       live = pendingLive;
-      if (pending) sync(pending);
+      walls();
+      if (live && pending) { const q = pending; pending = null; sync(q); }
     })();
 
     cv.addEventListener("pointerdown", onDown);

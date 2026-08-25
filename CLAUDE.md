@@ -100,6 +100,8 @@
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。
 - `lib/spring.ts` — **canvas の図形だけの動きの土台（バネ＝減衰振動）**。係数は4つ。
   CSS の transition には使わない。
+- `lib/scroll.ts` — **スクロールの語彙（指1:1＋投げ＋減衰＋最寄りへ吸着）**。
+  強さは `SCROLL_GAIN` と `FLICK_K` の2つだけ。いまは ALIGN が使う。
 - `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋の丸の場所）**。
   CSS 側は `app/globals.css` の `:root`。数字はこの2つだけ。増やさない。
   JS のタイマーは `ms(T_OUT)` のようにここから引く（数字を書き写さない）。

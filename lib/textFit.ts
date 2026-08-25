@@ -245,6 +245,12 @@ export function onFontsReady(cb: () => void): (() => void) | undefined {
 export const cssFont = (f: FontFace, size: number): string =>
   `${f.italic ? "italic " : ""}${f.weight} ${size}px ${resolveFamily(f.family)}`;
 
+/** ★`lib/constants.ts` の `LATIN` / `SANS` のように **`var(--font-…)` を含む**
+ *  書体指定を、canvas の `ctx.font` で使える形へ直す。★直接代入すると黙って失敗し、
+ *  10px サンセリフのままになる(第56巡に「自由」のブロックが豆粒になった)。 */
+export const canvasFont = (weight: number, px: number, family: string): string =>
+  `${weight} ${px}px ${resolveFamily(family)}`;
+
 // ── グリフのアトラス ────────────────────────────────────────
 
 /** 送り幅を測る基準の大きさ。**幅の比率**を持つためだけの値で、

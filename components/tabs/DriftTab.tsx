@@ -32,11 +32,16 @@ const W_MAX = 150;
 /** ★★**投げたら減速して止まる**(第54巡にユーザー指定)。以前は `clampDrift` で
  *  速さの**下限**を保って永久に漂わせていたが、「勢いで動いてくれて良いが減速して
  *  止まってほしい」という指定なので、下限をやめ**空気抵抗**で静かに止める。
- *  最初のひと押しだけ与えて、あとは指の投げ(`FLING`)に任せる。 */
-const DRIFT_MAX = 1.0;
+ *  最初のひと押しだけ与えて、あとは指の投げに任せる。
+ *  ★★第56巡 … このとき**上限(1.0)を残したまま**にしていたのが、「投げても慣性が
+ *  かからない」の正体だった。1.0 は**毎秒 60px** — 投げは生まれた次のフレームで
+ *  `clampDrift` に潰されていた。上限は**壁抜け止め**としてだけ残す(壁は `walls()` で
+ *  厚み 80px なので、1ステップ 26px なら抜けない)。 */
+const DRIFT_MAX = 26;
 /** 湧いた直後のごく弱いひと押し。 */
 const DRIFT_SEED = 0.35;
-/** 空気抵抗(大きいほど早く止まる)。 */
+/** 空気抵抗(大きいほど早く止まる)。★上限の呪縛が解けたので、ここが本当に
+ *  「減速して止まる」を決める唯一の係数になった(第56巡)。 */
 const DRIFT_AIR = 0.016;
 /** 使える範囲の上端(アプリ名の札＋層の名前のぶん)。 */
 const FIELD_TOP = 124;
@@ -45,8 +50,14 @@ const FIT_N = 6;
 /** タップとホールドの境目。 */
 const HOLD_MS = 150;
 const TAP_MOVE = 8;
-/** 離した指の速さを物体へ渡す倍率(投げ)。 */
-const FLING = 0.9;
+/** 離した指の速さを物体へ渡す倍率(投げ)。★速さは実測から出すので等倍。 */
+const FLING = 1.0;
+/** ★掴んだ図形を指へ運ぶ強さ(velocity 駆動)と速さの上限。GRAVITY と同じ作り。 */
+const GRAB_K = 0.34;
+const GRAB_MAX = 34;
+/** 投げの速さを「直近に本当に動いていた値」で見る窓(ms)。これより古ければ
+ *  **置いた**扱いにして投げない。 */
+const FLICK_WINDOW = 90;
 /** 消える演出の速さ(0→1)。 */
 const GONE_STEP = 0.09;
 
@@ -134,7 +145,8 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
     let live = false;
     let grab: {
       id: number; piece: Piece; ox: number; oy: number; downX: number; downY: number;
-      moved: boolean; held: boolean; lastX: number; lastY: number; vx: number; vy: number; holdT: number;
+      moved: boolean; held: boolean; lastX: number; lastY: number; lastT: number;
+      vx: number; vy: number; vT: number; holdT: number;
     } | null = null;
 
     /** 使える範囲(**canvas の座標**)。★★器は `full-bleed` なので、canvas は画面より
@@ -156,7 +168,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       const old = M.Composite.allBodies(engine.world).filter((b) => b.isStatic);
       M.Composite.remove(engine.world, old);
       const T = 80;
-      const o = { isStatic: true, restitution: 0.9, friction: 0 };
+      const o = { isStatic: true, restitution: 0.5, friction: 0 };
       const cx = (left + right) / 2, cy = (top + bottom) / 2;
       const ww = right - left, hh = bottom - top;
       M.Composite.add(engine.world, [
@@ -213,8 +225,9 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       wake();
     };
 
-    /** 速すぎるものだけ抑える。★**下限は持たない** — 空気抵抗で静かに止まるのが
-     *  第54巡の指定(投げた勢いは残しつつ、やがて止まる)。 */
+    /** ★**壁抜け止めだけ**。下限は持たない(空気抵抗で静かに止まる)。
+     *  ★★上限を投げの速さより低く置かないこと — 第55巡までの 1.0 は「毎秒 60px」で、
+     *  投げを毎フレーム潰していた(第56巡にユーザー指摘)。 */
     const clampDrift = () => {
       if (!M) return;
       for (const p of pieces) {
@@ -265,7 +278,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       const pending = draw();
       // ★全部が止まって、消える演出も無く、焼き待ちも無ければループを止める
       //   (減速して止まる作りになったので、止まったら本当に静かになる)。
-      const moving = pieces.some((p) => p.gone > 0 || p.body.isStatic
+      const moving = pieces.some((p) => p.gone > 0
         || Math.hypot(p.body.velocity.x, p.body.velocity.y) > 0.04
         || Math.abs(p.body.angularVelocity) > 0.002);
       if (running && live && (moving || pending || !!grab)) raf = requestAnimationFrame(step);
@@ -290,7 +303,9 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       grab.held = true;
       haptic(10);
       setHolding(true);
-      M.Body.setStatic(grab.piece.body, true);
+      // ★★`setStatic` にしないこと(第56巡)。静止物にすると当たり判定が消えて他の
+      //   図形をすり抜けるうえ、離した瞬間の速度が**物理には無い**ので投げが死ぬ。
+      //   動く物体のまま、毎フレーム指へ向かう速度を与える(GRAVITY と同じ)。
     };
     const onDown = (e: PointerEvent) => {
       if (document.documentElement.hasAttribute("data-overlay") || grab) return;
@@ -301,7 +316,8 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       grab = {
         id: e.pointerId, piece, ox: piece.body.position.x - x, oy: piece.body.position.y - y,
         downX: e.clientX, downY: e.clientY, moved: false, held: false,
-        lastX: e.clientX, lastY: e.clientY, vx: 0, vy: 0, holdT: window.setTimeout(enterHold, HOLD_MS),
+        lastX: e.clientX, lastY: e.clientY, lastT: e.timeStamp,
+        vx: 0, vy: 0, vT: 0, holdT: window.setTimeout(enterHold, HOLD_MS),
       };
     };
     const onMove = (e: PointerEvent) => {
@@ -313,9 +329,21 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       if (!grab.held) return;
       if (dragged) dragged.current = true;
       const { x, y } = pointAt(e);
-      M.Body.setPosition(grab.piece.body, { x: x + grab.ox, y: y + grab.oy });
-      grab.vx = e.clientX - grab.lastX; grab.vy = e.clientY - grab.lastY;
-      grab.lastX = e.clientX; grab.lastY = e.clientY;
+      // ★指へ向かう速度で運ぶ(動く物体のまま)。他の図形を押しのける。
+      const b = grab.piece.body;
+      const tx = x + grab.ox; const ty = y + grab.oy;
+      let vx = (tx - b.position.x) * GRAB_K; let vy = (ty - b.position.y) * GRAB_K;
+      const sp = Math.hypot(vx, vy);
+      if (sp > GRAB_MAX) { vx = (vx / sp) * GRAB_MAX; vy = (vy / sp) * GRAB_MAX; }
+      M.Body.setVelocity(b, { x: vx, y: vy });
+      // ★★投げの速さは**時間で割って1ステップぶんへ揃える**(第56巡)。1イベントの
+      //   差をそのまま使うと、120Hz の端末では 60fps の物理に対して半分になり、
+      //   離す直前に指が止まると 0 になって投げが消える。直近の**動いていた**値を持つ。
+      const dt = Math.max(8, e.timeStamp - grab.lastT);
+      const nx = ((e.clientX - grab.lastX) / dt) * (1000 / 60);
+      const ny = ((e.clientY - grab.lastY) / dt) * (1000 / 60);
+      if (Math.hypot(nx, ny) > 0.4) { grab.vx = nx; grab.vy = ny; grab.vT = e.timeStamp; }
+      grab.lastX = e.clientX; grab.lastY = e.clientY; grab.lastT = e.timeStamp;
       const t = targetHit(e.clientX, e.clientY);
       setHover((cur) => (cur === t ? cur : t));
     };
@@ -329,7 +357,6 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         if (!g.moved && !dragged?.current) { haptic(8); actRef.current.open(p.id); }
         return;
       }
-      M.Body.setStatic(p.body, false);
       const t = targetHit(e.clientX, e.clientY);
       setHolding(false); setHover(null);
       if (t) {
@@ -343,7 +370,10 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         window.setTimeout(() => { if (t === "trash") actRef.current.reject(p.id); else actRef.current.accept(p.id); }, 260);
         wake();
       } else {
-        M.Body.setVelocity(p.body, { x: g.vx * FLING, y: g.vy * FLING });
+        // 直近に本当に動いていたときだけ投げる(止めてから離したら「置いた」)。
+        if (e.timeStamp - g.vT < FLICK_WINDOW) {
+          M.Body.setVelocity(p.body, { x: g.vx * FLING, y: g.vy * FLING });
+        }
         wake();
       }
     };
@@ -451,7 +481,7 @@ function frac(s: string) {
 function makeBody(
   M: typeof import("matter-js"), paint: SolidPaint, x: number, y: number, unit: number,
 ): { body: Body; ox: number; oy: number } {
-  const opts = { restitution: 0.9, friction: 0, frictionAir: DRIFT_AIR, frictionStatic: 0 };
+  const opts = { restitution: 0.5, friction: 0, frictionAir: DRIFT_AIR, frictionStatic: 0 };
   const n = paint.spec.sides.length;
   const { w, h } = rectOf(paint.spec);
   let body: Body;

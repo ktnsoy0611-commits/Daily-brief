@@ -64,12 +64,12 @@ export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, s
 // ★スイス見出し(**表示専用の大きな欧文**)。`TYPE` の目盛りは本文のためのもので
 // display(26)止まり。ブルータリズム/スイスの大きな見出しはその外に居る ―
 // `TAB_MARK`(52) などと同じ「部品の寸法」の例外(2026-08-24 にユーザーがこの
-// 見た目を指定)。★**3つから増やさない**。使うのは GRAVITY の ALIGN/TIMELINE。
-// ★第53巡に実務値へ。72 は「残り日数が大きすぎる」というユーザー指摘で、
-//   残り日数は 44/28 の二段(焦点だけ大きい)にし、72 は曜日の見出し専用にした。
-export const SWISS_XL = 72;   // TIMELINE の曜日の見出し
-export const SWISS_LG = 44;   // ALIGN の**焦点**の残り日数
-export const SWISS_MD = 28;   // ALIGN の焦点以外の残り日数
+// 見た目を指定)。★**増やさない**。使うのは GRAVITY の ALIGN/TIMELINE。
+// ★第56巡に**二段**へ。第53巡は 72/44/28 の三段で、ALIGN の残り日数は 44/28 の
+//   二段だったが、「真ん中の選択中のものはもっと大きく」という指定で焦点が 72 へ
+//   上がり、44 の使い手が居なくなったので捨てた(使わない段は残さない)。
+export const SWISS_XL = 72;   // TIMELINE の曜日の見出し／ALIGN の**焦点**の残り日数
+export const SWISS_MD = 28;   // ALIGN の焦点以外の残り日数／焦点の題
 export const SERIF = SANS;
 export const DISPLAY = SANS;
 

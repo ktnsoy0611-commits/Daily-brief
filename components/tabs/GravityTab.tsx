@@ -11,11 +11,11 @@ import { ymd } from "@/components/tasks/WhenSheet";
 import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline, type SolidSpec } from "@/lib/solid";
 import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint, type SolidView } from "@/lib/solidPaint";
-import { onFontsReady, primeAdvances } from "@/lib/textFit";
+import { canvasFont, onFontsReady, primeAdvances } from "@/lib/textFit";
 import { allTagFaces, allTagLabels, resolveTag, tagColor } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
-import { INK, LATIN, MUTED, NAV_H, navHeightPx, PAPER, RUST, SANS, SWISS_LG, SWISS_MD, SWISS_XL } from "@/lib/constants";
+import { INK, LATIN, MUTED, NAV_H, navHeightPx, PAPER, RUST, SANS, SWISS_MD, SWISS_XL } from "@/lib/constants";
 import { ms, T_IN, T_ITEM, T_OUT } from "@/lib/motion";
 import { D_SETTLE, D_TRAVEL, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring } from "@/lib/spring";
 import { SPACE, TYPE } from "@/lib/tokens";
@@ -64,18 +64,29 @@ const GRAB_K = 0.34;
 const GRAB_MAX = 34;
 
 // ALIGN … 左の円弧
-const ARC_R = 290;
-const ARC_APEX_X = 88;
-const ROW_H = 112;
-const ALIGN_MAX_H = 104;
-const ALIGN_MAX_W = 148;
-const FOCUS_BOOST = 0.72;
-const TEXT_GAP = 96;
+/** ★第56巡に**ほぼ縦の列**へ(290→1400)。可視域 ±280px で x の振れは約 28px …
+ *  「縦列だけどちょっとカーブしている」。輪に見えていたのを列に戻す。 */
+const ARC_R = 1400;
+const ARC_APEX_X = 96;
+/** DOM の行の**箱の高さ**(中身を上下中央に置くための器)。
+ *  ★間隔の役目は持たない(下の PITCH_* が持つ)。 */
+const ROW_H = 128;
+/** ★焦点の図形の最大寸法(焦点以外はここから縮む)。 */
+const ALIGN_MAX_H = 132;
+const ALIGN_MAX_W = 176;
+const FOCUS_BOOST = 1.25;
+const TEXT_GAP = 100;
+/** ★★行の間隔。**詰めたうえで、中央の上下だけ空ける**(第56巡にユーザー指定)。
+ *  円弧に沿った長さを `L(d) = TIGHT·d + SPREAD·d/√(1+d²)` で置く。
+ *  `d/√(1+d²)` は原点で傾きが最大なので、隣り合う間隔が**中央でだけ広くなる**:
+ *    中央↔隣 150 / 隣↔2つ隣 93 / 2↔3 78 / それ以遠 72。
+ *  `d` は連続値なので、指で回している間もこの式のまま滑らかに動く。 */
+const PITCH_TIGHT = 72;
+const PITCH_SPREAD = 110;
+const arcLen = (d: number) => PITCH_TIGHT * d + PITCH_SPREAD * (d / Math.sqrt(1 + d * d));
 const SCROLL_DECAY = 0.92;
 const SNAP_K = 0.18;
 const FLICK_K = 0.9;
-/** 円弧の下の入り口。 */
-const ARC_ENTER_TH = 1.45;
 /** ★★連なりの間隔。**減衰する**ので「最初の1つがぽつんと動き、そのあと次々と
  *  流れ出す」。一定間隔だと行進になってしまう。 */
 const LEAD_GAP = 210;
@@ -94,10 +105,21 @@ const LANE_HEAD_H = 92;
 const TL_SPAN = 240;
 const TL_TRIGGER = 0.45;
 const TL_FLAT = 0.04;
+/** ★★1 を超えて**引っ張れる**(第56巡にユーザー指定)。超えたぶんは重くなり、
+ *  `TL_STRETCH` へ漸近する。離すとバネで規定(1)へ戻る。 */
+const TL_STRETCH = 1.9;
+/** 曜日の幅の軸(Archivo)。★細くすると**同じレーン幅でより大きく**でき、
+ *  変形せずに「少し縦長」になる(第56巡にユーザー確定)。 */
+const WD_WDTH = 75;
+/** 上の幅での1文字あたりの送り(em)。`laneFs` を決めるのに使う。 */
+const WD_ADV = 0.62;
 /** レーン幅に対する図形の大きさ。★第55巡に大きく(0.86→0.94)。 */
 const TL_FILL = 0.94;
-/** レーンの壁の厚み。 */
-const WALL_T = 24;
+/** レーンの壁の厚み。★境目の**上に**置くので、レーンの内寸は `laneW - WALL_T`。
+ *  図形をこれより大きくすると壁に挟まって宙に浮く(第56巡)。 */
+const WALL_T = 16;
+/** レーンの内寸(図形が実際に入れる幅)。 */
+const laneInner = (laneW: number) => Math.max(24, laneW - WALL_T);
 /** 下へ出た図形を引き上げる高さ。 */
 const RECYCLE_Y = 150;
 /** ★当たり判定の層。**落ちていく途中の図形はレーンの器をすり抜ける**。
@@ -109,7 +131,7 @@ const CAT_LANE = 0x0004;   // レーンの床と仕切り
 const CAT_HELD = 0x0008;   // レーンに収まった図形
 const FILTER_FALL = { category: CAT_FALL, mask: CAT_WALL | CAT_FALL };
 const FILTER_LANE = { category: CAT_LANE, mask: CAT_HELD };
-const FILTER_HELD = { category: CAT_HELD, mask: CAT_WALL | CAT_LANE | CAT_HELD };
+const FILTER_HELD = { category: CAT_HELD, mask: CAT_LANE | CAT_HELD };
 /** ★層を変える。**`parts` にも入れる** — `Bodies.fromVertices` が作る複合の body は
  *  当たり判定を各 part の `collisionFilter` で見るので、親だけ書いても効かない。 */
 function setFilter(b: Body, f: { category: number; mask: number }) {
@@ -122,6 +144,16 @@ const PAD_L = 20;
 
 const WD3 = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 
+/** ★★タスクが無い日に落とす「自由」のブロック(2026-08-25・第56巡にユーザー確定)。
+ *  タスクの図形が「色の面＋載った文字」なのに対して、これは**文字そのものが図形**。
+ *  日付から選ぶので**同じ日はいつも同じ語**になる。 */
+const FREE_WORDS = ["FREE", "自由", "LIBRE", "FREI", "LIBERO", "LIVRE", "VRIJ", "FRI", "VAPAA", "VOLNY"] as const;
+const freeWordOf = (dateKey: string) => FREE_WORDS[Math.floor(frac(dateKey + "free") * FREE_WORDS.length) % FREE_WORDS.length];
+/** 「自由」のブロックの字の大きさ(レーンの**内寸**に対する比)と、箱の余白。
+ *  ★内寸いっぱいにすると壁に挟まって隣のレーンへ押し出される(第56巡に実測)。 */
+const FREE_FILL = 0.80;
+const FREE_PAD = 8;
+
 interface Shard { x: number; y: number; vx: number; vy: number; r: number; life: number; fill: string }
 const SHARD_MS = 620;
 
@@ -130,6 +162,11 @@ interface Piece {
   girth: number; ox: number; oy: number; unit: number;
   /** TIMELINE でどの日の列に属するか(-1 = 無し)。 */
   lane: number;
+  /** ★「自由」のブロック … タスクではなく**文字そのものが図形**。
+   *  これを持つ図形は色の面を敷かず、たたいても入力画面を開かない。 */
+  word?: string;
+  /** `word` を描く字の大きさ(px)。 */
+  wordFs?: number;
 }
 interface Item { id: string; task: Task; paint: SolidPaint; spec: SolidSpec; tag: string }
 /** ALIGN で絵を置く場所。x/y は**絵の中心**。 */
@@ -159,6 +196,16 @@ const monthDayOf = (dateKey: string) => {
   const [, m, d] = dateKey.split("-").map(Number);
   return `${m}/${d}`;
 };
+
+/** ★指の引き上げ。1 までは素直に、**1 を超えたぶんは重く**なって `TL_STRETCH` で
+ *  頭打ち(ゴムを引く手ざわり)。 */
+function rubberRise(raw: number): number {
+  if (raw <= 1) return Math.max(0, raw);
+  const over = raw - 1;
+  const room = TL_STRETCH - 1;
+  // 1 の所で傾き 1(＝継ぎ目が無い)、引くほど重くなって TL_STRETCH へ漸近する。
+  return 1 + (room * over) / (over + room);
+}
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
@@ -231,8 +278,11 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   const detailRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const expandedRef = useRef<number | null>(null);
-  /** 曜日の伸び(指が動かす 0..1)。 */
+  /** 曜日の伸び。**指が動かす**(0..TL_STRETCH)。 */
   const riseRef = useRef(0);
+  /** 指を離したあとの戻り。★`--tl` はドラッグ中は `riseRef`、離したらこのバネが書く。 */
+  const riseSRef = useRef<Spring>(spring(0));
+  const riseDragRef = useRef(false);
   const tlDragRef = useRef(false);
   /** 床が抜けたか(＝物理が始まったか)。 */
   const openedRef = useRef(false);
@@ -266,8 +316,14 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   const fieldOf = useCallback(() => {
     const { h } = sizeRef.current;
     const floor = h - navHeightPx();
-    return { top: MASTHEAD_H, floor, mid: (MASTHEAD_H + floor) / 2 };
+    return { top: MASTHEAD_H, floor };
   }, []);
+  /** ★ALIGN で焦点を置く高さ。器のど真ん中に置くと、先頭に居るとき**上半分が
+   *  丸ごと空く**(上に行が無いため)。少し上へ寄せて、下の行をもう1〜2件見せる。 */
+  const alignMid = useCallback(() => {
+    const { top, floor } = fieldOf();
+    return top + (floor - top) * 0.34;
+  }, [fieldOf]);
   /** 曜日の帯の上端(＝レーンの床)。 */
   const bandTopY = useCallback(() => fieldOf().floor - LANE_HEAD_H - SPACE.xl, [fieldOf]);
   const laneWOf = useCallback(() => sizeRef.current.w / LANES_VISIBLE, []);
@@ -331,6 +387,18 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     } else {
       // 山・タイムライン … **物理の body そのもの**を描く。
       for (const p of piecesRef.current) {
+        if (p.word) {
+          // ★「自由」のブロック … 色の面を敷かず、**文字そのもの**を置く。
+          ctx.save();
+          ctx.translate(p.body.position.x, p.body.position.y);
+          ctx.rotate(p.body.angle);
+          ctx.font = canvasFont(800, p.wordFs ?? 32, LATIN);
+          ctx.fillStyle = MUTED;
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(p.word, 0, 0);
+          ctx.restore();
+          continue;
+        }
         const bmp = want(p.paint, p.unit);
         ctx.save();
         ctx.translate(p.body.position.x, p.body.position.y);
@@ -347,7 +415,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         ctx.restore();
       }
       pendingBakeRef.current = budget === 0 || glyphBudget === 0
-        || piecesRef.current.some((p) => !peekSolidBitmap(p.paint, p.unit, bakeDpr));
+        || piecesRef.current.some((p) => !p.word && !peekSolidBitmap(p.paint, p.unit, bakeDpr));
     }
     if (pendingBakeRef.current) wakeRef.current();
 
@@ -374,13 +442,12 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   const layoutAlign = useCallback(() => {
     const list = itemsRef.current;
     if (!list.length) return;
-    const { mid } = fieldOf();
+    const mid = alignMid();
     const cx = ARC_APEX_X - ARC_R;
-    const step = ROW_H / ARC_R;
     const slots = slotRef.current;
     for (let i = 0; i < list.length; i += 1) {
       const d = i - scrollRef.current;
-      const th = d * step;
+      const th = arcLen(d) / ARC_R;
       const f = Math.max(0, 1 - Math.abs(d));
       slots.set(list[i].id, {
         x: cx + ARC_R * Math.cos(th), y: mid + ARC_R * Math.sin(th),
@@ -389,7 +456,14 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         o: clamp01(1.5 - Math.abs(d) / 2.2),
       });
     }
-  }, [fieldOf]);
+  }, [alignMid]);
+
+  /** ★円弧の下の入り口の角度。**半径から決まる**ので定数にできない
+   *  (第56巡に半径を 290→1400 にしたら、固定値 1.45rad は画面のはるか外を指した)。 */
+  const arcEnterTh = useCallback(() => {
+    const { floor } = fieldOf();
+    return Math.asin(Math.max(-1, Math.min(1, (floor + 140 - alignMid()) / ARC_R)));
+  }, [fieldOf, alignMid]);
 
   const syncFocus = useCallback(() => {
     const n = Math.max(0, Math.min(itemsRef.current.length - 1, Math.round(scrollRef.current)));
@@ -478,6 +552,14 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     if (!engine) return;
     const { h } = sizeRef.current;
     const laneW = laneWOf();
+    // ★日付の無い図形は列を持たない。落ちて画面の外へ出たら、そこで畳む
+    //   (見えない所で消えるので「急に消えた」に見えない)。
+    const drop = piecesRef.current.filter((p) => p.lane < 0 && p.body.position.y >= h + 120);
+    if (drop.length) {
+      M.Composite.remove(engine.world, drop.map((p) => p.body));
+      const gone = new Set(drop.map((p) => p.body));
+      piecesRef.current = piecesRef.current.filter((p) => !gone.has(p.body));
+    }
     for (const p of piecesRef.current) {
       if (p.body.position.y < h + 120) continue;
       if (p.lane < 0) continue;
@@ -505,7 +587,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     const now = performance.now();
     const t = now - t0Ref.current;
     const { w } = sizeRef.current;
-    const { mid } = fieldOf();
+    const mid = alignMid();
     const list = itemsRef.current;
 
     if (m === "timeline") {
@@ -521,7 +603,15 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       if (openedRef.current) { syncLanes(); recycle(); }
       const band = bandRef.current;
       const strip = stripRef.current;
-      if (band) band.style.setProperty("--tl", String(TL_FLAT + (1 - TL_FLAT) * riseRef.current));
+      // ★指を離したら規定(1)へバネで戻る。引いている間は指の値をそのまま。
+      let rise = riseRef.current;
+      if (!riseDragRef.current) {
+        const rs = riseSRef.current;
+        springTo(rs, 1, K_SETTLE, D_SETTLE);
+        if (!settled(rs, 1, 0.002)) moving = true;
+        rise = rs.p;
+      }
+      if (band) band.style.setProperty("--tl", String(TL_FLAT + (1 - TL_FLAT) * rise));
       if (strip) strip.style.transform = `translateX(${(-worldRef.current.p).toFixed(1)}px)`;
       // ★曜日の札は**レーンの器と同じ式**で置く(`laneLeft` は世界のスクロールを
       //   含むので、strip がすでに引いたぶんを足し戻す)。
@@ -566,6 +656,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     const cx = ARC_APEX_X - ARC_R;
 
     if (ph === "align-in") {
+      const enterTh = arcEnterTh();
       let done = true;
       for (let i = 0; i < list.length; i += 1) {
         const it = list[i];
@@ -584,7 +675,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         } else {
           const u = clamp01(inS.p);
           const thEnd = Math.atan2(sl.y - mid, sl.x - cx);
-          const th = lerp(ARC_ENTER_TH, thEnd, u);
+          const th = lerp(enterTh, thEnd, u);
           cur.set(it.id, {
             x: cx + ARC_R * Math.cos(th), y: mid + ARC_R * Math.sin(th),
             s: lerp(sl.s * 0.68, sl.s, u), a: 0, o: lerp(0.15, sl.o, u),
@@ -621,10 +712,10 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         const el = rows[i];
         if (!el) continue;
         const d = i - scrollRef.current;
-        const th = d * (ROW_H / ARC_R);
+        const th = arcLen(d) / ARC_R;
         const ax = cx + (ARC_R + TEXT_GAP) * Math.cos(th);
         const ay = mid + (ARC_R + TEXT_GAP) * Math.sin(th);
-        let slide = 0; let op = clamp01(1.35 - Math.abs(d) / 1.6);
+        let slide = 0; let op = clamp01(1.5 - Math.abs(d) / 2.2);   // ★図形と同じ消え方
         if (ph === "align-in") {
           const s = inSRef.current.get(list[i].id);
           const u = clamp01(((s?.p ?? 0) - 0.55) / 0.45);
@@ -634,12 +725,14 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
           const u = clamp01(s?.p ?? 0);
           slide = u * (w * 0.9); op *= 1 - u;
         }
-        el.style.transform = `translate(${(ax + slide).toFixed(1)}px, ${(ay - ROW_H / 2).toFixed(1)}px) rotate(${th.toFixed(3)}rad)`;
+        // ★★**回さない**(第56巡にユーザー指定)。文字は地面と平行のまま、
+        //   左端だけが図形と同じ弧の外側を平行移動する。
+        el.style.transform = `translate(${(ax + slide).toFixed(1)}px, ${(ay - ROW_H / 2).toFixed(1)}px)`;
         el.style.opacity = String(op);
       }
     }
     return moving;
-  }, [fieldOf, syncFocus, layoutAlign, flyPath, syncLanes, recycle, laneLeft, laneWOf]);
+  }, [alignMid, syncFocus, layoutAlign, flyPath, syncLanes, recycle, laneLeft, laneWOf, arcEnterTh]);
 
   useEffect(() => {
     loopRef.current = () => {
@@ -830,7 +923,9 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     const ds: string[] = [];
     for (let i = 0; i < HORIZON; i += 1) { const d = new Date(today); d.setDate(today.getDate() + i); ds.push(ymd(d)); }
     daysRef.current = ds; setDays(ds);
-    // ★日付のあるタスクだけ。無いものは**出さない**(第55巡にユーザー指定)。
+    // ★日付のあるタスクだけを列へ振り分ける(第55巡にユーザー指定)。
+    //   ★★日付の無いものは**その場で消さず、一緒に落として**画面の下で消える
+    //   (第56巡のユーザー指摘。world から remove すると瞬間で消えて事故に見える)。
     const dated = tasksRef.current.filter((t) => t.dueDate && ds.includes(t.dueDate));
     const laneW = w / LANES_VISIBLE;
     let mw = 1; let mh = 1;
@@ -838,13 +933,19 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       const b = shapeBounds(paintOf(t, viewRef.current));
       mw = Math.max(mw, b.maxX - b.minX); mh = Math.max(mh, b.maxY - b.minY);
     }
-    tlUnitRef.current = Math.min((laneW * TL_FILL) / mw, (LANE_HEAD_H * 2.0) / mh);
+    tlUnitRef.current = Math.min((laneInner(laneW) * TL_FILL) / mw, (LANE_HEAD_H * 2.0) / mh);
     // いま山に居るものはその位置のまま落とし、居ないものは上から入れる。
     const byId = new Map(piecesRef.current.map((p) => [p.id, p]));
     const keepIds = new Set(dated.map((t) => t.id));
-    for (const p of piecesRef.current) if (!keepIds.has(p.id)) M.Composite.remove(engine.world, p.body);
     const next: Piece[] = [];
     const bandTop = bandTopY();
+    // 日付の無いものは `lane = -1` のまま落ちるに任せる(下へ出たら `recycle` が畳む)。
+    for (const p of piecesRef.current) {
+      if (keepIds.has(p.id)) continue;
+      setFilter(p.body, FILTER_FALL);
+      M.Sleeping.set(p.body, false);
+      next.push({ ...p, lane: -1 });
+    }
     dated.forEach((t, i) => {
       const lane = ds.indexOf(t.dueDate as string);
       const had = byId.get(t.id);
@@ -867,6 +968,17 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       M.Composite.add(engine.world, p.body);
       next.push({ ...p, lane });
     });
+    // ★★タスクが無い日には「自由」のブロックを落とす(第56巡にユーザー指定)。
+    //   空白のままだと、俯瞰したときに**空いている理由**が読めない。
+    const busy = new Set(dated.map((t) => t.dueDate as string));
+    ds.forEach((key, lane) => {
+      if (busy.has(key)) return;
+      const wp = makeWordPiece(M, key, laneW, laneW * lane + laneW / 2, bandTop - RECYCLE_Y - lane * 26);
+      if (!wp) return;
+      setFilter(wp.body, FILTER_HELD);
+      M.Composite.add(engine.world, wp.body);
+      next.push({ ...wp, lane });
+    });
     piecesRef.current = next;
     expandedRef.current = null; setExpanded(null);
     worldRef.current = spring(0); worldTargetRef.current = 0; gapRef.current = spring(0);
@@ -880,7 +992,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   }, [buildLanes, bandTopY, wake]);
 
   const enterPileFromTimeline = useCallback(() => {
-    riseRef.current = 0; openedRef.current = false;
+    riseRef.current = 0; riseDragRef.current = true; openedRef.current = false;
     expandedRef.current = null; setExpanded(null);
     modeRef.current = "pile"; setMode("pile");
     dropAllRef.current();
@@ -998,7 +1110,8 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     }
     if (modeRef.current !== "align") {
       const piece = pieceAt(px, py);
-      if (piece) { haptic(8); setOpenId(piece.id); }
+      // ★「自由」のブロックはタスクではないので開かない。
+      if (piece && !piece.word) { haptic(8); setOpenId(piece.id); }
       return;
     }
     const it = itemAt(px, py);
@@ -1036,7 +1149,8 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       const edge = e.clientX - r.left < EDGE_PX;
       if (modeRef.current !== "align" && !phaseRef.current && !edge) {
         const p = pieceAt(e.clientX - r.left, e.clientY - r.top);
-        if (p) {
+        // ★「自由」のブロックは掴まない(完了も削除もできないため)。
+        if (p && !p.word) {
           grabRef.current = {
             piece: p, dx: p.body.position.x - (e.clientX - r.left), dy: p.body.position.y - (e.clientY - r.top),
             held: false, holdT: window.setTimeout(beginHold, HOLD_MS),
@@ -1091,16 +1205,18 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
           tlDragRef.current = true;
           modeRef.current = "timeline"; setMode("timeline");
         }
-        riseRef.current = clamp01(-dy / TL_SPAN);
+        riseDragRef.current = true;
+        riseRef.current = rubberRise(-dy / TL_SPAN);
         if (!openedRef.current && riseRef.current >= TL_TRIGGER) openTimeline();
         wake();
       } else if (m === "timeline" && tlDragRef.current && g.axis === "y") {
-        riseRef.current = clamp01(-dy / TL_SPAN);
+        riseDragRef.current = true;
+        riseRef.current = rubberRise(-dy / TL_SPAN);
         if (!openedRef.current && riseRef.current >= TL_TRIGGER) openTimeline();
         wake();
       } else if (m === "align" && !phaseRef.current && g.axis === "y") {
         const d = e.clientY - g.lastY;
-        scrollRef.current -= d / ROW_H; g.vy = d; syncFocus(); wake();
+        scrollRef.current -= d / PITCH_TIGHT; g.vy = d; syncFocus(); wake();
       } else if (m === "timeline" && !tlDragRef.current && g.axis === "x" && expandedRef.current === null) {
         const laneW = laneWOf();
         const max = Math.max(0, laneW * (daysRef.current.length - LANES_VISIBLE));
@@ -1141,8 +1257,12 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
 
       if (tlDragRef.current) {
         tlDragRef.current = false;
-        if (openedRef.current) { riseRef.current = 1; haptic(10); }
-        else { modeRef.current = "pile"; setMode("pile"); riseRef.current = 0; }
+        if (openedRef.current) {
+          // ★瞬間で 1 に飛ばさず、**いま伸びている所からバネで**規定へ戻す。
+          riseSRef.current = spring(riseRef.current);
+          riseDragRef.current = false;
+          haptic(10);
+        } else { modeRef.current = "pile"; setMode("pile"); riseRef.current = 0; riseDragRef.current = true; }
         wake(); return;
       }
       if (!d.moved) { tapAt(e.clientX, e.clientY); return; }
@@ -1151,7 +1271,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         if (d.edge && d.axis === "x" && dx > SWIPE_PX && !phaseRef.current) enterAlign();
       } else if (m === "align" && !phaseRef.current) {
         if (d.axis === "x" && dx < -SWIPE_PX) leaveAlign();
-        else if (d.axis === "y") { scrollVRef.current = -(d.vy * FLICK_K) / ROW_H; wake(); }
+        else if (d.axis === "y") { scrollVRef.current = -(d.vy * FLICK_K) / PITCH_TIGHT; wake(); }
       } else if (m === "timeline") {
         if (d.axis === "y" && dy > SWIPE_PX) {
           if (expandedRef.current !== null) { expandedRef.current = null; setExpanded(null); wake(); }
@@ -1182,7 +1302,9 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   const today = new Date();
   const { w: sw } = sizeRef.current;
   const laneW = (sw || 390) / LANES_VISIBLE;
-  const laneFs = Math.min(SWISS_XL, Math.floor((laneW * 0.92) / (3 * 0.70)));
+  // ★幅の軸を細く(`WD_WDTH`)したぶん、**同じレーン幅でより大きく**できる
+  //   … 変形せずに「少し縦長」になる(第56巡にユーザー確定)。
+  const laneFs = Math.min(SWISS_XL, Math.floor((laneW * 0.92) / (3 * WD_ADV)));
   const layerName = mode === "align" ? "ALIGN" : mode === "timeline" ? "TIMELINE" : "GRAVITY";
   const expandedDay = expanded !== null ? days[expanded] : null;
   const expandedTasks = expandedDay ? tasks.filter((t) => t.dueDate === expandedDay) : [];
@@ -1210,14 +1332,21 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
                 <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm }}>
                   <span style={{
                     fontFamily: LATIN, fontWeight: 800, letterSpacing: "-0.03em", color: INK,
-                    fontSize: dl.kind === "num" ? (focus ? SWISS_LG : SWISS_MD) : (focus ? TYPE.display : TYPE.head),
-                    lineHeight: 0.9, opacity: dl.kind === "num" ? 1 : 0.55,
+                    // ★焦点だけ一段跳ばして大きく(第56巡)。目盛りの外の数字は足さず、
+                    //   display の例外 SWISS_XL / LG / MD の3つで組む。
+                    fontSize: dl.kind === "num" ? (focus ? SWISS_XL : SWISS_MD) : (focus ? SWISS_MD : TYPE.head),
+                    lineHeight: 0.86, opacity: dl.kind === "num" ? 1 : 0.55,
                   }}>{dl.text}</span>
                   {dl.sub && <span style={{ fontFamily: LATIN, fontWeight: 700, fontSize: TYPE.micro, letterSpacing: "0.18em", color: MUTED }}>{dl.sub}</span>}
                 </div>
                 <div style={{
                   fontFamily: SANS, fontWeight: focus ? 700 : 600, color: INK, marginTop: SPACE.xs,
-                  fontSize: focus ? TYPE.display : TYPE.lead, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  fontSize: focus ? SWISS_MD : TYPE.lead, lineHeight: focus ? 1.12 : 1.2, overflow: "hidden",
+                  // ★焦点だけ2行まで折り返す。左に大きな図形が居るぶん文字の幅が狭いので、
+                  //   1行で切ると題がほとんど読めない。
+                  ...(focus
+                    ? { display: "-webkit-box", WebkitBoxOrient: "vertical" as const, WebkitLineClamp: 2 }
+                    : { whiteSpace: "nowrap" as const, textOverflow: "ellipsis" }),
                 }}>{it.task.title || "無題"}</div>
                 <div style={{ fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: 700, letterSpacing: "0.14em", color: tagColor(it.paint.tag), marginTop: SPACE.hair }}>
                   #{it.tag.toUpperCase()}
@@ -1233,7 +1362,10 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
           <div ref={bandRef} className="tl-band"
             style={{
               position: "absolute", left: 0, right: 0, bottom: `calc(${NAV_H} + ${SPACE.xl}px)`,
-              height: LANE_HEAD_H, overflow: "hidden", pointerEvents: "none", zIndex: 3,
+              // ★`overflow: visible` … 引っ張ると文字が規定より上へ伸びるので、
+              //   ここで切ると伸びが見えない。画面外へは外側の `main.full-bleed`
+              //   (`overflow: clip`)が抑える。
+              height: LANE_HEAD_H, overflow: "visible", pointerEvents: "none", zIndex: 3,
             }}>
             <div ref={stripRef} style={{ position: "absolute", left: 0, bottom: 0, willChange: "transform" }}>
               {days.map((d, i) => (
@@ -1246,6 +1378,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
                 }}>
                   <span style={{
                     fontFamily: LATIN, fontWeight: 800, fontSize: laneFs, lineHeight: 0.86,
+                    fontVariationSettings: `"wdth" ${WD_WDTH}`,
                     letterSpacing: "-0.04em", whiteSpace: "nowrap", paddingBottom: SPACE.xs,
                     // 濃さは毎フレーム `--wd` に入る(画面での位置で決まる)。
                     color: `var(--wd, ${i === 0 ? RUST : gradeInk(i)})`,
@@ -1327,6 +1460,36 @@ function swapUnit(M: typeof import("matter-js"), world: World, p: Piece, unit: n
   M.Composite.add(world, body);
 }
 
+/** ★「自由」のブロックを作る。文字の箱を測って、その大きさの物体にする。
+ *  書体が届く前に測ると箱がずれるので、**開くたびに測り直す**(`openTimeline` から)。 */
+function makeWordPiece(
+  M: typeof import("matter-js"), dateKey: string, laneW: number, x: number, y: number,
+): Piece | null {
+  const word = freeWordOf(dateKey);
+  const probe = document.createElement("canvas").getContext("2d");
+  if (!probe) return null;
+  // レーンの**内寸**に収まる字の大きさを、実測の字幅から決める。
+  const room = laneInner(laneW) * FREE_FILL;
+  const base = 64;
+  probe.font = canvasFont(800, base, LATIN);
+  const wAt = probe.measureText(word).width || 1;
+  const fs = Math.max(14, Math.min(SWISS_XL, Math.round((base * room) / wAt)));
+  probe.font = canvasFont(800, fs, LATIN);
+  const m = probe.measureText(word);
+  const bw = Math.min(laneInner(laneW) * 0.94, Math.max(8, m.width) + FREE_PAD);
+  const bh = Math.max(8, (m.actualBoundingBoxAscent || fs * 0.72) + (m.actualBoundingBoxDescent || fs * 0.1)) + FREE_PAD * 2;
+  const body = M.Bodies.rectangle(x, y, bw, bh, {
+    restitution: 0.02, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012,
+  });
+  M.Body.setInertia(body, Infinity);
+  const spec = specOf({ id: dateKey, title: word });
+  return {
+    id: `free:${dateKey}`, body, spec,
+    paint: { spec, view: "name", title: word },
+    girth: Math.min(bw, bh), ox: 0, oy: 0, unit: fs, lane: -1, word, wordFs: fs,
+  };
+}
+
 function makePiece(
   M: typeof import("matter-js"), t: Task, view: SolidView, w: number, i: number, unit: number,
 ): Piece {
@@ -1396,10 +1559,15 @@ function rebuildWalls(
   M.Composite.remove(engine.world, old);
   const T = 200;
   const floorY = h - navHeightPx();
+  // ★★画面の左右の壁は**列に収まった図形を通す**(第56巡)。TIMELINE のレーンは
+  //   画面の外まで続いていて、3日目より先の列は右の壁の**中**に居る。壁が効くと
+  //   そこへ落ちた図形が押し戻され、隣のレーンへ紛れ込む(実機の写真で発覚)。
+  //   山(既定の分類)と落下中(CAT_FALL)にだけ効かせる。
+  const f = { category: CAT_WALL, mask: CAT_WALL | CAT_FALL };
   M.Composite.add(engine.world, [
-    ...(withFloor ? [M.Bodies.rectangle(w / 2, floorY + T / 2, w + T * 2, T, { isStatic: true, friction: 0.6 })] : []),
-    M.Bodies.rectangle(-T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4 }),
-    M.Bodies.rectangle(w + T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4 }),
+    ...(withFloor ? [M.Bodies.rectangle(w / 2, floorY + T / 2, w + T * 2, T, { isStatic: true, friction: 0.6, collisionFilter: f })] : []),
+    M.Bodies.rectangle(-T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4, collisionFilter: f }),
+    M.Bodies.rectangle(w + T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4, collisionFilter: f }),
   ]);
 }
 

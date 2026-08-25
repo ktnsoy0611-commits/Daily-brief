@@ -409,6 +409,15 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
 
     let pending: InboxCandidate[] | null = null;
     let pendingLive = false;
+    // ★★溜めた列を流すのは**matter が来ていて、かつ見えているとき**だけ(第60巡)。
+    //   第58巡は `setActive` の中で無条件に `pending` を空にしてから `sync` を
+    //   呼んでいた。DRIFT は**最初に開く既定のタブ**なので `setActive(true)` は
+    //   `import("matter-js")` が返るより先に走る ― `sync` は `!M` で素通りし、
+    //   列だけが捨てられて**画面に何も出ない**状態が固定していた(ユーザー報告)。
+    const flush = () => {
+      if (!M || !engine || !live || !pending) return;
+      const q = pending; pending = null; sync(q);
+    };
     ctrlRef.current = {
       // ★見えていない間は**湧かせない**(場が画面の外なので、置いた場所が全部ずれる)。
       //   溜めておいて、見えるようになってから流す。
@@ -419,9 +428,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         if (on) {
           // ★隠れている間に列が動いていても、ここで場を測り直して図形ごと運ぶ。
           size = { w: wrap.offsetWidth, h: wrap.offsetHeight };
-          walls();
-          if (pending) { const q = pending; pending = null; sync(q); }
-          wake();
+          if (M && engine) { walls(); flush(); wake(); }
         } else { running = false; cancelAnimationFrame(raf); }
       },
     };
@@ -434,7 +441,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       engine.gravity.x = 0; engine.gravity.y = 0;
       live = pendingLive;
       walls();
-      if (live && pending) { const q = pending; pending = null; sync(q); }
+      flush();
     })();
 
     cv.addEventListener("pointerdown", onDown);

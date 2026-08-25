@@ -58,8 +58,10 @@
 - `components/tabs/GravityTab.tsx` — **タスクの本体**。matter.js の山（pile）と、
   **3つの物理モード**（`pile` / `align` / `timeline`）。左端→右スワイプで ALIGN
   （**左に円弧**で図形が並び、右に文字。中央が大きく、上下スワイプで回る）、
-  下→上スワイプで TIMELINE（**地面から巨大な曜日が指に連れて伸び**、図形が日付レーンへ
-  下から詰まる）。逆方向のスワイプで山へ戻る。
+  **地面際**から上スワイプで TIMELINE（**地面から巨大な曜日が指に連れて伸び**、図形が
+  日付レーンへ下から詰まる）、**それより上**から上スワイプで**効果線を伴って DRIFT へ**。
+  逆方向のスワイプで山へ戻る。★山は**表に出るたびに落とし直す**（毎回ちがう並び）。
+  その日の**日付と曜日の英語**も、枠の無い黒い文字の板として一緒に落ちる。
   ★★モード中は **body の位置で描かない** — レイアウトが決めた**スロットへ絵の中心を
   置く**（`ox/oy` 補正をやめたのがズレの根治。詳しくは `docs/project_knowledge.md` §4）。
   ★山では**長押しで図形を掴んで運べる**（すぐ動かすとスワイプ）。口=完了/ゴミ箱=削除。
@@ -75,7 +77,7 @@
   `WhenSheet`（日程。**ここだけキーボードを閉じる**）/ `ComposerToolbar` /
   `ComposerFields`（重要度・タグ・テキスト）/ `Popover`（器と `Press`＝押せる面）/
   `TimeRange`（時刻。タイムラインで範囲を選ぶ）/
-  `SolidCanvas` / `ViewToggle` /
+  `SolidCanvas` /
   `ViewportProbe`（★開発用の数値表示。`lib/debugViewport.ts` と対。直ったら撤去）。
   タスクの追加は`CreateMenu`（タブバー右端の輪）からのみ（第36巡に＋を撤去）。
   `TaskAddButton.tsx`は動作確認用の`DemoSeedButton`だけが残っている。
@@ -100,8 +102,8 @@
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。
 - `lib/spring.ts` — **canvas の図形だけの動きの土台（バネ＝減衰振動）**。係数は4つ。
   CSS の transition には使わない。
-- `lib/scroll.ts` — **スクロールの語彙（指1:1＋投げ＋減衰＋最寄りへ吸着）**。
-  強さは `SCROLL_GAIN` と `FLICK_K` の2つだけ。いまは ALIGN が使う。
+- `lib/scroll.ts` — **スクロールの語彙はここだけ**（指の 1:1 ＋投げ＋減衰＋最寄りへ吸着）。
+  強さを触るのは `SCROLL_GAIN` と `FLICK_K` の2つだけ。いまは ALIGN の縦送りが使う。
 - `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋の丸の場所）**。
   CSS 側は `app/globals.css` の `:root`。数字はこの2つだけ。増やさない。
   JS のタイマーは `ms(T_OUT)` のようにここから引く（数字を書き写さない）。

@@ -5,7 +5,8 @@ import type { Body, Engine } from "matter-js";
 import { LayerName } from "@/components/tasks/LayerName";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
-import { MUTED, NAV_H, PAPER } from "@/lib/constants";
+import { DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
+import { MUTED, NAV_H, navHeightPx } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline } from "@/lib/solid";
 import { peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint } from "@/lib/solidPaint";
@@ -24,12 +25,23 @@ import type { InboxCandidate, TabProps } from "@/lib/types";
 // 物体ごとに drawImage 1回。物理と描画・ジェスチャーの閉包は**この1つの effect**
 // に持ち、外(候補の増減・表示状態)からは ctrl(ref)越しに触る。
 
-/** 図形の一律の幅。器の幅に対する割合と上限。 */
-const W_RATIO = 0.30;
-const W_MAX = 148;
-/** 漂う速さ(px/フレーム)の下限・上限。無重力なので止まらず、暴れない。 */
-const DRIFT_MIN = 0.16;
+/** 図形の一律の幅。器の幅に対する割合と上限。★第54巡に大きく(画面に対して
+ *  小さすぎるというユーザー指摘)。 */
+const W_RATIO = 0.34;
+const W_MAX = 150;
+/** ★★**投げたら減速して止まる**(第54巡にユーザー指定)。以前は `clampDrift` で
+ *  速さの**下限**を保って永久に漂わせていたが、「勢いで動いてくれて良いが減速して
+ *  止まってほしい」という指定なので、下限をやめ**空気抵抗**で静かに止める。
+ *  最初のひと押しだけ与えて、あとは指の投げ(`FLING`)に任せる。 */
 const DRIFT_MAX = 1.0;
+/** 湧いた直後のごく弱いひと押し。 */
+const DRIFT_SEED = 0.35;
+/** 空気抵抗(大きいほど早く止まる)。 */
+const DRIFT_AIR = 0.016;
+/** 使える範囲の上端(アプリ名の札＋層の名前のぶん)。 */
+const FIELD_TOP = 124;
+/** この件数までは目一杯の大きさ。これを超えたら件数の平方根で縮める。 */
+const FIT_N = 6;
 /** タップとホールドの境目。 */
 const HOLD_MS = 150;
 const TAP_MOVE = 8;
@@ -39,7 +51,6 @@ const FLING = 0.9;
 const GONE_STEP = 0.09;
 
 interface Piece { id: string; body: Body; paint: SolidPaint; ox: number; oy: number; unit: number; gone: number; gx: number; gy: number }
-type Target = "trash" | "mouth" | null;
 interface Ctrl { sync: (list: InboxCandidate[]) => void; setActive: (on: boolean) => void }
 
 const paintOf = (c: InboxCandidate): SolidPaint => ({
@@ -55,7 +66,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [holding, setHolding] = useState(false);
-  const [hover, setHover] = useState<Target>(null);
+  const [hover, setHover] = useState<DropTarget>(null);
   const inbox = appState.inbox;
   const candidates = useMemo(() => (inbox ?? []).filter((c) => c.kind === "task"), [inbox]);
   const notes = (appState.voiceNotes ?? []).filter((n) => n.status === "new").length;
@@ -126,35 +137,64 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       moved: boolean; held: boolean; lastX: number; lastY: number; vx: number; vy: number; holdT: number;
     } | null = null;
 
+    /** 使える範囲(**canvas の座標**)。★★器は `full-bleed` なので、canvas は画面より
+     *  上下左右へはみ出している(実測 422×894 @ -16,-16)。`size.h` をそのまま床に
+     *  すると**タブバーの裏まで**器が広がり、図形が潜り込む(第54巡のユーザー指摘)。
+     *  画面の座標を canvas の座標へ**必ず変換**してから壁を置く。 */
+    const fieldOf = () => {
+      const r = wrap.getBoundingClientRect();
+      return {
+        left: -r.left,
+        right: window.innerWidth - r.left,
+        top: FIELD_TOP - r.top,
+        bottom: (window.innerHeight - navHeightPx()) - r.top,
+      };
+    };
     const walls = () => {
       if (!M || !engine) return;
+      const { left, right, top, bottom } = fieldOf();
       const old = M.Composite.allBodies(engine.world).filter((b) => b.isStatic);
       M.Composite.remove(engine.world, old);
-      const { w, h } = size;
       const T = 80;
-      const o = { isStatic: true, restitution: 1, friction: 0 };
+      const o = { isStatic: true, restitution: 0.9, friction: 0 };
+      const cx = (left + right) / 2, cy = (top + bottom) / 2;
+      const ww = right - left, hh = bottom - top;
       M.Composite.add(engine.world, [
-        M.Bodies.rectangle(w / 2, -T / 2, w + T * 2, T, o),
-        M.Bodies.rectangle(w / 2, h + T / 2, w + T * 2, T, o),
-        M.Bodies.rectangle(-T / 2, h / 2, T, h + T * 2, o),
-        M.Bodies.rectangle(w + T / 2, h / 2, T, h + T * 2, o),
+        M.Bodies.rectangle(cx, top - T / 2, ww + T * 2, T, o),
+        M.Bodies.rectangle(cx, bottom + T / 2, ww + T * 2, T, o),
+        M.Bodies.rectangle(left - T / 2, cy, T, hh + T * 2, o),
+        M.Bodies.rectangle(right + T / 2, cy, T, hh + T * 2, o),
       ]);
     };
 
-    const addPiece = (c: InboxCandidate) => {
+    const addPiece = (c: InboxCandidate, idx = 0, total = 1) => {
       if (!M || !engine) return;
-      const { w, h } = size;
       const paint = paintOf(c);
       const b = shapeBounds(paint);
       const wu = Math.max(1e-3, b.maxX - b.minX);
-      const unit = Math.min(W_MAX, w * W_RATIO) / wu;
+      // ★大きさは**画面の幅**から決める(canvas は full-bleed で 32px 広い)。
+      //   ★★件数が多いときは**その分だけ縮める**。大きいまま詰め込むと、無重力で
+      //   押し合って壁をすり抜け、画面の外へ出てしまう(第54巡に実測)。少数のときは
+      //   目一杯大きいままなので、「小さすぎる」という指摘には応えられている。
+      const crowd = Math.min(1, Math.sqrt(FIT_N / Math.max(1, total)));
+      const unit = (Math.min(W_MAX, window.innerWidth * W_RATIO) * crowd) / wu;
       const hw = ((b.maxX - b.minX) * unit) / 2;
       const hh = ((b.maxY - b.minY) * unit) / 2;
-      const x = hw + 6 + frac(c.id) * Math.max(1, w - 2 * hw - 12);
-      const y = hh + 6 + frac(c.id + "y") * Math.max(1, h - 2 * hh - 12);
+      // ★★湧くのは**画面の真ん中あたり**(第54巡にユーザー指定)。四隅から始めると
+      //   端に貼り付いたまま気づかれない。★ただし**同じ点に重ねない** — 大きな図形が
+      //   重なって湧くと、物理が押し合って壁をすり抜け画面の外へ飛ぶ(実測)。
+      //   中心を囲む**ひまわり配置**(黄金角)で、真ん中に寄せつつ均等にばらす。
+      const { left, right, top, bottom } = fieldOf();
+      const midX = (left + right) / 2, midY = (top + bottom) / 2;
+      const rx = Math.max(0, (right - left) / 2 - hw - 8);
+      const ry = Math.max(0, (bottom - top) / 2 - hh - 8);
+      const t = Math.sqrt((idx + 0.5) / Math.max(1, total));
+      const ang = idx * 2.399963 + frac(c.id) * 0.6;
+      const x = Math.max(left + hw + 6, Math.min(right - hw - 6, midX + Math.cos(ang) * rx * t * 0.9));
+      const y = Math.max(top + hh + 6, Math.min(bottom - hh - 6, midY + Math.sin(ang) * ry * t * 0.9));
       const { body, ox, oy } = makeBody(M, paint, x, y, unit);
       const a = frac(c.id + "v") * Math.PI * 2;
-      const sp = DRIFT_MIN + frac(c.id + "s") * (DRIFT_MAX - DRIFT_MIN);
+      const sp = DRIFT_SEED * (0.4 + frac(c.id + "s") * 0.6);
       M.Body.setVelocity(body, { x: Math.cos(a) * sp, y: Math.sin(a) * sp });
       M.Body.setAngularVelocity(body, (frac(c.id + "w") - 0.5) * 0.02);
       M.Composite.add(engine.world, body);
@@ -169,22 +209,19 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         return false;
       });
       const have = new Set(pieces.map((p) => p.id));
-      for (const c of list) if (!have.has(c.id)) addPiece(c);
+      list.forEach((c, i) => { if (!have.has(c.id)) addPiece(c, i, list.length); });
       wake();
     };
 
+    /** 速すぎるものだけ抑える。★**下限は持たない** — 空気抵抗で静かに止まるのが
+     *  第54巡の指定(投げた勢いは残しつつ、やがて止まる)。 */
     const clampDrift = () => {
       if (!M) return;
       for (const p of pieces) {
         if ((grab && grab.piece === p) || p.gone > 0 || p.body.isStatic) continue;
         const v = p.body.velocity;
         const sp = Math.hypot(v.x, v.y);
-        if (sp < DRIFT_MIN) {
-          const a = sp < 1e-4 ? frac(p.id + "n") * Math.PI * 2 : Math.atan2(v.y, v.x);
-          M.Body.setVelocity(p.body, { x: Math.cos(a) * DRIFT_MIN, y: Math.sin(a) * DRIFT_MIN });
-        } else if (sp > DRIFT_MAX) {
-          M.Body.setVelocity(p.body, { x: (v.x / sp) * DRIFT_MAX, y: (v.y / sp) * DRIFT_MAX });
-        }
+        if (sp > DRIFT_MAX) M.Body.setVelocity(p.body, { x: (v.x / sp) * DRIFT_MAX, y: (v.y / sp) * DRIFT_MAX });
       }
     };
 
@@ -226,7 +263,12 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       clampDrift();
       M.Engine.update(engine, 1000 / 60);
       const pending = draw();
-      if (running && live && (pieces.length > 0 || pending)) raf = requestAnimationFrame(step);
+      // ★全部が止まって、消える演出も無く、焼き待ちも無ければループを止める
+      //   (減速して止まる作りになったので、止まったら本当に静かになる)。
+      const moving = pieces.some((p) => p.gone > 0 || p.body.isStatic
+        || Math.hypot(p.body.velocity.x, p.body.velocity.y) > 0.04
+        || Math.abs(p.body.angularVelocity) > 0.002);
+      if (running && live && (moving || pending || !!grab)) raf = requestAnimationFrame(step);
       else running = false;
     };
     const wake = () => { if (!running && live && M) { running = true; raf = requestAnimationFrame(step); } };
@@ -240,15 +282,8 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       const body = hits[hits.length - 1];
       return pieces.find((p) => p.body === body) ?? null;
     };
-    const targetAt = (cx: number, cy: number): Target => {
-      const inR = (el: HTMLElement | null) => {
-        if (!el) return false;
-        const r = el.getBoundingClientRect();
-        return cx >= r.left - 14 && cx <= r.right + 14 && cy >= r.top - 14 && cy <= r.bottom + 14;
-      };
-      if (inR(mouthRef.current)) return "mouth";
-      if (inR(trashRef.current)) return "trash";
-      return null;
+    const targetHit = (cx: number, cy: number): DropTarget => {
+      return targetAt(mouthRef.current, trashRef.current, cx, cy);
     };
     const enterHold = () => {
       if (!grab || !M) return;
@@ -281,7 +316,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       M.Body.setPosition(grab.piece.body, { x: x + grab.ox, y: y + grab.oy });
       grab.vx = e.clientX - grab.lastX; grab.vy = e.clientY - grab.lastY;
       grab.lastX = e.clientX; grab.lastY = e.clientY;
-      const t = targetAt(e.clientX, e.clientY);
+      const t = targetHit(e.clientX, e.clientY);
       setHover((cur) => (cur === t ? cur : t));
     };
     const onUp = (e: PointerEvent) => {
@@ -295,7 +330,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         return;
       }
       M.Body.setStatic(p.body, false);
-      const t = targetAt(e.clientX, e.clientY);
+      const t = targetHit(e.clientX, e.clientY);
       setHolding(false); setHover(null);
       if (t) {
         const cr = cv.getBoundingClientRect();
@@ -304,8 +339,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         if (rr) { p.gx = rr.left + rr.width / 2 - cr.left; p.gy = rr.top + rr.height / 2 - cr.top; }
         p.gone = 0.001;
         haptic(t === "trash" ? 14 : 20);
-        el?.setAttribute("data-fire", "");
-        window.setTimeout(() => el?.removeAttribute("data-fire"), 460);
+        fireTarget(el);
         window.setTimeout(() => { if (t === "trash") actRef.current.reject(p.id); else actRef.current.accept(p.id); }, 260);
         wake();
       } else {
@@ -382,18 +416,8 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", touchAction: "none" }} />
       </div>
 
-      {/* ゴミ箱と口。掴んでいるあいだ、右下から出てくる。 */}
-      <div style={{
-        position: "absolute", right: 14, bottom: `calc(${NAV_H} + 12px)`, display: "flex", flexDirection: "column", gap: 14,
-        pointerEvents: "none", zIndex: 4,
-      }}>
-        <div ref={mouthRef} className={`drift-target${holding ? " in" : ""}${hover === "mouth" ? " hot" : ""}`} data-kind="mouth">
-          <MouthMark />
-        </div>
-        <div ref={trashRef} className={`drift-target${holding ? " in" : ""}${hover === "trash" ? " hot" : ""}`} data-kind="trash">
-          <TrashMark />
-        </div>
-      </div>
+      {/* ゴミ箱と口。掴んでいるあいだ、右下から出てくる(共通部品)。 */}
+      <DropTargets show={holding} hover={hover} mouthRef={mouthRef} trashRef={trashRef} />
 
       <div style={{ position: "absolute", left: 16, right: 16, bottom: `calc(${NAV_H} + 8px)`, textAlign: "center", pointerEvents: "none" }}>
         {notes > 0 && !holding && (
@@ -417,24 +441,6 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
   );
 }
 
-/** ★口。抽象的なレンズ状(閉じた口)。ホバーで開き、離すと噛む(CSS)。 */
-function MouthMark() {
-  return (
-    <svg width={30} height={30} viewBox="0 0 30 30" aria-hidden focusable="false">
-      <path className="mouth-lip" d="M3 15 Q15 8 27 15 Q15 22 3 15 Z" fill={PAPER} />
-    </svg>
-  );
-}
-/** ★ゴミ箱。抽象的な漏斗(逆三角)＋上の帯。ホバーで震える(CSS)。 */
-function TrashMark() {
-  return (
-    <svg width={30} height={30} viewBox="0 0 30 30" aria-hidden focusable="false">
-      <rect x={5} y={6} width={20} height={3.4} fill={PAPER} />
-      <path d="M6 11 H24 L18 25 H12 Z" fill={PAPER} />
-    </svg>
-  );
-}
-
 /** id → 0〜1 のばらけた値(黄金比で桁を混ぜる)。 */
 function frac(s: string) {
   let h = 0;
@@ -445,7 +451,7 @@ function frac(s: string) {
 function makeBody(
   M: typeof import("matter-js"), paint: SolidPaint, x: number, y: number, unit: number,
 ): { body: Body; ox: number; oy: number } {
-  const opts = { restitution: 0.98, friction: 0, frictionAir: 0, frictionStatic: 0 };
+  const opts = { restitution: 0.9, friction: 0, frictionAir: DRIFT_AIR, frictionStatic: 0 };
   const n = paint.spec.sides.length;
   const { w, h } = rectOf(paint.spec);
   let body: Body;

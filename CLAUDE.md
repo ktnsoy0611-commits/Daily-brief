@@ -62,9 +62,12 @@
   下から詰まる）。逆方向のスワイプで山へ戻る。
   ★★モード中は **body の位置で描かない** — レイアウトが決めた**スロットへ絵の中心を
   置く**（`ox/oy` 補正をやめたのがズレの根治。詳しくは `docs/project_knowledge.md` §4）。
+  ★山では**長押しで図形を掴んで運べる**（すぐ動かすとスワイプ）。口=完了/ゴミ箱=削除。
 - `components/tasks/TaskSpace.tsx` — **薄い器**。GRAVITY を常時マウント（山を保つ）、
   DRIFT タブのときだけ上に重ね、画面に固定した `Masthead`（TASK）を持つだけ。
-- `components/tasks/LayerName.tsx` — 層の名前（GRAVITY / DRIFT）を右上に置く。
+- `components/tasks/LayerName.tsx` — 層の名前（GRAVITY / ALIGN / TIMELINE / DRIFT）。
+- `components/tasks/DropTargets.tsx` — **口とゴミ箱**（掴んでいる間だけ右下から出る）。
+  DRIFT と GRAVITY の共通部品。当たり判定 `targetAt` と合図 `fireTarget` もここ。
 - `components/tabs/DriftTab.tsx` — 候補が**無重力で漂う**層（1枚の canvas＋matter.js）。
   ホールドで図形を運び、右下から出る**口＝完了 / ゴミ箱＝削除**へ落とす（第44巡）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/

@@ -28,8 +28,13 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
 
   return (
     <main className="full-bleed" style={{ position: "relative", flex: 1, minHeight: 0, overflow: "clip" }}>
-      {/* GRAVITY は常にマウント(山を保つ)。DRIFT のときは眠らせる。 */}
-      <GravityTab {...tabProps} appActive={appActive} active={!onDrift} />
+      {/* GRAVITY は常にマウント(山を保つ)。DRIFT のときは眠らせ、**見えなくする**。
+          ★`visibility: hidden` にするのは、`display: none` だと器の寸法が測れず
+          山が組み直せなくなるため。★これが無いと DRIFT の上に GRAVITY の層の名前・
+          ビュー切替・デモのボタンが透けて出て、押す面まで奪う(第54巡に発覚)。 */}
+      <div style={{ position: "absolute", inset: 0, visibility: onDrift ? "hidden" : "visible" }}>
+        <GravityTab {...tabProps} appActive={appActive} active={!onDrift} />
+      </div>
 
       {/* 候補の DRIFT はそのタブのときだけ上に重ねる。 */}
       {onDrift && (

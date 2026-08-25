@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Body, Engine } from "matter-js";
 import { LayerName } from "@/components/tasks/LayerName";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
+import { DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { ViewToggle } from "@/components/tasks/ViewToggle";
 import { ymd } from "@/components/tasks/WhenSheet";
@@ -14,140 +15,114 @@ import { onFontsReady, primeAdvances } from "@/lib/textFit";
 import { allTagFaces, allTagLabels, resolveTag, tagColor } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
-import { INK, LATIN, MUTED, PAPER, RUST, SANS, SWISS_LG, SWISS_MD, SWISS_XL } from "@/lib/constants";
+import { INK, LATIN, MUTED, NAV_H, navHeightPx, PAPER, RUST, SANS, SWISS_LG, SWISS_MD, SWISS_XL } from "@/lib/constants";
+import { ms, T_IN, T_ITEM, T_OUT, T_STEP } from "@/lib/motion";
 import { SPACE, TYPE } from "@/lib/tokens";
 import type { AppState, TabProps, Task } from "@/lib/types";
 
-// ★タスクタブ(GRAVITY)。確定したタスクが上から落ちてきて積み上がる。
+// ★タスクタブ(GRAVITY)。**タスク図形は常にこの空間にだけ在る**(第52巡)。別画面へ
+// 遷移せず、スワイプで**この空間の物理法則を一時的に変える**:
+//   ・pile     … 既定。重力で落ちて積まれる。**掴んで運べる**(第54巡)。
+//   ・align    … 画面左端から右へ払う。**左に円弧**で図形が並び、**文字も円弧に沿う**。
+//   ・timeline … 下から上へ払う。**地面から曜日が立ち上がり**、上から各曜日の列へ降る。
 //
-// ★★**タスク図形は常にこの空間にだけ在る**(第52巡に TOP/UNDER を破棄)。別画面へ
-// 遷移せず、スワイプで**この空間の物理法則を一時的に変える**ことで、詳細リスト
-// (ALIGN)とスケジュールの俯瞰(TIMELINE)を見せる。
-//   ・pile     … 既定。重力で落ちて積まれる。
-//   ・align    … 画面左端から右へ払う。**左に円弧**で図形が並び、右に詳細の文字。
-//   ・timeline … 下から上へ払う。**地面から曜日の巨大な文字が伸び**、図形が日付の
-//                レーンへ下から詰めて積まれる。
+// ★★描き方 … align/timeline では **matter の body の位置で描かない**。レイアウトが
+// 決めた**スロット `{x,y,s,a,o}` へ焼いた絵の中心を置く**(第53巡。`ox/oy` 補正を
+// やめたのがズレの根治)。大小は `ctx.scale`、焼くのは1つの unit だけ。
 //
-// ★★★**描き方の要(第53巡)** … align/timeline では **matter の body の位置で
-// 描かない**。レイアウトが決めた**スロット `{x,y,s,a}` へ、焼いた絵の中心をそのまま
-// 置く**。第52巡は body の**重心**へ寄せて `ox/oy`(重心と絵の中心のズレ)で補正して
-// いたため、`ox` の大きい形(半円・三角)が行から外れ、画面の左端で切れていた。
-// さらに `unit` を変えて焼き直していたので、焼き上がるまで**実寸の多角形**が出て
-// 二重にズレた。いまは:
-//   ・絵の中心＝スロット(`ox/oy` を使わない)。どの形でも必ず行に揃う。
-//   ・大小は `ctx.scale`(1枚の絵を拡大縮小する。焦点だけ大きくできる)。
-//   ・焼き上がる前は**山の絵**を倍率だけ合わせて流用する(空白にしない)。
-//   ・当たり判定もスロットの矩形で見る(body は画面上に居ないため)。
-//
-// 図形の寸法がそのままタスクの中身になっている(lib/taskSize.ts):
-//   塗られる面積 = 重要度 / 形 = 埋まっている側面の数 / 縦横比 = 四角だけ題の長さ
-//   スラブの枚数 = 残っている手順 / 色と書体 = タグ
+// ★★動きの段取り(第54巡にユーザー指定)は**時間で刻む**(`phaseRef` + `t0Ref`)。
+// 各図形は自分の**持ち時間**(番号ぶんずらした局所の進み)で動くので、「順番に連なって
+// 出ていく」「上から順に文字が入る」が1つのループの中で作れる。
 
 /** 図形の1単位を何pxで描くか。 */
 const UNIT = 64;
-/** 物理の重さの倍率。 */
 const MASS_K = 1.6;
-/** 図形の合計面積を、床から上の領域のどれだけに収めるか。 */
 const FILL = 0.58;
-/** ★どこまで縮めてよいか。これ以上は縮めず、代わりに間引く。 */
 const SCALE_MIN = 0.70;
 /** 見出し(アプリ名の札 + 層の名前 + ビュー切替)が占める高さ。 */
 const MASTHEAD_H = 124;
-/** いちばん大きい1枚が、画面の幅・高さのどこまでを占めてよいか。 */
 const FIT_W = 0.86;
 const FIT_H = 0.62;
-/** どこまで大きくしてよいか。 */
 const SCALE_MAX = 1.6;
-/** 縮尺がこれ以上変わったら山を作り直す。 */
 const SCALE_EPS = 0.02;
-/** 当たり判定の多角形の頂点の上限。 */
 const PHYS_VERTS = 12;
-/** 1フレームに焼いてよい図形の絵の枚数。 */
 const BAKE_BUDGET = 1;
-/** 1フレームに用意してよいグリフの枚数。 */
 const GLYPH_BUDGET = 4;
-/** これ未満の代表寸法(px)になる図形は山に入れない。 */
 const CULL_PX = 30;
 
-// ── モードの語彙 ──────────────────────────────────────────────
-// ★ここから下の数字は**図形とレイアウトの座標系**(px・rad)。`lib/tokens.ts` の
-//   例外2(図形の座標系)に当たる。文字の大きさは必ず `TYPE`/`SWISS_*` から引く。
+// ── モードの語彙(図形とレイアウトの座標系。`lib/tokens.ts` の例外2) ──
 type Mode = "pile" | "align" | "timeline";
-/** 左端とみなす始点の幅(px)。ここから右へ払うと ALIGN。 */
+/** 段取りの局面。null = 落ち着いている。 */
+type Phase = "align-in" | "align-out" | "tl-out" | null;
 const EDGE_PX = 30;
-/** モードを切り替えるのに要る払いの距離(px)。 */
 const SWIPE_PX = 44;
-/** タップとみなす動きの上限(px)。 */
 const TAP_MOVE = 8;
-/** 軸を決めるしきい(px)。 */
 const AXIS_PX = 8;
-/** モードの出入りを進める割合(毎フレーム)。 */
-const ENTER_K = 0.16;
+/** 掴むまでの長押し(DRIFT と同じ)。 */
+const HOLD_MS = 150;
+/** 離した指の速さを物体へ渡す倍率(投げ)。 */
+const FLING = 0.6;
 
 // ALIGN … 左の円弧
-/** 円弧の半径(px)。画面の使える高さの半分ほどにすると、上下の端で図形が
- *  左へ回り込んで自然に消える(観覧車の見え方)。 */
 const ARC_R = 290;
-/** 円弧の頂点(いちばん右へ出る点)の x。 */
 const ARC_APEX_X = 88;
-/** 中央付近の行の縦の間隔(px)。角度の刻みはこれと半径から出す。 */
 const ROW_H = 112;
-/** いちばん大きい図形の高さ・幅の目標(px)。★全件を画面に詰めない。 */
-const ALIGN_MAX_H = 92;
-const ALIGN_MAX_W = 132;
-/** 焦点(中央)をどれだけ大きくするか。 */
-const FOCUS_BOOST = 0.34;
-/** 文字の左端(円弧の右)。 */
-const TEXT_LEFT = 160;
-/** 慣性の減衰と、最寄りへ吸着する割合。 */
+/** ★**焦点(中央)の図形**の高さ・幅の目標(px)。焦点以外はここから `FOCUS_BOOST`
+ *  ぶん小さくなる。★焼く単位にブーストを掛けないこと — 掛けると焦点が
+ *  `ALIGN_MAX_*`×1.72 まで膨らみ、右の文字へめり込む(第54巡に実機で発覚)。 */
+const ALIGN_MAX_H = 104;
+const ALIGN_MAX_W = 148;
+/** ★焦点(中央)の強調。第54巡に「もっと大きく」の指定で 0.34 → 0.72。 */
+const FOCUS_BOOST = 0.72;
+/** 文字を置く円の半径 … 図形の円弧より外側。文字もこの円に沿って回る。 */
+const TEXT_GAP = 96;
 const SCROLL_DECAY = 0.92;
 const SNAP_K = 0.18;
-/** 指を離したときの慣性の強さ(px → 行数)。 */
 const FLICK_K = 0.9;
+/** 円弧の下の入り口(ここから上がってきて埋まる)。 */
+const ARC_ENTER_TH = 1.45;
 
-// TIMELINE … 地面から立つ曜日と、下から詰まる図形
-/** 同時に見えるレーンの数。 */
+// TIMELINE
 const LANES_VISIBLE = 3;
-/** 何日先まで並べるか。 */
 const HORIZON = 14;
-/** レーンの中で図形を積む縦の間隔(px)。 */
-const LANE_PITCH = 62;
-/** 巨大な曜日ラベルの帯の高さ(px)。 */
+/** ★第54巡に図形を大きく(小さすぎるという指摘)。段の間隔もそれに合わせる。 */
+const TL_MAX_H = 76;
+const LANE_PITCH = 88;
 const LANE_HEAD_H = 92;
-/** レーンに入る図形の最大の高さ(px)。 */
-const TL_MAX_H = 50;
 /** 指で引き上げ切るまでの距離(px)。 */
 const TL_SPAN = 240;
-/** 潰れている曜日の縦の倍率(完全な0にすると消えて見える)。 */
+/** 潰れている曜日の縦の倍率。 */
 const TL_FLAT = 0.04;
+/** 山が落ち切る進み具合(ここから上の空が降り始める)。 */
+const TL_FALL = 0.45;
+/** 横スワイプの慣性と吸着。 */
+const WORLD_DECAY = 0.94;
+const WORLD_SNAP_K = 0.16;
+const WORLD_FLICK = 14;
 /** 横スワイプの追従 … **下(k=0)がいちばん速く、上ほど遅れて付いてくる**。 */
 const LAG_BASE = 0.34;
 const LAG_DECAY = 0.82;
 
-/** 曜日の英字3文字(`Date.getDay()` の添字。日曜=0)。 */
+// 段取りの時間(すべて `lib/motion.ts` の語彙から引く。新しい数字を足さない)
+const A_OUT = ms(T_OUT);                    // 山から抜ける / はける
+const A_STEP = ms(T_STEP);                  // 連なりの間
+const A_IN = ms(T_IN);                      // 円弧へ上がる
+const A_TXT = ms(T_ITEM);                   // 文字が右から入る
+const A_T0 = Math.round(A_OUT * 0.55);      // 抜け切る前に上がり始める(間を空けない)
+/** 連なりの間はここで頭打ち(件数が多くても待たされない)。 */
+const STAG_MAX = 10;
+
 const WD3 = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 
-/** 完了したときに飛び散る破片。 */
 interface Shard { x: number; y: number; vx: number; vy: number; r: number; life: number; fill: string }
 const SHARD_MS = 620;
 
-/** 山(pile)の物理の1つ。 */
 interface Piece {
-  id: string;
-  body: Body;
-  spec: SolidSpec;
-  paint: SolidPaint;
-  girth: number;
-  ox: number;
-  oy: number;
+  id: string; body: Body; spec: SolidSpec; paint: SolidPaint;
+  girth: number; ox: number; oy: number;
 }
-
-/** align/timeline が並べる1つ。**未完了の全タスク**が対象(山は間引くが一覧は全部)。 */
 interface Item { id: string; task: Task; paint: SolidPaint; spec: SolidSpec; tag: string }
-
-/** 絵を置く場所。x/y は**絵の中心**、s は倍率、a は角度、o は濃さ。
- *  ★円弧の端では**切り落とさずに淡くして消す**(o)。画面の縁で図形が真っ二つに
- *  切れると事故に見えるため。 */
+/** 絵を置く場所。x/y は**絵の中心**、s は倍率、a は角度、o は濃さ。 */
 interface Slot { x: number; y: number; s: number; a: number; o: number }
 
 const paintOf = (t: Task, view: SolidView): SolidPaint => ({
@@ -161,10 +136,7 @@ const sameShape = (a: SolidSpec, b: SolidSpec) =>
 
 /**
  * ★残り日数の見せ方。**文字数ではなく「種類」で大きさを決める**(第53巡)。
- * 第52巡は `big.length > 3` で判定していたため、期日なしの `"—"`(1文字)が
- * `SWISS_XL`(72) に落ちて**巨大な黒い棒**になっていた(実機で発覚)。
- *   num  … 数字。大きく出す(焦点 `SWISS_LG` / それ以外 `SWISS_MD`)。
- *   word … `OVER`(過ぎている) / `SOMEDAY`(期日なし)。小さく薄く出す。
+ *   num  … 数字。大きく出す。 word … `OVER` / `SOMEDAY`。小さく薄く。
  */
 function daysLabel(dueDate: string | undefined, today: Date): { text: string; sub: string; kind: "num" | "word" } {
   if (!dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return { text: "SOMEDAY", sub: "", kind: "word" };
@@ -174,23 +146,26 @@ function daysLabel(dueDate: string | undefined, today: Date): { text: string; su
   return { text: String(d), sub: d === 1 ? "DAY" : "DAYS", kind: "num" };
 }
 
-/** 曜日の3文字。 */
 function weekdayOf(dateKey: string): string {
   const [y, m, d] = dateKey.split("-").map(Number);
   return WD3[new Date(y, m - 1, d).getDay()];
 }
+const monthDayOf = (dateKey: string) => {
+  const [, m, d] = dateKey.split("-").map(Number);
+  return `${m}/${d}`;
+};
 
-/** 出入りの緩急(初速が高い減速。CSS の `--ease-settle` と同じ性格)。 */
 const ease = (t: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
+const stag = (i: number) => Math.min(i, STAG_MAX) * A_STEP;
 
 export function GravityTab({ appState, persist, showToast, appActive, active = true, dragged }: TabProps & {
   appActive?: boolean;
-  /** この層(GRAVITY タブ)が画面に出ているか。DRIFT タブに切り替わると false に
-   *  なり、ループとジェスチャーを止める(山はマウントしたまま保つ)。 */
   active?: boolean;
   dragged?: React.MutableRefObject<boolean>;
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pendingBakeRef = useRef(false);
   const wakeRef = useRef<() => void>(() => {});
@@ -208,15 +183,14 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   const [view, setView] = useState<SolidView>("name");
   const viewRef = useRef<SolidView>("name");
 
-  // ── モード ──
+  // ── モードと段取り ──
   const [mode, setMode] = useState<Mode>("pile");
   const modeRef = useRef<Mode>("pile");
-  /** 物理を止めているか(モードに居る間・指で引いている間)。 */
   const frozenRef = useRef(false);
-  /** モードへの入り具合 0..1(指追従・またはトゥイーン)。 */
-  const enterRef = useRef(0);
-  const enterTargetRef = useRef(0);
-  /** 指で timeline を引き上げている最中か。 */
+  const phaseRef = useRef<Phase>(null);
+  const t0Ref = useRef(0);
+  /** TIMELINE の進み具合(0..1)。指が直に進める。 */
+  const tlPRef = useRef(0);
   const tlDragRef = useRef(false);
 
   const [items, setItems] = useState<Item[]>([]);
@@ -224,9 +198,8 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   const slotRef = useRef<Map<string, Slot>>(new Map());
   const curRef = useRef<Map<string, Slot>>(new Map());
   const fromRef = useRef<Map<string, Slot>>(new Map());
-  /** レーンの中の段(0 = いちばん下)。横スワイプの遅れに使う。 */
   const stackRef = useRef<Map<string, number>>(new Map());
-  /** 焼く単位(px)。倍率は ctx.scale で作るので、焼くのはこの1つだけ。 */
+  const laneOfRef = useRef<Map<string, number>>(new Map());
   const bakeUnitRef = useRef(UNIT);
 
   // ALIGN
@@ -239,10 +212,24 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
 
   // TIMELINE
   const worldRef = useRef(0);
+  const worldVRef = useRef(0);
+  const wDragRef = useRef(false);
   const daysRef = useRef<string[]>([]);
   const [days, setDays] = useState<string[]>([]);
   const bandRef = useRef<HTMLDivElement | null>(null);
   const stripRef = useRef<HTMLDivElement | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const expandedRef = useRef<number | null>(null);
+
+  // 掴む(pile)
+  const grabRef = useRef<{
+    piece: Piece; dx: number; dy: number; held: boolean; holdT: number;
+    vx: number; vy: number; lastX: number; lastY: number;
+  } | null>(null);
+  const [holding, setHolding] = useState(false);
+  const [hover, setHover] = useState<DropTarget>(null);
+  const mouthRef = useRef<HTMLDivElement | null>(null);
+  const trashRef = useRef<HTMLDivElement | null>(null);
 
   const dropAllRef = useRef<() => void>(() => {});
   const scaleRef = useRef(1);
@@ -281,8 +268,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       return bmp;
     };
 
-    if (modeRef.current === "pile") {
-      // 山 … body の位置と角度で描く(重心と絵のズレ ox/oy を戻す)。
+    if (modeRef.current === "pile" && !phaseRef.current) {
       for (const p of piecesRef.current) {
         const bmp = want(p.paint, pileUnit);
         ctx.save();
@@ -304,15 +290,13 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       pendingBakeRef.current = budget === 0 || glyphBudget === 0
         || piecesRef.current.some((p) => !peekSolidBitmap(p.paint, pileUnit, bakeDpr));
     } else {
-      // ★★スロットへ**絵の中心**を置く。ox/oy は使わない(ズレの根治)。
       const bakeUnit = bakeUnitRef.current;
       for (const it of itemsRef.current) {
         const cu = curRef.current.get(it.id);
-        if (!cu) continue;
+        if (!cu || cu.o <= 0.01) continue;
         let bmp = want(it.paint, bakeUnit);
         let s = cu.s;
         if (!bmp) {
-          // まだ焼けていなければ**山の絵**を倍率だけ合わせて流用する。
           const pb = peekSolidBitmap(it.paint, pileUnit, bakeDpr);
           if (pb) { bmp = pb; s = (cu.s * bakeUnit) / pileUnit; }
         }
@@ -324,13 +308,11 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         if (bmp) {
           ctx.drawImage(bmp.canvas, -bmp.w / 2, -bmp.h / 2, bmp.w, bmp.h);
         } else {
-          // どちらも無い1〜2フレームだけの仮置き(必ず**スロットの大きさ**で)。
           const b = shapeBounds(it.paint);
-          const bw = (b.maxX - b.minX) * bakeUnit;
-          const bh = (b.maxY - b.minY) * bakeUnit;
           ctx.globalAlpha = cu.o * 0.22;
           ctx.fillStyle = tagColor(it.paint.tag);
-          ctx.fillRect(-bw / 2, -bh / 2, bw, bh);
+          ctx.fillRect(-((b.maxX - b.minX) * bakeUnit) / 2, -((b.maxY - b.minY) * bakeUnit) / 2,
+            (b.maxX - b.minX) * bakeUnit, (b.maxY - b.minY) * bakeUnit);
         }
         ctx.restore();
       }
@@ -358,7 +340,6 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   }, []);
   wakeRef.current = wake;
 
-  /** 使える縦の範囲(見出しの下 〜 タブバーの上)。 */
   const fieldOf = useCallback(() => {
     const { h } = sizeRef.current;
     const floor = h - navHeightPx();
@@ -372,8 +353,6 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     const { mid } = fieldOf();
     const cx = ARC_APEX_X - ARC_R;
     const step = ROW_H / ARC_R;
-    const unit = bakeUnitRef.current / (1 + FOCUS_BOOST);
-    void unit;
     const slots = slotRef.current;
     for (let i = 0; i < list.length; i += 1) {
       const d = i - scrollRef.current;
@@ -382,15 +361,16 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       slots.set(list[i].id, {
         x: cx + ARC_R * Math.cos(th),
         y: mid + ARC_R * Math.sin(th),
-        // 焦点で 1.0(＝焼いた絵の実寸)、離れるほど小さく。
         s: (1 + FOCUS_BOOST * f) / (1 + FOCUS_BOOST),
-        a: th,
-        o: Math.max(0, Math.min(1, 1.25 - Math.abs(d) / 2.2)),
+        // ★★図形は**回さない**(第54巡にユーザー指定「半径方向に合わせるのではなく
+        //   平行を保って」)。円弧に沿って回るのは**文字の側**。
+        a: 0,
+        o: clamp01(1.35 - Math.abs(d) / 1.6),
       });
     }
   }, [fieldOf]);
 
-  // ── TIMELINE のレイアウト(地面の曜日と、下から詰まる図形) ──
+  // ── TIMELINE のレイアウト ──────────────────────────────────
   const layoutTimeline = useCallback(() => {
     const list = itemsRef.current;
     const { w } = sizeRef.current;
@@ -400,25 +380,25 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     const world = worldRef.current;
     const slots = slotRef.current;
     const stack = stackRef.current;
+    const lane = laneOfRef.current;
     const count = new Array(ds.length).fill(0);
-    // 図形が積み始める線 … 曜日の帯の**上**。
-    const base = floor - LANE_HEAD_H - SPACE.md;
+    const base = floor - LANE_HEAD_H - SPACE.xl - SPACE.md;
     for (const it of list) {
       const li = it.task.dueDate ? ds.indexOf(it.task.dueDate) : -1;
       if (li < 0) {
-        // ★曜日が割り当てられていないものは**上に浮遊**させる(ユーザー指定)。
-        //   位置は id から決める(開くたびに散らばり方が変わらない)。
         stack.set(it.id, 0);
+        lane.set(it.id, -1);
         slots.set(it.id, {
           x: w * (0.16 + 0.68 * frac(it.id)),
           y: top + SPACE.xl + frac(`${it.id}#y`) * 96,
-          s: 0.72, a: 0, o: 0.7,
+          s: 0.66, a: 0, o: 0.7,
         });
         continue;
       }
       const k = count[li];
       count[li] += 1;
       stack.set(it.id, k);
+      lane.set(it.id, li);
       slots.set(it.id, {
         x: laneW * li + laneW / 2 - world,
         y: base - (k * LANE_PITCH + LANE_PITCH / 2),
@@ -433,28 +413,40 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     else if (modeRef.current === "timeline") layoutTimeline();
   };
 
-  /** 焦点(中央の行)が変わったときだけ再レンダーする。 */
   const syncFocus = useCallback(() => {
     const n = Math.max(0, Math.min(itemsRef.current.length - 1, Math.round(scrollRef.current)));
     if (n !== focusRef.current) { focusRef.current = n; setFocusIdx(n); }
   }, []);
 
-  /** 毎フレームの前進。動いていれば true。 */
+  /** 山から右上へ抜ける弧(2次ベジエ)。 */
+  const flyOut = (fr: Slot, w: number, t: number): { x: number; y: number } => {
+    const p2x = w + 160, p2y = -160;
+    const p1x = fr.x + (p2x - fr.x) * 0.15, p1y = fr.y - 300;
+    const u = 1 - t;
+    return {
+      x: u * u * fr.x + 2 * u * t * p1x + t * t * p2x,
+      y: u * u * fr.y + 2 * u * t * p1y + t * t * p2y,
+    };
+  };
+
+  // ── 毎フレームの前進 ───────────────────────────────────────
   const advance = useCallback((): boolean => {
     const m = modeRef.current;
-    if (m === "pile") return false;
+    const ph = phaseRef.current;
+    if (m === "pile" && !ph) return false;
     let moving = false;
+    const now = performance.now();
+    const t = now - t0Ref.current;
+    const { w, h } = sizeRef.current;
+    const { mid } = fieldOf();
+    const cur = curRef.current;
+    const from = fromRef.current;
+    const slots = slotRef.current;
+    const list = itemsRef.current;
 
-    // 出入りの進み具合(指で引いている間はジェスチャーが書く)。
-    if (!tlDragRef.current) {
-      const t = enterTargetRef.current;
-      if (Math.abs(t - enterRef.current) > 0.002) { enterRef.current += (t - enterRef.current) * ENTER_K; moving = true; }
-      else enterRef.current = t;
-    }
-
-    // ALIGN … 慣性 → 最寄りへ吸着。
-    if (m === "align" && !aDragRef.current && enterRef.current > 0.99) {
-      const last = itemsRef.current.length - 1;
+    // ALIGN … 慣性 → 最寄りへ吸着(落ち着いている間だけ)。
+    if (m === "align" && !ph && !aDragRef.current) {
+      const last = list.length - 1;
       if (Math.abs(scrollVRef.current) > 0.0015) {
         scrollRef.current += scrollVRef.current;
         scrollVRef.current *= SCROLL_DECAY;
@@ -469,59 +461,147 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       scrollRef.current = Math.max(-0.4, Math.min(last + 0.4, scrollRef.current));
       syncFocus();
     }
+    // TIMELINE … 横の慣性 → レーンへ吸着。
+    if (m === "timeline" && !ph && !wDragRef.current && expandedRef.current === null) {
+      const laneW = w / LANES_VISIBLE;
+      const max = Math.max(0, laneW * (daysRef.current.length - LANES_VISIBLE));
+      if (Math.abs(worldVRef.current) > 0.4) {
+        worldRef.current = Math.max(0, Math.min(max, worldRef.current + worldVRef.current));
+        worldVRef.current *= WORLD_DECAY;
+        moving = true;
+      } else {
+        worldVRef.current = 0;
+        const n = Math.max(0, Math.min(max, Math.round(worldRef.current / laneW) * laneW));
+        const d = n - worldRef.current;
+        if (Math.abs(d) > 0.4) { worldRef.current += d * WORLD_SNAP_K; moving = true; }
+        else worldRef.current = n;
+      }
+    }
 
     layoutRef.current();
 
-    // スロットへ寄せる。
-    const e = enterRef.current;
-    const ez = ease(e);
-    const cur = curRef.current;
-    const from = fromRef.current;
-    const slots = slotRef.current;
-    for (const it of itemsRef.current) {
-      const sl = slots.get(it.id);
-      const fr = from.get(it.id);
-      if (!sl || !fr) continue;
-      if (e < 0.999) {
-        cur.set(it.id, {
-          x: lerp(fr.x, sl.x, ez), y: lerp(fr.y, sl.y, ez),
-          s: lerp(fr.s, sl.s, ez), a: lerp(fr.a, sl.a, ez), o: lerp(fr.o, sl.o, ez),
-        });
-        moving = true;
-      } else if (m === "timeline") {
-        // ★横スワイプは**下の段ほど速く**追う(曜日が先に動き、上ほど遅れる)。
-        const c = cur.get(it.id) ?? sl;
-        const k = stackRef.current.get(it.id) ?? 0;
-        const rate = LAG_BASE * Math.pow(LAG_DECAY, k);
-        const nx = c.x + (sl.x - c.x) * rate;
-        const ny = c.y + (sl.y - c.y) * 0.3;
-        cur.set(it.id, { x: nx, y: ny, s: sl.s, a: sl.a, o: sl.o });
-        if (Math.abs(sl.x - nx) > 0.4 || Math.abs(sl.y - ny) > 0.4) moving = true;
-      } else {
-        cur.set(it.id, sl);
+    // ── 図形の居場所 ──
+    if (ph === "align-in") {
+      // ①山から右上へ弧を描いて順に抜ける → ②下から円弧を上がって埋まる
+      const cx = ARC_APEX_X - ARC_R;
+      let done = true;
+      for (let i = 0; i < list.length; i += 1) {
+        const it = list[i];
+        const sl = slots.get(it.id); const fr = from.get(it.id);
+        if (!sl || !fr) continue;
+        const s2 = clamp01((t - A_T0 - stag(i)) / A_IN);
+        if (s2 <= 0) {
+          const s1 = clamp01((t - stag(i)) / A_OUT);
+          const p = flyOut(fr, w, ease(s1));
+          cur.set(it.id, { x: p.x, y: p.y, s: fr.s, a: fr.a * (1 - s1), o: 1 });
+          done = false;
+        } else {
+          // 円弧の下の入り口から、円に沿って所定の角度まで上がる。
+          const thEnd = Math.atan2(sl.y - mid, sl.x - cx);
+          const th = lerp(ARC_ENTER_TH, thEnd, ease(s2));
+          const r = ARC_R;
+          cur.set(it.id, {
+            x: cx + r * Math.cos(th), y: mid + r * Math.sin(th),
+            s: lerp(sl.s * 0.7, sl.s, ease(s2)), a: 0, o: lerp(0.2, sl.o, ease(s2)),
+          });
+          if (s2 < 1) done = false;
+        }
+      }
+      moving = true;
+      const txtEnd = A_T0 + stag(list.length - 1) + A_IN + A_TXT;
+      if (done && t > txtEnd) { phaseRef.current = null; }
+    } else if (ph === "align-out") {
+      // 文字は右へ、図形は左へはける。
+      let done = true;
+      for (let i = 0; i < list.length; i += 1) {
+        const it = list[i];
+        const fr = from.get(it.id);
+        if (!fr) continue;
+        const u = clamp01((t - stag(i)) / A_OUT);
+        cur.set(it.id, { x: lerp(fr.x, -220, ease(u)), y: fr.y, s: fr.s, a: 0, o: 1 - u * 0.35 });
+        if (u < 1) done = false;
+      }
+      moving = true;
+      if (done) { phaseRef.current = null; dropAllRef.current(); modeRef.current = "pile"; setMode("pile"); itemsRef.current = []; setItems([]); }
+    } else if (ph === "tl-out") {
+      // ★下へ落としてから、山へ落とし直す。
+      let done = true;
+      for (let i = 0; i < list.length; i += 1) {
+        const it = list[i];
+        const fr = from.get(it.id);
+        if (!fr) continue;
+        const u = clamp01((t - stag(i)) / A_OUT);
+        cur.set(it.id, { x: fr.x, y: lerp(fr.y, h + 200, ease(u)), s: fr.s, a: 0, o: 1 });
+        if (u < 1) done = false;
+      }
+      const band = bandRef.current;
+      if (band) band.style.setProperty("--tl", String(TL_FLAT + (1 - TL_FLAT) * (1 - clamp01(t / A_OUT))));
+      moving = true;
+      if (done) { phaseRef.current = null; dropAllRef.current(); modeRef.current = "pile"; setMode("pile"); itemsRef.current = []; setItems([]); }
+    } else if (m === "timeline") {
+      // ★★入りは指が進める … ①山が落下 → ②上から各曜日の列へ降ってくる。
+      const p = tlPRef.current;
+      const laneW = w / LANES_VISIBLE;
+      for (const it of list) {
+        const sl = slots.get(it.id); const fr = from.get(it.id);
+        if (!sl || !fr) continue;
+        if (p < TL_FALL) {
+          const u = ease(p / TL_FALL);
+          cur.set(it.id, { x: fr.x, y: lerp(fr.y, h + 200, u), s: fr.s, a: fr.a * (1 - u), o: 1 });
+          moving = true;
+        } else {
+          const k = Math.min(stackRef.current.get(it.id) ?? 0, 4);
+          const off = k * 0.05;
+          const u = ease(clamp01(((p - TL_FALL) / (1 - TL_FALL) - off) / Math.max(0.05, 1 - off)));
+          const li = laneOfRef.current.get(it.id) ?? -1;
+          const fromX = li >= 0 ? laneW * li + laneW / 2 - worldRef.current : sl.x;
+          const c = cur.get(it.id);
+          const nx = u >= 1 && c ? c.x + (sl.x - c.x) * (LAG_BASE * Math.pow(LAG_DECAY, k)) : lerp(fromX, sl.x, u);
+          cur.set(it.id, { x: nx, y: lerp(-200, sl.y, u), s: sl.s, a: 0, o: sl.o });
+          if (u < 1 || Math.abs(sl.x - nx) > 0.4) moving = true;
+        }
+      }
+    } else if (m === "align") {
+      for (const it of list) {
+        const sl = slots.get(it.id);
+        if (sl) cur.set(it.id, sl);
       }
     }
 
-    // DOM 側(文字・曜日の帯)を ref 越しに動かす — 再レンダーしない。
+    // ── DOM 側(文字・曜日の帯)を ref 越しに動かす ──
     if (m === "align") {
+      const cx = ARC_APEX_X - ARC_R;
       const rows = rowRefs.current;
-      for (let i = 0; i < itemsRef.current.length; i += 1) {
+      for (let i = 0; i < list.length; i += 1) {
         const el = rows[i];
-        const c = cur.get(itemsRef.current[i].id);
-        if (!el || !c) continue;
+        if (!el) continue;
         const d = i - scrollRef.current;
-        el.style.transform = `translateY(${(c.y - ROW_H / 2).toFixed(1)}px)`;
-        el.style.opacity = String(Math.max(0, Math.min(1, 1.25 - Math.abs(d) / 2.2)));
+        const th = d * (ROW_H / ARC_R);
+        // ★★文字も**円弧に沿わせる**(第54巡にユーザー指定)。図形の円より外側の
+        //   円周上に左端を置き、同じ角度だけ回す(原点は左端＝円の内側)。
+        const ax = cx + (ARC_R + TEXT_GAP) * Math.cos(th);
+        const ay = mid + (ARC_R + TEXT_GAP) * Math.sin(th);
+        let slide = 0; let op = clamp01(1.35 - Math.abs(d) / 1.6);
+        if (ph === "align-in") {
+          const u = clamp01((t - A_T0 - stag(i) - A_IN) / A_TXT);
+          slide = (1 - ease(u)) * (w * 0.9);
+          op *= u;
+        } else if (ph === "align-out") {
+          const u = clamp01((t - stag(i)) / A_TXT);
+          slide = ease(u) * (w * 0.9);
+          op *= 1 - u;
+        }
+        el.style.transform = `translate(${(ax + slide).toFixed(1)}px, ${(ay - ROW_H / 2).toFixed(1)}px) rotate(${th.toFixed(3)}rad)`;
+        el.style.opacity = String(op);
       }
-    } else {
+    } else if (m === "timeline") {
       const band = bandRef.current;
       const strip = stripRef.current;
-      // ★地面でぺたんこに潰れていた文字が、指に連れて伸びてくる。
-      if (band) band.style.setProperty("--tl", String(TL_FLAT + (1 - TL_FLAT) * ez));
+      if (band && ph !== "tl-out") band.style.setProperty("--tl", String(TL_FLAT + (1 - TL_FLAT) * ease(tlPRef.current)));
       if (strip) strip.style.transform = `translateX(${(-worldRef.current).toFixed(1)}px)`;
     }
     return moving;
-  }, [syncFocus]);
+  }, [fieldOf, syncFocus]);
 
   useEffect(() => {
     loopRef.current = () => {
@@ -538,9 +618,9 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
 
       drawRef.current();
 
-      if (modeRef.current === "pile") {
+      if (modeRef.current === "pile" && !phaseRef.current) {
         const awake = piecesRef.current.some((p) => !p.body.isSleeping);
-        if (!awake && shardsRef.current.length === 0 && !pendingBakeRef.current) { runningRef.current = false; return; }
+        if (!awake && shardsRef.current.length === 0 && !pendingBakeRef.current && !grabRef.current) { runningRef.current = false; return; }
       } else if (!moving && shardsRef.current.length === 0 && !pendingBakeRef.current) {
         runningRef.current = false; return;
       }
@@ -552,7 +632,6 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     clearSolidBitmaps(); primeTagMetrics(); wake(); drawRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
-
   useEffect(() => { primeTagMetrics(); }, []);
 
   const visibleRef = useRef(active);
@@ -561,10 +640,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     visibleRef.current = !!appActive && active;
     activeRef.current = on;
     if (on) wake();
-    else {
-      cancelAnimationFrame(rafRef.current);
-      runningRef.current = false;
-    }
+    else { cancelAnimationFrame(rafRef.current); runningRef.current = false; }
   }, [appActive, active, openId, wake]);
 
   const planPile = useCallback((list: Task[]) => {
@@ -582,10 +658,11 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     const { keep, scale } = planPile(tasksRef.current);
     scaleRef.current = scale;
     const unit = UNIT * scale;
-    const added = dropOrder(keep, new Date())
-      .map((t, i) => makePiece(M, t, viewRef.current, w, i, unit));
+    const added = dropOrder(keep, new Date()).map((t, i) => makePiece(M, t, viewRef.current, w, i, unit));
     M.Composite.add(engine.world, added.map((p) => p.body));
     piecesRef.current = added;
+    frozenRef.current = false;
+    engine.gravity.y = 1.4;
     wake();
     drawRef.current();
   }, [wake, planPile]);
@@ -602,7 +679,6 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     const el = wrapRef.current;
     if (!el) return;
     let disposed = false;
-
     const setup = async () => {
       const M = await import("matter-js");
       if (disposed) return;
@@ -616,34 +692,27 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
       setReady(true);
     };
     setup();
-
     const ro = new ResizeObserver(() => {
-      const w = el.offsetWidth;
-      const h = el.offsetHeight;
+      const w = el.offsetWidth; const h = el.offsetHeight;
       if (Math.abs(w - sizeRef.current.w) < 0.5 && Math.abs(h - sizeRef.current.h) < 0.5) return;
       sizeRef.current = { w, h };
-      const M = matterRef.current;
-      const engine = engineRef.current;
+      const M = matterRef.current; const engine = engineRef.current;
       if (M && engine) { rebuildWalls(M, engine, w, h); wake(); }
     });
     ro.observe(el);
     return () => {
-      disposed = true;
-      ro.disconnect();
-      cancelAnimationFrame(rafRef.current);
-      runningRef.current = false;
+      disposed = true; ro.disconnect();
+      cancelAnimationFrame(rafRef.current); runningRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // タスクの増減・中身の変化に山を合わせる。★モード中は触らない。
+  // タスクの増減に山を合わせる。★モード中・段取り中は触らない。
   useEffect(() => {
-    if (modeRef.current !== "pile") return;
-    const M = matterRef.current;
-    const engine = engineRef.current;
+    if (modeRef.current !== "pile" || phaseRef.current) return;
+    const M = matterRef.current; const engine = engineRef.current;
     const { w } = sizeRef.current;
     if (!M || !engine || !w) return;
-
     const { keep, scale } = planPile(tasks);
     const keepIds = new Set(keep.map((t) => t.id));
     const shownIds = new Set(piecesRef.current.map((p) => p.id));
@@ -654,11 +723,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     scaleRef.current = scale;
     const unit = UNIT * scale;
     const alive = new Map(keep.map((t) => [t.id, t]));
-
-    for (const p of piecesRef.current) {
-      if (!alive.has(p.id)) M.Composite.remove(engine.world, p.body);
-    }
-
+    for (const p of piecesRef.current) if (!alive.has(p.id)) M.Composite.remove(engine.world, p.body);
     piecesRef.current = piecesRef.current
       .filter((p) => alive.has(p.id))
       .map((p) => {
@@ -674,10 +739,8 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         }
         return { ...p, paint };
       });
-
     const have = new Set(piecesRef.current.map((p) => p.id));
-    const added = dropOrder(keep, new Date())
-      .filter((t) => !have.has(t.id))
+    const added = dropOrder(keep, new Date()).filter((t) => !have.has(t.id))
       .map((t, i) => makePiece(M, t, viewRef.current, w, i, unit));
     if (added.length) {
       M.Composite.add(engine.world, added.map((p) => p.body));
@@ -687,12 +750,10 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   }, [tasks, wake, ready, planPile, dropAll]);
 
   // ── モードの出入り ─────────────────────────────────────────
-  /** ★一覧は**未完了の全タスク**から作る(山は読めるように間引くが、一覧・俯瞰は
-   *  全部見えないと用を成さない)。並びはモードごとに決める。 */
   const buildItems = useCallback((m: Mode): Item[] => {
     const today = new Date();
     const src = m === "align"
-      ? [...tasksRef.current].sort((a, b) => areaOf(b, today) - areaOf(a, today))   // 優先度(面積)の降順
+      ? [...tasksRef.current].sort((a, b) => areaOf(b, today) - areaOf(a, today))
       : dropOrder(tasksRef.current, today);
     return src.map((t) => {
       const paint = paintOf(t, viewRef.current);
@@ -700,9 +761,7 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     });
   }, []);
 
-  /** いまの見え方を出発点として控える(モードへ入る・出る動きの起点)。 */
   const snapshot = useCallback((list: Item[]) => {
-    const M = matterRef.current;
     const { w, h } = sizeRef.current;
     const pileUnit = UNIT * scaleRef.current;
     const from = new Map<string, Slot>();
@@ -710,15 +769,17 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     for (const it of list) {
       const p = byId.get(it.id);
       if (p) from.set(it.id, { x: p.body.position.x, y: p.body.position.y, s: pileUnit / bakeUnitRef.current, a: p.body.angle, o: 1 });
-      // 山に居ない(間引かれた)ものは画面の下から入ってくる。
       else from.set(it.id, { x: w * (0.2 + 0.6 * frac(it.id)), y: h + 140, s: pileUnit / bakeUnitRef.current, a: 0, o: 1 });
     }
-    void M;
     fromRef.current = from;
     curRef.current = new Map(from);
   }, []);
 
-  /** 焼く単位を決める … いちばん大きい図形が目標の寸法になるように。 */
+  /** いま画面に見えている場所を出発点にする(はける動きの起点)。 */
+  const snapshotCur = useCallback(() => {
+    fromRef.current = new Map(curRef.current);
+  }, []);
+
   const bakeUnitFor = useCallback((list: Item[], maxH: number, maxW: number, boost: number) => {
     let mh = 1; let mw = 1;
     for (const it of list) {
@@ -738,68 +799,51 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   const enterAlign = useCallback(() => {
     const list = buildItems("align");
     if (!list.length) return;
-    // 焦点は 1.0 で焼いた絵の実寸になるので、焼く単位に焦点ぶんを掛けておく。
-    bakeUnitRef.current = bakeUnitFor(list, ALIGN_MAX_H, ALIGN_MAX_W, 1 + FOCUS_BOOST);
-    itemsRef.current = list;
-    setItems(list);
+    bakeUnitRef.current = bakeUnitFor(list, ALIGN_MAX_H, ALIGN_MAX_W, 1);
+    itemsRef.current = list; setItems(list);
     scrollRef.current = 0; scrollVRef.current = 0;
     focusRef.current = 0; setFocusIdx(0);
     slotRef.current = new Map();
     snapshot(list);
     layoutAlign();
     modeRef.current = "align"; setMode("align");
-    enterRef.current = 0; enterTargetRef.current = 1;
-    freeze(true);
-    haptic(10);
-    wake();
+    phaseRef.current = "align-in"; t0Ref.current = performance.now();
+    freeze(true); haptic(10); wake();
   }, [buildItems, bakeUnitFor, snapshot, layoutAlign, freeze, wake]);
 
-  const enterTimeline = useCallback((byDrag: boolean) => {
+  const enterTimeline = useCallback(() => {
     const list = buildItems("timeline");
     if (!list.length) return;
     const today = new Date();
     const ds: string[] = [];
-    for (let i = 0; i < HORIZON; i += 1) {
-      const d = new Date(today); d.setDate(today.getDate() + i); ds.push(ymd(d));
-    }
+    for (let i = 0; i < HORIZON; i += 1) { const d = new Date(today); d.setDate(today.getDate() + i); ds.push(ymd(d)); }
     daysRef.current = ds; setDays(ds);
-    bakeUnitRef.current = bakeUnitFor(list, TL_MAX_H, (sizeRef.current.w / LANES_VISIBLE) * 0.66, 1);
-    itemsRef.current = list;
-    setItems(list);
-    worldRef.current = 0;
-    slotRef.current = new Map();
-    stackRef.current = new Map();
+    bakeUnitRef.current = bakeUnitFor(list, TL_MAX_H, (sizeRef.current.w / LANES_VISIBLE) * 0.72, 1);
+    itemsRef.current = list; setItems(list);
+    worldRef.current = 0; worldVRef.current = 0;
+    expandedRef.current = null; setExpanded(null);
+    slotRef.current = new Map(); stackRef.current = new Map(); laneOfRef.current = new Map();
     snapshot(list);
     layoutTimeline();
     modeRef.current = "timeline"; setMode("timeline");
-    enterRef.current = 0;
-    enterTargetRef.current = byDrag ? 0 : 1;   // 指で引くときは指が進める
-    freeze(true);
-    if (!byDrag) haptic(10);
-    wake();
+    phaseRef.current = null; tlPRef.current = 0;
+    freeze(true); wake();
   }, [buildItems, bakeUnitFor, snapshot, layoutTimeline, freeze, wake]);
 
-  /** 山へ戻す … いま見えている位置を body へ書き戻し、重力を返す(そこから落ちる)。 */
-  const enterPile = useCallback(() => {
-    const M = matterRef.current;
-    if (M) {
-      const byId = new Map(piecesRef.current.map((p) => [p.id, p]));
-      for (const [id, c] of curRef.current) {
-        const p = byId.get(id);
-        if (!p) continue;
-        M.Body.setPosition(p.body, { x: c.x, y: c.y });
-        M.Body.setAngle(p.body, c.a);
-        M.Body.setVelocity(p.body, { x: 0, y: 0 });
-        M.Sleeping.set(p.body, false);
-      }
-    }
+  /** はけてから山へ落とし直す(段取りの終わりで `dropAll` が走る)。 */
+  const leaveTo = useCallback((ph: Phase) => {
+    snapshotCur();
+    phaseRef.current = ph; t0Ref.current = performance.now();
+    expandedRef.current = null; setExpanded(null);
+    haptic(8); wake();
+  }, [snapshotCur, wake]);
+
+  /** 指を離したのに引き上げ切らなかった → その場で山へ戻す。 */
+  const cancelTimeline = useCallback(() => {
+    phaseRef.current = null; tlDragRef.current = false;
     modeRef.current = "pile"; setMode("pile");
     itemsRef.current = []; setItems([]);
-    enterRef.current = 0; enterTargetRef.current = 0;
-    tlDragRef.current = false;
-    freeze(false);
-    haptic(8);
-    wake();
+    freeze(false); wake();
   }, [freeze, wake]);
 
   const patch = (id: string, p: Partial<ComposerData>) => {
@@ -809,25 +853,26 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     persist(next);
   };
 
+  const burst = useCallback((id: string) => {
+    const piece = piecesRef.current.find((p) => p.id === id);
+    if (!piece) return;
+    const { x, y } = piece.body.position;
+    const fill = tagColor(piece.paint.tag);
+    for (let i = 0; i < 14; i++) {
+      const a = (Math.PI * 2 * i) / 14 + Math.random() * 0.4;
+      const sp = 2 + Math.random() * 4;
+      shardsRef.current.push({
+        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 2,
+        r: piece.girth * (0.1 + Math.random() * 0.12), life: 1, fill,
+      });
+    }
+    const M = matterRef.current;
+    if (M) for (const p of piecesRef.current) M.Sleeping.set(p.body, false);
+  }, []);
+
   const complete = (t: Task, final: ComposerData) => {
     haptic(18);
-    const piece = piecesRef.current.find((p) => p.id === t.id);
-    if (piece && modeRef.current === "pile") {
-      const { x, y } = piece.body.position;
-      const fill = tagColor(t.tag);
-      for (let i = 0; i < 14; i++) {
-        const a = (Math.PI * 2 * i) / 14 + Math.random() * 0.4;
-        const sp = 2 + Math.random() * 4;
-        shardsRef.current.push({
-          x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 2,
-          r: piece.girth * (0.1 + Math.random() * 0.12),
-          life: 1, fill,
-        });
-      }
-      const M = matterRef.current;
-      if (M) for (const p of piecesRef.current) M.Sleeping.set(p.body, false);
-      wake();
-    }
+    if (modeRef.current === "pile") { burst(t.id); wake(); }
     const next: AppState = structuredClone(appState);
     const task = next.tasks.find((x) => x.id === t.id);
     if (task) { Object.assign(task, final); task.done = true; task.doneAt = new Date().toISOString(); }
@@ -836,12 +881,25 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     showToast("完了しました");
   };
 
+  /** ★口へ落とした = 完了(第54巡)。入力画面を開かずにその場で終える。 */
+  const completeById = useCallback((id: string) => {
+    haptic(20); burst(id);
+    const next: AppState = structuredClone(appState);
+    const task = next.tasks.find((x) => x.id === id);
+    if (task) { task.done = true; task.doneAt = new Date().toISOString(); }
+    persist(next);
+    showToast("完了しました");
+    wake();
+  }, [appState, persist, showToast, burst, wake]);
+
   const remove = (id: string) => {
     setOpenId(null);
     const next: AppState = structuredClone(appState);
     next.tasks = next.tasks.filter((x) => x.id !== id);
     persist(next);
   };
+  const removeRef = useRef(remove);
+  removeRef.current = remove;
 
   const seedDemo = () => {
     const next: AppState = structuredClone(appState);
@@ -850,194 +908,280 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
     showToast("デモのタスクを入れました");
   };
 
-  // 図形をタップして開く。★モード中は**スロットの矩形**で当てる(body は画面に居ない)。
+  // ── 当たり判定 ─────────────────────────────────────────────
+  const pieceAt = useCallback((px: number, py: number): Piece | null => {
+    const M = matterRef.current;
+    if (!M) return null;
+    const hits = M.Query.point(piecesRef.current.map((p) => p.body), { x: px, y: py });
+    if (!hits.length) return null;
+    return piecesRef.current.find((p) => p.body === hits[hits.length - 1]) ?? null;
+  }, []);
+
+  const itemAt = useCallback((px: number, py: number): Item | null => {
+    const bakeUnit = bakeUnitRef.current;
+    for (let i = itemsRef.current.length - 1; i >= 0; i -= 1) {
+      const it = itemsRef.current[i];
+      const c = curRef.current.get(it.id);
+      if (!c || c.o < 0.2) continue;
+      const b = shapeBounds(it.paint);
+      const hw = ((b.maxX - b.minX) * bakeUnit * c.s) / 2;
+      const hh = ((b.maxY - b.minY) * bakeUnit * c.s) / 2;
+      if (px >= c.x - hw && px <= c.x + hw && py >= c.y - hh && py <= c.y + hh) return it;
+    }
+    return null;
+  }, []);
+
   const tapAt = (clientX: number, clientY: number) => {
     if (dragged?.current) return;
     const cv = canvasRef.current;
     if (!cv) return;
     const r = cv.getBoundingClientRect();
-    const px = clientX - r.left;
-    const py = clientY - r.top;
-    if (modeRef.current === "pile") {
-      const M = matterRef.current;
-      if (!M) return;
-      const hits = M.Query.point(piecesRef.current.map((p) => p.body), { x: px, y: py });
-      if (!hits.length) return;
-      const piece = piecesRef.current.find((p) => p.body === hits[hits.length - 1]);
+    const px = clientX - r.left; const py = clientY - r.top;
+    // ★曜日の帯をたたく = その日を開く/閉じる(第54巡)。
+    if (modeRef.current === "timeline") {
+      const band = bandRef.current?.getBoundingClientRect();
+      if (band && clientY >= band.top && clientY <= band.bottom) {
+        const laneW = sizeRef.current.w / LANES_VISIBLE;
+        const li = Math.floor((px + worldRef.current) / laneW);
+        if (li >= 0 && li < daysRef.current.length) {
+          const next = expandedRef.current === li ? null : li;
+          expandedRef.current = next; setExpanded(next);
+          haptic(8); wake();
+        }
+        return;
+      }
+      if (expandedRef.current !== null) { expandedRef.current = null; setExpanded(null); wake(); return; }
+    }
+    if (modeRef.current === "pile" && !phaseRef.current) {
+      const piece = pieceAt(px, py);
       if (piece) { haptic(8); setOpenId(piece.id); }
       return;
     }
-    const bakeUnit = bakeUnitRef.current;
-    for (let i = itemsRef.current.length - 1; i >= 0; i -= 1) {
-      const it = itemsRef.current[i];
-      const c = curRef.current.get(it.id);
-      if (!c) continue;
-      const b = shapeBounds(it.paint);
-      const hw = ((b.maxX - b.minX) * bakeUnit * c.s) / 2;
-      const hh = ((b.maxY - b.minY) * bakeUnit * c.s) / 2;
-      if (px >= c.x - hw && px <= c.x + hw && py >= c.y - hh && py <= c.y + hh) {
-        haptic(8); setOpenId(it.id); return;
-      }
-    }
+    const it = itemAt(px, py);
+    if (it) { haptic(8); setOpenId(it.id); }
   };
 
   // ── ジェスチャー ───────────────────────────────────────────
   useEffect(() => {
     const wrap = wrapRef.current;
-    if (!wrap) return;
+    const root = rootRef.current;
+    if (!wrap || !root) return;
     let g: {
       id: number; x: number; y: number; edge: boolean; axis: "" | "x" | "y";
       moved: boolean; lastX: number; lastY: number; vy: number;
     } | null = null;
 
+    const clearGrab = () => {
+      const gr = grabRef.current;
+      if (gr) window.clearTimeout(gr.holdT);
+      grabRef.current = null;
+      setHolding(false); setHover(null);
+    };
+
+    const beginHold = () => {
+      const gr = grabRef.current;
+      const M = matterRef.current;
+      if (!gr || !M) return;
+      if (g?.moved) { grabRef.current = null; return; }   // もう払い始めている
+      gr.held = true;
+      M.Body.setStatic(gr.piece.body, true);
+      haptic(10); setHolding(true); wake();
+    };
+
     const down = (e: PointerEvent) => {
       if (g) return;
       if (!visibleRef.current) return;
       if (document.documentElement.hasAttribute("data-overlay")) return;
+      // 押せる面(ビュー切替・デモ)の上では層のジェスチャーを始めない。
+      if ((e.target as HTMLElement | null)?.closest("button")) return;
       if (dragged) dragged.current = false;
-      const left = wrap.getBoundingClientRect().left;
-      g = {
-        id: e.pointerId, x: e.clientX, y: e.clientY, edge: e.clientX - left < EDGE_PX,
-        axis: "", moved: false, lastX: e.clientX, lastY: e.clientY, vy: 0,
-      };
+      const r = wrap.getBoundingClientRect();
+      const edge = e.clientX - r.left < EDGE_PX;
+      // ★山では図形を掴める(第54巡)。ただし**左端**はモードの入口なので掴まない。
+      if (modeRef.current === "pile" && !phaseRef.current && !edge) {
+        const p = pieceAt(e.clientX - r.left, e.clientY - r.top);
+        if (p) {
+          grabRef.current = {
+            piece: p, dx: p.body.position.x - (e.clientX - r.left), dy: p.body.position.y - (e.clientY - r.top),
+            held: false, holdT: window.setTimeout(beginHold, HOLD_MS),
+            vx: 0, vy: 0, lastX: e.clientX, lastY: e.clientY,
+          };
+        }
+      }
+      g = { id: e.pointerId, x: e.clientX, y: e.clientY, edge, axis: "", moved: false, lastX: e.clientX, lastY: e.clientY, vy: 0 };
       if (modeRef.current === "align") { aDragRef.current = true; scrollVRef.current = 0; }
+      if (modeRef.current === "timeline") { wDragRef.current = false; worldVRef.current = 0; }
     };
 
     const move = (e: PointerEvent) => {
       if (!g || e.pointerId !== g.id) return;
-      const dx = e.clientX - g.x;
-      const dy = e.clientY - g.y;
+      const dx = e.clientX - g.x; const dy = e.clientY - g.y;
       if (!g.axis) {
         if (Math.abs(dx) < AXIS_PX && Math.abs(dy) < AXIS_PX) return;
         g.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
       }
       if (Math.hypot(dx, dy) > TAP_MOVE) { g.moved = true; if (dragged) dragged.current = true; }
-      const m = modeRef.current;
 
-      if (m === "pile" && g.axis === "y" && dy < 0) {
-        // ★下から上へ … 指に連れて曜日が地面から伸びてくる。
-        if (!tlDragRef.current) { tlDragRef.current = true; enterTimeline(true); }
-        enterRef.current = Math.max(0, Math.min(1, -dy / TL_SPAN));
+      // 掴んでいる図形を運ぶ。
+      // ★★**長押ししてから動かす**と図形を運び、**すぐ動かす**と空間のスワイプ
+      //   (モードの出入り)になる。図形に触れただけでスワイプを塞ぐと、山が
+      //   埋まっているとき TIMELINE を開けなくなる(第54巡に実機の指で発覚)。
+      const gr = grabRef.current;
+      if (gr) {
+        if (!gr.held && g.moved) { window.clearTimeout(gr.holdT); grabRef.current = null; }
+        else if (gr.held) {
+          const M = matterRef.current;
+          const r = wrap.getBoundingClientRect();
+          if (M) M.Body.setPosition(gr.piece.body, { x: e.clientX - r.left + gr.dx, y: e.clientY - r.top + gr.dy });
+          gr.vx = e.clientX - gr.lastX; gr.vy = e.clientY - gr.lastY;
+          gr.lastX = e.clientX; gr.lastY = e.clientY;
+          const t = targetAt(mouthRef.current, trashRef.current, e.clientX, e.clientY);
+          setHover((cur) => (cur === t ? cur : t));
+          wake();
+          g.lastX = e.clientX; g.lastY = e.clientY;
+          return;
+        }
+      }
+
+      const m = modeRef.current;
+      if (m === "pile" && !phaseRef.current && g.axis === "y" && dy < 0) {
+        if (!tlDragRef.current) { tlDragRef.current = true; enterTimeline(); }
+        tlPRef.current = clamp01(-dy / TL_SPAN);
         wake();
       } else if (m === "timeline" && tlDragRef.current && g.axis === "y") {
-        enterRef.current = Math.max(0, Math.min(1, -dy / TL_SPAN));
+        tlPRef.current = clamp01(-dy / TL_SPAN);
         wake();
-      } else if (m === "align" && g.axis === "y") {
+      } else if (m === "align" && !phaseRef.current && g.axis === "y") {
         const d = e.clientY - g.lastY;
         scrollRef.current -= d / ROW_H;
-        g.vy = d;
-        syncFocus();
-        wake();
-      } else if (m === "timeline" && !tlDragRef.current && g.axis === "x") {
+        g.vy = d; syncFocus(); wake();
+      } else if (m === "timeline" && !tlDragRef.current && g.axis === "x" && expandedRef.current === null) {
         const { w } = sizeRef.current;
         const laneW = w / LANES_VISIBLE;
         const max = Math.max(0, laneW * (daysRef.current.length - LANES_VISIBLE));
+        wDragRef.current = true;
         worldRef.current = Math.max(0, Math.min(max, worldRef.current - (e.clientX - g.lastX)));
+        worldVRef.current = -(e.clientX - g.lastX);
         wake();
       }
-      g.lastX = e.clientX;
-      g.lastY = e.clientY;
+      g.lastX = e.clientX; g.lastY = e.clientY;
     };
 
     const up = (e: PointerEvent) => {
       if (!g || e.pointerId !== g.id) return;
       const d = g; g = null;
       aDragRef.current = false;
-      const dx = e.clientX - d.x;
-      const dy = e.clientY - d.y;
+      const dx = e.clientX - d.x; const dy = e.clientY - d.y;
       const m = modeRef.current;
 
+      // 掴んでいた図形を離す。
+      const gr = grabRef.current;
+      if (gr) {
+        const M = matterRef.current;
+        window.clearTimeout(gr.holdT);
+        if (gr.held && M) {
+          M.Body.setStatic(gr.piece.body, false);
+          const t = targetAt(mouthRef.current, trashRef.current, e.clientX, e.clientY);
+          grabRef.current = null; setHolding(false); setHover(null);
+          if (t) {
+            fireTarget(t === "mouth" ? mouthRef.current : trashRef.current);
+            if (t === "mouth") completeById(gr.piece.id);
+            else { haptic(14); burst(gr.piece.id); removeRef.current(gr.piece.id); }
+          } else {
+            M.Body.setVelocity(gr.piece.body, { x: gr.vx * FLING, y: gr.vy * FLING });
+            M.Sleeping.set(gr.piece.body, false);
+          }
+          wake();
+          return;
+        }
+        clearGrab();
+      }
+
       if (tlDragRef.current) {
-        // 引き上げ切ったか？ 半分未満なら文字が倒れて山へ戻る。
         tlDragRef.current = false;
-        if (enterRef.current > 0.42) { enterTargetRef.current = 1; haptic(10); }
-        else { enterPile(); }
+        if (tlPRef.current > 0.42) { tlPRef.current = 1; haptic(10); }
+        else cancelTimeline();
         wake();
         return;
       }
       if (!d.moved) { tapAt(e.clientX, e.clientY); return; }
 
       if (m === "pile") {
-        if (d.edge && d.axis === "x" && dx > SWIPE_PX) enterAlign();
-      } else if (m === "align") {
-        if (d.axis === "x" && dx < -SWIPE_PX) enterPile();
+        if (d.edge && d.axis === "x" && dx > SWIPE_PX && !phaseRef.current) enterAlign();
+      } else if (m === "align" && !phaseRef.current) {
+        if (d.axis === "x" && dx < -SWIPE_PX) leaveTo("align-out");
         else if (d.axis === "y") { scrollVRef.current = -(d.vy * FLICK_K) / ROW_H; wake(); }
-      } else if (m === "timeline") {
-        if (d.axis === "y" && dy > SWIPE_PX) enterPile();
-        else if (d.axis === "x") {
-          const { w } = sizeRef.current;
-          const laneW = w / LANES_VISIBLE;
-          const max = Math.max(0, laneW * (daysRef.current.length - LANES_VISIBLE));
-          worldRef.current = Math.max(0, Math.min(max, Math.round(worldRef.current / laneW) * laneW));
+      } else if (m === "timeline" && !phaseRef.current) {
+        if (d.axis === "y" && dy > SWIPE_PX) {
+          if (expandedRef.current !== null) { expandedRef.current = null; setExpanded(null); wake(); }
+          else leaveTo("tl-out");
+        } else if (d.axis === "x") {
+          wDragRef.current = false;
+          worldVRef.current = Math.max(-WORLD_FLICK, Math.min(WORLD_FLICK, worldVRef.current));
           wake();
         }
       }
     };
 
-    wrap.addEventListener("pointerdown", down);
+    root.addEventListener("pointerdown", down);
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
     return () => {
-      wrap.removeEventListener("pointerdown", down);
+      root.removeEventListener("pointerdown", down);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enterAlign, enterTimeline, enterPile, syncFocus, wake]);
+  }, [enterAlign, enterTimeline, leaveTo, cancelTimeline, syncFocus, wake, pieceAt, completeById, burst]);
 
   const today = new Date();
   const { w: sw } = sizeRef.current;
   const laneW = (sw || 390) / LANES_VISIBLE;
-  // 曜日は全レーン同じ大きさ。3文字がレーンに収まるところまでで頭打ちにする。
-  // ★1文字ぶんの送りは Archivo(太字・幅88%)で概ね 0.70em。3文字がレーンに必ず
-  //   収まる大きさで頭打ちにする(第53巡: 実機で MON が左へはみ出していた)。
   const laneFs = Math.min(SWISS_XL, Math.floor((laneW * 0.92) / (3 * 0.70)));
   const layerName = mode === "align" ? "ALIGN" : mode === "timeline" ? "TIMELINE" : "GRAVITY";
+  const expandedDay = expanded !== null ? days[expanded] : null;
+  const expandedTasks = expandedDay ? items.filter((it) => it.task.dueDate === expandedDay) : [];
+  const panelLeft = expanded !== null ? Math.max(0, laneW * expanded - worldRef.current) : 0;
 
   return (
-    <div style={{ position: "absolute", inset: 0 }}>
+    <div ref={rootRef} style={{ position: "absolute", inset: 0 }}>
       <div ref={wrapRef} style={{ position: "absolute", inset: 0, touchAction: "none" }}>
-        <canvas
-          ref={canvasRef}
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", willChange: "transform" }}
-        />
+        <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", willChange: "transform" }} />
       </div>
 
       <LayerName text={layerName} right={mode === "pile" ? <ViewToggle view={view} onChange={setView} /> : undefined} />
 
-      {/* ALIGN … 円弧の右に、残り日数・題・タグ。**文字は水平を保つ**(回さない)。 */}
+      {/* ALIGN … 円弧に沿って回る文字。位置と角度は毎フレーム ref 越しに書く。 */}
       {mode === "align" && (
-        <div className="mode-panel" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        <div className="mode-panel" style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
           {items.map((it, i) => {
             const dl = daysLabel(it.task.dueDate, today);
             const focus = i === focusIdx;
-            const numSize = focus ? SWISS_LG : SWISS_MD;
             return (
               <div
                 key={it.id}
                 ref={(el) => { rowRefs.current[i] = el; }}
                 className="mode-row" data-id={it.id}
                 style={{
-                  position: "absolute", top: 0, left: TEXT_LEFT, right: SPACE.lg, height: ROW_H,
-                  display: "flex", flexDirection: "column", justifyContent: "center", willChange: "transform",
+                  position: "absolute", top: 0, left: 0, width: `calc(100% - ${ARC_APEX_X + TEXT_GAP}px)`, height: ROW_H,
+                  transformOrigin: "0 50%", display: "flex", flexDirection: "column", justifyContent: "center",
+                  willChange: "transform", paddingRight: SPACE.lg,
                 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm }}>
                   <span style={{
                     fontFamily: LATIN, fontWeight: 800, letterSpacing: "-0.03em", color: INK,
-                    fontSize: dl.kind === "num" ? numSize : TYPE.head, lineHeight: 0.9,
-                    opacity: dl.kind === "num" ? 1 : 0.55,
+                    fontSize: dl.kind === "num" ? (focus ? SWISS_LG : SWISS_MD) : (focus ? TYPE.display : TYPE.head),
+                    lineHeight: 0.9, opacity: dl.kind === "num" ? 1 : 0.55,
                   }}>{dl.text}</span>
                   {dl.sub && (
-                    <span style={{
-                      fontFamily: LATIN, fontWeight: 700, fontSize: TYPE.micro, letterSpacing: "0.18em", color: MUTED,
-                    }}>{dl.sub}</span>
+                    <span style={{ fontFamily: LATIN, fontWeight: 700, fontSize: TYPE.micro, letterSpacing: "0.18em", color: MUTED }}>{dl.sub}</span>
                   )}
                 </div>
                 <div style={{
-                  fontFamily: SANS, fontWeight: 600, color: INK, marginTop: SPACE.xs,
-                  fontSize: focus ? TYPE.head : TYPE.lead,
+                  fontFamily: SANS, fontWeight: focus ? 700 : 600, color: INK, marginTop: SPACE.xs,
+                  fontSize: focus ? TYPE.display : TYPE.lead,
                   whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                 }}>{it.task.title || "無題"}</div>
                 <div style={{
@@ -1050,32 +1194,79 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
         </div>
       )}
 
-      {/* TIMELINE … 地面に立つ巨大な曜日。指に連れて下から伸びる(--tl)。 */}
+      {/* TIMELINE … 地面に立つ巨大な曜日。たたくとその日が開く。 */}
       {mode === "timeline" && (
-        <div
-          ref={bandRef}
-          className="tl-band"
-          style={{
-            // ★タブバーと**ページの点**の上へ逃がす(点と曜日が重なっていた)。
-            position: "absolute", left: 0, right: 0, bottom: `calc(${navCssH()} + ${SPACE.xl}px)`,
-            height: LANE_HEAD_H, overflow: "hidden", pointerEvents: "none",
-          }}>
-          <div ref={stripRef} style={{ position: "absolute", left: 0, bottom: 0, display: "flex", willChange: "transform" }}>
-            {days.map((d, i) => (
-              <div key={d} style={{ width: laneW, flex: "0 0 auto", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-                <span style={{
-                  fontFamily: LATIN, fontWeight: 800, fontSize: laneFs, lineHeight: 0.86,
-                  letterSpacing: "-0.04em", whiteSpace: "nowrap", paddingBottom: SPACE.xs,
-                  // ★今日は**赤**。語(TODAY)ではなく、その日の曜日を出す(第53巡)。
-                  color: i === 0 ? RUST : gradeInk(i),
-                }}>{weekdayOf(d)}</span>
-              </div>
-            ))}
+        <>
+          <div
+            ref={bandRef}
+            className="tl-band"
+            style={{
+              position: "absolute", left: 0, right: 0, bottom: `calc(${NAV_H} + ${SPACE.xl}px)`,
+              height: LANE_HEAD_H, overflow: "hidden", pointerEvents: "none", zIndex: 3,
+            }}>
+            <div ref={stripRef} style={{ position: "absolute", left: 0, bottom: 0, display: "flex", willChange: "transform" }}>
+              {days.map((d, i) => (
+                <div key={d} style={{ width: laneW, flex: "0 0 auto", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+                  <span style={{
+                    fontFamily: LATIN, fontWeight: 800, fontSize: laneFs, lineHeight: 0.86,
+                    letterSpacing: "-0.04em", whiteSpace: "nowrap", paddingBottom: SPACE.xs,
+                    color: i === 0 ? RUST : gradeInk(i),
+                    opacity: expanded !== null && expanded !== i ? 0.25 : 1,
+                  }}>{weekdayOf(d)}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+
+          {/* ★曜日をたたくと**左端はそのまま右へ広がり**、その日の詳細が出る。 */}
+          {expandedDay && (
+            <div className="tl-detail open" style={{
+              position: "absolute", left: panelLeft, right: 0, top: MASTHEAD_H,
+              bottom: `calc(${NAV_H} + ${SPACE.xl}px + ${LANE_HEAD_H}px)`,
+              background: PAPER, zIndex: 2, overflow: "hidden",
+              padding: `${SPACE.xl}px ${SPACE.lg}px`,
+              // ★★読むだけの面なので**指は通す**。ここで受け取ってしまうと、
+              //   パネルの上から払っても層のジェスチャーへ届かず閉じられない
+              //   (第54巡に実機の手順で発覚)。
+              pointerEvents: "none",
+            }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm }}>
+                <span style={{ fontFamily: LATIN, fontWeight: 800, fontSize: TYPE.display, letterSpacing: "-0.03em", color: expanded === 0 ? RUST : INK }}>
+                  {weekdayOf(expandedDay)}
+                </span>
+                <span style={{ fontFamily: LATIN, fontWeight: 700, fontSize: TYPE.small, letterSpacing: "0.12em", color: MUTED }}>
+                  {monthDayOf(expandedDay)}
+                </span>
+              </div>
+              <div style={{ marginTop: SPACE.lg, display: "flex", flexDirection: "column", gap: SPACE.md, overflow: "hidden", maxHeight: "76%" }}>
+                {expandedTasks.length === 0 && (
+                  <div style={{ fontFamily: SANS, fontSize: TYPE.body, color: MUTED }}>この日には何も入っていない。</div>
+                )}
+                {expandedTasks.map((it) => (
+                  <div key={it.id} style={{ display: "flex", alignItems: "baseline", gap: SPACE.md }}>
+                    <span style={{ width: 10, height: 10, flex: "0 0 auto", background: tagColor(it.paint.tag), borderRadius: "50%", alignSelf: "center" }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: SANS, fontWeight: 600, fontSize: TYPE.lead, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {it.task.title || "無題"}
+                      </div>
+                      <div style={{ fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: 700, letterSpacing: "0.14em", color: tagColor(it.paint.tag), marginTop: SPACE.hair }}>
+                        #{it.tag.toUpperCase()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {mode === "pile" && tasks.length === 0 && <DemoSeedButton label="デモのタスクを入れる" onSeed={seedDemo} lifted />}
+      {/* 掴んでいるあいだの口/ゴミ箱(共通部品)。 */}
+      <DropTargets show={holding} hover={hover} mouthRef={mouthRef} trashRef={trashRef} />
+
+      {mode === "pile" && !phaseRef.current && tasks.length === 0 && (
+        <DemoSeedButton label="デモのタスクを入れる" onSeed={seedDemo} lifted />
+      )}
 
       {open && (
         <TaskComposer
@@ -1092,9 +1283,6 @@ export function GravityTab({ appState, persist, showToast, appActive, active = t
   );
 }
 
-/** タブバーの高さ(CSS の式のまま)。 */
-const navCssH = () => "var(--nav-h, 96px)";
-
 /** 手前のレーンほど濃く、先のレーンほど薄く沈める(遠近の気配)。 */
 function gradeInk(i: number): string {
   const a = Math.max(0.14, 0.46 - i * 0.11);
@@ -1104,9 +1292,7 @@ function gradeInk(i: number): string {
 function primeTagMetrics() {
   if (typeof window === "undefined") return;
   const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 32));
-  const step = () => {
-    if (primeAdvances(allTagLabels(), allTagFaces(), 4) > 0) idle(step as never);
-  };
+  const step = () => { if (primeAdvances(allTagLabels(), allTagFaces(), 4) > 0) idle(step as never); };
   idle(step as never);
 }
 
@@ -1128,21 +1314,16 @@ function makeBody(
   const opts = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
   const n = paint.spec.sides.length;
   const { w, h } = rectOf(paint.spec);
-  let body: Body;
-  let ox = 0;
-  let oy = 0;
+  let body: Body; let ox = 0; let oy = 0;
   if (n === 1) {
     body = M.Bodies.circle(x, y, (w * unit) / 2, opts);
   } else {
     const src = sectionOutline(n);
     const step = Math.max(1, Math.ceil(src.length / PHYS_VERTS));
-    const verts = src
-      .filter((_, k) => k % step === 0)
-      .map((q) => ({ x: q.x * w * unit, y: q.y * h * unit }));
+    const verts = src.filter((_, k) => k % step === 0).map((q) => ({ x: q.x * w * unit, y: q.y * h * unit }));
     body = M.Bodies.fromVertices(x, y, [verts], opts);
     const c = M.Vertices.centre(verts);
-    ox = -c.x;
-    oy = -c.y;
+    ox = -c.x; oy = -c.y;
   }
   M.Body.setMass(body, massOf(paint.spec) * MASS_K);
   return { body, ox, oy };
@@ -1157,20 +1338,15 @@ export function pileOf(
   tasks: Task[], today: Date, w: number, usableH: number,
 ): { keep: Task[]; scale: number } {
   if (!tasks.length || w <= 0 || usableH <= 0) return { keep: tasks, scale: 1 };
-  const sorted = [...tasks]
-    .map((t) => ({ t, area: areaOf(t, today) }))
-    .sort((a, b) => b.area - a.area);
+  const sorted = [...tasks].map((t) => ({ t, area: areaOf(t, today) })).sort((a, b) => b.area - a.area);
   const budget = ((w * usableH) / (UNIT * UNIT)) * FILL;
   const scaleFor = (total: number) => Math.min(SCALE_MAX, Math.sqrt(budget / total));
-
-  let total = 0;
-  let n = 0;
+  let total = 0; let n = 0;
   for (const row of sorted) {
     const next = total + row.area;
     const scale = scaleFor(next);
     if (n > 0 && (scale < SCALE_MIN || Math.sqrt(row.area) * UNIT * scale < CULL_PX)) break;
-    total = next;
-    n++;
+    total = next; n++;
   }
   const keep = sorted.slice(0, n).map((r) => r.t);
   let scale = Math.max(SCALE_MIN, scaleFor(total));
@@ -1191,19 +1367,6 @@ function rebuildWalls(M: typeof import("matter-js"), engine: Engine, w: number, 
     M.Bodies.rectangle(-T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4 }),
     M.Bodies.rectangle(w + T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4 }),
   ]);
-}
-
-function navHeightPx(): number {
-  if (typeof window === "undefined") return 96;
-  const shell = document.querySelector("[data-app-shell]") ?? document.documentElement;
-  const v = getComputedStyle(shell).getPropertyValue("--nav-h").trim();
-  if (!v) return 96;
-  const probe = document.createElement("div");
-  probe.style.cssText = `position:absolute;visibility:hidden;height:${v}`;
-  document.body.appendChild(probe);
-  const px = probe.getBoundingClientRect().height;
-  probe.remove();
-  return px || 96;
 }
 
 function frac(s: string) {

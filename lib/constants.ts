@@ -251,6 +251,26 @@ export const NAV_OFFSET = `calc(83px + ${NAV_BOTTOM_GAP})`;
 // globals.css の --nav-h だけが、タブバーの高さを知っている場所。
 export const NAV_H = `calc(77px + ${NAV_BOTTOM_GAP})`;
 // タブ本文の上の余白(セーフエリア込み)。--pad-top として全体へ配る。
+/**
+ * ★タブバーの実際の高さ(px)。`NAV_H` は `env()` を含む CSS の式なので、JS 側は
+ * 一度要素へ流し込んで測る。**数字を二重に持たないため**、床の位置や的の逃がしは
+ * 必ずここから引く(第37巡に、独自の 96px を持っていて実機で床がタブバーの裏へ
+ * 潜った)。★`--nav-h` は `[data-app-shell]` に立っているので、そこから読む
+ * (`document.documentElement` は祖先なので常に空になる)。
+ */
+export function navHeightPx(): number {
+  if (typeof window === "undefined") return 96;
+  const shell = document.querySelector("[data-app-shell]") ?? document.documentElement;
+  const v = getComputedStyle(shell).getPropertyValue("--nav-h").trim();
+  if (!v) return 96;
+  const probe = document.createElement("div");
+  probe.style.cssText = `position:absolute;visibility:hidden;height:${v}`;
+  document.body.appendChild(probe);
+  const px = probe.getBoundingClientRect().height;
+  probe.remove();
+  return px || 96;
+}
+
 export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";
 
 // ★Masthead(アプリ名の札。components/common.tsx)の高さ。

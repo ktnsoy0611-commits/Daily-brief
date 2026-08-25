@@ -480,6 +480,16 @@ button:active {
   will-change: transform;
 }
 
+/* ★曜日をたたくと開くその日の詳細 … **左端はそのままで、右へ広がる**
+   (2026-08-24・第54巡にユーザー指定)。幅を animate すると再レイアウトが走るので、
+   `clip-path` を右から開く(位置は動かさない＝左端が固定されて見える)。 */
+.tl-detail { animation: tl-detail-open var(--t-in) var(--ease-sheet) both; }
+@keyframes tl-detail-open {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+@media (prefers-reduced-motion: reduce) { .tl-detail { animation: none; } }
+
 /* ── DRIFT の「掴んで捨てる/食べる」ターゲット(components/tabs/DriftTab.tsx) ──
    候補の図形を**掴んでいるあいだ**だけ、右下から丸い的が出てくる。上=口(食べる=
    タスクにする)/下=ゴミ箱(捨てる)。ホバーで反応し、離すと action のアニメ。 */

@@ -22,8 +22,11 @@ import { paperize, setPaperReadyHandler } from "./paperTexture";
 // matter.js の物体は画面内の2D回転しかしないので、キャッシュした絵を
 // body.angle で回して drawImage するだけで厳密に正しい。
 
-/** 図形に何の文字を載せるか。**形は変わらない**。 */
-export type SolidView = "name" | "tag";
+/** 図形に何の文字を載せるか。**形は変わらない**。
+ *  ★`"none"` は**文字を載せない**(2026-08-26・第65巡)。ALIGN は右に題を大きく出すので、
+ *  図形の中にも同じ題があると**二重**になる(ユーザー指摘)。
+ *  ★グリフを焼かなくなるぶん、ALIGN の入りはむしろ軽くなる。 */
+export type SolidView = "name" | "tag" | "none";
 
 export interface SolidPaint {
   spec: SolidSpec;
@@ -156,6 +159,7 @@ function textPlanOf(p: SolidPaint, unit: number): TextPlan | null {
 }
 
 function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
+  if (p.view === "none") return null;          // ★文字なし(ALIGN)
   const n = p.spec.sides.length;
   const s = Math.sqrt(p.spec.area) * unit;
   if (s < LOD_NO_TEXT) return null;

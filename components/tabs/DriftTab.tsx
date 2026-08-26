@@ -154,6 +154,8 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
     let live = false;
     let grab: {
       id: number; piece: Piece; ox: number; oy: number; downX: number; downY: number;
+      /** ★最新の指の位置(**canvas ローカル**)。`enterHold` が `ox/oy` を取り直すのに使う。 */
+      px: number; py: number;
       moved: boolean; held: boolean; lastX: number; lastY: number; lastT: number;
       vx: number; vy: number; vT: number; holdT: number;
     } | null = null;
@@ -337,6 +339,19 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
     };
     const enterHold = () => {
       if (!grab || !M) return;
+      // ★遅れて発火したときは、指がもう動いていないか**確かめてから**掴む
+      //   (第65巡。起動直後は焼きでメインスレッドが詰まり、150ms のタイマーが遅れる)。
+      //   GRAVITY の `beginHold` にはこの確認があり、DRIFT だけ無かった。
+      if (grab.moved) { grab = null; return; }
+      const b = grab.piece.body;
+      // ★★★掴んだ瞬間に **`ox/oy` を取り直す**(第65巡)。`onDown` で凍結した値のままだと、
+      //   その後 150ms ぶん動いた図形との差が、成立後の最初の move で
+      //   `(tx - b.position.x) * GRAB_K`(上限 34px/step)として**一気に効き、すっ飛ぶ**。
+      grab.ox = b.position.x - grab.px;
+      grab.oy = b.position.y - grab.py;
+      // ★運んでいる間は回さない(GRAVITY と同じ)。DRIFT だけ角速度を残していたので、
+      //   掴んだ図形が指の下で**回り続けて**いた。
+      M.Body.setAngularVelocity(b, 0);
       grab.held = true;
       swipe = null;                        // ★長押しが成立したら払いではない
       haptic(10);
@@ -354,6 +369,9 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
 
     const onDown = (e: PointerEvent) => {
       if (document.documentElement.hasAttribute("data-overlay") || grab) return;
+      // ★まだ場が立ち上がっていないうちは何もしない(第65巡)。GRAVITY の
+      //   `if (!visibleRef.current) return;` に当たる門番が DRIFT だけ無かった。
+      if (!live || !M || size.w < 1 || !pieces.length) return;
       const { x, y } = pointAt(e);
       const piece = hitPiece(x, y);
       // ★★**縦の払いはどこから始めてもよい**(第61巡)。図形の上でも、掴む前に
@@ -363,8 +381,19 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
       if (!piece) return;                  // 空きは掴まない → 払いに任せる
       e.stopPropagation();                 // 図形の上ではカメラを動かさない
+      // ★★★**触れたら止まる**(2026-08-26・第65巡)。DRIFT は無重力なので、
+      //   `reseed()` の初速が抜けるまでの**2〜3秒**、図形は漂い続けている。その間に
+      //   掴もうとすると、判定は `pointerdown` の瞬間なのに掴みの成立は 150ms 後なので
+      //   **相手が指の下から逃げる** ― 追うと `TAP_MOVE`(8px)で掴みが捨てられ、
+      //   さらに上へ 44px 動くと払いと解釈されて **GRAVITY へ飛ばされて**いた。
+      //   「起動直後は掴めない・変な挙動をする」の正体はこれ。
+      //   ★指を置いたら止まる、は物理的にも自然で、**逃げる相手を追わなくてよくなる**。
+      //   GRAVITY の山はそのとき重力で積まれて静止しているので、同じ症状が出なかった。
+      M.Body.setVelocity(piece.body, { x: 0, y: 0 });
+      M.Body.setAngularVelocity(piece.body, 0);
       grab = {
         id: e.pointerId, piece, ox: piece.body.position.x - x, oy: piece.body.position.y - y,
+        px: x, py: y,
         downX: e.clientX, downY: e.clientY, moved: false, held: false,
         lastX: e.clientX, lastY: e.clientY, lastT: e.timeStamp,
         vx: 0, vy: 0, vT: 0, holdT: window.setTimeout(enterHold, HOLD_MS),
@@ -390,6 +419,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       if (!grab.held) return;
       if (dragged) dragged.current = true;
       const { x, y } = pointAt(e);
+      grab.px = x; grab.py = y;            // ★`enterHold` が取り直すのに使う
       // ★指へ向かう速度で運ぶ(動く物体のまま)。他の図形を押しのける。
       const b = grab.piece.body;
       const tx = x + grab.ox; const ty = y + grab.oy;

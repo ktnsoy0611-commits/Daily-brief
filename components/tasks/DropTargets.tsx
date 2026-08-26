@@ -30,9 +30,29 @@ const NEAR_R = 150;
 /** 口が指の方へ寄る量(近さ 1 のときの px)。 */
 const LEAN = 9;
 
+/**
+ * ★★★的の**素の矩形**(2026-08-26・第65巡)。
+ *
+ * `getBoundingClientRect()` を読んではいけない ― `.drift-target` は出るときに
+ * `scale(0.18) → scale(1)` を `--t-in`(700ms) かけて**変形中**なので、
+ * **掴み始めの 0.7 秒は当たり判定が最大 1/5.5 の大きさで、`--ox/--oy` ぶん
+ * ずれた場所にある**。実機で「掴んだときに変な挙動をする」と言われた一因。
+ * `offsetLeft/offsetTop/offsetWidth/offsetHeight` は**変形の影響を受けない**ので、
+ * 親(器)の位置と足せば、アニメーションの途中でも**着地する場所**が分かる。
+ * ★下の `createAnchorRect` の隣のコメントが同じ作法を書いている ― 出どころを揃えた。
+ */
+const restRect = (el: HTMLElement) => {
+  const par = (el.offsetParent as HTMLElement | null) ?? el;
+  const pr = par.getBoundingClientRect();
+  const left = pr.left + el.offsetLeft;
+  const top = pr.top + el.offsetTop;
+  return { left, top, right: left + el.offsetWidth, bottom: top + el.offsetHeight,
+    width: el.offsetWidth, height: el.offsetHeight };
+};
+
 const inRect = (el: HTMLElement | null, cx: number, cy: number) => {
   if (!el) return false;
-  const r = el.getBoundingClientRect();
+  const r = restRect(el);
   return cx >= r.left - PAD && cx <= r.right + PAD && cy >= r.top - PAD && cy <= r.bottom + PAD;
 };
 
@@ -55,7 +75,7 @@ export function aimTargets(
 ): DropTarget {
   for (const el of [mouth, trash]) {
     if (!el) continue;
-    const r = el.getBoundingClientRect();
+    const r = restRect(el);            // ★変形中の箱を測らない(上の注を見ること)
     const dx = cx - (r.left + r.width / 2);
     const dy = cy - (r.top + r.height / 2);
     const d = Math.hypot(dx, dy);

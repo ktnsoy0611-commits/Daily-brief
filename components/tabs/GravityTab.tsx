@@ -11,14 +11,14 @@ import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline, type SolidSpec } from "@/lib/solid";
 import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, wordBitmap, WORD_WEIGHT, type SolidPaint, type SolidView } from "@/lib/solidPaint";
 import { canvasFont, onFontsReady, primeAdvances } from "@/lib/textFit";
-import { allTagFaces, allTagLabels, resolveTag, tagColor } from "@/lib/taskTags";
+import { allTagFaces, allTagLabels, resolveTag, tagColor, tagInk } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
-import { INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_MD, SWISS_XL } from "@/lib/constants";
+import { INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL } from "@/lib/constants";
 import { ms, T_IN, T_ITEM, T_OUT } from "@/lib/motion";
 import { flick, flickStep, flickThrow, type Flick } from "@/lib/scroll";
 import { D_SETTLE, D_TRAVEL, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring } from "@/lib/spring";
-import { SPACE, TYPE } from "@/lib/tokens";
+import { RADIUS, SPACE, TYPE } from "@/lib/tokens";
 import type { AppState, TabProps, Task } from "@/lib/types";
 
 // ★タスクタブ(GRAVITY)。**タスク図形は常にこの空間にだけ在る**(第52巡)。
@@ -92,25 +92,43 @@ const GRAB_MAX = 34;
 const GRAVITY_Y = 1.4;
 
 // ALIGN … 左の円弧
-/** ★第56巡に**ほぼ縦の列**へ(290→1400)。可視域 ±280px で x の振れは約 28px …
- *  「縦列だけどちょっとカーブしている」。輪に見えていたのを列に戻す。 */
-const ARC_R = 700;
-const ARC_APEX_X = 96;
-/** DOM の行の**箱の高さ**(中身を上下中央に置くための器)。
- *  ★間隔の役目は持たない(下の PITCH_* が持つ)。 */
-const ROW_H = 128;
 /** ★焦点の図形の最大寸法(焦点以外はここから縮む)。 */
-const ALIGN_MAX_H = 132;
+const ALIGN_MAX_H = 176;
 const ALIGN_MAX_W = 176;
-const FOCUS_BOOST = 1.25;
-const TEXT_GAP = 100;
+/** ★★非焦点の倍率は `1/(1+BOOST)`。0.33 ＝ **0.75倍**(第65巡にユーザー確定
+ *  「差を小さくして全体を大きく」)。第64巡は 1.25 ＝ 0.444倍で、左半分がスカスカだった。
+ *  ★霧を消したので、遠近の手がかりは**この大きさの差だけ**になる。小さくしすぎないこと。 */
+const FOCUS_BOOST = 0.33;
+/** ★★図形と文字のあいだ。**当て推量をやめて、図形の半分＋余白から出す**(第65巡)。
+ *  焦点では文字の左端が `ARC_APEX_X + TEXT_GAP` に来るので、これが図形の半幅より
+ *  小さいと**文字が図形に重なる**(第65巡の1回目で実際に重なった)。 */
+const TEXT_GAP = ALIGN_MAX_W / 2 + SPACE.lg;
+/** ★円弧の焦点の x。**画面の左端から `SPACE.lg` を空ける**(図形の半分ぶん右)。 */
+const ARC_APEX_X = SPACE.lg + ALIGN_MAX_W / 2;
+/** ★★焦点を場のどの高さに置くか。**上下のどちらを空けるかの綱引き**になる:
+ *  低くすると下が埋まるが、先頭に居るとき**上**が空く(上に行が無いため)。
+ *  第64巡の 0.34 は上に寄りすぎ＋霧で下の行が消えていたので下が余っていた。
+ *  ★★これは**円弧が縦に届く距離**でもある(`arcGeom`)。焦点から上下それぞれ
+ *  `mid - 場の上端` px しか届かないので、小さくすると band が痩せて画面が空く。 */
+const ARC_MID = 0.55;
+/** DOM の行の**箱の高さ**(中身を上下中央に置くための器)。
+ *  ★間隔の役目は持たない(下の PITCH_* が持つ)。2行のタイトル＋その下の一段が入る。 */
+const ROW_H = SPACE.xxl * 3;
 /** ★★行の間隔。**詰めたうえで、中央の上下だけ空ける**(第56巡にユーザー指定)。
  *  円弧に沿った長さを `L(d) = TIGHT·d + SPREAD·d/√(1+d²)` で置く。
  *  `d/√(1+d²)` は原点で傾きが最大なので、隣り合う間隔が**中央でだけ広くなる**:
  *    中央↔隣 142 / 隣↔2つ隣 77 / 2↔3 61 / それ以遠 54。
  *  `d` は連続値なので、指で回している間もこの式のまま滑らかに動く。 */
-const PITCH_TIGHT = 44;
-const PITCH_SPREAD = 86;
+/** ★★★行の間隔(2026-08-26・第65巡に組み直し)。
+ *  焦点↔隣は **81px**(第64巡の 105px から 23% 詰めた。ユーザー指定
+ *  「中央と上下の間隔をもっと小さく」)。遠くの行は **64px**。
+ *  ★★★**`PITCH_TIGHT` は行の高さより大きくすること。**
+ *  非焦点の行は「題(20px) ＋ 残り日数とタグの一段(11px)」でおよそ 47px ある。
+ *  第64巡までは `PITCH_TIGHT = 44` で**遠い行は必ず重なっていた**が、霧が
+ *  3行目より外を消していたので見えていなかっただけ。霧をやめたいま、
+ *  ここを詰めすぎると下の行が**そのまま重なって出る**(第65巡の1回目で実際に出た)。 */
+const PITCH_TIGHT = 64;
+const PITCH_SPREAD = 24;
 const arcLen = (d: number) => PITCH_TIGHT * d + PITCH_SPREAD * (d / Math.sqrt(1 + d * d));
 /** ★★★スクロールの「1つぶんの距離」。**`arcLen` の焦点での傾き**であって
  *  `PITCH_TIGHT` ではない(2026-08-26・第63巡)。
@@ -421,6 +439,11 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pendingBakeRef = useRef(false);
   const wakeRef = useRef<() => void>(() => {});
+  /** ★`draw` は `offField` より先に定義されるので ref 越しに呼ぶ(既存の作法と同じ)。 */
+  const offFieldRef = useRef<(c: { x: number; y: number; s: number }) => boolean>(() => false);
+  /** ★`alignMid` は `arcGeom` より先に定義されるので ref 越しに呼ぶ。 */
+  const arcGeomRef = useRef<() => { mid: number; r: number; cx: number }>(
+    () => ({ mid: 0, r: 1, cx: 0 }));
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<Engine | null>(null);
   const matterRef = useRef<typeof import("matter-js") | null>(null);
@@ -537,12 +560,53 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     const { h } = sizeRef.current;
     return { top: MASTHEAD_H, floor: floorYOf(h) };
   }, []);
-  /** ★ALIGN で焦点を置く高さ。器のど真ん中に置くと、先頭に居るとき**上半分が
-   *  丸ごと空く**(上に行が無いため)。少し上へ寄せて、下の行をもう1〜2件見せる。 */
-  const alignMid = useCallback(() => {
+  /** ★ALIGN で焦点を置く高さ。**`arcGeom` が唯一の出どころ**(下の注を見ること)。 */
+  const alignMid = useCallback(() => arcGeomRef.current().mid, []);
+  /**
+   * ★★★円弧は**出口から逆算する**(2026-08-26・第65巡)。
+   *
+   * 第64巡までは `ARC_R = 700` の当て推量で、上へ送っても行はほとんど左へ動かず、
+   * **タイトルに被る手前で薄くなって消える**しかなかった(＝あの「霧」)。
+   * ユーザー指定は「マスクを使わなくてもタイトルにかからず、**タイトルの下あたりで
+   * 左側にフレームアウト**する」。これは半径を**決める**話ではなく、
+   * **通ってほしい2点から半径が決まる**話だった:
+   *   ・焦点   … `(ARC_APEX_X, mid)`
+   *   ・出口   … `(0, MASTHEAD_H)` ＝ **場の上端で、図形の中心が画面の左端**
+   * ★★出口に「完全に画面の外(x < -88)」を求めると、上へ動ける距離が短いぶん
+   *   **90度近く回る＝輪に見える**(第56巡に一度捨てた姿)。中心が左端に達すれば
+   *   図形はほぼ隠れ、残りは場の上端の**箱**で切れるので、これで「左にフレームアウト」
+   *   は成立する。この条件だと 390×797 で R≒329・47度の**緩い弧**になる。
+   * 円の中心は左の水平線上(`y = mid`)にあるので、この2点を通る半径は**一意に決まる**。
+   *   `Hx = apexX - exitX` / `Vy = mid - exitY` として `θ = 2·atan(Hx/Vy)`、`R = Vy/sin θ`。
+   *
+   * ★**画面ごとに半径が変わる**のが要点 — どの端末でも約束が守られる
+   *   (390×797 なら R≒321・71°、大きい画面ほど緩い弧になる)。
+   * ★★`ARC_R` の定数は**撤去した**。円弧の寸法はここが唯一の出どころ。
+   */
+  const arcGeom = useCallback(() => {
     const { top, floor } = fieldOf();
-    return top + (floor - top) * 0.34;
+    const base = top + (floor - top) * ARC_MID;
+    const hx = ARC_APEX_X;
+    const vy = Math.max(1, base - MASTHEAD_H);
+    const th = 2 * Math.atan(hx / vy);
+    const r = vy / Math.max(1e-3, Math.sin(th));
+    // ★★★**内容を場の中で釣り合わせる**(第65巡)。先頭に居るときは上に行が無く、
+    //   最後に居るときは下に行が無いので、`base` に固定すると**片側だけがごっそり空く**
+    //   (ユーザー指摘「画面内がスカスカで、その余白が何も計算されていない」)。
+    //   上下それぞれに**実際に何 px ぶんの行が居るか**を数えて、余りを半分ずつに分ける。
+    //   行がたくさんあるときは両側とも飽和するので `base` のまま動かない。
+    const n = itemsRef.current.length;
+    const p = scrollRef.current.p;
+    const reach = (d: number) =>
+      r * Math.sin(Math.min(th, arcLen(Math.max(0, d)) / r));
+    const up = reach(p);
+    const down = reach(n - 1 - p);
+    const avail = floor - top;
+    const mid = Math.max(top + SPACE.xxl, Math.min(floor - SPACE.xxl,
+      top + (avail - (up + down)) / 2 + up));
+    return { mid, r, cx: ARC_APEX_X - r };
   }, [fieldOf]);
+  arcGeomRef.current = arcGeom;
   /** 曜日の帯の上端(＝レーンの床)。 */
   const bandTopY = useCallback(() => fieldOf().floor - LANE_HEAD_H - SPACE.xl, [fieldOf]);
   const laneWOf = useCallback(() => sizeRef.current.w / LANES_VISIBLE, []);
@@ -629,17 +693,30 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     }
 
     if (inAlign) {
+      // ★★**場の箱で切る**(2026-08-26・第65巡)。霧をやめたので、円弧の端の行が
+      //   タイトルの帯や浮いたタブバーの裏へ入らないよう、**矩形で**切る
+      //   (ユーザー指定「マスクを使わなくても」に反しない ― これはフェードではない)。
+      const fld = fieldOf();
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, fld.top, w, Math.max(0, fld.floor - fld.top));
+      ctx.clip();
       // ★スロットへ**絵の中心**を置く(第53巡)。
       const bakeUnit = bakeUnitRef.current;
       const pileUnit = UNIT * scaleRef.current;
       const prev = prevRef.current;
       for (const it of itemsRef.current) {
         const cu = curRef.current.get(it.id);
-        if (!cu || cu.o <= 0.01) { prev.delete(it.id); continue; }
+        // ★場の外に出た行は描かない(第65巡。霧を消したので**幾何で**切る)。
+        if (!cu || cu.o <= 0.01 || offFieldRef.current(cu)) { prev.delete(it.id); continue; }
         let bmp = want(it.paint, bakeUnit);
         let s = cu.s;
         if (!bmp) {
-          const pb = peekSolidBitmap(it.paint, pileUnit, bakeDpr);
+          // ★★ALIGN 用がまだ焼けていない間は**山の絵で代用**する。山は
+          //   `viewRef.current`(題つき)で焼いてあるので、`it.paint`(＝文字なし)の
+          //   ままでは当たらない ― ビューを山のものに差し替えて引くこと。
+          //   これを忘れると、ALIGN に入った直後の数フレーム図形が消える。
+          const pb = peekSolidBitmap({ ...it.paint, view: viewRef.current }, pileUnit, bakeDpr);
           if (pb) { bmp = pb; s = (cu.s * bakeUnit) / pileUnit; }
         }
         if (!bmp) continue;
@@ -684,6 +761,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         ctx.drawImage(wb.canvas, -wb.w / 2, -wb.h / 2, wb.w, wb.h);
         ctx.restore();
       }
+      ctx.restore();
       pendingAlign = budget === 0 || glyphBudget === 0
         || itemsRef.current.some((it) => !peekSolidBitmap(it.paint, bakeUnit, bakeDpr));
     }
@@ -696,7 +774,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       ctx.fillRect(s.x - s.r / 2, s.y - s.r / 2, s.r, s.r);
     }
     ctx.globalAlpha = 1;
-  }, []);
+  }, [fieldOf]);
 
   const drawRef = useRef(draw);
   drawRef.current = draw;
@@ -714,7 +792,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     const list = itemsRef.current;
     if (!list.length) return;
     const mid = alignMid();
-    const cx = ARC_APEX_X - ARC_R;
+    const { r: ARC, cx } = arcGeom();
     const slots = slotRef.current;
     const springs = posSRef.current;
     const focus = scrollRef.current.p;
@@ -727,25 +805,31 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       if (!sp) { sp = spring(want); springs.set(list[i].id, sp); }
       const k = K_TRAVEL * Math.pow(CHAIN, Math.min(CHAIN_MAX, Math.abs(d)));
       springTo(sp, want, k, D_TRAVEL);
-      const th = sp.p / ARC_R;
+      const th = sp.p / ARC;
       // 大きさ・濃さは**バネの位置**で決める(遅れた行は遅れて大きくなる)。
       const dd = sp.p / PITCH_TIGHT;
       const f = Math.max(0, 1 - Math.abs(dd) * (PITCH_TIGHT / (PITCH_TIGHT + PITCH_SPREAD)));
       slots.set(list[i].id, {
-        x: cx + ARC_R * Math.cos(th), y: mid + ARC_R * Math.sin(th),
+        x: cx + ARC * Math.cos(th), y: mid + ARC * Math.sin(th),
         s: (1 + FOCUS_BOOST * f) / (1 + FOCUS_BOOST),
         a: 0,                                     // 図形は回さない(平行を保つ)
-        o: clamp01(1.5 - Math.abs(d) / 2.2),
+        // ★★★**薄くしない**(2026-08-26・第65巡にユーザー指定「マスク的なものは削除」)。
+        //   第64巡までは `clamp01(1.5 - |d|/2.2)` で焦点から離れた行を消していた ―
+        //   指定していない「霧」がかかって見え、しかも消える手前でタイトルに被るという
+        //   中途半端な状態だった。いまは**円弧そのものが行を画面の外へ運ぶ**ので、
+        //   濃さで隠す必要が無い(`arcGeom` の注を見ること)。
+        o: 1,
       });
     }
-  }, [alignMid]);
+  }, [alignMid, arcGeom]);
 
   /** ★円弧の下の入り口の角度。**半径から決まる**ので定数にできない
    *  (第56巡に半径を 290→1400 にしたら、固定値 1.45rad は画面のはるか外を指した)。 */
   const arcEnterTh = useCallback(() => {
     const { floor } = fieldOf();
-    return Math.asin(Math.max(-1, Math.min(1, (floor + 140 - alignMid()) / ARC_R)));
-  }, [fieldOf, alignMid]);
+    const { r, mid } = arcGeom();
+    return Math.asin(Math.max(-1, Math.min(1, (floor + SPACE.xxl * 4 - mid) / r)));
+  }, [fieldOf, arcGeom]);
 
   const syncFocus = useCallback(() => {
     const n = Math.max(0, Math.min(itemsRef.current.length - 1, Math.round(scrollRef.current.p)));
@@ -1018,7 +1102,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     layoutAlign();
 
     const cur = curRef.current; const from = fromRef.current; const slots = slotRef.current;
-    const cx = ARC_APEX_X - ARC_R;
+    const { r: ARC, cx } = arcGeom();
 
     if (ph === "align-in") {
       const enterTh = arcEnterTh();
@@ -1062,9 +1146,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
           // ★★入口の番号も**道と同じ上限**にする(第63巡)。素の `i` だと後ろの図形ほど
           //   円弧のはるか下から入るので、**大きく回り込んで**見える
           //   (ユーザー指摘「一回くるっと回ってから抜けていく」の半分はこれ)。
-          const th = lerp(enterTh + (ENTRY_QUEUE * Math.min(i, ENTRY_Q_MAX)) / ARC_R, thEnd, u);
+          const th = lerp(enterTh + (ENTRY_QUEUE * Math.min(i, ENTRY_Q_MAX)) / ARC, thEnd, u);
           cur.set(it.id, {
-            x: cx + ARC_R * Math.cos(th), y: mid + ARC_R * Math.sin(th),
+            x: cx + ARC * Math.cos(th), y: mid + ARC * Math.sin(th),
             s: lerp(sl.s * 0.68, sl.s, uo), a: 0, o: lerp(0.15, sl.o, uo),
           });
           if (!settled(inS, 1, 0.004)) done = false;
@@ -1162,10 +1246,18 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         const d = i - scrollRef.current.p;
         // ★図形と**同じバネ**の位置を使う(文字だけ先に着くと連鎖が壊れる)。
         const sp = posSRef.current.get(list[i].id);
-        const th = (sp ? sp.p : arcLen(d)) / ARC_R;
-        const ax = cx + (ARC_R + TEXT_GAP) * Math.cos(th);
-        const ay = mid + (ARC_R + TEXT_GAP) * Math.sin(th);
-        let slide = 0; let op = clamp01(1.5 - Math.abs(d) / 2.2);   // ★図形と同じ消え方
+        const th = (sp ? sp.p : arcLen(d)) / ARC;
+        // ★★★文字は図形と**同じ高さ**に置く(2026-08-26・第65巡)。
+        //   第64巡までは半径 `ARC + TEXT_GAP` の**同心円**に乗せていたので、
+        //   同じ角度でも文字のほうが下に来て、焦点から離れるほど
+        //   **図形と題が縦にずれて**いった(端では 76px も離れる)。
+        //   横だけ `TEXT_GAP` ずらせば、どの行でも図形と題が必ず横並びになるし、
+        //   行の間隔も図形の間隔とぴったり同じになる。
+        const ax = cx + ARC * Math.cos(th) + TEXT_GAP;
+        const ay = mid + ARC * Math.sin(th);
+        // ★★**薄くしない**(第65巡)。図形側と同じく、円弧が行を画面の外へ運ぶ。
+        //   出入りのアニメーションのぶんだけ `op` が動く。
+        let slide = 0; let op = 1;
         if (ph === "align-in") {
           const s = inSRef.current.get(list[i].id);
           const u = clamp01(((s?.p ?? 0) - 0.55) / 0.45);
@@ -1179,10 +1271,15 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         //   左端だけが図形と同じ弧の外側を平行移動する。
         el.style.transform = `translate(${(ax + slide).toFixed(1)}px, ${(ay - ROW_H / 2).toFixed(1)}px)`;
         el.style.opacity = String(op);
+        // ★場の外へ出た行は**器ごと外す**(薄くして隠すのはやめたので、こちらで消す)。
+        //   ★上下だけでなく**左へ抜けた**ぶんも見る ― 円弧は行を左へも運ぶ。
+        const fld = fieldOf();
+        el.style.visibility =
+          ay < fld.top || ay > fld.floor || ax < ARC_APEX_X - TEXT_GAP ? "hidden" : "visible";
       }
     }
     return moving;
-  }, [alignMid, syncFocus, layoutAlign, streamAt, homeAt, syncLanes, recycle, recycleToPile, laneLeft, laneWOf, arcEnterTh]);
+  }, [alignMid, arcGeom, fieldOf, syncFocus, layoutAlign, streamAt, homeAt, syncLanes, recycle, recycleToPile, laneLeft, laneWOf, arcEnterTh]);
 
   useEffect(() => {
     loopRef.current = () => {
@@ -1356,7 +1453,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const buildItems = useCallback((): Item[] => {
     const today = new Date();
     return [...tasksRef.current].sort((a, b) => areaOf(b, today) - areaOf(a, today)).map((t) => {
-      const paint = paintOf(t, viewRef.current);
+      // ★★ALIGN の図形は**文字を持たない**(第65巡)。題は右の行に大きく出るので、
+      //   図形の中にも同じ題があると二重になる(ユーザー指摘)。
+      const paint = paintOf(t, "none");
       return { id: t.id, task: t, paint, spec: paint.spec, tag: paint.tag ?? "" };
     });
   }, []);
@@ -1631,19 +1730,32 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     return piecesRef.current.find((p) => p.body === hits[hits.length - 1]) ?? null;
   }, []);
 
+  /** ★★★スロットが**場の外へ出た**か(2026-08-26・第65巡)。
+   *  第64巡までは「濃さが薄いか」(`o < 0.2`)で描画も当たり判定も切っていた ―
+   *  つまり**霧が3つの仕事を兼ねて**いた。霧をやめたので、**幾何で判る**ようにする。
+   *  円弧が行を左と下へ運び去るので、画面の外に出たものは描かないし、触れない。 */
+  const offField = useCallback((c: { x: number; y: number; s: number }) => {
+    const { w } = sizeRef.current;
+    const { top, floor } = fieldOf();
+    const half = (ALIGN_MAX_W * Math.max(0.2, c.s)) / 2;
+    return c.x + half < 0 || c.x - half > w || c.y < top - ALIGN_MAX_H || c.y > floor + ALIGN_MAX_H;
+  }, [fieldOf]);
+  offFieldRef.current = offField;
+
   const itemAt = useCallback((px: number, py: number): Item | null => {
     const bakeUnit = bakeUnitRef.current;
     for (let i = itemsRef.current.length - 1; i >= 0; i -= 1) {
       const it = itemsRef.current[i];
       const c = curRef.current.get(it.id);
-      if (!c || c.o < 0.2) continue;
+      // ★描くのと**同じ判定**で触れるかを決める(出どころを1つに)。
+      if (!c || c.o <= 0.01 || offField(c)) continue;
       const b = shapeBounds(it.paint);
       const hw = ((b.maxX - b.minX) * bakeUnit * c.s) / 2;
       const hh = ((b.maxY - b.minY) * bakeUnit * c.s) / 2;
       if (px >= c.x - hw && px <= c.x + hw && py >= c.y - hh && py <= c.y + hh) return it;
     }
     return null;
-  }, []);
+  }, [offField]);
 
   const tapAt = (clientX: number, clientY: number) => {
     if (dragged?.current) return;
@@ -1960,29 +2072,35 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                 style={{
                   position: "absolute", top: 0, left: 0, width: `calc(100% - ${ARC_APEX_X + TEXT_GAP}px)`, height: ROW_H,
                   transformOrigin: "0 50%", display: "flex", flexDirection: "column", justifyContent: "center",
+                  // ★右端の余白も画面端から `SPACE.lg` ―**左右で揃う**。
                   willChange: "transform", paddingRight: SPACE.lg,
                 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm }}>
-                  <span style={{
-                    fontFamily: LATIN, fontWeight: 800, letterSpacing: "-0.03em", color: INK,
-                    // ★焦点だけ一段跳ばして大きく(第56巡)。目盛りの外の数字は足さず、
-                    //   display の例外 SWISS_XL / LG / MD の3つで組む。
-                    fontSize: dl.kind === "num" ? (focus ? SWISS_XL : SWISS_MD) : (focus ? SWISS_MD : TYPE.head),
-                    lineHeight: 0.86, opacity: dl.kind === "num" ? 1 : 0.55,
-                  }}>{dl.text}</span>
-                  {dl.sub && <span style={{ fontFamily: LATIN, fontWeight: 700, fontSize: TYPE.micro, letterSpacing: "0.18em", color: MUTED }}>{dl.sub}</span>}
-                </div>
+                {/* ★★★主役は**題**(2026-08-26・第65巡にユーザー指定
+                    「真ん中にタイトルを大きな強調された文字で埋め(適宜2行)」)。
+                    第64巡までは残り日数を `SWISS_XL`(72px) で組んでいて、画面で
+                    いちばん大きな声が「0」だった ― 主従が逆だった。 */}
                 <div style={{
-                  fontFamily: SANS, fontWeight: focus ? 700 : 600, color: INK, marginTop: SPACE.xs,
-                  fontSize: focus ? SWISS_MD : TYPE.lead, lineHeight: focus ? 1.12 : 1.2, overflow: "hidden",
+                  fontFamily: SANS, fontWeight: 700, color: INK,
+                  fontSize: focus ? TYPE.display : TYPE.head,
+                  lineHeight: 1.18, overflow: "hidden",
                   // ★焦点だけ2行まで折り返す。左に大きな図形が居るぶん文字の幅が狭いので、
                   //   1行で切ると題がほとんど読めない。
                   ...(focus
                     ? { display: "-webkit-box", WebkitBoxOrient: "vertical" as const, WebkitLineClamp: 2 }
                     : { whiteSpace: "nowrap" as const, textOverflow: "ellipsis" }),
                 }}>{it.task.title || "無題"}</div>
-                <div style={{ fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: 700, letterSpacing: "0.14em", color: tagColor(it.paint.tag), marginTop: SPACE.hair }}>
-                  #{it.tag.toUpperCase()}
+                {/* ★その下に、**同じ大きさ**の脇役を2つ。残り日数はグレー、タグは
+                    タスク入力画面と同じ**ピル**(画面で唯一の色＝アクセント)。 */}
+                <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginTop: SPACE.sm }}>
+                  <span style={{
+                    fontFamily: LATIN, fontWeight: 700, fontSize: TYPE.small,
+                    letterSpacing: "0.14em", color: MUTED, whiteSpace: "nowrap",
+                  }}>{dl.sub ? `${dl.text} ${dl.sub}` : dl.text}</span>
+                  <span style={{
+                    fontFamily: SANS, fontWeight: 700, fontSize: TYPE.small, letterSpacing: "0.22em",
+                    borderRadius: RADIUS.pill, background: tagColor(it.paint.tag), color: tagInk(it.paint.tag),
+                    padding: `${SPACE.hair}px ${SPACE.sm}px`, whiteSpace: "nowrap",
+                  }}>{it.tag.toUpperCase()}</span>
                 </div>
               </div>
             );

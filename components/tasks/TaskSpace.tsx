@@ -44,6 +44,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
 
   // ★効果線は**パンの半ばだけ**(ユーザー指定「距離がある感じを出すために、
   //   アニメーションの半ばで効果線」)。タブが変わった瞬間に一度だけ流す。
+  // ★★第64巡に**カメラの中の「空の余白」へ移した**(下の `.task-speed` を見ること)。
   const [pan, setPan] = useState<"up" | "down" | null>(null);
   const prevRef = useRef(onDrift);
   useEffect(() => {
@@ -62,16 +63,21 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
             <DriftTab {...tabProps} appActive={appActive} active={onDrift} />
           </div>
         )}
+        {/* ★★効果線 …**空のぶんの余白そのもの**(2026-08-26・第64巡にユーザー指定
+            「画面全体ではなく、また均一ではなくして少し出るくらい。画面が遷移する時の
+            余白あたりに出るように」)。第62〜63巡は画面に固定した全面の柄だったので
+            「画面全体に均一」に見えていた。地上と上空のあいだ(`SKY_GAP`)に敷けば、
+            カメラに乗って流れ、**パンの半ばにだけ画面を横切る**。 */}
+        {pan && (
+          <div key={pan} className="task-speed"
+            style={{ position: "absolute", left: 0, right: 0, bottom: "100%", height: SKY_GAP }}
+            onAnimationEnd={() => setPan(null)} />
+        )}
         {/* 地上 */}
         <div style={{ position: "absolute", inset: 0 }}>
           <GravityTab {...tabProps} appActive={appActive} active={!onDrift} />
         </div>
       </div>
-
-      {/* ★効果線 … パンの半ばでいちばん濃い。終わったら自分で外れる。 */}
-      {pan && (
-        <div key={pan} className="task-speed" data-dir={pan} onAnimationEnd={() => setPan(null)} />
-      )}
 
       {/* アプリ名の札は画面に固定。 */}
       <div style={{ position: "absolute", top: TAB_PAD_TOP, left: 16, right: 16, pointerEvents: "none", zIndex: 3 }}>

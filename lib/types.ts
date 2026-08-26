@@ -110,6 +110,12 @@ export interface Goal {
   title: string;
   addedAt: string;
   checkIns: CheckIn[];
+  /** ★★育成カード(チェックイン/マイルストーン)を「あとで」で流した時刻
+   *  (2026-08-26・第64巡にユーザー確定「次の間隔まで出さない」)。
+   *  次にいつ届くかは「最後の記録」と「ここ」の**遅い方**から数える。
+   *  ★`checkIns` に空の記録を積む手は採らない ― ゴールのバインダーに
+   *  中身の無い記録が並んでしまう。 */
+  snoozedAt?: { checkin?: string; milestone?: string };
 }
 
 // 興味・好み(関心を持ち好んでいるテーマ)。以前は好み(taste)/興味(interest)を
@@ -373,6 +379,10 @@ export interface AppState {
     cardCount: number;   // この実行で書き込んだカード枚数
     sourceCount: number; // 今晩巡回した情報源数(固定＋抽選)
     sitesFetched?: number; // 実際に取得できたサイト数(取得成功)
+    // ★★取れなかったサイトの理由をまとめた1行(例 "jina 401×10 ／ 直接 403×10")。
+    //   第64巡に追加 ― `sitesFetched: 0` だけでは**何が起きたか分からず**、
+    //   6日間の停止に誰も気づけなかった。
+    fetchFail?: string;
     candidateCount?: number; // 層Bが抽出した候補レコード数
     dropped?: { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number }; // 候補が最終カードに残らず落ちた内訳(切り分け用)
     pooled: number;      // content_cacheに新規蓄積した候補数

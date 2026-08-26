@@ -1,7 +1,14 @@
 // ★★★クラフト紙の目を作る**唯一の場所**(2026-08-26・第63巡にユーザー指定
 // 「物理演算が効く、図形やテキストの部分だけ、紙(クラフト紙)のようなテクスチャを
-// 薄っすら重ねて」)。第62巡の画面全体のグレイン(`body::after`)は**撤去した** —
-// 「よくわからない」＝薄すぎて判別がつかなかったため。
+// 薄っすら重ねて」)。第62巡の画面全体のグレイン(`body::after`)は**撤去した**。
+//
+// ★★第64巡に**本物の写真**へ差し替えた(ユーザーがクラフト紙の写真を添付)。
+// 第63巡はその場で作ったバリューノイズだったが、本物の紙は「均一な雑音」ではなく
+// **繊維の筋・木片の斑点・細かいシワ**が不揃いに散っているもので、作り物では出ない。
+// 元画像は 5705×8000 の JPEG 20.8MB なので、**そのまま持ち込まない** ―
+// `scratchpad/make-paper.py` で 4か所を切り出し、大きなぼかしを引いて
+// (＝照明・色ムラ・大きなシワを捨てて繊維だけ残し)、継ぎ目を混ぜて、
+// **320px 角 × 4枚のシート**(`public/paper-kraft.webp` / 121KB)にしてある。
 //
 // ★★**焼き込む**(ユーザー確定「図形と一緒に回る」)。`lib/solidPaint.ts` が絵を
 // 焼くときに1度だけ重ねるので、**毎フレームの負荷はゼロ**で、図形が回れば紙の目も
@@ -12,99 +19,84 @@
 /** 紙の濃さ。★ユーザー確定「見てわかる程度」(2026-08-26)。 */
 export const PAPER_ALPHA = 0.12;
 
-/** タイル1辺(CSS px)。大きすぎると焼くのが重く、小さすぎると繰り返しが見える。 */
-const TILE = 256;
+/** シート(`public/paper-kraft.webp`)の作り。★`scratchpad/make-paper.py` と対。 */
+const SHEET_SRC = "/paper-kraft.webp";
+const PATCH = 320;
+const COLS = 2;
+const PATCHES = 4;
+/** 明るさのばらつき(標準偏差 ≒ 22/255)を、見える濃さへ持ち上げる係数。
+ *  3σ で 1.0 に届くので、飛び抜けた斑点だけが真っ黒/真っ白になる。 */
+const PAPER_GAIN = 5.0;
 
-/** 種を固定した擬似乱数。**毎回同じ紙**にする(見るたびに目が変わるのは紙ではない)。 */
-function rnd(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
+let sheet: HTMLImageElement | null = null;
+let loading = false;
+let onReady: (() => void) | null = null;
+
+/** シートを読み終えたときに呼ぶ先(＝焼いた絵を捨てさせる)。`lib/solidPaint.ts` が入れる。
+ *  ★import の輪を作らないよう、こちら側は**相手を知らない**。 */
+export function setPaperReadyHandler(fn: () => void): void { onReady = fn; }
+
+function ensureSheet(): void {
+  if (sheet || loading || typeof document === "undefined") return;
+  loading = true;
+  const img = new Image();
+  img.decoding = "async";
+  img.onload = () => {
+    sheet = img;
+    // ★読み込みより先に焼かれた絵には紙が乗っていない。捨てて焼き直させる
+    //   (次のフレームで戻る)。読めなかったときは**何も乗せない**だけ。
+    onReady?.();
   };
+  img.onerror = () => { loading = false; };
+  img.src = SHEET_SRC;
 }
 
-const tiles = new Map<string, HTMLCanvasElement>();
-
-/**
- * 格子の値をなめらかに補間した雑音(バリューノイズ)。**継ぎ目が出ないよう格子は巻く**。
- * 一辺 `n` の器に、`cell` px ごとの格子を敷いて双三次ではなく余弦で補間する。
- */
-function valueNoise(n: number, cell: number, r: () => number): Float32Array {
-  const g = Math.max(1, Math.round(n / cell));
-  const lat = new Float32Array(g * g);
-  for (let i = 0; i < lat.length; i += 1) lat[i] = r() * 2 - 1;
-  const out = new Float32Array(n * n);
-  const sm = (t: number) => (1 - Math.cos(t * Math.PI)) / 2;   // 余弦で滑らかに
-  for (let y = 0; y < n; y += 1) {
-    const fy = (y / n) * g; const y0 = Math.floor(fy); const ty = sm(fy - y0);
-    const ya = (y0 % g + g) % g; const yb = (ya + 1) % g;
-    for (let x = 0; x < n; x += 1) {
-      const fx = (x / n) * g; const x0 = Math.floor(fx); const tx = sm(fx - x0);
-      const xa = (x0 % g + g) % g; const xb = (xa + 1) % g;
-      const a = lat[ya * g + xa] + (lat[ya * g + xb] - lat[ya * g + xa]) * tx;
-      const b = lat[yb * g + xa] + (lat[yb * g + xb] - lat[yb * g + xa]) * tx;
-      out[y * n + x] = a + (b - a) * ty;
-    }
+/** 種の文字列 → 32bit。**同じ図形はいつも同じ紙**(見るたび変わるのは紙ではない)。 */
+function hash32(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
   }
-  return out;
+  return h >>> 0;
 }
 
+/** 焼き直したタイル(4枚 × 90度4向き ＝ 16通り)。要求されたときだけ作る。 */
+const tiles = new Map<number, HTMLCanvasElement>();
+
 /**
- * クラフト紙のタイルを作る(dpr ごとに一度だけ)。
- *
- * ★★**画素の細かさで作る**(第63巡)。最初は半径 1px 級の丸を撒いたが、拡大すると
- * 「柔らかいシミ」にしか見えなかった ― 紙は**画素の細かさのざらつき**と、
- * その上に乗る**低い周波数のムラ**と、**繊維の筋**の三層でできている。
- *   ・細かいざらつき … 1 画素ごとの雑音。手ざわり。
- *   ・ムラ … 大きな格子の雑音。漉きムラ。
- *   ・繊維 … 1 画素幅の短い線。クラフト紙の「目」。
- * 暗い側は茶色、明るい側は麦わら色にして、クラフト紙の色味を出す。
+ * シートの1枚を `rot`(0..3 ＝ 90度きざみ)回して、**濃さと色**へ焼き直す。
+ * 明るさの中央(128)からの隔たりが濃さになり、暗い側は茶(繊維の影)、
+ * 明るい側は麦わら色(毛羽)。クラフト紙の色味はここで付ける
+ * (シートはグレースケール ― 色を持たないぶん軽い)。
  */
-function tileFor(dpr: number): HTMLCanvasElement | null {
-  const key = dpr.toFixed(2);
+function tileFor(idx: number, rot: number): HTMLCanvasElement | null {
+  const key = idx * 4 + rot;
   const had = tiles.get(key);
   if (had) return had;
-  if (typeof document === "undefined") return null;
-  const n = Math.max(8, Math.round(TILE * dpr));      // 器は**デバイス画素**で持つ
+  if (!sheet) return null;
   const cv = document.createElement("canvas");
-  cv.width = n; cv.height = n;
-  const ctx = cv.getContext("2d");
+  cv.width = PATCH; cv.height = PATCH;
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
-  const r = rnd(0x9e3779b9);
-
-  // ── ざらつき＋ムラ ──
-  const fine = valueNoise(n, Math.max(1, Math.round(1.4 * dpr)), r);
-  const mid = valueNoise(n, Math.max(2, Math.round(7 * dpr)), r);
-  const low = valueNoise(n, Math.max(4, Math.round(34 * dpr)), r);
-  const img = ctx.createImageData(n, n);
+  ctx.save();
+  ctx.translate(PATCH / 2, PATCH / 2);
+  ctx.rotate((rot * Math.PI) / 2);
+  ctx.drawImage(
+    sheet, (idx % COLS) * PATCH, Math.floor(idx / COLS) * PATCH, PATCH, PATCH,
+    -PATCH / 2, -PATCH / 2, PATCH, PATCH,
+  );
+  ctx.restore();
+  const img = ctx.getImageData(0, 0, PATCH, PATCH);
   const d = img.data;
-  for (let i = 0; i < n * n; i += 1) {
-    const v = fine[i] * 0.52 + mid[i] * 0.32 + low[i] * 0.16;
-    const a = Math.min(1, Math.abs(v) * 1.25);
-    const j = i * 4;
-    if (v < 0) { d[j] = 74; d[j + 1] = 58; d[j + 2] = 40; }        // 繊維の影(茶)
-    else { d[j] = 242; d[j + 1] = 230; d[j + 2] = 207; }           // 毛羽(麦わら)
-    d[j + 3] = Math.round(a * 255);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = d[i] / 255 - 0.5;
+    const a = Math.min(1, Math.abs(v) * PAPER_GAIN);
+    if (v < 0) { d[i] = 74; d[i + 1] = 58; d[i + 2] = 40; }        // 繊維の影(茶)
+    else { d[i] = 242; d[i + 1] = 230; d[i + 2] = 207; }           // 毛羽(麦わら)
+    d[i + 3] = Math.round(a * 255);
   }
   ctx.putImageData(img, 0, 0);
-
-  // ── 繊維の筋 ── 1 画素幅の短い線を四方へ。方向感を出さないよう角度は散らす。
-  ctx.lineCap = "round";
-  for (let i = 0; i < Math.round(260 * dpr); i += 1) {
-    const x = r() * n; const y = r() * n;
-    const a = r() * Math.PI * 2;
-    const len = (5 + r() * 22) * dpr;
-    const dark = r() < 0.55;
-    ctx.globalAlpha = 0.22 + r() * 0.3;
-    ctx.strokeStyle = dark ? "#3E3020" : "#F8F1E2";
-    ctx.lineWidth = Math.max(1, Math.round(dpr * (r() < 0.7 ? 1 : 1.6)));
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
   tiles.set(key, cv);
   return cv;
 }
@@ -117,23 +109,31 @@ function tileFor(dpr: number): HTMLCanvasElement | null {
  * `lib/solidPaint.ts` が絵を焼き終えた直後の**オフスクリーン**に対してだけ。
  * ★画面の canvas に対して毎フレーム呼ばないこと(全面の合成が1枚増える)。
  *
- * `ox`/`oy` は、タイルの継ぎ目が図形ごとに揃わないようにずらす量。
+ * ★★`seed` は**その絵の名前**(図形なら `paintKey`、文字なら語のキー)。ここから
+ * **4枚のどれか × 4向き × ずらし量**を決めるので、隣り合った図形が同じ紙の
+ * 同じ場所になることがない ―「同じテクスチャの繰り返しに見えない」
+ * (第64巡のユーザー指定)。同じ絵はいつも同じ紙になる。
  */
 export function paperize(
-  ctx: CanvasRenderingContext2D, w: number, h: number, dpr: number, ox = 0, oy = 0,
+  ctx: CanvasRenderingContext2D, w: number, h: number, dpr: number, seed: string,
 ): void {
-  const tile = tileFor(dpr);
-  if (!tile || w <= 0 || h <= 0) return;
+  ensureSheet();
+  if (!sheet || w <= 0 || h <= 0) return;
+  const n = hash32(seed);
+  const tile = tileFor(n % PATCHES, (n >>> 4) % 4);
+  if (!tile) return;
+  const ox = (n >>> 8) % PATCH;
+  const oy = (n >>> 18) % PATCH;
   const pat = ctx.createPattern(tile, "repeat");
   if (!pat) return;
   ctx.save();
   ctx.globalCompositeOperation = "source-atop";
   ctx.globalAlpha = PAPER_ALPHA;
-  // ★タイルは**デバイス画素**で作ってあるので、変形を素へ戻してから貼る
+  // ★タイルは**デバイス画素**で持っているので、変形を素へ戻してから貼る
   //   (CSS px の座標系で貼ると紙の目まで拡大されて、ただのシミになる)。
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.translate(-ox * dpr, -oy * dpr);
+  ctx.translate(-ox, -oy);
   ctx.fillStyle = pat;
-  ctx.fillRect(ox * dpr, oy * dpr, w * dpr, h * dpr);
+  ctx.fillRect(ox, oy, w * dpr, h * dpr);
   ctx.restore();
 }

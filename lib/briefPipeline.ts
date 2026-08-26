@@ -67,7 +67,16 @@ export type TasteInput = {
 };
 export type TokenUsage = { promptTokens: number; candidateTokens: number; totalTokens: number; calls: number };
 // unchanged: 前回のダイジェスト(内容ハッシュ)と一致し、抽出をスキップしたサイト。
-export type SiteTrace = { source: string; fetched: boolean; linkCount: number; unchanged?: boolean; candidates?: number };
+// ★★`fetched: false` だけでは**何が起きたか分からない**(2026-08-26・第64巡)。
+// 2026-08-21 から6日間、10情報源すべての取得が Jina の 4xx で落ちていたのに、
+// Cron のジョブは毎日**緑**、痕跡は `fetched: false` だけ ― 誰も気づけなかった。
+// どの経路で取れたか(`via`)と、落ちた理由(`status` … HTTPコード or "timeout" 等)を
+// 必ず残す。`app/api/cron/build-brief` の応答にそのまま乗り、設定タブにも出る。
+export type FetchWhy = number | "timeout" | "empty" | "error";
+export type SiteTrace = {
+  source: string; fetched: boolean; linkCount: number; unchanged?: boolean; candidates?: number;
+  via?: "jina" | "direct"; jina?: FetchWhy; direct?: FetchWhy;
+};
 export type PageReadTrace = { url: string; ok: boolean };
 export type DropSummary = { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number };
 export type GeneratedCard = {
@@ -216,7 +225,7 @@ export function markdownUrlMap(md: string, sourceUrl: string): Map<string, strin
 }
 
 // ---- Jina Reader 経由のクリーンMarkdown取得 -------------------------------
-type FetchedPage = { url: string; ok: boolean; md: string };
+type FetchedPage = { url: string; ok: boolean; md: string; why?: FetchWhy };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function fetchViaJina(url: string): Promise<FetchedPage> {
   // Jina無料枠(キー無し)は同時リクエストが多いと429で弾かれやすい。多数サイトを
@@ -231,18 +240,21 @@ async function fetchViaJina(url: string): Promise<FetchedPage> {
       const res = await fetch(JINA_BASE + url, { headers, signal: AbortSignal.timeout(30000) });
       if (!res.ok) {
         // 429(レート超過)・5xx(一時障害)は待って再試行。4xxの他は諦める。
+        // ★401/402(鍵が無い・枠切れ)はここで即あきらめる ― だから 10サイトで
+        //   十数秒しかかからず、「速く終わった＝うまくいった」ようにも見えていた。
         if ((res.status === 429 || res.status >= 500) && attempt < 2) { await sleep(1200 * (attempt + 1)); continue; }
-        return { url, ok: false, md: "" };
+        return { url, ok: false, md: "", why: res.status };
       }
       const md = (await res.text()).trim();
-      if (!md) { if (attempt < 2) { await sleep(1000); continue; } return { url, ok: false, md: "" }; }
+      if (!md) { if (attempt < 2) { await sleep(1000); continue; } return { url, ok: false, md: "", why: "empty" }; }
       return { url, ok: true, md };
-    } catch {
+    } catch (e) {
       if (attempt < 2) { await sleep(1000); continue; } // タイムアウト・ネットワークも1回は再試行
-      return { url, ok: false, md: "" };
+      const timeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+      return { url, ok: false, md: "", why: timeout ? "timeout" : "error" };
     }
   }
-  return { url, ok: false, md: "" };
+  return { url, ok: false, md: "", why: "error" };
 }
 
 // ---- OGP画像(og:image)の取得 ---------------------------------------------
@@ -561,16 +573,93 @@ async function enrichCardBodies(
   return { cards: out, usage, pagesRead };
 }
 
-// ---- 取得: 情報源をJinaで取得し、Markdownと実在URL集合を返す ----------------
+// ---- 直接取得(Jinaが使えないときの保険) -----------------------------------
+// ★★2026-08-26・第64巡。Jina Reader(`r.jina.ai`)は無料枠の締め付け・鍵の期限切れで
+// **ある日いっせいに 4xx を返しはじめる**(実際に6日間そうなった)。取得の道が1本しか
+// 無いと、そのままデッキが作られなくなる。ページを**自分で取って**同じ形に均せば、
+// Jina が落ちていてもカードは作れる ― サイトによっては弾かれるので**保険**であって
+// 置き換えではない(取れたら Jina を優先する)。
+const HTML_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", "#39": "'", "#x27": "'",
+};
+function decodeEntities(t: string): string {
+  return t.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (m, e: string) => {
+    const named = HTML_ENTITIES[e.toLowerCase()];
+    if (named) return named;
+    if (e[0] === "#") {
+      const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) ? String.fromCodePoint(n) : m;
+    }
+    return m;
+  });
+}
+
+/**
+ * 生HTMLを、Jina Reader が返すのと**同じ形**(リンク付きのテキスト)へ均す。
+ * ★ここを合わせておけば**下流は1行も変えなくていい** ―
+ * `stripMarkdownNoise` → `markdownUrlMap` がそのまま効き、実在URL集合も同じに作れる。
+ */
+export function htmlToMarkdownish(html: string, baseUrl: string): string {
+  let t = html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style|noscript|svg|template)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<head\b[\s\S]*?<\/head>/gi, " ");
+  // リンクは [文字](絶対URL) にする(相対URLは baseUrl で解決)。
+  t = t.replace(/<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (m, href: string, inner: string) => {
+    const label = decodeEntities(inner.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+    if (!label) return " ";
+    try { return ` [${label}](${new URL(href, baseUrl).toString()}) `; } catch { return ` ${label} `; }
+  });
+  // 段落の切れ目だけ残して、他のタグは外す。
+  t = t
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr|\/section|\/article)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+  return decodeEntities(t)
+    .replace(/[ \t\u00a0]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .split("\n").map((l) => l.trim()).join("\n")
+    .trim();
+}
+
+async function fetchDirect(url: string): Promise<FetchedPage> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": OG_UA, Accept: "text/html,application/xhtml+xml", "Accept-Language": "ja,en;q=0.8" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return { url, ok: false, md: "", why: res.status };
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct && !/html|xml|text\/plain/i.test(ct)) return { url, ok: false, md: "", why: "empty" };
+    const md = htmlToMarkdownish(await res.text(), res.url || url).trim();
+    if (!md) return { url, ok: false, md: "", why: "empty" };
+    return { url: res.url || url, ok: true, md };
+  } catch (e) {
+    const timeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+    return { url, ok: false, md: "", why: timeout ? "timeout" : "error" };
+  }
+}
+
+// ---- 取得: 情報源をJina→直接の順で取り、Markdownと実在URL集合を返す ----------
 type SiteFetch = { trace: SiteTrace; url: string; md: string; allow: Map<string, string>; fetched: boolean };
 async function fetchSite(sourceUrl: string): Promise<SiteFetch> {
-  const page = await fetchViaJina(sourceUrl);
+  const jina = await fetchViaJina(sourceUrl);
+  // ★Jina が取れたらそちらを使う(本文の抽出が段違いに綺麗)。落ちたときだけ自分で取る。
+  const page = jina.ok && jina.md ? jina : await fetchDirect(sourceUrl);
+  const via: "jina" | "direct" = jina.ok && jina.md ? "jina" : "direct";
+  const why = { jina: jina.why, direct: via === "direct" ? page.why : undefined };
   if (!page.ok || !page.md) {
-    return { trace: { source: sourceUrl, fetched: false, linkCount: 0 }, url: sourceUrl, md: "", allow: new Map(), fetched: false };
+    return {
+      trace: { source: sourceUrl, fetched: false, linkCount: 0, ...why },
+      url: sourceUrl, md: "", allow: new Map(), fetched: false,
+    };
   }
   const md = stripMarkdownNoise(page.md);
   const allow = markdownUrlMap(md, page.url);
-  return { trace: { source: sourceUrl, fetched: true, linkCount: allow.size }, url: page.url, md, allow, fetched: true };
+  return {
+    trace: { source: sourceUrl, fetched: true, linkCount: allow.size, via, ...why },
+    url: page.url, md, allow, fetched: true,
+  };
 }
 
 // ---- 補充検索: Jinaの検索API(s.jina.ai)でSERPをMarkdownとして取得 -----------

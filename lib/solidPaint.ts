@@ -5,7 +5,7 @@ import {
 import { tagColor, tagFace, tagInk, tagLabel } from "./taskTags";
 import { canvasFont, drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
 import type { TaskTag } from "./types";
-import { paperize } from "./paperTexture";
+import { paperize, setPaperReadyHandler } from "./paperTexture";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
 // 確定)。真横から見た立面を2枚、ベタ塗りで描くだけ。
@@ -234,11 +234,17 @@ export interface SolidBitmap {
 const bmpCache = new Map<string, SolidBitmap>();
 const BMP_LIMIT = 60;
 
-/** 焼いた絵を全部捨てる(書体が揃ったときに呼ぶ。次に描くとき作り直される)。 */
+/** 焼いた絵を全部捨てる(書体が揃ったとき・**紙のシートを読み終えたとき**に呼ぶ。
+ *  次に描くとき作り直される)。 */
 export function clearSolidBitmaps() {
   bmpCache.clear();
   planCache.clear();
 }
+
+// ★★紙のシートは非同期に読み込まれる。読み終わるまでに焼かれた絵には紙が乗って
+//   いないので、そのときは**まとめて捨てて焼き直させる**(次のフレームで戻る)。
+//   ★`lib/paperTexture.ts` の側は相手を知らない ― import の輪を作らないため。
+setPaperReadyHandler(clearSolidBitmaps);
 
 export const paintKey = (p: SolidPaint, unit: number): string =>
   [p.view, p.tag ?? "-", p.spec.sides.length, p.spec.area.toFixed(3),
@@ -278,7 +284,7 @@ export function solidBitmap(p: SolidPaint, unit = UNIT_PX, dpr = 1): SolidBitmap
     //   その上の文字にだけ乗り、透明な地には乗らない。焼いた絵に入るので
     //   **毎フレームの負荷はゼロ**、図形が回れば紙の目も一緒に回る。
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    paperize(ctx, w, h, dpr);
+    paperize(ctx, w, h, dpr, key);
   }
   const made = { canvas: cv, w, h, dpr };
   bmpCache.set(key, made);
@@ -321,7 +327,7 @@ export function wordBitmap(
     ctx.scale(sx, 1);
     ctx.fillText(word, 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    paperize(ctx, w, h, dpr);
+    paperize(ctx, w, h, dpr, key);
   }
   const made = { canvas: cv, w, h, dpr };
   bmpCache.set(key, made);

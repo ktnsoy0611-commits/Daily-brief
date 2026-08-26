@@ -666,6 +666,9 @@ export function ProfileTab({ appState, persist, onClose }: {
               </div>
               <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: 4, lineHeight: 1.7 }}>
                 {cronWhen(cronStatus.at)} ・ 情報源{cronStatus.sourceCount}サイト巡回{typeof cronStatus.sitesFetched === "number" ? `(取得成功${cronStatus.sitesFetched})` : ""}<br />
+                {/* ★★取れなかった理由(第64巡)。取得成功0が続いても「緑のまま」で
+                    気づけなかったので、ここに理由(HTTPコード)を出す。 */}
+                {cronStatus.fetchFail && <>取得できず: {cronStatus.fetchFail}<br /></>}
                 {typeof cronStatus.candidateCount === "number" && <>候補{cronStatus.candidateCount}件<br /></>}
                 {cronStatus.dropped && (() => {
                   const d = cronStatus.dropped;

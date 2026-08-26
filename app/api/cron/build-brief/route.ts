@@ -1,7 +1,7 @@
 import { PATHS, dayPath } from "@/lib/myBrainPaths";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { buildDeck, type InterestSignal, type TasteInput } from "@/lib/briefPipeline";
+import { buildDeck, type InterestSignal, type SiteTrace, type TasteInput } from "@/lib/briefPipeline";
 import { loadMyBrain } from "@/lib/myBrain";
 import { deleteMyBrainFile, readMyBrainFile, syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
 import { buildLogLines, groupByMonth, mergeMonthFile, oldLogPaths } from "@/lib/feedbackLog";
@@ -44,6 +44,25 @@ const RETENTION_DAYS = 3;
 const POOL_CAP = 40;         // 未消化(keep/skipされていない)カードのストック上限。40枚溜まっている間は追加生成しない(ユーザー指定)
 const GEN_TARGET = 10;       // 1回の生成で出す目標枚数(ユーザー指定: 10枚くらい。1日2回走るので合計20枚くらい)
 const GOAL_CARDS_PER_WEEK = 2; // ゴール関連カードは週に1〜2枚まで(ユーザー指定・§8.21)
+
+// ★★取れなかったサイトの理由を1行にまとめる(第64巡)。
+// `sitesFetched: 0` だけでは何が起きたか分からず、2026-08-21からの6日間、
+// Jina の 4xx で全滅していたのにジョブは毎日緑のままだった。
+// 例: "jina 401×10 ／ 直接 403×10"。
+function fetchFailSummary(sites?: SiteTrace[]): string | undefined {
+  const bad = (sites ?? []).filter((s) => !s.fetched);
+  if (!bad.length) return undefined;
+  const tally = (pick: (s: SiteTrace) => SiteTrace["jina"]) => {
+    const n = new Map<string, number>();
+    for (const s of bad) { const w = pick(s); if (w !== undefined) n.set(String(w), (n.get(String(w)) ?? 0) + 1); }
+    return [...n.entries()].sort((a, b) => b[1] - a[1]).map(([w, c]) => `${w}×${c}`).join(" ");
+  };
+  const parts = [
+    tally((s) => s.jina) && `jina ${tally((s) => s.jina)}`,
+    tally((s) => s.direct) && `直接 ${tally((s) => s.direct)}`,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" ／ ") : undefined;
+}
 
 // ★「朝刊/夕刊」という区切りは廃止した(2026-08-03)。キーは日付だけで、
 // 1日に何度走っても同じ日のデッキに**積み増す**(下の書き込み参照)。
@@ -470,6 +489,7 @@ export async function GET(req: Request) {
           // 切り分け用: 取得できたサイト数・抽出候補数・落ちた内訳。0枚のとき
           // 「取得できていない/候補が出ていない/既出で除外された」のどれかが分かる。
           sitesFetched: result?.sites.filter((s) => s.fetched).length,
+          fetchFail: fetchFailSummary(result?.sites),
           candidateCount: result?.candidateCount,
           dropped: result?.dropped,
           pooled, totalTokens: result?.tokens.totalTokens ?? 0,

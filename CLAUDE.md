@@ -118,7 +118,13 @@
 - `lib/paperTexture.ts` — **クラフト紙の目を知っている唯一の場所**。図形と文字の面に
   だけ**焼き込む**（`lib/solidPaint.ts` が焼くときに1度だけ。毎フレームの負荷はゼロで、
   図形が回れば紙も回る）。強さは **`PAPER_ALPHA`**（既定 0.12）の1つだけ。
+  ★**中身は本物の写真**（`public/paper-kraft.webp` … 320px角×4枚・121KB。
+  第64巡にユーザーの撮ったクラフト紙から作った）。絵ごとに
+  **4枚のどれか×4向き×ずらし**が当たるので、繰り返しに見えない。
+  作り直すときは `tools/make-paper.py` を使う（元の写真はリポジトリに無い）。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
+  ★ブリーフの取得は **Jina → 直接**の2段（第64巡）。**失敗は必ず HTTP コードごと
+  `SiteTrace` に残す** — 残さなかったせいで6日間の停止に気づけなかった。
 - `lib/myBrainPaths.ts` — **my-brain のパスを知っている唯一の場所**。`myBrain.ts` / `myBrainWrite.ts` / `myBrainSyncClient.ts`。
 
 ## サーバー関数（app/api）

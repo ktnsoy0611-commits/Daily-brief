@@ -540,28 +540,30 @@ button:active {
    アニメーションの半ばで効果線」)。縦の細い線を1枚で作り、0% 透明 → 50% いちばん
    濃い → 100% 透明。★進む向きへ伸ばす(上空へ上がるときは下向きに流れる)。
    ★図形の上に乗るが `pointer-events: none` なので操作は塞がない。 */
+/* ★★効果線(2026-08-26・第64巡に作り直し)。**場所は JS が決める** —
+   `components/tasks/TaskSpace.tsx` が地上と上空のあいだの「空」(`SKY_GAP`)に敷くので、
+   カメラに乗って流れ、パンの半ばにだけ画面を横切る。ここは**柄と濃さ**だけ。
+   ★不均一にする作り: 周期の違う縦線を2本重ね、その上から**横向きのマスク**で
+   束をまばらに抜く。1本の等間隔な柄だと、どれだけ薄くしても「均一な模様」に見える。 */
 .task-speed {
-  position: absolute;
-  inset: -20% 0;
   z-index: 2;
   pointer-events: none;
   opacity: 0;
   /* ★墨(`INK` = #1A1A18)の細い縦線。濃さは下の keyframes の `opacity` で決める。 */
-  background-image: repeating-linear-gradient(
-    to right,
-    transparent 0 7px,
-    #1A1A18 7px 8px,
-    transparent 8px 23px
-  );
+  background-image:
+    repeating-linear-gradient(to right, transparent 0 11px, #1A1A18 11px 12px, transparent 12px 37px),
+    repeating-linear-gradient(to right, transparent 0 5px,  #1A1A18 5px 6px,   transparent 6px 19px);
+  -webkit-mask-image: repeating-linear-gradient(to right,
+    transparent 0 8px, #000 26px 74px, transparent 96px 132px);
+          mask-image: repeating-linear-gradient(to right,
+    transparent 0 8px, #000 26px 74px, transparent 96px 132px);
   animation: task-speed calc(var(--t-in) + var(--t-item)) var(--ease-exit) both;
 }
+/* ★「少し出るくらい」(ユーザー指定)。第63巡の 0.14 から下げた。 */
 @keyframes task-speed {
-  0%   { opacity: 0;    transform: scaleY(0.4); }
-  50%  { opacity: 0.14; transform: scaleY(1); }
-  100% { opacity: 0;    transform: scaleY(0.4); }
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 0.09; }
 }
-.task-speed[data-dir="up"]   { transform-origin: 50% 100%; }
-.task-speed[data-dir="down"] { transform-origin: 50% 0%; }
 @media (prefers-reduced-motion: reduce) {
   .task-cam { transition: none; }
   .task-speed { animation: none; display: none; }

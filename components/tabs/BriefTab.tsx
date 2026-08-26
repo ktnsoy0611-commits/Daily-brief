@@ -302,9 +302,17 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   const dueCandidate = useMemo(() => {
     const goals = appState.goals ?? [];
     const candidates: { g: (typeof goals)[number]; kind: "checkin" | "milestone"; urgency: number }[] = [];
+    // ★★「記録した」だけでなく「あとで(=skip)で流した」時刻からも数える
+    //   (2026-08-26・第64巡にユーザー確定「あとでを押したら次の間隔まで出さない」)。
+    //   第63巡までは skip で何も残らなかったので、そのゴールは**永久に期限到来のまま**
+    //   になり、育成カードが毎日また差し込まれていた。
+    const latest = (...xs: (string | undefined)[]) =>
+      xs.filter((x): x is string => !!x).sort().pop();
     goals.forEach((g) => {
-      const sinceCheckin = daysBetween(g.checkIns?.[0]?.at ?? g.addedAt);
-      const lastMilestoneAt = g.checkIns?.find((ci) => ci.kind === "milestone")?.at ?? g.addedAt;
+      const sinceCheckin = daysBetween(
+        latest(g.checkIns?.[0]?.at, g.snoozedAt?.checkin) ?? g.addedAt);
+      const lastMilestoneAt = latest(
+        g.checkIns?.find((ci) => ci.kind === "milestone")?.at, g.snoozedAt?.milestone) ?? g.addedAt;
       const sinceMilestone = daysBetween(lastMilestoneAt);
       if (sinceCheckin >= CHECKIN_INTERVAL_DAYS) candidates.push({ g, kind: "checkin", urgency: sinceCheckin / CHECKIN_INTERVAL_DAYS });
       if (sinceMilestone >= MILESTONE_INTERVAL_DAYS) candidates.push({ g, kind: "milestone", urgency: sinceMilestone / MILESTONE_INTERVAL_DAYS });
@@ -372,7 +380,15 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
     return base;
   }, [dueCandidate, appState.generatedDecks, growthDecidedThisEdition]);
 
-  const index = deck.filter((c) => allDecisions[c.id]).length;
+  // ★★育成カードは**今日の号だけ**を見る(2026-08-26・第64巡)。育成カードの id は
+  //   `checkin-<goalId>` で**日付を含まない＝日をまたいで同じ**なので、全号マージの
+  //   `allDecisions` で数えると、過去の号の決定がそのまま「今日も消化済み」になる。
+  //   差し込みの判定(`growthDecidedThisEdition`)は今日の号を見ているのに、数える方は
+  //   全号 ― この食い違いで、プールが空なら `deck.length === 1 / index === 1` で
+  //   いきなり「今日はここまで」、プールがあっても**先頭の1枚が黙って飛ばされて**いた。
+  //   プールのカードは id が生成ごとに一意なので、いままでどおり全号マージでよい。
+  const decidedOf = (c: DeckCard) => (isGrowthCard(c) ? decisions[c.id] : allDecisions[c.id]);
+  const index = deck.filter((c) => decidedOf(c)).length;
   const done = index >= deck.length;
   // 安全網: 表示すべきカードが進んだ(=決定が保存された)のに、何らかの
   // 理由でexit/dragが定位置に戻っていなければ、ここで強制的にリセットする。
@@ -418,6 +434,14 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
       if (isGrowthCard(card)) {
         brief.decisions[card.id] = dir === "keep" ? "answered" : "skipped";
+        if (dir === "skip") {
+          // ★★「あとで」＝**次の間隔まで出さない**(第64巡にユーザー確定)。
+          //   ここに時刻を残さないと、そのゴールは期限到来のままなので毎日また届く。
+          const g = (next.goals ?? []).find((x) => x.id === card.goalId);
+          if (g) {
+            g.snoozedAt = { ...g.snoozedAt, [card.type]: new Date().toISOString() };
+          }
+        }
         if (dir === "keep") {
           const g = (next.goals ?? []).find((x) => x.id === card.goalId);
           if (g) {

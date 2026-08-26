@@ -150,31 +150,38 @@ function arcInv(s: number): number {
  *  0.93^3 = 0.80 なら、伝わる順番は残ったまま、詰まりはほとんど目に立たない。 */
 const CHAIN = 0.93;
 const CHAIN_MAX = 3;
-/** ★★連なりの間隔。**減衰する**ので「最初の1つがぽつんと動き、そのあと次々と
- *  流れ出す」。一定間隔だと行進になってしまう。 */
-const LEAD_GAP = 150;
-const GAP_DECAY = 0.72;
+/** ★★★連なりの間隔は**等間隔**(2026-08-26・第64巡)。第63巡までは
+ *  `LEAD_GAP · GAP_DECAY^i` の**等比級数**で、150 / 258 / 336 / 392 / 432 / 461 /
+ *  482 / 497 … と 536 へ収束していた ― **7番目以降は数ミリ秒差でしか出発しない**。
+ *  そこへ下の `streamQ` の頭打ちが重なって、後ろの図形は**出発時刻も道も緩急も同一**に
+ *  なり、**右上で重なってぐちゃぐちゃ**になっていた(ユーザー指摘)。
+ *  等間隔にすれば、下の `flow`(加速しっぱなし)と組んで**進むほど間隔が開く**。 */
+const STREAM_STEP = 64;
 /** ★★出ていく**1本の道**(第57巡)。第55巡は図形ごとに別々のベジエを引いて蛇行させて
  *  いたので、**一筋にまとまる瞬間が構造的に無かった**(ユーザー指摘「結局バラバラに
  *  画面外にいってしまう」)。全部が同じ道を通り、道の上の間隔が揃っていく。 */
 const STREAM_MS = ms(T_IN);
-/** ★閉じは**入りよりさらに素早く**(第63巡にユーザー指定「もっと素早く出て行って」)。 */
-const OUT_MS = ms(T_OUT);
-/** 揃ったときの1つぶんの間隔(道の長さに対する比)。 */
-const STREAM_GAP = 0.115;
-/** ★★間隔を数える番号の**上限**(第60巡)。道の長さは `1 + STREAM_GAP·i` で伸びるので、
- *  番号をそのまま使うと**タスクが増えるほど出入りが長くなる**(16個で約4秒、30個なら
- *  8秒)。その間ジェスチャーが効かないので、実質フリーズに見える。先頭のいくつかが
- *  一筋に揃えば「一列になった」は読み取れるので、そこで頭打ちにする
- *  (連なりの遅れ `startAt` が `CHAIN_MAX` あたりで収束するのと同じ考え方)。 */
-const STREAM_Q_MAX = 4;
-const streamQ = (i: number) => Math.min(i, STREAM_Q_MAX);
+/** ★閉じは**入りよりさらに素早く**(第64巡にユーザー指定「もう少し早くして」)。
+ *  語彙の時間から引く(第63巡の `ms(T_OUT)`=600 → `ms(T_ITEM)`=420)。 */
+const OUT_MS = ms(T_ITEM);
+/** ★閉じの連なりの遅れは、入りの半分の詰まり具合で。 */
+const OUT_LEAD = 0.5;
+/** ★★閉じで**山が落ち始める**進み(第64巡にユーザー指定「落ち始めるのも早めて」)。
+ *  ここまで来れば図形は `homeAt(0.55)` ＝ x ≒ 12 - 0.507·w で**画面の左の外**に
+ *  居るので、落ちてくる山と二重に見えることはない。 */
+const OUT_DROP = 0.55;
+/** 円弧の入口で番号を頭打ちにする所(同じ点から一斉に上がると団子になるが、
+ *  番号をそのまま使うと後ろほど**はるか下**から入って大きく回り込む)。 */
+const ENTRY_Q_MAX = 4;
 /** ★スクアッシュ＆ストレッチ。この速さ(px/フレーム)で伸びが最大 `SQUASH_MAX` になる。
  *  ★★第59巡に**0.2 倍**へ(「強調しすぎ」)、第60巡に**もう一段弱く**
  *  (「入る時もスクロールの時ももう少し弱めて」)。**速いときにだけ、ほのかに** —
  *  止まっている図形に何も起きないことが上品さの条件。 */
 const SQUASH_REF = 48;
-const SQUASH_MAX = 0.05;
+/** ★第64巡に 0.05 → 0.09(ユーザー指定「スクイーズも後半だけ少し強めに」)。
+ *  ★**後半だけ**は数字ではなく `flow` が作る ― 加速しっぱなしの曲線では
+ *  速さの山が終盤に来るので、速さ由来のこの伸びは勝手に後半へ寄る。 */
+const SQUASH_MAX = 0.09;
 /** スミアー(残像)。この速さを超えたら後ろへ `SMEAR_N` 枚、`SMEAR_LEN` の間隔で薄く。 */
 const SMEAR_MIN = 22;
 const SMEAR_N = 2;
@@ -185,9 +192,15 @@ const D_IN = 0.12;
 /** 入りの待ち行列。円弧の**下に並んで**から順に上がる(px。同じ点から一斉に
  *  上がると入口で団子になる)。 */
 const ENTRY_QUEUE = 74;
-/** ★2段目(円弧へ上がる)を始める所。ここまでに図形は**完全に画面の外**に居る
- *  (`cine(0.72)` ≒ 0.94)。早すぎると出が途中で消える。 */
-const A_HANDOFF = 0.72;
+/** ★★★2段目(円弧へ上がる)へ渡す所。**進みで決める**(2026-08-26・第64巡)。
+ *  第63巡までは**時刻**(`STREAM_MS · 0.72`)で切っていて、これは第60巡の `cine` の
+ *  形(`cine(0.72)` ≒ 0.94 ＝ ほぼ画面外)を前提にした数字だった。第63巡に緩急を
+ *  `t²` 寄りへ変えたとたん、同じ時刻の進みが **0.52 ＝ まだ画面の真ん中**になり、
+ *  「**図形が画面から出る前に消える**」(ユーザー指摘)になった。
+ *  進みで決めれば、曲線をどう変えても**必ず道の終点＝画面の外**で渡る。 */
+const HANDOFF_N = 0.96;
+/** 自分の居た場所から**筋へ合流**しきる進み。 */
+const MERGE = 0.45;
 
 // TIMELINE
 const LANES_VISIBLE = 3;
@@ -365,36 +378,34 @@ function rubberRise(raw: number): number {
   return 1 + (room * over) / (over + room);
 }
 
-/** ★★**極端でシネマティックな緩急**(第57巡にユーザー指定「最初は遅く加速して、
- *  最後がまた遅くなる」)。`t³/(t³+(1-t)³)` は 0 と 1 の両端で傾きがほぼ 0、
- *  中ほどで一気に伸びる。★これは **canvas の図形の座標系だけ**の道具で、
- *  バネと同じ扱い(`lib/tokens.ts` の例外)。CSS の transition には持ち込まない。 */
-function cine(t: number): number {
-  const u = Math.max(0, Math.min(1, t));
-  const a = u * u * u; const b = (1 - u) * (1 - u) * (1 - u);
-  return a / (a + b);
-}
 /**
- * ★★★**後ろの図形ほど、出口で減速しない**(2026-08-26・第63巡)。
- * `cine` は終わりで必ず傾きが 0 になるので、先頭はそれで気持ちよく決まるが、
- * 後続まで同じだと**出口(画面の右上)で溜まって**から抜けることになる
- * (ユーザー指摘「後半の図形が右上で少し溜まってから一回くるっと回ってから抜ける」)。
- * `k`(0..1 ＝ 列の後ろ具合)で `cine` と**加速しっぱなしの `t²`** を混ぜ、
- * 後続は**前の図形に続いてまっすぐ吸い出される**ようにする。
+ * ★★★出ていく緩急は**加速しっぱなし**(2026-08-26・第64巡にユーザー指定
+ * 「最初はゆっくりで、だんだん加速しながら」)。
+ *
+ * 第57〜63巡は `cine(t) = t³/(t³+(1-t)³)`(遅→速→遅)だった。両端で傾きが 0 になる
+ * この形は**先頭の1つ**には気持ちよく決まるが、**全員が出口で減速する**ので、
+ * 後ろの図形が右上に溜まって重なった(ユーザー指摘)。第63巡は「後ろほど `t²` を
+ * 混ぜる」で誤魔化したが、混ぜ具合が図形ごとに違うぶん**進みと時刻の対応が
+ * 図形ごとにずれ**、引き渡しの時刻(当時 `A_HANDOFF`)が合わなくなって
+ * 「画面から出る前に消える」を生んだ ― 対症療法の典型。
+ *
+ * ★★**全員が同じ、加速しかしない曲線**なら:
+ *   ・出口で減速しないので**溜まらない**。
+ *   ・等間隔(`STREAM_STEP`)に出発した図形は、傾きが増えるぶん**進むほど間隔が開く**
+ *     ので、重なりが**構造として起きない**(揃えるための `span`/`conv` が要らない)。
+ *   ・速さの山が終盤に来るので、速さ由来のスクイーズが**勝手に後半だけ強くなる**。
+ * ★これは **canvas の図形の座標系だけ**の道具で、バネと同じ扱い
+ * (`lib/tokens.ts` の例外)。CSS の transition には持ち込まない。
  */
-function streamEase(t: number, k: number): number {
-  const u = Math.max(0, Math.min(1, t));
-  return lerp(cine(u), u * u, Math.max(0, Math.min(1, k)));
+const FLOW_POW = 2.4;
+function flow(t: number): number {
+  return Math.pow(Math.max(0, Math.min(1, t)), FLOW_POW);
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
-/** ★連なりの遅れ。間隔が**減衰**していく(最初だけ間があき、あとは次々)。 */
-function startAt(i: number): number {
-  let t = 0;
-  for (let k = 0; k < i; k += 1) t += LEAD_GAP * Math.pow(GAP_DECAY, k);
-  return t;
-}
+/** ★連なりの遅れ。**等間隔**(第64巡)。理由は `STREAM_STEP` の注を見ること。 */
+const startAt = (i: number) => STREAM_STEP * i;
 /** 3次ベジエと、その接線。 */
 const bez = (a: number, b: number, c: number, d: number, t: number) => {
   const u = 1 - t;
@@ -447,6 +458,8 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const prevRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const fromRef = useRef<Map<string, Slot>>(new Map());
   const outSRef = useRef<Map<string, Spring>>(new Map());
+  /** ★閉じで山を落とし直したか(1度だけ)。`OUT_DROP` を見て前倒しで呼ぶため。 */
+  const outDroppedRef = useRef(false);
   const inSRef = useRef<Map<string, Spring>>(new Map());
   const bakeUnitRef = useRef(UNIT);
   /** ★スクロールは `lib/scroll.ts`(指1:1＋投げ＋減衰＋吸着)。強さはあちらの
@@ -572,7 +585,50 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       return bmp;
     };
 
-    if (modeRef.current === "align") {
+    // ★★閉じで山を**前倒しに**落とすので(`OUT_DROP`)、そのあいだは山と
+    //   出ていく図形の**両方**を描く(第64巡)。山を先に描いて、抜けていく図形を上に。
+    //   ★モードは `done` まで "align" のまま ― 右の文字(`mode === "align"` で出す
+    //   DOM)を先に消すと、まだ薄まりきっていない文字がぱっと消えてしまう。
+    const inAlign = modeRef.current === "align";
+    let pendingPile = false;
+    let pendingAlign = false;
+
+    if (!inAlign || outDroppedRef.current) {
+      // 山・タイムライン … **物理の body そのもの**を描く。
+      for (const p of piecesRef.current) {
+        if (p.word) {
+          // ★「自由」や日付・曜日 … 色の面を敷かず、**文字そのもの**を置く。
+          //   ★第63巡から**焼いた絵**を貼る(紙の目が入り、文字もくっきりする)。
+          const wb = wordBitmap(p.word, p.wordFs ?? 32, p.wordSx ?? 1,
+            p.wordInk ?? MUTED, p.wordFam ?? SANS,
+            p.wordW ?? 40, p.wordH ?? 20, p.wordDx ?? 0, p.wordDy ?? 0, bakeDpr);
+          ctx.save();
+          ctx.translate(p.body.position.x, p.body.position.y);
+          ctx.rotate(p.body.angle);
+          ctx.drawImage(wb.canvas, -wb.w / 2, -wb.h / 2, wb.w, wb.h);
+          ctx.restore();
+          continue;
+        }
+        const bmp = want(p.paint, p.unit);
+        ctx.save();
+        ctx.translate(p.body.position.x, p.body.position.y);
+        ctx.rotate(p.body.angle);
+        if (bmp) ctx.drawImage(bmp.canvas, p.ox - bmp.w / 2, p.oy - bmp.h / 2, bmp.w, bmp.h);
+        else {
+          ctx.rotate(-p.body.angle);
+          ctx.translate(-p.body.position.x, -p.body.position.y);
+          ctx.fillStyle = tagColor(p.paint.tag);
+          ctx.beginPath();
+          p.body.vertices.forEach((v, i) => (i === 0 ? ctx.moveTo(v.x, v.y) : ctx.lineTo(v.x, v.y)));
+          ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
+      }
+      pendingPile = budget === 0 || glyphBudget === 0
+        || piecesRef.current.some((p) => !p.word && !peekSolidBitmap(p.paint, p.unit, bakeDpr));
+    }
+
+    if (inAlign) {
       // ★スロットへ**絵の中心**を置く(第53巡)。
       const bakeUnit = bakeUnitRef.current;
       const pileUnit = UNIT * scaleRef.current;
@@ -628,42 +684,10 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         ctx.drawImage(wb.canvas, -wb.w / 2, -wb.h / 2, wb.w, wb.h);
         ctx.restore();
       }
-      pendingBakeRef.current = budget === 0 || glyphBudget === 0
+      pendingAlign = budget === 0 || glyphBudget === 0
         || itemsRef.current.some((it) => !peekSolidBitmap(it.paint, bakeUnit, bakeDpr));
-    } else {
-      // 山・タイムライン … **物理の body そのもの**を描く。
-      for (const p of piecesRef.current) {
-        if (p.word) {
-          // ★「自由」や日付・曜日 … 色の面を敷かず、**文字そのもの**を置く。
-          //   ★第63巡から**焼いた絵**を貼る(紙の目が入り、文字もくっきりする)。
-          const wb = wordBitmap(p.word, p.wordFs ?? 32, p.wordSx ?? 1,
-            p.wordInk ?? MUTED, p.wordFam ?? SANS,
-            p.wordW ?? 40, p.wordH ?? 20, p.wordDx ?? 0, p.wordDy ?? 0, bakeDpr);
-          ctx.save();
-          ctx.translate(p.body.position.x, p.body.position.y);
-          ctx.rotate(p.body.angle);
-          ctx.drawImage(wb.canvas, -wb.w / 2, -wb.h / 2, wb.w, wb.h);
-          ctx.restore();
-          continue;
-        }
-        const bmp = want(p.paint, p.unit);
-        ctx.save();
-        ctx.translate(p.body.position.x, p.body.position.y);
-        ctx.rotate(p.body.angle);
-        if (bmp) ctx.drawImage(bmp.canvas, p.ox - bmp.w / 2, p.oy - bmp.h / 2, bmp.w, bmp.h);
-        else {
-          ctx.rotate(-p.body.angle);
-          ctx.translate(-p.body.position.x, -p.body.position.y);
-          ctx.fillStyle = tagColor(p.paint.tag);
-          ctx.beginPath();
-          p.body.vertices.forEach((v, i) => (i === 0 ? ctx.moveTo(v.x, v.y) : ctx.lineTo(v.x, v.y)));
-          ctx.closePath(); ctx.fill();
-        }
-        ctx.restore();
-      }
-      pendingBakeRef.current = budget === 0 || glyphBudget === 0
-        || piecesRef.current.some((p) => !p.word && !peekSolidBitmap(p.paint, p.unit, bakeDpr));
     }
+    pendingBakeRef.current = pendingPile || pendingAlign;
     if (pendingBakeRef.current) wakeRef.current();
 
     for (const s of shardsRef.current) {
@@ -1006,35 +1030,27 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         const inS = inSRef.current.get(it.id) ?? spring(0);
         inSRef.current.set(it.id, inS);
         const d0 = startAt(i);
-        // ★★引き渡しは**1つずつ**(第58巡)。後ろの図形は道の手前へ引き戻されるので、
-        //   全員一律の時刻で切ると**まだ画面の中に居るのに消える**(ユーザー指摘)。
-        //   自分が道を抜け切る時刻＝自分のぶんの遅れを足した時刻で渡す。
-        // ★★★1つずつ**自分の道の長さ**を持つ(第59巡)。道の上の位置は
-        //   `line = u - STREAM_GAP·i·conv` と**後ろへ引き戻している**のに、進み `u` を
-        //   1 で頭打ちにしていたため、i 番目は `1 - 0.115·i` で**止まったまま**に
-        //   なっていた(i=8 なら 0.08 ＝ 道のほぼ出発点)。そこへ引き渡しの時刻が来て
-        //   円弧の入口へ飛ぶので「途中で止まって消える」(第59巡のユーザー指摘)。
-        //   引き戻すぶんだけ進む距離も伸ばせば、**どれも終点まで進んでから**渡る。
-        const q = streamQ(i);
-        const span = 1 + STREAM_GAP * q;
-        const hand = d0 + STREAM_MS * span * A_HANDOFF;
         // 入りの硬さを**1つずつ散らす**。減衰を弱めて**行き過ぎてから戻る**。
         const jit = 1 + (frac(it.id + "in") - 0.5) * 0.3;
-        if (t >= hand) springTo(inS, 1, K_TRAVEL * jit, D_IN);
+        const n = flow((t - d0) / STREAM_MS);
+        // ★★引き渡しは**進みで**(第64巡)。時刻で切ると、緩急を変えたとたんに
+        //   画面の真ん中で消える(`HANDOFF_N` の注)。
+        if (n >= HANDOFF_N) springTo(inS, 1, K_TRAVEL * jit, D_IN);
         if (inS.p <= 0.002) {
-          // ★★出は**1本の道**。`cine` の極端な緩急で進み(遅→速→遅)、
-          //   走りながら道へ吸い寄せられ(`join`)、道の上の間隔が
-          //   てんでばらばらから**等間隔の一列**へ揃っていく(`conv`)。
-          const u = streamEase(clamp01((t - d0) / (STREAM_MS * span)), q / STREAM_Q_MAX) * span;
-          const n = u / span;                             // 0..1 に正規化した進み
-          const join = clamp01(n / 0.42);                 // 前半で道に乗る
-          const conv = clamp01((n - 0.15) / 0.6);         // 少し遅れて間隔が揃う
-          const own = u * 0.9;                            // その図形の進み
-          const line = u - STREAM_GAP * q * conv;         // 一列に揃ったときの位置
-          const p = streamAt(lerp(own, line, conv));
+          // ★★★出は**1本の道**。全員が同じ `flow`(加速しっぱなし)で走るので、
+          //   等間隔に出発した図形は**進むほど間隔が開く** ― 揃えるための仕掛け
+          //   (第63巡の `span`/`conv`/`line`)は要らない。
+          // ★★位置は「**筋の形をそのまま持ち、自分のズレだけを減衰させる**」。
+          //   動く点へ直線で寄せる(第63巡の `lerp(fr, p, join)`)と、筋の曲がりが
+          //   打ち消されて**まっすぐ吸い込まれる**ように見えていた。こうすると
+          //   「あった場所からそのまま曲線を描いて、筋に合流」(ユーザー指定)になる。
+          const p = streamAt(n);
+          const s0 = streamAt(0);
+          const keep = (1 - clamp01(n / MERGE)) ** 2;     // 自分のズレが残る割合
           cur.set(it.id, {
-            x: lerp(fr.x, p.x, join), y: lerp(fr.y, p.y, join),
-            s: fr.s * lerp(1, p.k, join), a: fr.a * (1 - join), o: 1,
+            x: p.x + (fr.x - s0.x) * keep,
+            y: p.y + (fr.y - s0.y) * keep,
+            s: fr.s * lerp(p.k, 1, keep), a: fr.a * keep, o: 1,
           });
           done = false;
         } else {
@@ -1046,7 +1062,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
           // ★★入口の番号も**道と同じ上限**にする(第63巡)。素の `i` だと後ろの図形ほど
           //   円弧のはるか下から入るので、**大きく回り込んで**見える
           //   (ユーザー指摘「一回くるっと回ってから抜けていく」の半分はこれ)。
-          const th = lerp(enterTh + (ENTRY_QUEUE * streamQ(i)) / ARC_R, thEnd, u);
+          const th = lerp(enterTh + (ENTRY_QUEUE * Math.min(i, ENTRY_Q_MAX)) / ARC_R, thEnd, u);
           cur.set(it.id, {
             x: cx + ARC_R * Math.cos(th), y: mid + ARC_R * Math.sin(th),
             s: lerp(sl.s * 0.68, sl.s, uo), a: 0, o: lerp(0.15, sl.o, uo),
@@ -1055,64 +1071,75 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         }
       }
       moving = true;
-      // ★いちばん後ろの図形の引き渡し時刻(自分の道の長さぶん伸びている)を基準に。
-      const lastSpan = 1 + STREAM_GAP * streamQ(Math.max(0, list.length - 1));
       // ★★終わりは基本 `done`(全部のバネが収まったか)で見る。ここは**念のための下限**
       //   なので短く ― 長くすると、絵はもう着いているのに**指が効かない時間**になる
       //   (第60巡。第59巡は `+ ms(T_IN) + ms(T_ITEM)` で 0.7 秒ぶん余計だった)。
-      const txtEnd = startAt(list.length - 1) + STREAM_MS * lastSpan * A_HANDOFF + ms(T_ITEM);
+      //   ★引き渡しが進みで決まるので、いちばん後ろの図形が `HANDOFF_N` に達する
+      //   時刻(`flow` の逆関数)を使う。
+      const handMs = STREAM_MS * Math.pow(HANDOFF_N, 1 / FLOW_POW);
+      const txtEnd = startAt(list.length - 1) + handMs + ms(T_ITEM);
       // ★★日付・曜日の板も**同じ道を、図形の後ろに続いて**飛ぶ(第61巡)。
       //   円弧のスロットは持たないので、道を走り切ったらそこで消える。
       for (let k = 0; k < flyRef.current.length; k += 1) {
         const f = flyRef.current[k];
         const i = list.length + k;                    // 図形の後ろに続く番号
-        const q = streamQ(i);
-        const span = 1 + STREAM_GAP * q;
-        const u = streamEase(clamp01((t - startAt(i)) / (STREAM_MS * span)), q / STREAM_Q_MAX) * span;
-        const n = u / span;
-        const join = clamp01(n / 0.42);
-        const conv = clamp01((n - 0.15) / 0.6);
-        const pt = streamAt(lerp(u * 0.9, u - STREAM_GAP * q * conv, conv));
+        const n = flow((t - startAt(i)) / STREAM_MS);
+        const pt = streamAt(n);
+        const s0 = streamAt(0);
+        const keep = (1 - clamp01(n / MERGE)) ** 2;
         flyCurRef.current[k] = {
-          x: lerp(f.from.x, pt.x, join), y: lerp(f.from.y, pt.y, join),
-          s: lerp(1, pt.k, join), a: f.from.a * (1 - join), o: 1 - clamp01((n - 0.86) / 0.14),
+          x: pt.x + (f.from.x - s0.x) * keep,
+          y: pt.y + (f.from.y - s0.y) * keep,
+          s: lerp(pt.k, 1, keep), a: f.from.a * keep,
+          // ★板は円弧のスロットを持たないので、道を走り切ったらそこで消える。
+          //   ★消え際は**画面の外に出てから**(第64巡。0.86 では中に居た)。
+          o: 1 - clamp01((n - 0.92) / 0.08),
         };
         if (n < 1) done = false;
       }
       if (done && t > txtEnd) { phaseRef.current = null; flyRef.current = []; flyCurRef.current = []; }
     } else if (ph === "align-out") {
       // ★★閉じも**入りと同じ作り**(第60巡)。1本の道(`homeAt`)へ順に乗り、
-      //   道の上の間隔が揃いながら(`conv`)、`cine` の緩急で画面の外へ抜ける。
+      //   `flow` の緩急(加速しっぱなし)で画面の外へ抜ける。
       //   `outSRef` は**進み(0..1)を入れておく器**として使う(右の文字がこれを読む)。
       let done = true;
+      let last = 0;
       for (let i = 0; i < list.length; i += 1) {
         const it = list[i];
         const fr = from.get(it.id);
         if (!fr) continue;
         const s = outSRef.current.get(it.id) ?? spring(0);
         outSRef.current.set(it.id, s);
-        // ★閉じは**入りよりさらに素早く**(第63巡)。遅れも詰め、長さも `OUT_MS` へ。
-        const d0 = startAt(i) * 0.6;
-        // ★入りと同じく**自分の道の長さ**を持つ(引き戻すぶん進む距離も伸ばす)。
-        const q = streamQ(i);
-        const span = 1 + STREAM_GAP * q;
-        const u = streamEase(clamp01((t - d0) / (OUT_MS * span)), q / STREAM_Q_MAX) * span;
-        const n = u / span;
-        const join = clamp01(n / 0.42);                 // 前半で道に乗る
-        const conv = clamp01((n - 0.15) / 0.6);         // 少し遅れて間隔が揃う
-        const own = u * 0.9;
-        const line = u - STREAM_GAP * q * conv;
-        const p = homeAt(lerp(own, line, conv));
+        // ★閉じは**入りよりさらに素早く**(第64巡)。遅れも詰め、長さも `OUT_MS` へ。
+        const d0 = startAt(i) * OUT_LEAD;
+        const n = flow((t - d0) / OUT_MS);
+        // ★位置の作りは入りと**同じ**(筋の形を持ち、自分のズレだけ減衰させる)。
+        const p = homeAt(n);
+        const s0 = homeAt(0);
+        const keep = (1 - clamp01(n / MERGE)) ** 2;
         s.p = n;                                        // 右の文字が読む進み
         cur.set(it.id, {
-          x: lerp(fr.x, p.x, join), y: lerp(fr.y, p.y, join),
-          s: fr.s * lerp(1, p.k, join), a: 0, o: 1,
+          x: p.x + (fr.x - s0.x) * keep,
+          y: p.y + (fr.y - s0.y) * keep,
+          s: fr.s * lerp(p.k, 1, keep), a: 0, o: 1,
         });
+        last = Math.max(last, n);
         if (n < 1) done = false;
       }
       moving = true;
+      // ★★**落ち始めを早める**(第64巡にユーザー指定)。第63巡までは全員が抜け切って
+      //   から山を作り直していたので、落下が始まるのがいちばん最後だった。
+      //   ★モードは変えない ― 変えると右の文字(`mode === "align"` で出す DOM)が
+      //   薄まりきる前に消える。代わりに `draw` が `outDroppedRef` を見て、
+      //   このあいだだけ**山と出ていく図形の両方**を描く。
+      if (!outDroppedRef.current && last >= OUT_DROP) {
+        outDroppedRef.current = true;
+        dropAllRef.current();
+      }
       if (done) {
-        phaseRef.current = null; dropAllRef.current();
+        phaseRef.current = null;
+        if (!outDroppedRef.current) dropAllRef.current();
+        outDroppedRef.current = false;   // ★次に ALIGN へ入るときは山を描かない
         modeRef.current = "pile"; setMode("pile");
         itemsRef.current = []; setItems([]);
         flyRef.current = []; flyCurRef.current = [];
@@ -1388,6 +1415,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     }));
     flyCurRef.current = flyRef.current.map((f) => ({ x: f.from.x, y: f.from.y, s: 1, a: f.from.a, o: 1 }));
     modeRef.current = "align"; setMode("align");
+    outDroppedRef.current = false;   // ★念のため(入りのあいだ山を描かない)
     phaseRef.current = "align-in"; t0Ref.current = performance.now();
     const engine = engineRef.current;
     if (engine) engine.gravity.y = 0;
@@ -1538,6 +1566,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     fromRef.current = new Map(curRef.current);
     inSRef.current = new Map();
     outSRef.current = new Map();
+    outDroppedRef.current = false;
     phaseRef.current = "align-out"; t0Ref.current = performance.now();
     haptic(8); wake();
   }, [wake]);

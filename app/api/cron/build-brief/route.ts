@@ -1,7 +1,7 @@
 import { PATHS, dayPath } from "@/lib/myBrainPaths";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { buildDeck, type InterestSignal, type SiteTrace, type TasteInput } from "@/lib/briefPipeline";
+import { buildDeck, jinaIsKeyless, type InterestSignal, type SiteTrace, type TasteInput } from "@/lib/briefPipeline";
 import { loadMyBrain } from "@/lib/myBrain";
 import { deleteMyBrainFile, readMyBrainFile, syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
 import { buildLogLines, groupByMonth, mergeMonthFile, oldLogPaths } from "@/lib/feedbackLog";
@@ -490,6 +490,7 @@ export async function GET(req: Request) {
           // 「取得できていない/候補が出ていない/既出で除外された」のどれかが分かる。
           sitesFetched: result?.sites.filter((s) => s.fetched).length,
           fetchFail: fetchFailSummary(result?.sites),
+          jinaKeyless: jinaIsKeyless(),
           candidateCount: result?.candidateCount,
           dropped: result?.dropped,
           pooled, totalTokens: result?.tokens.totalTokens ?? 0,

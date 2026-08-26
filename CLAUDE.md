@@ -125,6 +125,9 @@
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
   ★ブリーフの取得は **Jina → 直接**の2段（第64巡）。**失敗は必ず HTTP コードごと
   `SiteTrace` に残す** — 残さなかったせいで6日間の停止に気づけなかった。
+  ★★**Jina に鍵を送らない**（鍵ありはトークンを消費して必ず尽きる。鍵なしは
+  20 RPM だがトークン無制限＝永久に無料）。18 RPM に絞る仕掛けと締切は
+  `jinaSlot` / `JINA_PACE_BUDGET_MS`。単体チェックは `npx tsx tools/jina-check.mjs`。
 - `lib/myBrainPaths.ts` — **my-brain のパスを知っている唯一の場所**。`myBrain.ts` / `myBrainWrite.ts` / `myBrainSyncClient.ts`。
 
 ## サーバー関数（app/api）

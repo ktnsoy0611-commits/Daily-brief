@@ -225,23 +225,75 @@ export function markdownUrlMap(md: string, sourceUrl: string): Map<string, strin
 }
 
 // ---- Jina Reader 経由のクリーンMarkdown取得 -------------------------------
+//
+// ★★★**鍵は既定で送らない**(2026-08-26・第64巡にユーザー確定「ずっと無料で」)。
+//
+// Jina Reader には料金の当たり方が**2つ**ある:
+//   ・鍵を送る   … RPM は高い(100)が**読んだぶんトークンを消費**する。
+//                  新規の無料 1000万トークンは、この使い方(1日2回×20〜26ページ)で
+//                  **50日ほどで尽きる**。尽きると 402 を返し、**取得が全滅**する。
+//   ・鍵を送らない … トークンは**一切減らない**。代わりに**IP ごと 20 RPM** の
+//                  レート制限になる。1分あたりの本数さえ守れば**永久に無料**。
+// 実際に 2026-08-21 07:02 に残高が -249,999 になり、そこから6日間カードが
+// 1枚も作られなかった。**尽きる仕組みに乗っている限り必ずまた止まる**ので、
+// 既定を鍵なしへ寄せた。鍵を使いたいときだけ `JINA_USE_KEY=1` を立てる。
+//
+// ★★鍵なしの代償は速さだけ。夜間の Cron なので誰も待っていない。
+// ★★`s.jina.ai`(検索)は**鍵なしでは使えない**(下の `fetchJinaSearch` を見ること)。
+
+/** 鍵なしのときに守る1分あたりの本数。20 RPM の上限に1割の余裕を持たせる。 */
+const KEYLESS_RPM = 18;
+/** この実行で鍵が 401/402 を返したか(＝枠切れ)。一度倒れたら以後は鍵を送らない。 */
+let jinaKeyDead = false;
+/** 鍵を送るか。既定は送らない(`JINA_USE_KEY=1` のときだけ、かつ倒れていなければ)。 */
+const sendsJinaKey = () =>
+  !jinaKeyDead && process.env.JINA_USE_KEY === "1" && !!process.env.JINA_API_KEY;
+/** この実行が鍵なしで走ったか。設定タブに出して、どちらで動いたか分かるようにする。 */
+export const jinaIsKeyless = () => !sendsJinaKey();
+// ★`jinaKeyDead` と `nextSlot` は**モジュールの変数**なので、温まったコンテナでは
+//   次の実行にも残る。`nextSlot` は `max(now, …)` で挟むので古い値は無害。
+//   `jinaKeyDead` が残るのはむしろ好都合(枠切れを覚えている)。鍵を補充したときは
+//   コンテナが入れ替わるまで鍵なしのままだが、既定が鍵なしなので実害は無い。
+
+// ★鍵なしのときだけ、**全体で**1分 `KEYLESS_RPM` 本に絞る。JS は単スレッドなので、
+//   `nextSlot` の書き換えは await の前に同期で終わる ― 同時に走る呼び出しも
+//   それぞれ別の順番を取れる(取り合いにならない)。
+let nextSlot = 0;
+/** ★★間引きの締切。これを過ぎたら待つのをやめる ― 待ち続けて関数ごと打ち切られる
+ *  (＝0枚。まさにいま直している失敗の形)より、429 覚悟で撃つ方がまし。
+ *  Vercel の `maxDuration` は 300 秒なので、Gemini のぶんを残して 210 秒。 */
+const JINA_PACE_BUDGET_MS = 210_000;
+let runStart = 0;
+async function jinaSlot(): Promise<void> {
+  if (sendsJinaKey()) return;                       // 鍵が生きているなら待たない
+  if (runStart && Date.now() - runStart > JINA_PACE_BUDGET_MS) return;
+  const gap = 60000 / KEYLESS_RPM;
+  const now = Date.now();
+  const at = Math.max(now, nextSlot + gap);
+  nextSlot = at;
+  if (at > now) await sleep(at - now);
+}
+
 type FetchedPage = { url: string; ok: boolean; md: string; why?: FetchWhy };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function fetchViaJina(url: string): Promise<FetchedPage> {
-  // Jina無料枠(キー無し)は同時リクエストが多いと429で弾かれやすい。多数サイトを
-  // 一度に取りに行くと取得失敗が増えて候補が激減するため、失敗時は少し待って
-  // 最大2回まで再試行する(特に429/5xx対策)。JINA_API_KEYがあればレート上限が
-  // 上がるので、恒久対策としてはキー設定が望ましい。
-  const jinaKey = process.env.JINA_API_KEY;
-  const headers: Record<string, string> = { Accept: "text/plain", "X-Return-Format": "markdown" };
-  if (jinaKey) headers["Authorization"] = `Bearer ${jinaKey}`;
+  // 同時リクエストが多いと 429 で弾かれやすいので、失敗したら少し待って
+  // 最大2回まで再試行する(特に 429/5xx 対策)。
   for (let attempt = 0; attempt < 3; attempt++) {
+    const withKey = sendsJinaKey();
+    await jinaSlot();
+    const headers: Record<string, string> = { Accept: "text/plain", "X-Return-Format": "markdown" };
+    if (withKey) headers["Authorization"] = `Bearer ${process.env.JINA_API_KEY}`;
     try {
       const res = await fetch(JINA_BASE + url, { headers, signal: AbortSignal.timeout(30000) });
       if (!res.ok) {
+        // ★★鍵が 401/402 を返したら、**鍵を捨てて撃ち直す**(トークン制限 →
+        //   レート制限へ移る)。ここが無いと、枠切れの日から取得が全滅する。
+        if (withKey && (res.status === 401 || res.status === 402)) {
+          jinaKeyDead = true;
+          continue;   // ★この回は鍵なしでやり直し(`jinaKeyDead` は一方通行なので回らない)
+        }
         // 429(レート超過)・5xx(一時障害)は待って再試行。4xxの他は諦める。
-        // ★401/402(鍵が無い・枠切れ)はここで即あきらめる ― だから 10サイトで
-        //   十数秒しかかからず、「速く終わった＝うまくいった」ようにも見えていた。
         if ((res.status === 429 || res.status >= 500) && attempt < 2) { await sleep(1200 * (attempt + 1)); continue; }
         return { url, ok: false, md: "", why: res.status };
       }
@@ -256,6 +308,11 @@ async function fetchViaJina(url: string): Promise<FetchedPage> {
   }
   return { url, ok: false, md: "", why: "error" };
 }
+
+// ★検証用の口(`tools/jina-check.mjs` が使う)。本体からは呼ばない。
+//   この経路は6日間**黙って**壊れていたので、いつでも単体で確かめられるようにしておく。
+export const __fetchViaJinaForTest = fetchViaJina;
+export const __setRunStartForTest = (t: number) => { runStart = t; };
 
 // ---- OGP画像(og:image)の取得 ---------------------------------------------
 // 個別ページの生HTMLのheadから og:image / twitter:image を1枚だけ取り出す。
@@ -668,13 +725,22 @@ async function fetchSite(sourceUrl: string): Promise<SiteFetch> {
 // URLを捏造される心配が無い(Geminiの検索グラウンディングを使わない理由)。
 // 取得できたSERPのMarkdownは、そのまま層1の抽出プロンプトへ渡す。
 async function fetchJinaSearch(query: string): Promise<{ ok: boolean; url: string; md: string; allow: Map<string, string> }> {
-  const jinaKey = process.env.JINA_API_KEY;
-  const headers: Record<string, string> = { Accept: "text/plain", "X-Return-Format": "markdown" };
-  if (jinaKey) headers["Authorization"] = `Bearer ${jinaKey}`;
   const url = JINA_SEARCH_BASE + encodeURIComponent(query);
+  // ★★**検索は鍵なしでは使えない**(2026-08-26・第64巡に確認)。読み取り(`r.jina.ai`)は
+  //   鍵なしでも 20 RPM で通るが、検索(`s.jina.ai`)は鍵が要る。既定を鍵なしにした
+  //   いま、ここは**静かに諦める**のが正しい ― 補充検索は「候補が少ない日だけ」の
+  //   おまけで、登録した情報源から作るのが本筋だから、無くてもデッキは出る。
+  if (!sendsJinaKey()) return { ok: false, url, md: "", allow: new Map() };
+  const headers: Record<string, string> = {
+    Accept: "text/plain", "X-Return-Format": "markdown",
+    Authorization: `Bearer ${process.env.JINA_API_KEY}`,
+  };
   try {
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(30000) });
-    if (!res.ok) return { ok: false, url, md: "", allow: new Map() };
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 402) jinaKeyDead = true;
+      return { ok: false, url, md: "", allow: new Map() };
+    }
     const raw = (await res.text()).trim();
     if (!raw) return { ok: false, url, md: "", allow: new Map() };
     const md = stripMarkdownNoise(raw);
@@ -702,6 +768,7 @@ export async function buildDeck(input: {
 }): Promise<BuildResult> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { ok: false, reason: "no_key" };
+  runStart = Date.now();   // ★鍵なしの間引きの締切を数える起点
 
   const excludeUrlSet = new Set((input.exclude?.urls ?? []).filter((u) => typeof u === "string").map(normUrl));
   const excludeNames = (input.exclude?.names ?? []).filter((n) => typeof n === "string" && n.trim());

@@ -383,6 +383,8 @@ export interface AppState {
     //   第64巡に追加 ― `sitesFetched: 0` だけでは**何が起きたか分からず**、
     //   6日間の停止に誰も気づけなかった。
     fetchFail?: string;
+    // ★Jina を鍵なし(トークンを消費しない = ずっと無料)で回したか。第64巡から既定。
+    jinaKeyless?: boolean;
     candidateCount?: number; // 層Bが抽出した候補レコード数
     dropped?: { sourceInvalid: number; expired: number; duplicateCandidate: number; outOfArea: number; irrelevant: number; overQuota: number }; // 候補が最終カードに残らず落ちた内訳(切り分け用)
     pooled: number;      // content_cacheに新規蓄積した候補数

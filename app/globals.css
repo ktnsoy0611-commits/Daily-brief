@@ -491,23 +491,37 @@ button:active {
    `--tl`(0.04〜1) は JS がドラッグから書く。原点を下端にすると、地面から
    生えるように立ち上がる。 */
 /* ★横に送っている間だけ出る日付の目盛り(第58巡)。`--pan` は GravityTab が書く。 */
-/* ★★縦線と日付は**常時表示**(2026-08-26・第67巡にユーザー指定)。
-   第66巡までは `--pan` に連動していて、横へ送っている間しか出ていなかった。 */
-.tl-rules { opacity: 1; }
-/* ★入りは**日付が上から降りてくる**。素早く(`--t-item`)、レーンごとに `--t-step` ずらす。 */
-.tl-rules .tl-date { animation: tl-date-in var(--t-item) var(--ease-settle) both; }
-@keyframes tl-date-in {
-  from { transform: translateY(-140%); opacity: 0; }
-  to   { transform: none; opacity: 1; }
-}
-/* 縦線そのものは、下から立ち上がる。 */
-.tl-rules .tl-line { animation: tl-line-in var(--t-item) var(--ease-settle) both; }
+/* ★★★縦線と日付は、**合図が入ってから**出て、TIMELINE に居る間ずっと出ている
+   (2026-08-26・第67巡)。第66巡までは `--pan` に連動していて横へ送っている間しか
+   出ておらず、第67巡の1回目は `mode` に連動させたので**曜日が伸び切る前**に
+   出てしまっていた(`mode` は上へ引き**始めた**瞬間に timeline になる)。
+   出どころは `tlPhase`(idle / in / out)。 */
+.tl-rules { opacity: 0; }
+.tl-rules.in { opacity: 1; }
+/* ★入り … 縦線は**下から立ち上がり**、日付は**上から降りてくる**。素早く
+   (`--t-item`)、レーンごとに `--t-step` ずらす。 */
+.tl-rules.in .tl-line { animation: tl-line-in var(--t-item) var(--ease-settle) both; }
 @keyframes tl-line-in {
   from { transform: scaleY(0); }
   to   { transform: scaleY(1); }
 }
+.tl-rules.in .tl-date { animation: tl-date-in var(--t-item) var(--ease-settle) both; }
+@keyframes tl-date-in {
+  from { transform: translateY(-140%); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+/* ★閉じ … 曜日が縮むのに合わせて**そのまま消える**(ユーザー指定)。
+   縦に潰すと曜日と competing するので、**透明度だけ**。
+   ★曲線は `--ease-exit`(去る)。`--ease-settle` は前のめりすぎて、
+   150ms で opacity 0.03 まで落ちてしまい**曜日の縮みより先に消えていた**。 */
+.tl-rules.out { animation: tl-rules-out var(--t-out) var(--ease-exit) both; }
+@keyframes tl-rules-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .tl-rules .tl-date, .tl-rules .tl-line { animation: none; }
+  .tl-rules.in .tl-date, .tl-rules.in .tl-line, .tl-rules.out { animation: none; }
+  .tl-rules.out { opacity: 0; }
 }
 .tl-band span {
   display: block;

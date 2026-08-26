@@ -497,6 +497,11 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const viewRef = useRef<SolidView>("name");
 
   const [mode, setMode] = useState<Mode>("pile");
+  /** ★★縦線と日付の出入り。**`mode` では代用できない** ― `mode` は上へ引き始めた
+   *  瞬間に "timeline" になるので、そこで入りを流すと**曜日が伸び切る前**に
+   *  線が出てしまう(第67巡のユーザー指摘)。合図(`openTimeline`)で "in"、
+   *  閉じ始め(`closeTimeline`)で "out"、山へ戻り切ったら "idle"。 */
+  const [tlPhase, setTlPhase] = useState<"idle" | "in" | "out">("idle");
   const modeRef = useRef<Mode>("pile");
   const phaseRef = useRef<Phase>(null);
   const t0Ref = useRef(0);
@@ -1123,7 +1128,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       if (out) {
         if (recycleToPile()) {
           phaseRef.current = null; backRef.current = new Set();
-          modeRef.current = "pile"; setMode("pile");
+          modeRef.current = "pile"; setMode("pile"); setTlPhase("idle");
         }
         moving = true;
       } else if (openedRef.current) { syncLanes(); recycle(); }
@@ -1740,6 +1745,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     engine.gravity.y = GRAVITY_Y;
     engine.enableSleeping = true;
     openedRef.current = true;
+    setTlPhase("in");
     for (const p of piecesRef.current) M.Sleeping.set(p.body, false);
     haptic(12); wake();
   }, [buildLanes, wake]);
@@ -1799,6 +1805,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     // ★★`mode` は **timeline のまま**。ここで `pile` にすると帯も縦線も即座に
     //   消える(第59巡のユーザー指摘)。潰れ切って全部が山へ戻ってから切り替える。
     phaseRef.current = "tl-out";
+    setTlPhase("out");
     engine.gravity.y = GRAVITY_Y;
     haptic(8); wake();
   }, [clearLanes, wake]);
@@ -2303,7 +2310,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         <>
           {/* ★横に送っている間だけ出る日付の目盛り(第58巡にユーザー指定)。
               レーンの境目に細線、上端に M/D。位置は `laneLeft` から毎フレーム。 */}
-          <div ref={rulesRef} className="tl-rules" style={{
+          <div ref={rulesRef} className={`tl-rules ${tlPhase}`} style={{
             position: "absolute", left: 0, right: 0, top: MASTHEAD_H,
             bottom: BAND_BOTTOM, pointerEvents: "none", zIndex: 2, overflow: "hidden",
           }}>
@@ -2319,7 +2326,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                     position: "absolute", left: 0, top: 0, bottom: 0, width: 1,
                     background: `color-mix(in srgb, ${INK} 16%, transparent)`,
                     transformOrigin: "bottom center",
-                    animationDelay: `calc(var(--t-step) * ${Math.min(i, 6)})`,
+                    animationDelay: `calc(var(--t-step) * ${Math.min(i, 6) + 1})`,
                   }} />
                   {/* ★土日はレーンいっぱいに淡い地色(第59巡にユーザー指定)。 */}
                   {wk && (
@@ -2333,7 +2340,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                     fontFamily: LATIN, fontWeight: WEIGHT.heavy, fontSize: TYPE.head,
                     letterSpacing: TRACK.tight, lineHeight: LEAD.flat,
                     color: wk ? INK : MUTED,
-                    animationDelay: `calc(var(--t-step) * ${Math.min(i, 6)})`,
+                    animationDelay: `calc(var(--t-step) * ${Math.min(i, 6) + 1})`,
                   }}>{monthDayOf(d)}</span>
                 </div>
               );
@@ -2379,7 +2386,11 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
               ★★行は**図形の高さに合わせて**置く(位置は毎フレーム `syncDetail` が
               入れる)。近い図形どうしで行が重なるときは下へ押しのける。 */}
           {expandedDay && (
-            <div ref={detailRef} className={`tl-detail${expanded === null ? " out" : ""}`} style={{
+            // ★★`key` を開き／閉じで変えて**必ず作り直す**(2026-08-26・第67巡)。
+            //   同じ DOM を使い回すと、CSS の animation が再開せず
+            //   「2度目以降、閉じるアニメーションが出ない」になる。
+            <div key={`${expandedDay}-${expanded === null ? "out" : "in"}`}
+              ref={detailRef} className={`tl-detail${expanded === null ? " out" : ""}`} style={{
               position: "absolute", left: 0, width: DETAIL_W,
               top: MASTHEAD_H, bottom: BAND_BOTTOM, zIndex: 3, pointerEvents: "none",
             }}>

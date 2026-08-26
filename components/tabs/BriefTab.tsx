@@ -117,7 +117,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.1), rgba(0,0,0,0) 40%, rgba(0,0,0,0.22) 100%)", pointerEvents: "none" }} />
         {isTop && hasPhotos && (
           <span style={{
-            position: "absolute", bottom: 12, right: 14, display: "flex", alignItems: "center", gap: SPACE.xs,
+            position: "absolute", bottom: SPACE.md, right: SPACE.md, display: "flex", alignItems: "center", gap: SPACE.xs,
             background: "rgba(26,26,24,0.5)", color: WHITE, borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px ${SPACE.xs}px ${SPACE.sm}px`,
             fontSize: TYPE.small, fontFamily: SANS, fontWeight: WEIGHT.bold, pointerEvents: "none",
           }}>写真 {card.images!.length} を見る ⤢</span>
@@ -151,7 +151,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             onClick={(e) => { e.stopPropagation(); onFlag(); }}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label="この情報の質をフィードバック"
-            style={{ position: "absolute", bottom: 12, right: 14, background: "none", border: "none", cursor: "pointer", padding: SPACE.sm, lineHeight: 0 }}
+            style={{ position: "absolute", bottom: SPACE.md, right: SPACE.md, background: "none", border: "none", cursor: "pointer", padding: SPACE.sm, lineHeight: 0 }}
           >
             <Flag size={13} strokeWidth={2} color={flagged ? RUST : SHADE_DEEP} fill={flagged ? RUST : "none"} />
           </button>
@@ -162,12 +162,12 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           <button
             onClick={(e) => { e.stopPropagation(); onRead(); }}
             onPointerDown={(e) => e.stopPropagation()}
-            style={{ position: "absolute", bottom: 11, left: HOLE_CLEAR, background: INK, color: PAPER, border: "none", cursor: "pointer", borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px`, fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal }}
+            style={{ position: "absolute", bottom: SPACE.md, left: HOLE_CLEAR, background: INK, color: PAPER, border: "none", cursor: "pointer", borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px`, fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal }}
           >記事を読む →</button>
         )}
       </div>
-      <div style={{ position: "absolute", top: 20, left: 18, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>KEEP</div>
-      <div style={{ position: "absolute", top: 20, right: 18, transform: "rotate(12deg)", opacity: skipOpacity, border: `3px solid ${MUTED}`, color: MUTED, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>SKIP</div>
+      <div style={{ position: "absolute", top: SPACE.lg, left: SPACE.lg, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>KEEP</div>
+      <div style={{ position: "absolute", top: SPACE.lg, right: SPACE.lg, transform: "rotate(12deg)", opacity: skipOpacity, border: `3px solid ${MUTED}`, color: MUTED, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>SKIP</div>
       <PunchHoles />
     </div>
   );

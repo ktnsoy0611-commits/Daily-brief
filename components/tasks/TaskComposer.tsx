@@ -964,8 +964,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
                 <button onClick={() => set({ suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id) })}
                   aria-label={`${s.title}を却下`}
                   style={{ width: 26, height: 28, border: "none", background: "transparent", cursor: "pointer", position: "relative" }}>
-                  <span style={{ position: "absolute", left: 9, top: 14, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(45deg)" }} />
-                  <span style={{ position: "absolute", left: 9, top: 14, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(-45deg)" }} />
+                  <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ left: 9, top: 14, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(45deg)" }} />
+                  <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ left: 9, top: 14, width: 10, height: 1.4, background: ON_GROUND_DIM, transform: "rotate(-45deg)" }} />
                 </button>
               </span>
             ))}

@@ -77,7 +77,7 @@ function wrapOf(j: number, pos: number): number {
 function Toast({ text }: { text: string }) {
   return (
     <div key={text} style={{
-      position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: RADIUS.pill,
+      position: "fixed", top: SPACE.lg, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: RADIUS.pill,
       fontSize: TYPE.small, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.lg}px`, boxShadow: "0 8px 24px rgba(26,26,24,0.25)", zIndex: 50,
       animation: "toast-in var(--t-item) var(--ease-sheet)",
     }}>{text}</div>

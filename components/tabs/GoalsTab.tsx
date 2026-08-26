@@ -130,17 +130,20 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
     <>
       <Masthead title={appTitle("life")} corner={profileButton} />
 
-      <main style={{ flex: 1, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl, paddingLeft: SPACE.sm, paddingRight: SPACE.sm }}>
+      {/* ★左右のパディングは持たない（持ち主は AppShell の 16px だけ。design.md §2）。
+          第66巡まで「16(AppShell) + 8(ここ) + 9.8(88% を中央寄せ)」の3段重ねで
+          バインダーの左端が 33.8px にあり、画面に縦の柵が2本立っていた。 */}
+      <main style={{ flex: 1, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl }}>
         {/* ゴールはGoalBinderCard(Binder.tsx参照)で表示する。表紙は左端の
             蝶番を軸にわずかに傾け、その下に裏表紙(表紙より暗い色の角丸の
             四角形)が表紙の右(開く側)の縁からほんの少しだけ覗く、という
             「机の上でノートの表紙だけ少し開いて浮いている」構図。 */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: SPACE.xxl, columnGap: SPACE.lg, justifyItems: "center" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: SPACE.xxl, columnGap: SPACE.lg, justifyItems: "stretch" }}>
           {goalItems.map((g) => {
             const count = g.checkIns?.length ?? 0;
             return (
               <GoalBinderCard
-                key={g.id} width="88%" aspect={GOAL_CARD_ASPECT}
+                key={g.id} width="100%" aspect={GOAL_CARD_ASPECT}
                 color={GOAL_BASE} eyebrowLabel="GOAL" title={g.title} accent={goalAccent(g.id)}
                 onClick={() => openGoalCard(g.id)}
                 // 表紙にはGOAL・タイトル・記録の件数だけを表示する。以前は
@@ -155,7 +158,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
               />
             );
           })}
-          <AddCardTile aspect={GOAL_CARD_ASPECT} size="88%" onClick={() => setAdding(true)} label="ゴールを追加" />
+          <AddCardTile aspect={GOAL_CARD_ASPECT} size="100%" onClick={() => setAdding(true)} label="ゴールを追加" />
         </div>
       </main>
 

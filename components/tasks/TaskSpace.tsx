@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SPACE } from "@/lib/tokens";
 import { Masthead } from "@/components/common";
 import { DriftTab } from "@/components/tabs/DriftTab";
 import { GravityTab } from "@/components/tabs/GravityTab";
@@ -80,7 +81,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
       </div>
 
       {/* アプリ名の札は画面に固定。 */}
-      <div style={{ position: "absolute", top: TAB_PAD_TOP, left: 16, right: 16, pointerEvents: "none", zIndex: 3 }}>
+      <div style={{ position: "absolute", top: TAB_PAD_TOP, left: SPACE.lg, right: SPACE.lg, pointerEvents: "none", zIndex: 3 }}>
         <Masthead title={appTitle("tasks")} corner={<span style={{ pointerEvents: "auto" }}>{profileButton}</span>} />
       </div>
     </main>

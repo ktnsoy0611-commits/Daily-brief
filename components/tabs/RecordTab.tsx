@@ -1,6 +1,7 @@
 "use client";
 
 import { Masthead } from "@/components/common";
+import { SPACE } from "@/lib/tokens";
 import { VoiceStudio } from "@/components/VoiceStudio";
 import { appTitle } from "@/lib/apps";
 import { TAB_PAD_TOP } from "@/lib/constants";
@@ -24,7 +25,7 @@ export function RecordTab({ profileButton, voice, appActive }: TabProps & { appA
   return (
     <main className="full-bleed" style={{ position: "relative", flex: 1, minHeight: 0 }}>
       <VoiceStudio voice={voice} active={appActive} />
-      <div style={{ position: "absolute", top: TAB_PAD_TOP, left: 16, right: 16, pointerEvents: "none" }}>
+      <div style={{ position: "absolute", top: TAB_PAD_TOP, left: SPACE.lg, right: SPACE.lg, pointerEvents: "none" }}>
         <Masthead title={appTitle("journal")} corner={<span style={{ pointerEvents: "auto" }}>{profileButton}</span>} />
       </div>
     </main>

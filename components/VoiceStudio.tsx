@@ -944,14 +944,14 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
           ) : cross ? (
             // CANCEL の ✕。2本の直線で。
             <span style={{ position: "relative", width: 12, height: 12 }}>
-              <span style={{ position: "absolute", top: 5, left: 0, width: 12, height: 1.5, background: enabled ? fg : mute, transform: "rotate(45deg)" }} />
-              <span style={{ position: "absolute", top: 5, left: 0, width: 12, height: 1.5, background: enabled ? fg : mute, transform: "rotate(-45deg)" }} />
+              <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: enabled ? fg : mute, transform: "rotate(45deg)" }} />
+              <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: enabled ? fg : mute, transform: "rotate(-45deg)" }} />
             </span>
           ) : ring ? (
             // ★REC の赤い線は、**ボタンの丸い面の内側の縁に沿わせる**
             // (ユーザー指定)。中央の小さな輪ではなく、キーいっぱいの円環。
             <span style={{
-              position: "absolute", inset: 4, borderRadius: RADIUS.circle,
+              position: "absolute", /* ★目盛りの外（円の中の輪＝図形の座標系） */ inset: 4, borderRadius: RADIUS.circle,
               border: `1.5px solid ${enabled ? ring : mute}`,
             }} />
           ) : (

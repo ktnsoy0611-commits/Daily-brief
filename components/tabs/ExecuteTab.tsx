@@ -46,7 +46,7 @@ function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen, on
       {/* 地図右下の全画面トグル。地図単体をタブの他の内容(棚・帯)から
           切り離して大きく見たいという要望に応える。 */}
       <button onClick={onOpenFullscreen} aria-label="地図を全画面表示" style={{
-        position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: RADIUS.circle,
+        position: "absolute", right: SPACE.md, bottom: SPACE.md, width: 34, height: 34, borderRadius: RADIUS.circle,
         background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
       }}>
@@ -56,7 +56,7 @@ function MapCanvas({ items, selectedIds, onOpenPin, shrink, onOpenFullscreen, on
           画面の大半を占有し続けないよう、その場で閉じられるようにする。
           zIndexは全画面ボタンと同じくLeafletのpane(400番台)より上。 */}
       <button onClick={onCollapse} aria-label="地図をたたむ" style={{
-        position: "absolute", right: 12, top: 12, width: 34, height: 34, borderRadius: RADIUS.circle,
+        position: "absolute", right: SPACE.md, top: SPACE.md, width: 34, height: 34, borderRadius: RADIUS.circle,
         background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
       }}>
@@ -99,7 +99,7 @@ function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }:
     }}>
       <LeafletMap items={items} selectedIds={selectedIds} onOpenPin={onOpenPin} />
       <button onClick={requestClose} aria-label="地図の全画面表示を閉じる" style={{
-        position: "absolute", right: 12, bottom: 12, width: 34, height: 34, borderRadius: RADIUS.circle,
+        position: "absolute", right: SPACE.md, bottom: SPACE.md, width: 34, height: 34, borderRadius: RADIUS.circle,
         background: PAPER, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: SOFT_SHADOW, color: INK, padding: 0, zIndex: 500,
       }}>

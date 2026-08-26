@@ -65,7 +65,7 @@ export function Popover({ label, closing, onClose, children }: {
           // 「上のバーの下〜下の帯の上」(＝呼び側が親にしている領域)を
           // **絶対に超えない**。以前は帯の上へ伸ばしていたので、中身が高いと
           // 画面の上へはみ出し、タブの下に潜って触れなくなっていた。
-          position: "absolute", left: 10, right: 10, bottom: 8, zIndex: 2,
+          position: "absolute", left: SPACE.md, right: SPACE.md, bottom: SPACE.md, zIndex: 2,
           // ★持ち上げは要らない(2026-08-19・第24巡)。器が**見えている矩形
           //   そのもの**になったので、舞台の下端はもうキーボードの裏ではない。
           maxHeight: "calc(100% - 8px)",
@@ -93,8 +93,8 @@ export function Popover({ label, closing, onClose, children }: {
             width: 26, height: 26, borderRadius: RADIUS.circle, background: "rgba(250,250,249,0.10)",
             position: "relative", flexShrink: 0,
           }}>
-            <span style={{ position: "absolute", left: 7, top: 12, width: 12, height: 1.5, background: PAPER, transform: "rotate(45deg)" }} />
-            <span style={{ position: "absolute", left: 7, top: 12, width: 12, height: 1.5, background: PAPER, transform: "rotate(-45deg)" }} />
+            <span style={{ position: "absolute", left: 7, top: 12, width: 12, height: 1.5,  /* ★目盛りの外（✕印の2本の線＝図形の座標系） */ background: PAPER, transform: "rotate(45deg)" }} />
+            <span style={{ position: "absolute", left: 7, top: 12, width: 12, height: 1.5,  /* ★目盛りの外（✕印の2本の線＝図形の座標系） */ background: PAPER, transform: "rotate(-45deg)" }} />
           </Press>
         </div>
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{children}</div>

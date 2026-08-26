@@ -30,7 +30,7 @@ export function SelectionMarker({ appState, selection, onOpen }: {
       style={{
         // navのピル(zIndex:25)より手前。nav手前のグラデーション(15)にも
         // 覆われないよう26にする(このプロジェクトのzIndex規約)。
-        position: "fixed", right: 16, bottom: `calc(${NAV_OFFSET} + 8px)`, zIndex: 26,
+        position: "fixed", right: SPACE.lg, bottom: `calc(${NAV_OFFSET} + 8px)`, zIndex: 26,
         display: "flex", alignItems: "center", gap: SPACE.sm, background: PAPER, border: "none",
         borderRadius: RADIUS.pill, padding: `${SPACE.sm}px ${SPACE.md}px ${SPACE.sm}px ${SPACE.sm}px`, boxShadow: SOFT_SHADOW_LG, cursor: "pointer",
       }}

@@ -196,8 +196,8 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
           width: 36, height: 36, borderRadius: RADIUS.circle, background: "rgba(250,250,249,0.10)",
           position: "relative", flexShrink: 0,
         }}>
-          <span style={{ position: "absolute", left: 11, top: 17, width: 14, height: 1.6, background: ON_G, transform: "rotate(45deg)" }} />
-          <span style={{ position: "absolute", left: 11, top: 17, width: 14, height: 1.6, background: ON_G, transform: "rotate(-45deg)" }} />
+          <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ left: 11, top: 17, width: 14, height: 1.6, background: ON_G, transform: "rotate(45deg)" }} />
+          <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ left: 11, top: 17, width: 14, height: 1.6, background: ON_G, transform: "rotate(-45deg)" }} />
         </Press>
 
         <div style={{ display: "flex", width: 200, padding: SPACE.hair, borderRadius: RADIUS.pill, background: CELL }}>
@@ -538,7 +538,7 @@ function Wedge() {
   return (
     <span aria-hidden style={{ position: "relative", width: 14, flexShrink: 0 }}>
       <span style={{
-        position: "absolute", top: "50%", left: 1, width: 9, height: 9,
+        position: "absolute", /* ★目盛りの外（つまみの印＝図形の座標系） */ top: "50%", left: 1, width: 9, height: 9,
         borderTop: `1.5px solid ${DIM}`, borderRight: `1.5px solid ${DIM}`,
         transform: "translateY(-50%) rotate(45deg)",
       }} />
@@ -570,8 +570,8 @@ function Row({ ref, label: t, value, accent, onOpen, onClear }: {
       <Press onPress={() => onClear?.()} disabled={!onClear} aria-label={`${t}を消す`} style={{
         width: 40, height: "100%", position: "relative", opacity: onClear ? 1 : 0.25,
       }}>
-        <span style={{ position: "absolute", left: 14, top: 25, width: 12, height: 1.5, background: DIM, transform: "rotate(45deg)" }} />
-        <span style={{ position: "absolute", left: 14, top: 25, width: 12, height: 1.5, background: DIM, transform: "rotate(-45deg)" }} />
+        <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ left: 14, top: 25, width: 12, height: 1.5, background: DIM, transform: "rotate(45deg)" }} />
+        <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ left: 14, top: 25, width: 12, height: 1.5, background: DIM, transform: "rotate(-45deg)" }} />
       </Press>
     </div>
   );

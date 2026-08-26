@@ -559,7 +559,8 @@ export function ProfileTab({ appState, persist, onClose }: {
 
   return (
     <>
-      <header style={{ padding: `${SPACE.lg}px ${SPACE.xs}px ${SPACE.md}px`, borderBottom: `2px solid ${INK}`, display: "flex", alignItems: "center", gap: SPACE.md }}>
+      {/* ★左右のパディングは持たない（design.md §2）。 */}
+      <header style={{ padding: `${SPACE.lg}px 0 ${SPACE.md}px`, borderBottom: `2px solid ${INK}`, display: "flex", alignItems: "center", gap: SPACE.md }}>
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: TYPE.head, color: INK, padding: 0, lineHeight: LEAD.flat }} aria-label="閉じる">←</button>
         <div style={{ fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, letterSpacing: TRACK.normal, lineHeight: LEAD.flat }}>設定</div>
       </header>

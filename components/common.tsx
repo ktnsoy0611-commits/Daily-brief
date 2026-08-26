@@ -20,8 +20,11 @@ export function Masthead({ title, dateline, right, corner }: {
   right?: ReactNode;
   corner?: ReactNode;
 }) {
+  // ★左右のパディングを持たない。持ち主は AppShell(16px)だけ(design.md §2)。
+  //   幾何アルファベットは**縦の軸が垂直な平筆**なので光学補正が要らず、
+  //   柵の 16 に置くと本文の1文字目とインクの線がそのまま一致する。
   return (
-    <header style={{ padding: `${SPACE.md}px ${SPACE.xs}px ${SPACE.lg}px` }}>
+    <header style={{ padding: `${SPACE.md}px 0 ${SPACE.lg}px` }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: SPACE.md }}>
         <div style={{ minWidth: 0 }}>
           <GeoText text={title} size={30} color={INK} />
@@ -78,7 +81,13 @@ export function keepStatus(k: { status: string }) {
 // 同じ見た目で「窪んで見える」よう、内側シャドウ付きの生成りの円で表現
 // している。カード側は、キャプションやバッジをこの穴の右
 // (目安HOLE_CLEARpx)から置くことで、穴と文字が重ならないようにする。
-export const HOLE_CLEAR = 33;
+/** 穴の左端。カード内オーバーレイと同じ「隅からの距離」。 */
+export const HOLE_X = SPACE.md;
+/** 穴の直径。★目盛りの外（図形の寸法）。 */
+export const HOLE_D = 10;
+/** 穴の右端から、カード内オーバーレイと**同じ** SPACE.md だけ空ける。
+ *  ★生の 33 をやめ、穴の位置から導く（穴を動かせば自動で追随する）。 */
+export const HOLE_CLEAR = HOLE_X + HOLE_D + SPACE.md;
 export const HOLE_YS = ["24%", "76%"];
 
 export function PunchHoles() {
@@ -86,7 +95,7 @@ export function PunchHoles() {
     <>
       {HOLE_YS.map((y) => (
         <div key={y} style={{
-          position: "absolute", left: 12, top: y, transform: "translateY(-50%)", width: 10, height: 10, borderRadius: RADIUS.circle,
+          position: "absolute", left: HOLE_X, top: y, transform: "translateY(-50%)", width: HOLE_D, height: HOLE_D, borderRadius: RADIUS.circle,
           background: "rgba(250,250,249,0.92)",
           boxShadow: "inset 0 1.5px 2px rgba(0,0,0,0.38), inset 0 -1px 1.5px rgba(0,0,0,0.12), 0 1px 1px rgba(255,255,255,0.3)",
           pointerEvents: "none",
@@ -157,7 +166,7 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
           合流させた(合流させないとバッジと良かったボタンが同じ場所に
           描画されて衝突する)。 */}
       {(badge || action || onTogglePlanSelect || onToggleGood) && (
-        <div style={{ position: "absolute", top: 8, left: 8, right: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: SPACE.xs }}>
+        <div style={{ position: "absolute", top: SPACE.md, left: SPACE.md, right: SPACE.md, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: SPACE.xs }}>
           {/* カードのタグは本文と同じ書体(2026-08-03に幾何アルファベットから
               戻した)。棚の見出し(SectionLabel)と同じ字間で揃えている。 */}
           {badge && (
@@ -193,7 +202,7 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
           )}
         </div>
       )}
-      <div style={{ position: "absolute", bottom: 10, left: HOLE_CLEAR, right: 10 }}>
+      <div style={{ position: "absolute", bottom: SPACE.md, left: HOLE_CLEAR, right: SPACE.md }}>
         {label && <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: "rgba(255,255,255,0.7)", marginBottom: SPACE.xs }}>{label}</div>}
         <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: WHITE, lineHeight: LEAD.snug, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
         {sub && <div style={{ fontSize: TYPE.micro, color: "rgba(255,255,255,0.75)", marginTop: SPACE.hair }}>{sub}</div>}
@@ -381,7 +390,7 @@ function StackRow({ items, aspect, cardWidth, cardHeight, onOpen, onAdd, addLabe
           20)なので、拡大されたカードが被さってきても＋タイルが手前に
           出てくることはない。＋タイルは一番下の行だけに出す。 */}
       {showAdd && (
-        <div style={{ position: "absolute", left: addLeft, top: 8, width: addTileWidth, zIndex: 0 }}>
+        <div style={{ position: "absolute", left: addLeft, top: SPACE.sm, width: addTileWidth, zIndex: 0 }}>
           <AddCardTile aspect={aspect} size={addTileWidth} onClick={onAdd} label={addLabel} />
         </div>
       )}

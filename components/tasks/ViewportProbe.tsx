@@ -80,7 +80,7 @@ export function ViewportProbe() {
       // ★★★**画面そのものに貼る**(第24巡)。器の中の absolute にしていたが、
       //   実機で「崩れすぎて数値が読み取れなかった」と報告された。器ごと
       //   ずれても・何が手前に来ても読めるように、`fixed` の最前面へ置く。
-      position: "fixed", left: 8, top: 8, zIndex: 2147483000, pointerEvents: "none",
+      position: "fixed", /* ★目盛りの外（開発用の数値表示。直ったら撤去する） */ left: 8, top: 8, zIndex: 2147483000, pointerEvents: "none",
       padding: `${SPACE.sm}px ${SPACE.md}px`, borderRadius: RADIUS.lg, background: "rgba(0,0,0,0.78)",
       // ★★**9.5px では実機の写真で読めなかった**(第23巡に実機で報告)。
       //   開発用なので見た目より読めることを優先する。

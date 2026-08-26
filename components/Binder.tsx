@@ -464,7 +464,11 @@ function CoverBody({ eyebrowLabel, title, footer, accentColor, titleColor = INK 
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end" }}>
-        <div style={{ fontFamily: SANS, fontWeight: WEIGHT.heavy, fontSize: TYPE.lead, lineHeight: LEAD.snug, color: titleColor, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+        {/* ★`wordBreak: "auto-phrase"` … 背表紙の題は幅が狭いので、放っておくと
+            最終行に1文字だけ残る（「毎朝きちんと起き／る」）。和文は**文節で折る**
+            のが正しく、`balance`（行長を揃える）だと語の途中で折れてしまう
+            （「毎朝きち／んと起きる」）。対応しない端末では単に無視される。 */}
+        <div style={{ fontFamily: SANS, fontWeight: WEIGHT.heavy, fontSize: TYPE.lead, lineHeight: LEAD.snug, color: titleColor, wordBreak: "auto-phrase", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
       </div>
       {footer && <div style={{ marginTop: SPACE.sm, flexShrink: 0 }}>{footer}</div>}
     </div>

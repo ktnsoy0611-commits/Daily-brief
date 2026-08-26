@@ -318,8 +318,6 @@ const WD3 = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 const WD_FULL = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
 /** 山の文字ブロックの**字を組む幅**(山の内寸に対する割合)。高さは塗りから決まる。 */
 const PILE_WORD_W = 0.66;
-/** 日付は曜日より控えめの幅で組む(役が違うので同じ大きさにしない)。 */
-const PILE_DATE_W = 0.62;
 /** ★山の板の遊びは**「自由」より小さく**(第63巡にユーザー指摘「日付の図形の
  *  当たり判定が文字に対して少しだけ大きい」)。`8/26` のような短い語では、
  *  `FREE_PAD`(8)/`FREE_PAD_Y`(4) だと塗りに対して箱が目に見えて大きい。 */
@@ -2485,12 +2483,15 @@ function pileWordPieces(
   const out: Piece[] = [];
   words.forEach((word, i) => {
     const id = `pw:${i}`;
-    // ★★字面は**日付と曜日で別々に決める**(第63巡にユーザー指定「落ちてくる曜日を
-    //   もう少し大きく」)。2枚で1つにすると、長い `WEDNESDAY` に引きずられて
-    //   曜日が小さくなる。「語によらず1つ」は TIMELINE の「自由」の約束であって、
-    //   役の違う2枚には効かせない。日付は少し控えめの幅で組む。
-    const room = inner * PILE_WORD_W * (i === 0 ? PILE_DATE_W : 1);
-    const fs = wordFontSize([word], room, LATIN);
+    // ★★★字面は**2枚で1つ**(2026-08-26・第67巡にユーザー指定「落ちてくる曜日と
+    //   日付の、上端と下端のヘッドラインがあっていないので合わせてください」)。
+    //   第63巡は「曜日をもう少し大きく」の指定で日付と別々に決めていたが、
+    //   別々にすると**字面の高さが揃わない** ― 2枚並んで落ちたとき、
+    //   キャップラインもベースラインも食い違って見える。
+    //   → **長いほう(曜日)で決めた1つの大きさ**を両方に使う。日付は短いので、
+    //   同じ大きさのまま箱が狭くなるだけで収まる。
+    const room = inner * PILE_WORD_W;
+    const fs = wordFontSize(words as string[], room, LATIN);
     const r1 = frac(id + seed); const r2 = frac(id + seed + "y");
     const p = makeWordPiece(M, word, id, room, fs,
       w * 0.5, -200 - i * 170 - r2 * 120, INK, LATIN, PILE_WORD_PAD, PILE_WORD_PAD_Y);

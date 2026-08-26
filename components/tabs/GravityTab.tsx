@@ -13,7 +13,7 @@ import { canvasFont, onFontsReady, primeAdvances } from "@/lib/textFit";
 import { allTagFaces, allTagLabels, resolveTag, tagColor, tagInk } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
-import { INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL } from "@/lib/constants";
+import { INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL, SECOND } from "@/lib/constants";
 import { ms, T_IN, T_ITEM, T_OUT } from "@/lib/motion";
 import { flick, flickStep, flickThrow, type Flick } from "@/lib/scroll";
 import { D_SETTLE, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring } from "@/lib/spring";
@@ -298,6 +298,10 @@ function setFilter(b: Body, f: { category: number; mask: number }) {
 const WORLD_FLING = 9;
 /** 曜日を開いたときの隙間(詳細の文字が入る)と、左端の余白。 */
 const GAP_W = 232;
+/** 詳細のパネルの幅(隙間から左右の余白を引いたもの)。★出どころはここだけ。 */
+const DETAIL_W = GAP_W - SPACE.lg * 2;
+/** 日の見出し(日付＋件数＋罫)の高さ。行はここへ重ねない。 */
+const DETAIL_HEAD_H = SPACE.xxl;
 const PAD_L = 20;
 
 /** ★★縦のスワイプ ―**向きで行き先が決まる**(第61巡にユーザー確定)。
@@ -538,6 +542,10 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const [closingDay, setClosingDay] = useState<number | null>(null);
   /** ★閉じている最中かを**描画ループから**見るための控え(state は毎フレーム読めない)。 */
   const closingRef = useRef<number | null>(null);
+  /** ★詳細の各行の器。**図形の高さに合わせて**毎フレーム置く(`syncDetail`)。 */
+  const detailRowRefs = useRef<(HTMLDivElement | null)[]>([]);
+  /** ★描画ループから読む用の控え(state は毎フレーム読めない)。 */
+  const expandedTasksRef = useRef<Task[]>([]);
   /** ★曜日を開く**前**の横スクロール位置。閉じたらここへ戻す。 */
   const panBeforeRef = useRef<number | null>(null);
   const closeTRef = useRef(0);
@@ -1150,9 +1158,52 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         const el = ruleRefs.current[i];
         if (el) el.style.transform = `translateX(${laneLeft(i).toFixed(1)}px)`;
       }
-      const sel = expandedRef.current;
+      const sel = expandedRef.current ?? closingRef.current;
       const det = detailRef.current;
       if (det && sel !== null) det.style.transform = `translateX(${(laneLeft(sel) + laneWOf() + SPACE.lg).toFixed(1)}px)`;
+      // ★★★詳細の各行を**その図形の高さ**へ置く(2026-08-26・第67巡にユーザー指定)。
+      //   行の縦の中心を図形の中心に合わせ、近くて重なるときは**下から順に押しのける**。
+      //   ★毎フレームここで置くのは、図形が物理で動き続けるから ― CSS の
+      //   transition で別に動かすと器とズレる(曜日の札と同じ理由)。
+      if (det && sel !== null) {
+        const rect = det.getBoundingClientRect();
+        const rows = detailRowRefs.current;
+        // (図形の中心 y, 行の高さ, 器) を集めて、上から順に重なりを解く
+        const items: { y: number; h: number; el: HTMLDivElement }[] = [];
+        for (let i = 0; i < rows.length; i += 1) {
+          const el = rows[i]; if (!el) continue;
+          const task = expandedTasksRef.current[i]; if (!task) continue;
+          const piece = piecesRef.current.find((p) => p.id === task.id);
+          const rh = el.offsetHeight;
+          const cy = piece ? piece.body.position.y : rect.top + rect.height - rh / 2;
+          items.push({ y: cy, h: rh, el });
+        }
+        items.sort((a, b) => a.y - b.y);
+        const top = rect.top;
+        // ★日の見出し(帯のすぐ上)のぶんを空けておく ― ここへ重ねない。
+        const bot = rect.top + rect.height - DETAIL_HEAD_H;
+        // ★★重なりは**二段階**で解く。前へ詰めるだけだと、入り切らないときに
+        //   最後の行が下端で潰れ合う(実測で2行が同じ位置に重なった)。
+        //   ① 上から順に「上の行を追い越さない」
+        const ys: number[] = [];
+        let cursor = top;
+        for (const it of items) {
+          const y = Math.max(cursor, it.y - it.h / 2);
+          ys.push(y); cursor = y + it.h + SPACE.md;
+        }
+        //   ② 下から順に「下端と次の行を越えない」ように押し戻す
+        let limit = bot;
+        for (let i = items.length - 1; i >= 0; i -= 1) {
+          ys[i] = Math.min(ys[i], limit - items[i].h);
+          ys[i] = Math.max(ys[i], top);
+          limit = ys[i] - SPACE.md;
+        }
+        for (let i = 0; i < items.length; i += 1) {
+          // 器の bottom:0 からの相対へ直す
+          items[i].el.style.transform =
+            `translateY(${(ys[i] - (rect.top + rect.height - items[i].h)).toFixed(1)}px)`;
+        }
+      }
       return moving;
     }
 
@@ -2162,7 +2213,12 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   // ★閉じている途中も**同じ日を出したまま**にして、拭き取りを逆再生する。
   const shownIdx = expanded ?? closingDay;
   const expandedDay = shownIdx !== null ? days[shownIdx] : null;
-  const expandedTasks = expandedDay ? tasks.filter((t) => t.dueDate === expandedDay) : [];
+  const expandedTasks = useMemo(
+    () => (expandedDay ? tasks.filter((t) => t.dueDate === expandedDay) : []),
+    [expandedDay, tasks],
+  );
+  // ★描画ループは state を読めないので控えを置く(行を図形の高さへ置くのに使う)。
+  expandedTasksRef.current = expandedTasks;
 
   return (
     <div ref={rootRef} style={{ position: "absolute", inset: 0 }}>
@@ -2255,9 +2311,16 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
               const wk = isWeekend(d);
               return (
                 <div key={d} ref={(el) => { ruleRefs.current[i] = el; }} style={{
-                  position: "absolute", left: 0, top: 0, bottom: 0, width: 1,
-                  background: `color-mix(in srgb, ${INK} 16%, transparent)`, willChange: "transform",
+                  position: "absolute", left: 0, top: 0, bottom: 0, width: 1, willChange: "transform",
                 }}>
+                  {/* ★線そのものは別の器にする ― 親は毎フレーム `translateX` を
+                      書き替えるので、そこへ入りのアニメーションを重ねられない。 */}
+                  <div className="tl-line" style={{
+                    position: "absolute", left: 0, top: 0, bottom: 0, width: 1,
+                    background: `color-mix(in srgb, ${INK} 16%, transparent)`,
+                    transformOrigin: "bottom center",
+                    animationDelay: `calc(var(--t-step) * ${Math.min(i, 6)})`,
+                  }} />
                   {/* ★土日はレーンいっぱいに淡い地色(第59巡にユーザー指定)。 */}
                   {wk && (
                     <div style={{
@@ -2265,11 +2328,12 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                       background: `color-mix(in srgb, ${INK} 5%, transparent)`,
                     }} />
                   )}
-                  <span style={{
+                  <span className="tl-date" style={{
                     position: "absolute", left: SPACE.sm, top: 0, whiteSpace: "nowrap",
                     fontFamily: LATIN, fontWeight: WEIGHT.heavy, fontSize: TYPE.head,
                     letterSpacing: TRACK.tight, lineHeight: LEAD.flat,
                     color: wk ? INK : MUTED,
+                    animationDelay: `calc(var(--t-step) * ${Math.min(i, 6)})`,
                   }}>{monthDayOf(d)}</span>
                 </div>
               );
@@ -2308,33 +2372,94 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
             </div>
           </div>
 
-          {/* ★曜日の隙間に出るその日の詳細。 */}
+          {/* ★★★曜日の隙間に出るその日の詳細(2026-08-26・第67巡に組み直し)。
+              情報の順は **日 → 題 → 時刻とタグ → 手順 → 持ちもの** の4段。
+              大きさは `head / lead / small / body / micro` の5段に収め、色は
+              `INK` / `SECOND` / `MUTED` の3段だけ ― **画面で唯一の色はタグのピル**。
+              ★★行は**図形の高さに合わせて**置く(位置は毎フレーム `syncDetail` が
+              入れる)。近い図形どうしで行が重なるときは下へ押しのける。 */}
           {expandedDay && (
             <div ref={detailRef} className={`tl-detail${expanded === null ? " out" : ""}`} style={{
-              position: "absolute", left: 0, width: GAP_W - SPACE.lg * 2,
-              bottom: BAND_BOTTOM, zIndex: 3, pointerEvents: "none", willChange: "transform",
+              position: "absolute", left: 0, width: DETAIL_W,
+              top: MASTHEAD_H, bottom: BAND_BOTTOM, zIndex: 3, pointerEvents: "none",
             }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm, marginBottom: SPACE.md }}>
-                <span style={{ fontFamily: LATIN, fontWeight: WEIGHT.heavy, fontSize: TYPE.head, letterSpacing: TRACK.tight, color: expanded === 0 ? RUST : INK }}>
-                  {monthDayOf(expandedDay)}
-                </span>
-                <span style={{ fontFamily: LATIN, fontWeight: WEIGHT.bold, fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED }}>
-                  {expandedTasks.length} TASKS
-                </span>
+              {/* 日の見出し … 帯のすぐ上に固定。ベースラインで並べる。 */}
+              <div style={{
+                position: "absolute", left: 0, right: 0, bottom: 0,
+                display: "flex", alignItems: "baseline", gap: SPACE.sm,
+                borderBottom: `1.5px solid ${INK}`, paddingBottom: SPACE.xs,
+              }}>
+                <span style={{
+                  fontFamily: LATIN, fontWeight: WEIGHT.heavy, fontSize: TYPE.head,
+                  lineHeight: LEAD.flat, letterSpacing: TRACK.tight,
+                  color: expanded === 0 ? RUST : INK,
+                }}>{monthDayOf(expandedDay)}</span>
+                <span style={{
+                  fontFamily: LATIN, fontWeight: WEIGHT.bold, fontSize: TYPE.micro,
+                  lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: MUTED,
+                  marginLeft: "auto", marginRight: `-${TRACK.caps}`,
+                }}>{expandedTasks.length ? `${expandedTasks.length} TASKS` : "FREE"}</span>
               </div>
+
+              {expandedTasks.map((t, i) => {
+                const tag = resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note);
+                const steps = (t.subtasks ?? []).filter((x) => x.title.trim());
+                const when = [t.dueTime, t.endTime].filter(Boolean).join("–");
+                return (
+                  <div key={t.id} ref={(el) => { detailRowRefs.current[i] = el; }} style={{
+                    position: "absolute", left: 0, right: 0, bottom: 0, willChange: "transform",
+                  }}>
+                    <div style={{
+                      fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: INK,
+                      lineHeight: LEAD.snug, display: "-webkit-box", WebkitBoxOrient: "vertical",
+                      WebkitLineClamp: 2, overflow: "hidden", wordBreak: "auto-phrase",
+                    }}>{t.title || "無題"}</div>
+                    {/* 時刻とタグ … ALIGN と同じ作法(字面の箱を揃えてベースラインで並べる)。 */}
+                    <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm, marginTop: SPACE.hair }}>
+                      {when && (
+                        <span style={{
+                          fontFamily: LATIN, fontWeight: WEIGHT.bold, fontSize: TYPE.small,
+                          lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: MUTED, whiteSpace: "nowrap",
+                        }}>{when}</span>
+                      )}
+                      <span style={{
+                        display: "inline-block", padding: `0 ${SPACE.sm}px`, borderRadius: RADIUS.pill,
+                        background: tagColor(tag), color: tagInk(tag),
+                        fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.small,
+                        lineHeight: LEAD.flat, letterSpacing: TRACK.wide, whiteSpace: "nowrap",
+                      }}><span style={{ marginRight: `-${TRACK.wide}` }}>{tag.toUpperCase()}</span></span>
+                    </div>
+                    {steps.length > 0 && (
+                      <div style={{
+                        fontFamily: SANS, fontWeight: WEIGHT.text, fontSize: TYPE.body, color: SECOND,
+                        lineHeight: LEAD.snug, marginTop: SPACE.xs,
+                        display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2, overflow: "hidden",
+                      }}>{steps.map((x) => x.title).join(" ・ ")}</div>
+                    )}
+                    {(t.belongings || t.context) && (
+                      <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm, marginTop: SPACE.xs }}>
+                        <span style={{
+                          fontFamily: LATIN, fontWeight: WEIGHT.bold, fontSize: TYPE.micro,
+                          lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: MUTED,
+                          whiteSpace: "nowrap", flexShrink: 0,
+                        }}>{t.belongings ? "TAKE" : "WHERE"}</span>
+                        <span style={{
+                          fontFamily: SANS, fontWeight: WEIGHT.text, fontSize: TYPE.body, color: SECOND,
+                          lineHeight: LEAD.snug, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>{t.belongings || t.context}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
               {expandedTasks.length === 0 && (
-                <div style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, color: MUTED }}>この日には何も入っていない。</div>
+                <div style={{
+                  position: "absolute", left: 0, right: 0, bottom: SPACE.xxl,
+                  fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text,
+                  lineHeight: LEAD.snug, color: MUTED,
+                }}>この日には何も入っていない。</div>
               )}
-              {expandedTasks.map((t) => (
-                <div key={t.id} style={{ marginBottom: SPACE.md }}>
-                  <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {t.title || "無題"}
-                  </div>
-                  <div style={{ fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: tagColor(resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note)), marginTop: SPACE.hair }}>
-                    #{resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note).toUpperCase()}
-                  </div>
-                </div>
-              ))}
             </div>
           )}
         </>

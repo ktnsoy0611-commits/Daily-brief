@@ -491,9 +491,23 @@ button:active {
    `--tl`(0.04〜1) は JS がドラッグから書く。原点を下端にすると、地面から
    生えるように立ち上がる。 */
 /* ★横に送っている間だけ出る日付の目盛り(第58巡)。`--pan` は GravityTab が書く。 */
-.tl-rules {
-  opacity: var(--pan, 0);
-  transition: opacity var(--t-item) var(--ease-settle);
+/* ★★縦線と日付は**常時表示**(2026-08-26・第67巡にユーザー指定)。
+   第66巡までは `--pan` に連動していて、横へ送っている間しか出ていなかった。 */
+.tl-rules { opacity: 1; }
+/* ★入りは**日付が上から降りてくる**。素早く(`--t-item`)、レーンごとに `--t-step` ずらす。 */
+.tl-rules .tl-date { animation: tl-date-in var(--t-item) var(--ease-settle) both; }
+@keyframes tl-date-in {
+  from { transform: translateY(-140%); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+/* 縦線そのものは、下から立ち上がる。 */
+.tl-rules .tl-line { animation: tl-line-in var(--t-item) var(--ease-settle) both; }
+@keyframes tl-line-in {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-rules .tl-date, .tl-rules .tl-line { animation: none; }
 }
 .tl-band span {
   display: block;

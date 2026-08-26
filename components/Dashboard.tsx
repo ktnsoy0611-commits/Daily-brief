@@ -1,13 +1,13 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Bookmark, Check, X } from "lucide-react";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { TAB_ICON_OFF, TabGlyph } from "@/components/TabIcons";
+import { TabGlyph } from "@/components/TabIcons";
 import { TaskRow } from "@/components/TaskRow";
 import type { AppDef } from "@/lib/apps";
-import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, RUST_TINT, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, TAB_MARK } from "@/lib/constants";
+import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, RUST_TINT, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, TAB_MARK, SECOND, TAB_ICON_OFF } from "@/lib/constants";
 import { haptic, img, todayKey, todayLabel } from "@/lib/helpers";
 import type { AppState, PlanSelection, TabId } from "@/lib/types";
 
@@ -69,14 +69,14 @@ function SelectedRow({ title, image, color, onRemove }: {
   title: string; image?: string; color?: string; onRemove: () => void;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, background: PAPER, borderRadius: RADIUS.lg, padding: "8px 12px 8px 8px", boxShadow: SOFT_SHADOW }}>
-      <div style={{ width: 42, height: 42, borderRadius: RADIUS.md, overflow: "hidden", flexShrink: 0, background: color ?? "#5A5A54" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: SPACE.md, background: PAPER, borderRadius: RADIUS.lg, padding: `${SPACE.sm}px ${SPACE.md}px ${SPACE.sm}px ${SPACE.sm}px`, boxShadow: SOFT_SHADOW }}>
+      <div style={{ width: 42, height: 42, borderRadius: RADIUS.md, overflow: "hidden", flexShrink: 0, background: color ?? SECOND }}>
         {image && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={img(image, 100, 100)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         )}
       </div>
-      <div style={{ flex: 1, minWidth: 0, fontFamily: SANS, fontSize: TYPE.body, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+      <div style={{ flex: 1, minWidth: 0, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
       <button onClick={() => { haptic(6); onRemove(); }} aria-label={`${title}を外す`} style={{
         width: 26, height: 26, borderRadius: RADIUS.circle, border: "none", background: RUST_TINT, color: RUST,
         display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, padding: 0,
@@ -241,18 +241,18 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
         }}>
           {/* 取手が乗るぶんの余白。取手自体は下のモーフ用ピルが担う。 */}
           <div style={{ height: GRIP_H - 24, flexShrink: 0 }} />
-          <div className="dash-rise" style={{ padding: "0 24px 8px", flexShrink: 0 }}>
-            <div style={{ fontFamily: SANS, fontSize: TYPE.small, letterSpacing: "0.22em", color: MUTED, fontWeight: 700 }}>{todayLabel()}</div>
+          <div className="dash-rise" style={{ padding: `0 ${SPACE.xl}px ${SPACE.sm}px`, flexShrink: 0 }}>
+            <div style={{ fontFamily: SANS, fontSize: TYPE.small, letterSpacing: TRACK.wide, color: MUTED, fontWeight: WEIGHT.bold }}>{todayLabel()}</div>
           </div>
 
           {/* 中身(スクロール) */}
-          <div ref={scrollRef} className="no-scrollbar dash-stagger" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "12px 16px 8px" }}>
-            <section style={{ marginBottom: 24 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 4px 12px" }}>
+          <div ref={scrollRef} className="no-scrollbar dash-stagger" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: `${SPACE.md}px ${SPACE.lg}px ${SPACE.sm}px` }}>
+            <section style={{ marginBottom: SPACE.xl }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: `0 ${SPACE.xs}px ${SPACE.md}px` }}>
                 {/* 見出しの言葉は置かず、アイコン＋数字だけで何の集まりかを示す。 */}
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
                   <Bookmark size={15} strokeWidth={2.2} color={MUTED} />
-                  <span style={{ fontFamily: SANS, fontSize: TYPE.display, fontWeight: 800, color: entries.length ? INK : MUTED, lineHeight: 1 }}>{entries.length}</span>
+                  <span style={{ fontFamily: SANS, fontSize: TYPE.display, fontWeight: WEIGHT.heavy, color: entries.length ? INK : MUTED, lineHeight: LEAD.flat }}>{entries.length}</span>
                 </span>
                 {entries.length > 0 && (
                   <button onClick={() => { haptic(6); onClearSelection(); }} aria-label="すべて外す" style={{
@@ -262,7 +262,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
                 )}
               </div>
               {entries.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
                   {entries.map((it) => (
                     <SelectedRow key={it.id} title={it.title} image={it.images?.[0]} color={it.color} onRemove={() => onToggleItem(it.id)} />
                   ))}
@@ -271,12 +271,12 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
             </section>
 
             <section>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 4px 12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, margin: `0 ${SPACE.xs}px ${SPACE.md}px` }}>
                 <Check size={15} strokeWidth={2.6} color={MUTED} />
-                <span style={{ fontFamily: SANS, fontSize: TYPE.display, fontWeight: 800, color: todaysTasks.length ? INK : MUTED, lineHeight: 1 }}>{todaysTasks.length}</span>
+                <span style={{ fontFamily: SANS, fontSize: TYPE.display, fontWeight: WEIGHT.heavy, color: todaysTasks.length ? INK : MUTED, lineHeight: LEAD.flat }}>{todaysTasks.length}</span>
               </div>
               {todaysTasks.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
                   {todaysTasks.map((t) => <TaskRow key={t.id} task={t} onToggle={onToggleTask} />)}
                 </div>
               )}
@@ -284,7 +284,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
           </div>
 
           {/* 締めの操作。1日をここで終える。 */}
-          <div className="dash-rise dash-rise-3" style={{ flexShrink: 0, padding: "12px 16px max(16px, env(safe-area-inset-bottom))", borderTop: `1px solid ${HAIRLINE}`, display: "flex", justifyContent: "center" }}>
+          <div className="dash-rise dash-rise-3" style={{ flexShrink: 0, padding: `${SPACE.md}px ${SPACE.lg}px max(${SPACE.lg}px, env(safe-area-inset-bottom))`, borderTop: `1px solid ${HAIRLINE}`, display: "flex", justifyContent: "center" }}>
             <button
               onClick={() => { if (!canFinish) return; haptic(16); onFinishDay(); }}
               disabled={!canFinish}
@@ -315,7 +315,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
         onPointerCancel={endGrab}
         style={{
           // ★本物のタブバー(AppShellのnav)とまったく同じ箱にすること。
-          // 以前は left:50% / marginLeft:-210 / width:420 で、本物より
+          // 以前は left:50% / marginLeft:-210 / width:420 で、本物より  // ★目盛りの外（説明の文中）
           // 左へ9px・幅で56px大きい箱になっており、引き始めた瞬間に
           // 「ピルが元より一回り大きくなる」ように見えていた(実機報告)。
           // nav は padding:"0 16px" の中に maxWidth:388 の行を持ち、
@@ -325,7 +325,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
           bottom: `max(${NAV_BOTTOM_GAP}, calc(var(--dash, 0) * ${SHEET_HEIGHT} - ${PILL_H_EXPR} - 12px))`,
           height: `max(${GRIP_H}px, ${PILL_H_EXPR})`,
           display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "0 16px", touchAction: "none", cursor: "grab",
+          padding: `0 ${SPACE.lg}px`, touchAction: "none", cursor: "grab",
         }}
       >
        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", maxWidth: NAV_ROW_MAX }}>
@@ -348,7 +348,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
             opacity: "calc(1 - var(--dash, 0) * 1.45)",
           }} />
           <div className="dash-pill-paper" style={{
-            position: "relative", display: "flex", width: "100%", padding: 8,
+            position: "relative", display: "flex", width: "100%", padding: SPACE.sm,
             opacity: "calc(1 - var(--dash, 0) * 4.5)",
           }}>
             {/* 本物のタブバーと同じ「正方形の枠 + 内接する正円」。 */}

@@ -1,7 +1,7 @@
 "use client";
 
 import { MAST_H, MUTED, SANS, TAB_PAD_TOP } from "@/lib/constants";
-import { SPACE, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, TRACK, WEIGHT } from "@/lib/tokens";
 
 /**
  * 縦の空間の中の1層の名前(DRIFT / GRAVITY)。アプリ名の札(`Masthead`)の
@@ -21,7 +21,7 @@ export function LayerName({ text, right }: { text: string; right?: React.ReactNo
       display: "flex", alignItems: "center", justifyContent: "flex-end", gap: SPACE.md, pointerEvents: "none",
     }}>
       <span style={{
-        fontFamily: SANS, fontSize: TYPE.micro, fontWeight: 700, letterSpacing: "0.18em", color: MUTED,
+        fontFamily: SANS, fontSize: TYPE.micro, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: MUTED,
       }}>{text}</span>
       {right && <span style={{ pointerEvents: "auto" }}>{right}</span>}
     </div>

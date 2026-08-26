@@ -1,6 +1,6 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { useEffect, useRef } from "react";
 import { Press } from "@/components/Button";
 import { CAP, DIM, LIFT } from "@/components/tasks/Popover";
@@ -29,7 +29,7 @@ export function WeightPicker({ value, onPick }: {
     { w: 3, label: "大", size: 42 },
   ];
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ display: "flex", gap: SPACE.sm }}>
       {steps.map((s) => {
         const on = s.w === value;
         return (
@@ -39,10 +39,10 @@ export function WeightPicker({ value, onPick }: {
             style={{
               flex: 1, height: 76, borderRadius: RADIUS.xl,
               background: on ? PAPER : CELL,
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.sm,
             }}>
             <span style={{ width: s.size, height: s.size, borderRadius: RADIUS.circle, background: on ? LIFT : PAPER }} />
-            <span style={{ ...CAP, fontSize: TYPE.micro, letterSpacing: "0.1em", color: on ? LIFT : DIM }}>{s.label}</span>
+            <span style={{ ...CAP, fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: on ? LIFT : DIM }}>{s.label}</span>
           </Press>
         );
       })}
@@ -56,7 +56,7 @@ export function TagPicker({ value, onPick }: {
   onPick: (t: TaskTag) => void;
 }) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ display: "flex", gap: SPACE.sm }}>
       {TASK_TAGS.map((t) => {
         const on = t.id === value;
         return (
@@ -99,8 +99,8 @@ export function TextField({ value, multiline, placeholder, onChange }: {
       onChange={(e) => onChange(multiline ? e.target.value : e.target.value.replace(/\n/g, ""))}
       style={{
         width: "100%", background: CELL, border: "none", outline: "none", resize: "none",
-        borderRadius: RADIUS.xl, padding: "12px 16px",
-        fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 600, lineHeight: 1.5, color: PAPER,
+        borderRadius: RADIUS.xl, padding: `${SPACE.md}px ${SPACE.lg}px`,
+        fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold, lineHeight: LEAD.body, color: PAPER,
         caretColor: PAPER,
       }}
     />

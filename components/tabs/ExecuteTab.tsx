@@ -1,6 +1,6 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_ITEM } from "@/lib/motion";
 import { ChevronUp, Map as MapIcon, Maximize2, Minimize2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -111,9 +111,9 @@ function MapFullscreenOverlay({ items, selectedIds, onOpenPin, onRequestClose }:
 
 function HorizontalShelf({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section style={{ marginBottom: 24 }}>
-      <SectionLabel text={title} style={{ marginBottom: 12 }} />
-      <div className="no-scrollbar" style={{ display: "flex", gap: 12, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
+    <section style={{ marginBottom: SPACE.xl }}>
+      <SectionLabel text={title} style={{ marginBottom: SPACE.md }} />
+      <div className="no-scrollbar" style={{ display: "flex", gap: SPACE.md, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: SPACE.hair, marginLeft: -SPACE.lg, marginRight: -SPACE.lg, paddingLeft: SPACE.lg, paddingRight: SPACE.lg }}>
         {children}
       </div>
     </section>
@@ -250,7 +250,7 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
   );
 
   return (
-    <main style={{ paddingTop: 16, paddingBottom: bottomPadding }}>
+    <main style={{ paddingTop: SPACE.lg, paddingBottom: bottomPadding }}>
       {/* マップだけ画面上部に追従(sticky)させる。下の棚(今週のおすすめ・
           4ドメイン)をスクロールしても、地図は常に見える位置に留まり
           続けてほしいという要望に対応。topは0(=data-tab-scroll-rootの
@@ -301,9 +301,9 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
         // チップを1本置く(nav・戻るチップと同じ「PAPER地+SOFT_SHADOWで浮く
         // 丸チップ」の語彙)。
         <button onClick={() => { haptic(6); setMapOpen(true); }} style={{
-          width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          background: PAPER, border: "none", borderRadius: RADIUS.pill, padding: "12px 0", cursor: "pointer",
-          fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, color: INK, boxShadow: SOFT_SHADOW,
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: SPACE.sm,
+          background: PAPER, border: "none", borderRadius: RADIUS.pill, padding: `${SPACE.md}px 0`, cursor: "pointer",
+          fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, color: INK, boxShadow: SOFT_SHADOW,
         }}>
           <MapIcon size={14} strokeWidth={2.2} />
           地図をひらく
@@ -313,17 +313,17 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
       {/* ★プランを生成。プランタブを開いたとき画面の中ほどに来る位置(地図の
           すぐ下、棚の手前)に、単独で大きく置く。地図と棚のあいだが、
           「ここから何をするか」を決める場所として一番自然なため。 */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "8px 0 24px" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.sm}px 0 ${SPACE.xl}px` }}>
         <button onClick={() => { haptic(10); setPlanSheet(true); }} style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-          padding: "16px 32px", borderRadius: RADIUS.pill, border: "none", cursor: "pointer",
-          background: INK, color: PAPER, fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.08em",
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: SPACE.sm,
+          padding: `${SPACE.lg}px ${SPACE.xxl}px`, borderRadius: RADIUS.pill, border: "none", cursor: "pointer",
+          background: INK, color: PAPER, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
           boxShadow: SOFT_SHADOW_LG,
         }}>
           <Sparkles size={15} strokeWidth={2.4} />
           プランを生成
         </button>
-        <span style={{ fontSize: TYPE.small, color: MUTED, letterSpacing: "0.04em" }}>
+        <span style={{ fontSize: TYPE.small, color: MUTED, letterSpacing: TRACK.normal }}>
 {plans ? "3案" : ""}
         </span>
       </div>
@@ -399,7 +399,7 @@ export function ExecuteTab({ appState, persist, showToast, profileButton, select
         onClose={() => setPinItem(null)}
         actionSlot={pinItem ? ((closeSheet) => (
           <button onClick={() => { toggleDraftItem(pinItem); closeSheet(); }} style={{
-            width: "100%", padding: "12px 0", borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.05em",
+            width: "100%", padding: `${SPACE.md}px 0`, borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
             background: draftSelection.includes(pinItem.id) ? "transparent" : INK,
             color: draftSelection.includes(pinItem.id) ? RUST : PAPER,
             border: draftSelection.includes(pinItem.id) ? `1.5px solid ${RUST}` : "none",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { INK, NAV_H, RUST } from "@/lib/constants";
+import { INK, NAV_H, RUST, VOID } from "@/lib/constants";
 import { createAnchorRect } from "@/lib/motion";
 import { SPACE } from "@/lib/tokens";
 
@@ -176,7 +176,7 @@ function BlackHole() {
         <path d="M36 58 A22 22 0 0 1 14 36" fill="none" stroke={INK} strokeWidth={3.4} strokeLinecap="round" opacity={0.66} />
       </g>
       {/* 光を通さない穴。★台ではなく**これが的の本体**。 */}
-      <circle className="bh-core" cx={36} cy={36} r={13} fill="#000" />
+      <circle className="bh-core" cx={36} cy={36} r={13} fill={VOID} />
       {/* 塵 ― 外から中心へ螺旋で吸い込まれて消える(近づいたときだけ)。 */}
       <g className="bh-dust">
         {[0, 1, 2, 3, 4, 5].map((i) => (

@@ -74,7 +74,7 @@ export function LeafletMap({ items, selectedIds, onOpenPin, style }: {
     // 初回のみ、ピンが収まるように視点を合わせる(ユーザーが未操作のとき)。
     if (fitIfPossible && pts.length > 0 && !userMovedRef.current) {
       if (pts.length === 1) map.setView(pts[0], 15);
-      else map.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
+      else map.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });  // ★目盛りの外（Leaflet の引数＝地図の座標系）
     }
   }, []);
 

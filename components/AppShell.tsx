@@ -1,12 +1,12 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, TRACK, RADIUS } from "@/lib/tokens";
 import { ms as msOf, T_ITEM } from "@/lib/motion";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop, groundOf } from "@/components/AppBackdrop";
 import { CreateMenu, type MenuAt } from "@/components/CreateMenu";
-import { TAB_ICON_OFF, TabGlyph, TabIcon } from "@/components/TabIcons";
+import { TabGlyph, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
 import { SelectionMarker } from "@/components/PlanSelectionBar";
 import { SignInGate } from "@/components/SignInGate";
@@ -24,7 +24,7 @@ import { TaskSpace } from "@/components/tasks/TaskSpace";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
-import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
+import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { kickViewport } from "@/lib/viewportKick";
@@ -78,7 +78,7 @@ function Toast({ text }: { text: string }) {
   return (
     <div key={text} style={{
       position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: RADIUS.pill,
-      fontSize: TYPE.small, letterSpacing: "0.06em", padding: "8px 16px", boxShadow: "0 8px 24px rgba(26,26,24,0.25)", zIndex: 50,
+      fontSize: TYPE.small, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.lg}px`, boxShadow: "0 8px 24px rgba(26,26,24,0.25)", zIndex: 50,
       animation: "toast-in var(--t-item) var(--ease-sheet)",
     }}>{text}</div>
   );
@@ -144,9 +144,9 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             // スクロールコンテナ自身の padding-bottom は、flex の中身が
             // 伸びたときに scrollHeight へ正しく入らないことがあり、
             // 実際に最後の項目がタブバーの裏へ潜って止まった。
-            padding: "var(--pad-top) 16px 0",
+            padding: `var(--pad-top) ${SPACE.lg}px 0`,
           }}>
-            {active && memoryMode && <div style={{ fontSize: TYPE.micro, color: RUST, letterSpacing: "0.05em", padding: "8px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
+            {active && memoryMode && <div style={{ fontSize: TYPE.micro, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
 
             <>
             {/* minHeight:0が無いと、flexアイテムのデフォルトのmin-height:auto
@@ -254,7 +254,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
           <nav className="app-nav" style={{
             position: "absolute", left: 0, right: 0, bottom: 0,
             display: "flex", flexDirection: "column", alignItems: "center",
-            padding: "0 16px", zIndex: 25, pointerEvents: "none",
+            padding: `0 ${SPACE.lg}px`, zIndex: 25, pointerEvents: "none",
           }}>
             {/* いま3つのアプリのどこにいるか。文字は出さず、点だけの控えめな
                 目印にしている。この目印もトラックに乗っているので、指で
@@ -263,7 +263,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             {/* ★この行の高さ(丸 5 + 下の余白 8 = 13)は `NAV_H` の 77px に
                 **組み込まれている**。ここを動かしたら `lib/constants.ts` の
                 `NAV_H` も必ず一緒に直すこと(第33巡に 7 → 8 で 76 → 77)。 */}
-            <div style={{ display: "flex", gap: 4, paddingBottom: 8 }}>
+            <div style={{ display: "flex", gap: SPACE.xs, paddingBottom: SPACE.sm }}>
               {APPS.map((d) => (
                 <span key={d.id} style={{
                   width: d.id === a.id ? 14 : 5, height: 5, borderRadius: RADIUS.pill,
@@ -284,7 +284,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             <div
               onPointerDown={onNavPointerDown}
               style={{
-                display: "flex", alignItems: "center", gap: 12, width: "100%", maxWidth: 420 - 32, pointerEvents: "auto",
+                display: "flex", alignItems: "center", gap: SPACE.md, width: "100%", maxWidth: 420 - 32, pointerEvents: "auto",
                 touchAction: "none",
               }}
             >
@@ -1013,9 +1013,9 @@ export function AppShell() {
         <div data-tab-scroll-root style={{
           width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
           overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain", overflowAnchor: "none",
-          padding: "max(16px, env(safe-area-inset-top)) 16px 24px",
+          padding: `max(${SPACE.lg}px, env(safe-area-inset-top)) ${SPACE.lg}px ${SPACE.xl}px`,
         }}>
-          {storageMode === "memory" && <div style={{ fontSize: TYPE.micro, color: RUST, letterSpacing: "0.05em", padding: "8px 4px 0", textAlign: "right" }}>メモリ動作中</div>}
+          {storageMode === "memory" && <div style={{ fontSize: TYPE.micro, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
           <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)} />
         </div>
         {toast && <Toast text={toast} />}

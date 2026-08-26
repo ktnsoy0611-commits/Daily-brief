@@ -18,7 +18,7 @@ import { INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL } from "@/l
 import { ms, T_IN, T_ITEM, T_OUT } from "@/lib/motion";
 import { flick, flickStep, flickThrow, type Flick } from "@/lib/scroll";
 import { D_SETTLE, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring } from "@/lib/spring";
-import { RADIUS, SPACE, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import type { AppState, TabProps, Task } from "@/lib/types";
 
 // ★タスクタブ(GRAVITY)。**タスク図形は常にこの空間にだけ在る**(第52巡)。
@@ -2116,9 +2116,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                     第64巡までは残り日数を `SWISS_XL`(72px) で組んでいて、画面で
                     いちばん大きな声が「0」だった ― 主従が逆だった。 */}
                 <div style={{
-                  fontFamily: SANS, fontWeight: 700, color: INK,
+                  fontFamily: SANS, fontWeight: WEIGHT.bold, color: INK,
                   fontSize: focus ? TYPE.display : TYPE.head,
-                  lineHeight: 1.18, overflow: "hidden",
+                  lineHeight: LEAD.snug, overflow: "hidden",
                   // ★焦点だけ2行まで折り返す。左に大きな図形が居るぶん文字の幅が狭いので、
                   //   1行で切ると題がほとんど読めない。
                   ...(focus
@@ -2133,14 +2133,14 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                 <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginTop: SPACE.hair }}>
                   <span style={{
                     display: "inline-flex", alignItems: "center", height: SPACE.xl,
-                    fontFamily: LATIN, fontWeight: 700, fontSize: TYPE.small,
-                    letterSpacing: "0.14em", color: MUTED, whiteSpace: "nowrap",
+                    fontFamily: LATIN, fontWeight: WEIGHT.bold, fontSize: TYPE.small,
+                    letterSpacing: TRACK.caps, color: MUTED, whiteSpace: "nowrap",
                   }}>{dl.sub ? `${dl.text} ${dl.sub}` : dl.text}</span>
                   <span style={{
                     display: "inline-flex", alignItems: "center", height: SPACE.xl,
                     padding: `0 ${SPACE.sm}px`, borderRadius: RADIUS.pill,
                     background: tagColor(it.paint.tag), color: tagInk(it.paint.tag),
-                    fontFamily: SANS, fontWeight: 700, fontSize: TYPE.small, letterSpacing: "0.22em",
+                    fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.small, letterSpacing: TRACK.wide,
                     whiteSpace: "nowrap",
                   }}>{it.tag.toUpperCase()}</span>
                 </div>
@@ -2174,8 +2174,8 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                   )}
                   <span style={{
                     position: "absolute", left: SPACE.sm, top: 0, whiteSpace: "nowrap",
-                    fontFamily: LATIN, fontWeight: 800, fontSize: TYPE.head,
-                    letterSpacing: "-0.02em", lineHeight: 1,
+                    fontFamily: LATIN, fontWeight: WEIGHT.heavy, fontSize: TYPE.head,
+                    letterSpacing: TRACK.tight, lineHeight: LEAD.flat,
                     color: wk ? INK : MUTED,
                   }}>{monthDayOf(d)}</span>
                 </div>
@@ -2201,9 +2201,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                   willChange: "transform",
                 }}>
                   <span style={{
-                    fontFamily: LATIN, fontWeight: 800, fontSize: laneFs, lineHeight: 0.86,
+                    fontFamily: LATIN, fontWeight: WEIGHT.heavy, fontSize: laneFs, lineHeight: 0.86,  // ★目盛りの外（表示専用の巨大欧文。行間で字面を詰める）
                     fontVariationSettings: `"wdth" ${WD_WDTH}`,
-                    letterSpacing: "-0.04em", whiteSpace: "nowrap", paddingBottom: SPACE.xs,
+                    letterSpacing: TRACK.tight, whiteSpace: "nowrap", paddingBottom: SPACE.xs,
                     // ★曜日は**黒**(第57巡にユーザー指定)。今日だけ RUST。
                     //   薄墨の階調はやめた(横へ送ると全部が読めなくなっていた)。
                     color: `var(--wd, ${i === 0 ? RUST : INK})`,
@@ -2222,10 +2222,10 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
               bottom: BAND_BOTTOM, zIndex: 3, pointerEvents: "none", willChange: "transform",
             }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm, marginBottom: SPACE.md }}>
-                <span style={{ fontFamily: LATIN, fontWeight: 800, fontSize: TYPE.head, letterSpacing: "-0.02em", color: expanded === 0 ? RUST : INK }}>
+                <span style={{ fontFamily: LATIN, fontWeight: WEIGHT.heavy, fontSize: TYPE.head, letterSpacing: TRACK.tight, color: expanded === 0 ? RUST : INK }}>
                   {monthDayOf(expandedDay)}
                 </span>
-                <span style={{ fontFamily: LATIN, fontWeight: 700, fontSize: TYPE.micro, letterSpacing: "0.18em", color: MUTED }}>
+                <span style={{ fontFamily: LATIN, fontWeight: WEIGHT.bold, fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED }}>
                   {expandedTasks.length} TASKS
                 </span>
               </div>
@@ -2234,10 +2234,10 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
               )}
               {expandedTasks.map((t) => (
                 <div key={t.id} style={{ marginBottom: SPACE.md }}>
-                  <div style={{ fontFamily: SANS, fontWeight: 600, fontSize: TYPE.lead, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {t.title || "無題"}
                   </div>
-                  <div style={{ fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: 700, letterSpacing: "0.14em", color: tagColor(resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note)), marginTop: SPACE.hair }}>
+                  <div style={{ fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: tagColor(resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note)), marginTop: SPACE.hair }}>
                     #{resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note).toUpperCase()}
                   </div>
                 </div>

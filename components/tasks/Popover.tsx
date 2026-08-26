@@ -1,7 +1,7 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
-import { PAPER, SANS } from "@/lib/constants";
+import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
+import { PAPER, SANS, CHARCOAL } from "@/lib/constants";
 // ★押せる面は `components/Button.tsx` が唯一の持ち主(第33巡)。
 import { Press } from "@/components/Button";
 
@@ -32,12 +32,12 @@ export const keepKeyboard = (e: React.MouseEvent) => {
 };
 
 /** ポップオーバーの面。地(CHARCOAL)より少し明るいチャコール。 */
-export const LIFT = "#33332E";
+export const LIFT = CHARCOAL;
 /** 墨の上の控えめな文字。 */
 export const DIM = "rgba(250,250,249,0.44)";
 
 export const CAP: React.CSSProperties = {
-  fontFamily: SANS, fontSize: TYPE.micro, fontWeight: 700, letterSpacing: "0.22em",
+  fontFamily: SANS, fontSize: TYPE.micro, fontWeight: WEIGHT.bold, letterSpacing: TRACK.wide,
 };
 
 export function Popover({ label, closing, onClose, children }: {
@@ -83,11 +83,11 @@ export function Popover({ label, closing, onClose, children }: {
           flex: "0 1 auto", minHeight: 0,
           background: LIFT, color: PAPER,
           borderRadius: RADIUS.xl, boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
-          padding: "8px 16px 12px",
+          padding: `${SPACE.sm}px ${SPACE.lg}px ${SPACE.md}px`,
           display: "flex", flexDirection: "column", overflow: "hidden",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: SPACE.xs, flexShrink: 0 }}>
           <span style={{ ...CAP, color: DIM }}>{label}</span>
           <Press onPress={onClose} aria-label="閉じる" style={{
             width: 26, height: 26, borderRadius: RADIUS.circle, background: "rgba(250,250,249,0.10)",

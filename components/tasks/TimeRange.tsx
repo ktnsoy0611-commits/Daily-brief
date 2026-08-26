@@ -1,8 +1,8 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { SANS } from "@/lib/constants";
+import { SANS, CHARCOAL } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 
 // ★時刻の入力(2026-08-18にユーザー確定)。ダイアル(時と分の2本の輪)をやめ、
@@ -30,7 +30,7 @@ const GRIP = 16;
 /** 時刻の目盛りの幅。 */
 const GUTTER = 34;
 /** 帯を置く面の幅。 */
-const TRACK = 226;
+const TRACK_W = 226;
 /** ★帯の左右に空ける「指を滑らせるための余白」(2026-08-18にユーザー指定)。
  *  ここを触れば、帯を掴まずに時間帯を送れる。 */
 const LANE = 34;
@@ -46,9 +46,9 @@ const Grid = memo(function Grid({ line, ink }: { line: string; ink: string }) {
   const rows = useMemo(() => Array.from({ length: 24 }, (_, h) => (
     <div key={h} style={{ display: "flex", alignItems: "flex-start", height: HOUR_H }}>
       <span style={{
-        width: GUTTER, flexShrink: 0, textAlign: "right", paddingRight: 8,
+        width: GUTTER, flexShrink: 0, textAlign: "right", paddingRight: SPACE.sm,
         transform: "translateY(-6px)",
-        fontFamily: SANS, fontSize: TYPE.small, fontWeight: 600, color: ink,
+        fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, color: ink,
       }}>{h === 0 ? "" : pad(h)}</span>
       <span style={{ flex: 1, height: 1, background: line }} />
     </div>
@@ -142,15 +142,15 @@ export function TimeRange({ start, end, accent, onChange }: {
   const line = "rgba(250,250,249,0.10)";
   const ink = "rgba(250,250,249,0.40)";
   return (
-    <div style={{ width: GUTTER + TRACK, margin: "0 auto" }}>
+    <div style={{ width: GUTTER + TRACK_W, margin: "0 auto" }}>
       <div
         ref={scroller}
         style={{
           position: "relative", height: TIMELINE_H, overflowY: "auto",
           scrollbarWidth: "none", WebkitOverflowScrolling: "touch",
           // 目盛りの上下は薄れさせる(ダイアルと同じ見え方)。
-          maskImage: "linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%)",
-          WebkitMaskImage: "linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%)",
+          maskImage: "linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%)",  // ★目盛りの外（マスクの #000 は「色」でなく「不透明」）
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%)",  // ★目盛りの外（マスクの #000 は「色」でなく「不透明」）
         }}
       >
         <div style={{ position: "relative", height: DAY * (HOUR_H / 60), paddingTop: 0 }}>
@@ -176,8 +176,8 @@ export function TimeRange({ start, end, accent, onChange }: {
             }}
           >
             <span ref={readout} style={{
-              fontFamily: SANS, fontSize: TYPE.body, fontWeight: 800, letterSpacing: "0.02em",
-              color: "#26261F", whiteSpace: "nowrap", pointerEvents: "none",
+              fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.heavy, letterSpacing: TRACK.normal,
+              color: CHARCOAL, whiteSpace: "nowrap", pointerEvents: "none",
             }} />
             {/* 上下の端。ここをつまむと長さが変わる。 */}
             <span onPointerDown={grab("top")} style={{

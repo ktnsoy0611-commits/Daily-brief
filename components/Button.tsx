@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { HAIRLINE, INK, MUTED, PAPER, SANS } from "@/lib/constants";
-import { RADIUS, SPACE, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 
 // ★★★**押せる面はここだけ**(2026-08-23・第33巡)。
 // それまでは押下の作法が3流派に分かれていた —
@@ -214,7 +214,7 @@ export function Button({
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center",
         gap: SPACE.xs,
-        fontFamily: SANS, fontSize: FONT[size], fontWeight: 700, letterSpacing: "0.08em",
+        fontFamily: SANS, fontSize: FONT[size], fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
         cursor: disabled ? "default" : "pointer",
         opacity: disabled ? 0.4 : 1,
         userSelect: "none", WebkitUserSelect: "none",

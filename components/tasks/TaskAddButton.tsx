@@ -1,6 +1,6 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 
@@ -17,9 +17,9 @@ export function DemoSeedButton({ label, onSeed, lifted }: { label: string; onSee
       style={{
         position: "absolute", left: "50%", transform: "translateX(-50%)", zIndex: 26,
         bottom: lifted ? "calc(var(--nav-h) + 22px)" : 22,
-        padding: "12px 16px", borderRadius: RADIUS.pill, border: "1px solid rgba(26,26,24,0.16)",
+        padding: `${SPACE.md}px ${SPACE.lg}px`, borderRadius: RADIUS.pill, border: "1px solid rgba(26,26,24,0.16)",
         background: "transparent", color: "rgba(26,26,24,0.5)", cursor: "pointer",
-        fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, letterSpacing: "0.06em", whiteSpace: "nowrap",
+        fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, whiteSpace: "nowrap",
       }}>{label}</button>
   );
 }

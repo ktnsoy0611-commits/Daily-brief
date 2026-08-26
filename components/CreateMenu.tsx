@@ -1,6 +1,6 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, RADIUS } from "@/lib/tokens";
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { TabIcon } from "@/components/TabIcons";
@@ -106,7 +106,7 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
           <Press
             onPress={() => { haptic(10); run(); }}
             aria-label={label}
-            style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 4px", color: PAPER }}
+            style={{ display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.sm}px ${SPACE.xs}px`, color: PAPER }}
           >
             <span style={{
               ...CAP, fontSize: TYPE.small, whiteSpace: "nowrap", display: "inline-block",

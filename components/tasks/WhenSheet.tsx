@@ -1,12 +1,12 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_ITEM } from "@/lib/motion";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Press } from "@/components/Button";
 import { CAP } from "@/components/tasks/Popover";
 import { TimeRange } from "@/components/tasks/TimeRange";
-import { PAPER, RUST, SANS, SCHEME } from "@/lib/constants";
+import { PAPER, RUST, SANS, SCHEME, CHARCOAL } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 
 // ★日程の入力(2026-08-17・第6巡で作り直し。参照＝TickTick の画像4枚)。
@@ -105,7 +105,7 @@ const CELL = "rgba(250,250,249,0.07)";
 /** 赤の相方(淡い赤)。塗った赤の上に乗る文字。 */
 const RUST_INK = SCHEME.red.ink;
 /** 浮かせるもの(カレンダー・ダイアル)の地。 */
-const FLOAT = "#3B3B36";
+const FLOAT = CHARCOAL;
 /** 今日のマスの塗り。選んでいる日(アクセント)と混ざらないよう沈ませる。 */
 /** 期間のあいだの日に敷く色。アクセントを薄く。 */
 const rangeTint = (accent: string) => `color-mix(in srgb, ${accent} 22%, transparent)`;
@@ -186,7 +186,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
     // 浮きの置き場所を決めるときの「使える高さ」が中身の高さになってしまい、
     // 下に余裕があるのに上へ返って見出しを覆っていた(2026-08-17)。
     // 中身は上から並ぶ(既定の flex-start)ので、下が空くだけ。
-    <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column", gap: SPACE.sm }}>
       {/* ── 見出し。✕ は取り消し / ✓ は確定。ピルは**中央・幅を絞る**
              (参照画像のとおり。以前は幅いっぱいに伸ばしていた)。 ── */}
       <div style={{
@@ -200,7 +200,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
           <span style={{ position: "absolute", left: 11, top: 17, width: 14, height: 1.6, background: ON_G, transform: "rotate(-45deg)" }} />
         </Press>
 
-        <div style={{ display: "flex", width: 200, padding: 2, borderRadius: RADIUS.pill, background: CELL }}>
+        <div style={{ display: "flex", width: 200, padding: SPACE.hair, borderRadius: RADIUS.pill, background: CELL }}>
           {[["期日", false], ["期間", true]].map(([t, on]) => (
             <Press key={String(t)} onPress={() => toRange(on as boolean)}
               aria-label={t as string} aria-pressed={isRange === on}
@@ -208,7 +208,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
                 flex: 1, height: 30, borderRadius: RADIUS.pill,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 background: isRange === on ? "rgba(250,250,249,0.18)" : "transparent",
-                fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700,
+                fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold,
                 color: isRange === on ? ON_G : DIM,
               }}>{t as string}</Press>
           ))}
@@ -249,7 +249,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
             </div>
           ) : (
             // ★終日OFF … 期日と時刻は別々の2枚(参照画像3)。
-            <div ref={cardsRef} style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <div ref={cardsRef} style={{ display: "flex", gap: SPACE.sm, flexShrink: 0 }}>
               <Card title="期日" aria="期日を選ぶ" main={label(value.dueDate)} accent={accent}
                 sub={value.dueDate === today ? "今日" : ""}
                 open={pop === "cal-due"} onOpen={() => setPop(pop === "cal-due" ? null : "cal-due")} />
@@ -263,9 +263,9 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
           )}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            height: ROW_H, padding: "0 16px", borderRadius: RADIUS.xl, background: CELL, flexShrink: 0,
+            height: ROW_H, padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.xl, background: CELL, flexShrink: 0,
           }}>
-            <span style={{ fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 700, color: ON_G }}>終日</span>
+            <span style={{ fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold, color: ON_G }}>終日</span>
             <Switch on={allDay} accent={accent} onToggle={() => toAllDay(!allDay)} />
           </div>
         </>
@@ -367,7 +367,7 @@ function Quick({ accent, selected, onPick }: {
     { k: "weekend", t: "今週末", iso: weekend() },
   ];
   return (
-    <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+    <div style={{ display: "flex", gap: SPACE.sm, flexShrink: 0 }}>
       {items.map((q) => {
         const on = q.iso === selected;
         return (
@@ -375,10 +375,10 @@ function Quick({ accent, selected, onPick }: {
             className="tc-lamp" style={{
               flex: 1, height: QUICK_H, borderRadius: RADIUS.xl,
               background: on ? "rgba(250,250,249,0.14)" : CELL,
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.xs,
             }}>
             <QuickGlyph name={q.k} c={accent} />
-            <span style={{ fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, color: on ? ON_G : DIM }}>{q.t}</span>
+            <span style={{ fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, color: on ? ON_G : DIM }}>{q.t}</span>
           </Press>
         );
       })}
@@ -479,7 +479,7 @@ function Float({ anchor, fit, onClose, children }: {
         width: fit ? "max-content" : undefined,
         maxWidth: `calc(100% - ${FLOAT_PAD * 2}px)`,
         top: pos ? pos.top : -9999, visibility: pos ? "visible" : "hidden",
-        background: FLOAT, borderRadius: RADIUS.xl, padding: 12,
+        background: FLOAT, borderRadius: RADIUS.xl, padding: SPACE.md,
         boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
         display: "flex", flexDirection: "column",
       }}>{children}</div>
@@ -496,9 +496,9 @@ function Face({ title, main, sub, accent }: {
 }) {
   return (
     <>
-      <div style={{ fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, color: DIM, marginBottom: 4 }}>{title}</div>
-      <div style={{ fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 700, color: accent, whiteSpace: "nowrap" }}>{main}</div>
-      <div style={{ fontFamily: SANS, fontSize: TYPE.small, color: DIM, marginTop: 4, minHeight: 13 }}>{sub}</div>
+      <div style={{ fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, color: DIM, marginBottom: SPACE.xs }}>{title}</div>
+      <div style={{ fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold, color: accent, whiteSpace: "nowrap" }}>{main}</div>
+      <div style={{ fontFamily: SANS, fontSize: TYPE.small, color: DIM, marginTop: SPACE.xs, minHeight: 13 }}>{sub}</div>
     </>
   );
 }
@@ -510,7 +510,7 @@ function Card({ title, aria, main, sub, accent, open, onOpen }: {
 }) {
   return (
     <Press onPress={onOpen} aria-label={aria} aria-pressed={open} className="tc-lamp" style={{
-      flex: 1, minWidth: 0, textAlign: "left", borderRadius: RADIUS.xl, padding: "12px 16px",
+      flex: 1, minWidth: 0, textAlign: "left", borderRadius: RADIUS.xl, padding: `${SPACE.md}px ${SPACE.lg}px`,
       background: open ? "rgba(250,250,249,0.16)" : CELL,
     }}>
       <Face title={title} main={main} sub={sub} accent={accent} />
@@ -525,7 +525,7 @@ function Half({ title, aria, main, sub, accent, open, onOpen }: {
 }) {
   return (
     <Press onPress={onOpen} aria-label={aria} aria-pressed={open} className="tc-lamp" style={{
-      flex: 1, minWidth: 0, textAlign: "left", padding: "12px 16px",
+      flex: 1, minWidth: 0, textAlign: "left", padding: `${SPACE.md}px ${SPACE.lg}px`,
       background: open ? "rgba(250,250,249,0.10)" : "transparent",
     }}>
       <Face title={title} main={main} sub={sub} accent={accent} />
@@ -557,13 +557,13 @@ function Row({ ref, label: t, value, accent, onOpen, onClear }: {
     }}>
       <Press onPress={onOpen} aria-label={t} className="tc-lamp" style={{
         flex: 1, height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 8px 0 16px", borderRadius: RADIUS.xl,
+        padding: `0 ${SPACE.sm}px 0 ${SPACE.lg}px`, borderRadius: RADIUS.xl,
       }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
           <Clock c={DIM} />
-          <span style={{ fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 700, color: ON_G }}>{t}</span>
+          <span style={{ fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold, color: ON_G }}>{t}</span>
         </span>
-        <span style={{ fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 700, color: value ? accent : DIM }}>
+        <span style={{ fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold, color: value ? accent : DIM }}>
           {value ?? "終日"}
         </span>
       </Press>
@@ -592,7 +592,7 @@ function Clock({ c }: { c: string }) {
 function Switch({ on, accent, onToggle }: { on: boolean; accent: string; onToggle: () => void }) {
   return (
     <Press onPress={onToggle} role="switch" aria-checked={on} aria-label="終日" style={{
-      width: 50, height: 30, borderRadius: RADIUS.pill, padding: 4,
+      width: 50, height: 30, borderRadius: RADIUS.pill, padding: SPACE.xs,
       background: on ? accent : "rgba(250,250,249,0.20)",
       transition: "background-color var(--t-item) var(--ease-settle)",
     }}>
@@ -716,12 +716,12 @@ function MonthGrid({ accent, selected, range, onPick }: {
     }}>
       {/* 月。★太字で中央、山形は小さく(参照画像4)。 */}
       <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+        display: "flex", alignItems: "center", justifyContent: "center", gap: SPACE.xs,
         height: HEAD_H, flexShrink: 0,
       }}>
         <Arrow dir={-1} onClick={() => step(-1)} />
         <span style={{
-          fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 700, color: ON_G,
+          fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold, color: ON_G,
           minWidth: 96, textAlign: "center",
         }}>{cursor.m + 1}月</span>
         <Arrow dir={1} onClick={() => step(1)} />
@@ -731,7 +731,7 @@ function MonthGrid({ accent, selected, range, onPick }: {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", flexShrink: 0 }}>
         {WD_HEAD.map((wd, i) => (
           <span key={i} style={{
-            fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, color: DIM,
+            fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, color: DIM,
             textAlign: "center", height: WD_H, lineHeight: `${WD_H}px`,
           }}>{wd}</span>
         ))}
@@ -843,7 +843,7 @@ function Days({ y, m, selected, range, onPick, flat, rowH, accent }: {
               <span aria-hidden style={{
                 position: "absolute", left: 0, right: 0, bottom: 0,
                 height: LABEL_H, lineHeight: `${LABEL_H}px`, textAlign: "center",
-                fontFamily: SANS, fontSize: TYPE.micro, fontWeight: 700, letterSpacing: "0.04em",
+                fontFamily: SANS, fontSize: TYPE.micro, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
                 color: accent,
               }}>
                 {tag || <span style={{
@@ -914,7 +914,7 @@ function Dial({ value, accent, onChange }: {
   const pickM = useRef((v: string) => emit.current(`${now.current.slice(0, 2)}:${v}`)).current;
   return (
     <div style={{
-      position: "relative", display: "flex", gap: 8,
+      position: "relative", display: "flex", gap: SPACE.sm,
       width: COL_W * 2 + 22, margin: "0 auto", alignItems: "stretch",
     }}>
       {/* 中央のハイライト。列の裏に敷く。 */}
@@ -925,7 +925,7 @@ function Dial({ value, accent, onChange }: {
       <Column values={HOURS} value={pad(h)} accent={accent} onPick={pickH} />
       <span aria-hidden style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: SANS, fontSize: TYPE.head, fontWeight: 700, color: ON_G, width: 10,
+        fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.bold, color: ON_G, width: 10,
       }}>:</span>
       <Column values={MINUTES} value={pad(m - (m % 15))} accent={accent} onPick={pickM} />
     </div>
@@ -1001,7 +1001,7 @@ const Column = memo(function Column({ values, accent, value, onPick }: {
       <span key={`${r}-${v}`} style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         width: "100%", height: ITEM_H, scrollSnapAlign: "center",
-        fontFamily: SANS, fontSize: TYPE.head, fontWeight: 600, color: accent,
+        fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.bold, color: accent,
       }}>{v}</span>
     )))
   ), [values, accent]);

@@ -1,7 +1,7 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
-import { INK, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW_LG } from "@/lib/constants";
+import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
+import { INK, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW_LG, SECOND, WHITE } from "@/lib/constants";
 import { haptic, img } from "@/lib/helpers";
 import type { AppState, PlanSelection } from "@/lib/types";
 
@@ -31,17 +31,17 @@ export function SelectionMarker({ appState, selection, onOpen }: {
         // navのピル(zIndex:25)より手前。nav手前のグラデーション(15)にも
         // 覆われないよう26にする(このプロジェクトのzIndex規約)。
         position: "fixed", right: 16, bottom: `calc(${NAV_OFFSET} + 8px)`, zIndex: 26,
-        display: "flex", alignItems: "center", gap: 8, background: PAPER, border: "none",
-        borderRadius: RADIUS.pill, padding: "8px 12px 8px 8px", boxShadow: SOFT_SHADOW_LG, cursor: "pointer",
+        display: "flex", alignItems: "center", gap: SPACE.sm, background: PAPER, border: "none",
+        borderRadius: RADIUS.pill, padding: `${SPACE.sm}px ${SPACE.md}px ${SPACE.sm}px ${SPACE.sm}px`, boxShadow: SOFT_SHADOW_LG, cursor: "pointer",
       }}
     >
       <span style={{ position: "relative", width: 30, height: 26, flexShrink: 0 }}>
         {shown.map((it, i) => (
           <span key={it.id} style={{
             position: "absolute", top: 0, left: 0, width: 22, height: 22, borderRadius: RADIUS.md, overflow: "hidden",
-            border: "2px solid #fff", boxShadow: "0 2px 5px rgba(26,26,24,0.24)",
+            border: `2px solid ${WHITE}`, boxShadow: "0 2px 5px rgba(26,26,24,0.24)",
             transform: `rotate(${i === 0 ? -7 : 5}deg) translate(${i * 6}px, ${i * -1}px)`, zIndex: i,
-            background: it.color ?? "#5A5A54",
+            background: it.color ?? SECOND,
           }}>
             {it.images?.[0] && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -50,7 +50,7 @@ export function SelectionMarker({ appState, selection, onOpen }: {
           </span>
         ))}
       </span>
-      <span style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, color: INK, letterSpacing: "0.04em" }}>{count}</span>
+      <span style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: INK, letterSpacing: TRACK.normal }}>{count}</span>
     </button>
   );
 }

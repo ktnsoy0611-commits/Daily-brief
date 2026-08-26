@@ -1,6 +1,6 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, RADIUS } from "@/lib/tokens";
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
@@ -53,7 +53,7 @@ const STAGE_SPAN_H = 4.2;
 const ON_GROUND = PAPER;
 const ON_GROUND_DIM = "rgba(250,250,249,0.42)";
 /** 書く面。地よりわずかに持ち上げる(角丸の板が浮いて見える)。 */
-const LIFT = "#33332E";
+const LIFT = CHARCOAL;
 
 export interface ComposerData {
   /** タスク/候補の id。タグと書体の割り当ての種になる。 */
@@ -846,8 +846,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
              ★ポップオーバーの背面板(zIndex 1)より前に出す。でないと開いている
              あいだ「完了」も「閉じる」も叩けない(常時使えるのが約束)。 ── */}
       <div data-topbar className="tc-cue tc-cue-1" onMouseDown={keepKeyboard} style={{
-        flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
-        padding: "max(8px, env(safe-area-inset-top)) 14px 4px",
+        flexShrink: 0, display: "flex", alignItems: "center", gap: SPACE.sm,
+        padding: `max(${SPACE.sm}px, env(safe-area-inset-top)) ${SPACE.lg}px ${SPACE.xs}px`,
         position: "relative", zIndex: 2,
       }}>
         {/* ★閉じる ✕ は置かない(2026-08-18にユーザー指定)。閉じ方は
@@ -856,7 +856,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         <span style={{ marginLeft: "auto" }} />
         {onDelete && (
           <Press onPress={() => leave(() => { haptic(8); onDelete(); })} aria-label="DELETE" className="tc-lamp" style={{
-            height: 36, padding: "0 16px", borderRadius: RADIUS.pill,
+            height: 36, padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.pill,
             display: "flex", alignItems: "center", justifyContent: "center",
             background: "rgba(250,250,249,0.10)",
             ...CAP, fontSize: TYPE.small, color: ON_GROUND_DIM,
@@ -865,7 +865,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         {onConfirm && (
           <Press onPress={() => leave(() => { haptic(16); onConfirm(draftRef.current); })}
             aria-label={mode === "candidate" ? "CONFIRM" : "COMPLETE"} className="tc-lamp" style={{
-              height: 36, padding: "0 16px", borderRadius: RADIUS.pill, background: ON_GROUND,
+              height: 36, padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.pill, background: ON_GROUND,
               display: "flex", alignItems: "center", justifyContent: "center",
               ...CAP, fontSize: TYPE.small, color: CHARCOAL,
             }}>{mode === "candidate" ? "CONFIRM" : "COMPLETE"}</Press>
@@ -941,11 +941,11 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         // (第25巡)。器の下端はキーボードの上端で、そこにホームバーは無い。
         // 34px 取ると丸ごと死んだ隙間になる(実機で「アイコンとキーボードまでの
         // 幅が大きすぎる」)。切り替えは器の `data-kb`(CSS 側・globals.css)。
-        padding: "10px 16px max(6px, env(safe-area-inset-bottom))",
+        padding: `${SPACE.md}px ${SPACE.lg}px max(${SPACE.sm}px, env(safe-area-inset-bottom))`,
       }}>
         {/* Cowork の提案。タップで手順になる。 */}
         {(draft.suggestions?.length ?? 0) > 0 && (
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8 }}>
+          <div style={{ display: "flex", gap: SPACE.sm, overflowX: "auto", paddingBottom: SPACE.sm }}>
             {(draft.suggestions ?? []).map((s) => (
               <span key={s.id} className="tc-row-in" style={{
                 display: "flex", flexShrink: 0, alignItems: "center",
@@ -958,7 +958,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
                     suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id),
                   });
                 }} style={{
-                  border: "none", background: "transparent", cursor: "pointer", padding: "0 8px 0 16px", height: 28,
+                  border: "none", background: "transparent", cursor: "pointer", padding: `0 ${SPACE.sm}px 0 ${SPACE.lg}px`, height: 28,
                   fontFamily: SANS, fontSize: TYPE.body, color: ON_GROUND, whiteSpace: "nowrap",
                 }}>{s.title}</button>
                 <button onClick={() => set({ suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id) })}
@@ -979,7 +979,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             「スクロールできてしまう画面」に見える(実機で報告)。 */}
         <div style={{
           maxHeight: "30vh", overflowY: "auto", overscrollBehavior: "contain",
-          scrollbarWidth: "none", paddingBottom: 12,
+          scrollbarWidth: "none", paddingBottom: SPACE.md,
         }}>
           {lines.map((text, i) => (
             <Row
@@ -999,7 +999,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           ))}
           {draft.note && (
             <p style={{
-              margin: "12px 0 0", fontFamily: SANS, fontSize: TYPE.body, lineHeight: 1.55,
+              margin: `${SPACE.md}px 0 0`, fontFamily: SANS, fontSize: TYPE.body, lineHeight: LEAD.body,
               color: ON_GROUND_DIM, whiteSpace: "pre-wrap",
             }}>{draft.note}</p>
           )}
@@ -1023,7 +1023,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 4,
           background: LIFT, borderRadius: "28px 28px 0 0",
           boxShadow: "0 -18px 40px rgba(0,0,0,0.40)",
-          padding: "14px 16px max(14px, env(safe-area-inset-bottom))",
+          padding: `${SPACE.lg}px ${SPACE.lg}px max(${SPACE.lg}px, env(safe-area-inset-bottom))`,
           // ★高さは**固定**(2026-08-17にユーザー指定「期日と期間を切り替えても
           // ウィンドウの上端の位置は変えず、上側に合わせてレイアウト」)。
           // 中身なりにすると「期間」で上端が下がり、押す位置が変わるうえ
@@ -1207,7 +1207,7 @@ function Row({ ref, value, head, done, keepFocus, justOpen, onFocus, onChange, o
   }, [value]);
   return (
     <div className={head ? undefined : "tc-row-in"}
-      style={{ display: "flex", alignItems: "flex-start", gap: 8, minHeight: head ? 32 : 22 }}>
+      style={{ display: "flex", alignItems: "flex-start", gap: SPACE.sm, minHeight: head ? 32 : 22 }}>
       {!head && (
         // 手順の点。**丸**。タップで済んだ印になる。
         <Press onPress={() => onToggle?.()} aria-label={done ? "手順を戻す" : "手順を済みにする"}

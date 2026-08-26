@@ -23,9 +23,9 @@
 //     外側からすぐ背表紙が詰めて並ぶよう固定の隙間だけシフトする。
 //     スワイプ中は棚全体がわずかにパカッと開く一瞬のアニメーションが付く。
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BG, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { BG, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW, BINDER_COLORS, SHADE } from "@/lib/constants";
 import { haptic, shade } from "@/lib/helpers";
 
 // ドラッグ中だけ、html全体のtouch-actionを切り替えるためのヘルパー。
@@ -154,7 +154,7 @@ export type Accent =
 
 // 全バインダー共通の「目標」の下地色(表紙自体は常に白なので、これは
 // 背表紙の単色フォールバック(accent未指定時)としてのみ使う)。
-export const GOAL_BASE = "#E9E9E6";
+export const GOAL_BASE = SHADE;   // ★SHADE と値が完全一致だったので名前へ寄せた
 
 // 目標は行った場所・日付と同じく際限なく増えるため、固定の1色ではなく
 // 名前のハッシュから色相を振る(増えるたびに色が変わる)。目標の的
@@ -163,7 +163,7 @@ export const GOAL_BASE = "#E9E9E6";
 // 参考画像(生成りのクリーム地+黒・マスタード・コーラル・ティール・
 // 深緑)に合わせ、寒色寄りの紫を含む配色からこの5色家族の暖色アース
 // カラーへ全面的に入れ替えた。
-const GOAL_HUES = ["#B8742E", "#2C6E8A", "#8A3C2A", "#3F6B45", "#6B4A2E", "#C1502E", "#4A5C3E"];
+const GOAL_HUES = BINDER_COLORS.goal;
 export function goalAccent(seed: string): Accent {
   const h = hashString(seed);
   return { kind: "target", color: GOAL_HUES[h % GOAL_HUES.length] };
@@ -176,10 +176,10 @@ export function goalAccent(seed: string): Accent {
 // タイケンには下記EXPERIENCE_ACCENT(side型)という専用のデザインコードを
 // 新設したため、ここはジョウホウ専用に絞った。
 export const MEDIA_ACCENT: Record<"movie" | "book" | "album" | "info", Accent> = {
-  movie: { kind: "media", shape: "semicircleUp", color: "#2C4E74" },
-  book: { kind: "media", shape: "rectangle", color: "#33633F" },
-  album: { kind: "media", shape: "semicircleDown", color: "#C1922E" },
-  info: { kind: "media", shape: "triangleDown", color: "#4A5C3E" },
+  movie: { kind: "media", shape: "semicircleUp", color: BINDER_COLORS.kind.movie },
+  book: { kind: "media", shape: "rectangle", color: BINDER_COLORS.kind.book },
+  album: { kind: "media", shape: "semicircleDown", color: BINDER_COLORS.kind.album },
+  info: { kind: "media", shape: "triangleDown", color: BINDER_COLORS.kind.info },
 };
 
 // タイケン専用のデザインコード。ジョウホウ(media型: 上端の細い帯+縦縞+
@@ -189,15 +189,15 @@ export const MEDIA_ACCENT: Record<"movie" | "book" | "album" | "info", Accent> =
 // 色や図形だけ変えると結局ジョウホウと同じ見た目になってしまうため、
 // 帯の向き自体(横→縦)を変えることで一目で見分けられるようにした。
 export const EXPERIENCE_ACCENT: Record<"exhibition" | "live" | "activity" | "food", Accent> = {
-  exhibition: { kind: "side", shape: "triangleUp", color: "#2C6E7A" },
-  live: { kind: "side", shape: "circle", color: "#B8442E" },
-  activity: { kind: "side", shape: "quarterTL", color: "#7A4432" },
+  exhibition: { kind: "side", shape: "triangleUp", color: BINDER_COLORS.kind.exhibition },
+  live: { kind: "side", shape: "circle", color: BINDER_COLORS.kind.live },
+  activity: { kind: "side", shape: "quarterTL", color: BINDER_COLORS.kind.activity },
   // グルメは以前quarterBR(隅の四半円)だったが、同じ「隅の四半円」系統の
   // activity(quarterTL)と小さいグリッドの中では見分けにくいという指摘を
   // 受け、系統ごと変えた: 半円(semicircleUp)を隙間なく積むと、連続した
   // 半円が並ぶ構図になる(下記SideSquareCellの高さ基準サイジングにより
   // セル同士が接するため、この形が自然に連なって見える)。
-  food: { kind: "side", shape: "semicircleUp", color: "#A8552F" },
+  food: { kind: "side", shape: "semicircleUp", color: BINDER_COLORS.kind.food },
 };
 
 // ExecuteTabのデモデータ生成など、ジョウホウ・タイケンを問わず種類から
@@ -212,7 +212,7 @@ export const KIND_ACCENT: Record<"movie" | "exhibition" | "live" | "book" | "alb
 // 個性を出さず、「何巻目か」だけを軸に色を変える。買った物が積み上がって
 // THING_ITEMS_PER_VOLUMEを超えると、同じ意匠のまま色だけ変わる次の巻へ
 // 自動的に分かれる(RecordsTab.tsx参照)。
-const THING_VOLUME_HUES = ["#8A6B2E", "#4A5C3E", "#6B4A2E", "#2C6E8A", "#8A3C2A", "#5A6B7A"];
+const THING_VOLUME_HUES = BINDER_COLORS.thing;
 export function thingVolumeAccent(volumeIndex: number): Accent {
   return { kind: "stamp", color: THING_VOLUME_HUES[volumeIndex % THING_VOLUME_HUES.length] };
 }
@@ -386,7 +386,7 @@ const GEO_LAYOUTS: GeoLayout[] = ["bigShape", "grid2x2", "units", "stripePatch"]
 // 行った場所(エリア)は際限なく増えるため固定色を割り当てず、名前の
 // ハッシュから色相・構図・細部をすべて決める。同じ色相のエリアが
 // 出てきても、構図や角度/本数が違うので1冊1冊に個性が出る。
-const PLACE_HUES = ["#2C6E8A", "#B8742E", "#8A3C2A", "#3F6B45", "#6B4A2E", "#4A5C3E", "#C1502E", "#5A6B7A"];
+const PLACE_HUES = BINDER_COLORS.place;
 export function placeAccent(seed: string): Accent {
   const h = hashString(seed);
   return { kind: "geo", color: PLACE_HUES[h % PLACE_HUES.length], layout: GEO_LAYOUTS[(h >> 4) % GEO_LAYOUTS.length], seed: h };
@@ -394,7 +394,7 @@ export function placeAccent(seed: string): Accent {
 
 // 日付ビューの各日も同様に無限に増える。場所とは別の色相セットにして、
 // 隣り合っても混同しないようにしている。
-const DATE_HUES = ["#6B5A42", "#42586B", "#6B4238", "#42546B", "#5A4230", "#3E4A3A"];
+const DATE_HUES = BINDER_COLORS.date;
 export function dateAccent(seed: string): Accent {
   const h = hashString(seed);
   return { kind: "geo", color: DATE_HUES[h % DATE_HUES.length], layout: GEO_LAYOUTS[(h >> 6) % GEO_LAYOUTS.length], seed: h };
@@ -456,17 +456,17 @@ function CoverBody({ eyebrowLabel, title, footer, accentColor, titleColor = INK 
   eyebrowLabel?: string; title: string; footer?: ReactNode; accentColor: string; titleColor?: string;
 }) {
   return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: "12px 16px 12px" }}>
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, padding: `${SPACE.md}px ${SPACE.lg}px ${SPACE.md}px` }}>
       {eyebrowLabel && (
-        <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SPACE.xs, marginBottom: SPACE.sm, flexShrink: 0 }}>
           <span style={{ width: 5, height: 5, borderRadius: RADIUS.circle, background: accentColor, flexShrink: 0 }} />
-          <span style={{ fontSize: TYPE.micro, letterSpacing: "0.12em", color: accentColor, fontWeight: 700 }}>{eyebrowLabel}</span>
+          <span style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: accentColor, fontWeight: WEIGHT.bold }}>{eyebrowLabel}</span>
         </div>
       )}
       <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "flex-end" }}>
-        <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: TYPE.lead, lineHeight: 1.3, color: titleColor, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
+        <div style={{ fontFamily: SANS, fontWeight: WEIGHT.heavy, fontSize: TYPE.lead, lineHeight: LEAD.snug, color: titleColor, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
       </div>
-      {footer && <div style={{ marginTop: 8, flexShrink: 0 }}>{footer}</div>}
+      {footer && <div style={{ marginTop: SPACE.sm, flexShrink: 0 }}>{footer}</div>}
     </div>
   );
 }

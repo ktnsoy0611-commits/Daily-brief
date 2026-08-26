@@ -1,10 +1,10 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CHARCOAL, GOLD, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS } from "@/lib/constants";
+import { CHARCOAL, GOLD, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS, STUDIO } from "@/lib/constants";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
@@ -119,7 +119,7 @@ const LEVEL_FLOOR = 0.1;
  *  (タスクの入力画面も同じ地)。html の地色にも同じ値を書く(下記 VoiceOverlay)。 */
 const DIM_GROUND = CHARCOAL;
 /** ランプの色。トリミングの縦線もこの赤を使う。 */
-const LAMP_REC = "#D0412B";
+const LAMP_REC = STUDIO.lampRec;
 /** 指を離したあとの惰性。1フレームごとに速度へ掛ける摩擦と、止まる閾値。 */
 const COAST_FRICTION = 0.94;
 const COAST_STOP = 0.00035;
@@ -163,14 +163,14 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // アプリの遷移中にどちらかがズレて必ず境目が出る。
   // 全画面のオーバーレイだけは列の外なので、自分で暗い地を塗る。
   const ground = dim ? DIM_GROUND : undefined;
-  const figure = dim ? "#3A3A37" : JOURNAL_FIG;
+  const figure = dim ? STUDIO.figureDim : JOURNAL_FIG;
   const fg = dim ? PAPER : INK;
   const mute = dim ? "rgba(255,255,255,0.46)" : JOURNAL_MUTED;
   const tick = dim ? "rgba(255,255,255,0.40)" : "rgba(26,26,24,0.38)";
   // 物理キーの色。★どれも不透明にする(下が明るい円か地かで変わらないように)。
-  const well = dim ? "#141417" : "#8F8F89";
-  const capOff = dim ? "#383835" : "#A6A6A0";
-  const lampOff = dim ? "#1F1F22" : "#8A8A84";
+  const well = dim ? STUDIO.wellDim : STUDIO.wellLit;
+  const capOff = dim ? STUDIO.capOffDim : STUDIO.capOffLit;
+  const lampOff = dim ? STUDIO.lampOffDim : STUDIO.lampOffLit;
 
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -737,7 +737,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             fontFamily: SANS, fontVariantNumeric: "tabular-nums",
             // ★font-size は遷移させない(遷移中ずっとレイアウトが走る)。
             // 反応は色と太さだけで見せる。
-            fontSize: TYPE.lead, fontWeight: 700, letterSpacing: "0.02em", color: fg,
+            fontSize: TYPE.lead, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, color: fg,
             opacity: active === side ? 1 : 0,
             transition: "opacity var(--t-item) var(--ease-settle)",
           }}
@@ -774,8 +774,8 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       <div ref={timeRef} style={{
         position: "absolute", zIndex: 2, pointerEvents: "none",
         left: 0, right: 0, top: timeTop, textAlign: "center",
-        fontFamily: SANS, fontSize: TYPE.head, fontWeight: 500, lineHeight: 1,
-        letterSpacing: "0.20em", color: mute, fontVariantNumeric: "tabular-nums",
+        fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.bold, lineHeight: LEAD.flat,
+        letterSpacing: TRACK.wide, color: mute, fontVariantNumeric: "tabular-nums",
         opacity: (recording || review || sending) ? 1 : 0,
         transition: "opacity var(--t-item) var(--ease-settle)",
       }}>{mmss(0)}</div>
@@ -826,7 +826,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         // (このコードベースで一度やらかした「円が一切操作できない」と同じ罠)。
         pointerEvents: "none",
       }}>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, pointerEvents: "auto" }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: SPACE.sm, pointerEvents: "auto" }}>
         <TransportKey
           label="REC" ring={LAMP_REC}
           pressed={recording} enabled={!sending}
@@ -851,7 +851,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             最初の状態へ戻す(録音中でも、切り出し中でも)。
             オーバーレイでは、これがそのまま「元の画面へ戻る」になる
             (右上の閉じるボタンは廃止した)。 */}
-        <div style={{ marginLeft: 16 }}>
+        <div style={{ marginLeft: SPACE.lg }}>
           <TransportKey
             label="CANCEL" cross
             pressed={false} enabled={!sending && !leaving}
@@ -903,7 +903,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
   // 押し込まれて見えるか。押している間・押されたままの状態・押せない状態。
   const down = pressed || held || !enabled;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: SPACE.xs }}>
       <div style={{ position: "relative", width: KEY_D, height: KEY_D + KEY_DEPTH }}>
         {/* キーが沈む「穴」。出っ張っているときはここが影として見える。 */}
         <div style={{
@@ -932,7 +932,7 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
         >
           {bars ? (
             // PAUSE の2本線。
-            <span style={{ display: "flex", gap: 4 }}>
+            <span style={{ display: "flex", gap: SPACE.xs }}>
               {[0, 1].map((i) => (
                 <span key={i} style={{
                   width: 3, height: 11,
@@ -965,8 +965,8 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
         </button>
       </div>
       <span style={{
-        fontFamily: SANS, fontSize: TYPE.nano, fontWeight: 600, letterSpacing: "0.16em",
-        color: enabled ? fg : mute, marginRight: "-0.16em",
+        fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps,
+        color: enabled ? fg : mute, marginRight: `-${TRACK.caps}`,
       }}>{label}</span>
     </div>
   );

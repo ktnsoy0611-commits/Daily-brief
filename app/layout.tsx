@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { BD_GREY } from "@/lib/constants";
 import { Anton, Archivo, Dela_Gothic_One, M_PLUS_1, Noto_Sans_JP, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
 import "./globals.css";
 
@@ -122,7 +123,7 @@ export const viewport: Viewport = {
   // ★初期値だけ。以後は lib/ground.ts が html の背景色とセットで書き換える
   // (固定の暗いグレーのままだと、iOS が自分で塗る領域 — キーボードの手前の
   //  帯や画面の下端 — がその色になり、地色が途切れて見える)。
-  themeColor: "#ECECEA",
+  themeColor: BD_GREY,
 };
 
 export default function RootLayout({

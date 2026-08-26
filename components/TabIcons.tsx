@@ -1,6 +1,6 @@
 "use client";
 
-import { TYPE } from "@/lib/tokens";
+import { TYPE, LEAD, TRACK, WEIGHT } from "@/lib/tokens";
 import { SANS } from "@/lib/constants";
 
 // ★タブバーのアイコン(2026-08-03)。ユーザー提供の幾何アイコン集
@@ -22,7 +22,6 @@ export type TabIconName =
 const S = 24;
 // 未選択のアイコンの色。**不透明**にすること(半透明にすると上記の
 // 二重掛けが起きる)。PAPER の上に rgba(26,26,24,0.42) を重ねた見た目と同じ。
-export const TAB_ICON_OFF = "#9C9C9B";
 // 薄いほうの段。
 const PALE = 0.42;
 
@@ -212,12 +211,13 @@ export function TabIcon({ name, color, size = S }: { name: TabIconName; color: s
  *  2026-08-04)。本物のタブバー(AppShell)とダッシュボードのモーフ用ピル
  *  (Dashboard)の両方がこれを使うので、見た目が必ず一致する。 */
 export function TabGlyph({ name, label, color }: { name: TabIconName; label: string; color: string }) {
+  // ★gap:3 は目盛りの外＝アイコンの内部（図形の座標系）。
   return (
-    <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, lineHeight: 1 }}>
+    <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 /* ★目盛りの外（アイコンの内部＝図形の座標系） */, lineHeight: LEAD.flat }}>
       <TabIcon name={name} color={color} size={21} />
       <span style={{
-        fontFamily: SANS, fontSize: TYPE.nano, fontWeight: 700, letterSpacing: "0.06em",
-        color, marginRight: "-0.06em", whiteSpace: "nowrap",
+        fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps,
+        color, marginRight: `-${TRACK.caps}`, whiteSpace: "nowrap",
       }}>{label}</span>
     </span>
   );

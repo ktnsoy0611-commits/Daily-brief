@@ -1,6 +1,6 @@
 "use client";
 
-import { RADIUS } from "@/lib/tokens";
+import { SPACE, RADIUS } from "@/lib/tokens";
 import { Press } from "@/components/Button";
 import { haptic } from "@/lib/helpers";
 
@@ -91,14 +91,14 @@ export function ComposerToolbar({ open, filled, onOpen, on, onInk, off }: {
 }) {
   const keys: ToolKey[] = ["due", "context", "belongings", "weight", "tag"];
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: SPACE.xs }}>
       {keys.map((k) => {
         const lit = filled[k] || open === k;
         return (
           // ★★**押せる面は 44、描く丸は 32**(2026-08-18・第19巡)。
           //   丸そのものを押せる面にしていたので、指の腹が 6px でも外れると
           //   帯に当たって何も起きず、「反応が悪い」として報告された。
-          //   `margin: -6px` で**場所は 32 のまま**にし、当たり判定だけ広げる
+          //   `margin: -6px` で**場所は 32 のまま**にし、当たり判定だけ広げる  // ★目盛りの外（説明の文中）
           //   (上の 6px は行の下余白 12px の中、下の 6px は帯の下余白の中)。
           <Press
             key={k}
@@ -106,7 +106,7 @@ export function ComposerToolbar({ open, filled, onOpen, on, onInk, off }: {
             aria-label={TOOL_LABEL[k]}
             aria-pressed={open === k}
             style={{
-              width: 44, height: 44, margin: -6, flexShrink: 0,
+              width: 44, height: 44, margin: -6, flexShrink: 0,  // ★目盛りの外（44 の当たり判定を 32 の場所のまま広げる）
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
           >

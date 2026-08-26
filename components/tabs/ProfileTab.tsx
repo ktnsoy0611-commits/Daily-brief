@@ -1,11 +1,11 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Activity, BarChart3, Heart, Link2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { Button } from "@/components/Button";
-import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SERIF } from "@/lib/constants";
+import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SERIF, SECOND } from "@/lib/constants";
 import { isViewportDebug, setViewportDebug } from "@/lib/debugViewport";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
@@ -47,7 +47,7 @@ type GenResponse =
 // §7.21 参照)。fontSize:16はタップしやすい大きさとしてそのまま残す。)
 const settingsInputStyle: React.CSSProperties = {
   flex: 1, border: "none", borderBottom: `1.5px solid ${INK}`, background: "transparent",
-  fontFamily: SANS, fontSize: TYPE.lead, padding: "8px 2px", outline: "none", minWidth: 0,
+  fontFamily: SANS, fontSize: TYPE.lead, padding: `${SPACE.sm}px ${SPACE.hair}px`, outline: "none", minWidth: 0,
 };
 
 // 各セクションを1枚の淡いカードにまとめる。以前はラベル+素のテキスト/
@@ -56,10 +56,10 @@ const settingsInputStyle: React.CSSProperties = {
 // 画面にリズムが生まれる。
 function SettingsCard({ label, icon: Icon, children }: { label: string; icon?: IconType; children: React.ReactNode }) {
   return (
-    <section style={{ background: "rgba(26,26,24,0.035)", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.xl, padding: "16px 16px 16px", marginBottom: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+    <section style={{ background: "rgba(26,26,24,0.035)", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.xl, padding: `${SPACE.lg}px ${SPACE.lg}px ${SPACE.lg}px`, marginBottom: SPACE.lg }}>
+      <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginBottom: SPACE.md }}>
         {Icon && <Icon size={12} strokeWidth={2.2} color={MUTED} />}
-        <span style={{ fontSize: TYPE.micro, letterSpacing: "0.22em", color: MUTED, fontWeight: 700 }}>{label}</span>
+        <span style={{ fontSize: TYPE.micro, letterSpacing: TRACK.wide, color: MUTED, fontWeight: WEIGHT.bold }}>{label}</span>
       </div>
       {children}
     </section>
@@ -91,9 +91,9 @@ function ConfirmDeleteButton({ armed, onArm, onConfirm, label }: {
   if (armed) {
     return (
       <button onClick={onConfirm} aria-label={`${label}を本当に削除する`} style={{
-        height: 28, padding: "0 12px", borderRadius: RADIUS.pill, border: "none", background: RUST, color: PAPER,
-        display: "flex", alignItems: "center", cursor: "pointer", fontFamily: SANS, fontWeight: 700,
-        fontSize: TYPE.small, letterSpacing: "0.03em", flexShrink: 0, whiteSpace: "nowrap",
+        height: 28, padding: `0 ${SPACE.md}px`, borderRadius: RADIUS.pill, border: "none", background: RUST, color: PAPER,
+        display: "flex", alignItems: "center", cursor: "pointer", fontFamily: SANS, fontWeight: WEIGHT.bold,
+        fontSize: TYPE.small, letterSpacing: TRACK.normal, flexShrink: 0, whiteSpace: "nowrap",
       }}>本当に削除？</button>
     );
   }
@@ -107,10 +107,10 @@ function ConfirmDeleteButton({ armed, onArm, onConfirm, label }: {
 // まとめることで、セクションごとに微妙に違う実装になるのを防ぐ。
 function SettingsRow({ title, sub, faded, action }: { title: string; sub: string; faded?: boolean; action?: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 2px", borderTop: `1px solid ${HAIRLINE}`, opacity: faded ? 0.5 : 1 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.md}px ${SPACE.hair}px`, borderTop: `1px solid ${HAIRLINE}`, opacity: faded ? 0.5 : 1 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-        <div style={{ fontSize: TYPE.micro, color: MUTED, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
+        <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <div style={{ fontSize: TYPE.micro, color: MUTED, marginTop: SPACE.hair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
       </div>
       {action}
     </div>
@@ -146,22 +146,22 @@ function InterestChips({ items, onRemove, inputValue, onInputChange, onAdd, plac
   };
   return (
     <>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: SPACE.sm }}>
         {items.length === 0 ? (
           <p style={{ fontSize: TYPE.body, color: MUTED, margin: 0 }}>まだありません。</p>
         ) : items.map((item) => {
           const armed = armedId === item.id;
           return (
           <span key={item.id} style={{
-            display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 8px 8px 12px", borderRadius: RADIUS.pill,
-            background: armed ? "rgba(183,65,42,0.12)" : "rgba(26,26,24,0.06)", color: INK, fontFamily: SANS, fontWeight: 600, fontSize: TYPE.body,
+            display: "inline-flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.sm}px ${SPACE.sm}px ${SPACE.sm}px ${SPACE.md}px`, borderRadius: RADIUS.pill,
+            background: armed ? "rgba(183,65,42,0.12)" : "rgba(26,26,24,0.06)", color: INK, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.body,
             transition: "background var(--t-item) var(--ease-settle)",
           }}>
             {item.label}
             {armed ? (
               <button onClick={() => handleX(item.id)} aria-label={`${item.label}を削除する`} style={{
-                height: 16, padding: "0 8px", borderRadius: RADIUS.pill, border: "none", background: RUST, color: PAPER,
-                display: "flex", alignItems: "center", cursor: "pointer", fontFamily: SANS, fontWeight: 700, fontSize: TYPE.micro, letterSpacing: "0.04em", flexShrink: 0,
+                height: 16, padding: `0 ${SPACE.sm}px`, borderRadius: RADIUS.pill, border: "none", background: RUST, color: PAPER,
+                display: "flex", alignItems: "center", cursor: "pointer", fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.micro, letterSpacing: TRACK.normal, flexShrink: 0,
               }}>消す</button>
             ) : (
               <button onClick={() => handleX(item.id)} aria-label={`${item.label}を削除`} style={{
@@ -175,7 +175,7 @@ function InterestChips({ items, onRemove, inputValue, onInputChange, onAdd, plac
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <div style={{ display: "flex", gap: SPACE.sm, marginTop: SPACE.md }}>
         <input value={inputValue} onChange={(e) => onInputChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onAdd()}
           placeholder={placeholder} style={settingsInputStyle} />
         <Button variant="primary" onClick={onAdd}>追加</Button>
@@ -559,23 +559,23 @@ export function ProfileTab({ appState, persist, onClose }: {
 
   return (
     <>
-      <header style={{ padding: "16px 4px 12px", borderBottom: `2px solid ${INK}`, display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: TYPE.head, color: INK, padding: 0, lineHeight: 1 }} aria-label="閉じる">←</button>
-        <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: TYPE.head, letterSpacing: "0.02em", lineHeight: 1 }}>設定</div>
+      <header style={{ padding: `${SPACE.lg}px ${SPACE.xs}px ${SPACE.md}px`, borderBottom: `2px solid ${INK}`, display: "flex", alignItems: "center", gap: SPACE.md }}>
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: TYPE.head, color: INK, padding: 0, lineHeight: LEAD.flat }} aria-label="閉じる">←</button>
+        <div style={{ fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, letterSpacing: TRACK.normal, lineHeight: LEAD.flat }}>設定</div>
       </header>
 
-      <main style={{ paddingTop: 16 }}>
+      <main style={{ paddingTop: SPACE.lg }}>
         {syncMsg && (
-          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: 1.6, margin: "0 2px 16px" }}>{syncMsg}</p>
+          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: LEAD.body, margin: `0 ${SPACE.hair}px ${SPACE.lg}px` }}>{syncMsg}</p>
         )}
 
         {/* 上部タブ。好み・興味は同じタブ、情報源(URL)は別タブ、それ以外は「その他」。 */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: SPACE.sm, marginBottom: SPACE.lg }}>
           {([["taste", "好み・興味"], ["sources", "情報源"], ["other", "その他"]] as const).map(([id, lbl]) => (
             <button key={id} onClick={() => { haptic(); setTab(id); disarm(); }} style={{
-              flex: 1, padding: "8px 0", borderRadius: RADIUS.pill, border: "none", cursor: "pointer",
+              flex: 1, padding: `${SPACE.sm}px 0`, borderRadius: RADIUS.pill, border: "none", cursor: "pointer",
               background: tab === id ? INK : "rgba(26,26,24,0.06)", color: tab === id ? PAPER : INK,
-              fontFamily: SANS, fontWeight: 700, fontSize: TYPE.small, letterSpacing: "0.03em",
+              fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.small, letterSpacing: TRACK.normal,
             }}>{lbl}</button>
           ))}
         </div>
@@ -596,17 +596,17 @@ export function ProfileTab({ appState, persist, onClose }: {
 
         {tab === "sources" && (<>
           <SettingsCard label="規定の情報源（展覧会・イベント・映画）" icon={Link2}>
-            <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: 1.7, margin: "0 0 12px" }}>
+            <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>
               毎晩かならず巡回する内蔵の情報源です。変えたいときは削除して、新しいURLを登録してください。
             </p>
             {fixedList.length === 0 ? (
-              <p style={{ fontSize: TYPE.body, color: MUTED, margin: "0 0 12px" }}>まだありません。</p>
+              <p style={{ fontSize: TYPE.body, color: MUTED, margin: `0 0 ${SPACE.md}px` }}>まだありません。</p>
             ) : fixedList.map((url) => (
               <SettingsRow key={`fixed-${url}`} title={hostLabel(url)} sub={url}
                 action={<ConfirmDeleteButton armed={armedKey === `fixed-${url}`} onArm={() => arm(`fixed-${url}`)}
                   onConfirm={() => { disarm(); removeFixedSource(url); }} label={hostLabel(url)} />} />
             ))}
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <div style={{ display: "flex", gap: SPACE.sm, marginTop: SPACE.md }}>
               <input value={fixedInput} onChange={(e) => setFixedInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addFixedSource()}
                 placeholder="URLを貼り付け" style={settingsInputStyle} />
               <Button variant="primary" onClick={addFixedSource}>登録</Button>
@@ -615,7 +615,7 @@ export function ProfileTab({ appState, persist, onClose }: {
 
           <SettingsCard label="その他の情報源" icon={Link2}>
           {favVisible.length === 0 && discovered.length === 0 ? (
-            <p style={{ fontSize: TYPE.body, color: MUTED, margin: "0 0 12px" }}>まだありません。</p>
+            <p style={{ fontSize: TYPE.body, color: MUTED, margin: `0 0 ${SPACE.md}px` }}>まだありません。</p>
           ) : (
             <>
               {favVisible.map((s) => (
@@ -630,7 +630,7 @@ export function ProfileTab({ appState, persist, onClose }: {
               ))}
             </>
           )}
-          <div style={{ display: "flex", gap: 8, marginTop: favVisible.length === 0 && discovered.length === 0 ? 0 : 12 }}>
+          <div style={{ display: "flex", gap: SPACE.sm, marginTop: favVisible.length === 0 && discovered.length === 0 ? 0 : SPACE.md }}>
             <input value={srcInput} onChange={(e) => setSrcInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSource()}
               placeholder="URLを貼り付け" style={settingsInputStyle} />
             <Button variant="primary" onClick={addSource}>登録</Button>
@@ -643,15 +643,15 @@ export function ProfileTab({ appState, persist, onClose }: {
             材料になっていることを、本人が数字で確認できるようにする。残した・
             実行・星は前向きな反応としてログ(my-brain)に貯まる材料。 */}
         <SettingsCard label="今月の反応" icon={BarChart3}>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: SPACE.sm }}>
             {([["残した", reactionCounts.kept], ["実行", reactionCounts.done], ["星", reactionCounts.starred], ["流した", reactionCounts.skipped]] as const).map(([lbl, n]) => (
-              <div key={lbl} style={{ flex: 1, textAlign: "center", padding: "12px 0", borderRadius: RADIUS.lg, background: "rgba(26,26,24,0.04)" }}>
-                <div style={{ fontFamily: SANS, fontWeight: 800, fontSize: TYPE.head, color: INK, lineHeight: 1 }}>{n}</div>
-                <div style={{ fontFamily: SANS, fontSize: TYPE.small, color: MUTED, marginTop: 4 }}>{lbl}</div>
+              <div key={lbl} style={{ flex: 1, textAlign: "center", padding: `${SPACE.md}px 0`, borderRadius: RADIUS.lg, background: "rgba(26,26,24,0.04)" }}>
+                <div style={{ fontFamily: SANS, fontWeight: WEIGHT.heavy, fontSize: TYPE.head, color: INK, lineHeight: LEAD.flat }}>{n}</div>
+                <div style={{ fontFamily: SANS, fontSize: TYPE.small, color: MUTED, marginTop: SPACE.xs }}>{lbl}</div>
               </div>
             ))}
           </div>
-          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: 1.7, margin: "12px 0 0" }}>
+          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: LEAD.body, margin: `${SPACE.md}px 0 0` }}>
             残した・実行・星が、好み・興味の学習の材料になります（GitHubのmy-brainに記録されます）。流したは参考で、記録には残しません。
           </p>
         </SettingsCard>
@@ -661,10 +661,10 @@ export function ProfileTab({ appState, persist, onClose }: {
         <SettingsCard label="ブリーフ生成の状況" icon={Activity}>
           {cronStatus ? (
             <>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.body }}>
+              <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.body }}>
                 {cronStatus.cardCount}枚を生成{cronStatus.cardCount === 0 && cronStatus.note ? `（${cronStatus.note}）` : ""}
               </div>
-              <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: 4, lineHeight: 1.7 }}>
+              <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: SPACE.xs, lineHeight: LEAD.body }}>
                 {cronWhen(cronStatus.at)} ・ 情報源{cronStatus.sourceCount}サイト巡回{typeof cronStatus.sitesFetched === "number" ? `(取得成功${cronStatus.sitesFetched}${cronStatus.jinaKeyless ? "・鍵なし" : ""})` : ""}<br />
                 {/* ★★取れなかった理由(第64巡)。取得成功0が続いても「緑のまま」で
                     気づけなかったので、ここに理由(HTTPコード)を出す。 */}
@@ -686,7 +686,7 @@ export function ProfileTab({ appState, persist, onClose }: {
               </div>
             </>
           ) : (
-            <p style={{ fontSize: TYPE.body, color: MUTED, margin: 0, lineHeight: 1.7 }}>
+            <p style={{ fontSize: TYPE.body, color: MUTED, margin: 0, lineHeight: LEAD.body }}>
               まだ生成の記録がありません。夜間の生成(または下の「今すぐ生成」)が動くと、ここに直近の状況が表示されます。
             </p>
           )}
@@ -696,16 +696,16 @@ export function ProfileTab({ appState, persist, onClose }: {
                 onClick={generateNow}
                 disabled={genNow === "loading"}
                 style={{
-                  width: "100%", marginTop: 16, padding: "12px 0",
+                  width: "100%", marginTop: SPACE.lg, padding: `${SPACE.md}px 0`,
                   background: genNow === "loading" ? "rgba(26,26,24,0.2)" : INK, color: PAPER,
                   border: "none", borderRadius: RADIUS.pill, cursor: genNow === "loading" ? "default" : "pointer",
-                  fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.08em",
+                  fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
                 }}
               >
                 {genNow === "loading" ? "生成中…（1分ほどかかります）" : "今すぐ生成"}
               </button>
               {genNowMsg && (
-                <p style={{ fontSize: TYPE.small, color: genNow === "error" ? RUST : MUTED, lineHeight: 1.7, margin: "12px 0 0" }}>{genNowMsg}</p>
+                <p style={{ fontSize: TYPE.small, color: genNow === "error" ? RUST : MUTED, lineHeight: LEAD.body, margin: `${SPACE.md}px 0 0` }}>{genNowMsg}</p>
               )}
             </>
           )}
@@ -714,15 +714,15 @@ export function ProfileTab({ appState, persist, onClose }: {
         {/* ★開発用。タスク入力画面の隅に、キーボードと矩形の実測値を出す。
             実機の崩れを数字で見るためのもの。**直ったら撤去する。** */}
         <SettingsCard label="画面の数値を出す" icon={RotateCcw}>
-          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: 1.7, margin: "0 0 12px" }}>
+          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>
             タスク入力画面の左上に、キーボードの高さや画面のずれの実測値を小さく出します。レイアウトが崩れたときにこの画面を撮って送ってもらうためのもので、直ったら外します。
           </p>
           <button onClick={() => { const n = !probeOn; setProbeOn(n); setViewportDebug(n); }} style={{
-            width: "100%", padding: "12px 0", background: probeOn ? INK : "transparent",
+            width: "100%", padding: `${SPACE.md}px 0`, background: probeOn ? INK : "transparent",
             color: probeOn ? PAPER : INK,
             border: `1.5px solid ${probeOn ? INK : "rgba(26,26,24,0.28)"}`,
             borderRadius: RADIUS.pill, cursor: "pointer",
-            fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.06em",
+            fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
           }}>{probeOn ? "数値を出している（切る）" : "数値を出す"}</button>
 
 
@@ -731,34 +731,34 @@ export function ProfileTab({ appState, persist, onClose }: {
         {/* デモ・テストデータの削除。injectDemoで入れたダミーや試行中の記録を
             一括で消す(好み・興味・情報源などの設定は残す)。2段階確認。 */}
         <SettingsCard label="データの整理" icon={RotateCcw}>
-          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: 1.7, margin: "0 0 12px" }}>
+          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>
             デモ投入や動作確認で入ったアイテム・ウィッシュ・ゴール・スワイプ記録を、まとめて削除します（好み・興味・情報源などの設定は残ります）。反応ログのファイルは、GitHubのmy-brainから手動で消してください。
           </p>
           {armedKey === "clear-test" ? (
             <button onClick={() => { disarm(); clearTestData(); }} style={{
-              width: "100%", padding: "12px 0", background: RUST, color: PAPER, border: "none", borderRadius: RADIUS.pill,
-              cursor: "pointer", fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.06em",
+              width: "100%", padding: `${SPACE.md}px 0`, background: RUST, color: PAPER, border: "none", borderRadius: RADIUS.pill,
+              cursor: "pointer", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
             }}>本当に削除？（元に戻せません）</button>
           ) : (
             <button onClick={() => arm("clear-test")} style={{
-              width: "100%", padding: "12px 0", background: "transparent", color: RUST, border: `1.5px solid ${RUST_EDGE}`,
-              borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.06em",
+              width: "100%", padding: `${SPACE.md}px 0`, background: "transparent", color: RUST, border: `1.5px solid ${RUST_EDGE}`,
+              borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
             }}>デモ・テストデータを削除</button>
           )}
 
           {/* ★タスク/候補のダミーだけを消す。上のボタンとは別扱いにしてある —
               上はブリーフ側(アイテム・ウィッシュ・ゴール)を消すもので、
               タスクの山を作り直したいだけのときに巻き添えにしたくない。 */}
-          <div style={{ height: 1, background: HAIRLINE, margin: "16px 0" }} />
-          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: 1.7, margin: "0 0 12px" }}>
+          <div style={{ height: 1, background: HAIRLINE, margin: `${SPACE.lg}px 0` }} />
+          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>
             タスクと候補に入れたデモだけを消します（手で作ったタスクと、声のメモから来た候補は残ります）。
           </p>
           <button onClick={clearTaskDemo} disabled={demoCount === 0} style={{
-            width: "100%", padding: "12px 0", background: "transparent",
+            width: "100%", padding: `${SPACE.md}px 0`, background: "transparent",
             color: demoCount === 0 ? MUTED : INK,
             border: `1.5px solid ${demoCount === 0 ? HAIRLINE : "rgba(26,26,24,0.28)"}`,
             borderRadius: RADIUS.pill, cursor: demoCount === 0 ? "default" : "pointer",
-            fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.06em",
+            fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
           }}>{demoCount === 0 ? "デモのタスク・候補はありません" : `デモのタスク・候補を削除（${demoCount}）`}</button>
         </SettingsCard>
 
@@ -781,7 +781,7 @@ export function ProfileTab({ appState, persist, onClose }: {
             (CARDS・injectDemo)は撤去済み。このカードは生成パイプラインの
             動作確認用として残す(docs/archive/brief-pipeline-2026-07.md §8.12)。 */}
         <SettingsCard label="ブリーフ生成の実験（開発用）" icon={Sparkles}>
-          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: 1.7, margin: "0 0 12px" }}>
+          <p style={{ fontSize: TYPE.small, color: MUTED, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>
             下の情報源ページをレンダリング(Jina Reader)でクリーンな本文に変換して
             Geminiが読み、そこに載っている情報から、今のウィッシュ・興味に合う
             カードを試作します(Google全体の検索はしません)。まだ本番のブリーフには
@@ -794,44 +794,44 @@ export function ProfileTab({ appState, persist, onClose }: {
             rows={3}
             style={{
               width: "100%", boxSizing: "border-box", resize: "vertical", border: `1px solid ${HAIRLINE}`,
-              borderRadius: RADIUS.lg, padding: 12, fontFamily: SANS, fontSize: TYPE.lead, lineHeight: 1.6, outline: "none",
-              background: "#FAFAF6", color: INK, marginBottom: 12,
+              borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, lineHeight: LEAD.body, outline: "none",
+              background: PAPER, color: INK, marginBottom: SPACE.md,
             }}
           />
           <button
             onClick={runGenerate}
             disabled={genState === "loading"}
             style={{
-              width: "100%", padding: "12px 0", background: genState === "loading" ? "rgba(26,26,24,0.2)" : INK,
+              width: "100%", padding: `${SPACE.md}px 0`, background: genState === "loading" ? "rgba(26,26,24,0.2)" : INK,
               color: PAPER, border: "none", borderRadius: RADIUS.pill, cursor: genState === "loading" ? "default" : "pointer",
-              fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.08em",
+              fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
             }}
           >
             {genState === "loading" ? "生成中…（数十秒かかります）" : "生成を試す"}
           </button>
 
           {genMsg && (
-            <p style={{ fontSize: TYPE.small, color: genState === "error" ? RUST : MUTED, lineHeight: 1.7, margin: "12px 0 0" }}>{genMsg}</p>
+            <p style={{ fontSize: TYPE.small, color: genState === "error" ? RUST : MUTED, lineHeight: LEAD.body, margin: `${SPACE.md}px 0 0` }}>{genMsg}</p>
           )}
 
           {genCards.map((c, i) => (
-            <div key={i} style={{ marginTop: 12, padding: "12px 0 0", borderTop: `1px solid ${HAIRLINE}` }}>
+            <div key={i} style={{ marginTop: SPACE.md, padding: `${SPACE.md}px 0 0`, borderTop: `1px solid ${HAIRLINE}` }}>
               {/* 興味の広がり(派生)枠のカードも特別扱いせず他のカードと
                   同じ見た目で馴染ませる(trigger文字列ではなく isDerived
                   フラグで判定する)。 */}
-              <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", marginBottom: 4 }}>
-                <span style={{ fontSize: TYPE.micro, letterSpacing: "0.12em", color: MUTED, fontWeight: 700 }}>
+              <div style={{ display: "flex", gap: SPACE.sm, alignItems: "baseline", flexWrap: "wrap", marginBottom: SPACE.xs }}>
+                <span style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold }}>
                   {c.kind}{c.trigger && !c.isDerived ? `・${c.trigger}` : ""}{c.area ? `・${c.area}` : ""}
                 </span>
               </div>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, lineHeight: 1.4, color: INK }}>{c.title}</div>
-              <p style={{ fontSize: TYPE.small, color: "#5A5A54", lineHeight: 1.7, margin: "4px 0 0" }}>{c.body}</p>
+              <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.snug, color: INK }}>{c.title}</div>
+              <p style={{ fontSize: TYPE.small, color: SECOND, lineHeight: LEAD.body, margin: `${SPACE.xs}px 0 0` }}>{c.body}</p>
               {c.meta && c.meta.length > 0 && (
-                <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: 4 }}>{c.meta.join(" ・ ")}</div>
+                <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: SPACE.xs }}>{c.meta.join(" ・ ")}</div>
               )}
               {c.sourceUrl && (
                 <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ display: "inline-block", marginTop: 8, fontSize: TYPE.small, color: BLUE, wordBreak: "break-all" }}>
+                  style={{ display: "inline-block", marginTop: SPACE.sm, fontSize: TYPE.small, color: BLUE, wordBreak: "break-all" }}>
                   {c.sourceLabel || c.sourceUrl}
                 </a>
               )}
@@ -843,16 +843,16 @@ export function ProfileTab({ appState, persist, onClose }: {
               トークン実測)。「Geminiに何を渡し何が返ったか見えない」という
               不透明さの解消が目的(HANDOFF §8.12参照)。 */}
           {genSites.length > 0 && (
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: TYPE.micro, letterSpacing: "0.14em", color: MUTED, fontWeight: 700, marginBottom: 8 }}>情報源の取得</div>
+            <div style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTop: `1px solid ${HAIRLINE}` }}>
+              <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>情報源の取得</div>
               {genSites.map((s, i) => (
-                <div key={i} style={{ fontSize: TYPE.small, color: MUTED, marginBottom: 8, lineHeight: 1.6 }}>
+                <div key={i} style={{ fontSize: TYPE.small, color: MUTED, marginBottom: SPACE.sm, lineHeight: LEAD.body }}>
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     <span style={{ color: s.fetched ? GREEN : RUST }}>{s.fetched ? "✓" : "×"}</span> {s.source}
                   </div>
                   {s.fetched && (
-                    <div style={{ paddingLeft: 16 }}>
-                      候補<span style={{ color: (s.candidates ?? 0) > 0 ? GREEN : RUST, fontWeight: 700 }}>{s.candidates ?? 0}</span>件 ／ Markdown中のリンク:{s.linkCount}
+                    <div style={{ paddingLeft: SPACE.lg }}>
+                      候補<span style={{ color: (s.candidates ?? 0) > 0 ? GREEN : RUST, fontWeight: WEIGHT.bold }}>{s.candidates ?? 0}</span>件 ／ Markdown中のリンク:{s.linkCount}
                     </div>
                   )}
                 </div>
@@ -861,10 +861,10 @@ export function ProfileTab({ appState, persist, onClose }: {
           )}
 
           {genPagesRead.length > 0 && (
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: TYPE.micro, letterSpacing: "0.14em", color: MUTED, fontWeight: 700, marginBottom: 8 }}>取得したページ（✓=Markdown取得成功）→ 抽出候補{genCandidateCount}件</div>
+            <div style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTop: `1px solid ${HAIRLINE}` }}>
+              <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>取得したページ（✓=Markdown取得成功）→ 抽出候補{genCandidateCount}件</div>
               {genPagesRead.map((s, i) => (
-                <div key={i} style={{ fontSize: TYPE.small, color: MUTED, marginBottom: 4, display: "flex", gap: 8 }}>
+                <div key={i} style={{ fontSize: TYPE.small, color: MUTED, marginBottom: SPACE.xs, display: "flex", gap: SPACE.sm }}>
                   <span style={{ color: s.ok ? GREEN : RUST, flexShrink: 0 }}>{s.ok ? "✓" : "×"}</span>
                   <a href={s.url} target="_blank" rel="noopener noreferrer"
                     style={{ color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.url}</a>
@@ -874,9 +874,9 @@ export function ProfileTab({ appState, persist, onClose }: {
           )}
 
           {genDropped && (
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: TYPE.micro, letterSpacing: "0.14em", color: MUTED, fontWeight: 700, marginBottom: 8 }}>分類・除外の内訳（層C分類 → 層D検証）</div>
-              <div style={{ fontSize: TYPE.small, color: MUTED, lineHeight: 1.8 }}>
+            <div style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTop: `1px solid ${HAIRLINE}` }}>
+              <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>分類・除外の内訳（層C分類 → 層D検証）</div>
+              <div style={{ fontSize: TYPE.small, color: MUTED, lineHeight: LEAD.body }}>
                 無関係と分類: {genDropped.irrelevant} ／ 出典URL不一致: {genDropped.sourceInvalid} ／
                 終了済み: {genDropped.expired} ／ 重複候補: {genDropped.duplicateCandidate} ／
                 生活圏外: {genDropped.outOfArea} ／ 上限超過(採用漏れ): {genDropped.overQuota}
@@ -885,8 +885,8 @@ export function ProfileTab({ appState, persist, onClose }: {
           )}
 
           {genTokens && (
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${HAIRLINE}` }}>
-              <div style={{ fontSize: TYPE.micro, letterSpacing: "0.14em", color: MUTED, fontWeight: 700, marginBottom: 8 }}>トークン使用量（実測）</div>
+            <div style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTop: `1px solid ${HAIRLINE}` }}>
+              <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>トークン使用量（実測）</div>
               <div style={{ fontSize: TYPE.small, color: MUTED }}>
                 入力 {genTokens.promptTokens.toLocaleString()} ／ 出力 {genTokens.candidateTokens.toLocaleString()} ／
                 合計 {genTokens.totalTokens.toLocaleString()}（{genTokens.calls}回のAPI呼び出し）
@@ -903,9 +903,9 @@ export function ProfileTab({ appState, persist, onClose }: {
           <button
             onClick={() => { haptic(6); supabase?.auth.signOut(); }}
             style={{
-              display: "block", margin: "4px auto 0", background: "none", border: "none",
+              display: "block", margin: `${SPACE.xs}px auto 0`, background: "none", border: "none",
               cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, color: MUTED,
-              letterSpacing: "0.04em", padding: "8px 4px", textDecoration: "underline",
+              letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px`, textDecoration: "underline",
             }}
           >
             サインアウト

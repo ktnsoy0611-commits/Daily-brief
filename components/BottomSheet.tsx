@@ -1,6 +1,6 @@
 "use client";
 
-import { RADIUS } from "@/lib/tokens";
+import { SPACE, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -178,7 +178,7 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
       <div style={{
         position: "fixed", top: vv ? `${vv.top}px` : 0, left: 0, right: 0, height: vv ? `${vv.height}px` : "100dvh",
         display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "max(20px, env(safe-area-inset-top)) 0 max(20px, env(safe-area-inset-bottom))",
+        padding: `max(${SPACE.xl}px, env(safe-area-inset-top)) 0 max(${SPACE.xl}px, env(safe-area-inset-bottom))`,
         pointerEvents: "none",
       }}>
         <div style={{
@@ -189,7 +189,7 @@ export function BottomSheet({ onClose, children, maxHeight = "82vh" }: BottomShe
           // ★跳ね返りカーブを撤去(第33巡)。時間は上の requestClose の待ちと同じ --t-out。
           transition: "transform var(--t-out) var(--ease-settle), opacity var(--t-out) var(--ease-settle)",
         }}>
-          <div onPointerDown={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "8px 4px" }}>
+          <div onPointerDown={closeIfSelf} className="no-scrollbar" style={{ overflowY: "auto", WebkitOverflowScrolling: "touch", padding: `${SPACE.sm}px ${SPACE.xs}px` }}>
             {typeof children === "function" ? children(requestClose) : children}
           </div>
         </div>
@@ -220,7 +220,7 @@ export function closeOnSelfClick(handler: () => void) {
 // それ自体が完結したビジュアルを持つ中身は、これを使わずそのまま浮かせる。
 export function OverlayCard({ children }: { children: ReactNode }) {
   return (
-    <div style={{ background: PAPER, borderRadius: RADIUS.xl, padding: "16px 16px 24px", boxShadow: SOFT_SHADOW_LG }}>
+    <div style={{ background: PAPER, borderRadius: RADIUS.xl, padding: `${SPACE.lg}px ${SPACE.lg}px ${SPACE.xl}px`, boxShadow: SOFT_SHADOW_LG }}>
       {children}
     </div>
   );

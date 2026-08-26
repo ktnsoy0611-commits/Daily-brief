@@ -1,11 +1,11 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
 import { appTitle } from "@/lib/apps";
-import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD } from "@/lib/constants";
+import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP, WHITE } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
@@ -36,19 +36,19 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
           border: `2px solid ${GREEN}`, position: "relative", userSelect: "none",
         }}>
-          <div style={{ flex: "0 0 38%", background: GREEN, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: PAPER }}>
+          <div style={{ flex: "0 0 38%", background: GREEN, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.md, color: PAPER }}>
             <Sprout size={32} strokeWidth={1.5} />
-            <span style={{ fontSize: TYPE.micro, letterSpacing: "0.26em", opacity: 0.8 }}>CHECK-IN</span>
+            <span style={{ fontSize: TYPE.micro, letterSpacing: TRACK.wide, opacity: 0.8 }}>CHECK-IN</span>
           </div>
-          <div style={{ flex: 1, padding: "16px 24px 24px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: TYPE.micro, letterSpacing: "0.15em", color: MUTED, marginBottom: 8 }}>{card.goalTitle}</div>
-            <h2 style={{ margin: "0 0 12px", fontFamily: SERIF, fontWeight: 700, fontSize: TYPE.head, lineHeight: 1.4, color: INK }}>最近は、どうですか？</h2>
+          <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.xl}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
+            <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
+            <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>最近は、どうですか？</h2>
             <textarea
               value={checkinValue}
               onChange={(e) => onCheckinChange(e.target.value)}
               onPointerDown={(e) => e.stopPropagation()}
               placeholder="今取り組んでいることを、ひとことで"
-              style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: 12, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: "#FAFAF6", color: INK }}
+              style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: PAPER, color: INK }}
             />
           </div>
           <PunchHoles />
@@ -62,25 +62,25 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
         display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
         border: `2px solid ${RUST}`, position: "relative", userSelect: "none",
       }}>
-        <div style={{ flex: "0 0 34%", background: RUST, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: PAPER }}>
+        <div style={{ flex: "0 0 34%", background: RUST, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.md, color: PAPER }}>
           <Sprout size={30} strokeWidth={1.5} />
-          <span style={{ fontSize: TYPE.micro, letterSpacing: "0.26em", opacity: 0.85 }}>MILESTONE</span>
+          <span style={{ fontSize: TYPE.micro, letterSpacing: TRACK.wide, opacity: 0.85 }}>MILESTONE</span>
         </div>
-        <div style={{ flex: 1, padding: "16px 24px 24px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: TYPE.micro, letterSpacing: "0.15em", color: MUTED, marginBottom: 8 }}>{card.goalTitle}</div>
-          <h2 style={{ margin: "0 0 12px", fontFamily: SERIF, fontWeight: 700, fontSize: TYPE.lead, lineHeight: 1.4, color: INK }}>できるようになったこと、ありますか？</h2>
+        <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.xl}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
+          <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.snug, color: INK }}>できるようになったこと、ありますか？</h2>
           <textarea
             value={milestoneText}
             onChange={(e) => onMilestoneTextChange(e.target.value)}
             onPointerDown={(e) => e.stopPropagation()}
             placeholder="この1〜2ヶ月で、できるようになったこと"
-            style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: 12, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: "#FAFAF6", color: INK, marginBottom: 12 }}
+            style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: PAPER, color: INK, marginBottom: SPACE.md }}
           />
-          <div style={{ display: "flex", gap: 8 }} onPointerDown={(e) => e.stopPropagation()}>
+          <div style={{ display: "flex", gap: SPACE.sm }} onPointerDown={(e) => e.stopPropagation()}>
             {([1, 2, 3] as const).map((r) => (
               <button key={r} onClick={() => onMilestoneRatingChange(r)} style={{
-                flex: 1, padding: "8px 4px", borderRadius: RADIUS.lg, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700,
-                background: milestoneRating === r ? RUST : "transparent", color: milestoneRating === r ? PAPER : "#5A5A54",
+                flex: 1, padding: `${SPACE.sm}px ${SPACE.xs}px`, borderRadius: RADIUS.lg, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
+                background: milestoneRating === r ? RUST : "transparent", color: milestoneRating === r ? PAPER : SECOND,
                 border: `1.5px solid ${milestoneRating === r ? RUST : "rgba(26,26,24,0.2)"}`,
               }}>{ratingLabel(r)}</button>
             ))}
@@ -111,29 +111,29 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           <img src={img(card.images![0], 500, 400)} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         ) : (
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span aria-hidden style={{ fontFamily: SERIF, fontWeight: 700, fontSize: "min(42vw, 170px)", lineHeight: 1, color: card.fg, opacity: 0.92 }}>{card.glyph}</span>
+            <span aria-hidden style={{ fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: "min(42vw, 170px)", lineHeight: LEAD.flat, color: card.fg, opacity: 0.92 }}>{card.glyph}</span>
           </div>
         )}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.1), rgba(0,0,0,0) 40%, rgba(0,0,0,0.22) 100%)", pointerEvents: "none" }} />
         {isTop && hasPhotos && (
           <span style={{
-            position: "absolute", bottom: 12, right: 14, display: "flex", alignItems: "center", gap: 4,
-            background: "rgba(26,26,24,0.5)", color: "#fff", borderRadius: RADIUS.pill, padding: "4px 12px 4px 8px",
-            fontSize: TYPE.small, fontFamily: SANS, fontWeight: 700, pointerEvents: "none",
+            position: "absolute", bottom: 12, right: 14, display: "flex", alignItems: "center", gap: SPACE.xs,
+            background: "rgba(26,26,24,0.5)", color: WHITE, borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px ${SPACE.xs}px ${SPACE.sm}px`,
+            fontSize: TYPE.small, fontFamily: SANS, fontWeight: WEIGHT.bold, pointerEvents: "none",
           }}>写真 {card.images!.length} を見る ⤢</span>
         )}
       </div>
-      <div style={{ flex: 1, padding: "16px 24px 16px", paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-        <div style={{ marginBottom: 8 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 5, height: 5, borderRadius: RADIUS.circle, background: "#5A5A54", flexShrink: 0 }} />
+      <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.lg}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
+        <div style={{ marginBottom: SPACE.sm }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: SPACE.xs }}>
+            <span style={{ width: 5, height: 5, borderRadius: RADIUS.circle, background: SECOND, flexShrink: 0 }} />
             {/* セレンディピティのカードは「セレンディピティ」の語を出さず、
                 カテゴリだけ表示して他カードと同じ見た目にする。 */}
             {/* ゴール由来のカードは、どのゴールのための提案かを添える(§8.21)。 */}
-            <span style={{ fontSize: TYPE.micro, color: "#5A5A54", fontWeight: 700, letterSpacing: "0.05em" }}>{card.category}{card.trigger && card.trigger !== "セレンディピティ" ? ` ・ ${card.trigger}` : ""}{card.goalTitle ? `（${card.goalTitle}）` : ""}</span>
+            <span style={{ fontSize: TYPE.micro, color: SECOND, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal }}>{card.category}{card.trigger && card.trigger !== "セレンディピティ" ? ` ・ ${card.trigger}` : ""}{card.goalTitle ? `（${card.goalTitle}）` : ""}</span>
           </span>
         </div>
-        <h2 style={{ margin: "0 0 8px", fontFamily: SERIF, fontWeight: 700, fontSize: TYPE.head, lineHeight: 1.35, color: INK }}>{card.title}</h2>
+        <h2 style={{ margin: `0 0 ${SPACE.sm}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>{card.title}</h2>
         {/* paddingRightはisTopに関わらず常に一定にしている。以前はisTop&&
             onFlagの時だけ26pxを足していたため、peekだったカードがtopに
             切り替わる瞬間にpaddingが0→26へ非連続にジャンプし、transform
@@ -145,15 +145,15 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             不具合があった(flex-basis:0からのflex-growとline-clampの
             高さ計算がSafari上で噛み合わない)。flexに頼らず、行の高さから
             算出した固定のmaxHeightで確実に頭打ちにする。 */}
-        <p style={{ margin: 0, maxHeight: "calc(1.7em * 5)", fontFamily: SANS, fontSize: TYPE.body, lineHeight: 1.7, color: "#4A4A44", display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: 24 }}>{card.body}</p>
+        <p style={{ margin: 0, maxHeight: "calc(1.7em * 5)", fontFamily: SANS, fontSize: TYPE.body, lineHeight: LEAD.body, color: SECOND, display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: SPACE.xl }}>{card.body}</p>
         {isTop && onFlag && (
           <button
             onClick={(e) => { e.stopPropagation(); onFlag(); }}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label="この情報の質をフィードバック"
-            style={{ position: "absolute", bottom: 12, right: 14, background: "none", border: "none", cursor: "pointer", padding: 8, lineHeight: 0 }}
+            style={{ position: "absolute", bottom: 12, right: 14, background: "none", border: "none", cursor: "pointer", padding: SPACE.sm, lineHeight: 0 }}
           >
-            <Flag size={13} strokeWidth={2} color={flagged ? RUST : "#C8C6BC"} fill={flagged ? RUST : "none"} />
+            <Flag size={13} strokeWidth={2} color={flagged ? RUST : SHADE_DEEP} fill={flagged ? RUST : "none"} />
           </button>
         )}
         {/* 情報カード(新着記事)は、タップすると記事の半分要約を全画面で読める。
@@ -162,12 +162,12 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           <button
             onClick={(e) => { e.stopPropagation(); onRead(); }}
             onPointerDown={(e) => e.stopPropagation()}
-            style={{ position: "absolute", bottom: 11, left: HOLE_CLEAR, background: INK, color: PAPER, border: "none", cursor: "pointer", borderRadius: RADIUS.pill, padding: "4px 12px", fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, letterSpacing: "0.04em" }}
+            style={{ position: "absolute", bottom: 11, left: HOLE_CLEAR, background: INK, color: PAPER, border: "none", cursor: "pointer", borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px`, fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal }}
           >記事を読む →</button>
         )}
       </div>
-      <div style={{ position: "absolute", top: 20, left: 18, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: 700, fontSize: TYPE.display, letterSpacing: "0.15em", padding: "4px 12px", borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>KEEP</div>
-      <div style={{ position: "absolute", top: 20, right: 18, transform: "rotate(12deg)", opacity: skipOpacity, border: "3px solid #8A8A82", color: "#8A8A82", fontFamily: SANS, fontWeight: 700, fontSize: TYPE.display, letterSpacing: "0.15em", padding: "4px 12px", borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>SKIP</div>
+      <div style={{ position: "absolute", top: 20, left: 18, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>KEEP</div>
+      <div style={{ position: "absolute", top: 20, right: 18, transform: "rotate(12deg)", opacity: skipOpacity, border: `3px solid ${MUTED}`, color: MUTED, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>SKIP</div>
       <PunchHoles />
     </div>
   );
@@ -187,7 +187,7 @@ function WaitingMark() {
     { borderRadius: "100% 0 0 0" },   // 右下: 左上が丸い四半円
   ];
   return (
-    <div aria-hidden style={{ display: "grid", gridTemplateColumns: `repeat(2, ${U}px)`, gridTemplateRows: `repeat(2, ${U}px)`, gap: 4 }}>
+    <div aria-hidden style={{ display: "grid", gridTemplateColumns: `repeat(2, ${U}px)`, gridTemplateRows: `repeat(2, ${U}px)`, gap: SPACE.xs }}>
       {cells.map((c, i) => (
         <div key={i} style={{ ...c, background: i % 3 === 0 ? shade(BD_GREY, -16) : shade(BD_GREY, -8) }} />
       ))}
@@ -600,9 +600,9 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
   return (
     <>
       <Masthead title={appTitle("life")} corner={profileButton} />
-      <div style={{ display: "flex", gap: 4, padding: "12px 4px 16px" }}>
+      <div style={{ display: "flex", gap: SPACE.xs, padding: `${SPACE.md}px ${SPACE.xs}px ${SPACE.lg}px` }}>
         {deck.map((c, i) => (
-          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: RADIUS.sm, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? "#D8D6CC" : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background var(--t-item) var(--ease-settle)" }} />
+          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: RADIUS.sm, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? SHADE_DEEP : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background var(--t-item) var(--ease-settle)" }} />
         ))}
       </div>
 
@@ -625,7 +625,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               このタブは滞在中ずっとdocument.body.style.overflowを
               hiddenにロックしているため、ここをvisibleにしても実際に
               ページがスクロール/横に伸びることはない。 */}
-          <div ref={arenaRef} style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 0" }}>
+          <div ref={arenaRef} style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: `${SPACE.md}px 0` }}>
             <main style={{ position: "relative", width: cardBox ? cardBox.w : "min(88vw, 340px)", height: cardBox ? cardBox.h : undefined, aspectRatio: cardBox ? undefined : ITEM_CARD_ASPECT }}>
               {visibleCards.map(({ card, isTop }) => (
                 <div
@@ -685,13 +685,13 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
               もやが出る領域=26px分)は引き続き完全に不透明なままにして
               いるため、もやを隙間から通す構造的な穴は生まれない。 */}
           <footer style={{
-            position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, paddingBottom: isGrowth ? 8 : 0, flexShrink: 0,
+            position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, paddingBottom: isGrowth ? SPACE.sm : 0, flexShrink: 0,
             background: isGrowth ? `linear-gradient(to bottom, ${BD_GREY}00 0, ${BD_GREY} 20px, ${BD_GREY} 100%)` : "transparent",
           }}>
             {isGrowth && (
-              <div style={{ display: "flex", gap: 12 }}>
-                <button onClick={() => commit("skip")} style={{ flex: 1, padding: "12px 0", background: "transparent", border: "1.5px solid rgba(26,26,24,0.3)", borderRadius: RADIUS.pill, fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.1em", color: "#5A5A54", cursor: "pointer" }}>あとで</button>
-                <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: "12px 0", background: isMilestone ? RUST : GREEN, border: "none", borderRadius: RADIUS.pill, fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.1em", color: PAPER, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
+              <div style={{ display: "flex", gap: SPACE.md }}>
+                <button onClick={() => commit("skip")} style={{ flex: 1, padding: `${SPACE.md}px 0`, background: "transparent", border: "1.5px solid rgba(26,26,24,0.3)", borderRadius: RADIUS.pill, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: SECOND, cursor: "pointer" }}>あとで</button>
+                <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: `${SPACE.md}px 0`, background: isMilestone ? RUST : GREEN, border: "none", borderRadius: RADIUS.pill, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: PAPER, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
               </div>
             )}
           </footer>
@@ -700,22 +700,22 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         // デッキがまだ無い(夜間Cronが未生成、または候補ゼロ)状態。クライアントには
         // 「生成中/失敗」を判別する信号が無い(Cronはサーバー側)ため、両方を
         // 正直に包む文言にし、幾何学のしるしを添える。
-        <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "32px 4px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
+        <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: `${SPACE.xxl}px ${SPACE.xs}px`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.xl }}>
           <WaitingMark />
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, lineHeight: 1.8, color: MUTED, textAlign: "center" }}>
+          <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.body, color: MUTED, textAlign: "center" }}>
             まだ何も集まっていません。<br />見つかったらここに並びます。
           </div>
         </main>
       ) : (
-        <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "32px 4px" }}>
-          <SectionLabel text="今日はここまで" style={{ marginBottom: 16 }} />
+        <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: `${SPACE.xxl}px ${SPACE.xs}px` }}>
+          <SectionLabel text="今日はここまで" style={{ marginBottom: SPACE.lg }} />
           {keptCards.map((c, i) => (
-            <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "12px 2px", borderTop: `1px solid ${HAIRLINE}` }}>
-              <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: TYPE.lead, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
-              <div style={{ fontFamily: SERIF, fontWeight: 700, fontSize: TYPE.lead }}>{c.title}</div>
+            <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: SPACE.md, padding: `${SPACE.md}px ${SPACE.hair}px`, borderTop: `1px solid ${HAIRLINE}` }}>
+              <span style={{ fontFamily: DISPLAY, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
+              <div style={{ fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.lead }}>{c.title}</div>
             </div>
           ))}
-          <button onClick={() => goTab("execute")} style={{ marginTop: 24, width: "100%", padding: "12px 0", background: INK, border: "none", borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, letterSpacing: "0.1em", color: PAPER }}>
+          <button onClick={() => goTab("execute")} style={{ marginTop: SPACE.xl, width: "100%", padding: `${SPACE.md}px 0`, background: INK, border: "none", borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: PAPER }}>
             プランタブで地図を見る
           </button>
         </main>
@@ -730,21 +730,21 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ width: "100%", maxWidth: 640, maxHeight: "88vh", background: PAPER, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "22px 22px calc(28px + env(safe-area-inset-bottom))" }}
+            style={{ width: "100%", maxWidth: 640, maxHeight: "88vh", background: PAPER, borderTopLeftRadius: 20, borderTopRightRadius: 20, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: `${SPACE.xl}px ${SPACE.xl}px calc(${SPACE.xxl}px + env(safe-area-inset-bottom))` }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
-              <span style={{ fontSize: TYPE.micro, color: "#8A8A82", fontWeight: 700, letterSpacing: "0.06em", paddingTop: 4 }}>{readItem.category}{readItem.trigger ? ` ・ ${readItem.trigger}` : ""}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: SPACE.md, marginBottom: SPACE.md }}>
+              <span style={{ fontSize: TYPE.micro, color: MUTED, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, paddingTop: SPACE.xs }}>{readItem.category}{readItem.trigger ? ` ・ ${readItem.trigger}` : ""}</span>
               <button onClick={() => setReadItem(null)} aria-label="閉じる" style={{ background: "rgba(26,26,24,0.06)", border: "none", borderRadius: RADIUS.pill, width: 30, height: 30, cursor: "pointer", fontSize: TYPE.lead, color: INK, flexShrink: 0 }}>✕</button>
             </div>
-            <h2 style={{ margin: "0 0 16px", fontFamily: SERIF, fontWeight: 700, fontSize: TYPE.head, lineHeight: 1.35, color: INK }}>{readItem.title}</h2>
+            <h2 style={{ margin: `0 0 ${SPACE.lg}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>{readItem.title}</h2>
             {(readItem.detail && readItem.detail.trim() ? readItem.detail : readItem.body)
               .split(/\n{2,}|\n/).filter((p) => p.trim())
               .map((para, i) => (
-                <p key={i} style={{ margin: "0 0 16px", fontFamily: SERIF, fontSize: TYPE.lead, lineHeight: 1.85, color: "#33322E" }}>{para.trim()}</p>
+                <p key={i} style={{ margin: `0 0 ${SPACE.lg}px`, fontFamily: SERIF, fontSize: TYPE.lead, lineHeight: LEAD.body, color: CHARCOAL }}>{para.trim()}</p>
               ))}
             {readItem.sourceUrl && (
               <a href={readItem.sourceUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
-                style={{ display: "inline-block", marginTop: 4, fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, color: BLUE, textDecoration: "none" }}>
+                style={{ display: "inline-block", marginTop: SPACE.xs, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: BLUE, textDecoration: "none" }}>
                 元の記事を開く →{readItem.sourceLabel ? ` (${readItem.sourceLabel})` : ""}
               </a>
             )}

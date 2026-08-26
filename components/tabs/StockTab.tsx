@@ -1,6 +1,6 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Package, Palette, UtensilsCrossed } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
@@ -8,7 +8,7 @@ import { Button } from "@/components/Button";
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, SectionLabel } from "@/components/common";
 import { TabIcon } from "@/components/TabIcons";
 import { appTitle } from "@/lib/apps";
-import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain } from "@/lib/constants";
+import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
 import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
 
@@ -33,10 +33,10 @@ const STACK_ROW_CAP = 10;
 const isMapsUrl = (url: string) => /google\.[^/]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/.test(url);
 
 // 追加シートの入力欄スタイル(4ドメインで統一)。
-const FIELD_LABEL: CSSProperties = { fontSize: TYPE.micro, letterSpacing: "0.15em", color: MUTED, display: "block", marginBottom: 4 };
+const FIELD_LABEL: CSSProperties = { fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, display: "block", marginBottom: SPACE.xs };
 // ★入力欄の文字は **TYPE.lead(16) 以上**。15 以下だと iOS Safari が
 //   フォーカス時に画面を勝手に拡大し、以後レイアウトが崩れたまま戻らない。
-const FIELD_INPUT: CSSProperties = { width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: "transparent" };
+const FIELD_INPUT: CSSProperties = { width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: `${SPACE.sm}px ${SPACE.hair}px`, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: "transparent" };
 
 // サーバー関数に座標解決を依頼する。url(マップURLからの抽出+名前補完)と
 // query(店名の名寄せ)のどちらか/両方を渡す。失敗時はsource:"none"。
@@ -124,14 +124,14 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
     <BottomSheet onClose={onClose}>
       {(requestClose) => (
         <OverlayCard>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, marginBottom: 16 }}>{sheetTitle}</div>
+          <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, marginBottom: SPACE.lg }}>{sheetTitle}</div>
 
           {multiKind && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: SPACE.sm, marginBottom: SPACE.lg }}>
               {kinds.map((k) => (
                 <button key={k.id} onClick={() => setKind(k.id)} style={{
-                  flex: "1 1 40%", padding: "8px 0", borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700,
-                  background: kind === k.id ? INK : "transparent", color: kind === k.id ? PAPER : "#5A5A54",
+                  flex: "1 1 40%", padding: `${SPACE.sm}px 0`, borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
+                  background: kind === k.id ? INK : "transparent", color: kind === k.id ? PAPER : SECOND,
                   border: `1.5px solid ${kind === k.id ? INK : "rgba(26,26,24,0.2)"}`,
                 }}>{k.label}</button>
               ))}
@@ -140,20 +140,20 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
 
           <label style={FIELD_LABEL}>名前</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus={!multiKind}
-            style={{ ...FIELD_INPUT, marginBottom: 16 }} />
+            style={{ ...FIELD_INPUT, marginBottom: SPACE.lg }} />
 
           <label style={FIELD_LABEL}>GoogleマップのURL（任意・場所を認識します）</label>
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: place ? 4 : 16 }}>
+          <div style={{ display: "flex", gap: SPACE.sm, alignItems: "flex-end", marginBottom: place ? SPACE.xs : SPACE.lg }}>
             <input value={mapUrl} onChange={(e) => { setMapUrl(e.target.value); setPlace(null); }} placeholder="https://maps.app.goo.gl/..."
               style={{ ...FIELD_INPUT, flex: 1 }} />
             <button onClick={loadPlace} disabled={!mapUrl.trim() || resolving} style={{
-              flexShrink: 0, padding: "8px 16px", borderRadius: RADIUS.pill, border: `1.5px solid ${INK}`,
+              flexShrink: 0, padding: `${SPACE.sm}px ${SPACE.lg}px`, borderRadius: RADIUS.pill, border: `1.5px solid ${INK}`,
               background: mapUrl.trim() && !resolving ? INK : "transparent", color: mapUrl.trim() && !resolving ? PAPER : MUTED,
-              fontFamily: SANS, fontSize: TYPE.small, fontWeight: 700, cursor: mapUrl.trim() && !resolving ? "pointer" : "default", whiteSpace: "nowrap",
+              fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, cursor: mapUrl.trim() && !resolving ? "pointer" : "default", whiteSpace: "nowrap",
             }}>{resolving ? "読込中…" : "読み込む"}</button>
           </div>
           {place && (
-            <div style={{ fontSize: TYPE.small, color: hasCoords ? INK : RUST, marginBottom: 16, lineHeight: 1.6 }}>
+            <div style={{ fontSize: TYPE.small, color: hasCoords ? INK : RUST, marginBottom: SPACE.lg, lineHeight: LEAD.body }}>
               {hasCoords
                 ? `地図の位置を取得しました${place.name ? `（${place.name}）` : ""}。`
                 : "このURLからは場所を取得できませんでした。名前を入れて追加できます。"}
@@ -162,11 +162,11 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
 
           <label style={FIELD_LABEL}>自由記述（任意）</label>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="メモ・作者・価格の目安など"
-            style={{ width: "100%", boxSizing: "border-box", border: "1.5px solid rgba(26,26,24,0.2)", borderRadius: RADIUS.lg, padding: "12px 12px", fontFamily: SANS, fontSize: TYPE.lead, outline: "none", resize: "none", lineHeight: 1.6, background: "transparent", marginBottom: 24 }} />
+            style={{ width: "100%", boxSizing: "border-box", border: "1.5px solid rgba(26,26,24,0.2)", borderRadius: RADIUS.lg, padding: `${SPACE.md}px ${SPACE.md}px`, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", resize: "none", lineHeight: LEAD.body, background: "transparent", marginBottom: SPACE.xl }} />
 
           <button onClick={() => commit(requestClose)} disabled={!title.trim() || saving} style={{
-            width: "100%", padding: "12px 0", background: title.trim() && !saving ? INK : "rgba(26,26,24,0.2)", color: PAPER, border: "none",
-            borderRadius: RADIUS.pill, cursor: title.trim() && !saving ? "pointer" : "default", fontFamily: SANS, fontSize: TYPE.body, fontWeight: 700, letterSpacing: "0.1em",
+            width: "100%", padding: `${SPACE.md}px 0`, background: title.trim() && !saving ? INK : "rgba(26,26,24,0.2)", color: PAPER, border: "none",
+            borderRadius: RADIUS.pill, cursor: title.trim() && !saving ? "pointer" : "default", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps,
           }}>{saving ? "追加中…" : "ストックする"}</button>
         </OverlayCard>
       )}
@@ -185,9 +185,9 @@ const SHELF_INTRINSIC = "1px 260px";
 
 function StackSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section style={{ marginBottom: 32, contentVisibility: "auto", containIntrinsicSize: SHELF_INTRINSIC }}>
+    <section style={{ marginBottom: SPACE.xxl, contentVisibility: "auto", containIntrinsicSize: SHELF_INTRINSIC }}>
       {/* 棚の見出し。件数は情報として意味が薄いので出さない。 */}
-      <SectionLabel text={title} style={{ marginBottom: 12 }} />
+      <SectionLabel text={title} style={{ marginBottom: SPACE.md }} />
       {children}
     </section>
   );
@@ -284,7 +284,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
     <>
       <Masthead title={appTitle("life")} corner={profileButton} />
 
-      <main style={{ flex: 1, paddingTop: 16, paddingBottom: 32 }}>
+      <main style={{ flex: 1, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl }}>
         {ITEM_DOMAINS.map((d) => (
           <StackSection key={d.id} title={d.label}>
             <CardStack cardWidth={STACK_CARD_WIDTH} rowCap={STACK_ROW_CAP}
@@ -298,10 +298,10 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
         {/* ★ウィッシュ。棚(4ドメイン)の下に、書いたものすべてを新しい順に
             並べる平たいリスト。左のチェックは「派生カードが実際に実行された
             か」の自動判定(isWishBound)で、タップでの手動トグルは持たない。 */}
-        <section style={{ marginTop: 12 }}>
+        <section style={{ marginTop: SPACE.md }}>
           {/* ★ウィッシュを書く入口。タブバーの右端は録音に譲ったので、
               一覧のあるここに置いた(見出しの右の丸ボタン)。 */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: SPACE.md }}>
             <SectionLabel text="ウィッシュ" />
             <button onClick={openWishSheet} aria-label="ウィッシュを書く" style={{
               width: 30, height: 30, borderRadius: RADIUS.circle, background: INK, border: "none", cursor: "pointer",
@@ -318,7 +318,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
                 const bound = isWishBound(w, appState.items);
                 return (
                   <button key={w.id} onClick={() => setWishDetail(w)} style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "12px 2px",
+                    display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.md}px ${SPACE.hair}px`,
                     background: "none", border: "none", borderTop: `1px solid ${HAIRLINE}`, cursor: "pointer", textAlign: "left", width: "100%",
                   }}>
                     <span style={{
@@ -328,8 +328,8 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
                       {bound && <Check size={11} strokeWidth={3} color={PAPER} />}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.title}</div>
-                      <div style={{ fontSize: TYPE.micro, color: MUTED, marginTop: 1 }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
+                      <div style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.title}</div>
+                      <div style={{ fontSize: TYPE.micro, color: MUTED, marginTop: SPACE.hair }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
                     </div>
                   </button>
                 );
@@ -343,8 +343,8 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
         <BottomSheet onClose={() => setOpenDomain(null)} maxHeight="74vh">
           {(requestClose) => (
             <>
-              <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, color: "#fff", margin: "8px 4px 16px", textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{ITEM_DOMAINS.find((d) => d.id === openDomain)?.label}</div>
-              <div onPointerDown={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 4px 8px" }}>
+              <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: WHITE, margin: `${SPACE.sm}px ${SPACE.xs}px ${SPACE.lg}px`, textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{ITEM_DOMAINS.find((d) => d.id === openDomain)?.label}</div>
+              <div onPointerDown={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: SPACE.md, padding: `0 ${SPACE.xs}px ${SPACE.sm}px` }}>
                 {openItems.length === 0 ? <p style={{ fontSize: TYPE.small, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : openItems.map((i) => itemCard(i))}
               </div>
             </>
@@ -383,7 +383,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
         actionSlot={(close) => {
           const selected = selection.itemIds.includes(itemDetail!.id);
           return (
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
               <Button variant={selected ? "secondary" : "primary"} tone={selected ? BLUE : undefined} onClick={() => toggleItemSelection(itemDetail!.id)}>
                 {selected ? "＋ 追加済み" : "＋ プランに追加"}
               </Button>
@@ -400,7 +400,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
         } : null}
         onClose={() => setWishDetail(null)}
         actionSlot={(close) => (
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
             {!wishDetailBound && wishDetail?.status !== "fulfilled" && (
               <Button variant="primary" onClick={() => { updateWish(wishDetail!.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() }); close(); }}>叶えた！</Button>
             )}

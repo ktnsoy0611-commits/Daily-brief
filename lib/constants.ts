@@ -68,8 +68,10 @@ export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, s
 // ★第56巡に**二段**へ。第53巡は 72/44/28 の三段で、ALIGN の残り日数は 44/28 の
 //   二段だったが、「真ん中の選択中のものはもっと大きく」という指定で焦点が 72 へ
 //   上がり、44 の使い手が居なくなったので捨てた(使わない段は残さない)。
-export const SWISS_XL = 72;   // TIMELINE の曜日の見出し／ALIGN の**焦点**の残り日数
-export const SWISS_MD = 28;   // ALIGN の焦点以外の残り日数／焦点の題
+// ★第65巡に**一段**へ。ALIGN の右の行を組み直したとき `SWISS_MD`(28) の
+//   使い手が居なくなり、`TYPE.display`(26) と 2px しか違わない別系統だったので
+//   捨てた。**残るのは表示専用の巨大欧文だけ**。
+export const SWISS_XL = 72;   // TIMELINE の曜日の見出し(これ1つ。増やさない)
 export const SERIF = SANS;
 export const DISPLAY = SANS;
 
@@ -121,6 +123,47 @@ export const SHADE_DEEP = "#E0E0DC";
 export const CHARCOAL = "#2A2A28";
 // 補助の文字色。以前は各所で "#9A988E" を直書きしていたものをここへ集約した。
 export const MUTED = "#8E8E88";
+
+/** ★副文(二番目に強い文字)。CHARCOAL(12.6:1) と MUTED(2.9:1) の間が空いていて、
+ *  名前を持たないまま `#5A5A54` が 17 箇所・9 ファイルで埋めていた(第65巡)。
+ *  MUTED へ丸めると本文が **WCAG AA(4.5:1) を割る**ので、ここだけ名前を与えた。
+ *  ★グレーはこの4段(INK / CHARCOAL / SECOND / MUTED)で打ち止め。増やさない。 */
+export const SECOND = "#5A5A54";   // 6.08:1
+
+/** ★写真や暗幕の上に乗る**純白**。`PAPER`(#FAFAF9) は紙の面の色で**別物**。
+ *  用途が違うので混ぜない(紙の上に純白を置くと浮き、写真の上に紙色を置くと濁る)。 */
+export const WHITE = "#FFFFFF";
+
+/** ★光を通さない穴の芯(`DropTargets` のブラックホール)。周りの輪は `INK` で、
+ *  芯だけ純黒にして深さを作っている。**INK より暗い色はここだけ**。 */
+export const VOID = "#000000";
+
+/** タブバーの非活性のアイコン。 */
+export const TAB_ICON_OFF = "#9C9C9B";
+
+/** ★録音機の素材色(`VoiceStudio` の物理キーとランプ)。`dim` は全画面の暗い状態。
+ *  **画面固有のパレット**なので、無彩色の梯子には混ぜない(`TASK_TAGS` と同じ作法)。
+ *  ★どれも不透明にすること — 下が明るい円か地かで見え方が変わらないように。 */
+export const STUDIO = {
+  figureDim: "#3A3A37",
+  wellDim: "#141417",    wellLit: "#8F8F89",
+  capOffDim: "#383835",  capOffLit: "#A6A6A0",
+  lampOffDim: "#1F1F22", lampOffLit: "#8A8A84",
+  lampRec: "#D0412B",
+} as const;
+
+/** ★ゴールのバインダー固有の意匠(`components/Binder.tsx`)。色相は名前のハッシュで
+ *  選ぶので、**集合として持つ**必要がある。無彩色の梯子には混ぜない。 */
+export const BINDER_COLORS = {
+  goal:  ["#B8742E", "#2C6E8A", "#8A3C2A", "#3F6B45", "#6B4A2E", "#C1502E", "#4A5C3E"],
+  thing: ["#8A6B2E", "#4A5C3E", "#6B4A2E", "#2C6E8A", "#8A3C2A", "#5A6B7A"],
+  place: ["#2C6E8A", "#B8742E", "#8A3C2A", "#3F6B45", "#6B4A2E", "#4A5C3E", "#C1502E", "#5A6B7A"],
+  date:  ["#6B5A42", "#42586B", "#6B4238", "#42546B", "#5A4230", "#3E4A3A"],
+  kind: {
+    movie: "#2C4E74", book: "#33633F", album: "#C1922E", info: "#4A5C3E",
+    exhibition: "#2C6E7A", live: "#B8442E", activity: "#7A4432", food: "#A8552F",
+  },
+} as const;
 
 // ── カラースキーム(2026-08-16にユーザー指定・参照画像=Spotifyの配色見本) ──
 //

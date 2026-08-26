@@ -1,6 +1,6 @@
 "use client";
 
-import { RADIUS, TYPE } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
@@ -8,7 +8,7 @@ import { GoalBinderCard, goalAccent, GOAL_BASE } from "@/components/Binder";
 import { Button } from "@/components/Button";
 import { AddCardTile, Masthead } from "@/components/common";
 import { appTitle } from "@/lib/apps";
-import { GOAL_CARD_ASPECT, HAIRLINE, INK, MUTED, PAPER, RUST, SANS } from "@/lib/constants";
+import { GOAL_CARD_ASPECT, HAIRLINE, INK, MUTED, PAPER, RUST, SANS, SECOND } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
 import type { Goal, TabProps } from "@/lib/types";
 
@@ -18,12 +18,12 @@ function AddGoalSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onCl
     <BottomSheet onClose={onClose}>
       {(requestClose) => (
         <OverlayCard>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, marginBottom: 16 }}>ゴールを追加</div>
+          <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, marginBottom: SPACE.lg }}>ゴールを追加</div>
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="終わりのないゴールを"
-            style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: "8px 2px", fontFamily: SANS, fontSize: TYPE.lead, outline: "none", marginBottom: 24, background: "transparent" }} />
+            style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: `${SPACE.sm}px ${SPACE.hair}px`, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", marginBottom: SPACE.xl, background: "transparent" }} />
           <button onClick={() => { if (!title.trim()) return; onAdd(title.trim()); requestClose(); }} disabled={!title.trim()} style={{
-            width: "100%", padding: "12px 0", background: title.trim() ? INK : "rgba(26,26,24,0.2)", color: PAPER, border: "none",
-            borderRadius: RADIUS.pill, cursor: title.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: TYPE.lead, fontWeight: 700, letterSpacing: "0.1em",
+            width: "100%", padding: `${SPACE.md}px 0`, background: title.trim() ? INK : "rgba(26,26,24,0.2)", color: PAPER, border: "none",
+            borderRadius: RADIUS.pill, cursor: title.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps,
           }}>追加する</button>
         </OverlayCard>
       )}
@@ -37,29 +37,29 @@ function GoalDetailSheet({ goal, draft, onDraftChange, onManualAdd, onRemove, on
   return (
     <BottomSheet onClose={onClose} maxHeight="76vh">
       <OverlayCard>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ fontFamily: SANS, fontWeight: 700, fontSize: TYPE.lead, lineHeight: 1.4 }}>{goal.title}</div>
-          <button onClick={onRemove} aria-label="削除" style={{ flexShrink: 0, background: "none", border: "none", color: MUTED, cursor: "pointer", padding: 4, display: "flex" }}><Trash2 size={16} /></button>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: SPACE.lg }}>
+          <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.snug }}>{goal.title}</div>
+          <button onClick={onRemove} aria-label="削除" style={{ flexShrink: 0, background: "none", border: "none", color: MUTED, cursor: "pointer", padding: SPACE.xs, display: "flex" }}><Trash2 size={16} /></button>
         </div>
-        <div style={{ fontSize: TYPE.micro, letterSpacing: "0.2em", color: MUTED, marginBottom: 12 }}>記録（{goal.checkIns?.length ?? 0}）</div>
+        <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.wide, color: MUTED, marginBottom: SPACE.md }}>記録（{goal.checkIns?.length ?? 0}）</div>
         {(goal.checkIns ?? []).length === 0 ? (
-          <p style={{ fontSize: TYPE.small, color: MUTED, marginBottom: 16 }}>まだ記録がありません</p>
+          <p style={{ fontSize: TYPE.small, color: MUTED, marginBottom: SPACE.lg }}>まだ記録がありません</p>
         ) : (
-          <div style={{ marginBottom: 16, maxHeight: "40vh", overflowY: "auto" }}>
+          <div style={{ marginBottom: SPACE.lg, maxHeight: "40vh", overflowY: "auto" }}>
             {goal.checkIns.map((ci) => (
-              <div key={ci.id} style={{ padding: "8px 0", borderTop: `1px solid ${HAIRLINE}` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <div key={ci.id} style={{ padding: `${SPACE.sm}px 0`, borderTop: `1px solid ${HAIRLINE}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginBottom: SPACE.xs }}>
                   <span style={{ fontSize: TYPE.micro, color: MUTED }}>{shortDate(ci.at)}{ci.source === "prompted" && " ・ ブリーフより"}</span>
-                  {ci.kind === "milestone" && <span style={{ fontSize: TYPE.micro, fontWeight: 700, letterSpacing: "0.05em", color: PAPER, background: RUST, borderRadius: RADIUS.pill, padding: "2px 8px" }}>{ratingLabel(ci.rating)}</span>}
+                  {ci.kind === "milestone" && <span style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, color: PAPER, background: RUST, borderRadius: RADIUS.pill, padding: `${SPACE.hair}px ${SPACE.sm}px` }}>{ratingLabel(ci.rating)}</span>}
                 </div>
-                <div style={{ fontSize: TYPE.body, color: "#4A4A44", lineHeight: 1.6 }}>{ci.text}</div>
+                <div style={{ fontSize: TYPE.body, color: SECOND, lineHeight: LEAD.body }}>{ci.text}</div>
               </div>
             ))}
           </div>
         )}
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: SPACE.sm }}>
           <input value={draft} onChange={(e) => onDraftChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onManualAdd()}
-            placeholder="今の様子を書き足す" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: TYPE.lead, padding: "8px 2px", outline: "none" }} />
+            placeholder="今の様子を書き足す" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: TYPE.lead, padding: `${SPACE.sm}px ${SPACE.hair}px`, outline: "none" }} />
           <Button variant="primary" onClick={onManualAdd}>記録</Button>
         </div>
       </OverlayCard>
@@ -130,12 +130,12 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
     <>
       <Masthead title={appTitle("life")} corner={profileButton} />
 
-      <main style={{ flex: 1, paddingTop: 16, paddingBottom: 32, paddingLeft: 8, paddingRight: 8 }}>
+      <main style={{ flex: 1, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl, paddingLeft: SPACE.sm, paddingRight: SPACE.sm }}>
         {/* ゴールはGoalBinderCard(Binder.tsx参照)で表示する。表紙は左端の
             蝶番を軸にわずかに傾け、その下に裏表紙(表紙より暗い色の角丸の
             四角形)が表紙の右(開く側)の縁からほんの少しだけ覗く、という
             「机の上でノートの表紙だけ少し開いて浮いている」構図。 */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 30, columnGap: 14, justifyItems: "center" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: SPACE.xxl, columnGap: SPACE.lg, justifyItems: "center" }}>
           {goalItems.map((g) => {
             const count = g.checkIns?.length ?? 0;
             return (
@@ -148,7 +148,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
                 // タイトルが長いカードでは表紙の限られた高さの中でGOALラベル
                 // と文字が被る原因になっていた。件数だけのシンプルな1行に絞る。
                 footer={
-                  <div style={{ fontSize: TYPE.micro, fontWeight: 700, color: "rgba(250,250,249,0.7)", borderTop: "1px solid rgba(250,250,249,0.3)", paddingTop: 8 }}>
+                  <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.bold, color: "rgba(250,250,249,0.7)", borderTop: "1px solid rgba(250,250,249,0.3)", paddingTop: SPACE.sm }}>
                     {count > 0 ? `記録 ${count}件` : "まだ記録がありません"}
                   </div>
                 }

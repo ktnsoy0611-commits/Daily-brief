@@ -38,12 +38,27 @@ import type { AppState, TabProps, Task } from "@/lib/types";
 /** 図形の1単位を何pxで描くか。 */
 const UNIT = 64;
 const MASS_K = 1.6;
-const FILL = 0.58;
-const SCALE_MIN = 0.70;
+/** ★★第62巡に**山全体をもう一段小さく**(「日付と曜日の板が入って窮屈」)。
+ *  ★★★下げるのは **`SCALE_MAX` と `FIT_*`**(＝1つの図形の大きさの上限)であって、
+ *  **`FILL` ではない**。`FILL` は「何個ぶんの面積を置けるか」なので、下げると
+ *  `pileOf` が `SCALE_MIN` に当たって**タスクを間引いてしまう** ―
+ *  小さくなるのではなく**減る**(第62巡に踏んだ。0.58→0.46 で7個が3個になった)。
+ *  間引きを増やさずに小さくするには `SCALE_MIN` も一緒に下げること。 */
+const FILL = 0.52;
+const SCALE_MIN = 0.50;
 const MASTHEAD_H = 124;
-const FIT_W = 0.86;
-const FIT_H = 0.62;
-const SCALE_MAX = 1.6;
+const FIT_W = 0.78;
+const FIT_H = 0.56;
+const SCALE_MAX = 1.15;
+/** ★★★山が使える左右の内寸(2026-08-25・第62巡にユーザー指定
+ *  「箱の左右の幅を狭めて、タブバーや他のレイアウトと統一して」)。
+ *  タブバーは `left:0; right:0; padding: 0 16px`(`AppShell`)＝**画面の端から 16px**。
+ *  canvas は `full-bleed` で左右 16px ずつ広いので、**canvas 座標では 32px**。
+ *  ★**左右の出どころはここだけ** — 壁も、湧く x も、`pileOf` に渡す幅も全部これを通す。 */
+const BLEED = SPACE.lg;
+const PILE_INSET = BLEED + SPACE.lg;
+/** 山が使える幅(canvas の幅から左右の内寸を引いたもの)。 */
+const pileWOf = (w: number) => Math.max(80, w - PILE_INSET * 2);
 const SCALE_EPS = 0.02;
 const PHYS_VERTS = 12;
 const BAKE_BUDGET = 1;
@@ -60,7 +75,7 @@ const BAND_BOTTOM = `calc(${NAV_H} + ${SPACE.xl + GROUND_LIFT}px)`;
 
 type Mode = "pile" | "align" | "timeline";
 /** 段取りの局面。null = 物理／落ち着いている。 */
-type Phase = "align-in" | "align-out" | "tl-out" | "warp" | null;
+type Phase = "align-in" | "align-out" | "tl-out" | null;
 
 const EDGE_PX = 30;
 const SWIPE_PX = 44;
@@ -96,11 +111,11 @@ const PITCH_SPREAD = 124;
 const arcLen = (d: number) => PITCH_TIGHT * d + PITCH_SPREAD * (d / Math.sqrt(1 + d * d));
 /** ★★連鎖の減衰。焦点からの距離ぶんだけ**やわらかく**なるので、中央の間隔がまず
  *  縮み、それに次が追い、さらに次が追う ― という伝わり方になる(第58巡にユーザー指定)。
- *  ★★★第61巡に**控えめへ**(「勢いによって間隔が詰まる効果が少し強すぎる」)。
+ *  ★★★第61・62巡に**続けて控えめへ**(「間隔が遅れて追従するモーションも控えめに」)。
  *  0.72^6 = 0.14 だと外の行が柔らかすぎて、払うたびに全部が寄り集まって見えた。
- *  0.86^4 = 0.55 なら、伝わり方は残したまま詰まる量が半分以下になる。 */
-const CHAIN = 0.86;
-const CHAIN_MAX = 4;
+ *  0.93^3 = 0.80 なら、伝わる順番は残ったまま、詰まりはほとんど目に立たない。 */
+const CHAIN = 0.93;
+const CHAIN_MAX = 3;
 /** ★★連なりの間隔。**減衰する**ので「最初の1つがぽつんと動き、そのあと次々と
  *  流れ出す」。一定間隔だと行進になってしまう。 */
 const LEAD_GAP = 210;
@@ -123,12 +138,12 @@ const streamQ = (i: number) => Math.min(i, STREAM_Q_MAX);
  *  (「入る時もスクロールの時ももう少し弱めて」)。**速いときにだけ、ほのかに** —
  *  止まっている図形に何も起きないことが上品さの条件。 */
 const SQUASH_REF = 48;
-const SQUASH_MAX = 0.07;
+const SQUASH_MAX = 0.05;
 /** スミアー(残像)。この速さを超えたら後ろへ `SMEAR_N` 枚、`SMEAR_LEN` の間隔で薄く。 */
 const SMEAR_MIN = 22;
 const SMEAR_N = 2;
 const SMEAR_LEN = 0.40;
-const SMEAR_A = 0.065;
+const SMEAR_A = 0.05;
 /** 入りのバネの減衰。★`D_TRAVEL` より弱いので**一度行き過ぎてから**戻る。 */
 const D_IN = 0.12;
 /** 入りの待ち行列。円弧の**下に並んで**から順に上がる(px。同じ点から一斉に
@@ -168,19 +183,15 @@ const RECYCLE_Y = 150;
  *  「落ちながら、上から曜日ごとに振り分けられる」が起きない(第55巡)。 */
 const CAT_WALL = 0x0001;   // 画面の左右の壁と山の床
 const CAT_FALL = 0x0002;   // まだ振り分けられていない、落下中の図形
-const CAT_LANE = 0x0004;   // レーンの**仕切り**(縦の壁)
+const CAT_LANE = 0x0004;   // レーンの床と仕切り
 const CAT_HELD = 0x0008;   // レーンに収まった図形
-const CAT_FLOOR = 0x0010;  // レーンの**床**(仕切りと別にした。下記)
 const FILTER_FALL = { category: CAT_FALL, mask: CAT_WALL | CAT_FALL };
 const FILTER_LANE = { category: CAT_LANE, mask: CAT_HELD };
-const FILTER_FLOOR = { category: CAT_FLOOR, mask: CAT_HELD };
-const FILTER_HELD = { category: CAT_HELD, mask: CAT_LANE | CAT_HELD | CAT_FLOOR };
-/** ★★★「自由」の板だけの層(第61巡) ―**レーンの床としか当たらない**。
- *  板は語を大きく組むぶん**レーンの内寸より広い**ので、仕切りと当たると必ず
- *  噛んで落ちてこない(第59〜61巡に3度踏んだ)。かといって内寸に収めると字が
- *  小さくなる。タスクが無い日にしか出ないので**仕切りをすり抜けてよい** —
- *  自分の列の床の上に、大きいまま、回りながら落ちて着く。 */
-const FILTER_WORD = { category: CAT_HELD, mask: CAT_FLOOR };
+/** ★「自由」の板も**これ**(＝図形とまったく同じ普通の物体)。第61巡は板だけ
+ *  「仕切りをすり抜けて床とだけ当たる」層に逃がして大きさを取ったが、
+ *  **隣の板とも仕切りとも当たらなくなり、境界を越えて転がった**(第62巡の写真)。
+ *  大きさは `freeGeom` が**対角から**決めるので、噛むことはもう無い。 */
+const FILTER_HELD = { category: CAT_HELD, mask: CAT_LANE | CAT_HELD };
 /** 山に居るときの層(既定に戻す)。 */
 const FILTER_PILE = { category: CAT_WALL, mask: 0xFFFFFFFF };
 /** ★層を変える。**`parts` にも入れる** — `Bodies.fromVertices` が作る複合の body は
@@ -198,20 +209,14 @@ const PAD_L = 20;
 /** ★★縦のスワイプ ―**向きで行き先が決まる**(第61巡にユーザー確定)。
  *    上 … TIMELINE(地面から曜日が指に連れて伸びる。**どこから払っても**同じ)。
  *    下 … **DRIFT へ移る**(候補の層は山の**上**に在るので、指で世界を下へ送ると
- *          そこへ上がる)。図形は効果線を伴って**下へ**吹き飛ぶ。
+ *          そこへ上がる)。
  *  ★第60巡は上を「地面際=TIMELINE / それ以外=DRIFT」と割ったが、向き自体が
- *  逆だった(ユーザー指摘)。切り分けは要らない。 */
-/** 効果線を伴って吹き飛ぶ時間と、かける重力の倍率・本数。
- *  ★★係数は「`WARP_MS` のあいだに画面の高さぶんだけ動く」で決めてある。
- *  強くしすぎると**数フレームで消えて**効果線しか見えない(第60巡に実測)。
- *  ★★★`WARP_MS` は**効果線の濃さの目盛り**であって、タブを変える時刻ではない
- *  (第61巡)。切り替えは**全部が場の外へ出てから** ― 固定の時刻で切ると、
- *  図形がまだ画面に居るうちに切り替わる(「途中で終わってしまう」の正体)。 */
-const WARP_MS = ms(T_OUT);
-const WARP_G = 2;
-const WARP_LINES = 26;
-/** 諦めの上限(ここまで来たら図形が残っていても切り替える)。 */
-const WARP_MAX_MS = WARP_MS * 3;
+ *  逆だった(ユーザー指摘)。切り分けは要らない。
+ *  ★★★第62巡に**吹き飛ばしをやめた**。DRIFT へ移るのは**カメラのパン**
+ *  (`components/tasks/TaskSpace.tsx`)で、**物の側は動かない** ― 図形は地上に
+ *  置いたまま、カメラが上空へ上がる。効果線もそちらが持つ。
+ *  ユーザー指摘「画面がパンせずにそのまま切り替わってしまっている」の正体は、
+ *  **図形しか動いていなかった**こと。第60〜61巡の `WARP_*` は全部撤去した。 */
 
 const WD3 = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 /** ★文字ブロックの太さ(第61巡にユーザー指定「太く」)。Archivo は可変なので
@@ -229,16 +234,20 @@ const PILE_WORD_W = 0.66;
  *  日付から選ぶので**同じ日はいつも同じ語**になる。 */
 const FREE_WORDS = ["FREE", "自由", "LIBRE", "FREI", "LIBERO", "LIVRE", "VRIJ", "FRI", "VAPAA", "VOLNY"] as const;
 const freeWordOf = (dateKey: string) => FREE_WORDS[Math.floor(frac(dateKey + "free") * FREE_WORDS.length) % FREE_WORDS.length];
-/** 「自由」の字を組む幅 … レーンの内寸に対する割合。
- *  ★★★**板は回る**(第61巡)ので、条件は「**対角**がレーンの内寸に収まる」。
- *  ★★★仕切りをすり抜ける(`FILTER_WORD`)ので、**内寸に縛られない**(第61巡)。
- *  1.0 を少し超えてよい ― レーンの幅(内寸＋仕切り)にはまだ収まる。
- *  第59〜61巡は「内寸に収める」と「大きく組む」を同時に満たそうとして3度失敗した。
- *  当たり判定の層を分けたので、両方が成り立つ。 */
-const FREE_FILL = 1.02;
+/** ★★★「自由」の板がレーンに収まるための余白(第62巡)。
+ *  板は**回る**ので、条件は「**対角**がレーンの内寸に収まる」。字面はここから
+ *  逆算するので、幅の割合(`FREE_FILL`)という持ち方は**やめた**。
+ *  第61巡は仕切りをすり抜けさせて大きさを取ったが、隣の板とも当たらなくなり、
+ *  **境界を越えて転がった**(ユーザーの写真)。ユーザー確定で
+ *  「**小さくしてでも必ず収める**」＝ 物理は図形とまったく同じに戻す。 */
+const FREE_MARGIN = 8;
 /** 横に詰めてよい下限(これ以上は潰さない)。 */
 const FREE_SQUEEZE = 0.50;
+/** 板の遊び。★**縦は横の半分**(第62巡) — 板を平たくするほど「寝る」のが
+ *  安定な姿勢になり、短い辺で立ったまま止まりにくい。字はもともと横長なので、
+ *  縦の遊びを削っても窮屈には見えない。 */
 const FREE_PAD = 8;
+const FREE_PAD_Y = 4;
 
 interface Shard { x: number; y: number; vx: number; vy: number; r: number; life: number; fill: string }
 const SHARD_MS = 620;
@@ -359,8 +368,6 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const [ready, setReady] = useState(false);
   /** ★その回の落とし方の種。落とし直すたびに引き直す(第60巡)。 */
   const seedRef = useRef("0");
-  /** ★DRIFT へ吹き飛ぶ進み(0..1)。描くときの効果線の濃さと長さがこれを読む。 */
-  const warpRef = useRef(0);
   /** ★ALIGN の入りで、図形と一緒に飛んでいく文字ブロック。 */
   const flyRef = useRef<Fly[]>([]);
   /** 上と対の、いまの位置(毎フレーム `advance` が書き、`draw` が読む)。 */
@@ -409,6 +416,11 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const ruleRefs = useRef<(HTMLDivElement | null)[]>([]);
   const detailRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  /** ★閉じている途中の日(`ms(T_OUT)` のあいだだけ残して拭き取りを逆再生する)。
+   *  これが無いと詳細の DOM が**即座に消えて**「閉じるアニメーションが無い」に
+   *  見える(第62巡のユーザー指摘)。隙間(`gapRef`)の方はバネで閉じていた。 */
+  const [closingDay, setClosingDay] = useState<number | null>(null);
+  const closeTRef = useRef(0);
   const expandedRef = useRef<number | null>(null);
   /** 曜日の伸び。**指が動かす**(0..TL_STRETCH)。 */
   const riseRef = useRef(0);
@@ -478,7 +490,13 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     const { w, h } = sizeRef.current;
     if (!cv || !w || !h) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const bakeDpr = Math.min(dpr, 1.5);
+    // ★★★焼くのも**画面と同じ倍率**(第62巡)。第61巡までは 1.5 倍で焼いて 2 倍で
+    //   描いていたので、**必ず 1.33 倍に引き伸ばされて**いた ― 実機で「図形の中の
+    //   文字が滲む」と言われたのはこれ。DRIFT は最初から等倍で焼いているので
+    //   滲まない＝**GRAVITY だけの症状**だったのが手がかりだった。
+    //   焼くピクセルは 1.78 倍になるが、1フレームの焼き予算(`BAKE_BUDGET` /
+    //   `GLYPH_BUDGET`)で散らしているので、落下中でも詰まらない(実測で確認)。
+    const bakeDpr = dpr;
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
       cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
     }
@@ -562,29 +580,6 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       pendingBakeRef.current = budget === 0 || glyphBudget === 0
         || itemsRef.current.some((it) => !peekSolidBitmap(it.paint, bakeUnit, bakeDpr));
     } else {
-      // ★★効果線(第60巡)。DRIFT へ吹き飛ぶ間だけ、下から上へ線が走り抜ける。
-      //   図形の**後ろ**に引く ― 前に出すと図形が読めなくなる。
-      //   `warpRef` は `advance` が書く進み(0..1)。出て、消える。
-      const wu = warpRef.current;
-      if (wu > 0) {
-        const env = Math.sin(clamp01(wu) * Math.PI);
-        ctx.save();
-        ctx.strokeStyle = INK;
-        ctx.lineCap = "round";
-        for (let i = 0; i < WARP_LINES; i += 1) {
-          const r1 = frac(`warp${i}`); const r2 = frac(`warp${i}b`); const r3 = frac(`warp${i}c`);
-          const len = h * (0.10 + r2 * 0.42) * env;
-          // ★上から下へ(図形と同じ向き。第61巡)。速い線ほど先に抜ける。
-          const y = -h * 0.2 + h * 1.9 * clamp01(wu) * (0.7 + r3 * 0.9);
-          ctx.globalAlpha = env * (0.07 + r3 * 0.15);
-          ctx.lineWidth = 1 + r2 * 2.4;
-          ctx.beginPath();
-          ctx.moveTo(w * r1, y);
-          ctx.lineTo(w * r1, y + len);
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
       // 山・タイムライン … **物理の body そのもの**を描く。
       for (const p of piecesRef.current) {
         if (p.word) {
@@ -733,13 +728,10 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     const top = bandTopY();
     const bodies: Body[] = [];
     const o = { isStatic: true, friction: 0.6, restitution: 0.02, collisionFilter: FILTER_LANE };
-    // ★床は仕切りと**別の層**(第61巡)。「自由」の板は床としか当たらない ―
-    //   板は内寸より広いので、仕切りと当たると必ず噛む。
-    const of = { ...o, collisionFilter: FILTER_FLOOR };
     for (let i = 0; i < n; i += 1) {
       const left = laneLeft(i);
       // 床
-      bodies.push(M.Bodies.rectangle(left + laneW / 2, top + WALL_T / 2, laneW, WALL_T, of));
+      bodies.push(M.Bodies.rectangle(left + laneW / 2, top + WALL_T / 2, laneW, WALL_T, o));
       // 左の壁(いちばん右のレーンだけ右の壁も足す)
       bodies.push(M.Bodies.rectangle(left, top - 400, WALL_T, 900, o));
       if (i === n - 1) bodies.push(M.Bodies.rectangle(left + laneW, top - 400, WALL_T, 900, o));
@@ -817,7 +809,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       // ★ここからはレーンの器と噛み合う層へ移す(＝振り分け済み)。
       //   ★回転は**止めない** — 落ちる・転がる・傾いたまま積まれるまで、山とまったく
       //   同じ物理にする(第57巡にユーザー確定)。
-      setFilter(p.body, p.word ? FILTER_WORD : FILTER_HELD);
+      setFilter(p.body, FILTER_HELD);
       M.Sleeping.set(p.body, false);
     }
   }, [laneLeft, laneWOf]);
@@ -841,7 +833,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       if (p.body.position.y < h + 120) continue;
       if (Math.abs(p.unit - unit) > 0.5) swapUnit(M, engine.world, p, unit);
       const r1 = frac(p.id + "p"); const r2 = frac(p.id + "q");
-      M.Body.setPosition(p.body, { x: w * (0.14 + 0.72 * r1), y: -RECYCLE_Y * (0.6 + r2 * 1.8) });
+      M.Body.setPosition(p.body, { x: PILE_INSET + pileWOf(w) * (0.08 + 0.84 * r1), y: -RECYCLE_Y * (0.6 + r2 * 1.8) });
       M.Body.setVelocity(p.body, { x: (r1 - 0.5) * 1.4, y: r2 * 2 });
       M.Body.setAngle(p.body, (r2 - 0.5) * 1.1);
       M.Body.setAngularVelocity(p.body, (r1 - 0.5) * 0.18);
@@ -852,7 +844,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     if (backRef.current.size < piecesRef.current.length) return false;
     // ★全部そろった ― **timeline に居なかったタスク**(日付なし・間引かれたぶん)を
     //   ここで山へ足し、居なくなったものを外す。そのうえで床を戻す。
-    const { keep } = pileOf(tasksRef.current, new Date(), w, h - navHeightPx() - MASTHEAD_H);
+    const { keep } = pileOf(tasksRef.current, new Date(), pileWOf(w), h - navHeightPx() - MASTHEAD_H);
     const alive = new Map(keep.map((t) => [t.id, t]));
     const gone = piecesRef.current.filter((p) => !p.word && !alive.has(p.id));
     if (gone.length) {
@@ -883,23 +875,6 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     const { w } = sizeRef.current;
     const mid = alignMid();
     const list = itemsRef.current;
-
-    // ★★DRIFT へ吹き飛んでいる間 … 物理はそのまま(ループが `Engine.update` を
-    //   回している)。ここは**進みを数えて効果線に渡し、抜け切ったらタブを変える**だけ。
-    if (ph === "warp") {
-      warpRef.current = clamp01(t / WARP_MS);
-      // ★★切り替えは**時刻ではなく「全部が場の外へ出たか」**(第61巡)。固定の時刻で
-      //   切ると、図形がまだ画面に居るうちにタブが変わる ―「アニメーションが途中で
-      //   終わって切り替わる」(ユーザー指摘)の正体。暴走よけに上限だけ置く。
-      // ★**最後の1pxが下端を抜けた瞬間**で見る(`bounds` は物体の実際の外接矩形)。
-      //   中心と `girth` で見ると、画面が空になってから 0.5 秒ほど何も無い時間ができる。
-      const hh = sizeRef.current.h;
-      const gone = piecesRef.current.every((p) => p.body.bounds.min.y > hh);
-      if (gone || t > WARP_MAX_MS) {
-        phaseRef.current = null; warpRef.current = 0; goTabRef.current("tasks-drift");
-      }
-      return true;
-    }
 
     if (m === "timeline") {
       // ★物理だけ。器を運び、下へ出たものを引き上げる。
@@ -1163,9 +1138,19 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     else { cancelAnimationFrame(rafRef.current); runningRef.current = false; }
   }, [appActive, active, openId, wake]);
 
+  /** 曜日の詳細を閉じる。★DOM は `ms(T_OUT)` だけ残して `.out` で拭き取りを逆再生。 */
+  const collapseDay = useCallback(() => {
+    const from = expandedRef.current;
+    expandedRef.current = null; setExpanded(null);
+    if (from === null) return;
+    setClosingDay(from);
+    window.clearTimeout(closeTRef.current);
+    closeTRef.current = window.setTimeout(() => setClosingDay(null), ms(T_OUT));
+  }, []);
+
   const planPile = useCallback((list: Task[]) => {
     const { w, h } = sizeRef.current;
-    return pileOf(list, new Date(), w, h - navHeightPx() - MASTHEAD_H);
+    return pileOf(list, new Date(), pileWOf(w), h - navHeightPx() - MASTHEAD_H);
   }, []);
 
   const dropAll = useCallback(() => {
@@ -1238,9 +1223,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       phaseRef.current = null;
       itemsRef.current = []; setItems([]);
       expandedRef.current = null; setExpanded(null);
+      window.clearTimeout(closeTRef.current); setClosingDay(null);
       backRef.current = new Set();
       riseRef.current = 0; riseDragRef.current = true; riseSRef.current = spring(0);
-      warpRef.current = 0;
       dropAll();
     }
     shownRef.current = on;
@@ -1405,23 +1390,24 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     // ★★タスクが無い日には「自由」のブロックを落とす(第56巡にユーザー指定)。
     //   空白のままだと、俯瞰したときに**空いている理由**が読めない。
     const busy = new Set(dated.map((t) => t.dueDate as string));
-    const freeFs = freeFontSize(laneW);            // ★語によらず1つ
+    const free = freeGeom(laneW);                 // ★字面も詰める先も語によらず1つ
     ds.forEach((key, lane) => {
       if (busy.has(key)) return;
       const r = frac(key + "free");
       // ★★こちらも**画面の上から**落とす(第60巡)。
-      const wp = makeWordPiece(M, freeWordOf(key), `free:${key}`, laneInner(laneW) * FREE_FILL, freeFs,
+      const wp = makeWordPiece(M, freeWordOf(key), `free:${key}`, free.room, free.fs,
         laneW * lane + laneW / 2 + (r - 0.5) * laneW * 0.2,
         -RECYCLE_Y * (0.7 + r * 1.8) - lane * 24, MUTED, SANS);
       if (!wp) return;
-      setFilter(wp.body, FILTER_WORD);
+      setFilter(wp.body, FILTER_HELD);
       // ★図形と同じく**回りながら**落ちる(第61巡。回転を止めていたのが
       //   「角度が変わらずゆっくり降りてくる」の正体)。
-      // ★初速と回りは**控えめに**。平たい板は 0° か 180° に落ち着くので、強く回すと
-      //   半分が逆さまになって読めない。図形と同じ物理のまま、読める側へ寄せる。
-      M.Body.setVelocity(wp.body, { x: (r - 0.5) * 1.2, y: r * 2.2 });
-      M.Body.setAngle(wp.body, (r - 0.5) * 0.45);
-      M.Body.setAngularVelocity(wp.body, (r - 0.5) * 0.07);
+      // ★初速と回りは**控えめに**。平たい板は寝るのが安定なので、強く回すと
+      //   短い辺で立ったり逆さまになったりして読めない。物理は図形と同じまま、
+      //   入りだけ穏やかにして「読める側」へ寄せる(第62巡にもう一段)。
+      M.Body.setVelocity(wp.body, { x: (r - 0.5) * 0.8, y: r * 2.2 });
+      M.Body.setAngle(wp.body, (r - 0.5) * 0.25);
+      M.Body.setAngularVelocity(wp.body, (r - 0.5) * 0.03);
       M.Composite.add(engine.world, wp.body);
       next.push({ ...wp, lane });
     });
@@ -1450,7 +1436,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     // レーンの器を外し、床は**抜いたまま**。全部が落下の層へ戻って落ちる。
     clearLanes();
     rebuildWalls(M, engine, w, h, false);
-    const { scale } = pileOf(tasksRef.current, new Date(), w, h - navHeightPx() - MASTHEAD_H);
+    const { scale } = pileOf(tasksRef.current, new Date(), pileWOf(w), h - navHeightPx() - MASTHEAD_H);
     scaleRef.current = scale;
     // ★★「自由」の板も**一緒に落とす**(第59巡)。ここで world から外すと、下へ払った
     //   瞬間に消えてしまう ―「閉じるアニメーションが無い」の正体のひとつ。
@@ -1472,32 +1458,13 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     closeTimeline();
   }, [closeTimeline]);
 
-  /** ★★上へ払って **DRIFT へ移る**(第60巡にユーザー指定)。
-   *  画面の切り替えではなく**物理で吹き飛ばす** ― 床を抜き、重力を上向きに
-   *  裏返して、全部の図形に上向きの初速を与える。効果線は `draw` が引く。
-   *  抜け切ったら(`WARP_MS`)タブが変わり、戻ってきたときは `dropAll` が
-   *  新しい種で落とし直す(＝毎回ちがう山)。 */
+  /** ★★下へ払って **DRIFT へ移る**。★第62巡から、ここは**タブを変えるだけ**。
+   *  カメラのパンと効果線は `components/tasks/TaskSpace.tsx` が持つ。 */
   const enterDrift = useCallback(() => {
-    const M = matterRef.current; const engine = engineRef.current;
-    const { w, h } = sizeRef.current;
-    if (!M || !engine || phaseRef.current) return;
-    phaseRef.current = "warp"; t0Ref.current = performance.now();
-    warpRef.current = 0.0001;
-    engine.enableSleeping = false;
-    engine.gravity.y = -GRAVITY_Y * WARP_G;
-    rebuildWalls(M, engine, w, h, false);        // 床を抜く(左右の壁は残す)
-    for (const p of piecesRef.current) {
-      M.Sleeping.set(p.body, false);
-      setFilter(p.body, FILTER_PILE);
-      M.Body.setVelocity(p.body, {
-        x: (frac(p.id + "wx") - 0.5) * 3,
-        y: -(6 + frac(p.id + "wy") * 5),
-      });
-      // ★文字の板は回さない(慣性が Infinity なので、一度回すと**止まらない**)。
-      if (!p.word) M.Body.setAngularVelocity(p.body, (frac(p.id + "wr") - 0.5) * 0.22);
-    }
-    haptic(12); wake();
-  }, [wake]);
+    if (phaseRef.current) return;
+    haptic(12);
+    goTabRef.current("tasks-drift");
+  }, []);
 
   const leaveAlign = useCallback(() => {
     // ★★**入りの途中でも閉じられる**(第60巡)。入りは図形の数だけ長くなるので、
@@ -1603,14 +1570,18 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         }
         if (li >= 0) {
           const nextSel = sel === li ? null : li;
-          expandedRef.current = nextSel; setExpanded(nextSel);
+          if (nextSel === null) collapseDay();
+          else {
+            window.clearTimeout(closeTRef.current); setClosingDay(null);
+            expandedRef.current = nextSel; setExpanded(nextSel);
+          }
           // ★たたいた曜日は**画面の左端(余白ぶん内側)**へ。
           worldTargetRef.current = nextSel === null ? Math.max(0, worldTargetRef.current) : laneW * nextSel - PAD_L;
           haptic(8); wake();
         }
         return;
       }
-      if (expandedRef.current !== null) { expandedRef.current = null; setExpanded(null); wake(); return; }
+      if (expandedRef.current !== null) { collapseDay(); wake(); return; }
     }
     if (modeRef.current !== "align") {
       const piece = pieceAt(px, py);
@@ -1820,7 +1791,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         else if (d.axis === "y") { flickThrow(scrollRef.current, d.vy, PITCH_TIGHT); wake(); }
       } else if (m === "timeline") {
         if (d.axis === "y" && dy > SWIPE_PX) {
-          if (expandedRef.current !== null) { expandedRef.current = null; setExpanded(null); wake(); }
+          if (expandedRef.current !== null) { collapseDay(); wake(); }
           else enterPileFromTimeline();
         } else if (d.axis === "x") {
           wDragRef.current = false;
@@ -1857,7 +1828,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       window.removeEventListener("pointercancel", up);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enterAlign, openTimeline, enterPileFromTimeline, closeTimeline, leaveAlign, enterDrift, syncFocus, wake, pieceAt, completeById, burst, laneWOf, laneLeft]);
+  }, [enterAlign, openTimeline, enterPileFromTimeline, closeTimeline, leaveAlign, enterDrift, collapseDay, syncFocus, wake, pieceAt, completeById, burst, laneWOf, laneLeft]);
 
   const today = new Date();
   const { w: sw } = sizeRef.current;
@@ -1866,7 +1837,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   //   … 変形せずに「少し縦長」になる(第56巡にユーザー確定)。
   const laneFs = Math.min(SWISS_XL, Math.floor((laneW * 0.92) / (3 * WD_ADV)));
   const layerName = mode === "align" ? "ALIGN" : mode === "timeline" ? "TIMELINE" : "GRAVITY";
-  const expandedDay = expanded !== null ? days[expanded] : null;
+  // ★閉じている途中も**同じ日を出したまま**にして、拭き取りを逆再生する。
+  const shownIdx = expanded ?? closingDay;
+  const expandedDay = shownIdx !== null ? days[shownIdx] : null;
   const expandedTasks = expandedDay ? tasks.filter((t) => t.dueDate === expandedDay) : [];
 
   return (
@@ -1984,7 +1957,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
 
           {/* ★曜日の隙間に出るその日の詳細。 */}
           {expandedDay && (
-            <div ref={detailRef} className="tl-detail" style={{
+            <div ref={detailRef} className={`tl-detail${expanded === null ? " out" : ""}`} style={{
               position: "absolute", left: 0, width: GAP_W - SPACE.lg * 2,
               bottom: BAND_BOTTOM, zIndex: 3, pointerEvents: "none", willChange: "transform",
             }}>
@@ -2089,7 +2062,41 @@ function wordFontSize(words: readonly string[], room: number, fam: string): numb
   //   いるのと同じ考え方(コンデンス体として読ませる)。
   return Math.max(14, Math.min(SWISS_XL, Math.round((base * room) / widest / FREE_SQUEEZE)));
 }
-const freeFontSize = (laneW: number) => wordFontSize(FREE_WORDS, laneInner(laneW) * FREE_FILL, SANS);
+/**
+ * ★★★「自由」の**字面と、字を詰める先の幅**(2026-08-25・第62巡)。
+ * 板は回るので、条件は「**対角**がレーンの内寸に収まる」。
+ *
+ * ★★ここで間違えやすいのは、**詰める先を「対角の予算」そのものにしないこと**。
+ * 板の幅は `詰めた塗り + FREE_PAD*2` なので、塗りを予算いっぱいまで許すと
+ * **幅だけで予算を超える**(＝どんなに小さくしても収まらず、字がどんどん縮む。
+ * 最初の実装で 24px まで落ちた)。正しくは高さから**幅の予算を逆算**する:
+ * `幅の上限 = √(予算² − 高さ²)`。
+ *
+ * ★★**`FREE_WORDS` の全部**で確かめること。第61巡までは横幅だけを見ていたが、
+ * それだと `自由` が必ずはみ出す ― CJK は塗りが**ほぼ正方形**(高さ ≒ 1em。
+ * Latin の大文字は 0.72em)なので、**いちばん対角が長いのは `自由`** だから。
+ * ユーザーが「なぜか日本語の自由だけ当たり判定が無いように見える」と言ったのは、
+ * 実際には**自由がいちばん先にはみ出していた**ということだった。
+ */
+function freeGeom(laneW: number): { fs: number; room: number } {
+  const budget = laneInner(laneW) - FREE_MARGIN;      // 対角がここに収まればよい
+  // 上限から下げていく(段は2px。語が10個なので走る回数は高々30回、開くとき1度きり)。
+  for (let fs = SWISS_XL; fs > 14; fs -= 2) {
+    let room = Infinity;
+    let ok = true;
+    for (const w of FREE_WORDS) {
+      const nat = inkBoxOf(w, fs, 1, SANS);           // 詰める前の塗り
+      const bh = nat.h + FREE_PAD_Y * 2;
+      if (bh >= budget) { ok = false; break; }
+      const inkMax = Math.sqrt(budget * budget - bh * bh) - FREE_PAD * 2;
+      // ★`FREE_SQUEEZE` より潰さないので、そこまで詰めても入らなければこの `fs` は無理。
+      if (nat.w * FREE_SQUEEZE > inkMax) { ok = false; break; }
+      room = Math.min(room, inkMax);
+    }
+    if (ok) return { fs, room };
+  }
+  return { fs: 14, room: 40 };
+}
 
 /** その語を決めた幅へ収めるための横の詰め(1 = 詰めない)。 */
 function wordSqueeze(word: string, fs: number, room: number, fam: string): number {
@@ -2114,14 +2121,18 @@ function makeWordPiece(
   const sx = wordSqueeze(word, fs, room, fam);
   const ink0 = inkBoxOf(word, fs, sx, fam);
   const bw = Math.max(8, ink0.w + FREE_PAD * 2);
-  const bh = Math.max(8, ink0.h + FREE_PAD * 2);
+  const bh = Math.max(8, ink0.h + FREE_PAD_Y * 2);
   const body = M.Bodies.rectangle(x, y, bw, bh, {
     restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012,
   });
   // ★★★**回る**(第61巡に第59巡の対症療法を撤回)。回転を止めていたので
   //   「角度が変わらずゆっくり降りてくる」＝物体に見えなかった(ユーザー指摘)。
+  //   ★ただし**回り慣性を重くする**(第62巡)。板は薄いので、横送りでレーンの壁が
+  //   動くたびに小突かれて短い辺で立ってしまう。質量が両端に寄った板だと思えば
+  //   物理的にも素直で、落ちるあいだは変わらず回る(空中では小突かれない)。
+  M.Body.setInertia(body, body.inertia * 5);
   //   噛まない条件は「**回っても内寸に収まる**」＝ 対角 ≤ レーンの内寸。
-  //   箱が塗りぴったりになったので、`FREE_FILL` を絞れば余裕で収まる。
+  //   大きさは `freeGeom` が**全語の対角**から決めるので収まる。
   const spec = specOf({ id, title: word });
   return {
     id, body, spec,
@@ -2142,7 +2153,9 @@ function makePiece(
   //   落ちるように」)。`frac(t.id)` だけだと**同じタスクは毎回まったく同じ所へ落ち**、
   //   山の形が寸分違わず再現されていた。種を混ぜると、同じ顔ぶれでも毎回違う山になる。
   const r1 = frac(t.id + seed); const r2 = frac(t.id + seed + "y"); const r3 = frac(t.id + seed + "a");
-  const x = Math.max(hw + 6, Math.min(Math.max(w - hw - 6, hw + 6), w * 0.14 + r1 * w * 0.72));
+  // ★湧く場所も**内寸の中**(第62巡)。壁と出どころを揃えないと、壁際で押し合う。
+  const lo = PILE_INSET + hw + 4; const hi = Math.max(lo, w - PILE_INSET - hw - 4);
+  const x = Math.min(hi, Math.max(lo, PILE_INSET + pileWOf(w) * (0.08 + r1 * 0.84)));
   const y = -((b.maxY - b.minY) * unit) - i * (110 + 100 * unit / UNIT) - r2 * 90;
   const { body, ox, oy } = makeBody(M, paint, x, y, unit);
   // ★傾きと回りは**控えめに**。強くすると転げて逆さまに積まれ、名前が読めなくなる
@@ -2161,7 +2174,9 @@ function pileWordPieces(
 ): Piece[] {
   const d = new Date();
   const words = [`${d.getMonth() + 1}/${d.getDate()}`, WD_FULL[d.getDay()]];
-  const room = w * PILE_WORD_W;
+  // ★幅は**山の内寸**に対する割合(第62巡。画面幅ではない ― 出どころを揃える)。
+  const inner = pileWOf(w);
+  const room = inner * PILE_WORD_W;
   // ★大きさは**2枚で1つ**(語の長さで字面が変わらない)。
   const fs = wordFontSize(words, room, LATIN);
   const out: Piece[] = [];
@@ -2173,8 +2188,9 @@ function pileWordPieces(
     if (!p) return;
     // ★横は**箱が決まってから**画面の中へ収める(塗りぴったりなので幅は語ごとに違う)。
     const half = (p.body.bounds.max.x - p.body.bounds.min.x) / 2;
+    const lo = PILE_INSET + half + 4; const hi = Math.max(lo, w - PILE_INSET - half - 4);
     M.Body.setPosition(p.body, {
-      x: Math.max(half + 6, Math.min(w - half - 6, w * 0.16 + r1 * w * 0.68)),
+      x: Math.min(hi, Math.max(lo, PILE_INSET + inner * (0.08 + r1 * 0.84))),
       y: p.body.position.y,
     });
     M.Body.setVelocity(p.body, { x: (r1 - 0.5) * 1.2, y: 0 });
@@ -2247,10 +2263,12 @@ function rebuildWalls(
   //   そこへ落ちた図形が押し戻され、隣のレーンへ紛れ込む(実機の写真で発覚)。
   //   山(既定の分類)と落下中(CAT_FALL)にだけ効かせる。
   const f = { category: CAT_WALL, mask: CAT_WALL | CAT_FALL };
+  // ★左右は `PILE_INSET` ぶん内側(＝画面の端から 16px。タブバーと同じ)。
+  const l = PILE_INSET; const r = w - PILE_INSET;
   M.Composite.add(engine.world, [
     ...(withFloor ? [M.Bodies.rectangle(w / 2, floorY + T / 2, w + T * 2, T, { isStatic: true, friction: 0.6, collisionFilter: f })] : []),
-    M.Bodies.rectangle(-T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4, collisionFilter: f }),
-    M.Bodies.rectangle(w + T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4, collisionFilter: f }),
+    M.Bodies.rectangle(l - T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4, collisionFilter: f }),
+    M.Bodies.rectangle(r + T / 2, h / 2, T, h * 3, { isStatic: true, friction: 0.4, collisionFilter: f }),
   ]);
 }
 

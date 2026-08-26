@@ -52,9 +52,10 @@
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
 
 ## タスク（TASK）
-**タスク図形は常に GRAVITY 空間にだけ在る**（第52巡に TOP/UNDER と縦のカメラを破棄）。
+**タスク図形は常に GRAVITY 空間にだけ在る**（第52巡に TOP/UNDER の4層を破棄）。
 別画面へ遷移せず、スワイプで**GRAVITY の物理法則を一時的に変える**ことで詳細リスト
-（ALIGN）と俯瞰（TIMELINE）を見せる。タブは DRIFT（候補）＋ GRAVITY の2つ。
+（ALIGN）と俯瞰（TIMELINE）を見せる。タブは DRIFT（候補）＋ GRAVITY の2つで、
+**GRAVITY＝地上／DRIFT＝上空**を**2Dのカメラ**が縦に送る（第62巡）。
 - `components/tabs/GravityTab.tsx` — **タスクの本体**。matter.js の山（pile）と、
   **3つの物理モード**（`pile` / `align` / `timeline`）。左端→右スワイプで ALIGN
   （**左に円弧**で図形が並び、右に文字。中央が大きく、上下スワイプで回る）、
@@ -65,15 +66,16 @@
   ★★モード中は **body の位置で描かない** — レイアウトが決めた**スロットへ絵の中心を
   置く**（`ox/oy` 補正をやめたのがズレの根治。詳しくは `docs/project_knowledge.md` §4）。
   ★山では**長押しで図形を掴んで運べる**（すぐ動かすとスワイプ）。口=完了/ゴミ箱=削除。
-- `components/tasks/TaskSpace.tsx` — **薄い器**。GRAVITY を常時マウント（山を保つ）、
-  DRIFT タブのときだけ上に重ね、画面に固定した `Masthead`（TASK）を持つだけ。
+- `components/tasks/TaskSpace.tsx` — **カメラ**。**GRAVITY＝地上／DRIFT＝上空**を
+  縦に積み、器ごと `translateY` で送る（`--cam`）。効果線は**パンの半ば**だけ。
+  画面に固定した `Masthead`（TASK）もここ。
 - `components/tasks/LayerName.tsx` — 層の名前（GRAVITY / ALIGN / TIMELINE / DRIFT）。
 - `components/tasks/DropTargets.tsx` — **口とブラックホール**（掴んでいる間だけ
   「作る」の丸から分離して出る）。DRIFT と GRAVITY の共通部品。当たり判定 `targetAt`、
   **近さ** `aimTargets`、合図 `fireTarget` もここ。
 - `components/tabs/DriftTab.tsx` — 候補が**無重力で漂う**層（1枚の canvas＋matter.js）。
   ホールドで図形を運び、右下から出る**口＝完了 / ゴミ箱＝削除**へ落とす（第44巡）。
-  上スワイプで**効果線を伴って GRAVITY へ**。★★**場は自分の寸法だけで決める**
+  上スワイプで**カメラが地上の GRAVITY へ**。★★**場は自分の寸法だけで決める**
   （画面の座標を測らない。列が動くとずれる。第61巡に根治）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
   `WhenSheet`（日程。**ここだけキーボードを閉じる**）/ `ComposerToolbar` /
@@ -148,10 +150,12 @@
    曲線4本・時間5つ・環境ループ5つ。**新しい数字を足さない。**
    直書きの `cubic-bezier` と `0.3s` を書かない。対称な `ease` / `ease-in-out` は
    環境ループ以外で使わない。CSS の 3D 変形（`perspective`/`rotateX/Y`）も使わない。
-   ★第52巡に**縦のカメラを撤去**し、カメラ専用の `--t-cam` / `--ease-cam` と
-   `perspective`+`rotateX` の例外も**無くなった**。GRAVITY の物理モード（ALIGN/
-   TIMELINE）の動きは既存の語彙（`--t-item`/`--t-in`/`--ease-*`）と matter.js の
-   アトラクタで作る（力の係数は matter の座標系なので生数字でよい）。
+   ★第52巡に撤去したのは **4層＋`perspective`/`rotateX` の3Dカメラ**で、専用の
+   `--t-cam` / `--ease-cam` も無くなった。★第62巡の地上↔上空のカメラは
+   **2Dの `translateY` だけ**の別物で、時間は語彙の**合成**
+   （`calc(var(--t-in) + var(--t-item))`）、曲線は**`--ease-exit`**（語彙の4本のうち
+   加速してから減速する唯一の形）。GRAVITY の物理モード（ALIGN/TIMELINE）の動きは
+   既存の語彙と matter.js のアトラクタで作る（力の係数は matter の座標系なので生数字でよい）。
 4. **JS のタイマーは `ms(T_OUT)` のように語彙から引く。** 数字を書き写すと、
    CSS だけ変えたときに閉じ切る前に消える。
 5. **押せる面は `components/Button.tsx`。** 入力画面は `Press`、それ以外は

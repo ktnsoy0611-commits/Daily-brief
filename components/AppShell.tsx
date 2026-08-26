@@ -24,7 +24,6 @@ import { TaskSpace } from "@/components/tasks/TaskSpace";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
-import { setSurfaceOrigin } from "@/lib/motion";
 import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -859,8 +858,10 @@ export function AppShell() {
   //   題が付いたまま閉じたときに初めて `tasks` の先頭へ入る
   //   (タスクアプリの ＋ と同じ約束。`components/tabs/GravityTab.tsx`)。
   const [newTask, setNewTask] = useState<Task | null>(null);
-  const openNewTask = useCallback((from: Element | null) => {
-    setSurfaceOrigin(from);
+  // ★`from`(押した所)は**もう見ない**(第62巡)。入力画面の帰り先は
+  //   いつでも右下の丸 ― 出どころを溜めると、輪から開いたときの扇の先が
+  //   焼き付いて、以後ずっとそこへ帰ってしまう(`lib/motion.ts` を見よ)。
+  const openNewTask = useCallback(() => {
     setNewTask({ id: `task-${Date.now()}`, title: "", done: false, createdAt: new Date().toISOString(), weight: 2 });
   }, []);
   const saveNewTask = useCallback((base: Task, d: ComposerData, done: boolean) => {

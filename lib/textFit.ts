@@ -265,9 +265,11 @@ export const GLYPH_PX = 128;
  * 選べば、縮小率は 1.5倍以内に収まる。
  */
 // ★段を増やしすぎないこと。同じ文字が段の数だけ焼き直されるので、
-// 7段にしたら落下中の fillText が 868ms まで増えた(実測)。3段なら
-// 縮小率は最悪 1.94倍に収まり、焼く回数は 1/2 以下になる。
-const BUCKETS = [32, 64, 96] as const;
+// 7段にしたら落下中の fillText が 868ms まで増えた(実測)。
+// ★★第62巡に **144 の段を足して4段**にした。山の題は 40px 級で、画面の倍率
+// (2)を掛けると 80px を超える ― 96 で頭打ちだったので、いちばん大きい文字だけ
+// **拡大されて**いた(「文字が滲む」の残り半分)。4段までなら焼き直しは許容範囲。
+const BUCKETS = [32, 64, 96, 144] as const;
 
 export function bucketFor(px: number): number {
   for (const b of BUCKETS) if (b >= px) return b;

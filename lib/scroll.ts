@@ -11,7 +11,8 @@
 //   しすぎている。もう少し普通の動きに寄せて」。**指の効き(`SCROLL_GAIN`)だけを
 //   普通(1.0)へ寄せ、投げ(`FLICK_K`)は下げて**釣り合いを保つ
 //   (`flickThrow` は両方を掛けるので、効きを上げると投げは勝手に伸びる)。
-//   ★★★第61巡「まだ指に追従せず重い」でもう一段(0.55 → 0.85 ＝ ほぼ 1:1)。
+//   ★★★第61巡「まだ指に追従せず重い」でもう一段(0.55 → 0.85)、
+//   第62巡「100パーセントで指に追従させて」で **1.0(＝完全に 1:1)** に到達した。
 //   強さを触りたくなったら `SCROLL_GAIN` と `FLICK_K` の2つだけを見ること。
 //
 // ★これは canvas と物理の座標系の道具(`lib/spring.ts` と同じ扱い)。
@@ -22,16 +23,22 @@ export interface Flick { p: number; v: number }
 
 export const flick = (p = 0): Flick => ({ p, v: 0 });
 
-/** ★指の効き。1 なら「1ピッチ動かしたら1つ進む」。第60巡の 0.55 → 0.85
- *  (ユーザー選択「1:1 より少しだけ重く」)。 */
-export const SCROLL_GAIN = 0.85;
+/** ★指の効き。1 なら「1ピッチ動かしたら1つ進む」。第62巡に **1.0＝完全な 1:1**
+ *  (ユーザー指定)。★ここは**もう上げない** — 1 を超えると指より速く動く。 */
+export const SCROLL_GAIN = 1.0;
 /** 離したあとの減衰(1フレームあたり)。 */
 export const SCROLL_DECAY = 0.9;
-/** 投げの強さ。指の速さ(px/イベント)をどれだけ先へ伸ばすか。第60巡の 0.14 → 0.11
+/** 投げの強さ。指の速さ(px/イベント)をどれだけ先へ伸ばすか。第61巡の 0.11 → 0.08
  *  (`SCROLL_GAIN` を上げたぶん、掛け算の総量が上がりすぎないように下げる)。 */
-export const FLICK_K = 0.11;
+export const FLICK_K = 0.08;
 /** これより遅い投げは「置いた」とみなして、その場で最寄りへ吸着する。 */
 const V_MIN = 0.0015;
+/** ★★★投げの速さの**上限**(1フレームに進む「いくつ目」。第62巡)。
+ *  上限が無いと、強く払ったとき1フレームで端まで飛び、**呼ぶ側の連鎖のバネが
+ *  巨大な目標差を一度に受けて暴れる**(第62巡のユーザー報告「勢いをつけ過ぎて
+ *  スクロールすると画面がバグる」)。1フレームに1つ弱で頭打ちにすれば、
+ *  速い払いは「速く送る」だけで済み、行が画面の外へ飛ばない。 */
+const V_MAX = 0.9;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -42,7 +49,7 @@ export function flickBy(f: Flick, deltaPx: number, pitch: number, lo: number, hi
 
 /** 離した瞬間。`vPx` は指の速さ(px/イベント)。 */
 export function flickThrow(f: Flick, vPx: number, pitch: number): void {
-  f.v = -(vPx * FLICK_K * SCROLL_GAIN) / pitch;
+  f.v = clamp(-(vPx * FLICK_K * SCROLL_GAIN) / pitch, -V_MAX, V_MAX);
 }
 
 /**

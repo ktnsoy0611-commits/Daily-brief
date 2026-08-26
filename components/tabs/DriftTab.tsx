@@ -6,9 +6,8 @@ import { LayerName } from "@/components/tasks/LayerName";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
-import { INK, MUTED, NAV_H, navHeightPx } from "@/lib/constants";
+import { MUTED, NAV_H, navHeightPx } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { ms, T_OUT } from "@/lib/motion";
 import { rectOf, sectionOutline } from "@/lib/solid";
 import { peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint } from "@/lib/solidPaint";
 import { demoCandidates } from "@/lib/taskDemo";
@@ -62,14 +61,8 @@ const FLICK_WINDOW = 90;
 /** 消える演出の速さ(0→1)。 */
 const GONE_STEP = 0.09;
 /** ★★上へ払って **GRAVITY へ移る**(第61巡にユーザー指定)。GRAVITY の下スワイプ
- *  (DRIFT へ)の相方で、**往復できる**ようにする。無重力の場なので、ワープの間だけ
- *  重力を上向きにして候補を吹き飛ばし、効果線を上へ走らせる。
- *  ★係数は GravityTab と同じ考え方 ―「`WARP_MS` のあいだに場の高さぶんだけ動く」。
- *  ★★タブが変わるのは**全部が場の外へ出てから**(時刻で切ると途中で終わる)。 */
-const WARP_MS = ms(T_OUT);
-const WARP_MAX_MS = WARP_MS * 3;
-const WARP_G = 2.8;
-const WARP_LINES = 26;
+ *  (DRIFT へ)の相方で、**往復できる**。★第62巡から、ここは**タブを変えるだけ** ―
+ *  カメラのパン(上空 → 地上)と効果線は `components/tasks/TaskSpace.tsx` が持つ。 */
 /** 縦の払いと見なす距離(GravityTab の `SWIPE_PX` と同じ数)。 */
 const SWIPE_PX = 44;
 /** 軸を決める距離(GravityTab の `AXIS_PX` と同じ数)。 */
@@ -186,9 +179,6 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       const pad = Math.max(0, (w - (window.innerWidth || w)) / 2);
       return { left: pad, right: w - pad, top: FIELD_TOP, bottom: h - navHeightPx() };
     };
-    /** ★GRAVITY へ吹き飛んでいる間の進み(0..1)と、始めた時刻。0 なら普段どおり。 */
-    let warp = 0;
-    let warpT0 = 0;
     /** 空きを掴んだときの縦の払い(軸ロック付き)。 */
     let swipe: { id: number; x: number; y: number; axis: "" | "x" | "y" } | null = null;
 
@@ -277,26 +267,6 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       if (!ctx) return false;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      // ★★効果線(第61巡)。GRAVITY へ吹き飛ぶ間だけ、上から下ではなく**下から上へ**
-      //   線が走り抜ける(図形と同じ向き)。図形の**後ろ**に引く。
-      if (warp > 0) {
-        const env = Math.sin(Math.min(1, warp) * Math.PI);
-        ctx.save();
-        ctx.strokeStyle = INK;
-        ctx.lineCap = "round";
-        for (let i = 0; i < WARP_LINES; i += 1) {
-          const r1 = frac(`warp${i}`); const r2 = frac(`warp${i}b`); const r3 = frac(`warp${i}c`);
-          const len = h * (0.10 + r2 * 0.42) * env;
-          const y = h * 1.2 - h * 1.9 * Math.min(1, warp) * (0.7 + r3 * 0.9);
-          ctx.globalAlpha = env * (0.07 + r3 * 0.15);
-          ctx.lineWidth = 1 + r2 * 2.4;
-          ctx.beginPath();
-          ctx.moveTo(w * r1, y);
-          ctx.lineTo(w * r1, y - len);
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
       let pending = false;
       for (const p of pieces) {
         let bx = p.body.position.x, by = p.body.position.y, sc = 1, alpha = 1;
@@ -324,21 +294,12 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
         for (const p of pieces.filter((x) => x.gone >= 1)) M.Composite.remove(engine.world, p.body);
         pieces = pieces.filter((x) => x.gone < 1);
       }
-      if (warp === 0) clampDrift();      // ★ワープ中は速さを抑えない(抜けられなくなる)
+      clampDrift();
       M.Engine.update(engine, 1000 / 60);
-      if (warp > 0) {
-        const t = performance.now() - warpT0;
-        warp = Math.max(1e-4, Math.min(1, t / WARP_MS));
-        // ★★切り替えは**時刻ではなく「全部が場の外へ出たか」**。時刻で切ると
-        //   図形がまだ画面に居るうちにタブが変わる(第61巡のユーザー指摘)。
-        // ★**最後の1pxが上端を抜けた瞬間**で見る(中心で見ると空の時間ができる)。
-        const gone = pieces.every((p) => p.body.bounds.max.y < 0);
-        if (gone || t > WARP_MAX_MS) { warp = 0; goTabRef.current("tasks-gravity"); }
-      }
       const pending = draw();
       // ★全部が止まって、消える演出も無く、焼き待ちも無ければループを止める
       //   (減速して止まる作りになったので、止まったら本当に静かになる)。
-      const moving = warp > 0 || pieces.some((p) => p.gone > 0
+      const moving = pieces.some((p) => p.gone > 0
         || Math.hypot(p.body.velocity.x, p.body.velocity.y) > 0.04
         || Math.abs(p.body.angularVelocity) > 0.002);
       if (running && live && (moving || pending || !!grab)) raf = requestAnimationFrame(step);
@@ -372,20 +333,11 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       //   図形をすり抜けるうえ、離した瞬間の速度が**物理には無い**ので投げが死ぬ。
       //   動く物体のまま、毎フレーム指へ向かう速度を与える(GRAVITY と同じ)。
     };
-    /** ★★上へ払って **GRAVITY へ移る**(第61巡)。無重力の場なので、ワープの間だけ
-     *  重力を上向きにして、全部の候補へ上向きの初速を与える。効果線は `draw` が引く。 */
+    /** ★★上へ払って **GRAVITY へ移る**。★第62巡から、ここは**タブを変えるだけ**。
+     *  カメラのパンと効果線は `components/tasks/TaskSpace.tsx` が持つ。 */
     const enterGravity = () => {
-      if (!M || !engine || warp > 0) return;
-      warp = 1e-4; warpT0 = performance.now();
-      engine.gravity.y = -WARP_G;
-      for (const p of pieces) {
-        M.Body.setVelocity(p.body, {
-          x: (frac(p.id + "wx") - 0.5) * 3,
-          y: -(6 + frac(p.id + "wy") * 5),
-        });
-        M.Body.setAngularVelocity(p.body, (frac(p.id + "wr") - 0.5) * 0.22);
-      }
-      haptic(12); wake();
+      haptic(12);
+      goTabRef.current("tasks-gravity");
     };
 
     const onDown = (e: PointerEvent) => {
@@ -396,7 +348,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       //   動き出したら払いに変わる ― DRIFT は図形で埋まっているので、空きからしか
       //   払えないと上スワイプ(GRAVITY へ)が実質使えない。GRAVITY と同じ作法:
       //   **長押ししてから動かす**と運ぶ、**すぐ動かす**と空間の払い。
-      if (warp === 0) swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
+      swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
       if (!piece) return;                  // 空きは掴まない → 払いに任せる
       e.stopPropagation();                 // 図形の上ではカメラを動かさない
       grab = {

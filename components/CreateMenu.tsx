@@ -48,7 +48,7 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
   at: MenuAt;
   onRecord: () => void;
   /** 押した要素を渡す — 入力画面がその場所から広がる。 */
-  onTask: (from: Element | null) => void;
+  onTask: () => void;
   onClose: () => void;
 }) {
   const discRef = useRef<HTMLDivElement | null>(null);
@@ -140,7 +140,7 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
       }}>
         {/* ★半径は丸(押した場所)から円周へ。左上の扇へ2本(RECORDが上寄り)。 */}
         {item("RECORD", "record", "tc-cue-1", 245, () => { close(); onRecord(); })}
-        {item("TASK", "pile", "tc-cue-2", 205, () => { const el = taskRef.current; close(); onTask(el); }, taskRef)}
+        {item("TASK", "pile", "tc-cue-2", 205, () => { close(); onTask(); }, taskRef)}
       </div>
     </div>
   ), document.body);

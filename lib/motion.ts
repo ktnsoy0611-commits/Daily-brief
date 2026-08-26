@@ -53,7 +53,6 @@ export const ms = (seconds: number) => Math.round(seconds * 1000);
 
 /** ★＋ボタンの位置。閉じるときの行き先に使う。 */
 export interface SurfaceOrigin { x: number; y: number; w: number; h: number }
-let origin: SurfaceOrigin | null = null;
 
 /**
  * ★右下の「作る」の丸(`[data-create-anchor]`)の矩形。**3アプリぶん DOM に居る**ので、
@@ -70,19 +69,18 @@ export function createAnchorRect(): DOMRect | null {
   return null;
 }
 
-/** ＋を押した瞬間に、その丸の場所を控える。 */
-export function setSurfaceOrigin(el: Element | null): void {
-  if (!el) { origin = null; return; }
-  const r = el.getBoundingClientRect();
-  origin = { x: r.left, y: r.top, w: r.width, h: r.height };
-}
-
 /**
  * 円が広がる中心(＝閉じるときに吸い込まれる先)。
  *
- * ★★控えが無いとき(図形を直接たたいて開いたとき)は **右下の「作る」の丸**
- * (`[data-create-anchor]`)へ帰す(2026-08-24にユーザー指定「毎回右下の
- * アイコンにアニメーションして戻っていくように」)。
+ * ★★★**行き先はいつでも右下の「作る」の丸**(`[data-create-anchor]`)
+ * (2026-08-24にユーザー指定「毎回右下のアイコンにアニメーションして戻っていく
+ * ように」、2026-08-25・第62巡に「**必ず**右下のアイコンに戻るように」で徹底)。
+ *
+ * ★★第61巡まではここに `setSurfaceOrigin` で控えた矩形を**溜め続けて**いて、
+ * 一度も消えなかった。輪(`CreateMenu`)の TASK は**丸から扇状に開いた先**に居るので、
+ * そこが帰り先として焼き付き、以後は図形をたたいて開いたときも**そこへ帰って**
+ * いた(第62巡のユーザー指摘)。**控えを持たない**のが直し方 ―
+ * 出どころは1つ(画面に見えている丸)しかない。
  *
  * ★以前は「画面下端の中央」を終点にしていたが、そこには**何も無い**。
  * 吸い込みは円の半径をボタンの大きさまで縮めて終わる(0 にはしない)ので、
@@ -91,7 +89,6 @@ export function setSurfaceOrigin(el: Element | null): void {
  * 初めて消えて見える。**行き先は必ず実在する丸にすること。**
  */
 export function surfaceOrigin(): SurfaceOrigin {
-  if (origin) return origin;
   const r = createAnchorRect();
   if (r) return { x: r.left, y: r.top, w: r.width, h: r.height };
   // どうしても見つからないときだけ、右下のおおよその場所。

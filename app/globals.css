@@ -34,8 +34,8 @@
   --t-amb-bob:   5.4s;    /* 候補が浮遊してゆれる */
 
   /* ★★フィルムのグレイン(2026-08-25・第61巡にユーザー指定「フィルムカメラっぽい
-     グレインを少し」)。**強さはここ1つ**。濃くしたければこの数字だけを上げる。 */
-  --grain: 0.045;
+     グレインを少し」、第62巡に「もう少し強く」)。**強さはここ1つ**。 */
+  --grain: 0.075;
 
   /* ★★**`--screen-h` は撤去した**(2026-08-23・第34巡で入れ、同巡で撤回)。
      「`innerHeight` に上のセーフエリアを足せば、`position: fixed` の面が
@@ -532,7 +532,62 @@ button:active {
   from { clip-path: inset(0 100% 0 0); }
   to   { clip-path: inset(0 0 0 0); }
 }
+/* ★★閉じは**開きの逆再生**(第62巡にユーザー指定「閉じる時にアニメーションがない」)。
+   React 側は `ms(T_OUT)` のあいだ DOM を残す(`closingDay`)。長さは必ずここと揃える。 */
+.tl-detail.out { animation: tl-detail-close var(--t-out) var(--ease-sheet) both; }
+@keyframes tl-detail-close {
+  from { clip-path: inset(0 0 0 0); }
+  to   { clip-path: inset(0 100% 0 0); }
+}
 @media (prefers-reduced-motion: reduce) { .tl-detail { animation: none; } }
+
+/* ── タスクアプリのカメラ(components/tasks/TaskSpace.tsx) ────────────────
+   ★★**GRAVITY＝地上 / DRIFT＝上空**。2枚を縦に積んで、器ごと送る。
+   `--cam` はいまのタブから決まるだけ(指には追従しない・ユーザー確定)。
+   ★2D の `translateY` だけ。第52巡に撤去した 4層＋`perspective` の3Dカメラとは別物。
+   ★長さは語彙の**合成**(開く 700 ＋ 要素 420 = 1120ms)。新しい数字は足していない。 */
+.task-cam {
+  position: absolute;
+  inset: 0;
+  transform: translateY(var(--cam, 0px));
+  /* ★曲線は **`--ease-exit`**(0.4,0,0.2,1)。語彙の4本のうち、**加速してから減速する**
+     形はこれだけで、長い距離を運ぶ「乗り物」の動きに合う。
+     ★`--ease-settle`(0.16,1,0.3,1) は**8割の距離を最初の1/4で使い切る**ので、
+     カメラに使うと「一瞬で着いて、あとは止まって見える」＝距離が出ない(実測)。 */
+  transition: transform calc(var(--t-in) + var(--t-item)) var(--ease-exit);
+  will-change: transform;
+}
+
+/* ★効果線 ―**パンの半ばだけ**(ユーザー指定「距離がある感じを出すために、
+   アニメーションの半ばで効果線」)。縦の細い線を1枚で作り、0% 透明 → 50% いちばん
+   濃い → 100% 透明。★進む向きへ伸ばす(上空へ上がるときは下向きに流れる)。
+   ★図形の上に乗るが `pointer-events: none` なので操作は塞がない。 */
+.task-speed {
+  position: absolute;
+  inset: -20% 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  /* ★墨(`INK` = #1A1A18)の細い縦線。濃さは下の keyframes の `opacity` で決める。 */
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0 7px,
+    #1A1A18 7px 8px,
+    transparent 8px 23px
+  );
+  animation: task-speed calc(var(--t-in) + var(--t-item)) var(--ease-exit) both;
+}
+@keyframes task-speed {
+  0%   { opacity: 0;    transform: scaleY(0.4); }
+  50%  { opacity: 0.14; transform: scaleY(1); }
+  100% { opacity: 0;    transform: scaleY(0.4); }
+}
+.task-speed[data-dir="up"]   { transform-origin: 50% 100%; }
+.task-speed[data-dir="down"] { transform-origin: 50% 0%; }
+@media (prefers-reduced-motion: reduce) {
+  .task-cam { transition: none; }
+  .task-speed { animation: none; display: none; }
+}
 
 /* ── DRIFT の「掴んで捨てる/食べる」ターゲット(components/tabs/DriftTab.tsx) ──
    候補の図形を**掴んでいるあいだ**だけ、右下から丸い的が出てくる。上=口(食べる=

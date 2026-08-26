@@ -117,9 +117,11 @@ const ARC_SWING = SPACE.xxl;
 /** ★★焦点を場のどの高さに置くか。**固定値**であること。
  *  ★★★第65巡の1回目はここをスクロール位置の関数にして**スクロールを壊した**
  *  (`arcGeom` の注を見ること)。レイアウトの原点を中身から決めてはいけない。
- *  ★0.32 … 先頭に居るときは上に行が無いので、**下へ流れて埋まる**ようやや上へ置く。
- *  縦が道のりそのものになった(`arcAt`)ので、下は床まできれいに並ぶ。 */
-const ARC_MID = 0.32;
+ *  ★★第67巡にユーザー指定「フォーカスされる中央のタスクの位置が上すぎます。
+ *  画面の真ん中あたりにくるように下げてください」→ 0.32 から **0.5**（場の中央）へ。
+ *  先頭に居るときは上に行が無いので上半分が空くが、それは「いま先頭に居る」という
+ *  正しい情報であり、焦点が画面の中央に据わることの方が優先される。 */
+const ARC_MID = 0.5;
 /** DOM の行の**箱の高さ**(中身を上下中央に置くための器)。
  *  ★間隔の役目は持たない(下の PITCH_* が持つ)。2行のタイトル＋その下の一段が入る。 */
 const ROW_H = SPACE.xxl * 3;
@@ -175,7 +177,9 @@ function arcInv(s: number): number {
 const CHAIN_K = 0.34;
 /** 1つ離れるごとにこの割合だけやわらかくなる。3つ離れると `K_TRAVEL` まで落ちる。 */
 const CHAIN = 0.36;
-const CHAIN_MAX = 3;
+/** ★第67巡に 3 → 2。3 だと遠い行の硬さが焦点の 1/21 になり、
+ *  吸着のあと**行が一斉に着かず**「ガクガク」に見えていた。 */
+const CHAIN_MAX = 2;
 /** 減衰は臨界(`2√k`)のこの割合。1 未満なので**わずかに行き過ぎて**慣性が出る。 */
 const D_CHAIN = 0.86;
 /** 硬い側で減衰が効きすぎて重くならないよう頭打ちにする。 */
@@ -2127,22 +2131,30 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                 }}>{it.task.title || "無題"}</div>
                 {/* ★その下に、**同じ大きさ**の脇役を2つ。残り日数はグレー、タグは
                     タスク入力画面と同じ**ピル**(画面で唯一の色＝アクセント)。 */}
-                {/* ★★横のラインを揃える … 残り日数とタグを**同じ高さの箱**(`SPACE.xl`)に
-                    入れ、中で上下中央に置く。片方だけ padding で膨らませると高さが
-                    食い違って**下端が揃わない**(第65巡の1回目がそうなっていた)。 */}
-                <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginTop: SPACE.hair }}>
+                {/* ★★★横のラインを揃える(2026-08-26・第67巡にユーザー指定
+                    「中身の文字でなく、日数の上下のヘッドラインと、ピルの形状の
+                    上端と下端が合うように」)。
+                    第66巡までは**両方を高さ 24 の箱**に入れて中で上下中央に置いていた。
+                    箱どうしは揃うが、日数のインクは 8px しかないのに**ピルは塗られた
+                    形が 24px** ―「文字の横に、3倍の高さの色面が立っている」状態だった。
+                    → 両方とも `LEAD.flat`(行の箱＝文字の大きさそのもの)にして
+                    **ベースラインで**並べる。2つの箱がぴたりと重なり、ピルの上端と
+                    下端が日数の字面の上下と一致する。 */}
+                <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm, marginTop: SPACE.hair }}>
                   <span style={{
-                    display: "inline-flex", alignItems: "center", height: SPACE.xl,
                     fontFamily: LATIN, fontWeight: WEIGHT.bold, fontSize: TYPE.small,
-                    letterSpacing: TRACK.caps, color: MUTED, whiteSpace: "nowrap",
+                    lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: MUTED, whiteSpace: "nowrap",
                   }}>{dl.sub ? `${dl.text} ${dl.sub}` : dl.text}</span>
                   <span style={{
-                    display: "inline-flex", alignItems: "center", height: SPACE.xl,
-                    padding: `0 ${SPACE.sm}px`, borderRadius: RADIUS.pill,
+                    display: "inline-block", padding: `0 ${SPACE.sm}px`, borderRadius: RADIUS.pill,
                     background: tagColor(it.paint.tag), color: tagInk(it.paint.tag),
-                    fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.small, letterSpacing: TRACK.wide,
-                    whiteSpace: "nowrap",
-                  }}>{it.tag.toUpperCase()}</span>
+                    fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.small,
+                    lineHeight: LEAD.flat, letterSpacing: TRACK.wide, whiteSpace: "nowrap",
+                  }}>
+                    {/* ★字間は最後の字の右にも付くので、そのぶんピルの中で文字が
+                        左に寄って見える。同じ量の負の右マージンで打ち消す。 */}
+                    <span style={{ marginRight: `-${TRACK.wide}` }}>{it.tag.toUpperCase()}</span>
+                  </span>
                 </div>
               </div>
             );

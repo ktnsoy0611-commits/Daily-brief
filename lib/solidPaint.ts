@@ -3,8 +3,9 @@ import {
   type Pt, type SolidSpec,
 } from "./solid";
 import { tagColor, tagFace, tagInk, tagLabel } from "./taskTags";
-import { drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
+import { canvasFont, drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
 import type { TaskTag } from "./types";
+import { paperize } from "./paperTexture";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
 // 確定)。真横から見た立面を2枚、ベタ塗りで描くだけ。
@@ -273,6 +274,11 @@ export function solidBitmap(p: SolidPaint, unit = UNIT_PX, dpr = 1): SolidBitmap
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.translate(w / 2, h / 2);
     paintShape(ctx, p, unit, dpr);
+    // ★★クラフト紙の目を**焼き込む**(第63巡)。`source-atop` なので図形の面と
+    //   その上の文字にだけ乗り、透明な地には乗らない。焼いた絵に入るので
+    //   **毎フレームの負荷はゼロ**、図形が回れば紙の目も一緒に回る。
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paperize(ctx, w, h, dpr);
   }
   const made = { canvas: cv, w, h, dpr };
   bmpCache.set(key, made);
@@ -282,3 +288,49 @@ export function solidBitmap(p: SolidPaint, unit = UNIT_PX, dpr = 1): SolidBitmap
   }
   return made;
 }
+
+/**
+ * ★★**文字だけのブロック**(GRAVITY の日付・曜日、TIMELINE の「自由」)を焼く。
+ * 2026-08-26・第63巡に `fillText` の直描きから移した。狙いは2つ:
+ *   1. **紙の目を焼き込める**(図形と同じ扱い。回れば紙も一緒に回る)。
+ *   2. 毎フレームの `fillText` が消えて、**文字が一段くっきりする**。
+ * 箱は**塗りぴったり**(呼ぶ側が `inkBoxOf` で測った `bw`/`bh` と、原点からの
+ * ずれ `dx`/`dy` を渡す)。絵の中心＝物体の中心になる。
+ */
+export function wordBitmap(
+  word: string, fs: number, sx: number, ink: string, fam: string,
+  bw: number, bh: number, dx: number, dy: number, dpr = 1,
+): SolidBitmap {
+  const key = ["W", word, fs.toFixed(1), sx.toFixed(3), ink, fam, bw.toFixed(1), bh.toFixed(1), dpr.toFixed(2)].join("|");
+  const hit = bmpCache.get(key);
+  if (hit) { bmpCache.delete(key); bmpCache.set(key, hit); return hit; }
+  // ★はみ出し(斜体のハネ・丸め誤差)のぶんだけ箱を広げて焼く。描く側は中心を合わせる。
+  const w = Math.ceil(bw + 4);
+  const h = Math.ceil(bh + 4);
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(2, Math.round(w * dpr));
+  cv.height = Math.max(2, Math.round(h * dpr));
+  const ctx = cv.getContext("2d");
+  if (ctx) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.translate(w / 2, h / 2);
+    ctx.font = canvasFont(WORD_WEIGHT, fs, fam);
+    ctx.fillStyle = ink;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.translate(-dx, -dy);
+    ctx.scale(sx, 1);
+    ctx.fillText(word, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paperize(ctx, w, h, dpr);
+  }
+  const made = { canvas: cv, w, h, dpr };
+  bmpCache.set(key, made);
+  if (bmpCache.size > BMP_LIMIT) {
+    const oldest = bmpCache.keys().next().value;
+    if (oldest !== undefined) bmpCache.delete(oldest);
+  }
+  return made;
+}
+
+/** 文字ブロックの太さ。★可変フォントなのでこの重みがそのまま効く。 */
+export const WORD_WEIGHT = 900;

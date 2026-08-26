@@ -115,8 +115,9 @@
   ★**画面の上下の帯**は別件で、`statusBarStyle: "default"` で解決済み（第35巡）。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
-- **フィルムのグレイン**は `app/globals.css` の `body::after` の1枚だけ。
-  強さは `:root` の **`--grain`**（既定 0.045）。静止させること（動かすと常時再描画）。
+- `lib/paperTexture.ts` — **クラフト紙の目を知っている唯一の場所**。図形と文字の面に
+  だけ**焼き込む**（`lib/solidPaint.ts` が焼くときに1度だけ。毎フレームの負荷はゼロで、
+  図形が回れば紙も回る）。強さは **`PAPER_ALPHA`**（既定 0.12）の1つだけ。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
 - `lib/myBrainPaths.ts` — **my-brain のパスを知っている唯一の場所**。`myBrain.ts` / `myBrainWrite.ts` / `myBrainSyncClient.ts`。
 

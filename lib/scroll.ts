@@ -42,7 +42,10 @@ const V_MAX = 0.9;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-/** 指で動かす。`deltaPx` は指の移動量(px)、`pitch` は1つぶんの距離(px)。 */
+/** 指で動かす。`deltaPx` は指の移動量(px)、`pitch` は1つぶんの距離(px)。
+ *  ★★**1つぶんの距離が場所によって変わる送り**(ALIGN の円弧など)では、これを
+ *  使わずに**道のりを直に逆算する**こと ― 1イベントずつ一定の `pitch` で換算すると、
+ *  長く払うほどズレる(`GravityTab` の `arcInv` を見よ。第63巡)。 */
 export function flickBy(f: Flick, deltaPx: number, pitch: number, lo: number, hi: number): void {
   f.p = clamp(f.p - (deltaPx * SCROLL_GAIN) / pitch, lo, hi);
 }

@@ -179,6 +179,11 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       const pad = Math.max(0, (w - (window.innerWidth || w)) / 2);
       return { left: pad, right: w - pad, top: FIELD_TOP, bottom: h - navHeightPx() };
     };
+    /** ★その回の湧かせ方の種。**表に出るたびに引き直す**(第63巡にユーザー指定
+     *  「開くたびに真ん中ら辺でランダムに」)。DRIFT は第62巡から出しっぱなしなので、
+     *  再マウントでは起きない ― `GravityTab` の `dropAll` と同じ作法で、見えるように
+     *  なった立ち上がりに置き直す。 */
+    let seed = "0";
     /** 空きを掴んだときの縦の払い(軸ロック付き)。 */
     let swipe: { id: number; x: number; y: number; axis: "" | "x" | "y" } | null = null;
 
@@ -199,16 +204,29 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       ]);
     };
 
+    /** ★湧く場所 ―**中心を囲むひまわり配置**(黄金角)に、その回の種で回転と半径を
+     *  散らす。真ん中へ寄せつつ均等にばらすので、四隅に貼り付いて気づかれない
+     *  ことも、同じ点に重なって壁をすり抜けることも起きない(第54巡に実測)。 */
+    const spotOf = (id: string, idx: number, total: number, hw: number, hh: number) => {
+      const { left, right, top, bottom } = fieldOf();
+      const midX = (left + right) / 2, midY = (top + bottom) / 2;
+      const rx = Math.max(0, (right - left) / 2 - hw - 8);
+      const ry = Math.max(0, (bottom - top) / 2 - hh - 8);
+      // 半径も種で少し散らす(毎回まったく同じ環にならないように)。
+      const t = Math.sqrt((idx + 0.5) / Math.max(1, total)) * (0.82 + frac(id + seed + "r") * 0.26);
+      const ang = idx * 2.399963 + frac(id + seed) * Math.PI * 2;
+      return {
+        x: Math.max(left + hw + 6, Math.min(right - hw - 6, midX + Math.cos(ang) * rx * t * 0.9)),
+        y: Math.max(top + hh + 6, Math.min(bottom - hh - 6, midY + Math.sin(ang) * ry * t * 0.9)),
+      };
+    };
+
     const addPiece = (c: InboxCandidate, idx = 0, total = 1) => {
       if (!M || !engine) return;
       const paint = paintOf(c);
       const b = shapeBounds(paint);
       const wu = Math.max(1e-3, b.maxX - b.minX);
-      // ★★湧くのは**画面の真ん中あたり**(第54巡にユーザー指定)。四隅から始めると
-      //   端に貼り付いたまま気づかれない。★ただし**同じ点に重ねない** — 大きな図形が
-      //   重なって湧くと、物理が押し合って壁をすり抜け画面の外へ飛ぶ(実測)。
-      //   中心を囲む**ひまわり配置**(黄金角)で、真ん中に寄せつつ均等にばらす。
-      const { left, right, top, bottom } = fieldOf();
+      const { left, right } = fieldOf();
       // ★大きさは**場の幅**から決める(第61巡。`window.innerWidth` を混ぜない ―
       //   場と大きさの出どころは1つにしておく)。
       //   ★★件数が多いときは**その分だけ縮める**。大きいまま詰め込むと、無重力で
@@ -218,18 +236,12 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       const unit = (Math.min(W_MAX, (right - left) * W_RATIO) * crowd) / wu;
       const hw = ((b.maxX - b.minX) * unit) / 2;
       const hh = ((b.maxY - b.minY) * unit) / 2;
-      const midX = (left + right) / 2, midY = (top + bottom) / 2;
-      const rx = Math.max(0, (right - left) / 2 - hw - 8);
-      const ry = Math.max(0, (bottom - top) / 2 - hh - 8);
-      const t = Math.sqrt((idx + 0.5) / Math.max(1, total));
-      const ang = idx * 2.399963 + frac(c.id) * 0.6;
-      const x = Math.max(left + hw + 6, Math.min(right - hw - 6, midX + Math.cos(ang) * rx * t * 0.9));
-      const y = Math.max(top + hh + 6, Math.min(bottom - hh - 6, midY + Math.sin(ang) * ry * t * 0.9));
+      const { x, y } = spotOf(c.id, idx, total, hw, hh);
       const { body, ox, oy } = makeBody(M, paint, x, y, unit);
-      const a = frac(c.id + "v") * Math.PI * 2;
-      const sp = DRIFT_SEED * (0.4 + frac(c.id + "s") * 0.6);
+      const a = frac(c.id + seed + "v") * Math.PI * 2;
+      const sp = DRIFT_SEED * (0.4 + frac(c.id + seed + "s") * 0.6);
       M.Body.setVelocity(body, { x: Math.cos(a) * sp, y: Math.sin(a) * sp });
-      M.Body.setAngularVelocity(body, (frac(c.id + "w") - 0.5) * 0.02);
+      M.Body.setAngularVelocity(body, (frac(c.id + seed + "w") - 0.5) * 0.02);
       M.Composite.add(engine.world, body);
       pieces.push({ id: c.id, body, paint, ox, oy, unit, gone: 0, gx: 0, gy: 0 });
     };
@@ -445,6 +457,27 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
     //   呼んでいた。DRIFT は**最初に開く既定のタブ**なので `setActive(true)` は
     //   `import("matter-js")` が返るより先に走る ― `sync` は `!M` で素通りし、
     //   列だけが捨てられて**画面に何も出ない**状態が固定していた(ユーザー報告)。
+    /** ★★表に出るたびに**置き直す**(第63巡)。物体は作り直さず、位置・角度・初速だけ
+     *  入れ直す ― 作り直すと焼いた絵のキャッシュも捨てることになる。 */
+    const reseed = () => {
+      if (!M || !engine || size.w < 1 || size.h < 1 || !pieces.length) return;
+      seed = String(Date.now() % 100000);
+      const total = pieces.length;
+      pieces.forEach((p, idx) => {
+        if (p.gone > 0) return;
+        const b = shapeBounds(p.paint);
+        const hw = ((b.maxX - b.minX) * p.unit) / 2;
+        const hh = ((b.maxY - b.minY) * p.unit) / 2;
+        const { x, y } = spotOf(p.id, idx, total, hw, hh);
+        M!.Body.setPosition(p.body, { x, y });
+        M!.Body.setAngle(p.body, frac(p.id + seed + "a") * Math.PI * 2);
+        const a = frac(p.id + seed + "v") * Math.PI * 2;
+        const sp = DRIFT_SEED * (0.4 + frac(p.id + seed + "s") * 0.6);
+        M!.Body.setVelocity(p.body, { x: Math.cos(a) * sp, y: Math.sin(a) * sp });
+        M!.Body.setAngularVelocity(p.body, (frac(p.id + seed + "w") - 0.5) * 0.02);
+      });
+    };
+
     const flush = () => {
       if (!M || !engine || !live || !pending) return;
       if (size.w < 1 || size.h < 1) return;   // ★寸法が来るまでは置き場所が決まらない
@@ -455,11 +488,17 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       //   溜めておいて、場が作れるようになってから流す。
       sync: (list) => { if (!M || !live) { pending = list; return; } sync(list); },
       setActive: (on) => {
+        const rising = on && !pendingLive;
         pendingLive = on;
         live = on;
         if (on) {
           size = { w: wrap.offsetWidth, h: wrap.offsetHeight };
-          if (M && engine) { walls(); flush(); wake(); }
+          if (M && engine) {
+            walls(); flush();
+            // ★表に出た**立ち上がり**でだけ置き直す(毎回ちがう散らばり)。
+            if (rising) reseed();
+            wake();
+          }
         } else { running = false; cancelAnimationFrame(raf); }
       },
     };
@@ -508,7 +547,14 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       <LayerName text="DRIFT" />
 
       {/* 無重力の場。 */}
-      <div ref={wrapRef} className="full-bleed" style={{ position: "absolute", inset: 0 }}>
+      {/* ★★★`full-bleed` を**ここで掛けないこと**(第63巡)。器の bleed は
+          `TaskSpace` の `<main>` が持っている ―**出どころは1つ**。二重に掛けると
+          `position:absolute; inset:0` に負のマージンが乗って**箱が外へ広がり**、
+          canvas が「幅＋64px / 高さ＋pad-top＋nav-h」になる。その寸法で `fieldOf()`
+          を出すので、場の下端が**ちょうどタブバーのぶん低く**なり、候補がタブの裏へ
+          潜る(実機の写真で2度報告)。★GravityTab の器には付いていない ―
+          **同じ器に居るのに片方だけ壊れるときは、片方だけ違うことをしていないか**。 */}
+      <div ref={wrapRef} style={{ position: "absolute", inset: 0 }}>
         <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", touchAction: "none" }} />
       </div>
 

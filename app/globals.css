@@ -33,9 +33,6 @@
   --t-amb-blink: 1.15s;   /* 録音中の赤 */
   --t-amb-bob:   5.4s;    /* 候補が浮遊してゆれる */
 
-  /* ★★フィルムのグレイン(2026-08-25・第61巡にユーザー指定「フィルムカメラっぽい
-     グレインを少し」、第62巡に「もう少し強く」)。**強さはここ1つ**。 */
-  --grain: 0.075;
 
   /* ★★**`--screen-h` は撤去した**(2026-08-23・第34巡で入れ、同巡で撤回)。
      「`innerHeight` に上のセーフエリアを足せば、`position: fixed` の面が
@@ -134,25 +131,6 @@ body {
    ★高さの数字を知っているのはここと lib/constants.ts の NAV_H だけ。
    タブごとに negative margin を書かないこと(過去、数字がずれるたびに
    「タブバーの上下に境目が出る」「背景が途中で切れる」不具合が再発した)。 */
-/* ★★フィルムのグレイン ― **全アプリの最前面に1枚だけ**(第61巡)。
-   ・**静止**の粒(切り替えない)。再描画が起きないので、canvas と物理が動いていても
-     実機の負荷はほぼ無い。★動かすと常時再描画になり、バッテリーと発熱に効く。
-   ・`mix-blend-mode` は**使わない** — iOS で固定レイヤーに blend を掛けると、
-     下の canvas が動くたびに合成し直しになる。薄く重ねるだけで粒には見える。
-   ・`z-index: 60` … トースト(50)より上。フィルムの粒は画面全体に均一に乗るのが正しい。
-   ・タイルは 128px の `feTurbulence`(`type="fractalNoise"`)。SVG を data URI で
-     持つので、外部の画像も追加の通信も要らない。 */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  pointer-events: none;
-  opacity: var(--grain);
-  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23g)'/%3E%3C/svg%3E");
-  background-size: 128px 128px;
-}
-
 .full-bleed {
   margin: calc(-1 * var(--pad-top)) -16px calc(-1 * var(--nav-h));
 }

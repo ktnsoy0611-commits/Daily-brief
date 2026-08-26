@@ -103,17 +103,21 @@ grep -rnE 'transition[A-Za-z]*: *("|`)[^"`]*[0-9]+m?s' components app --include=
 grep -rhoE 'fontSize: [0-9.]+' components app --include=*.tsx | sort | uniq -c
 # 4 globals.css の生の時間（var(--) と同居していても拾う。0ms / 0s は除く）
 grep -nE '\b(transition|animation)\b[^;]*(^|[^-\w(])(0*[1-9][0-9]*(\.[0-9]+)?|0*\.[0-9]*[1-9][0-9]*)m?s\b' app/globals.css
-# 5 生の余白
-grep -rnE '\b(padding|margin|gap|rowGap|columnGap)[A-Za-z]*: *-?[0-9]' components app --include=*.tsx
-# 6 生の行間・字間・太さ
-grep -rnE '\b(lineHeight|letterSpacing|fontWeight): *("?-?[0-9]|")' components app --include=*.tsx | grep -vE '(LEAD|TRACK|WEIGHT)\.'
+# 5 生の余白（★三項やテンプレの陰も見る。0 と、理由を書いた例外は除く）
+grep -rnE '\b(padding|margin|gap|rowGap|columnGap)[A-Za-z]*:[^,}]*[^\w.$-]-?[1-9][0-9]*\b' components app --include=*.tsx | grep -v 目盛りの外 | grep -vE ':[0-9]+: *(//|\*)'
+# 6 生の行間・字間・太さ（★lineHeight: 0 は行ボックスのリセットなので除く）
+grep -rnE '\b(lineHeight|letterSpacing|fontWeight): *"?-?[1-9]' components app --include=*.tsx | grep -v 目盛りの外
 # 7 16 進の直書き
-grep -rn '#[0-9A-Fa-f]\{3,8\}\b' components app --include=*.tsx
+grep -rn '#[0-9A-Fa-f]\{3,8\}\b' components app --include=*.tsx | grep -v 目盛りの外 | grep -vE ':[0-9]+: *(//|\*)'
 # 8 左右パディングの持ち主（目視。最上位の器だけか）
 grep -rnE '\b(paddingLeft|paddingRight|paddingInline): ' components --include=*.tsx
 # 9 横並びの center（目視。baseline であるべきものが無いか）
 grep -rn 'alignItems: "center"' components --include=*.tsx | wc -l
 ```
 
-★移行が済むまで #5〜#7 は 0 になりません。**新しく増やさないこと**を最優先とする。
-件数の推移と移行表は `handoff_current.md`。
+★★**除外を「行ごと」にしないこと。** 行に他のトークンがあるだけで行全体を捨てると、
+同じ行に同居した生の値を見逃す（#4 と #6 が実際にそれで取りこぼしていた）。
+**トークンは数字で始まらない**ので、`プロパティ: 数字` を直接見れば行ごとの除外は要らない。
+
+★**目盛りの外に居てよい値は、その行に理由を書く**（`// ★目盛りの外（…）` ／ JSX の中では
+`/* … */`）。検査はこの印だけで除外する。**印の無い例外は例外ではない。**

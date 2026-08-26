@@ -536,6 +536,10 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
    *  これが無いと詳細の DOM が**即座に消えて**「閉じるアニメーションが無い」に
    *  見える(第62巡のユーザー指摘)。隙間(`gapRef`)の方はバネで閉じていた。 */
   const [closingDay, setClosingDay] = useState<number | null>(null);
+  /** ★閉じている最中かを**描画ループから**見るための控え(state は毎フレーム読めない)。 */
+  const closingRef = useRef<number | null>(null);
+  /** ★曜日を開く**前**の横スクロール位置。閉じたらここへ戻す。 */
+  const panBeforeRef = useRef<number | null>(null);
   const closeTRef = useRef(0);
   const expandedRef = useRef<number | null>(null);
   /** 曜日の伸び。**指が動かす**(0..TL_STRETCH)。 */
@@ -1098,7 +1102,11 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         springTo(worldRef.current, wt, K_SETTLE, D_SETTLE);
         if (!settled(worldRef.current, wt, 0.05)) moving = true;
       }
-      const gt = expandedRef.current === null ? 0 : GAP_W;
+      // ★★閉じている最中も隙間を**開けたまま**にする(2026-08-26・第67巡)。
+      //   第66巡までは `expandedRef` が null になった瞬間に隙間が閉じ始めるので、
+      //   詳細のパネル(`.tl-detail.out` が拭き取りを逆再生している)が**隣の列に
+      //   覆われて**、ユーザーからは「一瞬で閉じた」と見えていた。
+      const gt = expandedRef.current === null && closingRef.current === null ? 0 : GAP_W;
       springTo(gapRef.current, gt, K_SETTLE, D_SETTLE);
       if (!settled(gapRef.current, gt, 0.05)) moving = true;
       // ★★閉じている途中(`tl-out`)は、器を運ぶのではなく**山へ戻す**。
@@ -1379,9 +1387,19 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     const from = expandedRef.current;
     expandedRef.current = null; setExpanded(null);
     if (from === null) return;
-    setClosingDay(from);
+    closingRef.current = from; setClosingDay(from);
+    // ★★開く前の位置へ戻す(2026-08-26・第67巡にユーザー指定「閉じると元の位置に
+    //   戻らない」)。開くとき `worldTargetRef` を「たたいた曜日が左端」へ動かして
+    //   いたのに、閉じるときは `Math.max(0, いまの値)` ＝**動かしたまま**だった。
+    if (panBeforeRef.current !== null) {
+      worldTargetRef.current = panBeforeRef.current;
+      panBeforeRef.current = null;
+    }
     window.clearTimeout(closeTRef.current);
-    closeTRef.current = window.setTimeout(() => setClosingDay(null), ms(T_OUT));
+    closeTRef.current = window.setTimeout(() => {
+      closingRef.current = null; setClosingDay(null); wakeRef.current();
+    }, ms(T_OUT));
+    wakeRef.current();
   }, []);
 
   const planPile = useCallback((list: Task[]) => {
@@ -1665,6 +1683,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     piecesRef.current = next;
     expandedRef.current = null; setExpanded(null);
     worldRef.current = spring(0); worldTargetRef.current = 0; gapRef.current = spring(0);
+    panBeforeRef.current = null; closingRef.current = null;
     rebuildWalls(M, engine, w, h, false, laneBodiesRef.current);   // ★床を抜く
     buildLanes();
     engine.gravity.y = GRAVITY_Y;
@@ -1686,6 +1705,35 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     openedRef.current = false;
     // レーンの器を外し、床は**抜いたまま**。全部が落下の層へ戻って落ちる。
     clearLanes();
+    // ★★★**画面の外の列に居るものを、壁を張る前に片づける**(2026-08-26・第67巡)。
+    //   横スクロールは `syncLanes` が **物体そのものを動かして**いるので、画面外の
+    //   列の物体は物理座標で `0..w` の**外**に居る。そこへ側壁を張り直すと、
+    //   matter が「壁にめり込んでいる」と解いて**画面の中へ押し戻す** ―
+    //   これがユーザー報告「隣の列がある画面内の端の列に自由が増える／
+    //   ワープしてくる」の正体（落下が途中で止まって見えるのも同じ壁）。
+    //   → 「自由」は飾りなので**その場で消す**（もともと画面の外で見えていない）。
+    //     タスクは消せないので、**画面の下**へ移してやり、`recycleToPile` の
+    //     いつもの道（下へ出たものを山の上へ引き上げる）に乗せる。
+    {
+      const outside = piecesRef.current.filter(
+        (p) => p.body.position.x < 0 || p.body.position.x > w,
+      );
+      const gone = new Set(outside.filter((p) => p.word).map((p) => p.id));
+      if (gone.size) {
+        M.Composite.remove(engine.world,
+          outside.filter((p) => gone.has(p.id)).map((p) => p.body));
+        piecesRef.current = piecesRef.current.filter((p) => !gone.has(p.id));
+      }
+      for (const p of outside) {
+        if (gone.has(p.id)) continue;
+        M.Body.setPosition(p.body, {
+          x: PILE_INSET + pileWOf(w) * (0.1 + 0.8 * frac(p.id + "out")),
+          y: h + RECYCLE_Y,
+        });
+        M.Body.setVelocity(p.body, { x: 0, y: 0 });
+        M.Body.setAngularVelocity(p.body, 0);
+      }
+    }
     rebuildWalls(M, engine, w, h, false);
     const { scale } = pileOf(tasksRef.current, new Date(), pileWOf(w), h - navHeightPx() - MASTHEAD_H);
     scaleRef.current = scale;
@@ -1835,13 +1883,16 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         }
         if (li >= 0) {
           const nextSel = sel === li ? null : li;
-          if (nextSel === null) collapseDay();
+          if (nextSel === null) collapseDay();   // ★位置を戻すのは `collapseDay`
           else {
-            window.clearTimeout(closeTRef.current); setClosingDay(null);
+            window.clearTimeout(closeTRef.current);
+            closingRef.current = null; setClosingDay(null);
+            // ★開く**前**の位置を控える(まだ開いていないときだけ)。
+            if (panBeforeRef.current === null) panBeforeRef.current = worldTargetRef.current;
             expandedRef.current = nextSel; setExpanded(nextSel);
+            // ★たたいた曜日は**画面の左端(余白ぶん内側)**へ。
+            worldTargetRef.current = laneW * nextSel - PAD_L;
           }
-          // ★たたいた曜日は**画面の左端(余白ぶん内側)**へ。
-          worldTargetRef.current = nextSel === null ? Math.max(0, worldTargetRef.current) : laneW * nextSel - PAD_L;
           haptic(8); wake();
         }
         return;

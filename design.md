@@ -2,8 +2,7 @@
 
 数値の持ち主は `lib/tokens.ts`（余白・文字）/ `lib/constants.ts`（色）/
 `app/globals.css` の `:root`（動き）の**3か所だけ**。実装が食い違ったら本ファイルが正。
-★段を増やさないこと。**目盛りの外に居てよい例外**（`env(safe-area-inset-*)`／
-図形と物理の座標系／噛み合う部品寸法）と、段を決めた経緯は
+★段を増やさないこと。**目盛りの外に居てよいもの**は §6。段を決めた経緯は
 `docs/project_knowledge.md` §3。
 ★入れないもの … shadcn/ui・Tailwind・Framer Motion・`layoutId`・CSS の 3D 変形
 （`perspective` / `rotateX/Y`）。理由は `docs/archive/shell-redesign-2026-08.md` §65。
@@ -91,7 +90,7 @@ WEIGHT = { text: 400, bold: 700, heavy: 800 }
 
 ## 5. 機械チェック（作業の前後に必ず走らせる）
 
-★**#1〜#7 は 0 件。#8・#9 は件数を見て目視。**
+★**#1〜#7・#10〜#13 は 0 件。#8・#9 は件数を見て目視。**
 ルールと検出は必ず対で持つこと ― 検出の無い性質は例外なく劣化する。
 
 ```bash
@@ -113,11 +112,55 @@ grep -rn '#[0-9A-Fa-f]\{3,8\}\b' components app --include=*.tsx | grep -v 目盛
 grep -rnE '\b(paddingLeft|paddingRight|paddingInline): ' components --include=*.tsx
 # 9 横並びの center（目視。baseline であるべきものが無いか）
 grep -rn 'alignItems: "center"' components --include=*.tsx | wc -l
+# 10 位置の生の数値（隅のバッジなど）。★下の FIG は図形・物理のファイル（§6）
+FIG='GravityTab|DriftTab|SolidCanvas|GeoType|TabIcons|LeafletMap|Binder|TaskSpace'
+grep -rnE '\b(top|left|right|bottom|inset)[A-Za-z]*: *-?[1-9][0-9.]*' components app --include=*.tsx | grep -vE "$FIG" | grep -v 目盛りの外 | grep -vE ':[0-9]+: *[(/*]'
+# 11 fontSize と fontWeight は必ず対（style オブジェクト単位なので grep では書けない）
+#    ★これだけは件数ではなく**終了コード**で見る（0 なら OK）
+node tools/check-weight.mjs
+# 12 globals.css の 16進と生の余白（★色の持ち主は lib/constants.ts の1か所だけ）
+grep -nE '#[0-9A-Fa-f]{3,8}\b|(padding|margin)[a-z-]*: *[^;]*[1-9][0-9]*px' app/globals.css | grep -v 目盛りの外 | grep -vE '^[0-9]+: *(/\*|\*)'
+# 13 hair(2) の役の誤用（罫と光学的な詰め専用。器の左右の余白に使わない）
+grep -rn 'px \${SPACE.hair}px' components app --include=*.tsx
 ```
+
+---
+
+## 6. 目盛りの外（絵と物理の寸法）
+
+**画面の余白ではなく「絵と物理の寸法」であるものは、4の倍数へ丸めると
+物理法則が変わるか、絵が歪む。** だから目盛りに乗せない。
+
+| 種類 | 具体例 |
+|---|---|
+| **matter.js の力と場** | 初速・`frictionAir`・アトラクタの係数・`TAP_MOVE`(8px) |
+| **ALIGN / TIMELINE の寸法** | `ALIGN_MAX_W/H`・`PITCH_TIGHT/SPREAD`・`ARC_APEX_X`・`ARC_SWING`・`ROW_H`。★互いに縛り合っている（`H × 0.75 ≤ PITCH` を割ると図形が重なる）ので**一つだけ動かせない** |
+| **canvas の描画座標** | `SolidCanvas` / `GeoType` / `lib/solidPaint.ts` / `lib/paperTexture.ts` / `lib/spring.ts` のバネ係数 |
+| **図形そのものの寸法** | 綴じ穴の直径・装飾図形の `-height/2`（縦の中央合わせ）・アイコン内部の `gap`・✕印の2本の線の交点 |
+| **表示専用の巨大欧文** | `SWISS_XL`(72) と、その行間 `0.86`（字面を詰めて塊にする。`LEAD.flat`(1.0) では緩い） |
+| **端末が決める値** | `env(safe-area-inset-*)` を含む式（`TAB_PAD_TOP` / `NAV_BOTTOM_GAP` / `NAV_H` / `NAV_OFFSET`） |
+| **外部APIの引数** | Leaflet の `fitBounds({ padding: [40,40] })` |
+| **マスク** | `#000` は「色」ではなく「不透明」の意味 |
+
+**ファイルまるごと図形の座標系**なので検査 #10 から外すもの …
+`GravityTab` / `DriftTab` / `SolidCanvas` / `GeoType` / `TabIcons` / `LeafletMap` /
+`Binder` / `TaskSpace`。
+
+★**それ以外は、その行に理由を書く**（`// ★目盛りの外（…）` ／ JSX の中では `/* … */`）。
+検査はこの印だけで除外する。**印の無い例外は例外ではない。**
+
+---
+
+## 7. 検査の書き方（過去に2度やった失敗）
 
 ★★**除外を「行ごと」にしないこと。** 行に他のトークンがあるだけで行全体を捨てると、
 同じ行に同居した生の値を見逃す（#4 と #6 が実際にそれで取りこぼしていた）。
 **トークンは数字で始まらない**ので、`プロパティ: 数字` を直接見れば行ごとの除外は要らない。
 
-★**目盛りの外に居てよい値は、その行に理由を書く**（`// ★目盛りの外（…）` ／ JSX の中では
-`/* … */`）。検査はこの印だけで除外する。**印の無い例外は例外ではない。**
+★★**値が「見えているか」で判定を分けないこと。** #5 は `プロパティ: 数字` の形しか
+見ておらず、**三項の陰**（`marginBottom: x ? 22 : 0`）とテンプレの中の12件を見逃していた。
+
+★★**突き合わせの検証は「比較できた件数」を必ず表示すること。** 移行前後の
+computed style を突き合わせるとき、キーを「木の中の位置」で作ると、要素が1つ
+増減しただけで全キーがずれ、**比較0件のまま「差分なし」と誤報する**（第66巡に
+実際に起きた）。キーは**タグ＋中身＋文字サイズ＋同名の何番目**で作る。

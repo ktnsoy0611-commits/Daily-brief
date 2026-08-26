@@ -138,9 +138,9 @@ export default function RootLayout({
       zenMaruGothic.variable, delaGothicOne.variable, mplus1.variable,
     ].join(" ")}>
       {/* ★色の持ち主は `lib/constants.ts` の1か所だけ。CSS には**変数で配る**。
-          第66巡まで globals.css が #ECECEA / #1A1A18 / #04624A / #EE1B33 を
+          第66巡まで globals.css が地色・墨・緑・赤の4色を
           書き写していて、片方を変えるともう片方が必ず腐る状態だった。 */}
-      <style>{`:root{--c-bd-grey:${BD_GREY};--c-ink:${INK};--c-green:${GREEN};--c-rust:${RUST};--pad-x:${SPACE.lg}px}`}</style>
+      <style>{`:root{--c-bd-grey:${BD_GREY};--c-ink:${INK};--c-green:${GREEN};--c-rust:${RUST};--pad-x:${SPACE.lg}px;--space-sm:${SPACE.sm}px}`}</style>
       <body>{children}</body>
     </html>
   );

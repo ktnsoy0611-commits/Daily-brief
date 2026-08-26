@@ -773,7 +773,7 @@ button:active {
 /* ★★キーボードが出ているあいだ、帯の下にセーフエリアぶんを取らない
    (第25巡)。器の下端はキーボードの上端で、そこにホームバーは無いので、
    34px 取ると丸ごと死んだ隙間になる。印は `place()` が器に立てる。 */
-[data-composer-shell][data-kb] [data-band] { padding-bottom: 6px !important; }
+[data-composer-shell][data-kb] [data-band] { padding-bottom: var(--space-sm) !important; }
 /* ★★★**中の要素は時間差で出す**(2026-08-19・第26巡・要件3)。
    地が＋から広がるのに追従して、上のバー → 図形 → 帯 の順に、下から 8px
    上がりながら濃くなる。同時に出すと平坦で、視線の行き先が決まらない。

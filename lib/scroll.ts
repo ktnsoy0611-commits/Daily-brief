@@ -18,17 +18,22 @@
 // ★これは canvas と物理の座標系の道具(`lib/spring.ts` と同じ扱い)。
 //   CSS の transition には持ち込まない。
 
-/** 位置(いくつ目)と、離したあとの速さ、そして**着地させる先**。 */
-export interface Flick { p: number; v: number; t: number | null }
+/** 位置(いくつ目)と、離したあとの速さ、着地させる先、そして
+ *  **いま投げの最中か**(`armed`)。★指を置いている間は投げではないので、
+ *  吸着を働かせてはいけない(働かせると指の下で元の位置へ戻る)。 */
+export interface Flick { p: number; v: number; t: number | null; armed: boolean }
 
-export const flick = (p = 0): Flick => ({ p, v: 0, t: null });
+export const flick = (p = 0): Flick => ({ p, v: 0, t: null, armed: false });
 
 /** ★指の効き。1 なら「1ピッチ動かしたら1つ進む」。第62巡に **1.0＝完全な 1:1**
  *  (ユーザー指定)。★ここは**もう上げない** — 1 を超えると指より速く動く。 */
 export const SCROLL_GAIN = 1.0;
-/** 投げの強さ。指の速さ(px/イベント)をどれだけ先へ伸ばすか。第61巡の 0.11 → 0.08
- *  (`SCROLL_GAIN` を上げたぶん、掛け算の総量が上がりすぎないように下げる)。 */
-export const FLICK_K = 0.08;
+/** 投げの初速を、指の速さの何倍にするか。★★**1.0 ＝ 指と同じ速さで滑り出す**
+ *  (2026-08-26・第67巡)。第66巡までは 0.08 ＝ **指の 1/12** に絞っていて、
+ *  「シュッと払っても1つ分しか動かない」の直接の原因だった
+ *  (指 40px/イベントでも届く距離が 0.2 個ぶんしかなかった)。
+ *  ★離した瞬間に速さが変わらないので、指→滑走の継ぎ目も消える。 */
+export const FLICK_K = 1.0;
 /** ★★★投げの速さの**上限**(1フレームに進む「いくつ目」。第62巡)。
  *  ★第67巡以降は、これが `THROW_REACH` を通じて**一度に進む個数**の上限にもなる。
  *  上限が無いと、強く払ったとき1フレームで端まで飛び、**呼ぶ側の連鎖のバネが
@@ -45,14 +50,14 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
  *  長く払うほどズレる(`GravityTab` の `arcInv` を見よ。第63巡)。 */
 export function flickBy(f: Flick, deltaPx: number, pitch: number, lo: number, hi: number): void {
   f.p = clamp(f.p - (deltaPx * SCROLL_GAIN) / pitch, lo, hi);
-  f.t = null;   // 指で動かしている間は着地点を持たない
+  f.t = null; f.armed = false;   // 指で動かしている間は投げではない
 }
 
 /** 離した瞬間。`vPx` は指の速さ(px/イベント)。着地点は `flickStep` が
  *  `lo`/`hi` を知った最初のフレームで決める。 */
 export function flickThrow(f: Flick, vPx: number, pitch: number): void {
   f.v = clamp(-(vPx * FLICK_K * SCROLL_GAIN) / pitch, -V_MAX, V_MAX);
-  f.t = null;
+  f.t = null; f.armed = true;
 }
 
 /** ★★★**離した瞬間に着地点を決める**(2026-08-26・第67巡)。
@@ -83,8 +88,13 @@ const REACH_MAX = 6;
  * ★**自由に減速する区間を作らないこと** ― そこが「止まってからガクッ」になる。
  */
 export function flickStep(f: Flick, lo: number, hi: number, snap = true): boolean {
+  // ★★指を置いている間(まだ投げていない)は何もしない。ここを素通りさせると、
+  //   `f.t` が「いまの最寄り」に決まってしまい、**指の下で元の位置へ戻る**
+  //   (2026-08-26・第67巡のユーザー報告「指を離さずにスクロールすると戻る」)。
+  if (!f.armed) return false;
   if (!snap) {
     if (f.v !== 0) f.v = 0;
+    f.armed = false;
     return false;
   }
   if (f.t === null) {
@@ -92,7 +102,7 @@ export function flickStep(f: Flick, lo: number, hi: number, snap = true): boolea
     f.t = clamp(Math.round(f.p + reach), Math.ceil(lo), Math.floor(hi));
   }
   if (Math.abs(f.t - f.p) < SNAP_EPS && Math.abs(f.v) < SNAP_EPS) {
-    f.p = f.t; f.v = 0; f.t = null;
+    f.p = f.t; f.v = 0; f.t = null; f.armed = false;
     return false;
   }
   f.v += (f.t - f.p) * SNAP_K - f.v * SNAP_D;

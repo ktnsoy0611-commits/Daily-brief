@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Body, Engine } from "matter-js";
-import { LayerName } from "@/components/tasks/LayerName";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
@@ -574,7 +573,6 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
 
   return (
     <div style={{ position: "absolute", inset: 0 }}>
-      <LayerName text="DRIFT" />
 
       {/* 無重力の場。 */}
       {/* ★★★`full-bleed` を**ここで掛けないこと**(第63巡)。器の bleed は

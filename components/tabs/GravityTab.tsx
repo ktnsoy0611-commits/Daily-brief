@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Body, Engine, World } from "matter-js";
-import { LayerName } from "@/components/tasks/LayerName";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
@@ -47,16 +46,28 @@ const MASS_K = 1.6;
 const FILL = 0.52;
 const SCALE_MIN = 0.50;
 const MASTHEAD_H = 124;
+/** ★★★場の**上下の端だけ**を地色へ溶かす幅(2026-08-26・第67巡)。
+ *  第66巡までは矩形で切っていたので、切り口が**題字の下・タブバーの上の
+ *  何も無い地色の上**に出て、線として見えていた(実測: 下の切り口 y=684 に対し
+ *  タブバーの上端は 716 ―「開けた場所」で切っていた)。
+ *  ★これは第65巡に撤去した「霧」とは別物 ― あちらは**焦点からの距離**で薄くして
+ *  読みたい行を隠していた。これは**画面の端**でだけ薄くするので、消えるのは
+ *  「もう画面の外」の行だけ。
+ *  ★★DOM(`.mode-panel` のマスク)と canvas(`destination-out`)の**両方**がこの値を
+ *  読む ― 出どころを2つにすると図形と文字の消え方が食い違う。 */
+const EDGE_FADE = SPACE.xl;
 const FIT_W = 0.78;
 const FIT_H = 0.56;
 const SCALE_MAX = 1.15;
 /** ★★★山が使える左右の内寸(2026-08-25・第62巡にユーザー指定
  *  「箱の左右の幅を狭めて、タブバーや他のレイアウトと統一して」)。
- *  タブバーは `left:0; right:0; padding: 0 16px`(`AppShell`)＝**画面の端から 16px**。
- *  canvas は `full-bleed` で左右 16px ずつ広いので、**canvas 座標では 32px**。
+ *  ★★第67巡に **32 → 16** へ戻した(ユーザー指定「タイトルの左端に合うくらいまで
+ *  幅を広く戻してください」)。第62巡の注記「canvas は full-bleed で左右 16px ずつ
+ *  広いので canvas 座標では 32px」は**誤り**だった ― `.full-bleed` は親の 16px の
+ *  パディングを打ち消すだけなので、**canvas は 0..390 ＝ 画面そのもの**。
+ *  実測: 山の塗りが 33..357 に対し、題字の左端は 16 だった。
  *  ★**左右の出どころはここだけ** — 壁も、湧く x も、`pileOf` に渡す幅も全部これを通す。 */
-const BLEED = SPACE.lg;
-const PILE_INSET = BLEED + SPACE.lg;
+const PILE_INSET = SPACE.lg;
 /** 山が使える幅(canvas の幅から左右の内寸を引いたもの)。 */
 const pileWOf = (w: number) => Math.max(80, w - PILE_INSET * 2);
 const SCALE_EPS = 0.02;
@@ -788,6 +799,22 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         ctx.restore();
       }
       ctx.restore();
+      // ★★端だけ地色へ溶かす。`destination-out` なので**すでに描いた絵を削る**。
+      //   DOM 側の `.mode-panel` のマスクと同じ `EDGE_FADE` を使うこと。
+      {
+        const fade = (y0: number, y1: number) => {
+          const g = ctx.createLinearGradient(0, y0, 0, y1);
+          g.addColorStop(0, "rgba(0,0,0,1)");
+          g.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.save();
+          ctx.globalCompositeOperation = "destination-out";
+          ctx.fillStyle = g;
+          ctx.fillRect(0, Math.min(y0, y1), w, Math.abs(y1 - y0));
+          ctx.restore();
+        };
+        fade(fld.top, fld.top + EDGE_FADE);
+        fade(fld.floor, fld.floor - EDGE_FADE);
+      }
       pendingAlign = budget === 0 || glyphBudget === 0
         || itemsRef.current.some((it) => !peekSolidBitmap(it.paint, bakeUnit, bakeDpr));
     }
@@ -1892,7 +1919,8 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         }
       }
       g = { id: e.pointerId, x: e.clientX, y: e.clientY, edge, axis: "", moved: false, lastX: e.clientX, lastY: e.clientY, vy: 0, p0: scrollRef.current.p, accum: 0 };
-      if (modeRef.current === "align") scrollRef.current.v = 0;
+      // ★指を置いたら投げは終わり(吸着を止める)。ここで止めないと指の下で戻る。
+      if (modeRef.current === "align") { scrollRef.current.v = 0; scrollRef.current.armed = false; }
       if (modeRef.current === "timeline") wDragRef.current = false;
     };
 
@@ -1963,7 +1991,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         // ★★**指の累積の道のり**を番号へ戻す(`arcInv`)。1イベントずつ換算すると、
         //   間隔が場所で違うぶんだけ**払うほどズレていく**(上の `arcInv` を見よ)。
         g.accum += d;
-        scrollRef.current.v = 0;
+        scrollRef.current.v = 0; scrollRef.current.armed = false;
         scrollRef.current.p = Math.max(-0.4, Math.min(last + 0.4, g.p0 + arcInv(-g.accum)));
         syncFocus(); g.vy = d; wake();
       } else if (m === "timeline" && !tlDragRef.current && g.axis === "x" && expandedRef.current === null) {
@@ -2082,7 +2110,6 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   // ★幅の軸を細く(`WD_WDTH`)したぶん、**同じレーン幅でより大きく**できる
   //   … 変形せずに「少し縦長」になる(第56巡にユーザー確定)。
   const laneFs = Math.min(SWISS_XL, Math.floor((laneW * 0.92) / (3 * WD_ADV)));
-  const layerName = mode === "align" ? "ALIGN" : mode === "timeline" ? "TIMELINE" : "GRAVITY";
   // ★閉じている途中も**同じ日を出したまま**にして、拭き取りを逆再生する。
   const shownIdx = expanded ?? closingDay;
   const expandedDay = shownIdx !== null ? days[shownIdx] : null;
@@ -2094,15 +2121,16 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", willChange: "transform" }} />
       </div>
 
-      <LayerName text={layerName} />
-
       {/* ★★文字の行も**図形と同じ帯**で切る(第65巡)。器そのものを縮めると行の
-          座標系までずれるので、`clip-path` の矩形で切る ― フェードではないので
-          「マスクを使わない」に反しない。canvas 側は `draw` が同じ帯で `ctx.clip()`。 */}
+          座標系までずれるので、器はそのままにして**マスク**で切る。
+          ★第67巡に矩形の `clip-path` からグラデーションのマスクへ ― 端の
+          `EDGE_FADE` だけを地色へ溶かして、切り口の線を消す。canvas 側は
+          `draw` が同じ `EDGE_FADE` で `destination-out` をかける。 */}
       {mode === "align" && (
         <div className="mode-panel" style={{
           position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden",
-          clipPath: `inset(${MASTHEAD_H}px 0 calc(${NAV_H} + ${GROUND_LIFT}px) 0)`,
+          maskImage: `linear-gradient(to bottom, transparent ${MASTHEAD_H}px, #000 ${MASTHEAD_H + EDGE_FADE}px, #000 calc(100% - ${NAV_H} - ${GROUND_LIFT}px - ${EDGE_FADE}px), transparent calc(100% - ${NAV_H} - ${GROUND_LIFT}px))`,  // ★目盛りの外（マスクの #000 は「色」でなく「不透明」）
+          WebkitMaskImage: `linear-gradient(to bottom, transparent ${MASTHEAD_H}px, #000 ${MASTHEAD_H + EDGE_FADE}px, #000 calc(100% - ${NAV_H} - ${GROUND_LIFT}px - ${EDGE_FADE}px), transparent calc(100% - ${NAV_H} - ${GROUND_LIFT}px))`,  // ★目盛りの外（マスクの #000 は「色」でなく「不透明」）
         }}>
           {items.map((it, i) => {
             const dl = daysLabel(it.task.dueDate, today);
@@ -2121,7 +2149,11 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                     いちばん大きな声が「0」だった ― 主従が逆だった。 */}
                 <div style={{
                   fontFamily: SANS, fontWeight: WEIGHT.bold, color: INK,
-                  fontSize: focus ? TYPE.display : TYPE.head,
+                  // ★第67巡にユーザー指定「選択中の中央の文字は少し大きく、
+                  //   それ以外を少し小さくして、差がわかるように」。
+                  //   `TYPE` は `display`(26) が最上段なので、**下を下げて**差を広げた
+                  //   （26/20＝1.3倍 → 26/16＝1.63倍）。
+                  fontSize: focus ? TYPE.display : TYPE.lead,
                   lineHeight: LEAD.snug, overflow: "hidden",
                   // ★焦点だけ2行まで折り返す。左に大きな図形が居るぶん文字の幅が狭いので、
                   //   1行で切ると題がほとんど読めない。

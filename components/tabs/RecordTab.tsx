@@ -21,12 +21,12 @@ import type { TabProps } from "@/lib/types";
 // 中身は components/VoiceStudio.tsx。タブバー右端の録音アイコンから出る
 // 全画面のオーバーレイも**同じ部品**なので、見た目と操作が必ず一致する。
 
-export function RecordTab({ profileButton, voice, appActive }: TabProps & { appActive?: boolean }) {
+export function RecordTab({ voice, appActive }: TabProps & { appActive?: boolean }) {
   return (
     <main className="full-bleed" style={{ position: "relative", flex: 1, minHeight: 0 }}>
       <VoiceStudio voice={voice} active={appActive} />
       <div style={{ position: "absolute", top: TAB_PAD_TOP, left: SPACE.lg, right: SPACE.lg, pointerEvents: "none" }}>
-        <Masthead title={appTitle("journal")} corner={<span style={{ pointerEvents: "auto" }}>{profileButton}</span>} />
+        <Masthead title={appTitle("journal")} />
       </div>
     </main>
   );

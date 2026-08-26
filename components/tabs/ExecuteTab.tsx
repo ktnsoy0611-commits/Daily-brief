@@ -356,7 +356,7 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
 // 集約している(components/Dashboard.tsx、HANDOFF §8.25)。プランタブは
 // 「地図で見て、プランを立てて、行き先を選ぶ」ことだけを担う。
 
-export function ExecuteTab({ appState, persist, showToast, profileButton, selection, toggleItemSelection, addItemIds }: TabProps) {
+export function ExecuteTab({ appState, persist, showToast, selection, toggleItemSelection, addItemIds }: TabProps) {
   const [pinItem, setPinItem] = useState<Item | null>(null);
   // 選択状態はAppShellへ引き上げ、ストックタブと共有している(タブ・アプリを
   // 跨いで選べるようにするため)。draftSelectionという名前はこのタブ内での
@@ -387,7 +387,7 @@ export function ExecuteTab({ appState, persist, showToast, profileButton, select
 
   return (
     <>
-      <Masthead title={appTitle("life")} corner={profileButton} />
+      <Masthead title={appTitle("life")} />
       <MapPlanner
         stocked={stocked} draftSelection={draftSelection}
         onOpenPin={setPinItem} onToggleItem={toggleDraftItem} onApplyPlan={applyGeneratedPlan}

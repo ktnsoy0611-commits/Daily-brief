@@ -1,21 +1,27 @@
 "use client";
 
-import { SPACE, TYPE, WEIGHT, RADIUS } from "@/lib/tokens";
+import { SPACE, TYPE, WEIGHT, RADIUS, LEAD, TRACK } from "@/lib/tokens";
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { TabIcon } from "@/components/TabIcons";
 import { Press } from "@/components/Button";
-import { CAP } from "@/components/tasks/Popover";
-import { INK, PAPER } from "@/lib/constants";
+import { INK, LATIN, PAPER } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { ms, T_OUT } from "@/lib/motion";
 
-// ★★**作るものを選ぶ輪**(2026-08-19・第28巡にユーザー指定)。
+// ★★**このアプリの入口の輪**(2026-08-19・第28巡にユーザー指定)。
 //
-// タブバー右端の丸を押すと、その丸から**円が広がって** RECORD と TASK が
-// 出てくる。どちらかを押すと、録音のオーバーレイか、タスクの入力画面へ。
+// タブバー右端の丸を押すと、その丸から**円が広がって** RECORD / TASKS /
+// SETTING が出てくる。録音のオーバーレイ・タスクの入力画面・設定画面へ。
 // これで**タスクの追加が3つのアプリのどこからでもできる**ようになる
 // (以前はタスクアプリの ＋ からしか作れなかった)。
+//
+// ★★**設定もここに入れた**(2026-08-26・第68巡にユーザー指定)。以前は各画面の
+//   `Masthead` 右上に歯車の丸を常設していたが、常に見えている必要のない入口を
+//   7画面ぶん占め続けていた。**入口は1か所に集める**。
+//
+// ★★**アイコンは持たない。文字だけ**(同巡にユーザー指定)。3つを見分けるのに
+//   絵は要らず、絵があると「文字＋絵」の2つの塊が半径の線上で競って、
+//   輪の中心から放射する線が読み取れなくなる。
 //
 // ★広がり方は入力画面と**同じ作法**にしてある —
 //   円で切り抜く(`clip-path`)/ 曲線は `--ease-sheet` / 中身は時間差(`.tc-cue`)。
@@ -35,7 +41,7 @@ import { ms, T_OUT } from "@/lib/motion";
 /** 押した丸の場所。ここを中心に円が広がる。 */
 export interface MenuAt { x: number; y: number; w: number; h: number }
 
-/** 円の大きさ。中の2つが収まるだけ。 */
+/** 円の大きさ。中の3つが収まるだけ。★目盛りの外（極座標の半径） */
 const R = 172;
 
 /** 0°=右・時計回り。文字が逆さに見える範囲(90°〜270°)だけ180°戻す。 */
@@ -44,16 +50,14 @@ function legibleAngle(deg: number) {
   return n > 90 && n < 270 ? n - 180 : n;
 }
 
-export function CreateMenu({ at, onRecord, onTask, onClose }: {
+export function CreateMenu({ at, onRecord, onTask, onSetting, onClose }: {
   at: MenuAt;
   onRecord: () => void;
-  /** 押した要素を渡す — 入力画面がその場所から広がる。 */
   onTask: () => void;
+  onSetting: () => void;
   onClose: () => void;
 }) {
   const discRef = useRef<HTMLDivElement | null>(null);
-  /** TASK の丸。入力画面はここから広がる。 */
-  const taskRef = useRef<HTMLSpanElement | null>(null);
   /** 二重に閉じ始めない(タップ連打・選択と外タップの競合)よう見張る。 */
   const closingRef = useRef(false);
   const cx = at.x + at.w / 2;
@@ -89,10 +93,7 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
 
   if (typeof document === "undefined") return null;
 
-  const item = (
-    label: string, icon: "record" | "pile", cue: string, angleDeg: number,
-    run: () => void, ref?: React.Ref<HTMLSpanElement>,
-  ) => (
+  const item = (label: string, cue: string, angleDeg: number, run: () => void) => (
     // ★★`tc-cue`(登場の時間差アニメーション)は`transform`を`none`まで
     //   動かして止める(`fill-mode:both`)。**半径の向きの回転(下)と同じ
     //   要素に載せると、アニメーションの終値が回転を上書きして消してしまう**
@@ -101,25 +102,21 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
       key={label}
       style={{ position: "absolute", left: R, top: R, width: 0, height: 0, transform: `rotate(${angleDeg}deg)` }}
     >
-      <div style={{ position: "absolute", left: btnR + 22, top: 0, transform: "translateY(-50%)" }}>
+      {/* ★目盛りの外（半径の線の始まり。押した丸の縁 `btnR` から `SPACE.xl` 離す
+          ＝丸に文字が乗らない最小の距離。余白ではなく極座標の半径） */}
+      <div style={{ position: "absolute", left: btnR + SPACE.xl, top: 0, transform: "translateY(-50%)" }}>
         <div className={`tc-cue ${cue}`}>
           <Press
             onPress={() => { haptic(10); run(); }}
             aria-label={label}
-            style={{ display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.sm}px ${SPACE.xs}px`, color: PAPER }}
+            style={{ padding: `${SPACE.md}px ${SPACE.sm}px`, color: PAPER }}
           >
             <span style={{
-              ...CAP, fontSize: TYPE.small, fontWeight: WEIGHT.text, whiteSpace: "nowrap", display: "inline-block",
+              fontFamily: LATIN, fontSize: TYPE.lead, fontWeight: WEIGHT.heavy,
+              lineHeight: LEAD.flat, letterSpacing: TRACK.caps,
+              whiteSpace: "nowrap", display: "inline-block",
               transform: `rotate(${legibleAngle(angleDeg) - angleDeg}deg)`,
             }}>{label}</span>
-            <span ref={ref} className="tc-lamp" style={{
-              width: 34, height: 34, borderRadius: RADIUS.circle, flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: `inset 0 0 0 1.5px rgba(250,250,249,0.34)`,
-              transform: `rotate(${-angleDeg}deg)`,
-            }}>
-              <TabIcon name={icon} color={PAPER} size={17} />
-            </span>
           </Press>
         </div>
       </div>
@@ -138,9 +135,11 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
         left: Math.round(cx - R), top: Math.round(cy - R), width: R * 2, height: R * 2,
         borderRadius: RADIUS.circle, background: INK,
       }}>
-        {/* ★半径は丸(押した場所)から円周へ。左上の扇へ2本(RECORDが上寄り)。 */}
-        {item("RECORD", "record", "tc-cue-1", 245, () => { close(); onRecord(); })}
-        {item("TASK", "pile", "tc-cue-2", 205, () => { close(); onTask(); }, taskRef)}
+        {/* ★半径は丸(押した場所)から円周へ。左上の扇へ**35°ずつ3本**。
+            上から RECORD → TASKS → SETTING(いちばん水平＝いちばん指に近い)。 */}
+        {item("RECORD", "tc-cue-1", 255, () => { close(); onRecord(); })}
+        {item("TASKS", "tc-cue-2", 220, () => { close(); onTask(); })}
+        {item("SETTING", "tc-cue-3", 185, () => { close(); onSetting(); })}
       </div>
     </div>
   ), document.body);

@@ -70,7 +70,7 @@ function GoalDetailSheet({ goal, draft, onDraftChange, onManualAdd, onRemove, on
 // ゴールタブ: 終わりのない継続の記録。カードは2列グリッドで並び、他のカード
 // (比率3:4)とは違う比率(3:5)・色で目標カードだと視覚的にわかるようにする。
 // 追加は末尾の＋タイルから。
-export function GoalsTab({ appState, persist, profileButton }: TabProps) {
+export function GoalsTab({ appState, persist }: TabProps) {
   const [openGoalId, setOpenGoalId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [manualDraft, setManualDraft] = useState<Record<string, string>>({});
@@ -128,7 +128,7 @@ export function GoalsTab({ appState, persist, profileButton }: TabProps) {
 
   return (
     <>
-      <Masthead title={appTitle("life")} corner={profileButton} />
+      <Masthead title={appTitle("life")} />
 
       {/* ★左右のパディングは持たない（持ち主は AppShell の 16px だけ。design.md §2）。
           第66巡まで「16(AppShell) + 8(ここ) + 9.8(88% を中央寄せ)」の3段重ねで

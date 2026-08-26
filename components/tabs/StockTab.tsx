@@ -200,7 +200,7 @@ function StackSection({ title, children }: { title: string; children: React.Reac
 // 書く自由文の受信箱で、ブリーフが形にして返したカードだけがここに並ぶ)。
 // ブリーフのKEEP由来のカードにはKEEP、ウィッシュが形になったカードには
 // WISHのバッジが付き、手動追加したものと見分けられる。
-export function StockTab({ appState, persist, showToast, profileButton, selection, toggleItemSelection, openWishSheet }: TabProps) {
+export function StockTab({ appState, persist, showToast, selection, toggleItemSelection, openWishSheet }: TabProps) {
   const [openDomain, setOpenDomain] = useState<ItemDomain | null>(null);
   const [adding, setAdding] = useState<ItemDomain | null>(null);
   const [itemDetail, setItemDetail] = useState<Item | null>(null);
@@ -282,7 +282,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
 
   return (
     <>
-      <Masthead title={appTitle("life")} corner={profileButton} />
+      <Masthead title={appTitle("life")} />
 
       <main style={{ flex: 1, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl }}>
         {ITEM_DOMAINS.map((d) => (

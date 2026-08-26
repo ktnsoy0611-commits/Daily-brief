@@ -206,7 +206,7 @@ const POOL_CAP = 30;
 // 構造的に起こらないようにする。
 const GROWTH_FOOTER_SLOT = 58;
 
-export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) {
+export function BriefTab({ appState, persist, goTab }: TabProps) {
   const [drag, setDrag] = useState({ dx: 0, dy: 0, active: false });
   const [exit, setExit] = useState<"keep" | "skip" | null>(null);
   const [binderItem, setBinderItem] = useState<BriefCard | null>(null);
@@ -599,7 +599,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
 
   return (
     <>
-      <Masthead title={appTitle("life")} corner={profileButton} />
+      <Masthead title={appTitle("life")} />
       <div style={{ display: "flex", gap: SPACE.xs, padding: `${SPACE.md}px ${SPACE.xs}px ${SPACE.lg}px` }}>
         {deck.map((c, i) => (
           <span key={c.id} style={{ flex: 1, height: 3, borderRadius: RADIUS.sm, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? SHADE_DEEP : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background var(--t-item) var(--ease-settle)" }} />

@@ -24,7 +24,7 @@ import { TaskSpace } from "@/components/tasks/TaskSpace";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
-import { BD_GREY, HEADER_CHIP_SIZE, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, SOFT_SHADOW, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
+import { BD_GREY, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { kickViewport } from "@/lib/viewportKick";
@@ -917,18 +917,11 @@ export function AppShell() {
   // ユーザーの手編集(設定画面での追加・2段階削除)は引き続き可能で、
   // syncTasteToMyBrainでmy-brainへ反映される。
 
-  // 設定ボタン。アイコンは幾何アイコン(TabIcons の gear)。以前ここに出して
-  // いた興味の件数バッジは、情報として意味を成していないので撤去した
-  // (2026-08-03)。
-  const profileButton = useMemo(() => (
-    <button onClick={() => { haptic(5); setShowProfile(true); }} aria-label="設定" style={{
-      width: HEADER_CHIP_SIZE, height: HEADER_CHIP_SIZE, borderRadius: RADIUS.circle,
-      background: PAPER, border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-      cursor: "pointer", color: INK, boxShadow: SOFT_SHADOW, padding: 0, flexShrink: 0,
-    }}>
-      <TabIcon name="gear" color={INK} size={17} />
-    </button>
-  ), []);
+  // ★★設定の入口は**右下の輪の SETTING だけ**(2026-08-26・第68巡にユーザー指定)。
+  //   以前は各画面の `Masthead` 右上に歯車の丸を常設していた
+  //   (`TabProps.profileButton` → 7画面の `corner`)が、常に見えている必要の
+  //   ない入口が全画面の右上を占め続けていた。入口は1か所に集める。
+  const openSetting = useCallback(() => { haptic(5); setShowProfile(true); }, []);
   // ★props をメモ化する。以前はここで毎レンダー新しいオブジェクトを作って
   // いたため、シェルが再レンダーされるたびにマウント済みの全タブが
   // 作り直されていた(AppColumnのmemoも素通りしてしまう)。
@@ -950,8 +943,8 @@ export function AppShell() {
   // ストックタブ(ウィッシュの一覧がある場所)から開く。
   const openWishSheet = useCallback(() => { haptic(5); setAddingWish(true); }, []);
   const tabProps = useMemo(
-    () => (appState ? { appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, setSelection, voice, openWishSheet } as TabProps : null),
-    [appState, persist, showToast, goTab, profileButton, selection, toggleItemSelection, addItemIds, voice, openWishSheet],
+    () => (appState ? { appState, persist, showToast, goTab, selection, toggleItemSelection, addItemIds, setSelection, voice, openWishSheet } as TabProps : null),
+    [appState, persist, showToast, goTab, selection, toggleItemSelection, addItemIds, voice, openWishSheet],
   );
 
   // 認証ゲート(Supabase構成済みのときだけ)。未構成なら以下の2分岐は素通り。
@@ -1092,6 +1085,7 @@ export function AppShell() {
           onClose={() => setMenuAt(null)}
           onRecord={openStudio}
           onTask={openNewTask}
+          onSetting={openSetting}
         />
       )}
 

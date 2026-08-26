@@ -3,8 +3,6 @@
 // here even though the eventual Supabase schema is snake_case (mapping happens
 // at the data-access layer when that swap happens, not in these UI-facing types).
 
-import type { ReactNode } from "react";
-
 // ---- Item: 収集物の統一モデル ------------------------------------------------
 //
 // 「何であるか(kind)」と「どこかへ行くことが絡むか(area、場所プロパティ)」を
@@ -539,7 +537,6 @@ export interface TabProps {
   persist: (next: AppState) => void;
   showToast: (msg: string) => void;
   goTab: (tab: TabId) => void;
-  profileButton?: ReactNode;
   selection: PlanSelection;
   toggleItemSelection: (id: string) => void;
   addItemIds: (ids: string[]) => void;

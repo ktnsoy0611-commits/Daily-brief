@@ -196,7 +196,7 @@ function SummaryBlock({ text, compact }: { text: string; compact?: boolean }) {
   );
 }
 
-export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: JournalTabId }) {
+export function JournalTab({ appState, tab }: TabProps & { tab: JournalTabId }) {
   const [openDay, setOpenDay] = useState<DayRecord | null>(null);
   const days = buildDayRecords(appState);
   const summaries = appState.daySummaries ?? {};
@@ -211,7 +211,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
     const empty = dayRecordCount(todayRec) === 0 && !summaries[todayRec.dateKey] && notes.length === 0;
     return (
       <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-        <Masthead title={appTitle("journal")} corner={profileButton} />
+        <Masthead title={appTitle("journal")} />
         {empty ? null : (
           <>
             {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
@@ -245,7 +245,7 @@ export function JournalTab({ appState, profileButton, tab }: TabProps & { tab: J
 
   return (
     <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-      <Masthead title={appTitle("journal")} corner={profileButton} />
+      <Masthead title={appTitle("journal")} />
       {past.length === 0 ? null : (
         <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xl }}>
           {months.map((m) => (

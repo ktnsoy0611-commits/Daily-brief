@@ -541,9 +541,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const ruleRefs = useRef<(HTMLDivElement | null)[]>([]);
   const detailRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
-  /** ★閉じている途中の日(`ms(T_OUT)` のあいだだけ残して拭き取りを逆再生する)。
+  /** ★閉じている途中の日(**隙間が閉じ切るまで**残す。判定は `advance()`)。
    *  これが無いと詳細の DOM が**即座に消えて**「閉じるアニメーションが無い」に
-   *  見える(第62巡のユーザー指摘)。隙間(`gapRef`)の方はバネで閉じていた。 */
+   *  見える(第62巡のユーザー指摘)。 */
   const [closingDay, setClosingDay] = useState<number | null>(null);
   /** ★閉じている最中かを**描画ループから**見るための控え(state は毎フレーム読めない)。 */
   const closingRef = useRef<number | null>(null);
@@ -553,7 +553,6 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const expandedTasksRef = useRef<Task[]>([]);
   /** ★曜日を開く**前**の横スクロール位置。閉じたらここへ戻す。 */
   const panBeforeRef = useRef<number | null>(null);
-  const closeTRef = useRef(0);
   const expandedRef = useRef<number | null>(null);
   /** 曜日の伸び。**指が動かす**(0..TL_STRETCH)。 */
   const riseRef = useRef(0);
@@ -664,7 +663,12 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const laneWOf = useCallback(() => sizeRef.current.w / LANES_VISIBLE, []);
   /** レーン i の左端(いまの横スクロールと隙間を反映)。 */
   const laneLeft = useCallback((i: number) => {
-    const sel = expandedRef.current;
+    // ★★★閉じている最中(`closingRef`)も**隙間の主**でいること(第68巡)。
+    //   `expandedRef` だけを見ていたので、閉じ始めた**その1フレーム**で
+    //   すべてのレーン(縦線・曜日の札・図形)から隙間が消えていた ―
+    //   詳細のパネルだけが 600ms かけて拭かれるので、ユーザーからは
+    //   「縦の列だけ閉じるのが早すぎる／下の横線と合っていない」に見えた。
+    const sel = expandedRef.current ?? closingRef.current;
     return laneWOf() * i + (sel !== null && i > sel ? gapRef.current.p : 0) - worldRef.current.p;
   }, [laneWOf]);
 
@@ -1115,13 +1119,20 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         springTo(worldRef.current, wt, K_SETTLE, D_SETTLE);
         if (!settled(worldRef.current, wt, 0.05)) moving = true;
       }
-      // ★★閉じている最中も隙間を**開けたまま**にする(2026-08-26・第67巡)。
-      //   第66巡までは `expandedRef` が null になった瞬間に隙間が閉じ始めるので、
-      //   詳細のパネル(`.tl-detail.out` が拭き取りを逆再生している)が**隣の列に
-      //   覆われて**、ユーザーからは「一瞬で閉じた」と見えていた。
-      const gt = expandedRef.current === null && closingRef.current === null ? 0 : GAP_W;
+      // ★★★詳細の**見え幅は隙間そのもの**(2026-08-26・第68巡)。第67巡までは
+      //   拭き取りが CSS(`.tl-detail.out` / `--t-out`)、隙間がバネ、横の復帰が
+      //   別のバネ ―**3つの別々の時計**で動いていたので、前のめりな
+      //   `--ease-sheet` が 150ms で面を消し切る一方、隣の列はまだ 1px も
+      //   動いておらず「アニメーションが無い」と見えていた。
+      //   いまは隙間のバネ1本だけが動かし(下の `clipPath`)、閉じは**即座に**始まる。
+      const gt = expandedRef.current === null ? 0 : GAP_W;
       springTo(gapRef.current, gt, K_SETTLE, D_SETTLE);
       if (!settled(gapRef.current, gt, 0.05)) moving = true;
+      // ★隙間が**閉じ切ったら**片づける(固定のタイマーで測らない)。中身は
+      //   その前に幅 0 まで拭き取られている(下の `clipPath`)。
+      if (closingRef.current !== null && settled(gapRef.current, 0, 0.05)) {
+        closingRef.current = null; setClosingDay(null);
+      }
       // ★★閉じている途中(`tl-out`)は、器を運ぶのではなく**山へ戻す**。
       //   `mode` は timeline のままなので、帯も縦線もその場で潰れ続ける。
       const out = ph === "tl-out";
@@ -1165,7 +1176,13 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       }
       const sel = expandedRef.current ?? closingRef.current;
       const det = detailRef.current;
-      if (det && sel !== null) det.style.transform = `translateX(${(laneLeft(sel) + laneWOf() + SPACE.lg).toFixed(1)}px)`;
+      if (det && sel !== null) {
+        det.style.transform = `translateX(${(laneLeft(sel) + laneWOf() + SPACE.lg).toFixed(1)}px)`;
+        // ★★開きも閉じもここだけが決める。パネルの左端はレーンの右＋`SPACE.lg` に
+        //   在るので、隙間のうち左右の余白(`SPACE.lg`×2)を引いたぶんが中身の幅。
+        const shown = Math.max(0, Math.min(1, (gapRef.current.p - SPACE.lg * 2) / DETAIL_W));
+        det.style.clipPath = `inset(0 ${((1 - shown) * 100).toFixed(2)}% 0 0)`;
+      }
       // ★★★詳細の各行を**その図形の高さ**へ置く(2026-08-26・第67巡にユーザー指定)。
       //   行の縦の中心を図形の中心に合わせ、近くて重なるときは**下から順に押しのける**。
       //   ★毎フレームここで置くのは、図形が物理で動き続けるから ― CSS の
@@ -1451,10 +1468,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       worldTargetRef.current = panBeforeRef.current;
       panBeforeRef.current = null;
     }
-    window.clearTimeout(closeTRef.current);
-    closeTRef.current = window.setTimeout(() => {
-      closingRef.current = null; setClosingDay(null); wakeRef.current();
-    }, ms(T_OUT));
+    // ★★DOM を外す合図は**隙間が閉じ切ったとき**(第68巡)。固定のタイマー
+    //   (`ms(T_OUT)`)で測っていたぶん、バネの実際の長さとズレていた。判定は
+    //   `advance()` の中に在る。
     wakeRef.current();
   }, []);
 
@@ -1533,7 +1549,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       phaseRef.current = null;
       itemsRef.current = []; setItems([]);
       expandedRef.current = null; setExpanded(null);
-      window.clearTimeout(closeTRef.current); setClosingDay(null);
+      closingRef.current = null; setClosingDay(null);
       backRef.current = new Set();
       riseRef.current = 0; riseDragRef.current = true; riseSRef.current = spring(0);
       dropAll();
@@ -1943,7 +1959,6 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
           const nextSel = sel === li ? null : li;
           if (nextSel === null) collapseDay();   // ★位置を戻すのは `collapseDay`
           else {
-            window.clearTimeout(closeTRef.current);
             closingRef.current = null; setClosingDay(null);
             // ★開く**前**の位置を控える(まだ開いていないときだけ)。
             if (panBeforeRef.current === null) panBeforeRef.current = worldTargetRef.current;
@@ -2386,13 +2401,14 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
               ★★行は**図形の高さに合わせて**置く(位置は毎フレーム `syncDetail` が
               入れる)。近い図形どうしで行が重なるときは下へ押しのける。 */}
           {expandedDay && (
-            // ★★`key` を開き／閉じで変えて**必ず作り直す**(2026-08-26・第67巡)。
-            //   同じ DOM を使い回すと、CSS の animation が再開せず
-            //   「2度目以降、閉じるアニメーションが出ない」になる。
-            <div key={`${expandedDay}-${expanded === null ? "out" : "in"}`}
-              ref={detailRef} className={`tl-detail${expanded === null ? " out" : ""}`} style={{
+            // ★★開き／閉じの拭き取りは **CSS を持たない**(2026-08-26・第68巡)。
+            //   見え幅は `advance()` が隙間(`gapRef`)から毎フレーム `clipPath` に
+            //   入れる ― 隣の列が戻ってくる動きと**原理的にズレない**。
+            //   ここの初期値は「まだ何も見えていない」状態。
+            <div ref={detailRef} style={{
               position: "absolute", left: 0, width: DETAIL_W,
               top: MASTHEAD_H, bottom: BAND_BOTTOM, zIndex: 3, pointerEvents: "none",
+              clipPath: "inset(0 100% 0 0)",
             }}>
               {/* 日の見出し … 帯のすぐ上に固定。ベースラインで並べる。 */}
               <div style={{

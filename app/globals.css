@@ -531,21 +531,9 @@ button:active {
 }
 
 /* ★曜日をたたくと開くその日の詳細 … **左端はそのままで、右へ広がる**
-   (2026-08-24・第54巡にユーザー指定)。幅を animate すると再レイアウトが走るので、
-   `clip-path` を右から開く(位置は動かさない＝左端が固定されて見える)。 */
-.tl-detail { animation: tl-detail-open var(--t-in) var(--ease-sheet) both; }
-@keyframes tl-detail-open {
-  from { clip-path: inset(0 100% 0 0); }
-  to   { clip-path: inset(0 0 0 0); }
-}
-/* ★★閉じは**開きの逆再生**(第62巡にユーザー指定「閉じる時にアニメーションがない」)。
-   React 側は `ms(T_OUT)` のあいだ DOM を残す(`closingDay`)。長さは必ずここと揃える。 */
-.tl-detail.out { animation: tl-detail-close var(--t-out) var(--ease-sheet) both; }
-@keyframes tl-detail-close {
-  from { clip-path: inset(0 0 0 0); }
-  to   { clip-path: inset(0 100% 0 0); }
-}
-@media (prefers-reduced-motion: reduce) { .tl-detail { animation: none; } }
+   (2026-08-24・第54巡にユーザー指定)。★★ここに CSS は無い(2026-08-26・第68巡)
+   ― 見え幅はレーンの隙間(`gapRef`)そのものなので、`components/tabs/GravityTab.tsx`
+   の `advance()` が毎フレーム `clip-path` に入れる。**出どころを1つにする**。 */
 
 /* ── タスクアプリのカメラ(components/tasks/TaskSpace.tsx) ────────────────
    ★★**GRAVITY＝地上 / DRIFT＝上空**。2枚を縦に積んで、器ごと送る。

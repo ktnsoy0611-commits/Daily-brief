@@ -13,28 +13,22 @@ export type IconType = ComponentType<{ size?: number | string; strokeWidth?: num
 // ★各タブの見出し(2026-08-03)。名前は**英語＋幾何アルファベット**
 // (components/GeoType.tsx)で大きく置く。以前ここに出していた「〇件」の
 // 数字は、情報としてほとんど意味を成していなかったので撤去した。
-export function Masthead({ title, dateline, right, corner }: {
+// ★★右肩の器(`right` / `corner`)は**廃した**(2026-08-26・第68巡)。唯一の
+// 住人だった設定の歯車が右下の輪(`components/CreateMenu.tsx` の SETTING)へ
+// 移ったので、空の flex が7画面ぶん残るのを避ける。
+export function Masthead({ title, dateline }: {
   /** 見出しの英語表記。幾何アルファベットで描くのでA-Z・0-9のみ。 */
   title: string;
   dateline?: ReactNode;
-  right?: ReactNode;
-  corner?: ReactNode;
 }) {
   // ★左右のパディングを持たない。持ち主は AppShell(16px)だけ(design.md §2)。
   //   幾何アルファベットは**縦の軸が垂直な平筆**なので光学補正が要らず、
   //   柵の 16 に置くと本文の1文字目とインクの線がそのまま一致する。
   return (
     <header style={{ padding: `${SPACE.md}px 0 ${SPACE.lg}px` }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: SPACE.md }}>
-        <div style={{ minWidth: 0 }}>
-          <GeoText text={title} size={30} color={INK} />
-          {dateline && <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.md }}>{dateline}</div>}
-        </div>
-        {/* 設定(corner)は常に画面の右端。 */}
-        <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, flexShrink: 0 }}>
-          {right}
-          {corner}
-        </div>
+      <div style={{ minWidth: 0 }}>
+        <GeoText text={title} size={30} color={INK} />
+        {dateline && <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.md }}>{dateline}</div>}
       </div>
     </header>
   );

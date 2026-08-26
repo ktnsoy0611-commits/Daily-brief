@@ -63,8 +63,9 @@
 - `components/AppShell.tsx` — 3アプリの横スライド・タブ・共有state・ダッシュボードの司令塔。
 - `components/AppBackdrop.tsx` — アプリごとの地色（`groundOf` が唯一の出どころ）。
 - `components/Dashboard.tsx` — 下から引き上げる引き出し。「今日を終える」。
-- `components/CreateMenu.tsx` — タブバー右端の丸から広がる輪（RECORD / TASK）。
-  **タスクの追加はどのアプリからでもここから**。
+- `components/CreateMenu.tsx` — タブバー右端の丸から広がる輪
+  （RECORD / TASKS / SETTING。**文字だけ・半径の線上**）。
+  **タスクの追加も設定もどのアプリからでもここから**（第68巡に歯車を廃止）。
 - `lib/apps.ts` — アプリとタブの定義（**タブ構成の正**）。
 
 ## ブリーフ（EXPLORE）
@@ -73,6 +74,7 @@
 - `components/tabs/ExecuteTab.tsx` — 地図（Leaflet）・プラン生成・4ドメインの棚。
 - `components/tabs/GoalsTab.tsx` — ゴールのバインダーとチェックイン。
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
+  入口は**右下の輪の SETTING だけ**（`CreateMenu`）。
 
 ## タスク（TASK）
 **タスク図形は常に GRAVITY 空間にだけ在る**（第52巡に TOP/UNDER の4層を破棄）。

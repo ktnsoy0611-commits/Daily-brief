@@ -34,7 +34,6 @@ import type { TabId, TabProps } from "@/lib/types";
 const SKY_GAP = "60%";
 
 export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: TabId; appActive: boolean }) {
-  const { profileButton } = tabProps;
   const onDrift = tab === "tasks-drift";
 
   // ★★上空は**一度出したら外さない**(`AppShell` の `mountedApps` と同じ作法)。
@@ -82,7 +81,7 @@ export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: Tab
 
       {/* アプリ名の札は画面に固定。 */}
       <div style={{ position: "absolute", top: TAB_PAD_TOP, left: SPACE.lg, right: SPACE.lg, pointerEvents: "none", zIndex: 3 }}>
-        <Masthead title={appTitle("tasks")} corner={<span style={{ pointerEvents: "auto" }}>{profileButton}</span>} />
+        <Masthead title={appTitle("tasks")} />
       </div>
     </main>
   );

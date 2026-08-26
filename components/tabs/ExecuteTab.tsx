@@ -323,7 +323,7 @@ function MapPlanner({ stocked, draftSelection, interests, onOpenPin, onToggleIte
           <Sparkles size={15} strokeWidth={2.4} />
           プランを生成
         </button>
-        <span style={{ fontSize: TYPE.small, color: MUTED, letterSpacing: TRACK.normal }}>
+        <span style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, letterSpacing: TRACK.normal }}>
 {plans ? "3案" : ""}
         </span>
       </div>

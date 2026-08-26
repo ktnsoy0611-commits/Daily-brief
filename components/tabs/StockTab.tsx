@@ -36,7 +36,7 @@ const isMapsUrl = (url: string) => /google\.[^/]+\/maps|maps\.app\.goo\.gl|goo\.
 const FIELD_LABEL: CSSProperties = { fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, display: "block", marginBottom: SPACE.xs };
 // ★入力欄の文字は **TYPE.lead(16) 以上**。15 以下だと iOS Safari が
 //   フォーカス時に画面を勝手に拡大し、以後レイアウトが崩れたまま戻らない。
-const FIELD_INPUT: CSSProperties = { width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: `${SPACE.sm}px ${SPACE.hair}px`, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: "transparent" };
+const FIELD_INPUT: CSSProperties = { width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: `${SPACE.sm}px 0`, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: "transparent" };
 
 // サーバー関数に座標解決を依頼する。url(マップURLからの抽出+名前補完)と
 // query(店名の名寄せ)のどちらか/両方を渡す。失敗時はsource:"none"。
@@ -153,7 +153,7 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
             }}>{resolving ? "読込中…" : "読み込む"}</button>
           </div>
           {place && (
-            <div style={{ fontSize: TYPE.small, color: hasCoords ? INK : RUST, marginBottom: SPACE.lg, lineHeight: LEAD.body }}>
+            <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: hasCoords ? INK : RUST, marginBottom: SPACE.lg, lineHeight: LEAD.body }}>
               {hasCoords
                 ? `地図の位置を取得しました${place.name ? `（${place.name}）` : ""}。`
                 : "このURLからは場所を取得できませんでした。名前を入れて追加できます。"}
@@ -162,7 +162,7 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
 
           <label style={FIELD_LABEL}>自由記述（任意）</label>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="メモ・作者・価格の目安など"
-            style={{ width: "100%", boxSizing: "border-box", border: "1.5px solid rgba(26,26,24,0.2)", borderRadius: RADIUS.lg, padding: `${SPACE.md}px ${SPACE.md}px`, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", resize: "none", lineHeight: LEAD.body, background: "transparent", marginBottom: SPACE.xl }} />
+            style={{ width: "100%", boxSizing: "border-box", border: "1.5px solid rgba(26,26,24,0.2)", borderRadius: RADIUS.lg, padding: `${SPACE.md}px ${SPACE.md}px`, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, outline: "none", resize: "none", lineHeight: LEAD.body, background: "transparent", marginBottom: SPACE.xl }} />
 
           <button onClick={() => commit(requestClose)} disabled={!title.trim() || saving} style={{
             width: "100%", padding: `${SPACE.md}px 0`, background: title.trim() && !saving ? INK : "rgba(26,26,24,0.2)", color: PAPER, border: "none",
@@ -318,7 +318,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
                 const bound = isWishBound(w, appState.items);
                 return (
                   <button key={w.id} onClick={() => setWishDetail(w)} style={{
-                    display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.md}px ${SPACE.hair}px`,
+                    display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.md}px 0`,
                     background: "none", border: "none", borderTop: `1px solid ${HAIRLINE}`, cursor: "pointer", textAlign: "left", width: "100%",
                   }}>
                     <span style={{
@@ -329,7 +329,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.title}</div>
-                      <div style={{ fontSize: TYPE.micro, color: MUTED, marginTop: SPACE.hair }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
+                      <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.hair }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
                     </div>
                   </button>
                 );
@@ -345,7 +345,7 @@ export function StockTab({ appState, persist, showToast, profileButton, selectio
             <>
               <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: WHITE, margin: `${SPACE.sm}px ${SPACE.xs}px ${SPACE.lg}px`, textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{ITEM_DOMAINS.find((d) => d.id === openDomain)?.label}</div>
               <div onPointerDown={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: SPACE.md, padding: `0 ${SPACE.xs}px ${SPACE.sm}px` }}>
-                {openItems.length === 0 ? <p style={{ fontSize: TYPE.small, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : openItems.map((i) => itemCard(i))}
+                {openItems.length === 0 ? <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : openItems.map((i) => itemCard(i))}
               </div>
             </>
           )}

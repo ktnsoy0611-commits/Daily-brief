@@ -44,7 +44,7 @@ export function TaskRow({ task, onToggle, onOpen }: { task: Task; onToggle: (id:
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>{task.title}</div>
         {(task.note || task.dueDate || subtasks.length > 0) && (
-          <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: SPACE.xs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.xs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {[task.dueDate, subtasks.length > 0 ? `手順 ${doneSubs}/${subtasks.length}` : null, task.note].filter(Boolean).join(" ・ ")}
           </div>
         )}

@@ -38,17 +38,17 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
         }}>
           <div style={{ flex: "0 0 38%", background: GREEN, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.md, color: PAPER }}>
             <Sprout size={32} strokeWidth={1.5} />
-            <span style={{ fontSize: TYPE.micro, letterSpacing: TRACK.wide, opacity: 0.8 }}>CHECK-IN</span>
+            <span style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.wide, opacity: 0.8 }}>CHECK-IN</span>
           </div>
           <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.xl}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
+            <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
             <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>最近は、どうですか？</h2>
             <textarea
               value={checkinValue}
               onChange={(e) => onCheckinChange(e.target.value)}
               onPointerDown={(e) => e.stopPropagation()}
               placeholder="今取り組んでいることを、ひとことで"
-              style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: PAPER, color: INK }}
+              style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, outline: "none", background: PAPER, color: INK }}
             />
           </div>
           <PunchHoles />
@@ -64,17 +64,17 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
       }}>
         <div style={{ flex: "0 0 34%", background: RUST, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.md, color: PAPER }}>
           <Sprout size={30} strokeWidth={1.5} />
-          <span style={{ fontSize: TYPE.micro, letterSpacing: TRACK.wide, opacity: 0.85 }}>MILESTONE</span>
+          <span style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.wide, opacity: 0.85 }}>MILESTONE</span>
         </div>
         <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.xl}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
+          <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
           <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.snug, color: INK }}>できるようになったこと、ありますか？</h2>
           <textarea
             value={milestoneText}
             onChange={(e) => onMilestoneTextChange(e.target.value)}
             onPointerDown={(e) => e.stopPropagation()}
             placeholder="この1〜2ヶ月で、できるようになったこと"
-            style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", background: PAPER, color: INK, marginBottom: SPACE.md }}
+            style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, outline: "none", background: PAPER, color: INK, marginBottom: SPACE.md }}
           />
           <div style={{ display: "flex", gap: SPACE.sm }} onPointerDown={(e) => e.stopPropagation()}>
             {([1, 2, 3] as const).map((r) => (
@@ -145,7 +145,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             不具合があった(flex-basis:0からのflex-growとline-clampの
             高さ計算がSafari上で噛み合わない)。flexに頼らず、行の高さから
             算出した固定のmaxHeightで確実に頭打ちにする。 */}
-        <p style={{ margin: 0, maxHeight: "calc(1.7em * 5)", fontFamily: SANS, fontSize: TYPE.body, lineHeight: LEAD.body, color: SECOND, display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: SPACE.xl }}>{card.body}</p>
+        <p style={{ margin: 0, maxHeight: "calc(1.7em * 5)", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: SECOND, display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: SPACE.xl }}>{card.body}</p>
         {isTop && onFlag && (
           <button
             onClick={(e) => { e.stopPropagation(); onFlag(); }}
@@ -710,7 +710,7 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
         <main className="no-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: `${SPACE.xxl}px ${SPACE.xs}px` }}>
           <SectionLabel text="今日はここまで" style={{ marginBottom: SPACE.lg }} />
           {keptCards.map((c, i) => (
-            <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: SPACE.md, padding: `${SPACE.md}px ${SPACE.hair}px`, borderTop: `1px solid ${HAIRLINE}` }}>
+            <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: SPACE.md, padding: `${SPACE.md}px 0`, borderTop: `1px solid ${HAIRLINE}` }}>
               <span style={{ fontFamily: DISPLAY, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
               <div style={{ fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.lead }}>{c.title}</div>
             </div>
@@ -734,13 +734,13 @@ export function BriefTab({ appState, persist, goTab, profileButton }: TabProps) 
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: SPACE.md, marginBottom: SPACE.md }}>
               <span style={{ fontSize: TYPE.micro, color: MUTED, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, paddingTop: SPACE.xs }}>{readItem.category}{readItem.trigger ? ` ・ ${readItem.trigger}` : ""}</span>
-              <button onClick={() => setReadItem(null)} aria-label="閉じる" style={{ background: "rgba(26,26,24,0.06)", border: "none", borderRadius: RADIUS.pill, width: 30, height: 30, cursor: "pointer", fontSize: TYPE.lead, color: INK, flexShrink: 0 }}>✕</button>
+              <button onClick={() => setReadItem(null)} aria-label="閉じる" style={{ background: "rgba(26,26,24,0.06)", border: "none", borderRadius: RADIUS.pill, width: 30, height: 30, cursor: "pointer", fontSize: TYPE.lead, fontWeight: WEIGHT.text, color: INK, flexShrink: 0 }}>✕</button>
             </div>
             <h2 style={{ margin: `0 0 ${SPACE.lg}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>{readItem.title}</h2>
             {(readItem.detail && readItem.detail.trim() ? readItem.detail : readItem.body)
               .split(/\n{2,}|\n/).filter((p) => p.trim())
               .map((para, i) => (
-                <p key={i} style={{ margin: `0 0 ${SPACE.lg}px`, fontFamily: SERIF, fontSize: TYPE.lead, lineHeight: LEAD.body, color: CHARCOAL }}>{para.trim()}</p>
+                <p key={i} style={{ margin: `0 0 ${SPACE.lg}px`, fontFamily: SERIF, fontSize: TYPE.lead, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: CHARCOAL }}>{para.trim()}</p>
               ))}
             {readItem.sourceUrl && (
               <a href={readItem.sourceUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}

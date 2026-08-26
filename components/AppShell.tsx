@@ -1,6 +1,6 @@
 "use client";
 
-import { SPACE, TYPE, TRACK, RADIUS } from "@/lib/tokens";
+import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms as msOf, T_ITEM } from "@/lib/motion";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
@@ -78,7 +78,7 @@ function Toast({ text }: { text: string }) {
   return (
     <div key={text} style={{
       position: "fixed", top: SPACE.lg, left: "50%", transform: "translateX(-50%)", background: INK, color: PAPER, borderRadius: RADIUS.pill,
-      fontSize: TYPE.small, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.lg}px`, boxShadow: "0 8px 24px rgba(26,26,24,0.25)", zIndex: 50,
+      fontSize: TYPE.small, fontWeight: WEIGHT.text, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.lg}px`, boxShadow: "0 8px 24px rgba(26,26,24,0.25)", zIndex: 50,
       animation: "toast-in var(--t-item) var(--ease-sheet)",
     }}>{text}</div>
   );
@@ -146,7 +146,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             // 実際に最後の項目がタブバーの裏へ潜って止まった。
             padding: `var(--pad-top) ${SPACE.lg}px 0`,
           }}>
-            {active && memoryMode && <div style={{ fontSize: TYPE.micro, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
+            {active && memoryMode && <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
 
             <>
             {/* minHeight:0が無いと、flexアイテムのデフォルトのmin-height:auto
@@ -1015,7 +1015,7 @@ export function AppShell() {
           overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain", overflowAnchor: "none",
           padding: `max(${SPACE.lg}px, env(safe-area-inset-top)) ${SPACE.lg}px ${SPACE.xl}px`,
         }}>
-          {storageMode === "memory" && <div style={{ fontSize: TYPE.micro, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
+          {storageMode === "memory" && <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
           <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)} />
         </div>
         {toast && <Toast text={toast} />}

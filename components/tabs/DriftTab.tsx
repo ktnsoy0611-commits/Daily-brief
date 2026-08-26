@@ -13,7 +13,7 @@ import { peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeG
 import { demoCandidates } from "@/lib/taskDemo";
 import { specOf } from "@/lib/taskSize";
 import { resolveTag } from "@/lib/taskTags";
-import { TYPE } from "@/lib/tokens";
+import { TYPE, WEIGHT } from "@/lib/tokens";
 import type { InboxCandidate, TabProps } from "@/lib/types";
 
 // ★候補の層(DRIFT。第44巡に無重力の物理へ)。まだ確定していない候補の図形が、
@@ -593,7 +593,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
 
       <div style={{ position: "absolute", left: 16, right: 16, bottom: `calc(${NAV_H} + 8px)`, textAlign: "center", pointerEvents: "none" }}>
         {notes > 0 && !holding && (
-          <div style={{ fontSize: TYPE.small, color: MUTED }}>まだ読まれていない声のメモが{notes}件</div>
+          <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED }}>まだ読まれていない声のメモが{notes}件</div>
         )}
         {count === 0 && <div style={{ pointerEvents: "auto" }}><DemoSeedButton label="デモの候補を入れる" onSeed={seedDemo} /></div>}
       </div>

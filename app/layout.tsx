@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { BD_GREY } from "@/lib/constants";
+import { SPACE } from "@/lib/tokens";
+import { BD_GREY, INK, GREEN, RUST } from "@/lib/constants";
 import { Anton, Archivo, Dela_Gothic_One, M_PLUS_1, Noto_Sans_JP, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
 import "./globals.css";
 
@@ -136,6 +137,10 @@ export default function RootLayout({
       zenKakuGothicNew.variable, anton.variable, archivo.variable, notoSansJP.variable,
       zenMaruGothic.variable, delaGothicOne.variable, mplus1.variable,
     ].join(" ")}>
+      {/* ★色の持ち主は `lib/constants.ts` の1か所だけ。CSS には**変数で配る**。
+          第66巡まで globals.css が #ECECEA / #1A1A18 / #04624A / #EE1B33 を
+          書き写していて、片方を変えるともう片方が必ず腐る状態だった。 */}
+      <style>{`:root{--c-bd-grey:${BD_GREY};--c-ink:${INK};--c-green:${GREEN};--c-rust:${RUST};--pad-x:${SPACE.lg}px}`}</style>
       <body>{children}</body>
     </html>
   );

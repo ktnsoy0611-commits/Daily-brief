@@ -20,7 +20,7 @@ function AddGoalSheet({ onAdd, onClose }: { onAdd: (title: string) => void; onCl
         <OverlayCard>
           <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, marginBottom: SPACE.lg }}>ゴールを追加</div>
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="終わりのないゴールを"
-            style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: `${SPACE.sm}px ${SPACE.hair}px`, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", marginBottom: SPACE.xl, background: "transparent" }} />
+            style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: `${SPACE.sm}px 0`, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, outline: "none", marginBottom: SPACE.xl, background: "transparent" }} />
           <button onClick={() => { if (!title.trim()) return; onAdd(title.trim()); requestClose(); }} disabled={!title.trim()} style={{
             width: "100%", padding: `${SPACE.md}px 0`, background: title.trim() ? INK : "rgba(26,26,24,0.2)", color: PAPER, border: "none",
             borderRadius: RADIUS.pill, cursor: title.trim() ? "pointer" : "default", fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps,
@@ -41,25 +41,25 @@ function GoalDetailSheet({ goal, draft, onDraftChange, onManualAdd, onRemove, on
           <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.snug }}>{goal.title}</div>
           <button onClick={onRemove} aria-label="削除" style={{ flexShrink: 0, background: "none", border: "none", color: MUTED, cursor: "pointer", padding: SPACE.xs, display: "flex" }}><Trash2 size={16} /></button>
         </div>
-        <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.wide, color: MUTED, marginBottom: SPACE.md }}>記録（{goal.checkIns?.length ?? 0}）</div>
+        <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.wide, color: MUTED, marginBottom: SPACE.md }}>記録（{goal.checkIns?.length ?? 0}）</div>
         {(goal.checkIns ?? []).length === 0 ? (
-          <p style={{ fontSize: TYPE.small, color: MUTED, marginBottom: SPACE.lg }}>まだ記録がありません</p>
+          <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginBottom: SPACE.lg }}>まだ記録がありません</p>
         ) : (
           <div style={{ marginBottom: SPACE.lg, maxHeight: "40vh", overflowY: "auto" }}>
             {goal.checkIns.map((ci) => (
               <div key={ci.id} style={{ padding: `${SPACE.sm}px 0`, borderTop: `1px solid ${HAIRLINE}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginBottom: SPACE.xs }}>
-                  <span style={{ fontSize: TYPE.micro, color: MUTED }}>{shortDate(ci.at)}{ci.source === "prompted" && " ・ ブリーフより"}</span>
-                  {ci.kind === "milestone" && <span style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, color: PAPER, background: RUST, borderRadius: RADIUS.pill, padding: `${SPACE.hair}px ${SPACE.sm}px` }}>{ratingLabel(ci.rating)}</span>}
+                  <span style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: MUTED }}>{shortDate(ci.at)}{ci.source === "prompted" && " ・ ブリーフより"}</span>
+                  {ci.kind === "milestone" && <span style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, color: PAPER, background: RUST, borderRadius: RADIUS.pill, padding: `0 ${SPACE.sm}px` }}>{ratingLabel(ci.rating)}</span>}
                 </div>
-                <div style={{ fontSize: TYPE.body, color: SECOND, lineHeight: LEAD.body }}>{ci.text}</div>
+                <div style={{ fontSize: TYPE.body, fontWeight: WEIGHT.text, color: SECOND, lineHeight: LEAD.body }}>{ci.text}</div>
               </div>
             ))}
           </div>
         )}
         <div style={{ display: "flex", gap: SPACE.sm }}>
           <input value={draft} onChange={(e) => onDraftChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onManualAdd()}
-            placeholder="今の様子を書き足す" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: TYPE.lead, padding: `${SPACE.sm}px ${SPACE.hair}px`, outline: "none" }} />
+            placeholder="今の様子を書き足す" style={{ flex: 1, border: "none", borderBottom: `1px solid ${INK}`, background: "transparent", fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, padding: `${SPACE.sm}px 0`, outline: "none" }} />
           <Button variant="primary" onClick={onManualAdd}>記録</Button>
         </div>
       </OverlayCard>

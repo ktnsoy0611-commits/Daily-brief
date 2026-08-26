@@ -42,7 +42,7 @@ export function WeightPicker({ value, onPick }: {
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.sm,
             }}>
             <span style={{ width: s.size, height: s.size, borderRadius: RADIUS.circle, background: on ? LIFT : PAPER }} />
-            <span style={{ ...CAP, fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: on ? LIFT : DIM }}>{s.label}</span>
+            <span style={{ ...CAP, fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: on ? LIFT : DIM }}>{s.label}</span>
           </Press>
         );
       })}
@@ -68,7 +68,7 @@ export function TagPicker({ value, onPick }: {
               background: t.color, overflow: "hidden",
               boxShadow: on ? `0 0 0 2.5px ${LIFT}, 0 0 0 4.5px ${t.color}` : "none",
               display: "flex", alignItems: "center", justifyContent: "center",
-              ...CAP, fontSize: TYPE.micro, color: tagInk(t.id),
+              ...CAP, fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: tagInk(t.id),
             }}>{on ? t.label : ""}</Press>
         );
       })}

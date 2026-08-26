@@ -63,7 +63,7 @@ function GeneratingIndicator() {
         <span className="brief-roll-shape" style={{ ...base, marginTop: -7 /* ★目盛りの外（図形の -height/2＝縦の中央合わせ） */, width: 0, height: 0, borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `14px solid ${GOLD}`, animationDelay: "1.2s" }} />
         <span className="brief-roll-shape" style={{ ...base, marginTop: -5 /* ★目盛りの外（図形の -height/2＝縦の中央合わせ） */, width: 20, height: 10, borderRadius: RADIUS.sm, background: GREEN, animationDelay: "1.8s" }} />
       </div>
-      <div style={{ color: MUTED, fontSize: TYPE.small, letterSpacing: TRACK.normal }}>プランを考えています…</div>
+      <div style={{ color: MUTED, fontSize: TYPE.small, fontWeight: WEIGHT.text, letterSpacing: TRACK.normal }}>プランを考えています…</div>
     </div>
   );
 }
@@ -77,7 +77,7 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
       <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.snug, marginBottom: SPACE.sm }}>{plan.title}</div>
       <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.md }}>{metaBits.join(" ・ ")}</div>
       {plan.summary && (
-        <p style={{ fontSize: TYPE.body, lineHeight: LEAD.body, color: SECOND, marginBottom: SPACE.lg }}>{plan.summary}</p>
+        <p style={{ fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: SECOND, marginBottom: SPACE.lg }}>{plan.summary}</p>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md, marginBottom: SPACE.lg }}>
         {plan.stops.map((stop, idx) => {
@@ -101,7 +101,7 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: TYPE.body, color: INK, fontFamily: SANS, fontWeight: WEIGHT.bold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
-                <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: SPACE.hair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.hair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {stop.note ? stop.note : `${itemKindOf(item.kind).label}${hasArea ? ` ・ ${item.area}` : ""}`}
                 </div>
               </div>
@@ -113,7 +113,7 @@ function PlanDetail({ plan, byId }: { plan: GeneratedPlan; byId: Map<string, Ite
           ストックから消えた行き先がありうる。その分は静かに落とし、
           全部消えた案だけはその旨を出す(空白のまま置かない)。 */}
       {plan.stops.every((s) => !byId.has(s.id)) && (
-        <p style={{ fontSize: TYPE.small, lineHeight: LEAD.body, color: MUTED, marginBottom: SPACE.lg }}>
+        <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: MUTED, marginBottom: SPACE.lg }}>
           この案の行き先は、もうストックにありません。作り直してください。
         </p>
       )}
@@ -287,21 +287,21 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
           ) : (
             <>
               <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, marginBottom: SPACE.sm }}>プランを生成</div>
-              <p style={{ fontSize: TYPE.small, lineHeight: LEAD.body, color: MUTED, marginBottom: SPACE.lg }}>
+              <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: MUTED, marginBottom: SPACE.lg }}>
                 重さの違う3つの案をつくります。
               </p>
-              <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>エリア（任意）</div>
+              <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>エリア（任意）</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: SPACE.sm, marginBottom: SPACE.lg }}>
                 <button onClick={() => setSelectedArea(null)} style={{ ...chipStyle(selectedArea === null), flex: "0 0 auto", padding: `${SPACE.sm}px ${SPACE.lg}px` }}>すべて</button>
                 {areas.map((a) => (
                   <button key={a} onClick={() => setSelectedArea(a)} style={{ ...chipStyle(selectedArea === a), flex: "0 0 auto", padding: `${SPACE.sm}px ${SPACE.lg}px` }}>
                     {a}
-                    <span style={{ opacity: 0.6, marginLeft: SPACE.xs, fontSize: TYPE.small }}>{areaCounts.get(a)}</span>
+                    <span style={{ opacity: 0.6, marginLeft: SPACE.xs, fontSize: TYPE.small , fontWeight: WEIGHT.text}}>{areaCounts.get(a)}</span>
                   </button>
                 ))}
               </div>
               {error && (
-                <p style={{ fontSize: TYPE.small, lineHeight: LEAD.body, color: RUST, marginBottom: SPACE.lg }}>{error}</p>
+                <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: RUST, marginBottom: SPACE.lg }}>{error}</p>
               )}
               <button onClick={generate} disabled={target.length === 0} style={{
                 width: "100%", padding: `${SPACE.md}px 0`, borderRadius: RADIUS.pill, border: "none",

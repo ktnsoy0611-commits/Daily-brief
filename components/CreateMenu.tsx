@@ -1,6 +1,6 @@
 "use client";
 
-import { SPACE, TYPE, RADIUS } from "@/lib/tokens";
+import { SPACE, TYPE, WEIGHT, RADIUS } from "@/lib/tokens";
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { TabIcon } from "@/components/TabIcons";
@@ -109,7 +109,7 @@ export function CreateMenu({ at, onRecord, onTask, onClose }: {
             style={{ display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.sm}px ${SPACE.xs}px`, color: PAPER }}
           >
             <span style={{
-              ...CAP, fontSize: TYPE.small, whiteSpace: "nowrap", display: "inline-block",
+              ...CAP, fontSize: TYPE.small, fontWeight: WEIGHT.text, whiteSpace: "nowrap", display: "inline-block",
               transform: `rotate(${legibleAngle(angleDeg) - angleDeg}deg)`,
             }}>{label}</span>
             <span ref={ref} className="tc-lamp" style={{

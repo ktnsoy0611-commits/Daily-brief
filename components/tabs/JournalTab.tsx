@@ -22,7 +22,7 @@ function EntryCard({ entry }: { entry: JournalEntry }) {
       <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>
         {new Date(entry.createdAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
       </div>
-      <p style={{ fontFamily: SANS, fontSize: TYPE.body, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap" }}>{entry.body}</p>
+      <p style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap" }}>{entry.body}</p>
     </div>
   );
 }
@@ -36,7 +36,7 @@ function VoiceNoteCard({ note }: { note: VoiceNote }) {
         {new Date(note.at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
         {note.durationMs ? ` ・ ${mmssOf(note.durationMs)}` : ""}
       </div>
-      <p style={{ fontFamily: SANS, fontSize: TYPE.body, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap" }}>{note.text}</p>
+      <p style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap" }}>{note.text}</p>
     </div>
   );
 }
@@ -63,7 +63,7 @@ function DoneList({ day }: { day: DayRecord }) {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.title}</div>
-                <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: SPACE.hair }}>
+                <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.hair }}>
                   {itemKindOf(i.kind).label}{i.area && i.area !== "—" ? ` ・ ${i.area}` : ""}
                 </div>
               </div>
@@ -74,11 +74,11 @@ function DoneList({ day }: { day: DayRecord }) {
       {day.tasks.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
           {day.tasks.map((t) => (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.xs}px ${SPACE.hair}px` }}>
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.xs}px 0` }}>
               <span style={{ width: 17, height: 17, borderRadius: RADIUS.circle, background: GOLD, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <Check size={10} strokeWidth={3} color={PAPER} />
               </span>
-              <span style={{ fontFamily: SANS, fontSize: TYPE.body, color: SECOND, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+              <span style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, color: SECOND, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
             </div>
           ))}
         </div>
@@ -126,13 +126,13 @@ function DayCard({ day, summary, onOpen }: { day: DayRecord; summary?: string; o
           <span style={{ width: 15, height: 15, borderRadius: RADIUS.circle, background: GOLD, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <Check size={9} strokeWidth={3} color={PAPER} />
           </span>
-          <span style={{ fontSize: TYPE.small, color: SECOND, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+          <span style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: SECOND, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
             {day.tasks[0].title}{day.tasks.length > 1 ? ` ほか${day.tasks.length - 1}件` : ""}
           </span>
         </div>
       )}
       {excerpt && (
-        <p style={{ fontSize: TYPE.small, lineHeight: LEAD.body, color: MUTED, overflow: "hidden" }}>
+        <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: MUTED, overflow: "hidden" }}>
           {summary ? excerpt : `「${excerpt}`}{(source?.length ?? 0) > 46 ? "…" : ""}{summary ? "" : "」"}
         </p>
       )}
@@ -166,7 +166,7 @@ function DaySheet({ day, summary, onClose }: { day: DayRecord; summary?: string;
                     <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.xs }}>
                       {new Date(e.createdAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
                     </div>
-                    <p style={{ fontFamily: SANS, fontSize: TYPE.body, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap" }}>{e.body}</p>
+                    <p style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap" }}>{e.body}</p>
                   </div>
                 ))}
               </div>
@@ -189,7 +189,7 @@ function SummaryBlock({ text, compact }: { text: string; compact?: boolean }) {
     }}>
       <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>その日のまとめ</div>
       <p style={{
-        fontFamily: SANS, fontSize: compact ? 12 : 13, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap",
+        fontFamily: SANS, fontSize: compact ? 12 : 13, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap",
         ...(compact ? { display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical" as const, overflow: "hidden" } : {}),
       }}>{text}</p>
     </div>

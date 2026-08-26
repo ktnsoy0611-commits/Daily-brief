@@ -1,6 +1,6 @@
 "use client";
 
-import { SPACE, TYPE, LEAD, RADIUS } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, WEIGHT, RADIUS } from "@/lib/tokens";
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
@@ -859,7 +859,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             height: 36, padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.pill,
             display: "flex", alignItems: "center", justifyContent: "center",
             background: "rgba(250,250,249,0.10)",
-            ...CAP, fontSize: TYPE.small, color: ON_GROUND_DIM,
+            ...CAP, fontSize: TYPE.small, fontWeight: WEIGHT.text, color: ON_GROUND_DIM,
           }}>DELETE</Press>
         )}
         {onConfirm && (
@@ -867,7 +867,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             aria-label={mode === "candidate" ? "CONFIRM" : "COMPLETE"} className="tc-lamp" style={{
               height: 36, padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.pill, background: ON_GROUND,
               display: "flex", alignItems: "center", justifyContent: "center",
-              ...CAP, fontSize: TYPE.small, color: CHARCOAL,
+              ...CAP, fontSize: TYPE.small, fontWeight: WEIGHT.text, color: CHARCOAL,
             }}>{mode === "candidate" ? "CONFIRM" : "COMPLETE"}</Press>
         )}
       </div>
@@ -959,7 +959,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
                   });
                 }} style={{
                   border: "none", background: "transparent", cursor: "pointer", padding: `0 ${SPACE.sm}px 0 ${SPACE.lg}px`, height: 28,
-                  fontFamily: SANS, fontSize: TYPE.body, color: ON_GROUND, whiteSpace: "nowrap",
+                  fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, color: ON_GROUND, whiteSpace: "nowrap",
                 }}>{s.title}</button>
                 <button onClick={() => set({ suggestions: (draft.suggestions ?? []).filter((x) => x.id !== s.id) })}
                   aria-label={`${s.title}を却下`}
@@ -999,7 +999,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           ))}
           {draft.note && (
             <p style={{
-              margin: `${SPACE.md}px 0 0`, fontFamily: SANS, fontSize: TYPE.body, lineHeight: LEAD.body,
+              margin: `${SPACE.md}px 0 0`, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body,
               color: ON_GROUND_DIM, whiteSpace: "pre-wrap",
             }}>{draft.note}</p>
           )}

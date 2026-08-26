@@ -284,7 +284,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
         width: "100%", height: CLEAR_H, borderRadius: RADIUS.pill, flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
         background: RUST,
-        ...CAP, fontSize: TYPE.small, color: RUST_INK,
+        ...CAP, fontSize: TYPE.small, fontWeight: WEIGHT.text, color: RUST_INK,
       }}>クリア</Press>
 
       {/* ── 浮かせるもの ── */}
@@ -498,7 +498,7 @@ function Face({ title, main, sub, accent }: {
     <>
       <div style={{ fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, color: DIM, marginBottom: SPACE.xs }}>{title}</div>
       <div style={{ fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold, color: accent, whiteSpace: "nowrap" }}>{main}</div>
-      <div style={{ fontFamily: SANS, fontSize: TYPE.small, color: DIM, marginTop: SPACE.xs, minHeight: 13 }}>{sub}</div>
+      <div style={{ fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.text, color: DIM, marginTop: SPACE.xs, minHeight: 13 }}>{sub}</div>
     </>
   );
 }

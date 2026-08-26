@@ -81,7 +81,7 @@ body {
      html の背景はキャンバスへ伝播して最初に描かれるので、負のz-indexの
      下に正しく回る。実際の色はアプリごとに AppBackdrop が html へ
      書き直す(ここは初期値)。 */
-  background-color: #ECECEA;
+  background-color: var(--c-bd-grey);
   /* 上のoverflow:hiddenが主となる防御線だが、iOS実機ではまれに慣性
      スクロールがoverflow切り替え後も一瞬続くケースがあるため、境界での
      バウンス連鎖もあわせて止めておく(多重の防御)。 */
@@ -132,7 +132,7 @@ body {
    タブごとに negative margin を書かないこと(過去、数字がずれるたびに
    「タブバーの上下に境目が出る」「背景が途中で切れる」不具合が再発した)。 */
 .full-bleed {
-  margin: calc(-1 * var(--pad-top)) -16px calc(-1 * var(--nav-h));
+  margin: calc(-1 * var(--pad-top)) calc(-1 * var(--pad-x)) calc(-1 * var(--nav-h));
 }
 /* ★★全画面のオーバーレイ(タスク入力・録音)が開いているあいだは、**後ろを
    一切動かさない**(2026-08-18)。タブの列は普段 `overflow-y: auto` なので、
@@ -146,8 +146,8 @@ body {
    これが無いと 16px 内側で切れ、「左右がトリミングされている」と見えた
    (2026-08-18に実機で報告)。16 は上の `.full-bleed` と同じ数字。 */
 .bleed-x {
-  margin-left: -16px;
-  margin-right: -16px;
+  margin-left: calc(-1 * var(--pad-x));
+  margin-right: calc(-1 * var(--pad-x));
 }
 
 /* ★アプリの横スライドとダッシュボードの引き上げは、Reactのstateではなく
@@ -549,14 +549,14 @@ button:active {
   z-index: 2;
   pointer-events: none;
   opacity: 0;
-  /* ★墨(`INK` = #1A1A18)の細い縦線。濃さは下の keyframes の `opacity` で決める。 */
+  /* ★墨(`INK` / `var(--c-ink)`)の細い縦線。濃さは下の keyframes の `opacity` で決める。 */
   background-image:
-    repeating-linear-gradient(to right, transparent 0 11px, #1A1A18 11px 12px, transparent 12px 37px),
-    repeating-linear-gradient(to right, transparent 0 5px,  #1A1A18 5px 6px,   transparent 6px 19px);
+    repeating-linear-gradient(to right, transparent 0 11px, var(--c-ink) 11px 12px, transparent 12px 37px),
+    repeating-linear-gradient(to right, transparent 0 5px,  var(--c-ink) 5px 6px,   transparent 6px 19px);
   -webkit-mask-image: repeating-linear-gradient(to right,
-    transparent 0 8px, #000 26px 74px, transparent 96px 132px);
+    transparent 0 8px, #000 26px 74px, transparent 96px 132px);  /* ★目盛りの外（マスクの #000 は「色」でなく「不透明」） */
           mask-image: repeating-linear-gradient(to right,
-    transparent 0 8px, #000 26px 74px, transparent 96px 132px);
+    transparent 0 8px, #000 26px 74px, transparent 96px 132px);  /* ★目盛りの外（マスクの #000 は「色」でなく「不透明」） */
   animation: task-speed calc(var(--t-in) + var(--t-item)) var(--ease-exit) both;
 }
 /* ★「少し出るくらい」(ユーザー指定)。第63巡の 0.14 から下げた。 */
@@ -598,8 +598,8 @@ button:active {
 .drift-target .lip, .drift-target .bh-disc path {
   transition: fill var(--t-press) var(--ease-press), stroke var(--t-press) var(--ease-press);
 }
-.drift-target.hot[data-kind="mouth"] .lip { fill: #04624A; }        /* forest */
-.drift-target.hot[data-kind="trash"] .bh-disc path { stroke: #EE1B33; }  /* RUST */
+.drift-target.hot[data-kind="mouth"] .lip { fill: var(--c-green); }
+.drift-target.hot[data-kind="trash"] .bh-disc path { stroke: var(--c-rust); }
 
 /* ── 口 ───────────────────────────────────────────────────
    上下の唇。閉じているときは1本の線。`--near` で開き、器ごと指の方へ寄る。
@@ -827,9 +827,9 @@ button:active {
    180 個の inline style を書き換えていた ＝「反応が遅い」の正体。 */
 .tc-dial {
   -webkit-mask-image: linear-gradient(to bottom,
-    transparent 0, rgba(0,0,0,0.25) 14%, #000 38%, #000 62%, rgba(0,0,0,0.25) 86%, transparent 100%);
+    transparent 0, rgba(0,0,0,0.25) 14%, #000 38%, #000 62%, rgba(0,0,0,0.25) 86%, transparent 100%);  /* ★目盛りの外（マスク） */
   mask-image: linear-gradient(to bottom,
-    transparent 0, rgba(0,0,0,0.25) 14%, #000 38%, #000 62%, rgba(0,0,0,0.25) 86%, transparent 100%);
+    transparent 0, rgba(0,0,0,0.25) 14%, #000 38%, #000 62%, rgba(0,0,0,0.25) 86%, transparent 100%);  /* ★目盛りの外（マスク） */
 }
 .tc-dial::-webkit-scrollbar { display: none; }
 /* 灯り(ツールバーの丸)。色だけを滑らかに。 */

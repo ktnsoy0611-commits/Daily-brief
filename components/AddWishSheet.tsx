@@ -21,8 +21,8 @@ export function AddWishSheet({ onAdd, onClose }: { onAdd: (title: string, catego
         <OverlayCard>
           <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, marginBottom: SPACE.lg }}>ウィッシュを書く</div>
           <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="ふと思ったことを、なんでも"
-            style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: `${SPACE.sm}px ${SPACE.hair}px`, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", marginBottom: SPACE.lg, background: "transparent" }} />
-          <label style={{ fontSize: TYPE.lead, letterSpacing: TRACK.caps, color: MUTED }}>種類</label>
+            style={{ width: "100%", boxSizing: "border-box", border: "none", borderBottom: `1.5px solid ${INK}`, padding: `${SPACE.sm}px 0`, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, outline: "none", marginBottom: SPACE.lg, background: "transparent" }} />
+          <label style={{ fontSize: TYPE.lead, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: MUTED }}>種類</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: SPACE.sm, margin: `${SPACE.sm}px 0 ${SPACE.xl}px` }}>
             {ITEM_DOMAINS.map((d) => (
               <button key={d.id} onClick={() => setCategory(d.id)} style={{

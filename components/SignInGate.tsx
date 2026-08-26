@@ -75,7 +75,7 @@ export function SignInGate() {
 
         {phase === "sent" || phase === "verifying" ? (
           <>
-            <p style={{ fontSize: TYPE.body, color: MUTED, lineHeight: LEAD.body, margin: `0 0 ${SPACE.lg}px` }}>
+            <p style={{ fontSize: TYPE.body, fontWeight: WEIGHT.text, color: MUTED, lineHeight: LEAD.body, margin: `0 0 ${SPACE.lg}px` }}>
               <strong style={{ color: INK }}>{email.trim()}</strong> に届いた6桁のコードを入力してください。
             </p>
             <input
@@ -85,11 +85,11 @@ export function SignInGate() {
               placeholder="123456"
               style={{
                 width: "100%", boxSizing: "border-box", border: `1.5px solid ${INK}`, borderRadius: RADIUS.lg,
-                padding: `${SPACE.md}px ${SPACE.lg}px`, fontFamily: SANS, fontSize: TYPE.head, letterSpacing: TRACK.wide, textAlign: "center",
+                padding: `${SPACE.md}px ${SPACE.lg}px`, fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.text, letterSpacing: TRACK.wide, textAlign: "center",
                 outline: "none", marginBottom: SPACE.lg,
               }}
             />
-            {error && <div style={{ fontSize: TYPE.small, color: RUST, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>{error}</div>}
+            {error && <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: RUST, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>{error}</div>}
             <button
               onClick={verify} disabled={!code.trim() || phase === "verifying"}
               style={{
@@ -104,7 +104,7 @@ export function SignInGate() {
               onClick={() => { setPhase("idle"); setCode(""); setError(""); }}
               style={{
                 width: "100%", padding: `${SPACE.sm}px 0`, background: "transparent", color: MUTED,
-                border: "none", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small,
+                border: "none", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.text,
               }}
             >
               メールアドレスを入力し直す
@@ -112,7 +112,7 @@ export function SignInGate() {
           </>
         ) : (
           <>
-            <p style={{ fontSize: TYPE.body, color: MUTED, lineHeight: LEAD.body, margin: `0 0 ${SPACE.lg}px` }}>
+            <p style={{ fontSize: TYPE.body, fontWeight: WEIGHT.text, color: MUTED, lineHeight: LEAD.body, margin: `0 0 ${SPACE.lg}px` }}>
               メールアドレスに確認コードを送ります。パスワードは不要です。
             </p>
             <input
@@ -122,10 +122,10 @@ export function SignInGate() {
               placeholder="you@example.com"
               style={{
                 width: "100%", boxSizing: "border-box", border: `1.5px solid ${INK}`, borderRadius: RADIUS.lg,
-                padding: `${SPACE.md}px ${SPACE.lg}px`, fontFamily: SANS, fontSize: TYPE.lead, outline: "none", marginBottom: SPACE.lg,
+                padding: `${SPACE.md}px ${SPACE.lg}px`, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, outline: "none", marginBottom: SPACE.lg,
               }}
             />
-            {error && <div style={{ fontSize: TYPE.small, color: RUST, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>{error}</div>}
+            {error && <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: RUST, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>{error}</div>}
             <button
               onClick={send} disabled={!email.trim() || phase === "sending"}
               style={{

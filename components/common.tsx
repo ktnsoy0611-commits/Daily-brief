@@ -28,7 +28,7 @@ export function Masthead({ title, dateline, right, corner }: {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: SPACE.md }}>
         <div style={{ minWidth: 0 }}>
           <GeoText text={title} size={30} color={INK} />
-          {dateline && <div style={{ fontSize: TYPE.small, color: MUTED, marginTop: SPACE.md }}>{dateline}</div>}
+          {dateline && <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.md }}>{dateline}</div>}
         </div>
         {/* 設定(corner)は常に画面の右端。 */}
         <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, flexShrink: 0 }}>
@@ -203,9 +203,9 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
         </div>
       )}
       <div style={{ position: "absolute", bottom: SPACE.md, left: HOLE_CLEAR, right: SPACE.md }}>
-        {label && <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: "rgba(255,255,255,0.7)", marginBottom: SPACE.xs }}>{label}</div>}
+        {label && <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: "rgba(255,255,255,0.7)", marginBottom: SPACE.xs }}>{label}</div>}
         <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: WHITE, lineHeight: LEAD.snug, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</div>
-        {sub && <div style={{ fontSize: TYPE.micro, color: "rgba(255,255,255,0.75)", marginTop: SPACE.hair }}>{sub}</div>}
+        {sub && <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: "rgba(255,255,255,0.75)", marginTop: SPACE.hair }}>{sub}</div>}
       </div>
     </div>
   );
@@ -467,7 +467,7 @@ export function BinderModal({ item, onClose, actionSlot }: {
           {(item.images ?? []).length === 1 ? (
             // 写真が1枚(OGP画像は横長)のときは、傾けた小さいスタックにせず
             // 大きく1枚を見せる。読み込めなければ隠す(色ベタのまま)。
-            <div style={{ padding: `${SPACE.hair}px 0 ${SPACE.lg}px` }}>
+            <div style={{ padding: `0 0 ${SPACE.lg}px` }}>
               <img
                 src={img(item.images![0], 720, 450)} alt=""
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
@@ -482,16 +482,16 @@ export function BinderModal({ item, onClose, actionSlot }: {
             </div>
           ) : null}
           <OverlayCard>
-            <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.wide, color: MUTED, marginBottom: SPACE.xs }}>{item.category ?? item.categoryJp}</div>
+            <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.wide, color: MUTED, marginBottom: SPACE.xs }}>{item.category ?? item.categoryJp}</div>
             <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, marginBottom: (item.detail ?? item.body ?? item.summary) ? SPACE.md : actionSlot ? SPACE.md : SPACE.lg }}>{item.title}</div>
             {(item.detail ?? item.body ?? item.summary) && (
-              <p style={{ fontFamily: SANS, fontSize: TYPE.body, lineHeight: LEAD.body, color: SECOND, margin: `0 0 ${actionSlot ? SPACE.md : SPACE.lg}px`, whiteSpace: "pre-wrap" }}>{item.detail ?? item.body ?? item.summary}</p>
+              <p style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: SECOND, margin: `0 0 ${actionSlot ? SPACE.md : SPACE.lg}px`, whiteSpace: "pre-wrap" }}>{item.detail ?? item.body ?? item.summary}</p>
             )}
             {actionSlot && <div style={{ marginBottom: SPACE.lg }}>{actionSlot(requestClose)}</div>}
             {item.meta && item.meta.length > 0 && (
-              <div style={{ borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`, padding: `${SPACE.md}px ${SPACE.hair}px`, margin: `0 0 ${SPACE.lg}px`, display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+              <div style={{ borderTop: `1px solid ${HAIRLINE}`, borderBottom: `1px solid ${HAIRLINE}`, padding: `${SPACE.md}px 0`, margin: `0 0 ${SPACE.lg}px`, display: "flex", flexDirection: "column", gap: SPACE.sm }}>
                 {item.meta.map((m, i) => (
-                  <div key={i} style={{ fontSize: TYPE.body, color: SECOND, fontFamily: SANS }}>{m}</div>
+                  <div key={i} style={{ fontSize: TYPE.body, fontWeight: WEIGHT.text, color: SECOND, fontFamily: SANS }}>{m}</div>
                 ))}
               </div>
             )}

@@ -2230,7 +2230,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                 </span>
               </div>
               {expandedTasks.length === 0 && (
-                <div style={{ fontFamily: SANS, fontSize: TYPE.body, color: MUTED }}>この日には何も入っていない。</div>
+                <div style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, color: MUTED }}>この日には何も入っていない。</div>
               )}
               {expandedTasks.map((t) => (
                 <div key={t.id} style={{ marginBottom: SPACE.md }}>

@@ -210,7 +210,7 @@ export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 },
   const [pressed, setPressed] = useState(false);
   const want = pressed || closing ? 1 : 1 - open;
 
-  const solids = useMemo(nipperSolids, []);
+  const solids = useMemo(() => nipperSolids(), []);
 
   /** バネを縮める支点＝手前の柄に付く脚。 */
   const anchor = proj(COIL.legNear, away);

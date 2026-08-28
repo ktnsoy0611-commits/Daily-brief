@@ -15,97 +15,115 @@ import {
 //   （design.md 冒頭・Safari の描画崩れを5回踏んでいるため）。
 // ★このファイルはまるごと図形の座標系（design.md §7）。数値は目盛りに乗せない。
 //
-// ★★★10巡目に**機構ごと**作り直した。9巡目まではシザー（中央の鋲で腕が X に
-//   交差する）だったが、参考の道具は**一つ穴パンチ型**で、
-//   **支点は頭の中にあり、腕は下へほぼ平行に垂れる**。輪郭は細長い一本の柱。
-//   ・手前（右）＝ **動く分厚い柄**（握って押すほう）… 明るい
-//   ・奥（左）  ＝ **固定の薄い本体**（受け＝アンビルと**ダイのスリット**を持つ）
-//                 … 手前の陰でひと段暗い
-//   ・頭には**矩形の欠き**と**ダイのスリット**がある（この画角では見えるのが正しい）
+// ★★★13巡目に**ペンチの構造**へ作り直した（ユーザー指摘で確定）。
+//   9〜12巡目は**頭を2つの塊として並べて**いたので「2本の棒」に見えていた。正しくは:
+//   ・**先端は繋がっている** … 頭は**ひとつの太い箱**。2本の腕はその裾から出る。
+//   ・箱には**スリット**が入っていて、**そこに紙が入る**（＝入鋏の口）。
+//   ・**常時はバネで開いている**ので、腕は**大きな角度**でハの字に開く。
+//     ★ここが最大の誤り ― 腕を平行に垂らすと道具に見えない。
+//   ・手前（右）＝ 太い柄。頭と一体の固定部。／ 奥（左）＝ 細い梃子。押すと寄る。
 //   立体の組み方と彩色は `lib/nipperSolid.ts`。ここは**寸法と群と動き**だけ。
 
 /** 絵の枠。影は左へ長く伸びて枠を出るので `overflow: visible`。 */
 export const NIPPER_VB = { w: 480, h: 900 };
-/** 工具の原点（＝頭の支点）。呼び出し側はここを画面のどこへ置くかで構図を決める。 */
-export const NIPPER_ORIGIN = { x: 330, y: 130 };
-/** 口（＝ダイのスリット）の、原点からのずれ。券の縁へ合わせるのに使う。 */
-export const NIPPER_NOSE = { x: -45, y: 114 };
+/** 工具の原点（＝頭の天）。呼び出し側はここを画面のどこへ置くかで構図を決める。 */
+export const NIPPER_ORIGIN = { x: 250, y: 120 };
+/** 口（＝紙が入るスリット）の、原点からのずれ。券の縁へ合わせるのに使う。 */
+export const NIPPER_NOSE = { x: -38, y: 122 };
 
 // ---- 寸法 --------------------------------------------------------------
-// 局所座標は **支点が原点／+y が上／+x が右／+z が手前**。全長 700・最大幅 167
-// （＝縦横比 4.2 : 1）。参考画像を実測した比。★細さがこの道具の顔。
-/** 腕の z のずらし。手前の柄と奥の梃子は**厚みの方向に重なる**（交差しない）。 */
-const Z_NEAR = 20;
-const Z_FAR = -16;
+// 局所座標は **頭の天が原点／+y が上／+x が右／+z が手前**。
+/** 腕の z のずらし。★頭は箱ひとつ（z=0）で、腕だけ前後にわずかにずれる。 */
+const Z_NEAR = 6;
+const Z_FAR = -12;
+/** 梃子が回る支点（頭の中）。 */
+const HINGE = { x: 0, y: -180 };
 /**
- * 閉じ切る角（度）。★小さくてよい ― 参考画像の姿勢は**すでにほぼ閉じている**
- * （バネで少し開いているだけ）。大きくすると手前の柄が奥の本体を飲み込む。
+ * 押し切ったときの角（度）。★負＝奥の梃子が**右へ寄る**（＝開きが閉じる）。
+ * 開いた角がそのまま閉じる角。参考の道具はバネで**大きく開いて**いるので、
+ * ここは小さくない。
  */
-const THETA = 2.4;
+const THETA = -9;
 
-/** 可動部の柄（手前・右）。`[y, 半幅, 半分の厚み, x の中心]`。★分厚い涙型。 */
-const GRIP: Station[] = [
-  // ★**左の縁はまっすぐ**（柄は −12、頭は −18）。ふくらむのは右だけ。両側に
-  //   ふくらませると道具ではなく紡錘に見える。段は**右にだけ**付く。
-  // ★★**厚い塊であること。** 薄くすると面が減って板に見える（11巡目に実際に
-  //   そうなり「形が悪くなった」と指摘された）。参考の道具は角を落とした鍛造の塊。
-  [-700, 16, 10, 12],    // 先。★幅を残したまま丸く終わる（尖らせない）
-  [-682, 27, 14, 17],
-  [-650, 35, 18, 23],
-  [-560, 43, 22, 31],
-  [-452, 51, 26, 39],    // 腹。いちばん太い（★全長の 6 割ほど下。中ほどだと紡錘に見える）
-  [-380, 49, 25, 37],
-  [-280, 47, 25, 35],
-  [-222, 43, 24, 31],
-  [-220, 40, 24, 22],    // ★頭。柄より細く、左へ少し張り出す
-  [-26, 40, 24, 22],
-  [-24, 32, 21, 14],     // ★右上の矩形の欠き。**浅い段**（塔にしない）
-  [14, 32, 19, 14],      // 天。★奥の受けより高い（透視で手前ほど沈むため）
+/**
+ * 固定部 ＝ **頭の箱 ＋ 手前（右）の太い柄**。`[y, 半幅, 半分の厚み, x の中心]`。
+ * ★★頭は**ひとつの箱**。2つに割ると「2本の棒」に見える（13巡目にユーザー指摘）。
+ * ★腕は箱の裾から**右下へ開く**（`cx` が下へ行くほど大きくなる）。
+ */
+const FRAME: Station[] = [
+  // ★腕は**ほぼまっすぐ下**（写真でも太い柄は道具の軸に近い）。開くのは奥の梃子のほう。
+  [-700, 18, 10, 66],    // 柄の先。★幅を残したまま丸く終わる
+  [-676, 28, 15, 66],
+  [-620, 36, 19, 63],
+  [-530, 43, 22, 57],
+  [-430, 46, 24, 46],    // 腹
+  [-330, 47, 24, 30],
+  [-240, 50, 27, 16],
+  [-192, 58, 31, 6],     // 頭の裾（肩）
+  [-190, 68, 34, 0],     // ★ここから上は頭の箱
+  [-20, 68, 34, 0],
+  [0, 62, 30, -2],       // 天の面取り
+  [36, 58, 28, -4],
+  [38, 26, 16, -30],     // ★天の小さな段（写真の出っぱり）
+  [58, 24, 14, -30],
 ];
 /**
- * 固定部の本体（奥・左）。★薄い平板だが**紙にはしない**。
- * ★左の縁はまっすぐ（−68）。★★右の縁は手前の柄の左の縁より**内側まで伸ばす**―
- *   幾何で突き合わせるだけだと、一点透視のずれ（`z·away`）で**隙間が口を開け**、
- *   2枚の板が離れて見える（11巡目に実測）。はみ出したぶんは手前の柄が隠す。
- * ★天は手前の頭より**44 低い**。同じ高さにすると、透視で手前が沈んで逆に見える。
+ * 可動部 ＝ **奥（左）の細い梃子**。頭の中に隠れる根元から、**大きく左下へ開く**。
+ * ★手前の柄よりはっきり細く薄い（実物も、押す側は平たい板）。
+ * ★★開く角はここで作る ― 平行に垂らすと「2本の棒」に見える（13巡目にユーザー指摘）。
  */
 const LEVER: Station[] = [
-  [-627, 22, 8, -46],
-  [-600, 28, 10, -40],
-  [-500, 32, 11, -36],
-  [-400, 34, 12, -34],
-  [-300, 34, 12, -34],
-  [-222, 33, 13, -35],
-  [-220, 31, 14, -37],   // ★頭（受けの塊）
-  [-40, 31, 14, -37],
-  [-30, 27, 12, -41],    // 天
+  [-660, 12, 6, -150],   // 先
+  [-635, 19, 9, -146],
+  [-560, 23, 11, -132],
+  [-460, 25, 12, -112],
+  [-360, 27, 13, -88],
+  [-260, 29, 14, -60],
+  [-190, 31, 15, -40],
+  [-120, 32, 15, -30],   // ここから上は頭の箱に隠れる
 ];
-/** ダイのスリット。★受けの面に開いた縦の溝。`invert` で凹みにする。 */
-const SLOT = { x0: -58, x1: -40, y0: -178, y1: -60, z0: Z_FAR - 10, z1: Z_FAR + 15 };
 
-/** バネ。針金のコイル（輪が2つ）＋2本の脚。★腕のあいだに覗く。 */
-const COIL = { r: 4.5, ring: [{ x: -24, y: -427, r: 26 }, { x: -20, y: -529, r: 24 }], z: 2 };
-/** 押し切ったときの縮み。輪の中心を支点に縦へ詰まる。 */
-const SQUEEZE = 0.22;
+/**
+ * 紙が入るスリット。★頭の箱に開いた**縦の溝**（道具の長手に平行なので、
+ * 立てるとこの向きになる）。`invert` で凹みにし、`P.gap` で1色に塗る。
+ */
+const SLOT = { x0: -46, x1: -28, y0: -190, y1: -56, z0: -6, z1: 36 };
+
+/** バネ。★腕のあいだの開きに収まる針金のコイル（輪が2つ）。 */
+const COIL = {
+  wire: 6,
+  /** ★輪はひとつ、**大きく**（写真でも腕の開きを埋めるほど大きい）。2巻きにする。 */
+  ring: [{ x: -46, y: -540, r: 42 }, { x: -46, y: -538, r: 40 }],
+  z: 4,
+  /**
+   * 脚。★**奥の梃子に沿わせて**降ろす（写真でも針金は梃子に寄り添う）。
+   * まっすぐ下ろすと開きの真ん中に棒が1本立って見える。
+   */
+  legFar: [{ x: -46, y: -232, z: 0 }, { x: -74, y: -400, z: 2 }] as V3[],
+  legNear: { x: 22, y: -604, z: 16 },
+};
+/** 押し切ったときのバネの縮み（横へ詰まる）。 */
+const SQUEEZE = 0.34;
 
 /** 陰の手当て。★面ごとに手で塗らない ― **群にまとめて1度だけ**段を下げる。 */
-const DIM_FAR = -1;    // 奥の本体は手前の柄の陰に入る（スリットは `P.gap` で塗る）
+const DIM_FAR = -1;    // 奥の梃子は手前の柄の陰に入る
 
 /** 落ち影。★立ち姿の複製ではなく、**床へ倒れ込ませる**。 */
 const GROUND = 700;                  // 接地（手前の柄の先の高さ）
-const SUN = { x: 0.82, y: 0.12 };     // 高さ1あたり、左へ／わずかに手前へ
+const SUN = { x: 0.82, y: 0.12 };    // 高さ1あたり、左へ／わずかに手前へ
 
 // ---- 立体 --------------------------------------------------------------
 /** コイル。1周を8つの直線で折る（曲線は持たない）。 */
 function coilPath(): V3[] {
-  const pts: V3[] = [{ x: -34, y: -330, z: COIL.z }];
+  const N = 10;   // 1周の折れ数。★輪に見える最小限（曲線は持たない）
+  const pts: V3[] = [...COIL.legFar];
   COIL.ring.forEach((c, k) => {
-    for (let i = 0; i <= 8; i++) {
-      const t = (i / 8) * Math.PI * 2 - Math.PI / 2;
-      pts.push({ x: c.x + Math.cos(t) * c.r, y: c.y + Math.sin(t) * c.r, z: COIL.z + k * 3 });
+    for (let i = 0; i <= N; i++) {
+      const t = (i / N) * Math.PI * 2 - Math.PI * 0.75;
+      pts.push({ x: c.x + Math.cos(t) * c.r, y: c.y + Math.sin(t) * c.r, z: COIL.z + k * 4 });
     }
   });
-  pts.push({ x: 14, y: -556, z: COIL.z + 12 });
+  pts.push(COIL.legNear);
   return pts;
 }
 
@@ -124,18 +142,15 @@ function edgesAt(st: Station[], y: number): [number, number] | null {
 
 /** 2つの部品を**合併した輪郭**（影のため）。★道具は1つの塊として影を落とす。 */
 function hull(a: P2): P2[] {
-  const lo = Math.min(GRIP[0][0], LEVER[0][0]);
-  const hi = Math.max(GRIP[GRIP.length - 1][0], LEVER[LEVER.length - 1][0]);
-  const ys: number[] = [];
-  for (let i = 0; i <= 24; i++) ys.push(lo + ((hi - lo) * i) / 24);
+  const lo = Math.min(FRAME[0][0], LEVER[0][0]);
+  const hi = Math.max(FRAME[FRAME.length - 1][0], LEVER[LEVER.length - 1][0]);
   const left: P2[] = [], right: P2[] = [];
-  for (const y of ys) {
-    const g = edgesAt(GRIP, y), l = edgesAt(LEVER, y);
-    if (!g && !l) continue;
-    const lo = Math.min(g ? g[0] : Infinity, l ? l[0] : Infinity);
-    const hi = Math.max(g ? g[1] : -Infinity, l ? l[1] : -Infinity);
-    left.push(proj({ x: lo, y, z: Z_FAR }, a));
-    right.push(proj({ x: hi, y, z: Z_NEAR }, a));
+  for (let i = 0; i <= 24; i++) {
+    const y = lo + ((hi - lo) * i) / 24;
+    const f = edgesAt(FRAME, y), l = edgesAt(LEVER, y);
+    if (!f && !l) continue;
+    left.push(proj({ x: Math.min(f ? f[0] : Infinity, l ? l[0] : Infinity), y, z: Z_FAR }, a));
+    right.push(proj({ x: Math.max(f ? f[1] : -Infinity, l ? l[1] : -Infinity), y, z: Z_NEAR }, a));
   }
   return [...right, ...left.reverse()];
 }
@@ -156,13 +171,14 @@ function Solid({ faces, away, dim = 0, flat }: {
   );
 }
 
-/** 可動部の姿勢。★頭の支点（0,0）を軸に回すだけ。 */
-const swing = (v: number) => `rotate(${(v * THETA).toFixed(3)} 0 0)`;
-/** バネの縮み。輪の中心（`c`）を支点に縦へ詰める。 */
-const squeeze = (v: number, c: P2) =>
-  `translate(${c.x.toFixed(1)} ${c.y.toFixed(1)})`
-  + ` scale(1 ${(1 - v * SQUEEZE).toFixed(4)})`
-  + ` translate(${(-c.x).toFixed(1)} ${(-c.y).toFixed(1)})`;
+/** 可動部の姿勢。★頭の中の支点まわりに回すだけ。 */
+const swing = (v: number) =>
+  `rotate(${(v * THETA).toFixed(3)} ${HINGE.x} ${-HINGE.y})`;
+/** バネの縮み。手前の柄に付く側（`a`）を支点に、横へ詰める。 */
+const squeeze = (v: number, a: P2) =>
+  `translate(${a.x.toFixed(1)} ${a.y.toFixed(1)})`
+  + ` scale(${(1 - v * SQUEEZE).toFixed(4)} 1)`
+  + ` translate(${(-a.x).toFixed(1)} ${(-a.y).toFixed(1)})`;
 
 export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 }, width = "100%" }: {
   /** 0=閉じ 1=開き。 */
@@ -180,16 +196,16 @@ export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 },
   const want = pressed || closing ? 1 : 1 - open;
 
   const solids = useMemo(() => ({
-    grip: extrude(GRIP, Z_NEAR),
+    frame: extrude(FRAME, Z_NEAR),
     lever: extrude(LEVER, Z_FAR),
     slot: invert(slab(SLOT.x0, SLOT.x1, SLOT.y0, SLOT.y1, SLOT.z0, SLOT.z1)),
-    coil: tube(coilPath(), COIL.r),
+    coil: tube(coilPath(), COIL.wire),
   }), []);
 
-  /** バネを縮める支点＝上の輪の中心。 */
-  const hinge = { x: COIL.ring[0].x, y: -COIL.ring[0].y };
-  const hingeRef = useRef(hinge);
-  hingeRef.current = hinge;
+  /** バネを縮める支点＝手前の柄に付く脚。 */
+  const anchor = proj(COIL.legNear, away);
+  const anchorRef = useRef(anchor);
+  anchorRef.current = anchor;
 
   const leverRef = useRef<SVGGElement>(null);
   const coilRef = useRef<SVGGElement>(null);
@@ -197,7 +213,7 @@ export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 },
 
   const paint = useCallback((v: number) => {
     leverRef.current?.setAttribute("transform", swing(v));
-    coilRef.current?.setAttribute("transform", squeeze(v, hingeRef.current));
+    coilRef.current?.setAttribute("transform", squeeze(v, anchorRef.current));
   }, []);
 
   // ★動きは `lib/spring.ts` の減衰振動（＝Framer Motion の `type: "spring"` と同じ物理）。
@@ -219,8 +235,7 @@ export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 },
 
   /**
    * 床へ倒した影。**高いところほど左へ遠く飛ぶ**。接地では足元に触れる。
-   * ★部品ごとに落とすと**2本の帯に割れる**（高さが違うぶん横へずれる）。
-   *   道具は1つの塊なので、**輪郭を合併してから**倒す。
+   * ★部品ごとに落とすと**2本の帯に割れる**ので、**輪郭を合併してから**倒す。
    */
   const floor = toPath(hull(away).map((p) => {
     const h = GROUND - p.y;
@@ -236,27 +251,23 @@ export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 },
       onPointerLeave={() => setPressed(false)}>
       <g transform={`translate(${NIPPER_ORIGIN.x} ${NIPPER_ORIGIN.y})`}>
         {/* 1. 影 … ★ぼかさない1枚の面。群に1度だけ透かす（重ねても濃くしない）。 */}
-        <g id="shadow" opacity={P.castAlpha}>
-          <path d={floor} fill={P.cast} />
-        </g>
+        <g id="shadow" opacity={P.castAlpha}><path d={floor} fill={P.cast} /></g>
 
-        {/* 2. 固定部 … 奥の薄い本体＋頭の受け。★手前の陰に入るのでひと段暗い。 */}
-        <g id="frame">
+        {/* 2. 可動部 … 奥の細い梃子。★手前の陰に入るのでひと段暗い。 */}
+        <g id="lever" ref={leverRef} transform={swing(s.current.p)}>
           <Solid faces={solids.lever} away={away} dim={DIM_FAR} />
-          {/* ダイのスリット。★別の群にして最後に描く（画家の順で頭に負けないため）。 */}
-          <g id="die"><Solid faces={solids.slot} away={away} flat={P.gap} /></g>
         </g>
 
-        {/* 3. バネ … 針金の輪が2つ。腕のあいだに覗く。 */}
-        {/* ★針金は磨かれた鋼。本体の陰には入らないので段を下げない。 */}
-        <g id="spring" ref={coilRef} transform={squeeze(s.current.p, hinge)}>
+        {/* 3. バネ … 腕の開きに収まる針金の輪。★磨かれた鋼なので段を下げない。 */}
+        <g id="spring" ref={coilRef} transform={squeeze(s.current.p, anchor)}>
           <Solid faces={solids.coil} away={away} />
         </g>
 
-        {/* 4. 可動部 … 手前の分厚い柄。握って押すほうで、ここが工具の主役。
-            ★頭の支点（0,0）を軸に回る。下端が本体へ寄り、頭では突きがスリットへ沈む。 */}
-        <g id="lever" ref={leverRef} transform={swing(s.current.p)}>
-          <Solid faces={solids.grip} away={away} />
+        {/* 4. 固定部 … **頭の箱ひとつ**＋手前の太い柄。ここが工具の主役。 */}
+        <g id="frame">
+          <Solid faces={solids.frame} away={away} />
+          {/* 紙が入るスリット。★別の群にして最後に描く（画家の順で頭に負けないため）。 */}
+          <g id="die"><Solid faces={solids.slot} away={away} flat={P.gap} /></g>
         </g>
       </g>
     </svg>

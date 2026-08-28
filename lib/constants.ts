@@ -427,3 +427,26 @@ export const KIND_DOMAIN: Record<ItemKind, ItemDomain> = Object.fromEntries(
 ) as Record<ItemKind, ItemDomain>;
 export const kindsOfDomain = (domain: ItemDomain) => ITEM_KINDS.filter((k) => k.domain === domain);
 
+
+// ---- 券（Explore の共通部品・第69巡） --------------------------------
+// 1件＝1枚の券。提案・ストック・マップで**縮尺だけ**が変わる。
+// 設計の正は docs/explore-redesign.md。
+//
+// ★分類の色は**4ドメイン**が持つ(kind ごとの色は廃止)。kind の違いは
+//   帯の中の漢字1文字が担う。色相が4つとも離れていることが条件。
+export const TICKET_DOMAIN_COLOR: Record<ItemDomain, string> = {
+  place: SCHEME.forest.bg,
+  experience: SCHEME.orange.bg,
+  info: SCHEME.violet.bg,
+  thing: SCHEME.wine.bg,
+};
+// 券の紙。★第33巡で暖色のクリームは廃止したので戻さない。紙らしさは
+// 地紋と繊維の目だけで出す。
+export const TICKET_PAPER = PAPER;
+// 券が乗る台。穴から透けて見えるのはこの色。
+export const TICKET_DECK = "#26251F";
+// 券の縦横比。カード(3/4)より縦長にして、券であることを比率で示す。
+export const TICKET_ASPECT = "5 / 7";
+// 券の罫と紙の目。★HAIRLINE(0.08) は分節の点線には薄すぎるので別に持つ。
+export const TICKET_PERF = "rgba(26,26,24,0.32)";
+export const TICKET_GRAIN = "rgba(26,26,24,0.05)";

@@ -2337,7 +2337,13 @@ my-brain の `sources/stats.md` へ書く。Cowork の発掘タスクはこの�
 ## 8. 検証ワークフロー
 
 ```bash
-# ★開発サーバー。**`NODE_OPTIONS=--use-env-proxy` を付けること**（第24巡）。
+# ★開発サーバー。**`NODE_EXTRA_CA_CERTS` と `NODE_OPTIONS=--use-env-proxy` の
+#   **両方**を付けること（第69巡に判明）。片方だけだと next/font/google の取得が
+#   「There was an issue establishing a connection」で落ち、ページが 500 になる:
+#     NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt NODE_OPTIONS=--use-env-proxy npm run dev
+#   （プロキシは通っても、その TLS 証明書を Node が信用していないと繋がらない。
+#    curl は成功するので「取得できている」と誤解しやすい。）
+# ★`NODE_OPTIONS=--use-env-proxy` が要る理由（第24巡）。
 #   next/font/google はビルド時に fonts.googleapis.com を取りにいくが、
 #   Node の fetch は環境のプロキシを勝手には通らない。付けないと
 #   「Module not found: @vercel/turbopack-next/internal/font/google/font」で

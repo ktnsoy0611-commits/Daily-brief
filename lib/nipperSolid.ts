@@ -138,10 +138,65 @@ export function bossZ(r: number, z0: number, z1: number): Face[] {
 }
 
 /**
- * 影のための、部品の**輪郭だけ**の多角形（xy 面）。
+ * 影のための、部品の**輪郭だけ**の多角形（投影済み）。
  * ★面を全部落とすと数が爆発するので、影は輪郭で足りる。
  */
-export function outline(st: Station[], zc: number, a: P2): string {
+export function outline(st: Station[], zc: number, a: P2): P2[] {
   const side = (s: number) => st.map(([y, hw, , cx]) => proj({ x: cx + s * hw, y, z: zc }, a));
-  return toPath([...side(1), ...side(-1).reverse()]);
+  return [...side(1), ...side(-1).reverse()];
 }
+
+/**
+ * 任意の3D折れ線に沿った**管**（針金）。断面は同じ八角形なので曲線は出てこない。
+ * ★接線から枠（法線・従法線）を作って断面を立てる。バネの針金に使う。
+ */
+export function tube(path: V3[], r: number): Face[] {
+  const rings = path.map((p, i) => {
+    const a = path[Math.max(0, i - 1)], b = path[Math.min(path.length - 1, i + 1)];
+    const t = norm(sub(b, a));
+    // 参照は z 軸。接線がそれとほぼ平行なときだけ y 軸へ逃がす。
+    const ref: V3 = Math.abs(t.z) > 0.9 ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 };
+    const u = norm(cross(ref, t)), v = cross(t, u);
+    return SECTION.map(([sx, sz]) => ({
+      x: p.x + (u.x * sx + v.x * sz) * r,
+      y: p.y + (u.y * sx + v.y * sz) * r,
+      z: p.z + (u.z * sx + v.z * sz) * r,
+    }));
+  });
+  const faces: Face[] = [];
+  for (let k = 0; k + 1 < rings.length; k++) {
+    const a = rings[k], b = rings[k + 1];
+    const axis = mid([path[k], path[k + 1]]);
+    for (let i = 0; i < SECTION.length; i++) {
+      const j = (i + 1) % SECTION.length;
+      const p = [a[i], a[j], b[j], b[i]];
+      const n = norm(cross(sub(p[1], p[0]), sub(p[2], p[0])));
+      const out = dot(n, sub(mid(p), axis)) >= 0;
+      faces.push(face(out ? p : [...p].reverse(), out ? n : neg(n)));
+    }
+  }
+  faces.push(face([...rings[0]].reverse(), { x: 0, y: -1, z: 0 }));
+  faces.push(face(rings[rings.length - 1], { x: 0, y: 1, z: 0 }));
+  return faces;
+}
+
+/** 軸に沿った直方体。★面取りしない ― 溝や欠きのための素直な箱。 */
+export function slab(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number): Face[] {
+  const P = (x: number, y: number, z: number): V3 => ({ x, y, z });
+  const q = [
+    [[P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1)], { x: 0, y: 0, z: 1 }],
+    [[P(x1, y0, z0), P(x0, y0, z0), P(x0, y1, z0), P(x1, y1, z0)], { x: 0, y: 0, z: -1 }],
+    [[P(x1, y0, z1), P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1)], { x: 1, y: 0, z: 0 }],
+    [[P(x0, y0, z0), P(x0, y0, z1), P(x0, y1, z1), P(x0, y1, z0)], { x: -1, y: 0, z: 0 }],
+    [[P(x0, y1, z1), P(x1, y1, z1), P(x1, y1, z0), P(x0, y1, z0)], { x: 0, y: 1, z: 0 }],
+    [[P(x0, y0, z0), P(x1, y0, z0), P(x1, y0, z1), P(x0, y0, z1)], { x: 0, y: -1, z: 0 }],
+  ] as const;
+  return q.map(([p, n]) => face([...p], n));
+}
+
+/**
+ * 面を裏返す ＝ **凹み**にする。内側の壁が見えるようになり、階調も内向きで引き直す。
+ * ★手前を向いていた蓋は自動で裏になって落ちるので、覗き込んだ穴になる。
+ */
+export const invert = (faces: Face[]): Face[] =>
+  faces.map((f) => face([...f.p].reverse(), neg(f.n)));

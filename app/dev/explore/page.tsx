@@ -28,10 +28,12 @@ function fakePhoto(a: string, b: string) {
 // ★以下は目盛りの外（実寸の枠と図形の座標）。
 const STAGE = { w: 390, h: 844 };   // iPhone の見えている範囲
 const STAGE_TICKET = 300;           // 提案の券の幅（本番と同じ）
-const STAGE_NIPPER = 338;           // 鋏の幅（viewBox 620 × 0.545）
-const NIPPER_S = STAGE_NIPPER / 620;
+const STAGE_NIPPER = 206;           // 鋏の幅（viewBox 480 × 0.43）
+const NIPPER_S = STAGE_NIPPER / 480;
 /** ★カメラの高さ（画面と同じ px の尺度）。消失点は画面の中心。 */
-const CAM = 1000;
+// ★目標画像では奥の腕が手前から**幅の3割ほど**ずれて見える。待機位置で
+// その見え方になるようカメラの高さを合わせた。仕組みは変えていない。
+const CAM = 380;
 /** 高さ1あたりの画面上のずれ。**中心から離れているほど、高いところが外へ逃げる**。 */
 const awayAt = (x: number, y: number) => ({
   x: (x - STAGE.w / 2) / CAM,
@@ -44,9 +46,9 @@ const originFor = (nose: { x: number; y: number }) => ({
   at: { x: nose.x - NIPPER_NOSE.x * NIPPER_S, y: nose.y - NIPPER_NOSE.y * NIPPER_S },
 });
 /** 待機 … 口は券のすぐ下。柄は画面の右下へ抜ける（そこに手がある）。 */
-const IDLE = originFor({ x: 250, y: 545 });
+const IDLE = originFor({ x: 314, y: 556 });
 /** 入鋏 … 口を券の右の縁の鋏痕へ合わせる。 */
-const BITE = originFor({ x: 316, y: 373 });
+const BITE = originFor({ x: 322, y: 372 });
 
 /** 鋏痕が落ちる高さ。 */
 const PUNCH_T = 0.72;
@@ -169,10 +171,12 @@ export default function DevExplore() {
         <Label>Nipper</Label>
         {/* ★一点透視の確認。左へ置くと右面、右へ置くと左面が見える。 */}
         <div style={{ display: "flex", gap: SPACE.xl, alignItems: "flex-start" }}>
-          <span style={{ width: 260 }}><Nipper open={1} away={awayAt(40, 700)} /></span>
-          <span style={{ width: 260 }}><Nipper open={1} away={awayAt(STAGE.w / 2, STAGE.h / 2)} /></span>
-          <span style={{ width: 260 }}><Nipper open={1} away={awayAt(350, 700)} /></span>
-          <span style={{ width: 260 }}><Nipper open={0} closing away={awayAt(350, 500)} /></span>
+          {/* ★掴んで動かしたときの検証。画面のどこに置いたかでパースが変わる。 */}
+          {[[60, 180], [330, 180], [60, 720], [330, 720]].map(([x, y]) => (
+            <span key={`${x}-${y}`} style={{ width: 176 }}>
+              <Nipper open={1} away={awayAt(x, y)} />
+            </span>
+          ))}
         </div>
       </div>
 

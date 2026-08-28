@@ -28,14 +28,20 @@ function fakePhoto(a: string, b: string) {
 // ★以下は目盛りの外（実寸の枠と図形の座標）。
 const STAGE = { w: 390, h: 844 };   // iPhone の見えている範囲
 const STAGE_TICKET = 300;           // 提案の券の幅（本番と同じ）
-const STAGE_NIPPER = 258;           // 鋏の幅（viewBox 560 × 0.46）
+const STAGE_NIPPER = 300;           // 鋏の幅
 // 鋏は**原点（頭と柄の継ぎ目）の位置**で置く。頭は券の下、ループの柄は画面の
 // 右下へ伸びる（＝そこに手がある）。券には重ねない（掴んで寄せるのは操作）。
+/** 鋲を画面のどこへ置くか。頭は券のすぐ下、柄は画面の下端へ抜ける。 */
+const NIPPER_AT = { x: 245, y: 660 };
 const NIPPER_S = STAGE_NIPPER / 560;
-const NIPPER_LEFT = Math.round(280 - NIPPER_ORIGIN.x * NIPPER_S);
-const NIPPER_TOP = Math.round(629 - NIPPER_ORIGIN.y * NIPPER_S);
+const NIPPER_LEFT = Math.round(NIPPER_AT.x - NIPPER_ORIGIN.x * NIPPER_S);
+const NIPPER_TOP = Math.round(NIPPER_AT.y - NIPPER_ORIGIN.y * NIPPER_S);
+/** ★一点透視。鋏の鋲が画面の中央からどれだけ右に居るかで、見える側面が決まる。 */
+const NIPPER_LEAN = (NIPPER_AT.x - STAGE.w / 2) / (STAGE.w / 2);
 /** 鋏痕が落ちる高さ。 */
 const PUNCH_T = 0.72;
+/** 入鋏の傾き。★垂直に入らなくてよい。 */
+const PUNCH_TILT = -14;
 
 const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
   {
@@ -45,7 +51,7 @@ const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
       venue: "東京都現代美術館", area: "清澄白河", date: "12.02", until: "03.16", soon: true,
       image: fakePhoto("#FFE58A", "#101B3A"), serial: 143, // ★目盛りの外（ダミー画像の色）
     },
-    punch: { edge: "right", t: PUNCH_T },
+    punch: { edge: "right", t: PUNCH_T, tilt: PUNCH_TILT },
   },
   {
     data: {
@@ -53,7 +59,7 @@ const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
       summary: "図面の余白に書かれた覚え書きだけを集めた一冊。生活の言葉で書かれている。",
       venue: "みすず書房", date: "09.20", until: "09.20", serial: 142,
     },
-    punch: { edge: "right", t: PUNCH_T },
+    punch: { edge: "bottom", t: 0.34, tilt: 11 },
   },
   {
     data: {
@@ -62,7 +68,7 @@ const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
       venue: "喫茶ソワレ分室", area: "蔵前", date: "09.01", until: "03.31",
       image: fakePhoto("#FFB27A", "#1A0E0A"), serial: 141, // ★目盛りの外（ダミー画像の色）
     },
-    punch: { edge: "right", t: PUNCH_T },
+    punch: { edge: "left", t: 0.55, tilt: 17 },
   },
   {
     data: {
@@ -71,7 +77,7 @@ const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
       venue: "つくし文具店", area: "国分寺", date: "10.01", until: "10.31",
       handwritten: true, serial: 140,
     },
-    punch: { edge: "right", t: PUNCH_T },
+    punch: { edge: "top", t: 0.62, tilt: -8 },
   },
 ];
 
@@ -111,7 +117,7 @@ export default function DevExplore() {
           <span style={{
             position: "absolute", left: NIPPER_LEFT, top: NIPPER_TOP, width: STAGE_NIPPER,
           }}>
-            <Nipper open={1} domain="experience" />
+            <Nipper open={1} domain="experience" lean={NIPPER_LEAN} />
           </span>
         </div>
       </div>
@@ -135,9 +141,12 @@ export default function DevExplore() {
       {/* 鋏 */}
       <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
         <Label>Nipper</Label>
+        {/* ★一点透視の確認。左へ置くと右面、右へ置くと左面が見える。 */}
         <div style={{ display: "flex", gap: SPACE.xl, alignItems: "flex-start" }}>
-          <span style={{ width: 200 }}><Nipper open={1} /></span>
-          <span style={{ width: 200 }}><Nipper open={0} closing /></span>
+          <span style={{ width: 220 }}><Nipper open={1} lean={-1} /></span>
+          <span style={{ width: 220 }}><Nipper open={1} lean={0} /></span>
+          <span style={{ width: 220 }}><Nipper open={1} lean={1} /></span>
+          <span style={{ width: 220 }}><Nipper open={0} closing lean={0.6} /></span>
         </div>
       </div>
 

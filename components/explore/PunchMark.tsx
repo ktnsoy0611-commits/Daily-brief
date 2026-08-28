@@ -3,7 +3,10 @@
 import { useId } from "react";
 
 import { TICKET_CUT } from "@/lib/constants";
-import { barsOf, EDGE_ROTATION, notchContour, notchPath, PUNCH_BY_DOMAIN, type PunchShape, type TicketEdge } from "@/lib/ticket";
+import {
+  barsOf, EDGE_ROTATION, NOTCH_LIP, notchContour, notchPath, PUNCH_BY_DOMAIN,
+  type PunchShape, type TicketEdge,
+} from "@/lib/ticket";
 import type { ItemDomain } from "@/lib/types";
 
 // 券に付く図形（切り欠き・印・バーコード）。
@@ -19,30 +22,36 @@ import type { ItemDomain } from "@/lib/types";
  * ★閉じた輪郭を縁取ると**券の縁そのものにも線が乗り**、切れ目ではなく
  *   「置かれた図形」に見える（第69巡2巡目に実際にそうなった）。
  */
-export function PunchNotch({ domain, edge, deck }: {
+export function PunchNotch({ domain, edge, deck, tilt = 0 }: {
   domain: ItemDomain;
   edge: TicketEdge;
   /** 切り欠きから見える台の色。 */
   deck: string;
+  /** 入鋏の傾き（度）。垂直に入らなくてよい。 */
+  tilt?: number;
 }) {
   const shape = PUNCH_BY_DOMAIN[domain];
   const d = notchPath(shape);
   const rot = EDGE_ROTATION[edge];
   const clip = useId();
+  // ★口（y=0）の中点まわりに傾ける。板（NOTCH_LIP）を一緒に回すので、
+  //   斜めに入れても券の縁にヒゲが残らない。
+  const bite = `rotate(${rot} 50 50) rotate(${tilt} 50 0)`;
   return (
     <svg width="100%" height="100%" viewBox="0 0 100 100" aria-hidden
-      style={{ display: "block" }} preserveAspectRatio="none">
+      style={{ display: "block", overflow: "visible" }} preserveAspectRatio="none">
       <defs>
         <clipPath id={clip}>
-          <path d={d} transform={`rotate(${rot} 50 50)`} />
+          <path d={d} transform={bite} />
         </clipPath>
       </defs>
-      <g transform={`rotate(${rot} 50 50)`}>
+      <g transform={bite}>
+        <path d={NOTCH_LIP} fill={deck} />
         <path d={d} fill={deck} />
       </g>
       {/* 紙の厚み。★口を除いた輪郭だけを太らせ、切り欠きの形で切り抜く。 */}
       <g clipPath={`url(#${clip})`}>
-        <path d={notchContour(shape)} transform={`rotate(${rot} 50 50)`}
+        <path d={notchContour(shape)} transform={bite}
           fill="none" stroke={TICKET_CUT} strokeWidth={6} strokeLinejoin="round" />
       </g>
     </svg>
@@ -56,7 +65,7 @@ export function PunchGlyph({ shape, domain, size, color }: {
   size: number;
   color: string;
 }) {
-  const s = shape ?? (domain ? PUNCH_BY_DOMAIN[domain] : "semi");
+  const s = shape ?? (domain ? PUNCH_BY_DOMAIN[domain] : "arch");
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden style={{ display: "block" }}>
       <path d={notchPath(s)} fill={color} />

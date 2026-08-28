@@ -9,36 +9,43 @@
 
 import type { ItemDomain } from "./types";
 
-export type PunchShape = "semi" | "tri" | "square" | "w";
+export type PunchShape = "arch" | "trapezoid" | "square" | "fork";
 export type TicketEdge = "top" | "right" | "bottom" | "left";
 
 export const PUNCH_BY_DOMAIN: Record<ItemDomain, PunchShape> = {
-  place: "semi",
-  experience: "tri",
+  place: "arch",
+  experience: "trapezoid",
   info: "square",
-  thing: "w",
+  thing: "fork",
 };
 
 /**
- * 切り欠きの輪郭。100×100 の枠に、**上の辺を口にして**下へ食い込む形で描く。
+ * 切り欠きの輪郭。100×100 の枠に、**上の辺（y=0）を口にして**下へ食い込む形で描く。
  * 実際の辺へは `EDGE_ROTATION` で回して当てる。
+ *
+ * ★★形の正は**旧国鉄の鋏こん一覧**（2026-08-28 にユーザー指定）。46種すべてが
+ *   「券の縁が形の上辺で、そこから下へ食い込む」形で、輪郭は**直線と単純な弧が
+ *   2〜4本だけ**。この規律から外れた形は鋏こんに見えない。
+ * ★4つは**輪郭の性格**が全部違うものを選んである ―
+ *   弧（アーチ）／斜め（台形）／直角（角）／切れ込み（二又）。
+ *   小さく描いても混ざらないのはこのため。形だけ差し替えないこと。
  * ★目盛りの外（図形の座標系）。
  */
 export function notchPath(shape: PunchShape): string {
   switch (shape) {
-    case "semi":
-      // 半円。口の直径がそのまま辺に乗る。
-      return "M0 0 H100 A50 50 0 0 1 0 0 Z";
-    case "tri":
-      // V字。実物の「山型」を裏返した形。
-      return "M0 0 H100 L50 96 Z";
+    case "arch":
+      // アーチ。一覧の #4 大井町・#6 蒲田。直線の肩から弧の底へ。
+      return "M0 0 H100 V52 A50 46 0 0 1 0 52 Z";
+    case "trapezoid":
+      // 台形。一覧の #26 藤沢・#27 洋光台・横須賀。斜め2本と平らな底。
+      return "M0 0 H100 L74 90 H26 Z";
     case "square":
-      // 角型。いちばん judgement が要らない形なので、数の多いジョウホウに当てる。
-      return "M0 0 H100 V72 H0 Z";
-    case "w":
+      // 角。一覧の予備2・鶴見。直角だけでできている。
+      return "M0 0 H100 V84 H0 Z";
+    case "fork":
     default:
-      // 二山。実物にもある形で、遠目でも三角と混ざらない。
-      return "M0 0 H100 L78 88 L50 26 L22 88 Z";
+      // 二又。一覧の品川・#15 辻堂・#22 恵比寿。底に V を食い込ませて爪が2本。
+      return "M0 0 H100 V92 L50 46 L0 92 Z";
   }
 }
 
@@ -46,22 +53,35 @@ export function notchPath(shape: PunchShape): string {
  * 同じ形の**口を除いた輪郭**（＝実際に刃が入った線）。
  * ★紙の厚みの陰はこの線にだけ落とす。閉じた輪郭を縁取ると、
  *   **券の縁そのものにも線が乗って**しまい、切り欠きが「切れ目」ではなく
- *   「置かれた図形」に見える（第69巡に実際に起きた）。
+ *   「置かれた図形」に見える（第69巡2巡目に実際に起きた）。
  * ★目盛りの外（図形の座標系）。
  */
 export function notchContour(shape: PunchShape): string {
   switch (shape) {
-    case "semi":
-      return "M100 0 A50 50 0 0 1 0 0";
-    case "tri":
-      return "M100 0 L50 96 L0 0";
+    case "arch":
+      return "M100 0 V52 A50 46 0 0 1 0 52 V0";
+    case "trapezoid":
+      return "M100 0 L74 90 H26 L0 0";
     case "square":
-      return "M100 0 V72 H0 V0";
-    case "w":
+      return "M100 0 V84 H0 V0";
+    case "fork":
     default:
-      return "M100 0 L78 88 L50 26 L22 88 L0 0";
+      return "M100 0 V92 L50 46 L0 92 V0";
   }
 }
+
+/**
+ * 斜めに入鋏したとき、券の縁に**紙のヒゲを残さない**ための板。
+ * 鋏こんの口（y=0）から**外側へ**伸ばしてあり、形と一緒に口の中点まわりに
+ * 回す。傾ければ口はそのぶん広がり、券の縁は左右とも直線のまま残る
+ * ＝実物の斜め入鋏と同じ。券の外へはみ出た分は券の `overflow: hidden` が切る。
+ * ★これを伸ばさずに回すと、縁に三角のヒゲが残る。
+ * ★目盛りの外（図形の座標系）。
+ */
+export const NOTCH_LIP = "M0 -140 H100 V2 H0 Z";
+
+/** 入鋏の傾きの上限（度）。垂直に入らなくてよい ― 実物もそうなっている。 */
+export const NOTCH_TILT_MAX = 20;
 
 /** 上の辺で描いた形を、実際の辺へ向けるための回転角。 */
 export const EDGE_ROTATION: Record<TicketEdge, number> = {

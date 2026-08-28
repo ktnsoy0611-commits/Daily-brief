@@ -51,12 +51,14 @@ export interface TicketPunch {
   edge: TicketEdge;
   /** 辺のどこか（0〜1）。 */
   t: number;
+  /** 入鋏の傾き（度）。★垂直に入らなくてよい ― 実物もそうなっている。 */
+  tilt?: number;
 }
 
 // ★以下は目盛りの外（図形の座標系・design.md §7）。
 // ★券が彩度の高い紙になったので、切り欠きは小さくてもはっきり読む。
 // 32% は紙を食い荒らして版面が壊れた（3巡目に実測）。
-const NOTCH_PCT = 18;      // 切り欠きの大きさ（券の幅に対する％）
+const NOTCH_PCT = 13;      // 切り欠きの大きさ（券の幅に対する％）
 const RULE = 1;            // 罫の太さ
 const PERF_D = 3;          // ミシン目の穴の直径
 const BARCODE_H = 12;      // 半券のバーコードの高さ
@@ -236,7 +238,7 @@ export function Ticket({ data, punch, deck = TICKET_DECK, width }: {
           width: `${NOTCH_PCT}%`, aspectRatio: "1",
           ...notchPos[punch.edge],
         }}>
-          <PunchNotch domain={domain} edge={punch.edge} deck={deck} />
+          <PunchNotch domain={domain} edge={punch.edge} deck={deck} tilt={punch.tilt ?? 0} />
         </span>
       )}
     </div>

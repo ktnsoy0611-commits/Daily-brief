@@ -450,3 +450,32 @@ export const TICKET_ASPECT = "5 / 7";
 // 券の罫と紙の目。★HAIRLINE(0.08) は分節の点線には薄すぎるので別に持つ。
 export const TICKET_PERF = "rgba(26,26,24,0.32)";
 export const TICKET_GRAIN = "rgba(26,26,24,0.05)";
+
+// ★改札鋏の彩色。**図形専用のパレット**で、UI のグレーの語彙(INK/CHARCOAL/
+// SECOND/MUTED)とは混ぜない。金属の階調は6段の並びで持ち、SVG の
+// linearGradient の stop へそのまま流す。
+export const NIPPER_PAINT = {
+  /** 手前の腕。明→暗の6段。 */
+  steel: ["#FBFAF6", "#CFCCC4", "#7E7C76", "#B4B1A9", "#57554F", "#312F2C"],
+  /** 奥の腕。逆光になるので階調を1段暗くしてある。 */
+  steelDark: ["#D6D3CB", "#8C8A83", "#4F4D48", "#7B7972", "#232220"],
+  /** 握りの被覆。 */
+  grip: ["#94402A", "#652616", "#3D150C", "#1E0805"],
+  /** 支点のリベット。 */
+  rivet: ["#FAF8F3", "#A5A29A", "#403E3A"],
+  /** 稜線の光。 */
+  edge: "#FCFBF7",
+  /** 稜線の影。 */
+  shade: "#26241F",
+  /** 受けの穴。 */
+  hole: "#1A1917",
+  /** 抜き型の口。 */
+  die: "#2A2926",
+  /** バネ。 */
+  spring: "#8E8B84",
+  springLit: "#EDEAE2",
+  /** リベットの一番強い光。 */
+  glint: "#FFFFFF",
+} as const;
+// 券の切り口の陰（紙の厚み）。
+export const TICKET_CUT = "rgba(52,44,28,0.55)";

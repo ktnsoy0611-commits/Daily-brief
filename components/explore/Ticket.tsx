@@ -6,18 +6,17 @@ import {
   TICKET_ASPECT, TICKET_DECK, TICKET_DOMAIN_COLOR, TICKET_GRAIN, TICKET_PAPER, TICKET_PERF,
   itemKindOf, KIND_DOMAIN,
 } from "@/lib/constants";
-import { serialOf } from "@/lib/ticket";
+import { serialOf, type TicketEdge } from "@/lib/ticket";
 import type { ItemKind } from "@/lib/types";
-import { PunchHole } from "./PunchMark";
+import { Barcode, PunchNotch } from "./PunchMark";
 
 // 券。Explore の唯一の共通部品で、提案・ストック・マップで縮尺だけが変わる。
 // 設計の正は docs/explore-redesign.md。
 //
 // ★分類の色は4ドメインが持ち、10種類の kind は帯の中の漢字1文字が担う。
+// ★入鋏の痕は**縁の切り欠き**（紙の中の穴ではない）。
 // ★写真が無い券は、写真の枠が分類色の面になり、題がその中まで大きく伸びる。
-//   型が壊れないので、束の中で混ざっても一貫して見える。
 
-/** 券面に載る内容。Item / BriefCard のどちらからでも作れる薄い形。 */
 export interface TicketData {
   kind: ItemKind;
   /** 帯に出す漢字1文字。生成カードは glyph を持っている。 */
@@ -27,34 +26,46 @@ export interface TicketData {
   image?: string;
   venue?: string;
   area?: string;
-  /** 会期・刊行など、表示用に整えた文字列。 */
-  term?: string;
-  /** 期限が近い（残り日数が少ない）。 */
+  /** 会期の終わり・刊行日など、券面の下に出す日付。 */
+  until?: string;
+  /** 券面の肩に大きく出す日付（MM.DD）。 */
+  date?: string;
+  /** 期限が近い。 */
   soon?: boolean;
   /** 自分で書いた／声から拾った項目。手書きの欄として見せる。 */
   handwritten?: boolean;
   serial: number;
 }
 
+export interface TicketPunch {
+  edge: TicketEdge;
+  /** 辺のどこか（0〜1）。 */
+  t: number;
+}
+
 // ★以下は目盛りの外（図形の座標系・design.md §7）。
-const BAND_DOT = SPACE.xl;          // 帯の中の丸の直径
-const PERF_PITCH = 9;               // 端のミシン目の間隔
-const PERF_R = 3;                   // ミシン目の半径
-const HOLE_PCT = 15;                // 鋏痕の直径（券の幅に対する％）
+const BAND_DOT = SPACE.xl;      // 分類の丸の直径
+const STUB_W = 30;              // 左の耳（バーコードの帯）の幅
+const NOTCH_PCT = 24;           // 切り欠きの大きさ（券の幅に対する％）
+const RULE = 1;                 // 極細の罫
 
 export function Ticket({ data, punch, deck = TICKET_DECK, width }: {
   data: TicketData;
-  /** 入鋏の位置（券に対する 0〜1 の相対座標）。無ければ未入鋏。 */
-  punch?: { x: number; y: number } | null;
-  /** 穴から透けて見える台の色。 */
+  punch?: TicketPunch | null;
   deck?: string;
-  /** 幅。省略すると親の幅いっぱい。 */
   width?: number | string;
 }) {
   const kindDef = itemKindOf(data.kind);
   const domain = KIND_DOMAIN[data.kind];
   const accent = TICKET_DOMAIN_COLOR[domain];
   const hasImage = !!data.image;
+
+  const notchPos: Record<TicketEdge, React.CSSProperties> = {
+    left: { left: 0, top: `${punch ? punch.t * 100 : 0}%`, transform: "translateY(-50%)" },
+    right: { right: 0, top: `${punch ? punch.t * 100 : 0}%`, transform: "translateY(-50%)" },
+    top: { top: 0, left: `${punch ? punch.t * 100 : 0}%`, transform: "translateX(-50%)" },
+    bottom: { bottom: 0, left: `${punch ? punch.t * 100 : 0}%`, transform: "translateX(-50%)" },
+  };
 
   return (
     <div style={{
@@ -65,142 +76,174 @@ export function Ticket({ data, punch, deck = TICKET_DECK, width }: {
       borderRadius: RADIUS.sm,
       boxShadow: SOFT_SHADOW_LG,
       display: "flex",
-      flexDirection: "column",
       overflow: "hidden",
       color: INK,
     }}>
-      {/* 紙の目と地紋。★目盛りの外（図形） */}
+      {/* 紙の目。★目盛りの外（図形） */}
       <span aria-hidden style={{
-        position: "absolute", inset: 0, pointerEvents: "none", zIndex: 2,
+        position: "absolute", inset: 0, pointerEvents: "none", zIndex: 4,
         backgroundImage:
           `repeating-linear-gradient(90deg, ${TICKET_GRAIN} 0 1px, transparent 1px 4px),`
           + `repeating-linear-gradient(0deg, ${TICKET_GRAIN} 0 1px, transparent 1px 3px)`,
       }} />
+      {/* 地紋。★目盛りの外（図形） */}
       <span aria-hidden style={{
-        position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1, opacity: 0.1,
-        backgroundImage: `repeating-linear-gradient(45deg, ${accent} 0 1px, transparent 1px 6px)`,
+        position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1, opacity: 0.09,
+        backgroundImage: `repeating-linear-gradient(45deg, ${accent} 0 1px, transparent 1px 7px)`,
       }} />
 
-      {/* 帯 */}
+      {/* 左の耳（バーコードと通し番号）。★目盛りの外（図形） */}
       <div style={{
-        flex: "none", position: "relative", zIndex: 3,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        gap: SPACE.sm,
-        padding: `${SPACE.sm}px ${SPACE.md}px`,
-        borderBottom: `${SPACE.hair}px solid ${INK}`,
+        flex: "none", width: STUB_W, position: "relative", zIndex: 3,
+        borderRight: `${RULE}px dashed ${TICKET_PERF}`,
+        display: "flex", flexDirection: "column", alignItems: "center",
+        padding: `${SPACE.sm}px ${SPACE.xs}px`, gap: SPACE.sm,
       }}>
-        <span style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
-          <span style={{
-            width: BAND_DOT, height: BAND_DOT, borderRadius: RADIUS.circle, background: accent,
-            display: "grid", placeItems: "center",
-            fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
-            lineHeight: LEAD.flat, color: TICKET_PAPER,
-          }}>{data.glyph ?? kindDef.label.slice(0, 1)}</span>
-          <span style={{
-            fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: WEIGHT.bold,
-            letterSpacing: TRACK.caps, color: MUTED, textTransform: "uppercase",
-          }}>{kindDef.en}</span>
+        <span style={{ flex: 1, width: "100%", opacity: 0.85 }}>
+          <Barcode serial={data.serial} ink={INK} />
         </span>
         <span style={{
-          fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: WEIGHT.bold,
-          letterSpacing: TRACK.caps, color: MUTED,
+          writingMode: "vertical-rl",
+          fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
+          letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: MUTED,
         }}>No {serialOf(data.serial)}</span>
       </div>
 
-      {/* 写真、または題を抱えた色面 */}
+      {/* 本体 */}
       <div style={{
-        flex: hasImage ? "0 0 40%" : "1 1 auto", minHeight: 0,
-        position: "relative", zIndex: 3,
-        background: hasImage ? undefined : accent,
-        backgroundImage: hasImage ? `url("${data.image}")` : undefined,
-        backgroundSize: "cover", backgroundPosition: "center",
-        display: hasImage ? undefined : "flex",
-        alignItems: "flex-end",
-        padding: hasImage ? undefined : SPACE.md,
-      }}>
-        {!hasImage && (
-          <span style={{
-            fontFamily: SANS, fontSize: TYPE.display, fontWeight: WEIGHT.bold,
-            lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: TICKET_PAPER,
-            // ★3行で切る（写真が無い券は題が主役なので1行ぶん多く許す）
-            display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
-          }}>{data.title}</span>
-        )}
-      </div>
-
-      {/* 分節の点線 */}
-      <span aria-hidden style={{
-        flex: "none", zIndex: 3,
-        borderTop: `${SPACE.hair}px dashed ${TICKET_PERF}`,
-      }} />
-
-      {/* 文字の面 */}
-      <div style={{
-        flex: hasImage ? "1 1 auto" : "0 0 auto", minHeight: 0, overflow: "hidden",
-        position: "relative", zIndex: 3,
+        flex: 1, minWidth: 0, position: "relative", zIndex: 3,
         display: "flex", flexDirection: "column",
-        padding: `${SPACE.md}px ${SPACE.md}px ${SPACE.md}px`,
       }}>
-        {hasImage && (
-          <span style={{
-            fontFamily: SANS, fontSize: TYPE.display, fontWeight: WEIGHT.bold,
-            lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: INK,
-            // ★2行で切る（券の高さが揃わなくなるため）
-            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-          }}>{data.title}</span>
-        )}
-        {data.summary && (
-          <span style={{
-            marginTop: SPACE.sm,
-            fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text,
-            lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: SECOND,
-            // ★2行で切る（券の高さが揃わなくなるため）
-            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-          }}>{data.summary}</span>
-        )}
-        <span style={{
-          marginTop: "auto", paddingTop: SPACE.sm,
-          borderTop: `${SPACE.hair}px solid ${TICKET_PERF}`,
-          display: "flex", flexDirection: "column", gap: SPACE.xs,
+        {/* 肩の極小欄 */}
+        <div style={{
+          flex: "none", display: "flex", alignItems: "baseline", justifyContent: "space-between",
+          gap: SPACE.sm, padding: `${SPACE.sm}px ${SPACE.md}px ${SPACE.xs}px`,
+          borderBottom: `${RULE}px solid ${INK}`,
         }}>
-          {(data.venue || data.area) && (
+          <span style={{
+            fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
+            letterSpacing: TRACK.wide, lineHeight: LEAD.flat, color: INK, textTransform: "uppercase",
+          }}>Explore</span>
+          <span style={{
+            fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
+            letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: MUTED, textTransform: "uppercase",
+          }}>{data.handwritten ? "Self issued" : "Issued"} · {kindDef.en}</span>
+        </div>
+
+        {/* 写真、または題を抱えた色面 */}
+        <div style={{
+          flex: hasImage ? "0 0 34%" : "1 1 auto", minHeight: 0,
+          position: "relative",
+          background: hasImage ? undefined : accent,
+          backgroundImage: hasImage ? `url("${data.image}")` : undefined,
+          backgroundSize: "cover", backgroundPosition: "center",
+          display: "flex", alignItems: "flex-end",
+          padding: hasImage ? undefined : `${SPACE.md}px`,
+          borderBottom: `${RULE}px solid ${INK}`,
+        }}>
+          {!hasImage && (
             <span style={{
+              fontFamily: SANS, fontSize: TYPE.display, fontWeight: WEIGHT.bold,
+              lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: TICKET_PAPER,
+              display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+            }}>{data.title}</span>
+          )}
+        </div>
+
+        {/* 日付と分類 */}
+        <div style={{
+          flex: "none", display: "flex", alignItems: "center", justifyContent: "space-between",
+          gap: SPACE.sm, padding: `${SPACE.sm}px ${SPACE.md}px`,
+          borderBottom: `${RULE}px solid ${TICKET_PERF}`,
+        }}>
+          <span style={{
+            fontFamily: LATIN, fontSize: TYPE.head, fontWeight: WEIGHT.heavy,
+            letterSpacing: TRACK.tight, lineHeight: LEAD.flat,
+            fontVariantNumeric: "tabular-nums", color: INK,
+          }}>{data.date ?? "—"}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
+            <span style={{
+              fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: WEIGHT.bold,
+              letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: MUTED, textTransform: "uppercase",
+            }}>{domain}</span>
+            <span style={{
+              width: BAND_DOT, height: BAND_DOT, borderRadius: RADIUS.circle, background: accent,
+              display: "grid", placeItems: "center",
               fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
-              lineHeight: LEAD.flat, letterSpacing: TRACK.normal, color: SECOND,
-              // ★手書きの欄は下線を1本引いて、印刷された券と区別する
-              borderBottom: data.handwritten ? `${SPACE.hair}px solid ${TICKET_PERF}` : undefined,
-              paddingBottom: data.handwritten ? SPACE.xs : undefined,
-            }}>{[data.venue, data.area].filter(Boolean).join(" ・ ")}</span>
-          )}
-          {data.term && (
+              lineHeight: LEAD.flat, color: TICKET_PAPER,
+            }}>{data.glyph ?? kindDef.label.slice(0, 1)}</span>
+          </span>
+        </div>
+
+        {/* 題と要約 */}
+        <div style={{
+          flex: hasImage ? "1 1 auto" : "0 0 auto", minHeight: 0, overflow: "hidden",
+          display: "flex", flexDirection: "column",
+          padding: `${SPACE.md}px ${SPACE.md}px ${SPACE.sm}px`,
+        }}>
+          {hasImage && (
             <span style={{
-              fontFamily: LATIN, fontSize: TYPE.body, fontWeight: WEIGHT.bold,
-              lineHeight: LEAD.flat, letterSpacing: TRACK.caps,
-              color: data.soon ? RUST : INK,
-            }}>{data.term}</span>
+              fontFamily: SANS, fontSize: TYPE.display, fontWeight: WEIGHT.bold,
+              lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: INK,
+              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+            }}>{data.title}</span>
           )}
-        </span>
+          {data.summary && (
+            <span style={{
+              marginTop: SPACE.sm,
+              fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text,
+              lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: SECOND,
+              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+            }}>{data.summary}</span>
+          )}
+        </div>
+
+        {/* 足元の欄 */}
+        <div style={{
+          flex: "none", display: "flex", flexDirection: "column", gap: SPACE.xs,
+          padding: `${SPACE.sm}px ${SPACE.md}px ${SPACE.md}px`,
+          borderTop: `${RULE}px solid ${INK}`,
+        }}>
+          <span style={{
+            display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: SPACE.sm,
+          }}>
+            <span style={{
+              fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
+              letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: MUTED, textTransform: "uppercase",
+            }}>Venue</span>
+            <span style={{
+              flex: 1, textAlign: "right",
+              fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
+              lineHeight: LEAD.flat, letterSpacing: TRACK.normal, color: INK,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              // ★手書きの欄は罫の上に書いたように見せる
+              borderBottom: data.handwritten ? `${RULE}px solid ${TICKET_PERF}` : undefined,
+            }}>{[data.venue, data.area].filter(Boolean).join(" ・ ") || "—"}</span>
+          </span>
+          <span style={{
+            display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: SPACE.sm,
+          }}>
+            <span style={{
+              fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
+              letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: MUTED, textTransform: "uppercase",
+            }}>Valid until</span>
+            <span style={{
+              fontFamily: LATIN, fontSize: TYPE.body, fontWeight: WEIGHT.heavy,
+              lineHeight: LEAD.flat, letterSpacing: TRACK.caps,
+              fontVariantNumeric: "tabular-nums", color: data.soon ? RUST : INK,
+            }}>{data.until ?? "—"}</span>
+          </span>
+        </div>
       </div>
 
-      {/* 端のミシン目。★目盛りの外（図形） */}
-      {(["left", "right"] as const).map((side) => (
-        <span key={side} aria-hidden style={{
-          position: "absolute", top: 0, bottom: 0, [side]: -PERF_R, width: PERF_R * 2, zIndex: 4,
-          backgroundImage: `radial-gradient(circle at ${side === "left" ? "0" : "100%"} 50%, ${deck} ${PERF_R}px, transparent ${PERF_R + 0.5}px)`,
-          backgroundSize: `${PERF_R * 2}px ${PERF_PITCH}px`,
-          backgroundRepeat: "repeat-y",
-        }} />
-      ))}
-
-      {/* 鋏痕。★目盛りの外（図形） */}
+      {/* 縁の切り欠き。★目盛りの外（図形） */}
       {punch && (
         <span aria-hidden style={{
           position: "absolute", zIndex: 5,
-          left: `${punch.x * 100}%`, top: `${punch.y * 100}%`,
-          width: `${HOLE_PCT}%`, aspectRatio: "1",
-          transform: "translate(-50%, -50%)",
+          width: `${NOTCH_PCT}%`, aspectRatio: "1",
+          ...notchPos[punch.edge],
         }}>
-          <PunchHole domain={domain} deck={deck} />
+          <PunchNotch domain={domain} edge={punch.edge} deck={deck} />
         </span>
       )}
     </div>

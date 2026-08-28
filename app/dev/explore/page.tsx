@@ -5,7 +5,7 @@ import {
   BG, ITEM_DOMAINS, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
 } from "@/lib/constants";
 import { PunchGlyph } from "@/components/explore/PunchMark";
-import { Nipper } from "@/components/explore/Nipper";
+import { Nipper, NIPPER_ORIGIN } from "@/components/explore/Nipper";
 import { Ticket, type TicketData, type TicketPunch } from "@/components/explore/Ticket";
 
 // ★開発用。券・切り欠き・鋏を並べて目で確かめるだけの画面。
@@ -28,15 +28,14 @@ function fakePhoto(a: string, b: string) {
 // ★以下は目盛りの外（実寸の枠と図形の座標）。
 const STAGE = { w: 390, h: 844 };   // iPhone の見えている範囲
 const STAGE_TICKET = 300;           // 提案の券の幅（本番と同じ）
-/** ★券は**左に寄せる**。右に空けた帯が鋏の居場所になる（スイス流の非対称）。 */
-const STAGE_NIPPER = 340;           // 鋏の幅
-// 鋏の支点を画面の (240, 660) へ置く。SVG は枠の外へはみ出して描く
-// （`overflow: visible`）ので、柄は画面の下端へ抜けていく＝そこに手がある。
-const NIPPER_S = STAGE_NIPPER / 520;
-const NIPPER_LEFT = Math.round(240 - 300 * NIPPER_S);
-const NIPPER_TOP = Math.round(660 - 300 * NIPPER_S);
-/** 鋏痕が落ちる高さ。**巨大な日付の右に空く余白**がそのまま入鋏の場所になる。 */
-const PUNCH_T = 0.78;
+const STAGE_NIPPER = 258;           // 鋏の幅（viewBox 560 × 0.46）
+// 鋏は**原点（頭と柄の継ぎ目）の位置**で置く。頭は券の下、ループの柄は画面の
+// 右下へ伸びる（＝そこに手がある）。券には重ねない（掴んで寄せるのは操作）。
+const NIPPER_S = STAGE_NIPPER / 560;
+const NIPPER_LEFT = Math.round(280 - NIPPER_ORIGIN.x * NIPPER_S);
+const NIPPER_TOP = Math.round(629 - NIPPER_ORIGIN.y * NIPPER_S);
+/** 鋏痕が落ちる高さ。 */
+const PUNCH_T = 0.72;
 
 const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
   {

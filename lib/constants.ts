@@ -432,50 +432,53 @@ export const kindsOfDomain = (domain: ItemDomain) => ITEM_KINDS.filter((k) => k.
 // 1件＝1枚の券。提案・ストック・マップで**縮尺だけ**が変わる。
 // 設計の正は docs/explore-redesign.md。
 //
-// ★分類の色は**4ドメイン**が持つ(kind ごとの色は廃止)。kind の違いは
-//   帯の中の漢字1文字が担う。色相が4つとも離れていることが条件。
+// ★分類の色は**4ドメイン**が持つ(kind ごとの色は廃止)。
+//
+// ★★★券は**その色の紙そのもの**になり、文字は全部黒で載る(第69巡3巡目・
+//   Vitsœ のラベルが正)。だから**暗い色は使えない** ― forest/violet/wine の上では
+//   黒が沈む。SCHEME の明るい4色から、色相が離れている4つを選ぶ。
+//   黒 INK(#1A1A18) との比はいずれも 6:1 以上で本文に耐える。
 export const TICKET_DOMAIN_COLOR: Record<ItemDomain, string> = {
-  place: SCHEME.forest.bg,
-  experience: SCHEME.orange.bg,
-  info: SCHEME.violet.bg,
-  thing: SCHEME.wine.bg,
+  place: SCHEME.sky.bg,          // #509BF5
+  experience: SCHEME.pink.bg,    // #F76FA1
+  info: SCHEME.yellow.bg,        // #F5E837
+  thing: SCHEME.orange.bg,       // #FA6E31
 };
 // 券の紙。★第33巡で暖色のクリームは廃止したので戻さない。
 // 紙らしさは**本物の写真**(`public/paper-kraft.webp`・`lib/paperTexture.ts`)で
-// 出す。偽の縞(旧 `TICKET_GRAIN`)は第69巡に撤去した ― 図形が焼き込んでいる
-// 紙と券の紙が食い違い、券だけが「印刷物ではないもの」に見えていた。
+// 出す。★★テクスチャは**色のすぐ上・文字の下**に multiply で敷く(下地)。
+// 最前面に overlay で乗せると写真も文字も霞む(第69巡2巡目に実際にそうなった)。
 export const TICKET_PAPER = PAPER;
 // 券が乗る台。切り欠きから透けて見えるのはこの色。
 export const TICKET_DECK = "#26251F";
 // 券の縦横比。★カード(3/4)でも写真(5/7)でもなく、**券の比**。
-// 5/7(0.714)は名刺やカードの比で、そのせいで「ただのカード」に見えていた。
 export const TICKET_ASPECT = "13 / 21";
-// ミシン目の穿孔。★HAIRLINE(0.08) は点線には薄すぎるので別に持つ。
-export const TICKET_PERF = "rgba(26,26,24,0.32)";
+// ミシン目の穿孔。★彩度の高い紙の上に置くので、黒の薄めで足りる。
+export const TICKET_PERF = "rgba(26,26,24,0.34)";
 
 // ★改札鋏の彩色。**図形専用のパレット**で、UI のグレーの語彙(INK/CHARCOAL/
 // SECOND/MUTED)とは混ぜない。
 //
-// ★★★**平らな面だけで塗る**(第69巡)。第68巡までは6停止の linearGradient で
-// 金属を写実に寄せていたが、それは「写実の失敗作」にしか見えなかった。
-// いまは面ごとに1色を置き、稜線を `outline` の均一な輪郭で締める
-// ―「イラストレーターで描いたベクター」のテイスト(ユーザー指定)。
-// 明るい順に lit / face / side / shade の**4トーンだけ**。増やさない。
+// ★★★**輪郭線を引かない**(第69巡3巡目・Sony Walkman のイラストが正)。
+// 面は**明暗だけ**で分かれる。立体は「同じ輪郭を右下へずらして暗い面で置く」
+// 押し出しで作り、影も**ぼかさない1枚の面**。
+// ★無彩色の3階調だけ(ユーザー確定)。塊は face と side が担い、
+//   lit は稜線だけに使う ― 地(#F0F0EE)と近いので広く使うと白い塊になる。
 export const NIPPER_PAINT = {
-  /** 鋼。手前に向いた面ほど明るい。 */
-  steel: { lit: "#E4E1D8", face: "#A9A69C", side: "#6E6C65", shade: "#484640" },
-  /** 握りの被覆。 */
-  grip: { lit: "#A8442C", face: "#8A3320", side: "#67230F", shade: "#421408" },
-  /** 支点のリベット。 */
-  rivet: { lit: "#FBFAF6", face: "#B3B0A7", shade: "#4A4843" },
-  /** すべての部品を締める輪郭。太さは一定。 */
-  outline: "#1A1917",
-  /** 抜き型の口と受けの窓(＝紙が入る闇)。 */
-  die: "#211F1C",
-  /** バネの線。 */
-  spring: "#A9A69D",
-  /** 影。ぼかさず、ずらした同形の面として置く。 */
-  cast: "rgba(26,25,23,0.20)",
+  /** 稜線の光。★細い帯だけ。 */
+  lit: "#E4E1D8",
+  /** 手前を向いた面。ここが工具の地の色。 */
+  face: "#A9A69C",
+  /** 厚み(押し出した側面)と、奥を向いた面。 */
+  side: "#6E6C65",
+  /** さらに奥。頭の内側など、いちばん落ちるところ。 */
+  deep: "#4E4C47",
+  /** 黒い樹脂の受け。 */
+  anvil: INK,
+  /** 鋲。 */
+  rivet: "#C9C6BD",
+  /** 地に落ちる影。★ぼかさない1枚の面。 */
+  cast: "rgba(26,25,23,0.13)",
 } as const;
 // 券の切り口の陰（紙の厚み）と、切り欠きの中に落ちる券の影。
 // ★★券の紙(#FAFAF9)と地(#F0F0EE)はほとんど同じ明るさなので、**地の色だけでは

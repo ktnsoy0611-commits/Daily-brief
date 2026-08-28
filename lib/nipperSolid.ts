@@ -22,7 +22,10 @@ export const TONES = 6;
  * 刃も柄も鋲もこれを押し出して作るので、**曲線は一度も出てこない**。
  * `[x, z]` の単位。`hw`（半幅）と `hd`（半分の厚み）で伸ばす。
  */
-const C = 0.45;
+// ★面取りは**ごく浅く**（幅の 8 割が正面の平らな面）。深くすると（0.45・0.62 で試した）
+//   正面が痩せて、代わりに明るい左の面取りが広く出て、**白い帯が縦に走る**。
+//   参考の道具は**角を軽く落としただけの箱**で、明るい左の縁は幅の1割ほどしかない。
+const C = 0.80;
 const SECTION: [number, number][] = [
   [1, C], [C, 1], [-C, 1], [-1, C], [-1, -C], [-C, -1], [C, -1], [1, -C],
 ];
@@ -30,14 +33,21 @@ const SECTION: [number, number][] = [
 // ---- 光 ----------------------------------------------------------------
 // ★ほぼ真横（左）から、わずかに上・手前。**面の x の向きがそのまま段になる**ように
 //   選んである ― 左を向く面ほど明るく、右を向く面ほど暗い。
-//     正面 = 2（基本）／左の面取り・左の側面 = 4／右を向く面 = 0
+//     正面 = 3（基本）／天 = 4／左の側面 = 5／右を向く面 = 0
+//   ★正面を暗い段に置くと、白地の上で道具全体が黒っぽく沈む（11巡目に実測）。
 //   ★★段5（最も明るい）は**光へ正面から向いた面にしか出ない**。だから絞りの
 //     途中の面取りだけが光る＝ハイライトが**面のわずかな傾きの差**を伝える。
 //     光を正面寄りにすると正面も面取りも一緒に白く飛ぶ（9巡目に実際に飛んだ）。
 const LIGHT = norm({ x: -0.86, y: 0.30, z: 0.42 });
+/**
+ * ★**天からの拾い光**。上を向いた面だけを持ち上げる（空の照り返し）。
+ * これが無いと、真横から当てた光では**天面と正面が同じ段**になって、
+ * 見下ろしているのに塊の天が立たない（11巡目に実測）。
+ */
+const SKY = 0.25;
 /** 内積を段へ量子化する幅。**段は6つだけ。境界は硬いまま（グラデーション禁止）。** */
-const LIT_LOW = -0.05;
-const LIT_SPAN = 1.11;
+const LIT_LOW = -0.238;
+const LIT_SPAN = 1.094;
 
 function norm(v: V3): V3 {
   const m = Math.hypot(v.x, v.y, v.z) || 1;
@@ -51,7 +61,7 @@ const cross = (a: V3, b: V3): V3 => ({
 
 /** 面の向きだけで階調を決める（＝フラットシェーディング）。手で塗らない。 */
 export function toneOf(n: V3): number {
-  const t = (dot(n, LIGHT) - LIT_LOW) / LIT_SPAN;
+  const t = (dot(n, LIGHT) + SKY * n.y - LIT_LOW) / LIT_SPAN;
   return Math.max(0, Math.min(TONES - 1, Math.round(t * (TONES - 1))));
 }
 
@@ -112,7 +122,11 @@ export const toPath = (pts: P2[]) =>
  */
 export function drawOrder(faces: Face[], a: P2): { d: string; tone: number }[] {
   return faces
-    .filter((f) => f.n.z > f.n.x * a.x + f.n.y * a.y)
+    // ★★y の符号に注意。法線は局所座標（+y が上）だが、画面は y が下向きなので、
+    //   カメラの向きと内積を取るときに **+n.y·a.y** になる（−ではない）。
+    //   10巡目まで − にしていたせいで**上を向いた面が常に落ちていた** ―
+    //   見下ろしているのに頭の天面が一度も描かれず、絵が平たく見えていた。
+    .filter((f) => f.n.z + f.n.y * a.y > f.n.x * a.x)
     .map((f) => ({ f, z: mid(f.p).z }))
     .sort((u, v) => u.z - v.z)
     .map(({ f }) => ({ d: toPath(f.p.map((q) => proj(q, a))), tone: f.tone }));
@@ -135,15 +149,6 @@ export function bossZ(r: number, z0: number, z1: number): Face[] {
   }
   faces.push(face(b, { x: 0, y: 0, z: 1 }));
   return faces;
-}
-
-/**
- * 影のための、部品の**輪郭だけ**の多角形（投影済み）。
- * ★面を全部落とすと数が爆発するので、影は輪郭で足りる。
- */
-export function outline(st: Station[], zc: number, a: P2): P2[] {
-  const side = (s: number) => st.map(([y, hw, , cx]) => proj({ x: cx + s * hw, y, z: zc }, a));
-  return [...side(1), ...side(-1).reverse()];
 }
 
 /**

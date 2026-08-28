@@ -169,6 +169,11 @@ export default function DevExplore() {
       {/* 鋏 */}
       <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
         <Label>Nipper</Label>
+        {/* ★★参考画像と同じ画角（ほぼ真上から・わずかに右）。**形の合否はここで見る**。
+            四隅の4体は「掴んで動かすとパースが変わる」ことの確認用で、画角が違う。 */}
+        <span style={{ width: 300 }}>
+          <Nipper open={1} away={{ x: 0.22, y: 0.62 }} />
+        </span>
         {/* ★一点透視の確認。左へ置くと右面、右へ置くと左面が見える。 */}
         <div style={{ display: "flex", gap: SPACE.xl, alignItems: "flex-start" }}>
           {/* ★掴んで動かしたときの検証。画面のどこに置いたかでパースが変わる。 */}

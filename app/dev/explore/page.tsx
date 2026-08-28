@@ -28,19 +28,19 @@ function fakePhoto(a: string, b: string) {
 // ★以下は目盛りの外（実寸の枠と図形の座標）。
 const STAGE = { w: 390, h: 844 };   // iPhone の見えている範囲
 const STAGE_TICKET = 300;           // 提案の券の幅（本番と同じ）
-const STAGE_NIPPER = 300;           // 鋏の幅
+const STAGE_NIPPER = 250;           // 鋏の幅
 // 鋏は**原点（頭と柄の継ぎ目）の位置**で置く。頭は券の下、ループの柄は画面の
 // 右下へ伸びる（＝そこに手がある）。券には重ねない（掴んで寄せるのは操作）。
 /** 鋲を画面のどこへ置くか。頭は券のすぐ下、柄は画面の下端へ抜ける。 */
-const NIPPER_AT = { x: 245, y: 660 };
-const NIPPER_S = STAGE_NIPPER / 560;
+const NIPPER_AT = { x: 238, y: 638 };
+const NIPPER_S = STAGE_NIPPER / 620;
 const NIPPER_LEFT = Math.round(NIPPER_AT.x - NIPPER_ORIGIN.x * NIPPER_S);
 const NIPPER_TOP = Math.round(NIPPER_AT.y - NIPPER_ORIGIN.y * NIPPER_S);
 /** ★一点透視。鋏の原点が画面の中央からどれだけ右に居るかで、見える側面が決まる。 */
 const lean = (x: number) => (x - STAGE.w / 2) / (STAGE.w / 2);
 const NIPPER_LEAN = lean(NIPPER_AT.x);
 /** 入鋏の瞬間。頭の口を券の右の縁へ寄せ、鋏を券の**上に**重ねる。 */
-const BITE_AT = { x: 359, y: 463 };
+const BITE_AT = { x: 364, y: 441 };
 const BITE_LEFT = Math.round(BITE_AT.x - NIPPER_ORIGIN.x * NIPPER_S);
 const BITE_TOP = Math.round(BITE_AT.y - NIPPER_ORIGIN.y * NIPPER_S);
 /** 鋏痕が落ちる高さ。 */

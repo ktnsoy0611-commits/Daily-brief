@@ -36,8 +36,13 @@ const NIPPER_AT = { x: 245, y: 660 };
 const NIPPER_S = STAGE_NIPPER / 560;
 const NIPPER_LEFT = Math.round(NIPPER_AT.x - NIPPER_ORIGIN.x * NIPPER_S);
 const NIPPER_TOP = Math.round(NIPPER_AT.y - NIPPER_ORIGIN.y * NIPPER_S);
-/** ★一点透視。鋏の鋲が画面の中央からどれだけ右に居るかで、見える側面が決まる。 */
-const NIPPER_LEAN = (NIPPER_AT.x - STAGE.w / 2) / (STAGE.w / 2);
+/** ★一点透視。鋏の原点が画面の中央からどれだけ右に居るかで、見える側面が決まる。 */
+const lean = (x: number) => (x - STAGE.w / 2) / (STAGE.w / 2);
+const NIPPER_LEAN = lean(NIPPER_AT.x);
+/** 入鋏の瞬間。頭の口を券の右の縁へ寄せ、鋏を券の**上に**重ねる。 */
+const BITE_AT = { x: 359, y: 463 };
+const BITE_LEFT = Math.round(BITE_AT.x - NIPPER_ORIGIN.x * NIPPER_S);
+const BITE_TOP = Math.round(BITE_AT.y - NIPPER_ORIGIN.y * NIPPER_S);
 /** 鋏痕が落ちる高さ。 */
 const PUNCH_T = 0.72;
 /** 入鋏の傾き。★垂直に入らなくてよい。 */
@@ -104,22 +109,39 @@ export default function DevExplore() {
       }}>TICKET</h1>
 
       {/* ★実寸の構図。ここが本番と同じ大きさで、写真・ゴールと突き合わせる対象。 */}
-      <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
-        <Label>Today — 実寸 390 × 844</Label>
-        <div style={{
-          position: "relative", width: STAGE.w, height: STAGE.h,
-          background: BG, overflow: "hidden", flex: "none",
-        }}>
-          <span style={{ position: "absolute", left: SPACE.lg, top: SPACE.xl }}>
-            <Ticket data={SAMPLES[0].data} punch={SAMPLES[0].punch} deck={BG} width={STAGE_TICKET} />
-          </span>
-          {/* ★目盛りの外（図形の配置） */}
-          <span style={{
-            position: "absolute", left: NIPPER_LEFT, top: NIPPER_TOP, width: STAGE_NIPPER,
-          }}>
-            <Nipper open={1} domain="experience" lean={NIPPER_LEAN} />
-          </span>
-        </div>
+      <div style={{ display: "flex", gap: SPACE.xl, alignItems: "flex-start" }}>
+        {[false, true].map((biting) => (
+          <div key={String(biting)} style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+            <Label>{biting ? "Today — 入鋏の瞬間" : "Today — 待機"}</Label>
+            <div style={{
+              position: "relative", width: STAGE.w, height: STAGE.h,
+              background: BG, overflow: "hidden", flex: "none",
+            }}>
+              <span style={{ position: "absolute", left: SPACE.lg, top: SPACE.xl }}>
+                <Ticket
+                  data={SAMPLES[0].data}
+                  punch={biting ? SAMPLES[0].punch : null}
+                  deck={BG}
+                  width={STAGE_TICKET}
+                />
+              </span>
+              {/* ★目盛りの外（図形の配置） */}
+              <span style={{
+                position: "absolute",
+                left: biting ? BITE_LEFT : NIPPER_LEFT,
+                top: biting ? BITE_TOP : NIPPER_TOP,
+                width: STAGE_NIPPER,
+              }}>
+                <Nipper
+                  open={biting ? 0 : 1}
+                  closing={biting}
+                  domain="experience"
+                  lean={biting ? lean(BITE_AT.x) : NIPPER_LEAN}
+                />
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* 切り欠きの4つ */}

@@ -1,91 +1,99 @@
 "use client";
 
-import { NIPPER_PAINT as P, TICKET_DOMAIN_COLOR } from "@/lib/constants";
-import type { ItemDomain } from "@/lib/types";
+import { NIPPER_PAINT as P } from "@/lib/constants";
 
 // 改札鋏。★CSS の 3D 変形は使わず、SVG で「描く」
 //   （design.md 冒頭・Safari の描画崩れを5回踏んでいるため）。
 // ★このファイルはまるごと図形の座標系（design.md §7）。数値は目盛りに乗せない。
 // ★彩色は lib/constants.ts の NIPPER_PAINT（図形専用のパレット）から引く。
 //
-// ★★★**腕が開くのは鉛直方向**（第69巡6巡目）。
-//   5巡目までは腕の開く向きを**地面と平行な軸**に置いていた。だから参考写真
-//   （＝改札鋏の**左面**）をそのまま押し出す絵になり、**左面が上を向いた
-//   「横倒しのホチキス」**が出来ていた。この向きでは紙を地面と平行に通せない。
+// ★★★**券も鋏も同じ机の上にあり、それを真上から見ている**（第69巡7巡目に確定）。
+//   だから見えるのは券の表面と**鋏の上面**だけで、
+//   **真上から見た鋏はほとんど長方形**になる。
+//   6巡目まではずっと「側面の絵に厚みを足したもの」を作っていた。
 //
-//   紙を切る先端は**ホチキスと同じ**。口は水平に開き、紙は水平に入る。
-//   腕は鉛直に開く（掌で下の柄、指で上の柄を挟んで握る）。鋲の軸は幅方向。
+//   誤りは3つあった:
+//   1. **平面に短縮をかけていた。** 真上から見れば机の面に短縮は無い。
+//      天面は**回転しただけの長方形**でなければならない（`L`⊥`W`）。
+//   2. **高さの投影が大きすぎた。** 真上からなら高さはほとんど潰れる。
+//      高さは「消失点から外へ逃げる量」でしかない。
+//   3. **ダイの窓を天面に開けていた。** ★穴を開ける部分は上から**絶対に
+//      見えない**。それを見せようとしていたのが歪みを固定していた。
 //
-// ★★参考写真は `l–z` 断面（側面図）そのもの。1本の背骨の **z の符号を
-//   反転させるだけ**で2本の腕になる ― 鋏は鋲で交差しているので、上の顎を
-//   持つ腕の柄は下に出る。符号の反転がそれをそのまま表す。
+// ★★消失点は**画面の中心**。**高いところほど中心から外へ逃げる**ので、
+//   右下に置いた鋏は天面が右下へずれ、その分だけ**左と奥の側面**が現れる。
+//   その細い帯に、初めて参考写真の断面（上下の顎・鋲・バネ）が見える。
 //
-// ★★★描き方の正は **Sony Walkman のイラスト**。輪郭線を1本も引かず、
-//   面の明暗だけで立体にする。影もぼかさない1枚の面。
+// ★有彩色は使わない。画面の有彩色は**券の紙だけ**（Vitsœ の規律）。
 
 /** 絵の枠。柄は枠の外へ抜けるので `overflow: visible`。 */
 export const NIPPER_VB = { w: 620, h: 760 };
 /** 工具の原点（＝鋲）。呼び出し側はここを画面のどこへ置くかで構図を決める。 */
-export const NIPPER_ORIGIN = { x: 300, y: 380 };
+export const NIPPER_ORIGIN = { x: 250, y: 300 };
+/** 先端の、原点からのずれ。呼び出し側が口を券の縁へ合わせるのに使う。 */
+export const NIPPER_NOSE = { x: -179, y: -265 };
 
-// ---- 投影の3軸 ------------------------------------------------------
-/** 長さ。＋が頭（＝口の向き）。左上へ、俯瞰で短縮する。 */
-const L = { x: -0.40, y: -0.56 };
-/** 幅。＋が工具の右。右へ、手前がやや下。 */
-const W = { x: 0.88, y: 0.30 };
-/** 高さ。★ここが鉛直。腕はこの軸で開く。 */
-const Z_Y = -0.80;
-/** 高さ1あたりの横のずれ。★一点透視。`lean` で符号が変わる。 */
-const LEAN_X = 0.10;
-/** 稜線の光。★照明は動かないので `lean` に連動させない。 */
-const LIT = { x: 5, y: 6 };
-/** 地に落ちる影のずれ。★これも一定。 */
-const CAST = { x: 26, y: 34 };
-/** 角丸。★全部品でこの1つ。 */
-const ROUND = 7;
+// ---- 投影 -----------------------------------------------------------
+// ★`L` と `W` は**直交する単位ベクトル**。つまり机の面はただの回転で、
+//   短縮しない。だから天面は**長方形のまま**出る。
+const TH = (34 * Math.PI) / 180;   // 机の中で工具を左へ振った角
+const L = { x: -Math.sin(TH), y: -Math.cos(TH) };
+const W = { x: Math.cos(TH), y: -Math.sin(TH) };
+/** 稜線を締める角丸。★全部品でこの1つ。 */
+const ROUND = 5;
+/** 地に落ちる影のずれ。★照明の向きなので位置によらず一定。 */
+const CAST = { x: 20, y: 28 };
 
 // ---- 工具の寸法 -----------------------------------------------------
-// 背骨は**参考写真の断面をそのまま写した l–z**。[l, z, 半分の厚み, 半分の幅]。
+// [l, z, 半分の厚み, 半分の幅]。`l–z` は参考写真の断面、`半分の幅` は平面の輪郭。
+// ★真上から見ると側面はほとんど見えないので、**平面の輪郭だけが工具の顔**。
+//   先端は四角く幅広（ホチキス）、首は細く、柄は太くごつい（ペンチ）。
+// ★段は**同じ l に2点**置いて急に変える。なだらかに絞ると鍛造の工具ではなく
+//   「骨」や「めん棒」に見える（7巡目に実際にそう見えた）。
 const SPINE: number[][] = [
-  [300, 26, 17, 58],    // 先端の顎。四角く**幅が広い**（首よりはっきり太い）
-  [196, 18, 17, 58],
-  [156, 14, 19, 36],    // 顎 → 首（ここで段が付く）
-  [0, 0, 21, 34],       // 鋲
-  [-170, -26, 22, 38],  // 柄。無骨に太く、ゆるく細る
-  [-330, -50, 23, 40],
-  [-424, -66, 16, 30],
+  [324, 27, 17, 47],    // 先端。四角く、幅は一定
+  [214, 22, 17, 47],
+  [210, 22, 18, 33],    // ★段（顎 → 首）
+  [0, 0, 20, 31],       // 鋲。いちばん細い
+  [-128, -20, 21, 33],
+  [-134, -21, 21, 45],  // ★段（首 → 柄）
+  [-370, -58, 22, 46],  // 柄。太くごつい
+  [-440, -70, 18, 43],
+  [-458, -73, 12, 30],  // 先だけ丸い
 ];
 /** 鋲で分ける（顎＝先端側 / 柄＝手元側）。低い方から描くために要る。 */
 const PIVOT_I = 3;
-/** ダイの窓（上の顎の**天面**に開く）。[l, z, ―, 半分の幅] */
-const DIE: number[][] = [[276, 43, 0, 28], [212, 38, 0, 28]];
-/** バネのコイル。`l–z` 面にあるので、上から見るとほぼ真横＝細い楕円。 */
-const RING = { l: -232, z: -36, r: 54 };
-const WIRE = 11;
-/** 鋲の見えている頭。 */
-const RIVET_R = 20;
+/** バネのコイル。`l–z` 面にあるので、真上からは**細い横線**にしかならない。 */
+const RING = { l: -250, z: 0, r: 62 };
+const WIRE = 7;
+/** 鋲の頭。側面の帯に小さく出るだけ。 */
+const RIVET_R = 11;
 
-// ---- 投影と作図 ------------------------------------------------------
+// ---- 作図 ------------------------------------------------------------
 type P2 = { x: number; y: number };
+type Away = { x: number; y: number };
 
-const proj = (l: number, w: number, z: number, zx: number): P2 => ({
-  x: l * L.x + w * W.x + z * zx,
-  y: l * L.y + w * W.y + z * Z_Y,
+const proj = (l: number, w: number, z: number, a: Away): P2 => ({
+  x: l * L.x + w * W.x + z * a.x,
+  y: l * L.y + w * W.y + z * a.y,
 });
 
 const path = (pts: P2[]) =>
   pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ") + " Z";
 
-/** 背骨を水平な面として投影する。`s` は厚みの符号（+1=天面 / -1=底面）。 */
-const ribbon = (sp: number[][], s: number, zx: number) => path([
-  ...sp.map(([l, z, ht, hw]) => proj(l, hw, z + s * ht, zx)),
-  ...[...sp].reverse().map(([l, z, ht, hw]) => proj(l, -hw, z + s * ht, zx)),
+/**
+ * 背骨を水平な面として投影する。`s` は厚みの符号（+1=天面 / -1=底面）。
+ * `k` と `shift` は天面に走る反射の帯を切り出すのに使う。
+ */
+const ribbon = (sp: number[][], s: number, a: Away, k = 1, shift = 0) => path([
+  ...sp.map(([l, z, ht, hw]) => proj(l, shift * hw + hw * k, z + s * ht, a)),
+  ...[...sp].reverse().map(([l, z, ht, hw]) => proj(l, shift * hw - hw * k, z + s * ht, a)),
 ]);
 
 /** `l–z` 平面の中で鋲まわりに回す（鋲の軸は幅方向＝実物と同じ）。 */
 function spin(sp: number[][], deg: number): number[][] {
-  const a = (deg * Math.PI) / 180;
-  const c = Math.cos(a), s = Math.sin(a);
+  const r = (deg * Math.PI) / 180;
+  const c = Math.cos(r), s = Math.sin(r);
   return sp.map(([l, z, ht, hw]) => [l * c - z * s, l * s + z * c, ht, hw]);
 }
 
@@ -97,105 +105,94 @@ const EDGE = {
 };
 
 /**
- * 棒。**輪郭線を1本も引かず**、3枚の重ねで立体にする。
- *   1枚目 … 底面を `side` で置く ＝ 側壁
- *   2枚目 … 天面を `lit` で置く   ＝ 稜線の光
- *   3枚目 … 天面を `LIT` だけずらして `face` で置く ＝ 天面
- * 天面は底面より**上**に出るので、あいだに残る帯がそのまま側壁に見える。
+ * 棒。**輪郭線を1本も引かず**、面の明暗だけで立体にする。
+ *   1枚目 … 底面を `side` で置く。天面より消失点側へ出るので、そのはみ出しが**側壁**
+ *   2枚目 … 天面を `face` で置く
+ *   3枚目 … 天面に細い**反射の帯**（`shine` のときだけ）
+ * ★真上から見ているので側壁は**細い帯**にしかならない。それが正しい。
+ *   そのぶん天面が平板に見えないよう、鍛造バーの反射を1本だけ入れる。
  */
-function Bar({ sp, zx, top = P.face }: { sp: number[][]; zx: number; top?: string }) {
-  const t = ribbon(sp, 1, zx);
+function Bar({ sp, away, top = P.face, shine = false }: {
+  sp: number[][]; away: Away; top?: string; shine?: boolean;
+}) {
   return (
     <>
-      <path d={ribbon(sp, -1, zx)} fill={P.side} stroke={P.side} {...EDGE} />
-      <path d={t} fill={P.lit} stroke={P.lit} {...EDGE} />
-      <path d={t} transform={`translate(${LIT.x} ${LIT.y})`} fill={top} stroke={top} {...EDGE} />
+      <path d={ribbon(sp, -1, away)} fill={P.side} stroke={P.side} {...EDGE} />
+      <path d={ribbon(sp, 1, away)} fill={top} stroke={top} {...EDGE} />
+      {shine && <path d={ribbon(sp, 1, away, 0.11, 0.42)} fill={P.lit} />}
     </>
   );
 }
 
-/** `l–z` 平面の円（＝投影すると細い楕円）。 */
-function ringPath(l0: number, z0: number, r: number, zx: number) {
+/** `l–z` 平面の円。真上から見るので細い横線になる。 */
+function ringPath(a: Away) {
   const pts: P2[] = [];
-  for (let i = 0; i < 40; i++) {
-    const a = (i / 40) * Math.PI * 2;
-    pts.push(proj(l0 + Math.cos(a) * r, 0, z0 + Math.sin(a) * r, zx));
+  for (let i = 0; i < 32; i++) {
+    const t = (i / 32) * Math.PI * 2;
+    pts.push(proj(RING.l + Math.cos(t) * RING.r, 0, RING.z + Math.sin(t) * RING.r, a));
   }
   return path(pts);
 }
 
-export function Nipper({ open = 1, closing = false, domain = "place", lean = 0, width = "100%" }: {
-  /** 0=閉じ 1=開き。★上下に開く。 */
+export function Nipper({ open = 1, closing = false, away = { x: 0.15, y: 0.26 }, width = "100%" }: {
+  /** 0=閉じ 1=開き。★上下に開く（真上からはほとんど分からない）。 */
   open?: number;
   /** 噛んだ瞬間だけ真に。 */
   closing?: boolean;
-  /** ダイに入っている形（＝これから切る鋏痕）の色。 */
-  domain?: ItemDomain;
   /**
-   * 画面のどこに置いたか（-1=左端 / 0=中央 / +1=右端）。
-   * ★一点透視。右へ置くほど**左の側面**が、左へ置くほど**右の側面**が見える。
+   * **(鋏の位置 − 画面の中心) ÷ カメラの高さ**。高さ1あたりの画面上のずれ。
+   * ★消失点は画面の中心。右下に置くほど**左と奥の側面**が見える。
    */
-  lean?: number;
+  away?: Away;
   width?: number | string;
 }) {
   const a = 5 * open + (closing ? -1.2 : 0);
-  const zx = -lean * LEAN_X;
 
   // 腕A＝上の顎（＋下の柄）。腕B＝下の顎（＋上の柄）。z の符号だけが違う。
   const A = spin(SPINE, a);
   const B = spin(flip(SPINE), -a);
   const jawA = A.slice(0, PIVOT_I + 1), gripA = A.slice(PIVOT_I);
   const jawB = B.slice(0, PIVOT_I + 1), gripB = B.slice(PIVOT_I);
-  const dieA = spin(DIE, a);
 
-  // ★口。上の顎の底面と下の顎の天面のあいだ。紙が**水平に**入る隙間で、
-  //   手前（先端）の面に暗い帯として出る。★角丸の輪郭を付けないこと ―
-  //   太らせると帯ではなく黒い塊になる。
+  // ★口。上の顎の底面と下の顎の天面のあいだ。真上からなので**細い暗線**に
+  //   しかならない ― それが正しい。角丸の輪郭は付けない（太らせない）。
   const lip = jawA.slice(0, 2), lipB = jawB.slice(0, 2);
   const mouth = path([
-    ...lip.map(([l, z, ht, hw]) => proj(l, hw, z - ht, zx)),
-    ...[...lipB].reverse().map(([l, z, ht, hw]) => proj(l, hw, z + ht, zx)),
-    ...lipB.map(([l, z, ht, hw]) => proj(l, -hw, z + ht, zx)),
-    ...[...lip].reverse().map(([l, z, ht, hw]) => proj(l, -hw, z - ht, zx)),
+    ...lip.map(([l, z, ht, hw]) => proj(l, hw, z - ht, away)),
+    ...[...lipB].reverse().map(([l, z, ht, hw]) => proj(l, hw, z + ht, away)),
+    ...lipB.map(([l, z, ht, hw]) => proj(l, -hw, z + ht, away)),
+    ...[...lip].reverse().map(([l, z, ht, hw]) => proj(l, -hw, z - ht, away)),
   ]);
-  const hw = jawA[0][3];
+  const pin = proj(0, SPINE[PIVOT_I][3], 0, away);
 
   return (
     <svg viewBox={`0 0 ${NIPPER_VB.w} ${NIPPER_VB.h}`} width={width} aria-hidden
       style={{ display: "block", overflow: "visible" }}>
       {/* 影。★ぼかさない。輪郭をまとめてずらした1枚の面。 */}
       <g transform={`translate(${NIPPER_ORIGIN.x + CAST.x} ${NIPPER_ORIGIN.y + CAST.y})`}>
-        <path d={ribbon(A, -1, zx)} fill={P.cast} stroke={P.cast} {...EDGE} />
-        <path d={ribbon(B, -1, zx)} fill={P.cast} stroke={P.cast} {...EDGE} />
+        <path d={ribbon(A, -1, away)} fill={P.cast} stroke={P.cast} {...EDGE} />
+        <path d={ribbon(B, -1, away)} fill={P.cast} stroke={P.cast} {...EDGE} />
       </g>
 
       <g transform={`translate(${NIPPER_ORIGIN.x} ${NIPPER_ORIGIN.y})`}>
         {/* ★低い方から描く。鋏は鋲で交差しているので、顎と柄で上下が入れ替わる。 */}
         {/* 下の顎。上の顎の陰に入るので天面を暗く。 */}
-        <Bar sp={jawB} zx={zx} top={P.deep} />
-        {/* 下の柄（＝腕A の手元側）。 */}
-        <Bar sp={gripA} zx={zx} />
+        <Bar sp={jawB} away={away} top={P.deep} />
+        {/* 下の柄。 */}
+        <Bar sp={gripA} away={away} />
 
-        {/* バネのコイル。★`l–z` 面なので上から見ると細い楕円。それが正しい。 */}
-        <g fill="none" strokeWidth={WIRE} strokeLinecap="round">
-          <path d={ringPath(RING.l, RING.z - 8, RING.r, zx)} stroke={P.side} />
-          <path d={ringPath(RING.l, RING.z, RING.r, zx)} stroke={P.spring} />
-        </g>
+        {/* バネのコイル。★真上からは細い線。柄のあいだの帯にだけ覗く。 */}
+        <path d={ringPath(away)} fill="none" stroke={P.spring} strokeWidth={WIRE} />
 
-        {/* ★口。紙が水平に入る隙間。 */}
+        {/* 口。 */}
         <path d={mouth} fill={P.anvil} />
 
-        {/* 上の顎。天面にダイの窓が開く。 */}
-        <Bar sp={jawA} zx={zx} />
-        <path d={ribbon(dieA, 1, zx)} fill={P.anvil} />
-        <path d={ribbon(dieA.map(([l, z, ht, w]) => [l, z, ht, w * 0.5]), 1, zx)}
-          fill={TICKET_DOMAIN_COLOR[domain]} />
+        {/* 上の顎と上の柄。天面に反射の帯が走る。 */}
+        <Bar sp={jawA} away={away} shine />
+        <Bar sp={gripB} away={away} shine />
 
-        {/* 上の柄（＝腕B の手元側）。 */}
-        <Bar sp={gripB} zx={zx} />
-
-        {/* 鋲。幅方向のピンなので、側面に丸く出る。 */}
-        <circle cx={proj(0, hw, 0, zx).x} cy={proj(0, hw, 0, zx).y} r={RIVET_R} fill={P.rivet} />
+        {/* 鋲。幅方向のピンなので、側面の帯に小さく出るだけ。 */}
+        <circle cx={pin.x} cy={pin.y} r={RIVET_R} fill={P.rivet} />
       </g>
     </svg>
   );

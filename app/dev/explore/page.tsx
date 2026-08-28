@@ -5,7 +5,7 @@ import {
   BG, ITEM_DOMAINS, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
 } from "@/lib/constants";
 import { PunchGlyph } from "@/components/explore/PunchMark";
-import { Nipper, NIPPER_ORIGIN } from "@/components/explore/Nipper";
+import { Nipper, NIPPER_NOSE, NIPPER_ORIGIN } from "@/components/explore/Nipper";
 import { Ticket, type TicketData, type TicketPunch } from "@/components/explore/Ticket";
 
 // ★開発用。券・切り欠き・鋏を並べて目で確かめるだけの画面。
@@ -28,21 +28,26 @@ function fakePhoto(a: string, b: string) {
 // ★以下は目盛りの外（実寸の枠と図形の座標）。
 const STAGE = { w: 390, h: 844 };   // iPhone の見えている範囲
 const STAGE_TICKET = 300;           // 提案の券の幅（本番と同じ）
-const STAGE_NIPPER = 250;           // 鋏の幅
-// 鋏は**原点（頭と柄の継ぎ目）の位置**で置く。頭は券の下、ループの柄は画面の
-// 右下へ伸びる（＝そこに手がある）。券には重ねない（掴んで寄せるのは操作）。
-/** 鋲を画面のどこへ置くか。頭は券のすぐ下、柄は画面の下端へ抜ける。 */
-const NIPPER_AT = { x: 238, y: 638 };
+const STAGE_NIPPER = 338;           // 鋏の幅（viewBox 620 × 0.545）
 const NIPPER_S = STAGE_NIPPER / 620;
-const NIPPER_LEFT = Math.round(NIPPER_AT.x - NIPPER_ORIGIN.x * NIPPER_S);
-const NIPPER_TOP = Math.round(NIPPER_AT.y - NIPPER_ORIGIN.y * NIPPER_S);
-/** ★一点透視。鋏の原点が画面の中央からどれだけ右に居るかで、見える側面が決まる。 */
-const lean = (x: number) => (x - STAGE.w / 2) / (STAGE.w / 2);
-const NIPPER_LEAN = lean(NIPPER_AT.x);
-/** 入鋏の瞬間。頭の口を券の右の縁へ寄せ、鋏を券の**上に**重ねる。 */
-const BITE_AT = { x: 364, y: 441 };
-const BITE_LEFT = Math.round(BITE_AT.x - NIPPER_ORIGIN.x * NIPPER_S);
-const BITE_TOP = Math.round(BITE_AT.y - NIPPER_ORIGIN.y * NIPPER_S);
+/** ★カメラの高さ（画面と同じ px の尺度）。消失点は画面の中心。 */
+const CAM = 1000;
+/** 高さ1あたりの画面上のずれ。**中心から離れているほど、高いところが外へ逃げる**。 */
+const awayAt = (x: number, y: number) => ({
+  x: (x - STAGE.w / 2) / CAM,
+  y: (y - STAGE.h / 2) / CAM,
+});
+/** 先端（口）を画面のどこへ置くかで、鋏の原点が決まる。 */
+const originFor = (nose: { x: number; y: number }) => ({
+  left: Math.round(nose.x - (NIPPER_ORIGIN.x + NIPPER_NOSE.x) * NIPPER_S),
+  top: Math.round(nose.y - (NIPPER_ORIGIN.y + NIPPER_NOSE.y) * NIPPER_S),
+  at: { x: nose.x - NIPPER_NOSE.x * NIPPER_S, y: nose.y - NIPPER_NOSE.y * NIPPER_S },
+});
+/** 待機 … 口は券のすぐ下。柄は画面の右下へ抜ける（そこに手がある）。 */
+const IDLE = originFor({ x: 250, y: 545 });
+/** 入鋏 … 口を券の右の縁の鋏痕へ合わせる。 */
+const BITE = originFor({ x: 316, y: 373 });
+
 /** 鋏痕が落ちる高さ。 */
 const PUNCH_T = 0.72;
 /** 入鋏の傾き。★垂直に入らなくてよい。 */
@@ -128,15 +133,14 @@ export default function DevExplore() {
               {/* ★目盛りの外（図形の配置） */}
               <span style={{
                 position: "absolute",
-                left: biting ? BITE_LEFT : NIPPER_LEFT,
-                top: biting ? BITE_TOP : NIPPER_TOP,
+                left: biting ? BITE.left : IDLE.left,
+                top: biting ? BITE.top : IDLE.top,
                 width: STAGE_NIPPER,
               }}>
                 <Nipper
                   open={biting ? 0 : 1}
                   closing={biting}
-                  domain="experience"
-                  lean={biting ? lean(BITE_AT.x) : NIPPER_LEAN}
+                  away={awayAt(biting ? BITE.at.x : IDLE.at.x, biting ? BITE.at.y : IDLE.at.y)}
                 />
               </span>
             </div>
@@ -165,10 +169,10 @@ export default function DevExplore() {
         <Label>Nipper</Label>
         {/* ★一点透視の確認。左へ置くと右面、右へ置くと左面が見える。 */}
         <div style={{ display: "flex", gap: SPACE.xl, alignItems: "flex-start" }}>
-          <span style={{ width: 220 }}><Nipper open={1} lean={-1} /></span>
-          <span style={{ width: 220 }}><Nipper open={1} lean={0} /></span>
-          <span style={{ width: 220 }}><Nipper open={1} lean={1} /></span>
-          <span style={{ width: 220 }}><Nipper open={0} closing lean={0.6} /></span>
+          <span style={{ width: 260 }}><Nipper open={1} away={awayAt(40, 700)} /></span>
+          <span style={{ width: 260 }}><Nipper open={1} away={awayAt(STAGE.w / 2, STAGE.h / 2)} /></span>
+          <span style={{ width: 260 }}><Nipper open={1} away={awayAt(350, 700)} /></span>
+          <span style={{ width: 260 }}><Nipper open={0} closing away={awayAt(350, 500)} /></span>
         </div>
       </div>
 

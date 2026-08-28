@@ -2313,6 +2313,12 @@ my-brain の `sources/stats.md` へ書く。Cowork の発掘タスクはこの�
   第 9〜11 巡はこれで 3 巡ぶん届いておらず、「変更が確認できません」と報告された。
   作業ブランチへ push したら続けて
   `git checkout main && git merge --ff-only <branch> && git push -u origin main`。
+- ★★**`<style>` を `<html>` の直下に置かない**（第69巡9巡目に発覚）。
+  `app/layout.tsx` は色の変数を `<style>` で配っているが、`href` と `precedence`
+  を付けないと React はそれを `<html>` 直下にそのまま置く。**不正な HTML なので
+  ハイドレーションが失敗し、アプリ全体のクライアント側が動かなくなる。**
+  `<style href="tokens" precedence="default">` にすると React が `<head>` へ
+  持ち上げる。★症状が「特定の画面の効果が走らない」に見えるので原因に辿り着きにくい。
 - **地図** … Leaflet + CartoDB Positron タイル（`components/LeafletMap.tsx`）。
   座標は Places API（New）で解決（`app/api/resolve-place/route.ts`）。
   Google マップ URL に埋まった `@lat,lng` を正規表現で先に抜き、API 呼び出しを省く。
@@ -2335,6 +2341,13 @@ my-brain の `sources/stats.md` へ書く。Cowork の発掘タスクはこの�
 ---
 
 ## 8. 検証ワークフロー
+
+★★**Playwright は `http://localhost:3000` で開くこと**（第69巡9巡目に判明）。
+`http://127.0.0.1:3000` だと Next の dev サーバーが `/_next/*` を
+cross-origin として塞ぐ（"Blocked cross-origin request to Next.js dev resource"）。
+**HTML は 200 で返るのにクライアント JS が読み込まれない**ので、スクリーンショットは
+正常に見えるのに `useEffect` が1つも走らない ―「動きが効かない」という**偽の不具合**
+に化ける。curl も 200 を返すので気づけない。
 
 ```bash
 # ★開発サーバー。**`NODE_EXTRA_CA_CERTS` と `NODE_OPTIONS=--use-env-proxy` の

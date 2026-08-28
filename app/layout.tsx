@@ -140,7 +140,12 @@ export default function RootLayout({
       {/* ★色の持ち主は `lib/constants.ts` の1か所だけ。CSS には**変数で配る**。
           第66巡まで globals.css が地色・墨・緑・赤の4色を
           書き写していて、片方を変えるともう片方が必ず腐る状態だった。 */}
-      <style>{`:root{--c-bd-grey:${BD_GREY};--c-ink:${INK};--c-green:${GREEN};--c-rust:${RUST};--pad-x:${SPACE.lg}px;--space-sm:${SPACE.sm}px}`}</style>
+      {/* ★★`precedence` と `href` を必ず付ける（2026-08-28・9巡目に発覚）。
+          付けないと React はこの `<style>` を `<html>` の直下に**そのまま**置く。
+          それは不正な HTML なので**ハイドレーションが失敗し、ページ全体の
+          クライアント側が動かなくなる**（`/dev/explore` で `useEffect` が
+          1つも走らなかった）。付けると React が `<head>` へ持ち上げてくれる。 */}
+      <style href="tokens" precedence="default">{`:root{--c-bd-grey:${BD_GREY};--c-ink:${INK};--c-green:${GREEN};--c-rust:${RUST};--pad-x:${SPACE.lg}px;--space-sm:${SPACE.sm}px}`}</style>
       <body>{children}</body>
     </html>
   );

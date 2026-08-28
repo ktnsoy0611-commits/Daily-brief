@@ -28,7 +28,7 @@ function fakePhoto(a: string, b: string) {
 // ★以下は目盛りの外（実寸の枠と図形の座標）。
 const STAGE = { w: 390, h: 844 };   // iPhone の見えている範囲
 const STAGE_TICKET = 300;           // 提案の券の幅（本番と同じ）
-const STAGE_NIPPER = 206;           // 鋏の幅（viewBox 480 × 0.43）
+const STAGE_NIPPER = 240;           // 鋏の幅（viewBox 480 × 0.5）
 const NIPPER_S = STAGE_NIPPER / 480;
 /** ★カメラの高さ（画面と同じ px の尺度）。消失点は画面の中心。 */
 // ★目標画像では奥の腕が手前から**幅の3割ほど**ずれて見える。待機位置で

@@ -75,6 +75,11 @@
 - `components/tabs/GoalsTab.tsx` — ゴールのバインダーとチェックイン。
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
   入口は**右下の輪の SETTING だけ**（`CreateMenu`）。
+- ★**刷新中の部品**（まだ `/dev/explore` にしか無い。4タブは手つかず）…
+  `components/explore/Ticket.tsx`（券）/ `PunchMark.tsx`（鋏痕）/ `lib/ticket.ts`、
+  `components/explore/Nipper.tsx`（改札鋏の寸法・群・動き）＋
+  `lib/nipperSolid.ts`（**立体そのもの**。断面・押し出し・フラットシェーディング・
+  投影・隠れ）。設計の正は `docs/explore-redesign.md`。
 
 ## タスク（TASK）
 **タスク図形は常に GRAVITY 空間にだけ在る**（第52巡に TOP/UNDER の4層を破棄）。

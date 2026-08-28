@@ -2,10 +2,11 @@
 
 import { SPACE, TYPE, TRACK, WEIGHT, LEAD } from "@/lib/tokens";
 import {
-  BG, ITEM_DOMAINS, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
+  BG, INK, ITEM_DOMAINS, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
 } from "@/lib/constants";
 import { PunchGlyph } from "@/components/explore/PunchMark";
 import { Nipper, NIPPER_NOSE, NIPPER_ORIGIN } from "@/components/explore/Nipper";
+import { NipperTriView } from "@/components/explore/NipperViews";
 import { Ticket, type TicketData, type TicketPunch } from "@/components/explore/Ticket";
 
 // ★開発用。券・切り欠き・鋏を並べて目で確かめるだけの画面。
@@ -163,6 +164,21 @@ export default function DevExplore() {
               }}>{d.en}</span>
             </span>
           ))}
+        </div>
+      </div>
+
+      {/* ★★三面図。形を言葉で詰めるための検証用（本番には出ない）。同じ縮尺で並ぶ。 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+        <Label>Nipper — 三面図（同じ縮尺）</Label>
+        <div style={{ display: "flex", gap: SPACE.xl, alignItems: "flex-end", background: BG,
+          padding: `${SPACE.lg}px ${SPACE.xl}px` }}>
+          <NipperTriView label={(v) => (
+            <span style={{
+              display: "block", fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: WEIGHT.bold,
+              letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: INK,
+              textTransform: "uppercase", paddingBottom: SPACE.xs,
+            }}>{v.id} — {v.ja}</span>
+          )} />
         </div>
       </div>
 

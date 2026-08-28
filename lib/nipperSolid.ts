@@ -207,3 +207,58 @@ export function slab(x0: number, x1: number, y0: number, y1: number, z0: number,
  */
 export const invert = (faces: Face[]): Face[] =>
   faces.map((f) => face([...f.p].reverse(), neg(f.n)));
+
+// ---- 正射影の三面図（★開発用の検証にだけ使う） -----------------------------
+// 形を言葉で詰めるには、パースの付いた1枚では足りない。**正面・側面・上面**を
+// 素直な正射影で出して、面ごとに指摘できるようにする。
+// ★この道具の機構は x–y 面にある（腕はここで開く）ので、**正面図が実物の側面写真に
+//   あたる**。側面図は厚み、上面図は頭の断面を見る。
+export type Ortho = "front" | "side" | "top";
+
+// ★★三面図は**それぞれの視点から照らし直す**。本番の固定光をそのまま使うと、
+//   側面図が真っ黒になって形が読めない（検証にならない）。
+//   光はどの図でも「見る人の左上・手前」から。
+const ORTHO: Record<Ortho, {
+  to: (p: V3) => P2; depth: (p: V3) => number; facing: (n: V3) => number; light: V3;
+}> = {
+  /** 正面（+z から見る）。機構の面。 */
+  front: {
+    to: (p) => ({ x: p.x, y: -p.y }), depth: (p) => p.z, facing: (n) => n.z,
+    light: norm({ x: -0.66, y: 0.42, z: 0.62 }),
+  },
+  /** 側面（+x ＝ 右から見る）。厚み。 */
+  side: {
+    to: (p) => ({ x: -p.z, y: -p.y }), depth: (p) => p.x, facing: (n) => n.x,
+    light: norm({ x: 0.62, y: 0.42, z: 0.66 }),
+  },
+  /** 上面（+y ＝ 上から見る）。手前が下。 */
+  top: {
+    to: (p) => ({ x: p.x, y: p.z }), depth: (p) => p.y, facing: (n) => n.y,
+    light: norm({ x: -0.66, y: 0.62, z: -0.42 }),
+  },
+};
+
+export function orthoOrder(faces: Face[], view: Ortho): { d: string; tone: number }[] {
+  const v = ORTHO[view];
+  const tone = (n: V3) => {
+    const t = (dot(n, v.light) - LIT_LOW) / LIT_SPAN;
+    return Math.max(0, Math.min(TONES - 1, Math.round(t * (TONES - 1))));
+  };
+  return faces
+    .filter((f) => v.facing(f.n) > 0.001)
+    .map((f) => ({ f, z: v.depth(mid(f.p)) }))
+    .sort((a, b) => a.z - b.z)
+    .map(({ f }) => ({ d: toPath(f.p.map(v.to)), tone: tone(f.n) }));
+}
+
+/** 三面図の枠を決めるための、投影後の広がり。 */
+export function orthoBounds(faces: Face[], view: Ortho) {
+  const v = ORTHO[view];
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const f of faces) for (const p of f.p) {
+    const q = v.to(p);
+    x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x);
+    y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}

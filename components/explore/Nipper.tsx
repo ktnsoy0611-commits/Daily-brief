@@ -106,7 +106,7 @@ const COIL = {
 const SQUEEZE = 0.34;
 
 /** 陰の手当て。★面ごとに手で塗らない ― **群にまとめて1度だけ**段を下げる。 */
-const DIM_FAR = -1;    // 奥の梃子は手前の柄の陰に入る
+
 
 /** 落ち影。★立ち姿の複製ではなく、**床へ倒れ込ませる**。 */
 const GROUND = 700;                  // 接地（手前の柄の先の高さ）
@@ -155,6 +155,21 @@ function hull(a: P2): P2[] {
   return [...right, ...left.reverse()];
 }
 
+/**
+ * 立体そのもの。★**三面図（`NipperViews`）と同じものを見る**ため、ここに出してある。
+ * 検証用の絵と本番の絵が別の立体だったら、突き合わせる意味がない。
+ */
+export function nipperSolids() {
+  return {
+    frame: extrude(FRAME, Z_NEAR),
+    lever: extrude(LEVER, Z_FAR),
+    slot: invert(slab(SLOT.x0, SLOT.x1, SLOT.y0, SLOT.y1, SLOT.z0, SLOT.z1)),
+    coil: tube(coilPath(), COIL.wire),
+  };
+}
+/** 奥の梃子を暗く落とす段（三面図でも同じ手当てをする）。 */
+export const NIPPER_DIM_FAR = -1;
+
 function Solid({ faces, away, dim = 0, flat }: {
   faces: Face[]; away: P2; dim?: number;
   /** ★凹み専用。光が届かないので面の向きで塗らず、1色で塗る。 */
@@ -195,12 +210,7 @@ export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 },
   const [pressed, setPressed] = useState(false);
   const want = pressed || closing ? 1 : 1 - open;
 
-  const solids = useMemo(() => ({
-    frame: extrude(FRAME, Z_NEAR),
-    lever: extrude(LEVER, Z_FAR),
-    slot: invert(slab(SLOT.x0, SLOT.x1, SLOT.y0, SLOT.y1, SLOT.z0, SLOT.z1)),
-    coil: tube(coilPath(), COIL.wire),
-  }), []);
+  const solids = useMemo(nipperSolids, []);
 
   /** バネを縮める支点＝手前の柄に付く脚。 */
   const anchor = proj(COIL.legNear, away);
@@ -255,7 +265,7 @@ export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 },
 
         {/* 2. 可動部 … 奥の細い梃子。★手前の陰に入るのでひと段暗い。 */}
         <g id="lever" ref={leverRef} transform={swing(s.current.p)}>
-          <Solid faces={solids.lever} away={away} dim={DIM_FAR} />
+          <Solid faces={solids.lever} away={away} dim={NIPPER_DIM_FAR} />
         </g>
 
         {/* 3. バネ … 腕の開きに収まる針金の輪。★磨かれた鋼なので段を下げない。 */}

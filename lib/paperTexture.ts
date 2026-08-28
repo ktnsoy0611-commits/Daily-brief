@@ -29,7 +29,11 @@ export const PAPER_ALPHA = 0.12;
  *  ★**1枚**(第65巡。第64巡は 320px角×4枚だった)。768 あれば図形1つ
  *  (いちばん大きくても 400 デバイス px)は**繰り返しに当たらない**ので、
  *  継ぎ目を消す細工ごと要らなくなった。散らすのは向きとずらしで足りる。 */
-const SHEET_SRC = "/paper-kraft.webp";
+/** ★第69巡に export した。券(`components/explore/Ticket.tsx`)は canvas では
+ *  なく DOM なので焼き込めないが、**同じ写真**を CSS の背景に敷いて
+ *  `mix-blend-mode: multiply` で重ねる。紙の出どころを1つに保つため。 */
+export const PAPER_SHEET_SRC = "/paper-kraft.webp";
+const SHEET_SRC = PAPER_SHEET_SRC;
 const SHEET = 768;
 /** 明るさのばらつきを、見える濃さへ持ち上げる係数。★据え置き(第64巡と同じ 5.0)。
  *  ★★**写真を増幅しない**ので、結果として第64巡の**約半分の強さ**になる

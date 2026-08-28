@@ -1,115 +1,166 @@
 "use client";
 
-// 改札鋏。★CSS の 3D 変形は使わず、SVG で立体的に「描く」
+// 改札鋏。★CSS の 3D 変形は使わず、SVG で「描く」
 //   （design.md 冒頭・Safari の描画崩れを5回踏んでいるため）。
 //   顎の開閉は支点まわりの2Dの回転だけで足りる。
 // ★このファイルはまるごと図形の座標系（design.md §7）。数値は目盛りに乗せない。
 // ★彩色は lib/constants.ts の NIPPER_PAINT（図形専用のパレット）から引く。
 //
-// 形は実物に寄せてある … 短く厚い顎（先に抜き型が付く）／すぐ後ろの支点／
-// そこから長く伸びる2本の柄／柄のあいだのバネ／握りの被覆。
+// ★★★第69巡に描き直した。前の版は「上から見たはさみ」で、
+//   **一人称で握って紙を切れる角度**になっていなかった。直したのは3つ。
+//   1. 構図 … 柄は画面の下端へ抜け（そこに手がある）、顎は上を向く。
+//      工具の長軸は垂直から -26°。券の右下に置き、掴んで券へ寄せる。
+//   2. 太さ … 顎は支点側で 44、頭は 98 の**塊**。頭は全長の 1/4（実物の比）。
+//   3. テイスト … **グラデーションを全部やめた**。6停止の linearGradient で
+//      金属を写実に寄せたものは「写実の失敗作」にしか見えない。いまは
+//      面ごとに1色（lit/face/side の3面）を置き、均一な太さの輪郭で締める。
+//      影もぼかさず、ずらした同形の面を1枚敷くだけ（ハードシャドウ）。
 
 import { NIPPER_PAINT as P } from "@/lib/constants";
+import { notchPath, PUNCH_BY_DOMAIN } from "@/lib/ticket";
+import type { ItemDomain } from "@/lib/types";
 
-const PIVOT = { x: 104, y: 118 };
-/** 開いた状態の顎の開き（片側の度数）。 */
-const SWING = 9;
+/** 絵の枠。柄はこの枠の外へ抜ける（＝画面の外へ続く）ので `overflow: visible`。 */
+const VB = { w: 520, h: 760 };
+/** 支点。ここを中心に顎と柄が回る。 */
+const PIVOT = { x: 300, y: 300 };
+/** 工具の長軸の傾き（垂直から。負＝反時計回り＝顎が左上を向く）。
+ *  ★-38°まで倒すと、柄が画面の**右へ**すぐ抜けてしまい握りが1つも見えない。
+ *  -26°なら柄は**下へ**伸びるので、握りが画面の下端に残る（＝手の位置）。 */
+const TILT = -26;
+/** 開いた状態の顎の開き（片側の度数）。★抜き型は大きく開かない。 */
+const SWING = 8;
+/** 輪郭の太さ。全部品で一定。 */
+const LINE = 3;
+/** 影のずれ。 */
+const CAST = { x: 8, y: 11 };
 
-export function Nipper({ open = 1, closing = false, width = "100%" }: {
+// ---- 腕の輪郭（外へ出る向きを + で書き、左右で符号を反転させる） --------
+// ★★頭は**短くて厚い塊**。外へは広げず、**軸をまたぐ側にだけ**張り出す。
+//   前の版は外へも広げた台形にしたので、開いたときに大きな V ができて
+//   「レンチ」に見えていた。実物の改札鋏は plier に近く、頭は全長の 1/4 ほど。
+//
+// 顎（支点 y=40 → 先 y=-196）。
+// ★★★**頭は軸をまたがない**（第69巡）。2つの頭は軸の左右に分かれて向かい合い、
+//   そのあいだの隙間＝**喉**が先で口を開く。ここへ券の縁を差し込む。
+//   前は両方の頭が軸をまたいでいたので互いに重なり、紙の入る隙間が
+//   どこにも無かった（＝工具に見えない最大の原因）。
+// ★胴は細く、先で**段を付けて**厚い頭の塊になる。段が無いと「ヘラ」に見える。
+const JAW = [
+  [4, -196], [66, -196], [66, -146], [54, -138], [54, 40],
+  [6, 40], [8, -138], [4, -146],
+];
+// 外側の縁に当たる光。★細い帯にとどめる（広いと全体が白い塊になる）。
+const JAW_LIT = [
+  [50, -190], [62, -190], [62, -146], [50, -140], [50, 36],
+  [40, 36], [40, -142], [48, -148],
+];
+// 喉に面した側に落ちる影。
+const JAW_SHADE = [
+  [6, 40], [8, -138], [4, -146], [4, -196], [17, -196], [17, -148], [21, -136], [19, 40],
+];
+// 柄（支点 → 端）。外へふくらむ弓なりで、枠の外へ抜ける。
+const ARM = [
+  [54, 40], [96, 190], [102, 330], [80, 452], [36, 462], [26, 332], [46, 188], [6, 44],
+];
+const ARM_LIT = [
+  [58, 46], [88, 192], [94, 328], [74, 440], [62, 438], [82, 328], [72, 194], [46, 50],
+];
+// 握りの被覆。★早めに始めて、画面の下端に**赤が残る**ようにする。
+const GRIP = [
+  [93, 178], [102, 330], [80, 452], [36, 462], [26, 332], [37, 178],
+];
+const GRIP_LIT = [
+  [88, 184], [96, 328], [76, 440], [64, 438], [80, 328], [74, 184],
+];
+// 抜き型（手前の腕）と、それを受ける窓（奥の腕）。喉をまたいで向かい合い、
+// 閉じると型が窓へ入る。★ここが工具の顔なので大きく取る。
+const DIE = { u0: 4, u1: -34, y0: -186, y1: -156 };
+const SLOT = { u0: -4, u1: 36, y0: -190, y1: -152 };
+
+const poly = (pts: number[][], sx: number) =>
+  pts.map(([u, y], i) => `${i ? "L" : "M"}${(u * sx).toFixed(1)} ${y}`).join(" ") + " Z";
+const rect = (r: { u0: number; u1: number; y0: number; y1: number }, sx: number) =>
+  `M${r.u0 * sx} ${r.y0} L${r.u1 * sx} ${r.y0} L${r.u1 * sx} ${r.y1} L${r.u0 * sx} ${r.y1} Z`;
+
+/**
+ * 片腕（顎＋柄）。`sx` が -1 で顎が左、+1 で顎が右。
+ *
+ * ★★★**柄は顎と反対側に付く**（第69巡）。支点を挟んで1本の梃子なので、
+ *   左の顎を持つ腕の柄は**右**に出る（実物の鋏・プライヤと同じ）。
+ *   ここを同じ側にしていたせいで、開くと柄どうしが**交差**して
+ *   1つの白い塊になり、工具に見えなかった。柄が反対側なら、開いたときに
+ *   柄のあいだへ**三角の空き**ができる ― これが工具に見えるための最大の手掛かり。
+ */
+function Arm({ sx, angle, flat }: { sx: number; angle: number; flat?: string }) {
+  const line = flat ? "none" : P.outline;
+  const steel = flat ?? P.steel.face;
+  const hx = -sx;   // 柄の側
+  return (
+    <g transform={`rotate(${angle} 0 0)`}>
+      <path d={poly(ARM, hx)} fill={steel} stroke={line} strokeWidth={LINE} strokeLinejoin="round" />
+      <path d={poly(JAW, sx)} fill={steel} stroke={line} strokeWidth={LINE} strokeLinejoin="round" />
+      {!flat && (
+        <>
+          <path d={poly(ARM_LIT, hx)} fill={P.steel.lit} />
+          <path d={poly(JAW_LIT, sx)} fill={P.steel.lit} />
+          <path d={poly(JAW_SHADE, sx)} fill={P.steel.side} />
+        </>
+      )}
+      <path d={poly(GRIP, hx)} fill={flat ?? P.grip.face} stroke={line} strokeWidth={LINE} strokeLinejoin="round" />
+      {!flat && <path d={poly(GRIP_LIT, hx)} fill={P.grip.lit} />}
+    </g>
+  );
+}
+
+export function Nipper({ open = 1, closing = false, domain = "place", width = "100%" }: {
   /** 0=閉じ 1=開き。 */
   open?: number;
   /** 噛んだ瞬間だけ真に。ほんの少し食い込ませる。 */
   closing?: boolean;
+  /** 抜き型に入っている形（＝これから切る鋏痕）。 */
+  domain?: ItemDomain;
   width?: number | string;
 }) {
-  const a = SWING * open + (closing ? -1.5 : 0);
+  const a = SWING * open + (closing ? -2 : 0);
+  const frame = `translate(${PIVOT.x} ${PIVOT.y}) rotate(${TILT})`;
   return (
-    <svg viewBox="0 0 240 300" width={width} aria-hidden
-      style={{ display: "block", overflow: "visible" }}>
-      <defs>
-        <linearGradient id="npSteel" x1="0.1" y1="0" x2="0.9" y2="1">
-          <stop offset="0" stopColor={P.steel[0]} />
-          <stop offset="0.14" stopColor={P.steel[1]} />
-          <stop offset="0.38" stopColor={P.steel[2]} />
-          <stop offset="0.55" stopColor={P.steel[3]} />
-          <stop offset="0.78" stopColor={P.steel[4]} />
-          <stop offset="1" stopColor={P.steel[5]} />
-        </linearGradient>
-        <linearGradient id="npSteelDark" x1="0.9" y1="0" x2="0.1" y2="1">
-          <stop offset="0" stopColor={P.steelDark[0]} />
-          <stop offset="0.3" stopColor={P.steelDark[1]} />
-          <stop offset="0.6" stopColor={P.steelDark[2]} />
-          <stop offset="0.82" stopColor={P.steelDark[3]} />
-          <stop offset="1" stopColor={P.steelDark[4]} />
-        </linearGradient>
-        <linearGradient id="npGrip" x1="0" y1="0" x2="1" y2="0.6">
-          <stop offset="0" stopColor={P.grip[0]} />
-          <stop offset="0.3" stopColor={P.grip[1]} />
-          <stop offset="0.68" stopColor={P.grip[2]} />
-          <stop offset="1" stopColor={P.grip[3]} />
-        </linearGradient>
-        <radialGradient id="npRivet" cx="0.34" cy="0.28" r="0.85">
-          <stop offset="0" stopColor={P.rivet[0]} />
-          <stop offset="0.4" stopColor={P.rivet[1]} />
-          <stop offset="1" stopColor={P.rivet[2]} />
-        </radialGradient>
-        <filter id="npShadow" x="-45%" y="-30%" width="200%" height="185%">
-          <feDropShadow dx="5" dy="12" stdDeviation="10" floodColor={P.shade} floodOpacity="0.6" />
-        </filter>
-      </defs>
+    <svg viewBox={`0 0 ${VB.w} ${VB.h}`} width={width} aria-hidden style={{ display: "block", overflow: "visible" }}>
+      {/* 影。★ぼかさない。同じ形をずらして1枚だけ敷く。 */}
+      <g transform={`translate(${CAST.x} ${CAST.y}) ${frame}`}>
+        <Arm sx={1} angle={a} flat={P.cast} />
+        <Arm sx={-1} angle={-a} flat={P.cast} />
+        <circle cx={0} cy={0} r={30} fill={P.cast} />
+      </g>
 
-      <g filter="url(#npShadow)">
-        {/* ================= 下の腕（奥） ================= */}
-        <g transform={`rotate(${-a} ${PIVOT.x} ${PIVOT.y})`}>
-          {/* 顎 */}
-          <path d="M104 118 L46 76 Q34 68 28 78 L22 88 Q18 98 30 104 L96 132 Z"
-            fill="url(#npSteelDark)" />
-          {/* 受けの台（穴のあいた側） */}
-          <rect x="14" y="70" width="34" height="24" rx="5"
-            transform="rotate(-34 31 82)" fill="url(#npSteelDark)" />
-          <ellipse cx="30" cy="83" rx="7.5" ry="5.6" transform="rotate(-34 30 83)" fill={P.hole} />
+      <g transform={frame}>
+        {/* バネ。★腕**より先に**描いて、柄のあいだへ沈める（浮かせない）。
+            腕の回転（±11°）では見た目がほとんど動かないので、回さない。 */}
+        <path
+          d="M-62 84 C -24 152, 24 152, 62 84 M-52 78 C -20 138, 20 138, 52 78"
+          fill="none" stroke={P.spring} strokeWidth={LINE * 2} strokeLinecap="round"
+        />
+
+        {/* 奥の腕（右）。受けの窓を持つ。 */}
+        <g transform={`rotate(${a} 0 0)`}>
+          <path d={rect(SLOT, 1)} fill={P.die} />
         </g>
-        {/* 腕（支点から柄へ）。下側は大きく開いて別の方向へ伸ばす。 */}
-        <path d="M92 132 L124 262 Q128 282 146 285 Q162 287 165 273 Q167 259 154 250 L114 130 Z"
-          fill="url(#npSteelDark)" />
-        <path d="M132 236 L154 250 Q167 259 165 273 Q162 287 146 285 Q128 282 124 262 Z"
-          fill="url(#npGrip)" />
+        <Arm sx={1} angle={a} />
 
-        {/* ================= 上の腕（手前） ================= */}
-        {/* 腕 */}
-        <path d="M118 118 L212 220 Q228 238 224 252 Q217 268 200 264 Q186 260 179 244 L100 126 Z"
-          fill="url(#npSteel)" />
-        <path d="M186 196 Q228 238 224 252 Q217 268 200 264 Q186 260 179 244 Q170 224 160 210 Z"
-          fill="url(#npGrip)" />
-        <path d="M124 126 L184 192" stroke={P.springLit} strokeOpacity="0.65" strokeWidth="2.8"
-          strokeLinecap="round" fill="none" />
-
-        {/* 顎（抜き型が付く側） */}
-        <g transform={`rotate(${a} ${PIVOT.x} ${PIVOT.y})`}>
-          <path d="M104 118 L54 58 Q44 46 34 52 L26 58 Q18 66 26 76 L94 130 Z"
-            fill="url(#npSteel)" />
-          {/* 抜き型の頭 */}
-          <rect x="16" y="44" width="34" height="26" rx="5"
-            transform="rotate(-40 33 57)" fill="url(#npSteel)" />
-          <rect x="21" y="49" width="24" height="16" rx="3"
-            transform="rotate(-40 33 57)" fill={P.die} />
-          {/* 稜線と光 */}
-          <path d="M98 124 L46 66" stroke={P.edge} strokeOpacity="0.75" strokeWidth="2.4"
-            strokeLinecap="round" fill="none" />
-          <path d="M92 132 L38 78" stroke={P.shade} strokeOpacity="0.4" strokeWidth="1.8" fill="none" />
+        {/* 手前の腕（左）。抜き型が軸をまたいで受けの窓へ入る。 */}
+        <Arm sx={-1} angle={-a} />
+        <g transform={`rotate(${-a} 0 0)`}>
+          <path d={rect(DIE, -1)} fill={P.steel.side} stroke={P.outline} strokeWidth={LINE} strokeLinejoin="round" />
+          {/* 抜き型に入っている形＝これから切る鋏痕。100角の形をここへ縮める。 */}
+          <g transform={`translate(${-DIE.u1 - 34} ${DIE.y0 + 4}) scale(0.26)`}>
+            <path d={notchPath(PUNCH_BY_DOMAIN[domain])} fill={P.die} />
+          </g>
         </g>
 
-        {/* ================= バネ ================= */}
-        <path d="M114 152 Q152 168 150 194 Q148 214 128 224"
-          stroke={P.spring} strokeWidth="4.4" fill="none" strokeLinecap="round" opacity="0.92" />
-        <path d="M114 152 Q152 168 150 194 Q148 214 128 224"
-          stroke={P.springLit} strokeOpacity="0.5" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-
-        {/* ================= 支点 ================= */}
-        <circle cx={PIVOT.x} cy={PIVOT.y} r="21" fill="url(#npSteel)" />
-        <circle cx={PIVOT.x} cy={PIVOT.y} r="12" fill="url(#npRivet)" />
-        <circle cx={PIVOT.x} cy={PIVOT.y} r="4.4" fill={P.shade} />
-        <circle cx={PIVOT.x - 4.5} cy={PIVOT.y - 5.5} r="2.8" fill={P.glint} fillOpacity="0.8" />
+        {/* 鋲。硬い三日月のハイライトだけを乗せる。 */}
+        <circle cx={0} cy={0} r={30} fill={P.rivet.face} stroke={P.outline} strokeWidth={LINE} />
+        <path d="M-22 -8 a22 22 0 0 1 28 -12 a17 17 0 0 0 -22 19 Z" fill={P.rivet.lit} />
+        <circle cx={0} cy={0} r={9} fill={P.rivet.shade} />
       </g>
     </svg>
   );

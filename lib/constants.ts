@@ -440,42 +440,46 @@ export const TICKET_DOMAIN_COLOR: Record<ItemDomain, string> = {
   info: SCHEME.violet.bg,
   thing: SCHEME.wine.bg,
 };
-// 券の紙。★第33巡で暖色のクリームは廃止したので戻さない。紙らしさは
-// 地紋と繊維の目だけで出す。
+// 券の紙。★第33巡で暖色のクリームは廃止したので戻さない。
+// 紙らしさは**本物の写真**(`public/paper-kraft.webp`・`lib/paperTexture.ts`)で
+// 出す。偽の縞(旧 `TICKET_GRAIN`)は第69巡に撤去した ― 図形が焼き込んでいる
+// 紙と券の紙が食い違い、券だけが「印刷物ではないもの」に見えていた。
 export const TICKET_PAPER = PAPER;
-// 券が乗る台。穴から透けて見えるのはこの色。
+// 券が乗る台。切り欠きから透けて見えるのはこの色。
 export const TICKET_DECK = "#26251F";
-// 券の縦横比。カード(3/4)より縦長にして、券であることを比率で示す。
-export const TICKET_ASPECT = "5 / 7";
-// 券の罫と紙の目。★HAIRLINE(0.08) は分節の点線には薄すぎるので別に持つ。
+// 券の縦横比。★カード(3/4)でも写真(5/7)でもなく、**券の比**。
+// 5/7(0.714)は名刺やカードの比で、そのせいで「ただのカード」に見えていた。
+export const TICKET_ASPECT = "13 / 21";
+// ミシン目の穿孔。★HAIRLINE(0.08) は点線には薄すぎるので別に持つ。
 export const TICKET_PERF = "rgba(26,26,24,0.32)";
-export const TICKET_GRAIN = "rgba(26,26,24,0.05)";
 
 // ★改札鋏の彩色。**図形専用のパレット**で、UI のグレーの語彙(INK/CHARCOAL/
-// SECOND/MUTED)とは混ぜない。金属の階調は6段の並びで持ち、SVG の
-// linearGradient の stop へそのまま流す。
+// SECOND/MUTED)とは混ぜない。
+//
+// ★★★**平らな面だけで塗る**(第69巡)。第68巡までは6停止の linearGradient で
+// 金属を写実に寄せていたが、それは「写実の失敗作」にしか見えなかった。
+// いまは面ごとに1色を置き、稜線を `outline` の均一な輪郭で締める
+// ―「イラストレーターで描いたベクター」のテイスト(ユーザー指定)。
+// 明るい順に lit / face / side / shade の**4トーンだけ**。増やさない。
 export const NIPPER_PAINT = {
-  /** 手前の腕。明→暗の6段。 */
-  steel: ["#FBFAF6", "#CFCCC4", "#7E7C76", "#B4B1A9", "#57554F", "#312F2C"],
-  /** 奥の腕。逆光になるので階調を1段暗くしてある。 */
-  steelDark: ["#D6D3CB", "#8C8A83", "#4F4D48", "#7B7972", "#232220"],
+  /** 鋼。手前に向いた面ほど明るい。 */
+  steel: { lit: "#E4E1D8", face: "#A9A69C", side: "#6E6C65", shade: "#484640" },
   /** 握りの被覆。 */
-  grip: ["#94402A", "#652616", "#3D150C", "#1E0805"],
+  grip: { lit: "#A8442C", face: "#8A3320", side: "#67230F", shade: "#421408" },
   /** 支点のリベット。 */
-  rivet: ["#FAF8F3", "#A5A29A", "#403E3A"],
-  /** 稜線の光。 */
-  edge: "#FCFBF7",
-  /** 稜線の影。 */
-  shade: "#26241F",
-  /** 受けの穴。 */
-  hole: "#1A1917",
-  /** 抜き型の口。 */
-  die: "#2A2926",
-  /** バネ。 */
-  spring: "#8E8B84",
-  springLit: "#EDEAE2",
-  /** リベットの一番強い光。 */
-  glint: "#FFFFFF",
+  rivet: { lit: "#FBFAF6", face: "#B3B0A7", shade: "#4A4843" },
+  /** すべての部品を締める輪郭。太さは一定。 */
+  outline: "#1A1917",
+  /** 抜き型の口と受けの窓(＝紙が入る闇)。 */
+  die: "#211F1C",
+  /** バネの線。 */
+  spring: "#A9A69D",
+  /** 影。ぼかさず、ずらした同形の面として置く。 */
+  cast: "rgba(26,25,23,0.20)",
 } as const;
-// 券の切り口の陰（紙の厚み）。
-export const TICKET_CUT = "rgba(52,44,28,0.55)";
+// 券の切り口の陰（紙の厚み）と、切り欠きの中に落ちる券の影。
+// ★★券の紙(#FAFAF9)と地(#F0F0EE)はほとんど同じ明るさなので、**地の色だけでは
+//   切り欠きが見えない**（第69巡に実際に見えなかった）。切り口は
+//   「地＋券の縁が落とす影」で読ませる。
+export const TICKET_CUT = "rgba(52,44,28,0.5)";
+export const TICKET_SHADE = "rgba(52,44,28,0.16)";

@@ -2,7 +2,7 @@
 
 import { SPACE, TYPE, TRACK, WEIGHT, LEAD } from "@/lib/tokens";
 import {
-  ITEM_DOMAINS, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
+  BG, ITEM_DOMAINS, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
 } from "@/lib/constants";
 import { PunchGlyph } from "@/components/explore/PunchMark";
 import { Nipper } from "@/components/explore/Nipper";
@@ -25,6 +25,19 @@ function fakePhoto(a: string, b: string) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+// ★以下は目盛りの外（実寸の枠と図形の座標）。
+const STAGE = { w: 390, h: 844 };   // iPhone の見えている範囲
+const STAGE_TICKET = 300;           // 提案の券の幅（本番と同じ）
+/** ★券は**左に寄せる**。右に空けた帯が鋏の居場所になる（スイス流の非対称）。 */
+const STAGE_NIPPER = 340;           // 鋏の幅
+// 鋏の支点を画面の (240, 660) へ置く。SVG は枠の外へはみ出して描く
+// （`overflow: visible`）ので、柄は画面の下端へ抜けていく＝そこに手がある。
+const NIPPER_S = STAGE_NIPPER / 520;
+const NIPPER_LEFT = Math.round(240 - 300 * NIPPER_S);
+const NIPPER_TOP = Math.round(660 - 300 * NIPPER_S);
+/** 鋏痕が落ちる高さ。**巨大な日付の右に空く余白**がそのまま入鋏の場所になる。 */
+const PUNCH_T = 0.78;
+
 const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
   {
     data: {
@@ -33,7 +46,7 @@ const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
       venue: "東京都現代美術館", area: "清澄白河", date: "12.02", until: "03.16", soon: true,
       image: fakePhoto("#FFE58A", "#101B3A"), serial: 143, // ★目盛りの外（ダミー画像の色）
     },
-    punch: { edge: "right", t: 0.42 },
+    punch: { edge: "right", t: PUNCH_T },
   },
   {
     data: {
@@ -41,7 +54,7 @@ const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
       summary: "図面の余白に書かれた覚え書きだけを集めた一冊。生活の言葉で書かれている。",
       venue: "みすず書房", date: "09.20", until: "09.20", serial: 142,
     },
-    punch: { edge: "bottom", t: 0.66 },
+    punch: { edge: "right", t: PUNCH_T },
   },
   {
     data: {
@@ -50,7 +63,7 @@ const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
       venue: "喫茶ソワレ分室", area: "蔵前", date: "09.01", until: "03.31",
       image: fakePhoto("#FFB27A", "#1A0E0A"), serial: 141, // ★目盛りの外（ダミー画像の色）
     },
-    punch: { edge: "left", t: 0.3 },
+    punch: { edge: "right", t: PUNCH_T },
   },
   {
     data: {
@@ -59,7 +72,7 @@ const SAMPLES: { data: TicketData; punch?: TicketPunch }[] = [
       venue: "つくし文具店", area: "国分寺", date: "10.01", until: "10.31",
       handwritten: true, serial: 140,
     },
-    punch: { edge: "top", t: 0.72 },
+    punch: { edge: "right", t: PUNCH_T },
   },
 ];
 
@@ -84,6 +97,25 @@ export default function DevExplore() {
         margin: 0, fontFamily: LATIN, fontSize: TYPE.head, fontWeight: WEIGHT.bold,
         letterSpacing: TRACK.wide, lineHeight: LEAD.snug,
       }}>TICKET</h1>
+
+      {/* ★実寸の構図。ここが本番と同じ大きさで、写真・ゴールと突き合わせる対象。 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+        <Label>Today — 実寸 390 × 844</Label>
+        <div style={{
+          position: "relative", width: STAGE.w, height: STAGE.h,
+          background: BG, overflow: "hidden", flex: "none",
+        }}>
+          <span style={{ position: "absolute", left: SPACE.lg, top: SPACE.xl }}>
+            <Ticket data={SAMPLES[0].data} punch={SAMPLES[0].punch} deck={BG} width={STAGE_TICKET} />
+          </span>
+          {/* ★目盛りの外（図形の配置） */}
+          <span style={{
+            position: "absolute", left: NIPPER_LEFT, top: NIPPER_TOP, width: STAGE_NIPPER,
+          }}>
+            <Nipper open={1} domain="experience" />
+          </span>
+        </div>
+      </div>
 
       {/* 切り欠きの4つ */}
       <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
@@ -113,12 +145,9 @@ export default function DevExplore() {
       {/* 券 */}
       <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
         <Label>Tickets</Label>
-        <div style={{
-          display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-          gap: SPACE.xl,
-        }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: SPACE.xl }}>
           {SAMPLES.map((s) => (
-            <Ticket key={s.data.serial} data={s.data} punch={s.punch} deck={TICKET_DECK} />
+            <Ticket key={s.data.serial} data={s.data} punch={s.punch} deck={TICKET_DECK} width={STAGE_TICKET} />
           ))}
         </div>
       </div>

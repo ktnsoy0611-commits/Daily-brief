@@ -42,6 +42,27 @@ export function notchPath(shape: PunchShape): string {
   }
 }
 
+/**
+ * 同じ形の**口を除いた輪郭**（＝実際に刃が入った線）。
+ * ★紙の厚みの陰はこの線にだけ落とす。閉じた輪郭を縁取ると、
+ *   **券の縁そのものにも線が乗って**しまい、切り欠きが「切れ目」ではなく
+ *   「置かれた図形」に見える（第69巡に実際に起きた）。
+ * ★目盛りの外（図形の座標系）。
+ */
+export function notchContour(shape: PunchShape): string {
+  switch (shape) {
+    case "semi":
+      return "M100 0 A50 50 0 0 1 0 0";
+    case "tri":
+      return "M100 0 L50 96 L0 0";
+    case "square":
+      return "M100 0 V72 H0 V0";
+    case "w":
+    default:
+      return "M100 0 L78 88 L50 26 L22 88 L0 0";
+  }
+}
+
 /** 上の辺で描いた形を、実際の辺へ向けるための回転角。 */
 export const EDGE_ROTATION: Record<TicketEdge, number> = {
   top: 0,

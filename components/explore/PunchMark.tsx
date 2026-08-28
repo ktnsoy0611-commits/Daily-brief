@@ -1,7 +1,7 @@
 "use client";
 
-import { TICKET_CUT } from "@/lib/constants";
-import { barsOf, EDGE_ROTATION, notchPath, PUNCH_BY_DOMAIN, type PunchShape, type TicketEdge } from "@/lib/ticket";
+import { TICKET_CUT, TICKET_SHADE } from "@/lib/constants";
+import { barsOf, EDGE_ROTATION, notchContour, notchPath, PUNCH_BY_DOMAIN, type PunchShape, type TicketEdge } from "@/lib/ticket";
 import type { ItemDomain } from "@/lib/types";
 
 // 券に付く図形（切り欠き・印・バーコード）。
@@ -10,6 +10,11 @@ import type { ItemDomain } from "@/lib/types";
 /**
  * 縁の切り欠き。台の色で塗って、紙が食い込まれたように見せる。
  * 器いっぱいに描くので、券の幅に対する比率で置ける。
+ *
+ * ★★第69巡に切り口の陰を直した。前は同じ形をずらして下に敷いていたので、
+ *   陰が**切り欠きの外へはみ出し**、紙の上に黒い塊が乗って見えていた。
+ *   いま陰は切り欠きの輪郭を太く縁取り、**その形で切り抜く**ので、
+ *   内側の半分（＝紙の厚み）だけが残る。
  */
 export function PunchNotch({ domain, edge, deck }: {
   domain: ItemDomain;
@@ -17,17 +22,36 @@ export function PunchNotch({ domain, edge, deck }: {
   /** 切り欠きから見える台の色。 */
   deck: string;
 }) {
-  const d = notchPath(PUNCH_BY_DOMAIN[domain]);
+  const shape = PUNCH_BY_DOMAIN[domain];
+  const d = notchPath(shape);
   const rot = EDGE_ROTATION[edge];
+  const clip = `notch-${shape}-${edge}`;
   return (
     <svg width="100%" height="100%" viewBox="0 0 100 100" aria-hidden
-      style={{ display: "block", overflow: "visible" }} preserveAspectRatio="none">
-      {/* 切り口の陰。★回転の内側で当てる（どの辺でも紙の内側へ落ちる）。 */}
+      style={{ display: "block" }} preserveAspectRatio="none">
+      <defs>
+        <clipPath id={clip}>
+          <path d={d} transform={`rotate(${rot} 50 50)`} />
+        </clipPath>
+        {/* 奥ほど暗い＝窪みに見える。口（＝券の縁）側は開いているので明るい。 */}
+        <linearGradient id={`${clip}-g`} x1="0" y1="0" x2="0" y2="1"
+          gradientUnits="objectBoundingBox">
+          <stop offset="0" stopColor={TICKET_SHADE} stopOpacity="0.35" />
+          <stop offset="1" stopColor={TICKET_SHADE} stopOpacity="1" />
+        </linearGradient>
+      </defs>
       <g transform={`rotate(${rot} 50 50)`}>
-        <path d={d} fill={TICKET_CUT} transform="translate(0 4)" />
-      </g>
-      <g transform={`rotate(${rot} 50 50)`}>
+        {/* 地。そのすぐ上に、券の縁が落とす影を重ねる。 */}
         <path d={d} fill={deck} />
+        <path d={d} fill={`url(#${clip}-g)`} />
+      </g>
+      {/* 紙の厚み。★**口を除いた輪郭**だけを太らせ、切り欠きの形で切り抜く。
+          こうすると陰は切り口の内側にだけ残り、券の縁には1本も乗らない。 */}
+      <g clipPath={`url(#${clip})`}>
+        <path d={notchContour(shape)} transform={`rotate(${rot} 50 50)`}
+          fill="none" stroke={TICKET_SHADE} strokeWidth={16} strokeLinejoin="round" />
+        <path d={notchContour(shape)} transform={`rotate(${rot} 50 50)`}
+          fill="none" stroke={TICKET_CUT} strokeWidth={5} strokeLinejoin="round" />
       </g>
     </svg>
   );

@@ -18,23 +18,26 @@ import {
 // ★★形は `lib/nipperShape.ts` が正（平面図のトレース）。ここは**厚みと動き**だけ。
 
 /**
- * ★★**半分の厚み**の表（0=厚 / 1=中 / 2=薄。2026-08-29 にユーザーが確定）。
+ * ★★**半分の厚み**の表（0=厚 / 1=薄。2026-08-29 にユーザーが確定）。
+ * ★21巡目に段が3つから2つになった ―― 以前の「中 40」は、**2部品が重なった図の上で
+ *   塗っていたための取り違え**だった。部品ごとの図をもらって解消した。
+ *   右の部品は一定（45）、左だけ持ち手 45／先端 28。
  * **どこがどの段かは平面図の塗り分けが決める**（`lib/nipperShape.ts` の
  * `NIPPER_*_PIECES`）。ここは段に厚みを与えるだけ。
  *
  * ★18巡目まで「部品ごと＋肩から上だけ薄い」という **y の関数**で決めていたが、
  *   塗り分けは y の帯ではない（中と薄が y で重なる）ので表せなかった。
  */
-export const HALF = [45, 40, 28];
+export const HALF = [45, 28];
 /**
- * ★★段ごとに**色の段をいくつ下げるか**（0=厚 1=中 2=薄。2026-08-29 にユーザー確定）。
+ * ★★段ごとに**色の段をいくつ下げるか**（0=厚 1=薄）。
  * 厚い片も薄い片も**正面の法線は +z** なので同じ色になり、違いは段差の壁だけ。
  * その壁は 17単位 × 画角 0.22 ＝ **画面上 4px** しかなく、角度の問題なので
  * 形をどれだけ綺麗にしても見えない（20巡目に実測）。
  * このアプリの規則「陰の手当ては群にまとめて1度だけ段を下げる」で見せる ――
  * 引っ込んだ面は光が届きにくいので、物理的にも自然。
  */
-const DIM = [0, 1, 1];
+const DIM = [0, 1];
 
 /**
  * 押し切ったときの角（度）。★**正＝青の持ち手が右へ寄る**（＝開きが閉じる）。
@@ -78,15 +81,19 @@ function coilPath(): Vector3[] {
   // ★★★**輪は1本**（19巡目）。18巡目は2巻きを半径差3・z差4で重ねていたが、
   //   針金の直径 17 に対して差が小さすぎて融合し、**筒に見えた**（ユーザー指摘）。
   //   平面図も円を1本しか描いていない。
-  const N = 48;
+  const N = 64;
   const at = (p: { x: number; y: number }) => new Vector3(p.x, p.y, COIL_Z);
   const pts = NIPPER_COIL.legFar.map(at);
-  // ★輪は**脚が触れているところから**1周する（付け根の角度も図が決めている）。
-  const a0 = Math.atan2(
-    NIPPER_COIL.legFar[1].y - NIPPER_COIL.cy, NIPPER_COIL.legFar[1].x - NIPPER_COIL.cx,
-  );
+  // ★★輪は**片方の脚が触れる角から、もう片方の脚が触れる角＋1周**まで掃く。
+  //   20巡目は開始角まで1周してから反対側の脚へ飛んでいたので、**輪の穴を弦が
+  //   横切っていた**（ユーザー指摘「リングの形がかなりおかしい」）。
+  const ang = (p: { x: number; y: number }) =>
+    Math.atan2(p.y - NIPPER_COIL.cy, p.x - NIPPER_COIL.cx);
+  const a0 = ang(NIPPER_COIL.legFar[1]);
+  const TAU = Math.PI * 2;
+  const a1 = a0 + (((ang(NIPPER_COIL.legNear[0]) - a0) % TAU) + TAU) % TAU + TAU;
   for (let i = 0; i <= N; i++) {
-    const t = a0 + (i / N) * Math.PI * 2;
+    const t = a0 + ((a1 - a0) * i) / N;
     pts.push(new Vector3(
       NIPPER_COIL.cx + Math.cos(t) * NIPPER_COIL.r,
       NIPPER_COIL.cy + Math.sin(t) * NIPPER_COIL.r, COIL_Z,

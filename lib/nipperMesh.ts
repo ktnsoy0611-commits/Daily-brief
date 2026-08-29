@@ -4,7 +4,7 @@ import {
 } from "three";
 
 import { NIPPER_PAINT } from "@/lib/constants";
-import type { P2 } from "@/lib/nipperShape";
+import type { NipperPiece, P2 } from "@/lib/nipperShape";
 
 // 改札鋏の**立体**。★形（平面図）は `lib/nipperShape.ts` が正。ここは**厚みだけ**を足す。
 //
@@ -143,11 +143,16 @@ export function buildWire(path: Vector3[], r: number): BufferGeometry {
 /**
  * 段の表（`NIPPER_PAINT.ramp` の6色）。`MeshToonMaterial` の `gradientMap` に食わせる。
  * ★`NearestFilter` にしないと段のあいだが混ざって**なだらかな階調**になる。
+ *
+ * ★★`dim` は**段をいくつ下げるか**。このアプリの規則「陰の手当ては群にまとめて
+ * 1度だけ段を下げる」を、表を焼くときに済ませる（uniform を足さないので、
+ * シェーダーの差し替えは触らずに済む）。引っ込んだ面は光が届きにくいので暗い。
+ * ★いちばん暗い段で止まるので、6段から外へ出ない。
  */
-export function toneRamp(): DataTexture {
-  const ramp = NIPPER_PAINT.ramp;
+export function toneRamp(dim = 0): DataTexture {
+  const ramp = NIPPER_PAINT.ramp.map((_, i) => NIPPER_PAINT.ramp[Math.max(0, i - dim)]);
   const data = new Uint8Array(ramp.length * 4);
-  ramp.forEach((hex, i) => {
+  ramp.forEach((hex: string, i: number) => {
     const c = new Color(hex);
     data[i * 4] = Math.round(c.r * 255);
     data[i * 4 + 1] = Math.round(c.g * 255);
@@ -200,3 +205,35 @@ export function applyAppTones(m: MeshToonMaterial) {
  * こうすると画面に出る色が段の表の色そのものになる。
  */
 export const LIGHT_INTENSITY = Math.PI;
+
+// ---- 辺を点に開く --------------------------------------------------------
+/**
+ * ★★片の**辺の並び**（直線と円弧）を点に開く（`lib/nipperShape.ts` の `NipperPiece`）。
+ * 20巡目に、なぞった点の羅列をやめて辺で持つようにした。立体を組むのは点なので、
+ * ここで開く。**円弧は約4°刻み**。
+ * ★段の境目の印は**辺ごと**なので、開いた点すべてにその辺の印を配る。
+ */
+export function flattenPiece(piece: NipperPiece): { poly: P2[]; inner: boolean[] } {
+  const poly: P2[] = [];
+  const inner: boolean[] = [];
+  let cur = piece.start;
+  for (const e of piece.edges) {
+    const seg: P2[] = [];
+    if (e.r && e.c) {
+      const TAU = Math.PI * 2;
+      const a0 = Math.atan2(cur.y - e.c.y, cur.x - e.c.x);
+      const a1 = Math.atan2(e.to.y - e.c.y, e.to.x - e.c.x);
+      const d = e.ccw ? ((a1 - a0) % TAU + TAU) % TAU : -(((a0 - a1) % TAU + TAU) % TAU);
+      const n = Math.max(1, Math.ceil(Math.abs(d) / (Math.PI / 45)));
+      for (let i = 1; i <= n; i++) {
+        const t = a0 + (d * i) / n;
+        seg.push({ x: e.c.x + Math.cos(t) * e.r, y: e.c.y + Math.sin(t) * e.r });
+      }
+    } else {
+      seg.push(e.to);
+    }
+    for (const q of seg) { poly.push(q); inner.push(!!e.inner); }
+    cur = seg[seg.length - 1];
+  }
+  return { poly, inner };
+}

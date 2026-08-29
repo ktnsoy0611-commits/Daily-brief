@@ -3,10 +3,11 @@ import {
 } from "three";
 
 import {
-  buildPart, buildWire, toneRamp, applyAppTones, CHAMFER, LIGHT_INTENSITY,
+  buildPart, buildWire, flattenPiece, toneRamp, applyAppTones, CHAMFER, LIGHT_INTENSITY,
 } from "@/lib/nipperMesh";
 import {
   NIPPER_COIL, NIPPER_EXTENT, NIPPER_LEFT_PIECES, NIPPER_PIVOT, NIPPER_RIGHT_PIECES,
+  type NipperPiece,
 } from "@/lib/nipperShape";
 
 // 改札鋏の**組み立て**。★本番の1体（`components/explore/Nipper.tsx`）と
@@ -25,6 +26,15 @@ import {
  *   塗り分けは y の帯ではない（中と薄が y で重なる）ので表せなかった。
  */
 export const HALF = [45, 40, 28];
+/**
+ * ★★段ごとに**色の段をいくつ下げるか**（0=厚 1=中 2=薄。2026-08-29 にユーザー確定）。
+ * 厚い片も薄い片も**正面の法線は +z** なので同じ色になり、違いは段差の壁だけ。
+ * その壁は 17単位 × 画角 0.22 ＝ **画面上 4px** しかなく、角度の問題なので
+ * 形をどれだけ綺麗にしても見えない（20巡目に実測）。
+ * このアプリの規則「陰の手当ては群にまとめて1度だけ段を下げる」で見せる ――
+ * 引っ込んだ面は光が届きにくいので、物理的にも自然。
+ */
+const DIM = [0, 1, 1];
 
 /**
  * 押し切ったときの角（度）。★**正＝青の持ち手が右へ寄る**（＝開きが閉じる）。
@@ -36,15 +46,13 @@ export const THETA = 10;
 export const SQUEEZE = 0.34;
 
 /**
- * バネ。★輪の場所・大きさ・**針金の太さ**は図から拾う（`NIPPER_COIL`）。
- * 脚だけは図の細い線をたどれないので手で置く。
+ * バネ。★★**場所・大きさ・針金の太さ・脚の通り**すべて図から拾う（`NIPPER_COIL`）。
+ * 19巡目まで脚の4点だけ手で置いていて、ユーザーに「リングの辺りの形が捉えられて
+ * いない」と指摘された ―― 図が持っている情報を書き写していた。
+ * ★z だけは平面図に無いので、ここで決める（バネは1枚の平たいねじりばね）。
  */
-const COIL = {
-  z: 26,
-  legFar: [new Vector3(-20, -328, 24), new Vector3(120, -690, 26)],
-  legNear: new Vector3(330, -640, 30),
-};
-export const COIL_ANCHOR_X = COIL.legNear.x;
+const COIL_Z = 26;
+export const COIL_ANCHOR_X = NIPPER_COIL.legNear[1].x;
 
 /**
  * 光の向き（**カメラから見た**上・左・手前）。
@@ -71,15 +79,20 @@ function coilPath(): Vector3[] {
   //   針金の直径 17 に対して差が小さすぎて融合し、**筒に見えた**（ユーザー指摘）。
   //   平面図も円を1本しか描いていない。
   const N = 48;
-  const pts = [...COIL.legFar];
+  const at = (p: { x: number; y: number }) => new Vector3(p.x, p.y, COIL_Z);
+  const pts = NIPPER_COIL.legFar.map(at);
+  // ★輪は**脚が触れているところから**1周する（付け根の角度も図が決めている）。
+  const a0 = Math.atan2(
+    NIPPER_COIL.legFar[1].y - NIPPER_COIL.cy, NIPPER_COIL.legFar[1].x - NIPPER_COIL.cx,
+  );
   for (let i = 0; i <= N; i++) {
-    const t = (i / N) * Math.PI * 2 - Math.PI * 0.75;
+    const t = a0 + (i / N) * Math.PI * 2;
     pts.push(new Vector3(
       NIPPER_COIL.cx + Math.cos(t) * NIPPER_COIL.r,
-      NIPPER_COIL.cy + Math.sin(t) * NIPPER_COIL.r, COIL.z,
+      NIPPER_COIL.cy + Math.sin(t) * NIPPER_COIL.r, COIL_Z,
     ));
   }
-  pts.push(COIL.legNear);
+  pts.push(...NIPPER_COIL.legNear.map(at));
   return pts;
 }
 
@@ -100,11 +113,15 @@ export function buildNipperRig(): NipperRig {
   tool.position.set(-NIPPER_CENTER.x, -NIPPER_CENTER.y, 0);
   root.add(tool);
 
-  const ramp = toneRamp();
-  const steel = new MeshToonMaterial({ color: 0xffffff, gradientMap: ramp });
-  applyAppTones(steel);
-  const add = (g: BufferGeometry, parent: Group) => {
-    const m = new Mesh(g, steel);
+  // 段ごとに材質を1つ（表を焼くときに段を下げてある。差し替えは同じ）。
+  const ramps = DIM.map((d) => toneRamp(d));
+  const steels = ramps.map((gradientMap) => {
+    const m = new MeshToonMaterial({ color: 0xffffff, gradientMap });
+    applyAppTones(m);
+    return m;
+  });
+  const add = (g: BufferGeometry, parent: Group, tier = 0) => {
+    const m = new Mesh(g, steels[tier]);
     m.castShadow = true;
     // ★自分の影は**受けない**。受けると影の中が真っ黒に落ちて、段が6つで収まらない。
     //   落ち影は床にだけ落とす（`components/explore/Nipper.tsx`）。
@@ -112,20 +129,23 @@ export function buildNipperRig(): NipperRig {
     parent.add(m);
   };
 
+  const solidOf = (pc: NipperPiece) => {
+    const { poly, inner } = flattenPiece(pc);
+    return buildPart(poly, HALF[pc.tier], CHAMFER, inner);
+  };
+
   // 赤の部品（動かない）。★片は段ごとに分かれているが、**ひとつの部品**。
-  for (const { poly, tier, inner } of NIPPER_RIGHT_PIECES) {
-    add(buildPart(poly, HALF[tier], CHAMFER, inner), tool);
-  }
+  for (const pc of NIPPER_RIGHT_PIECES) add(solidOf(pc), tool, pc.tier);
 
   // 青の部品（支点まわりに回る）。
   // ★赤に挟まれているので正面では途中が隠れて切れて見えるが、**同じ群**＝ひとつの部品。
   const lever = new Group();
   lever.position.set(NIPPER_PIVOT.x, NIPPER_PIVOT.y, 0);
   tool.add(lever);
-  for (const { poly, tier, inner } of NIPPER_LEFT_PIECES) {
-    const g = buildPart(poly, HALF[tier], CHAMFER, inner);
+  for (const pc of NIPPER_LEFT_PIECES) {
+    const g = solidOf(pc);
     g.translate(-NIPPER_PIVOT.x, -NIPPER_PIVOT.y, 0);
-    add(g, lever);
+    add(g, lever, pc.tier);
   }
 
   // バネ
@@ -137,8 +157,8 @@ export function buildNipperRig(): NipperRig {
     root, lever, coil,
     dispose() {
       root.traverse((o: Object3D) => { if (o instanceof Mesh) o.geometry.dispose(); });
-      steel.dispose();
-      ramp.dispose();
+      for (const m of steels) m.dispose();
+      for (const t of ramps) t.dispose();
     },
   };
 }

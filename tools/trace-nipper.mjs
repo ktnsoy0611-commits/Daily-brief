@@ -368,6 +368,8 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
   const EPS = Math.max(1.2, W / 420);
   /** 角を拾う粗さ。★これで残った点が「本物の角」。 */
   const EPS_CORNER = EPS * 3;
+  /** 辺（直線／円弧）を当てるときの許容誤差（画素）。★形は変えない強さ。 */
+  const ARC_TOL = 1.0;
   /**
    * 取り直す間隔（画素）。★辺の長さの下限を作る。
    * ★★**片の細いほうの寸法に合わせる**。一律にすると、細い片（頭の天の先は
@@ -433,32 +435,122 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
     }
     return out;
   };
+  // --- ★★★整えた点列を**直線と円弧に組み直す**（20巡目） ------------------
+  //   ユーザー指摘「なぞって点をとってきただけで、謂わば整理されていない」。
+  //   角と角のあいだは**1本の辺**（直線か円弧）にする。直線も曲線もただの折れ線
+  //   として持っているかぎり、いくら平滑にしても「整理された形」にはならない。
+  //   ★次の巡のデフォルメは、この辺の並びを間引く／半径を丸めるだけで済む。
+
+  /** 最小二乗の円あて（Taubin）。点が一直線に近いと `null`。 */
+  const fitCircle = (pts) => {
+    const n = pts.length;
+    if (n < 4) return null;
+    let mx = 0, my = 0;
+    for (const [x, y] of pts) { mx += x; my += y; }
+    mx /= n; my /= n;
+    let Suu = 0, Suv = 0, Svv = 0, Suuu = 0, Svvv = 0, Suvv = 0, Svuu = 0;
+    for (const [x, y] of pts) {
+      const u = x - mx, v = y - my;
+      Suu += u * u; Svv += v * v; Suv += u * v;
+      Suuu += u * u * u; Svvv += v * v * v; Suvv += u * v * v; Svuu += v * u * u;
+    }
+    const det = Suu * Svv - Suv * Suv;
+    if (Math.abs(det) < 1e-9) return null;
+    const c1 = (Suuu + Suvv) / 2, c2 = (Svvv + Svuu) / 2;
+    const uc = (c1 * Svv - c2 * Suv) / det, vc = (c2 * Suu - c1 * Suv) / det;
+    const r = Math.sqrt(uc * uc + vc * vc + (Suu + Svv) / n);
+    if (!isFinite(r) || r <= 0) return null;
+    return { cx: mx + uc, cy: my + vc, r };
+  };
+
+  /** 点列から弦までの最大のずれ。 */
+  const chordErr = (pts) => {
+    const a = pts[0], b = pts[pts.length - 1];
+    const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+    let m = 0;
+    for (const [x, y] of pts) m = Math.max(m, Math.abs((x - a[0]) * dy - (y - a[1]) * dx) / L);
+    return m;
+  };
+  /** 点列から当てた円までの最大のずれ。 */
+  const circleErr = (pts, c) => {
+    let m = 0;
+    for (const [x, y] of pts) m = Math.max(m, Math.abs(Math.hypot(x - c.cx, y - c.cy) - c.r));
+    return m;
+  };
+
+  /** 区間を**辺の並び**にする。直線で足りなければ円弧、それでも駄目なら半分に割る。 */
+  const edgesOf = (pts, tol, depth = 0) => {
+    const a = pts[0], b = pts[pts.length - 1];
+    if (pts.length < 3) return [{ to: b }];
+    if (chordErr(pts) <= tol) return [{ to: b }];
+    const c = fitCircle(pts);
+    // ★半径が区間の長さに比べて桁違いに大きい円は「直線の言い換え」なので採らない。
+    const span = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (c && c.r < span * 40 && circleErr(pts, c) <= tol) {
+      // ★★回る向きは**区間の中点が掃きの中に入るか**で決める。弦と中心の左右で
+      //   推理すると、画像の y が下向きなことと合わさって裏返り、**長いほうの弧**を
+      //   掃いて図形が破綻する（20巡目に実測 ― 面積が +1044% になった）。
+      const ang = (q) => Math.atan2(q[1] - c.cy, q[0] - c.cx);
+      const TAU = Math.PI * 2, wrap = (t) => ((t % TAU) + TAU) % TAU;
+      const a0 = ang(a), sweepCcw = wrap(ang(b) - a0);
+      const mid = wrap(ang(pts[pts.length >> 1]) - a0);
+      return [{ to: b, r: c.r, ccw: mid <= sweepCcw, cx: c.cx, cy: c.cy }];
+    }
+    if (depth > 6) return [{ to: b }];
+    const h = pts.length >> 1;
+    return [...edgesOf(pts.slice(0, h + 1), tol, depth + 1),
+      ...edgesOf(pts.slice(h), tol, depth + 1)];
+  };
+
+  /** 円弧を点に開く（★約4°刻み。検証で元の点列と突き合わせるのに使う）。 */
+  const openEdge = (from, e) => {
+    if (!e.r) return [e.to];
+    const TAU = Math.PI * 2;
+    const a0 = Math.atan2(from[1] - e.cy, from[0] - e.cx);
+    const raw1 = Math.atan2(e.to[1] - e.cy, e.to[0] - e.cx);
+    const d = e.ccw ? ((raw1 - a0) % TAU + TAU) % TAU : -(((a0 - raw1) % TAU + TAU) % TAU);
+    const a1 = a0 + d;
+    const n = Math.max(1, Math.ceil(Math.abs(a1 - a0) / (Math.PI / 45)));
+    const out = [];
+    for (let i = 1; i <= n; i++) {
+      const t = a0 + ((a1 - a0) * i) / n;
+      out.push([e.cx + Math.cos(t) * e.r, e.cy + Math.sin(t) * e.r]);
+    }
+    return out;
+  };
+
   /** 画素の輪郭 → 整えた多角形。★戻り値に**整形のずれ**も入れて検証に出す。 */
   const fair = (raw) => {
     if (raw.length < 12) return { poly: dp(raw, EPS), moved: 0, area: 0 };
     // ★`raw` は閉じた輪だが**先頭と末尾は重ねない**（重ねると DP が壊れる）。
     //   先頭は追跡の開始点＝いちばん上の左端なので、角として扱ってよい。
     const step = stepFor(raw);
-    const idx = dpIdx(raw, EPS_CORNER);
-    const out = [];
+    // ★角で切り、**角と角のあいだをまるごと1本の辺へ**当てはめる。
+    //   細かい間引きの点で切ると、どの区間も短くて直線にしかならず、
+    //   円弧が1本も出ない（20巡目に実測 ― 37辺中36本が直線だった）。
+    let idx = dpIdx(raw, EPS_CORNER);
+    // 近すぎる角は溶かす（1〜2画素の辺を作らない）
+    idx = idx.filter((v, k) => k === 0 || k === idx.length - 1
+      || Math.hypot(raw[v][0] - raw[idx[k - 1]][0], raw[v][1] - raw[idx[k - 1]][1]) >= EPS * 1.6);
+
+    const edges = [];
+    const start = raw[idx[0]];
     for (let k = 0; k + 1 < idx.length; k++) {
       const run = resample(smoothRun(raw.slice(idx[k], idx[k + 1] + 1)), step);
-      out.push(...run.slice(0, -1));
+      edges.push(...edgesOf(run, ARC_TOL));
     }
-    out.push(raw[idx[idx.length - 1]]);
-    // ★角どうしが隣り合うと 1〜2 画素の辺が残る。**近すぎる点は溶かす**。
-    let poly = dp(out, EPS);
-    for (let again = true; again && poly.length > 4;) {
-      again = false;
-      for (let i = 0; i < poly.length; i++) {
-        const j = (i + 1) % poly.length;
-        if (Math.hypot(poly[j][0] - poly[i][0], poly[j][1] - poly[i][1]) >= EPS * 1.6) continue;
-        poly[i] = [(poly[i][0] + poly[j][0]) / 2, (poly[i][1] + poly[j][1]) / 2];
-        poly = poly.filter((_, k) => k !== j);
-        again = true;
-        break;
-      }
-    }
+    // 閉じる（最後の角 → 最初の角。輪郭は先頭と末尾が隣り合っている）
+    if (edges.length) edges.push({ to: start });
+
+    // 円弧を開いて多角形にする（立体はこれを使う）。辺との対応も取る。
+    const poly = [];
+    const owner = [];
+    let cur = start;
+    edges.forEach((e, i) => {
+      const seg = openEdge(cur, e);
+      for (const q of seg) { poly.push(q); owner.push(i); }
+      cur = seg[seg.length - 1];
+    });
     // 整形でどれだけ動いたか（元の画素の輪郭からの最大距離）
     let moved = 0;
     for (const [x, y] of raw) {
@@ -477,7 +569,9 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
       for (let i = 0; i < q.length; i++) { const u = q[i], v = q[(i + 1) % q.length];
         a += u[0] * v[1] - v[0] * u[1]; } return Math.abs(a) / 2; };
     const a0 = areaOf(raw), a1 = areaOf(poly);
-    return { poly, moved: +moved.toFixed(2), area: a0 ? +((a1 - a0) / a0 * 100).toFixed(2) : 0 };
+    const arcs = edges.filter((e) => e.r).length;
+    return { poly, edges, owner, start, arcs, lines: edges.length - arcs,
+      moved: +moved.toFixed(2), area: a0 ? +((a1 - a0) / a0 * 100).toFixed(2) : 0 };
   };
   const lumps = (m) => {
     const lab = new Int32Array(W * H).fill(-1), stq = new Int32Array(W * H);
@@ -565,15 +659,21 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
         for (let p = 0; p < m.length; p++) if (m[p] && own[k][p]) px++;
         if (px < MIN_PIECE) continue;
         const f = fair(trace(m));
-        if (f.poly.length < 4) continue;
-        const flags = f.poly.map(([x, y]) => {
+        if (f.poly.length < 4 || !f.edges) continue;
+        // ★★段の境目の印は**辺ごと**（点ごとではない）。1本の辺はまるごと外の輪郭か、
+        //   まるごと段の境目のどちらかなので、そのほうが素直で、印が途中で切れない。
+        const hit = f.poly.map(([x, y]) => {
           if (!near) return 0;
           const xi = Math.min(W - 1, Math.max(0, Math.round(x)));
           const yi = Math.min(H - 1, Math.max(0, Math.round(y)));
           return near[yi * W + xi] ? 1 : 0;
         });
-        outp.push({ tier: k, poly: f.poly, px, inner: flags,
-          moved: f.moved, areaDelta: f.area });
+        const tally = f.edges.map(() => [0, 0]);
+        f.owner.forEach((e, i) => { tally[e][hit[i]]++; });
+        const flags = tally.map(([no, yes]) => (yes > no ? 1 : 0));
+        outp.push({ tier: k, px, moved: f.moved, areaDelta: f.area,
+          start: f.start, edges: f.edges, inner: flags,
+          arcs: f.arcs, lines: f.lines, pts: f.poly.length });
       }
     }
     return outp;
@@ -639,9 +739,60 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
       if (gap < lineW || gap > reach * 0.45) continue;
       perp.push(gap / Math.hypot(1, rows[i].mid - rows[i - 1].mid));
     }
+    const R = mids.length ? med(mids) : reach / 2;
+    const wire = perp.length ? med(perp) / 2 : lineW;
+
+    // ★★★脚も図から測る（20巡目。ユーザー指摘「リングの辺りの形が捉えられていない」）。
+    //   脚は**2本線で描かれていて、そのあいだが閉じた領域として残っている**。
+    //   輪の帯を除いてから、その領域ごとに**主成分**を取れば、軸の両端が脚の端になる。
+    //   ★19巡目まで脚の4点は手で置いていた ―― 図が持っている情報を書き写していた。
+    const legs = cells
+      // ★**地の領域**だけ（部品に割り当てられた領域は脚ではない）。これをしないと
+      //   右の持ち手の内側の細部（1225px）を脚と取り違える（20巡目に実測）。
+      .filter((cc, ci) => bg.has(ci) && cc !== coilCell && cc.size > 150 && cc.size < 6000
+        && Math.hypot(cc.cx - cx0, cc.cy - cy0) < reach * 5)
+      .map((cc) => {
+        const pts = cc.pix
+          .map((q) => [q % W, (q / W) | 0])
+          .filter(([x, y]) => Math.hypot(x - cx0, y - cy0) > R + wire * 2.2);
+        if (pts.length < 120) return null;
+        let mx2 = 0, my2 = 0;
+        for (const [x, y] of pts) { mx2 += x; my2 += y; }
+        mx2 /= pts.length; my2 /= pts.length;
+        let sxx = 0, sxy = 0, syy = 0;
+        for (const [x, y] of pts) {
+          const u = x - mx2, v = y - my2; sxx += u * u; sxy += u * v; syy += v * v;
+        }
+        // 主成分（2×2 の固有ベクトル）
+        const th = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+        const ux = Math.cos(th), uy = Math.sin(th);
+        let t0 = Infinity, t1 = -Infinity, spread = [];
+        for (const [x, y] of pts) {
+          const t = (x - mx2) * ux + (y - my2) * uy;
+          if (t < t0) t0 = t; if (t > t1) t1 = t;
+          spread.push(Math.abs(-(x - mx2) * uy + (y - my2) * ux));
+        }
+        spread.sort((a, b) => a - b);
+        const half = spread[Math.floor(spread.length * 0.9)];
+        const A2 = [mx2 + ux * t0, my2 + uy * t0], B2 = [mx2 + ux * t1, my2 + uy * t1];
+        // 輪に近いほうを終点にする
+        const dA = Math.hypot(A2[0] - cx0, A2[1] - cy0), dB = Math.hypot(B2[0] - cx0, B2[1] - cy0);
+        const [far, nearEnd] = dA > dB ? [A2, B2] : [B2, A2];
+        return { far, near: nearEnd, len: t1 - t0, half: +half.toFixed(2), n: pts.length };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.len - a.len)
+      .slice(0, 2);
+    // ★左の脚（＝青の部品から出る）を先に。x が小さいほう。
+    legs.sort((a, b) => a.far[0] - b.far[0]);
+
     return {
-      r: mids.length ? +med(mids).toFixed(2) : reach / 2,
-      wire: perp.length ? +(med(perp) / 2).toFixed(2) : lineW,
+      r: +R.toFixed(2),
+      // ★針金の太さは**脚の領域の広がり**からも取れる。2つの測り方が近いことを確かめる。
+      wire: +wire.toFixed(2),
+      wireFromLegs: legs.length ? +med(legs.map((l) => l.half)).toFixed(2) : null,
+      legs: legs.map((l) => ({ far: l.far.map((v) => +v.toFixed(1)),
+        near: l.near.map((v) => +v.toFixed(1)), n: l.n, half: l.half })),
       samples: { ring: mids.length, wire: perp.length },
     };
   })();
@@ -731,7 +882,10 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
     // ★厚みの片。**段で線の色を変える**（0=厚は描かない。それが地の状態なので）。
     const TIER_INK = [null, "#FF9F0A", "#00E5FF"];
     for (const q of [...leftPieces, ...rightPieces]) {
-      if (TIER_INK[q.tier]) draw(q.poly, TIER_INK[q.tier], 3);
+      if (!TIER_INK[q.tier]) continue;
+      const pts = []; let from = q.start;
+      for (const e of q.edges) { const seg = openEdge(from, e); pts.push(...seg); from = pts[pts.length - 1]; }
+      draw(pts, TIER_INK[q.tier], 3);
     }
     if (slotBox) { g.strokeStyle = "#FFD60A"; g.lineWidth = 2;
       g.strokeRect(slotBox.x0, slotBox.y0, slotBox.w, slotBox.h); }
@@ -748,10 +902,12 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
     paintCrop: pcrop, paintPixels: { red: nRed, blue: nBlue },
     depthCrop: dcrop, depthPixels: { thick: tierPx[0], mid: tierPx[1], thin: tierPx[2] },
     pieces: {
-      left: leftPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.poly.length,
-        inner: q.inner.reduce((a, b) => a + b, 0), moved: q.moved, areaDelta: q.areaDelta })),
-      right: rightPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.poly.length,
-        inner: q.inner.reduce((a, b) => a + b, 0), moved: q.moved, areaDelta: q.areaDelta })),
+      left: leftPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.pts,
+        lines: q.lines, arcs: q.arcs, inner: q.inner.reduce((a, b) => a + b, 0),
+        moved: q.moved, areaDelta: q.areaDelta })),
+      right: rightPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.pts,
+        lines: q.lines, arcs: q.arcs, inner: q.inner.reduce((a, b) => a + b, 0),
+        moved: q.moved, areaDelta: q.areaDelta })),
     },
     cellSides: [...cells].sort((a, b) => b.size - a.size).slice(0, 8)
       .map((c) => `${c.size}${c.side}(r${c.red} b${c.blue})`),
@@ -790,6 +946,16 @@ const wrap = (str, n = 94, pad = "  ") => {
   }
   out.push(line); return out.join("\n");
 };
+/** 片を「辺の並び」として書き出す。★1行1辺で、直線か円弧かが目で分かる。 */
+const fmtPiece = (q) => {
+  const body = q.edges.map((e, i) => {
+    const inner = q.inner[i] ? ", 1" : "";
+    if (!e.r) return `    L(${mx(e.to[0])}, ${my(e.to[1])}${inner}),`;
+    return `    A(${mx(e.to[0])}, ${my(e.to[1])}, ${Math.round(e.r * K * 10) / 10},`
+      + ` ${mx(e.cx)}, ${my(e.cy)}, ${e.ccw ? 0 : 1}${inner}),`;
+  }).join("\n");
+  return `  piece(${q.tier}, ${mx(q.start[0])}, ${my(q.start[1])}, [\n${body}\n  ]),`;
+};
 const sl = r.slot, co = r.coil;
 const ts = `// ★★★**生成物。手で直さない。**
 //   \`node tools/trace-nipper.mjs <平面図> <色分け図> <厚み図> <out.json>\` が作る。
@@ -821,41 +987,43 @@ ${wrap(fmt(r.left.poly))}
 ].map(([x, y]) => ({ x, y }));
 
 /**
+ * 辺。\`r\` があれば**円弧**（\`c\` は中心）、無ければ**直線**。
+ * ★★20巡目に、なぞった点の羅列をやめて**直線と円弧の並び**にした
+ *   （ユーザー指摘「トレースで点をとってきただけで、整理されていない」）。
+ * ★\`inner\` は**段の境目**の印。そこは面取りしない ―― 面取りを回すと段差が
+ *   坂に見える（面取り 7 に対し段差は 17 しかない）。印が**辺ごと**なのは、
+ *   1本の辺がまるごと外の輪郭かまるごと境目のどちらかだから。
+ */
+export interface NipperEdge { to: P2; r?: number; c?: P2; ccw?: boolean; inner?: boolean }
+
+/**
  * ★★**押し出す単位**。部品を厚みの段で割ったもの。
  * \`tier\` は 0=厚 / 1=中 / 2=薄。**実際の厚みは \`lib/nipperRig.ts\` が決める**
  * （ここは「どこがどの段か」だけを持つ）。
  *
- * ★片どうしは**少し重なっている**（線の太さのぶん太らせてある）ので、
- *   段の境目に隙間は開かない。薄い片が厚い片へ食い込むぶんは中に隠れる。
+ * ★片どうしは**少し重なっている**ので、段の境目に隙間は開かない。
+ *   薄い片が厚い片へ食い込むぶんは中に隠れる。
  * ★左の部品は赤に挟まれていて、正面では途中が隠れて切れて見える。
  *   切れた先も**同じ表に入っている** ―― 別の部品ではなく、同じ支点を回る。
  */
-export interface NipperPiece {
-  poly: P2[];
-  tier: 0 | 1 | 2;
-  /**
-   * ★点ごとの印。真＝**段の境目**（外の輪郭ではない）。
-   * ここは**面取りしない** ―― 面取りを回すと段差が坂に見える（19巡目にユーザー指摘。
-   * 面取り 7 に対し段差は 17 しかないので、41% が斜面になっていた）。
-   */
-  inner: boolean[];
-}
+export interface NipperPiece { tier: 0 | 1 | 2; start: P2; edges: NipperEdge[] }
 
-const piece = (tier: 0 | 1 | 2, bits: string, pts: [number, number][]): NipperPiece =>
-  ({ tier, poly: pts.map(([x, y]) => ({ x, y })), inner: [...bits].map((c) => c === "1") });
+const L = (x: number, y: number, inner?: 1): NipperEdge =>
+  ({ to: { x, y }, inner: inner === 1 });
+const A = (
+  x: number, y: number, r: number, cx: number, cy: number, ccw: 0 | 1, inner?: 1,
+): NipperEdge => ({ to: { x, y }, r, c: { x: cx, y: cy }, ccw: ccw === 1, inner: inner === 1 });
+const piece = (tier: 0 | 1 | 2, sx: number, sy: number, edges: NipperEdge[]): NipperPiece =>
+  ({ tier, start: { x: sx, y: sy }, edges });
 
 /** 右の部品の片（先端の箱と右の持ち手）。 */
 export const NIPPER_RIGHT_PIECES: NipperPiece[] = [
-${r.rightPieces.map((q) => `  piece(${q.tier}, "${q.inner.join("")}", [
-${wrap(fmt(q.poly), 92, "    ")}
-  ]),`).join("\n")}
+${r.rightPieces.map(fmtPiece).join("\n")}
 ];
 
 /** 左の部品の片（先端の板と左の持ち手）。支点まわりに一緒に回る。 */
 export const NIPPER_LEFT_PIECES: NipperPiece[] = [
-${r.leftPieces.map((q) => `  piece(${q.tier}, "${q.inner.join("")}", [
-${wrap(fmt(q.poly), 92, "    ")}
-  ]),`).join("\n")}
+${r.leftPieces.map(fmtPiece).join("\n")}
 ];
 
 /** 紙が入るスリット（右の箱の天で口が開く切れ込み）。 */
@@ -871,6 +1039,14 @@ export const NIPPER_SLOT = {
 export const NIPPER_COIL = {
   cx: ${mx(co.cx)}, cy: ${my(co.cy)},
   r: ${Math.round(co.r * K * 10) / 10}, wire: ${Math.round(co.wire * K * 10) / 10},
+  /** 青の部品から輪まで（付け根 → 輪の縁）。 */
+  legFar: [${co.legs.map((l) => `{ x: ${mx(l.far[0])}, y: ${my(l.far[1])} }`)[0]
+    ?? "{ x: 0, y: 0 }"}, ${co.legs.map((l) => `{ x: ${mx(l.near[0])}, y: ${my(l.near[1])} }`)[0]
+    ?? "{ x: 0, y: 0 }"}],
+  /** 輪から赤の部品まで（輪の縁 → 付け根）。 */
+  legNear: [${co.legs.map((l) => `{ x: ${mx(l.near[0])}, y: ${my(l.near[1])} }`)[1]
+    ?? "{ x: 0, y: 0 }"}, ${co.legs.map((l) => `{ x: ${mx(l.far[0])}, y: ${my(l.far[1])} }`)[1]
+    ?? "{ x: 0, y: 0 }"}],
 };
 
 /** ★支点。2部品が重なっているところ（ここを軸にペンチのように動く）。 */

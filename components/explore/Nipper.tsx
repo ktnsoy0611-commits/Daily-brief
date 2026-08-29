@@ -7,9 +7,13 @@ import {
   spring, springTo, settled, K_TRAVEL, D_TRAVEL, K_SETTLE, D_SETTLE,
 } from "@/lib/spring";
 import {
-  drawOrder, extrude, invert, proj, slab, toPath, tube,
-  type Face, type P2, type Station, type V3,
+  drawOrder, extrudePoly, proj, toPath, tube,
+  type Face, type P2, type V3,
 } from "@/lib/nipperSolid";
+import {
+  NIPPER_COIL, NIPPER_EXTENT, NIPPER_LEFT, NIPPER_LEFT_TIPS, NIPPER_PIVOT,
+  NIPPER_RIGHT, NIPPER_SLOT,
+} from "@/lib/nipperShape";
 
 // 改札鋏。★CSS の 3D 変形は使わず、SVG で「描く」
 //   （design.md 冒頭・Safari の描画崩れを5回踏んでいるため）。
@@ -26,110 +30,65 @@ import {
 
 /** 絵の枠。影は左へ長く伸びて枠を出るので `overflow: visible`。 */
 export const NIPPER_VB = { w: 760, h: 1080 };
-/** 工具の原点（＝頭の天）。呼び出し側はここを画面のどこへ置くかで構図を決める。 */
-export const NIPPER_ORIGIN = { x: 400, y: 100 };
+/** 工具の原点（＝継ぎ目 × 頭の天）。呼び出し側はここを画面のどこへ置くかで構図を決める。 */
+export const NIPPER_ORIGIN = { x: 300, y: 100 };
 /** 口（＝紙が入るスリット）の、原点からのずれ。券の縁へ合わせるのに使う。 */
-export const NIPPER_NOSE = { x: 66, y: 180 };
+export const NIPPER_NOSE = {
+  x: (NIPPER_SLOT.x0 + NIPPER_SLOT.x1) / 2,
+  y: -(NIPPER_SLOT.y0 + NIPPER_SLOT.y1) / 2,
+};
 
 // ---- 寸法 --------------------------------------------------------------
-// 局所座標は **頭の天が原点／+y が上／+x が右／+z が手前**。
-/** 腕の z のずらし。★頭は箱ひとつ（z=0）で、腕だけ前後にわずかにずれる。 */
-/** 箱（と右の持ち手）は厚みの中心。板（と左の持ち手）はその少し手前。 */
-const Z_BOX = 0;
-const Z_PLATE = 25;
-/** 梃子が回る支点（頭の中）。 */
-const HINGE = { x: 60, y: -230 };
+// 局所座標は **継ぎ目 × 頭の天が原点／+y が上／+x が右／+z が手前**。
+// ★★★**形は `lib/nipperShape.ts` が正**（平面図を機械でトレースしたもの）。
+//   16巡目まで、ここに駅の表（`Station[]`）を**目で読んで打ち込んで**いた。
+//   何巡やってもプロポーションが合わなかった原因はそれ。**数値を打ち直さない。**
+//   直したいときは図を描き直して `tools/trace-nipper.mjs` を走らせる。
+
+/** 赤の部品（右＝箱と右の持ち手）の半分の厚み。**厚い**。 */
+const Z_RED = 45;
+/** 青の部品（左）の**持ち手**の半分の厚み。赤と同じ。 */
+const Z_BLUE = 45;
 /**
- * 押し切ったときの角（度）。★負＝奥の梃子が**右へ寄る**（＝開きが閉じる）。
- * 開いた角がそのまま閉じる角。参考の道具はバネで**大きく開いて**いるので、
- * ここは小さくない。
+ * ★青の部品の、**持ち手より上**の半分の厚み。
+ * 赤の部品の中へ**挟み込まれる**ので、赤より薄い（2026-08-29 にユーザーが確定）。
+ */
+const Z_BLUE_HEAD = 18;
+/** 厚みが変わる高さ（＝肩）。ここから上が赤の中へ入る。 */
+const STEP_Y = -400;
+
+/** ★支点。2部品が重なっているところ ― 図から拾った値をそのまま使う。 */
+const HINGE = NIPPER_PIVOT;
+/**
+ * 押し切ったときの角（度）。★負＝青の持ち手が**右へ寄る**（＝開きが閉じる）。
+ * 参考の道具はバネで大きく開いているので、ここは小さくない。
  */
 const THETA = -10;
 
-/**
- * 固定部 ＝ **頭の箱 ＋ 手前（右）の太い柄**。`[y, 半幅, 半分の厚み, x の中心]`。
- * ★★頭は**ひとつの箱**。2つに割ると「2本の棒」に見える（13巡目にユーザー指摘）。
- * ★腕は箱の裾から**右下へ開く**（`cx` が下へ行くほど大きくなる）。
- */
-const FRAME: Station[] = [
-  // ★★★**右の持ち手は、先端の箱とそのまま一体**（2026-08-28 にユーザーが確定）。
-  //   箱は**厚い**（半厚 45）。板より 3 倍近く厚いことが「太い箱」の正体で、
-  //   正面図の幅では出ない ― 側面図で効く。
-  // ★★**左右の持ち手は同じ大きさ・同じ厚さ**。写真では左が広く写るが、それは
-  //   図面ではなく写真だから（奥行きが出ている）。左右で変えてはいけない。
-  [-912, 16, 9, 286],    // 持ち手の先。★平たく終わる
-  [-900, 26, 14, 284],
-  [-860, 38, 20, 279],
-  [-800, 45, 23, 270],
-  [-720, 50, 25, 254],
-  [-620, 55, 27, 232],
-  [-520, 58, 28, 205],   // 腹
-  [-420, 58, 28, 175],
-  [-340, 52, 27, 152],
-  [-320, 54, 30, 132],   // 肩。★斜めに箱へ繋がる（水平の棚を作らない）
-  [-300, 60, 36, 114],
-  [-285, 67, 45, 97],    // ★ここから上が箱
-  [-45, 67, 45, 97],
-  [-20, 62, 43, 92],
-  [0, 41, 40, 71],       // 天。右上を落とす
-];
-/**
- * 可動部 ＝ **左の持ち手と、その先の平たい板**。板は箱の左に並び、
- * 押すと箱のスリットへ入っていく（＝突き）。
- * ★持ち手は右とまったく同じ寸法の鏡像。板だけが薄い（半厚 16）。
- */
-const LEVER: Station[] = [
-  [-912, 16, 9, -286],
-  [-900, 26, 14, -284],
-  [-860, 38, 20, -279],
-  [-800, 45, 23, -270],
-  [-720, 50, 25, -254],
-  [-620, 55, 27, -232],
-  [-520, 58, 28, -205],
-  [-420, 58, 28, -175],
-  [-340, 52, 27, -152],
-  [-320, 56, 24, -128],  // 肩
-  [-300, 70, 20, -100],
-  [-285, 85, 16, -63],   // ★ここから上が板
-  [-242, 85, 16, -63],
-  [-240, 93, 16, -70],   // 左へ小さく張り出す（写真の出っぱり）
-  [-142, 93, 16, -70],
-  [-140, 85, 16, -63],
-  [2, 85, 16, -63],
-  [8, 60, 15, -88],      // 天の段（左だけ高い）
-];
-
-/**
- * 紙が入るスリット。★**頭の天で口を開ける** ― 紙はそこから差し込む。
- * 閉じた窓にすると「穴の空いた板」に見えて、口だと分からない（写真では天まで達している）。
- * `invert` で凹みにし、`P.gap` で1色に塗る。
- */
-const SLOT = { x0: 42, x1: 78, y0: -250, y1: -2, z0: 2, z1: 46 };
-
-/** バネ。★腕のあいだの開きに収まる針金のコイル（輪が2つ）。 */
+/** バネ。★輪の場所と大きさも図から拾う。脚だけは図の細い線を読めないので手で置く。 */
 const COIL = {
   wire: 7,
-  /** ★輪はひとつ、**大きく**（写真でも腕の開きを埋めるほど大きい）。2巻きにする。 */
-  ring: [{ x: 82, y: -760, r: 62 }, { x: 82, y: -757, r: 59 }],
+  /** ★輪はひとつ、**大きく**。2巻きにする。 */
+  ring: [
+    { x: NIPPER_COIL.cx, y: NIPPER_COIL.cy, r: NIPPER_COIL.r },
+    { x: NIPPER_COIL.cx, y: NIPPER_COIL.cy + 3, r: NIPPER_COIL.r - 3 },
+  ],
   z: 26,
-  /** 脚。★左の持ち手の内側から長く降ろし、輪を経て右の持ち手の鋲へ。 */
-  legFar: [{ x: -118, y: -400, z: 24 }, { x: -20, y: -640, z: 26 }] as V3[],
-  legNear: { x: 214, y: -646, z: 34 },
+  /** 脚。★青の部品の内側から長く降ろし、輪を経て赤の持ち手へ。 */
+  legFar: [{ x: -20, y: -328, z: 24 }, { x: 120, y: -690, z: 26 }] as V3[],
+  legNear: { x: 330, y: -640, z: 30 },
 };
 /** 押し切ったときのバネの縮み（横へ詰まる）。 */
 const SQUEEZE = 0.34;
 
-/** 陰の手当て。★面ごとに手で塗らない ― **群にまとめて1度だけ**段を下げる。 */
-
-
 /** 落ち影。★立ち姿の複製ではなく、**床へ倒れ込ませる**。 */
-const GROUND = 912;                  // 接地（左の柄の先の高さ）
-const SUN = { x: 0.55, y: 0.12 };    // 高さ1あたり、左へ／わずかに手前へ
+const GROUND = -NIPPER_EXTENT.y0;   // 接地（持ち手の先の高さ）
+const SUN = { x: 0.55, y: 0.12 };   // 高さ1あたり、左へ／わずかに手前へ
 
 // ---- 立体 --------------------------------------------------------------
-/** コイル。1周を8つの直線で折る（曲線は持たない）。 */
+/** コイル。1周を10で折る（曲線は持たない）。 */
 function coilPath(): V3[] {
-  const N = 10;   // 1周の折れ数。★輪に見える最小限（曲線は持たない）
+  const N = 10;
   const pts: V3[] = [...COIL.legFar];
   COIL.ring.forEach((c, k) => {
     for (let i = 0; i <= N; i++) {
@@ -141,30 +100,37 @@ function coilPath(): V3[] {
   return pts;
 }
 
-/** ある高さでの、駅の表の左右の縁（範囲の外は `null`）。 */
-function edgesAt(st: Station[], y: number): [number, number] | null {
-  if (y < st[0][0] || y > st[st.length - 1][0]) return null;
-  for (let i = 0; i + 1 < st.length; i++) {
-    const [y0, hw0, , cx0] = st[i], [y1, hw1, , cx1] = st[i + 1];
-    if (y > y1) continue;
-    const t = y1 === y0 ? 0 : (y - y0) / (y1 - y0);
-    const hw = hw0 + (hw1 - hw0) * t, cx = cx0 + (cx1 - cx0) * t;
-    return [cx - hw, cx + hw];
+/** 赤は上から下まで同じ厚み。 */
+const redZ = (): [number, number] => [-Z_RED, Z_RED];
+/** ★青は肩を境に段が付く ― 下は赤と同じ、上は薄くて赤の中へ入る。 */
+const blueZ = (p: P2): [number, number] => {
+  const h = p.y < STEP_Y ? Z_BLUE : Z_BLUE_HEAD;
+  return [-h, h];
+};
+
+/** 多角形の、ある高さでの左右の縁（掛からなければ `null`）。 */
+function spanAt(poly: P2[], y: number): [number, number] | null {
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    if ((a.y <= y) === (b.y <= y)) continue;
+    const x = a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x);
+    if (x < lo) lo = x;
+    if (x > hi) hi = x;
   }
-  return null;
+  return lo <= hi ? [lo, hi] : null;
 }
 
 /** 2つの部品を**合併した輪郭**（影のため）。★道具は1つの塊として影を落とす。 */
 function hull(a: P2): P2[] {
-  const lo = Math.min(FRAME[0][0], LEVER[0][0]);
-  const hi = Math.max(FRAME[FRAME.length - 1][0], LEVER[LEVER.length - 1][0]);
+  const lo = NIPPER_EXTENT.y0, hi = NIPPER_EXTENT.y1;
   const left: P2[] = [], right: P2[] = [];
   for (let i = 0; i <= 24; i++) {
     const y = lo + ((hi - lo) * i) / 24;
-    const f = edgesAt(FRAME, y), l = edgesAt(LEVER, y);
+    const f = spanAt(NIPPER_RIGHT, y), l = spanAt(NIPPER_LEFT, y);
     if (!f && !l) continue;
-    left.push(proj({ x: Math.min(f ? f[0] : Infinity, l ? l[0] : Infinity), y, z: Z_PLATE }, a));
-    right.push(proj({ x: Math.max(f ? f[1] : -Infinity, l ? l[1] : -Infinity), y, z: Z_BOX }, a));
+    left.push(proj({ x: Math.min(f ? f[0] : Infinity, l ? l[0] : Infinity), y, z: 0 }, a));
+    right.push(proj({ x: Math.max(f ? f[1] : -Infinity, l ? l[1] : -Infinity), y, z: 0 }, a));
   }
   return [...right, ...left.reverse()];
 }
@@ -172,12 +138,17 @@ function hull(a: P2): P2[] {
 /**
  * 立体そのもの。★**三面図（`NipperViews`）と同じものを見る**ため、ここに出してある。
  * 検証用の絵と本番の絵が別の立体だったら、突き合わせる意味がない。
+ * ★紙が入るスリットは**輪郭そのものに切れ込みとして入っている**（トレースが拾う）。
+ *   別の凹み（`invert(slab(…))`）はもう要らない ― 16巡目に廃止。
  */
 export function nipperSolids() {
   return {
-    frame: extrude(FRAME, Z_BOX),
-    lever: extrude(LEVER, Z_PLATE),
-    slot: invert(slab(SLOT.x0, SLOT.x1, SLOT.y0, SLOT.y1, SLOT.z0, SLOT.z1)),
+    frame: extrudePoly(NIPPER_RIGHT, redZ),
+    lever: [
+      ...extrudePoly(NIPPER_LEFT, blueZ),
+      // ★青は赤に挟まれているので、正面では**頭の天に出る先だけ**が切れて見える。
+      ...NIPPER_LEFT_TIPS.flatMap((t) => extrudePoly(t, blueZ)),
+    ],
     coil: tube(coilPath(), COIL.wire),
   };
 }
@@ -187,12 +158,8 @@ export function nipperSolids() {
  */
 export const NIPPER_DIM_FAR = 0;
 
-function Solid({ faces, away, dim = 0, flat }: {
-  faces: Face[]; away: P2; dim?: number;
-  /** ★凹み専用。光が届かないので面の向きで塗らず、1色で塗る。 */
-  flat?: string;
-}) {
-  const tone = (t: number) => flat ?? P.ramp[Math.max(0, Math.min(P.ramp.length - 1, t + dim))];
+function Solid({ faces, away, dim = 0 }: { faces: Face[]; away: P2; dim?: number }) {
+  const tone = (t: number) => P.ramp[Math.max(0, Math.min(P.ramp.length - 1, t + dim))];
   return (
     <>
       {drawOrder(faces, away).map((f, i) => (
@@ -280,7 +247,7 @@ export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 },
         {/* 1. 影 … ★ぼかさない1枚の面。群に1度だけ透かす（重ねても濃くしない）。 */}
         <g id="shadow" opacity={P.castAlpha}><path d={floor} fill={P.cast} /></g>
 
-        {/* 2. 可動部 … 奥の細い梃子。★手前の陰に入るのでひと段暗い。 */}
+        {/* 2. 青の部品 … 支点まわりに回る側。★赤に挟まれるのでひと段暗い。 */}
         <g id="lever" ref={leverRef} transform={swing(s.current.p)}>
           <Solid faces={solids.lever} away={away} dim={NIPPER_DIM_FAR} />
         </g>
@@ -290,11 +257,9 @@ export function Nipper({ open = 1, closing = false, away = { x: 0.28, y: 0.58 },
           <Solid faces={solids.coil} away={away} />
         </g>
 
-        {/* 4. 固定部 … **頭の箱ひとつ**＋手前の太い柄。ここが工具の主役。 */}
+        {/* 4. 赤の部品 … **頭の箱と右の持ち手が一体**。ここが工具の主役。 */}
         <g id="frame">
           <Solid faces={solids.frame} away={away} />
-          {/* 紙が入るスリット。★別の群にして最後に描く（画家の順で頭に負けないため）。 */}
-          <g id="die"><Solid faces={solids.slot} away={away} flat={P.gap} /></g>
         </g>
       </g>
     </svg>

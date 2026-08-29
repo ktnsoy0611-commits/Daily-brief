@@ -78,8 +78,11 @@
 - ★**刷新中の部品**（まだ `/dev/explore` にしか無い。4タブは手つかず）…
   `components/explore/Ticket.tsx`（券）/ `PunchMark.tsx`（鋏痕）/ `lib/ticket.ts`、
   `components/explore/Nipper.tsx`（改札鋏の寸法・群・動き）＋
-  `lib/nipperSolid.ts`（**立体そのもの**。断面・押し出し・フラットシェーディング・
-  投影・隠れ）。設計の正は `docs/explore-redesign.md`。
+  `lib/nipperSolid.ts`（**立体そのもの**。押し出し・フラットシェーディング・
+  投影・隠れ）＋ `NipperViews.tsx`（三面図。開発用）。
+  ★★**鋏の形は `lib/nipperShape.ts` が正**（`tools/trace-nipper.mjs` が
+  平面図と色分け図から作る**生成物**。手で直さない ―― 目で数値を打ち込んでいた
+  9〜15巡目はプロポーションが合わなかった）。設計の正は `docs/explore-redesign.md`。
 
 ## タスク（TASK）
 **タスク図形は常に GRAVITY 空間にだけ在る**（第52巡に TOP/UNDER の4層を破棄）。

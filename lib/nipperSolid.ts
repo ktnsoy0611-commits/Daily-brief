@@ -68,12 +68,10 @@ export function toneOf(n: V3): number {
 }
 
 // ---- 押し出し ----------------------------------------------------------
-/** 駅。`[y, 半幅, 半分の厚み, x の中心]`。 */
-export type Station = [number, number, number, number];
-
-const ring = ([y, hw, hd, cx]: Station, zc: number): V3[] =>
-  SECTION.map(([sx, sz]) => ({ x: cx + sx * hw, y, z: zc + sz * hd }));
-
+// ★★★16巡目に、**駅の表（`Station[]`）に沿って押し出す `extrude` を捨てた**。
+//   あれは断面をひとつ決めて y に沿って運ぶ作りなので、形を**目で読んで数値で
+//   打ち込む**しかない。9〜15巡目のプロポーションのずれは全部これが原因だった。
+//   いまは `extrudePoly` だけ ―― **平面図をトレースした多角形をそのまま押し出す**。
 const neg = (a: V3): V3 => ({ x: -a.x, y: -a.y, z: -a.z });
 const face = (p: V3[], n: V3): Face => ({ p, n, tone: toneOf(n) });
 const mid = (p: V3[]): V3 => ({
@@ -81,29 +79,6 @@ const mid = (p: V3[]): V3 => ({
   y: p.reduce((s, q) => s + q.y, 0) / p.length,
   z: p.reduce((s, q) => s + q.z, 0) / p.length,
 });
-
-/**
- * 断面を駅に沿って押し出す。駅の間の側面は四角形の面、両端は蓋。
- * ★法線は**軸から外を向く**ように揃える（内向きだと明暗が裏返る）。
- */
-export function extrude(st: Station[], zc = 0): Face[] {
-  const rings = st.map((s) => ring(s, zc));
-  const faces: Face[] = [];
-  for (let k = 0; k + 1 < rings.length; k++) {
-    const a = rings[k], b = rings[k + 1];
-    const axis: V3 = { x: (st[k][3] + st[k + 1][3]) / 2, y: (st[k][0] + st[k + 1][0]) / 2, z: zc };
-    for (let i = 0; i < SECTION.length; i++) {
-      const j = (i + 1) % SECTION.length;
-      const p = [a[i], a[j], b[j], b[i]];
-      const n = norm(cross(sub(p[1], p[0]), sub(p[2], p[0])));
-      const out = dot(n, sub(mid(p), axis)) >= 0;
-      faces.push(face(out ? p : [...p].reverse(), out ? n : neg(n)));
-    }
-  }
-  faces.push(face([...rings[0]].reverse(), { x: 0, y: -1, z: 0 }));
-  faces.push(face(rings[rings.length - 1], { x: 0, y: 1, z: 0 }));
-  return faces;
-}
 
 // ---- 投影 --------------------------------------------------------------
 // ★7巡目に決めた一点透視。**触らない。**
@@ -135,21 +110,35 @@ export function drawOrder(faces: Face[], a: P2): { d: string; tone: number }[] {
 }
 
 /**
- * z 軸まわりの短い多角柱（鋲の頭）。★断面は同じ八角形。
- * `extrude` は y に沿ってしか押し出せないので、鋲だけこちらで作る。
+ * ★★**平面図の多角形をそのまま押し出す**（16巡目）。改札鋏の2部品はこれで作る。
+ * `zAt` は点ごとの手前／奥の面（`[z0, z1]`）。一定にすれば素直な押し出しになり、
+ * y で変えれば「持ち手より上だけ薄い」のような段が作れる。
+ * ★多角形は**反時計回り**（+y が上の座標系）に揃えてから使う ― 巻きが逆だと
+ * 側壁の法線が内を向いて、明暗が裏返る。
  */
-export function bossZ(r: number, z0: number, z1: number): Face[] {
-  const at = (z: number) => SECTION.map(([sx, sy]) => ({ x: sx * r, y: sy * r, z }));
-  const a = at(z0), b = at(z1);
-  const faces: Face[] = [];
-  for (let i = 0; i < SECTION.length; i++) {
-    const j = (i + 1) % SECTION.length;
-    const p = [a[i], a[j], b[j], b[i]];
-    const n = norm(cross(sub(p[1], p[0]), sub(p[2], p[0])));
-    const out = dot(n, mid(p)) >= 0;
-    faces.push(face(out ? p : [...p].reverse(), out ? n : neg(n)));
+export function extrudePoly(poly: P2[], zAt: (p: P2) => [number, number]): Face[] {
+  let a2 = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    a2 += a.x * b.y - b.x * a.y;
   }
-  faces.push(face(b, { x: 0, y: 0, z: 1 }));
+  const pts = a2 >= 0 ? poly : [...poly].reverse();
+  const faces: Face[] = [];
+  const front: V3[] = [], back: V3[] = [];
+  for (const p of pts) {
+    const [z0, z1] = zAt(p);
+    front.push({ x: p.x, y: p.y, z: z1 });
+    back.push({ x: p.x, y: p.y, z: z0 });
+  }
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    const dx = pts[j].x - pts[i].x, dy = pts[j].y - pts[i].y;
+    const m = Math.hypot(dx, dy) || 1;
+    const n = { x: dy / m, y: -dx / m, z: 0 };
+    faces.push(face([back[i], back[j], front[j], front[i]], n));
+  }
+  faces.push(face(front, { x: 0, y: 0, z: 1 }));
+  faces.push(face([...back].reverse(), { x: 0, y: 0, z: -1 }));
   return faces;
 }
 
@@ -186,27 +175,6 @@ export function tube(path: V3[], r: number): Face[] {
   faces.push(face(rings[rings.length - 1], { x: 0, y: 1, z: 0 }));
   return faces;
 }
-
-/** 軸に沿った直方体。★面取りしない ― 溝や欠きのための素直な箱。 */
-export function slab(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number): Face[] {
-  const P = (x: number, y: number, z: number): V3 => ({ x, y, z });
-  const q = [
-    [[P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1)], { x: 0, y: 0, z: 1 }],
-    [[P(x1, y0, z0), P(x0, y0, z0), P(x0, y1, z0), P(x1, y1, z0)], { x: 0, y: 0, z: -1 }],
-    [[P(x1, y0, z1), P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1)], { x: 1, y: 0, z: 0 }],
-    [[P(x0, y0, z0), P(x0, y0, z1), P(x0, y1, z1), P(x0, y1, z0)], { x: -1, y: 0, z: 0 }],
-    [[P(x0, y1, z1), P(x1, y1, z1), P(x1, y1, z0), P(x0, y1, z0)], { x: 0, y: 1, z: 0 }],
-    [[P(x0, y0, z0), P(x1, y0, z0), P(x1, y0, z1), P(x0, y0, z1)], { x: 0, y: -1, z: 0 }],
-  ] as const;
-  return q.map(([p, n]) => face([...p], n));
-}
-
-/**
- * 面を裏返す ＝ **凹み**にする。内側の壁が見えるようになり、階調も内向きで引き直す。
- * ★手前を向いていた蓋は自動で裏になって落ちるので、覗き込んだ穴になる。
- */
-export const invert = (faces: Face[]): Face[] =>
-  faces.map((f) => face([...f.p].reverse(), neg(f.n)));
 
 // ---- 正射影の三面図（★開発用の検証にだけ使う） -----------------------------
 // 形を言葉で詰めるには、パースの付いた1枚では足りない。**正面・側面・上面**を

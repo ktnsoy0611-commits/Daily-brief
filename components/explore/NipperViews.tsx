@@ -24,16 +24,16 @@ const PAD = 24;
 
 export function NipperTriView({ label }: { label: (v: typeof VIEWS[number]) => React.ReactNode }) {
   const s = nipperSolids();
-  const all: Face[] = [...s.frame, ...s.lever, ...s.coil, ...s.slot];
+  const all: Face[] = [...s.frame, ...s.lever, ...s.coil];
   const box = VIEWS.map((v) => ({ v, b: orthoBounds(all, v.id) }));
   const scale = H / Math.max(...box.map(({ b }) => b.h));
 
   return (
     <>
       {box.map(({ v, b }) => {
-        const paint = (faces: Face[], dim = 0, flat?: string) =>
+        const paint = (faces: Face[], dim = 0) =>
           orthoOrder(faces, v.id).map((f, i) => {
-            const c = flat ?? P.ramp[Math.max(0, Math.min(P.ramp.length - 1, f.tone + dim))];
+            const c = P.ramp[Math.max(0, Math.min(P.ramp.length - 1, f.tone + dim))];
             return <path key={i} d={f.d} fill={c} stroke={c} strokeWidth={0.6} />;
           });
         return (
@@ -49,7 +49,6 @@ export function NipperTriView({ label }: { label: (v: typeof VIEWS[number]) => R
               {paint(s.lever, NIPPER_DIM_FAR)}
               {paint(s.coil)}
               {paint(s.frame)}
-              {paint(s.slot, 0, P.gap)}
             </svg>
           </div>
         );

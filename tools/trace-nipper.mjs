@@ -9,25 +9,31 @@
 //   PIL / numpy / cv2 はこの環境に無いので、Playwright の Chromium に
 //   canvas で画像を復号させ、画素をそのまま読む。
 //
-//   node tools/trace-nipper.mjs <平面図> <out.json>
+//   node tools/trace-nipper.mjs <平面図> <色分け図> <厚み図> <out.json>
 //   → out.json / out-overlay.png（重ねた確認用）/ lib/nipperShape.ts
+//
+//   ★図は3枚とも**別の問い**に答える。1枚に兼ねさせない:
+//     平面図   … 形（閉じた領域の輪郭）
+//     色分け図 … どの領域がどちらの**部品**か（赤＝右／青＝左）
+//     厚み図   … どこが**どれだけ厚い**か（サーモン＝厚／マゼンタ＝中／黄緑＝薄）
+//   2部品は重なっているので、部品も厚みも**図形からは決められない**。人が示す。
 import { chromium } from "playwright";
 import { readFileSync, writeFileSync } from "node:fs";
 
-const src = process.argv[2], paint = process.argv[3], out = process.argv[4];
-if (!src || !paint || !out) {
-  console.error("usage: node tools/trace-nipper.mjs <平面図> <色分け図> <out.json>");
+const src = process.argv[2], paint = process.argv[3], depth = process.argv[4], out = process.argv[5];
+if (!src || !paint || !depth || !out) {
+  console.error("usage: node tools/trace-nipper.mjs <平面図> <色分け図> <厚み図> <out.json>");
   process.exit(1);
 }
 const uriOf = (f) => `data:image/${f.toLowerCase().endsWith(".png") ? "png" : "jpeg"};base64,`
   + readFileSync(f).toString("base64");
-const dataUri = uriOf(src), paintUri = uriOf(paint);
+const dataUri = uriOf(src), paintUri = uriOf(paint), depthUri = uriOf(depth);
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 const page = await browser.newPage();
 page.on("console", (m) => console.error("[page]", m.text()));
 
-const r = await page.evaluate(async ([uri, paintUri]) => {
+const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
   const img = new Image();
   await new Promise((ok, ng) => { img.onload = ok; img.onerror = ng; img.src = uri; });
   const W = img.naturalWidth, H = img.naturalHeight;
@@ -76,17 +82,16 @@ const r = await page.evaluate(async ([uri, paintUri]) => {
   //   線画だけでは、頭の板が青（左）か赤（右）かを機械で決められない。
   //   2つの部品は**重なっている**ので、見えている面がどちらかは図形からは
   //   分からない ― 人が示した色分けに従う。
-  const pimg = new Image();
-  await new Promise((ok, ng) => { pimg.onload = ok; pimg.onerror = ng; pimg.src = paintUri; });
-  // ★★**色分け図は「塗り」で読む**（16巡目）。はじめは手書きの輪郭線を
+  // ★★**手で塗った図は「塗り」で読む**（16巡目）。はじめは手書きの輪郭線を
   //   引いてもらって線の近さで判定したが、輪が閉じておらず精度が出なかった。
   //   いまは**塗った図**をもらうので、面の色をそのまま数えれば済む。
-  //   ・赤（桃）＝右の部品／青＝左の部品／どちらでもない＝道具の外（V・バネ）。
-  //   ・スクリーンショットの黒い帯は自動で切り落として、線画に重ねる。
-  const pcrop = (() => {
-    const t = document.createElement("canvas"); t.width = pimg.naturalWidth; t.height = pimg.naturalHeight;
+  //   ★スクリーンショットの黒い帯は自動で切り落として、線画へ重ねる。
+  const readOverlay = async (uri2) => {
+    const im = new Image();
+    await new Promise((ok, ng) => { im.onload = ok; im.onerror = ng; im.src = uri2; });
+    const t = document.createElement("canvas"); t.width = im.naturalWidth; t.height = im.naturalHeight;
     const c = t.getContext("2d", { willReadFrequently: true });
-    c.drawImage(pimg, 0, 0);
+    c.drawImage(im, 0, 0);
     const q = c.getImageData(0, 0, t.width, t.height).data;
     // ★**紙が白い帯として並ぶ行／列**を探す。「黒でない画素」で囲むと
     //   ステータスバーの白い文字まで拾ってしまう（16巡目に実測）。
@@ -107,20 +112,43 @@ const r = await page.evaluate(async ([uri, paintUri]) => {
       }
       return [bs, be - 1];
     };
-    const [y0, y1] = run(rowF, 0.5);
-    const [x0, x1] = run(colF, (y1 - y0) / t.height * 0.5);
-    return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
-  })();
-  const pc = document.createElement("canvas"); pc.width = W; pc.height = H;
-  const pctx = pc.getContext("2d", { willReadFrequently: true });
-  pctx.drawImage(pimg, pcrop.x, pcrop.y, pcrop.w, pcrop.h, 0, 0, W, H);
-  const pd = pctx.getImageData(0, 0, W, H).data;
+    const [ya, yb] = run(rowF, 0.5);
+    const [xa, xb] = run(colF, (yb - ya) / t.height * 0.5);
+    const crop = { x: xa, y: ya, w: xb - xa + 1, h: yb - ya + 1 };
+    const pc = document.createElement("canvas"); pc.width = W; pc.height = H;
+    const pctx = pc.getContext("2d", { willReadFrequently: true });
+    pctx.drawImage(im, crop.x, crop.y, crop.w, crop.h, 0, 0, W, H);
+    return { crop, data: pctx.getImageData(0, 0, W, H).data };
+  };
+
+  // --- ★色分け図 … 赤（桃）＝右の部品／青＝左の部品／どちらでもない＝道具の外 ---
+  const { crop: pcrop, data: pd } = await readOverlay(paintUri);
   const side = new Uint8Array(W * H);   // 1=赤 2=青
   let nRed = 0, nBlue = 0;
   for (let i = 0, p = 0; i < pd.length; i += 4, p++) {
     const r = pd[i], g = pd[i + 1], b = pd[i + 2];
     if (r > g + 22 && r > b + 22) { side[p] = 1; nRed++; }
     else if (b > r + 22 && b > g + 12) { side[p] = 2; nBlue++; }
+  }
+
+  // --- ★★厚み図 … 段を3つに読む（18巡目にユーザーが塗り分けて確定） -------
+  //   「赤い部分は今の厚さと同じ／ピンクは赤より少しだけ薄い／緑はピンクよりも薄い」
+  //   ★★判定は**実測した色**で書く（目分量で書かない）。ユーザーは**重ね絵の上に**
+  //     塗るので、こちらが描いた注記の色と混ざらないことが要る:
+  //       輪郭の緑 #30D158 は B=88 なので `G−B > 170` で落ちる
+  //       継ぎ目の紫 #BF5AF2 は G=90 なので `G < 70` で落ちる
+  //   どれにも当たらない画素は**厚**へ倒す（塗り残しで部品が消えないように）。
+  const { crop: dcrop, data: dd } = await readOverlay(depthUri);
+  const TIERS = 3;
+  const tier = new Uint8Array(W * H);   // 0=厚 1=中 2=薄
+  const tierPx = [0, 0, 0];
+  for (let i = 0, p = 0; i < dd.length; i += 4, p++) {
+    const r = dd[i], g = dd[i + 1], b = dd[i + 2];
+    let k = 0;
+    if (g > 190 && g - b > 170 && g - r > 120) k = 2;          // 黄緑 ＝ 薄
+    else if (r > 190 && g < 70 && b > 140) k = 1;              // マゼンタ ＝ 中
+    tier[p] = k;
+    if (r > g + 18 && r > b + 18 || k) tierPx[k]++;
   }
 
   // --- 部品は**左端と右端から種を打って**取る ---------------------------
@@ -328,9 +356,39 @@ const r = await page.evaluate(async ([uri, paintUri]) => {
   const biggest = (m) => lumps(m)[0];
   const maskOf = (pix) => grow(pix, Math.max(1, Math.round(lineW / 2)) + 1);
   const polysOf = (pix) => lumps(maskOf(pix)).map((m) => dp(trace(m), EPS));
-  const leftAll = polysOf(partPix.get(cells.indexOf(leftCell)));
-  const rightAll = polysOf(partPix.get(cells.indexOf(rightCell)));
+  const leftPix = partPix.get(cells.indexOf(leftCell));
+  const rightPix = partPix.get(cells.indexOf(rightCell));
+  const leftAll = polysOf(leftPix);
+  const rightAll = polysOf(rightPix);
   const left = leftAll[0], right = rightAll[0];
+
+  // --- ★★厚みの片 ＝ **部品の画素 × 段の画素** ---------------------------
+  //   段を線画の閉じた領域へ割り当てない。塗りが領域の境目に乗っている保証が
+  //   無いから（緑の楔は左の持ち手と同じ領域にまたがる）。画素で交差させれば
+  //   塗ったとおりに割れる。
+  // ★★片はそれぞれ**同じだけ太らせる**ので、隣り合う片は必ず重なる ―― 段の
+  //   境目に隙間が開かない。薄い片が厚い片へ食い込むぶんは中に隠れる。
+  // ★★捨てるかどうかは**太らせる前の画素数**で決める。太らせた後の大きさで
+  //   見ると、幅3画素の筋が 180 画素の塊に化けて残ってしまう（18巡目に実測 ―
+  //   左の部品に 1〜107 画素の欠片が 16 枚出た）。本物の片は 298 画素以上ある。
+  const MIN_PIECE = 200;
+  const piecesOf = (pix) => {
+    const outp = [];
+    for (let k = 0; k < TIERS; k++) {
+      const sub = pix.filter((p) => tier[p] === k);
+      if (sub.length < MIN_PIECE) continue;
+      for (const m of lumps(maskOf(sub))) {
+        let px = 0;
+        for (let p = 0; p < m.length; p++) if (m[p] && tier[p] === k) px++;
+        if (px < MIN_PIECE) continue;
+        const poly = dp(trace(m), EPS);
+        if (poly.length >= 4) outp.push({ tier: k, poly, px });
+      }
+    }
+    return outp;
+  };
+  const leftPieces = piecesOf(leftPix);
+  const rightPieces = piecesOf(rightPix);
 
   // --- 小さい部品を役で見分ける ----------------------------------------
   // バネの輪＝地に落ちた領域のうち、**丸い**もの（幅と高さが近い）
@@ -411,14 +469,8 @@ const r = await page.evaluate(async ([uri, paintUri]) => {
         im.data[i + 2] = (im.data[i + 2] + bb) / 2; }
       g.putImageData(im, 0, 0);
     };
-    if (false) {
-      const pr = [], pb = [];
-      for (let p = 0; p < RED.m.length; p++) { if (RED.m[p]) pr.push(p); if (BLUE.m[p]) pb.push(p); }
-      paint(pr, [255, 90, 90]); paint(pb, [80, 130, 255]);
-    } else {
-      paint(partPix.get(cells.indexOf(leftCell)), [80, 130, 255]);
-      paint(partPix.get(cells.indexOf(rightCell)), [255, 90, 90]);
-    }
+    paint(leftPix, [80, 130, 255]);
+    paint(rightPix, [255, 90, 90]);
     const draw = (poly, color, w = 2) => {
       g.strokeStyle = color; g.lineWidth = w; g.beginPath();
       poly.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
@@ -427,6 +479,11 @@ const r = await page.evaluate(async ([uri, paintUri]) => {
       for (const [x, y] of poly) g.fillRect(x - 2, y - 2, 4, 4);
     };
     draw(left, "#FF2D55"); draw(right, "#30D158");
+    // ★厚みの片。**段で線の色を変える**（0=厚は描かない。それが地の状態なので）。
+    const TIER_INK = [null, "#FF9F0A", "#00E5FF"];
+    for (const q of [...leftPieces, ...rightPieces]) {
+      if (TIER_INK[q.tier]) draw(q.poly, TIER_INK[q.tier], 3);
+    }
     if (slotBox) { g.strokeStyle = "#FFD60A"; g.lineWidth = 2;
       g.strokeRect(slotBox.x0, slotBox.y0, slotBox.w, slotBox.h); }
     if (coilCell) { g.strokeStyle = "#0A84FF"; g.lineWidth = 2;
@@ -440,24 +497,27 @@ const r = await page.evaluate(async ([uri, paintUri]) => {
     W, H, inkThreshold: INK_TH, inkPixels: inkPx, lineWidth: lineW, simplifyEps: +EPS.toFixed(2),
     cellCount: cells.length, background: bg.size, details: solids.length,
     paintCrop: pcrop, paintPixels: { red: nRed, blue: nBlue },
+    depthCrop: dcrop, depthPixels: { thick: tierPx[0], mid: tierPx[1], thin: tierPx[2] },
+    pieces: { left: leftPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.poly.length })),
+      right: rightPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.poly.length })) },
     cellSides: [...cells].sort((a, b) => b.size - a.size).slice(0, 8)
       .map((c) => `${c.size}${c.side}(r${c.red} b${c.blue})`),
     cellSizes: [...cells].sort((a, b) => b.size - a.size).slice(0, 8).map((c) => c.size),
     seamX, apexX, apexY, bbox: all, aspect: +(all.w / all.h).toFixed(4),
     left: { poly: left, bbox: bboxOf(left) },
     right: { poly: right, bbox: bboxOf(right) },
-    leftMore: leftAll.slice(1), rightMore: rightAll.slice(1),
+    leftPieces, rightPieces,
     slot: slotBox, slotAll, pivot: { x: seamX, y: Math.round((leftCell.bbox.y0 + apexY) / 2) },
     coil: coilCell ? { ...coilCell.bbox, cx: Math.round(coilCell.cx), cy: Math.round(coilCell.cy) } : null,
     overlay,
   };
-}, [dataUri, paintUri]);
+}, [dataUri, paintUri, depthUri]);
 
 await browser.close();
 console.error(JSON.stringify({ ...r, overlay: "(png)",
   left: { pts: r.left.poly.length, bbox: r.left.bbox },
   right: { pts: r.right.poly.length, bbox: r.right.bbox },
-  leftMore: r.leftMore.map((q) => q.length), rightMore: r.rightMore.map((q) => q.length) },
+  leftPieces: undefined, rightPieces: undefined },
   null, 2));
 writeFileSync(out, JSON.stringify({ ...r, overlay: undefined }));
 writeFileSync(out.replace(/\.json$/, "") + "-overlay.png", Buffer.from(r.overlay.split(",")[1], "base64"));
@@ -468,17 +528,17 @@ const K = 2.2, OX = r.seamX, OY = r.bbox.y0;
 const mx = (x) => Math.round((x - OX) * K * 10) / 10;
 const my = (y) => Math.round((OY - y) * K * 10) / 10;
 const fmt = (poly) => poly.map(([x, y]) => `[${mx(x)}, ${my(y)}]`).join(", ");
-const wrap = (str, n = 94) => {
-  const out = []; let line = "  ";
+const wrap = (str, n = 94, pad = "  ") => {
+  const out = []; let line = pad;
   for (const tok of str.split(", ").map((t, i, a) => (i < a.length - 1 ? t + "," : t))) {
-    if (line.length + tok.length > n) { out.push(line); line = "  "; }
-    line += (line === "  " ? "" : " ") + tok;
+    if (line.length + tok.length > n) { out.push(line); line = pad; }
+    line += (line === pad ? "" : " ") + tok;
   }
   out.push(line); return out.join("\n");
 };
 const sl = r.slot, co = r.coil;
 const ts = `// ★★★**生成物。手で直さない。**
-//   \`node tools/trace-nipper.mjs <平面図> <色分け図> <out.json>\` が作る。
+//   \`node tools/trace-nipper.mjs <平面図> <色分け図> <厚み図> <out.json>\` が作る。
 //   形を変えたいときは**図を描き直して生成し直す**（目で数値を打ち込まない）。
 //
 //   平面図: ${process.argv[2].split("/").pop()} (${r.W}×${r.H})／色分け図: ${process.argv[3].split("/").pop()}
@@ -507,15 +567,33 @@ ${wrap(fmt(r.left.poly))}
 ].map(([x, y]) => ({ x, y }));
 
 /**
- * 左の部品のうち、**赤の部品の外へ出ている残り**（正面では頭の天に出る先だけ）。
- * ★左の部品はひとつながりだが、間は右の部品に隠れるので図では切れて見える。
- *   同じ厚みで同じ支点を回る ―― 見えるところだけを別の面として押し出す。
+ * ★★**押し出す単位**。部品を厚みの段で割ったもの。
+ * \`tier\` は 0=厚 / 1=中 / 2=薄。**実際の厚みは \`lib/nipperRig.ts\` が決める**
+ * （ここは「どこがどの段か」だけを持つ）。
+ *
+ * ★片どうしは**少し重なっている**（線の太さのぶん太らせてある）ので、
+ *   段の境目に隙間は開かない。薄い片が厚い片へ食い込むぶんは中に隠れる。
+ * ★左の部品は赤に挟まれていて、正面では途中が隠れて切れて見える。
+ *   切れた先も**同じ表に入っている** ―― 別の部品ではなく、同じ支点を回る。
  */
-export const NIPPER_LEFT_TIPS: P2[][] = [
-${r.leftMore.map((q) => `  [
-${wrap(fmt(q))}
-  ],`).join("\n")}
-].map((poly) => poly.map(([x, y]) => ({ x, y })));
+export interface NipperPiece { poly: P2[]; tier: 0 | 1 | 2 }
+
+const piece = (tier: 0 | 1 | 2, pts: [number, number][]): NipperPiece =>
+  ({ tier, poly: pts.map(([x, y]) => ({ x, y })) });
+
+/** 右の部品の片（先端の箱と右の持ち手）。 */
+export const NIPPER_RIGHT_PIECES: NipperPiece[] = [
+${r.rightPieces.map((q) => `  piece(${q.tier}, [
+${wrap(fmt(q.poly), 92, "    ")}
+  ]),`).join("\n")}
+];
+
+/** 左の部品の片（先端の板と左の持ち手）。支点まわりに一緒に回る。 */
+export const NIPPER_LEFT_PIECES: NipperPiece[] = [
+${r.leftPieces.map((q) => `  piece(${q.tier}, [
+${wrap(fmt(q.poly), 92, "    ")}
+  ]),`).join("\n")}
+];
 
 /** 紙が入るスリット（右の箱の天で口が開く切れ込み）。 */
 export const NIPPER_SLOT = {
@@ -536,4 +614,5 @@ export const NIPPER_EXTENT = {
 };
 `;
 writeFileSync("lib/nipperShape.ts", ts);
-console.error(`→ lib/nipperShape.ts（右 ${r.right.poly.length}点 / 左 ${r.left.poly.length}点）`);
+console.error(`→ lib/nipperShape.ts（輪郭 右 ${r.right.poly.length}点 / 左 ${r.left.poly.length}点`
+  + `／片 右 ${r.rightPieces.length} 枚・左 ${r.leftPieces.length} 枚）`);

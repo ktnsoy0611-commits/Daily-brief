@@ -4,7 +4,7 @@ import {
 
 import { buildPart, buildWire, toneRamp, applyAppTones, LIGHT_INTENSITY } from "@/lib/nipperMesh";
 import {
-  NIPPER_COIL, NIPPER_EXTENT, NIPPER_LEFT, NIPPER_LEFT_TIPS, NIPPER_PIVOT, NIPPER_RIGHT,
+  NIPPER_COIL, NIPPER_EXTENT, NIPPER_LEFT_PIECES, NIPPER_PIVOT, NIPPER_RIGHT_PIECES,
 } from "@/lib/nipperShape";
 
 // 改札鋏の**組み立て**。★本番の1体（`components/explore/Nipper.tsx`）と
@@ -14,14 +14,15 @@ import {
 // 局所座標は **継ぎ目 × 頭の天が原点／+y が上／+x が右／+z が手前**。
 // ★★形は `lib/nipperShape.ts` が正（平面図のトレース）。ここは**厚みと動き**だけ。
 
-/** 赤の部品（右＝箱と右の持ち手）の半分の厚み。**厚い**。 */
-export const Z_RED = 45;
-/** 青の部品（左）の**持ち手**の半分の厚み。赤と同じ。 */
-export const Z_BLUE = 45;
-/** ★青の部品の、**持ち手より上**の半分の厚み。赤の中へ挟み込まれるので薄い。 */
-export const Z_BLUE_HEAD = 18;
-/** 厚みが変わる高さ（＝肩）。ここから上が赤の中へ入る。 */
-export const STEP_Y = -400;
+/**
+ * ★★**半分の厚み**の表（0=厚 / 1=中 / 2=薄。2026-08-29 にユーザーが確定）。
+ * **どこがどの段かは平面図の塗り分けが決める**（`lib/nipperShape.ts` の
+ * `NIPPER_*_PIECES`）。ここは段に厚みを与えるだけ。
+ *
+ * ★18巡目まで「部品ごと＋肩から上だけ薄い」という **y の関数**で決めていたが、
+ *   塗り分けは y の帯ではない（中と薄が y で重なる）ので表せなかった。
+ */
+export const HALF = [45, 40, 28];
 
 /**
  * 押し切ったときの角（度）。★**正＝青の持ち手が右へ寄る**（＝開きが閉じる）。
@@ -59,7 +60,10 @@ export const NIPPER_CENTER = {
 };
 
 function coilPath(): Vector3[] {
-  const N = 10;   // 1周の折れ数。★輪に見える最小限（曲線は持たない）
+  // ★★1周の折れ数。18巡目に 10 → 48（ユーザー指摘「リングがリングに見えない」）。
+  //   ここだけは**滑らかにする** ― 輪は輪に見えないと道具に見えない。
+  //   針金の**断面は8角形のまま**（アプリの語彙。太さも場所も変えない）。
+  const N = 48;
   const pts = [...COIL.legFar];
   [{ r: NIPPER_COIL.r, dz: 0 }, { r: NIPPER_COIL.r - 3, dz: 4 }].forEach(({ r, dz }) => {
     for (let i = 0; i <= N; i++) {
@@ -72,11 +76,6 @@ function coilPath(): Vector3[] {
   pts.push(COIL.legNear);
   return pts;
 }
-
-/** 赤は上から下まで同じ厚み。 */
-const redZ = () => Z_RED;
-/** ★青は肩を境に段が付く ― 下は赤と同じ、上は薄くて赤の中へ入る。 */
-const blueZ = (y: number) => (y < STEP_Y ? Z_BLUE : Z_BLUE_HEAD);
 
 export interface NipperRig {
   /** 図の中心が原点に来るようにずらした群。 */
@@ -107,15 +106,16 @@ export function buildNipperRig(): NipperRig {
     parent.add(m);
   };
 
-  // 赤の部品（動かない）
-  add(buildPart(NIPPER_RIGHT, redZ), tool);
+  // 赤の部品（動かない）。★片は段ごとに分かれているが、**ひとつの部品**。
+  for (const { poly, tier } of NIPPER_RIGHT_PIECES) add(buildPart(poly, HALF[tier]), tool);
 
-  // 青の部品（支点まわりに回る）。★頭の天に出る先も**同じ群**＝ひとつの部品。
+  // 青の部品（支点まわりに回る）。
+  // ★赤に挟まれているので正面では途中が隠れて切れて見えるが、**同じ群**＝ひとつの部品。
   const lever = new Group();
   lever.position.set(NIPPER_PIVOT.x, NIPPER_PIVOT.y, 0);
   tool.add(lever);
-  for (const poly of [NIPPER_LEFT, ...NIPPER_LEFT_TIPS]) {
-    const g = buildPart(poly, blueZ);
+  for (const { poly, tier } of NIPPER_LEFT_PIECES) {
+    const g = buildPart(poly, HALF[tier]);
     g.translate(-NIPPER_PIVOT.x, -NIPPER_PIVOT.y, 0);
     add(g, lever);
   }

@@ -16,9 +16,6 @@ import type { P2 } from "@/lib/nipperShape";
 //
 // ★曲線は持たない（アプリ全体の語彙）。面取りは**1段**、管の断面は**8角形**。
 
-/** 厚みの決まり。`y` は局所座標（+y が上・頭の天が 0）。返すのは**半分の厚み**。 */
-export type Thickness = (y: number) => number;
-
 /** 面取りの幅（＝角を落とす量）。★1段だけ。深いと明るい帯が広く走る（12巡目の教訓）。 */
 export const CHAMFER = 7;
 
@@ -70,9 +67,11 @@ function quad(v: number[], a: Vector3, b: Vector3, c: Vector3, d: Vector3) {
  *     ╲                                     面取り
  *      ─── 奥の蓋                           z = −t
  * ```
- * `half(y)` は高さごとの**半分の厚み**なので、持ち手を先へ絞ることができる。
+ * ★★厚みは**片ごとに一定**。段は平面図の塗り分けが決めるので（`lib/nipperShape.ts` の
+ * `NIPPER_*_PIECES`）、ここで高さの関数を持つ必要はない ―― 18巡目に捨てた。
+ * 塗り分けは y の帯ではない（中と薄が y で重なる）ので、関数では表せなかった。
  */
-export function buildPart(input: P2[], half: Thickness, chamfer = CHAMFER): BufferGeometry {
+export function buildPart(input: P2[], half: number, chamfer = CHAMFER): BufferGeometry {
   // ★★**まず反時計回りに揃える**（+y が上）。巻きが逆だと側壁の法線が内を向き、
   //   面が裏になって落ち、**中が透けて見える**（17巡目に実測）。
   let a2 = 0;
@@ -84,12 +83,12 @@ export function buildPart(input: P2[], half: Thickness, chamfer = CHAMFER): Buff
   const n = poly.length;
   const body = poly;
   const lip = inset(poly, chamfer);
-  const zOf = (p: P2) => Math.max(half(p.y), chamfer * 1.2);
+  const z = Math.max(half, chamfer * 1.2);
   const rings: Ring[] = [
-    { pts: lip, z: lip.map((_, i) => -zOf(poly[i])) },
-    { pts: body, z: body.map((p) => -zOf(p) + chamfer) },
-    { pts: body, z: body.map((p) => zOf(p) - chamfer) },
-    { pts: lip, z: lip.map((_, i) => zOf(poly[i])) },
+    { pts: lip, z: lip.map(() => -z) },
+    { pts: body, z: body.map(() => -z + chamfer) },
+    { pts: body, z: body.map(() => z - chamfer) },
+    { pts: lip, z: lip.map(() => z) },
   ];
   const v: number[] = [];
   const at = (r: Ring, i: number) => new Vector3(r.pts[i].x, r.pts[i].y, r.z[i]);

@@ -11,7 +11,11 @@
 //   canvas で画像を復号させ、画素をそのまま読む。
 //
 //   node tools/trace-nipper.mjs <右の図> <左の図> <左の厚み図> <組み立て図> <out.json>
-//   → out.json / out-overlay.png（重ねた確認用）/ lib/nipperShape.ts
+//   → out.json / out-overlay.png（重ねた確認用）/ **lib/nipperShapeRaw.ts**
+//
+//   ★★22巡目から、ここが吐くのは**生のトレース**（`lib/nipperShapeRaw.ts`）。
+//     それを `tools/clean-nipper.mts` が整えて `lib/nipperShape.ts` を作る。
+//     立体はいつも**整えたほう**を読む。
 //
 //   ★4枚は**同じ枠**に描かれている（実測で bbox が一致）。位置合わせは要らない。
 //     右の図     … 右の部品の**完全な**輪郭（先端の箱＋右の持ち手）
@@ -757,6 +761,9 @@ const ts = `// ★★★**生成物。手で直さない。**
 //   \`node tools/trace-nipper.mjs <右の図> <左の図> <左の厚み図> <組み立て図> <out.json>\`
 //   が作る。形を変えたいときは**図を描き直して生成し直す**（目で数値を打ち込まない）。
 //
+//   ★★これは**生のトレース**。立体が読むのは、これを整えた \`lib/nipperShape.ts\`。
+//     整えるのは \`npx tsx tools/clean-nipper.mts\`。
+//
 //   右: ${rightSrc.split("/").pop()}／左: ${leftSrc.split("/").pop()}
 //   左の厚み: ${depthSrc.split("/").pop()}／組み立て: ${asmSrc.split("/").pop()}
 //
@@ -770,32 +777,7 @@ const ts = `// ★★★**生成物。手で直さない。**
 //   原点は**支点 × 全体の天** = 図の (${OX}, ${OY})。1px = ${K} 単位。+y は上。
 //   縦横比 ${r.aspect}（図の実測）。
 
-/** 平面の点。★この表は**描き方から独立している**ので、ここで持つ。 */
-export interface P2 { x: number; y: number }
-
-/**
- * 辺。\`r\` があれば**円弧**（\`c\` は中心）、無ければ**直線**。
- * ★★20巡目に、なぞった点の羅列をやめて**直線と円弧の並び**にした。
- * ★\`inner\` は**段の境目**の印。そこは面取りしない ―― 面取りを回すと段差が
- *   坂に見える。印が**辺ごと**なのは、1本の辺がまるごと外の輪郭かまるごと境目の
- *   どちらかだから。
- */
-export interface NipperEdge { to: P2; r?: number; c?: P2; ccw?: boolean; inner?: boolean }
-
-/**
- * ★★**押し出す単位**。\`tier\` は 0=厚 / 1=薄。
- * **実際の厚みは \`lib/nipperRig.ts\` が決める**（ここは「どこがどの段か」だけ）。
- * ★右の部品は一定の厚みなので1枚。左は厚みの塗り分けで2枚に割れる。
- */
-export interface NipperPiece { tier: 0 | 1; start: P2; edges: NipperEdge[] }
-
-const L = (x: number, y: number, inner?: 1): NipperEdge =>
-  ({ to: { x, y }, inner: inner === 1 });
-const A = (
-  x: number, y: number, r: number, cx: number, cy: number, ccw: 0 | 1, inner?: 1,
-): NipperEdge => ({ to: { x, y }, r, c: { x: cx, y: cy }, ccw: ccw === 1, inner: inner === 1 });
-const piece = (tier: 0 | 1, sx: number, sy: number, edges: NipperEdge[]): NipperPiece =>
-  ({ tier, start: { x: sx, y: sy }, edges });
+import { A, L, piece, type NipperPiece } from "@/lib/nipperPath";
 
 /** 右の部品（先端の箱と右の持ち手）。**動かない**。 */
 export const NIPPER_RIGHT_PIECES: NipperPiece[] = [
@@ -839,7 +821,7 @@ export const NIPPER_EXTENT = {
   x0: ${mx(r.bbox.x0)}, x1: ${mx(r.bbox.x1)}, y0: ${my(r.bbox.y1)}, y1: ${my(r.bbox.y0)},
 };
 `;
-writeFileSync("lib/nipperShape.ts", ts);
+writeFileSync("lib/nipperShapeRaw.ts", ts);
 const cnt = (a) => a.reduce((s, q) => s + q.edges.length, 0);
-console.error(`→ lib/nipperShape.ts（右 ${r.rightPieces.length}枚/${cnt(r.rightPieces)}辺`
+console.error(`→ lib/nipperShapeRaw.ts（右 ${r.rightPieces.length}枚/${cnt(r.rightPieces)}辺`
   + ` ・左 ${r.leftPieces.length}枚/${cnt(r.leftPieces)}辺）`);

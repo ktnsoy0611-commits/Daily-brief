@@ -81,9 +81,14 @@
   `components/explore/Nipper.tsx`（画角・器・動き）／`NipperViews.tsx`（三面図。開発用）
   ＋ `lib/nipperMesh.ts`（**立体の作り方**。面取り・厚み・針金・段の当て方）
   ＋ `lib/nipperRig.ts`（**組み立てと光**。本番と三面図が同じものを見るための1か所）。
-  ★★**鋏の形は `lib/nipperShape.ts` が正**（`tools/trace-nipper.mjs` が
-  平面図と色分け図から作る**生成物**。手で直さない ―― 目で数値を打ち込んでいた
-  9〜15巡目はプロポーションが合わなかった）。設計の正は `docs/explore-redesign.md`。
+  ★★**鋏の形は `lib/nipperShape.ts` が正**。ただし**2段の生成物で、手で直さない**
+  ―― 平面図4枚 → `tools/trace-nipper.mjs` → `lib/nipperShapeRaw.ts`（**生**のトレース）
+  → `tools/clean-nipper.mts` → `lib/nipperShape.ts`（**整えた**形。立体はこれを読む）。
+  パスの語彙（型と `L`/`A`/`piece`）は `lib/nipperPath.ts`（唯一の手書き）。
+  **形を直すときは図を描き直すか、整理の規則の目盛りを直して走らせ直す。**
+  元データは `docs/archive/nipper-shape-21.ts` に凍結（誰も import しない。消さない）。
+  目で数値を打ち込んでいた 9〜15巡目はプロポーションが合わなかった。
+  設計の正は `docs/explore-redesign.md`。
   ★禁じられているのは **CSS の 3D 変形**であって WebGL ではない（design.md 冒頭）。
 
 ## タスク（TASK）

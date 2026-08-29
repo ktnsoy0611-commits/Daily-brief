@@ -4,7 +4,7 @@ import {
 } from "three";
 
 import { NIPPER_PAINT } from "@/lib/constants";
-import type { NipperPiece, P2 } from "@/lib/nipperShape";
+import type { NipperPiece, P2 } from "@/lib/nipperPath";
 
 // 改札鋏の**立体**。★形（平面図）は `lib/nipperShape.ts` が正。ここは**厚みだけ**を足す。
 //

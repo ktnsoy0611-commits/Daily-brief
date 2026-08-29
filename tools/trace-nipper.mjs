@@ -140,6 +140,11 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
   //   どれにも当たらない画素は**厚**へ倒す（塗り残しで部品が消えないように）。
   const { crop: dcrop, data: dd } = await readOverlay(depthUri);
   const TIERS = 3;
+  /** 段の**厚みの順**（大きいほど厚い）。実際の厚みは `lib/nipperRig.ts` が持つ。 */
+  const HALF_ORDER = [2, 1, 0];
+  const THICKEST = 0;
+  /** 面取りの幅を画素で（`lib/nipperMesh.ts` の `CHAMFER` 7 単位 ÷ 1px=2.2単位）。 */
+  const CHAMFER_PX = 3;
   const tier = new Uint8Array(W * H);   // 0=厚 1=中 2=薄
   const tierPx = [0, 0, 0];
   for (let i = 0, p = 0; i < dd.length; i += 4, p++) {
@@ -273,9 +278,11 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
   const [leftCell, rightCell] = two;
 
   // --- 線の太さのぶん膨らませて、輪郭を線の中心へ持っていく -------------
+  // ★画素の並び（添字の配列）でもマスク（Uint8Array）でも受ける。
   const grow = (pix, r) => {
-    const m = new Uint8Array(W * H);
-    for (const p of pix) m[p] = 1;
+    let m;
+    if (pix instanceof Uint8Array) m = pix;
+    else { m = new Uint8Array(W * H); for (const p of pix) m[p] = 1; }
     const pass = (src2, horiz) => {
       const o = new Uint8Array(W * H);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -291,6 +298,34 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
     };
     return pass(pass(m, true), false);
   };
+  /** `grow` と対の収縮。★縁を触ったところは外扱い（外へ漏らさない）。 */
+  const shrink = (m, r) => {
+    const pass = (src2, horiz) => {
+      const o = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        let v = 1;
+        for (let k = -r; k <= r; k++) {
+          const nx = horiz ? x + k : x, ny = horiz ? y : y + k;
+          v &= (nx < 0 || ny < 0 || nx >= W || ny >= H) ? 0 : src2[ny * W + nx];
+        }
+        o[y * W + x] = v;
+      }
+      return o;
+    };
+    return pass(pass(m, true), false);
+  };
+  const maskFrom = (pix) => { const m = new Uint8Array(W * H); for (const p of pix) m[p] = 1; return m; };
+  const andM = (a, b) => { const o = new Uint8Array(W * H);
+    for (let p = 0; p < o.length; p++) o[p] = a[p] & b[p]; return o; };
+  const orM = (a, b) => { const o = new Uint8Array(W * H);
+    for (let p = 0; p < o.length; p++) o[p] = a[p] | b[p]; return o; };
+  const notM = (a) => { const o = new Uint8Array(W * H);
+    for (let p = 0; p < o.length; p++) o[p] = a[p] ? 0 : 1; return o; };
+  /**
+   * ★塗りの手ぶれと1画素の階段を、**輪郭になる前に**落とす。
+   * open（縮→膨）で棘を、close（膨→縮）で欠けを取る。大きさはほぼ変わらない。
+   */
+  const denoise = (m, r = 2) => shrink(grow(grow(shrink(m, r), r), r), r);
 
   const N8 = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
   const trace = (m) => {
@@ -308,8 +343,10 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
     } while ((cx !== sx || cy !== sy) && ++guard < W * H * 4);
     return c;
   };
-  const dp = (pts, eps) => {
-    if (pts.length < 3) return pts.slice();
+  /** Douglas–Peucker。★**開いた列**に使う（閉じた列に使うと端の segment が
+   *  長さ0になって、どの点も距離0と判定され、両端しか残らない ― 19巡目に実測）。 */
+  const dpIdx = (pts, eps) => {
+    if (pts.length < 3) return pts.map((_, i) => i);
     const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
     const stk = [[0, pts.length - 1]];
     while (stk.length) {
@@ -323,15 +360,125 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
       }
       if (m > 0) { keep[m] = 1; stk.push([a, m], [m, b]); }
     }
-    return pts.filter((_, i) => keep[i]);
+    const idx = [];
+    for (let i = 0; i < pts.length; i++) if (keep[i]) idx.push(i);
+    return idx;
   };
+  const dp = (pts, eps) => dpIdx(pts, eps).map((i) => pts[i]);
   const EPS = Math.max(1.2, W / 420);
-  // ★部品は細部の領域を束ねたものなので、太らせたあとに**いちばん大きな塊**だけを
-  //   たどる。そうしないと、離れた小さな破片を輪郭と誤って数点しか出ない
-  //   （16巡目に実測で 8 点になった）。
-  // ★★塊は**ひとつとは限らない**。青の部品は赤の部品に挟み込まれているので、
-  //   正面図では**頭の天に出る先だけが分かれて見える**（16巡目に実測 486px）。
-  //   大きい順に返し、面積が主の 2% に満たない破片（線のかすれ）は捨てる。
+  /** 角を拾う粗さ。★これで残った点が「本物の角」。 */
+  const EPS_CORNER = EPS * 3;
+  /**
+   * 取り直す間隔（画素）。★辺の長さの下限を作る。
+   * ★★**片の細いほうの寸法に合わせる**。一律にすると、細い片（頭の天の先は
+   *   高さ14画素しかない）が丸められて面積を 13% 失う（19巡目に実測）。
+   */
+  const stepFor = (raw) => {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const [x, y] of raw) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    return Math.max(EPS * 2, Math.min(EPS * 6.5, Math.min(x1 - x0, y1 - y0) / 4));
+  };
+
+  // --- ★★なぞった輪郭を**整形する**（19巡目） ---------------------------
+  //   トレースは「形を掴む」ところまで。画素の階段をそのまま多角形にすると、
+  //   長さ1画素の辺と 50°を超える折れが山ほど残り、それが立体の稜線に出る
+  //   （18巡目に実測 ― 短い辺 37本・急な折れ 33か所）。
+  //
+  //   ★角を鈍らせずに線だけ整えるのがねらい:
+  //     ① 粗い Douglas–Peucker で**本物の角**を拾う
+  //     ② 角と角のあいだの画素の列だけを平滑にする（両端は固定）
+  //        → 直線だった区間は弦に収束して**まっすぐ**になり、曲線は**なめらか**になる
+  //     ③ 細かい Douglas–Peucker で余った点を落とす
+  //   ★回数は**区間の長さに合わせる**。短い区間に8回かけると弦へ寄りすぎて、
+  //     小さい片の面積が 10% 痩せた（19巡目に実測）。
+  const smoothRun = (run) => {
+    if (run.length < 4) return run;
+    const passes = Math.max(1, Math.min(10, Math.round(run.length / 6)));
+    let a = run.map(([x, y]) => [x, y]);
+    for (let k = 0; k < passes; k++) {
+      const b = a.map(([x, y]) => [x, y]);
+      for (let i = 1; i < a.length - 1; i++) {
+        b[i][0] = (a[i - 1][0] + a[i][0] * 2 + a[i + 1][0]) / 4;
+        b[i][1] = (a[i - 1][1] + a[i][1] * 2 + a[i + 1][1]) / 4;
+      }
+      a = b;
+    }
+    return a;
+  };
+  /**
+   * ★弧長で**等間隔に取り直す**。平滑だけでは、DP が残った 1〜2 画素の揺れを
+   * 追いかけて短い辺と急な折れを作り直してしまう（19巡目に実測 ― 短辺32本・
+   * 急な折れ43か所）。等間隔に打ち直せば、短い辺は**作りようがない**。
+   * 区間の両端（＝角）は必ず残す。
+   */
+  const resample = (run, step) => {
+    if (run.length < 3) return run;
+    const acc = [0];
+    for (let i = 1; i < run.length; i++) {
+      acc.push(acc[i - 1] + Math.hypot(run[i][0] - run[i - 1][0], run[i][1] - run[i - 1][1]));
+    }
+    const L = acc[acc.length - 1];
+    if (L < step) return [run[0], run[run.length - 1]];
+    const n = Math.max(1, Math.round(L / step));
+    const out = [];
+    let j = 0;
+    for (let k = 0; k <= n; k++) {
+      const t = (L * k) / n;
+      while (j + 1 < acc.length && acc[j + 1] < t) j++;
+      const seg = acc[j + 1] - acc[j] || 1, u = (t - acc[j]) / seg;
+      const a = run[j], b = run[Math.min(j + 1, run.length - 1)];
+      out.push([a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]);
+    }
+    return out;
+  };
+  /** 画素の輪郭 → 整えた多角形。★戻り値に**整形のずれ**も入れて検証に出す。 */
+  const fair = (raw) => {
+    if (raw.length < 12) return { poly: dp(raw, EPS), moved: 0, area: 0 };
+    // ★`raw` は閉じた輪だが**先頭と末尾は重ねない**（重ねると DP が壊れる）。
+    //   先頭は追跡の開始点＝いちばん上の左端なので、角として扱ってよい。
+    const step = stepFor(raw);
+    const idx = dpIdx(raw, EPS_CORNER);
+    const out = [];
+    for (let k = 0; k + 1 < idx.length; k++) {
+      const run = resample(smoothRun(raw.slice(idx[k], idx[k + 1] + 1)), step);
+      out.push(...run.slice(0, -1));
+    }
+    out.push(raw[idx[idx.length - 1]]);
+    // ★角どうしが隣り合うと 1〜2 画素の辺が残る。**近すぎる点は溶かす**。
+    let poly = dp(out, EPS);
+    for (let again = true; again && poly.length > 4;) {
+      again = false;
+      for (let i = 0; i < poly.length; i++) {
+        const j = (i + 1) % poly.length;
+        if (Math.hypot(poly[j][0] - poly[i][0], poly[j][1] - poly[i][1]) >= EPS * 1.6) continue;
+        poly[i] = [(poly[i][0] + poly[j][0]) / 2, (poly[i][1] + poly[j][1]) / 2];
+        poly = poly.filter((_, k) => k !== j);
+        again = true;
+        break;
+      }
+    }
+    // 整形でどれだけ動いたか（元の画素の輪郭からの最大距離）
+    let moved = 0;
+    for (const [x, y] of raw) {
+      let best = Infinity;
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length];
+        const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1;
+        let t = ((x - a[0]) * dx + (y - a[1]) * dy) / L2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const d2 = (x - a[0] - dx * t) ** 2 + (y - a[1] - dy * t) ** 2;
+        if (d2 < best) best = d2;
+      }
+      moved = Math.max(moved, Math.sqrt(best));
+    }
+    const areaOf = (q) => { let a = 0;
+      for (let i = 0; i < q.length; i++) { const u = q[i], v = q[(i + 1) % q.length];
+        a += u[0] * v[1] - v[0] * u[1]; } return Math.abs(a) / 2; };
+    const a0 = areaOf(raw), a1 = areaOf(poly);
+    return { poly, moved: +moved.toFixed(2), area: a0 ? +((a1 - a0) / a0 * 100).toFixed(2) : 0 };
+  };
   const lumps = (m) => {
     const lab = new Int32Array(W * H).fill(-1), stq = new Int32Array(W * H);
     const size = []; let n = 0;
@@ -354,8 +501,9 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
     });
   };
   const biggest = (m) => lumps(m)[0];
-  const maskOf = (pix) => grow(pix, Math.max(1, Math.round(lineW / 2)) + 1);
-  const polysOf = (pix) => lumps(maskOf(pix)).map((m) => dp(trace(m), EPS));
+  const GROW = Math.max(1, Math.round(lineW / 2)) + 1;
+  const maskOf = (pix) => denoise(grow(pix, GROW));
+  const polysOf = (pix) => lumps(maskOf(pix)).map((m) => fair(trace(m)).poly);
   const leftPix = partPix.get(cells.indexOf(leftCell));
   const rightPix = partPix.get(cells.indexOf(rightCell));
   const leftAll = polysOf(leftPix);
@@ -372,17 +520,60 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
   //   見ると、幅3画素の筋が 180 画素の塊に化けて残ってしまう（18巡目に実測 ―
   //   左の部品に 1〜107 画素の欠片が 16 枚出た）。本物の片は 298 画素以上ある。
   const MIN_PIECE = 200;
+  /** 段の境目へ食い込ませる量（面取りが中へ隠れるだけの深さ）。 */
+  const BURY = GROW + Math.round(CHAMFER_PX);
+
+  /**
+   * ★★★**薄い側だけが厚い側へ食い込む**（19巡目）。
+   * 18巡目は全部の片を同じだけ太らせていたので、**厚い片が薄い領域へ庇のように
+   * はみ出し**、段差が坂に見えていた。厚い段は太らせない ―― その境目が
+   * **本物の段差の面**になる。薄い段だけが中へ潜り、自分の面取りごと隠れる。
+   */
   const piecesOf = (pix) => {
-    const outp = [];
+    const partMask = maskOf(pix);
+    const own = [];
+    for (let k = 0; k < TIERS; k++) own.push(maskFrom(pix.filter((p) => tier[p] === k)));
+
+    // 段ごとのマスクを**先に全部**作る（あとで隣どうしを突き合わせるため）。
+    const live = [];
     for (let k = 0; k < TIERS; k++) {
-      const sub = pix.filter((p) => tier[p] === k);
-      if (sub.length < MIN_PIECE) continue;
-      for (const m of lumps(maskOf(sub))) {
+      let n0 = 0;
+      for (const v of own[k]) n0 += v;
+      if (n0 < MIN_PIECE) continue;
+      // ★伸びてよいのは「部品のうち、**自分より薄い段**の塗り以外」。
+      //   ★★`own` だけを許すと、いちばん厚い段が**線の太さのぶんも伸びられず**、
+      //     外の輪郭が線の内側に寄る（19巡目に実測）。
+      let allow = partMask;
+      for (let j = 0; j < TIERS; j++) {
+        if (HALF_ORDER[j] < HALF_ORDER[k]) allow = andM(allow, notM(own[j]));
+      }
+      live.push({ k, mask: denoise(andM(grow(own[k], k === THICKEST ? GROW : BURY), allow), 1) });
+    }
+
+    const outp = [];
+    for (const { k, mask } of live) {
+      // ★★頂点が**段の境目**かどうかは、「そのすぐ外に**同じ部品の別の段**が
+      //   居るか」で決める。外の縁からの距離で見ると、段の境目が外の縁まで
+      //   届いているところを外と数えてしまう（19巡目に実測 ― 96点中9点しか
+      //   拾えなかった）。薄い段は厚い段へ食い込ませてあるので、境目の点は
+      //   必ず相手のマスクの中に入っている。
+      let others = null;
+      for (const o of live) if (o.k !== k) others = others ? orM(others, o.mask) : o.mask;
+      const near = others ? grow(others, 2) : null;
+      for (const m of lumps(mask)) {
         let px = 0;
-        for (let p = 0; p < m.length; p++) if (m[p] && tier[p] === k) px++;
+        for (let p = 0; p < m.length; p++) if (m[p] && own[k][p]) px++;
         if (px < MIN_PIECE) continue;
-        const poly = dp(trace(m), EPS);
-        if (poly.length >= 4) outp.push({ tier: k, poly, px });
+        const f = fair(trace(m));
+        if (f.poly.length < 4) continue;
+        const flags = f.poly.map(([x, y]) => {
+          if (!near) return 0;
+          const xi = Math.min(W - 1, Math.max(0, Math.round(x)));
+          const yi = Math.min(H - 1, Math.max(0, Math.round(y)));
+          return near[yi * W + xi] ? 1 : 0;
+        });
+        outp.push({ tier: k, poly: f.poly, px, inner: flags,
+          moved: f.moved, areaDelta: f.area });
       }
     }
     return outp;
@@ -396,6 +587,64 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
       && Math.abs(c.bbox.w - c.bbox.h) < Math.max(c.bbox.w, c.bbox.h) * 0.35
       && c.cy > (leftCell.bbox.y0 + leftCell.bbox.y1) / 2)
     .sort((a, b) => b.size - a.size)[0] ?? null;
+
+  // --- ★★バネの輪と針金を**図から測る**（19巡目） ------------------------
+  //   18巡目まで、輪の半径は「穴の bbox」から出していた（＝内半径）ので小さく、
+  //   針金の太さは手で 7 と書いていた。どちらも図が持っている情報なので測る。
+  const med = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
+  const coilMetrics = (() => {
+    if (!coilCell) return null;
+    const partAll = maskFrom([...leftPix, ...rightPix]);
+    // 芯の半径 … 中心から放射に走査して、最初に当たるインクの帯の**中心**。
+    const cx0 = coilCell.cx, cy0 = coilCell.cy;
+    const reach = Math.max(coilCell.bbox.w, coilCell.bbox.h);
+    const mids = [];
+    for (let k = 0; k < 90; k++) {
+      const a = (k / 90) * Math.PI * 2;
+      let s0 = -1;
+      for (let t = reach * 0.4; t < reach * 1.6; t += 0.25) {
+        const x = Math.round(cx0 + Math.cos(a) * t), y = Math.round(cy0 + Math.sin(a) * t);
+        if (x < 0 || y < 0 || x >= W || y >= H) break;
+        const on = ink[y * W + x];
+        if (on && s0 < 0) s0 = t;
+        if (!on && s0 >= 0) { mids.push((s0 + t) / 2); break; }
+      }
+    }
+    // 針金の半径 … 脚は**2本の線**で描かれている。行ごとに細い帯の対を拾い、
+    // ★傾きで**垂直**の間隔へ直す（斜めなので横に測ると太く出る）。
+    const y0 = Math.round(coilCell.bbox.y0 - reach * 2.4), y1 = Math.round(coilCell.bbox.y0);
+    const rows = [];
+    for (let y = Math.max(0, y0); y <= y1; y++) {
+      const runs = []; let s1 = -1;
+      for (let x = 0; x < W; x++) {
+        const on = ink[y * W + x];
+        if (on && s1 < 0) s1 = x;
+        if (!on && s1 >= 0) { runs.push([(s1 + x - 1) / 2, x - s1]); s1 = -1; }
+      }
+      // ★★対の**あいだ**が針金の身。囲まれていて（＝外の地ではない）、
+      //   どちらの部品でもないところだけを数える。これをしないと道具の輪郭の
+      //   2本の縁を拾って倍の太さが出る（19巡目に実測 14.5px）。
+      const thin = runs.filter((q) => q[1] <= lineW + 1).map((q) => q[0]);
+      for (let i = 0; i + 1 < thin.length; i++) {
+        const mx2 = Math.round((thin[i] + thin[i + 1]) / 2), q = y * W + mx2;
+        if (outside[q] || partAll[q] || ink[q]) continue;
+        rows.push({ y, a: thin[i], b: thin[i + 1], mid: (thin[i] + thin[i + 1]) / 2 });
+        break;
+      }
+    }
+    const perp = [];
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].y - rows[i - 1].y !== 1) continue;
+      const gap = rows[i].b - rows[i].a;
+      if (gap < lineW || gap > reach * 0.45) continue;
+      perp.push(gap / Math.hypot(1, rows[i].mid - rows[i - 1].mid));
+    }
+    return {
+      r: mids.length ? +med(mids).toFixed(2) : reach / 2,
+      wire: perp.length ? +(med(perp) / 2).toFixed(2) : lineW,
+      samples: { ring: mids.length, wire: perp.length },
+    };
+  })();
 
   // --- 継ぎ目と V の頂点（線画なら測るだけ） ----------------------------
   const edgesAt = (cell, y) => {
@@ -498,8 +747,12 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
     cellCount: cells.length, background: bg.size, details: solids.length,
     paintCrop: pcrop, paintPixels: { red: nRed, blue: nBlue },
     depthCrop: dcrop, depthPixels: { thick: tierPx[0], mid: tierPx[1], thin: tierPx[2] },
-    pieces: { left: leftPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.poly.length })),
-      right: rightPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.poly.length })) },
+    pieces: {
+      left: leftPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.poly.length,
+        inner: q.inner.reduce((a, b) => a + b, 0), moved: q.moved, areaDelta: q.areaDelta })),
+      right: rightPieces.map((q) => ({ tier: q.tier, px: q.px, pts: q.poly.length,
+        inner: q.inner.reduce((a, b) => a + b, 0), moved: q.moved, areaDelta: q.areaDelta })),
+    },
     cellSides: [...cells].sort((a, b) => b.size - a.size).slice(0, 8)
       .map((c) => `${c.size}${c.side}(r${c.red} b${c.blue})`),
     cellSizes: [...cells].sort((a, b) => b.size - a.size).slice(0, 8).map((c) => c.size),
@@ -508,7 +761,8 @@ const r = await page.evaluate(async ([uri, paintUri, depthUri]) => {
     right: { poly: right, bbox: bboxOf(right) },
     leftPieces, rightPieces,
     slot: slotBox, slotAll, pivot: { x: seamX, y: Math.round((leftCell.bbox.y0 + apexY) / 2) },
-    coil: coilCell ? { ...coilCell.bbox, cx: Math.round(coilCell.cx), cy: Math.round(coilCell.cy) } : null,
+    coil: coilCell ? { ...coilCell.bbox, cx: Math.round(coilCell.cx), cy: Math.round(coilCell.cy),
+      ...coilMetrics } : null,
     overlay,
   };
 }, [dataUri, paintUri, depthUri]);
@@ -576,21 +830,30 @@ ${wrap(fmt(r.left.poly))}
  * ★左の部品は赤に挟まれていて、正面では途中が隠れて切れて見える。
  *   切れた先も**同じ表に入っている** ―― 別の部品ではなく、同じ支点を回る。
  */
-export interface NipperPiece { poly: P2[]; tier: 0 | 1 | 2 }
+export interface NipperPiece {
+  poly: P2[];
+  tier: 0 | 1 | 2;
+  /**
+   * ★点ごとの印。真＝**段の境目**（外の輪郭ではない）。
+   * ここは**面取りしない** ―― 面取りを回すと段差が坂に見える（19巡目にユーザー指摘。
+   * 面取り 7 に対し段差は 17 しかないので、41% が斜面になっていた）。
+   */
+  inner: boolean[];
+}
 
-const piece = (tier: 0 | 1 | 2, pts: [number, number][]): NipperPiece =>
-  ({ tier, poly: pts.map(([x, y]) => ({ x, y })) });
+const piece = (tier: 0 | 1 | 2, bits: string, pts: [number, number][]): NipperPiece =>
+  ({ tier, poly: pts.map(([x, y]) => ({ x, y })), inner: [...bits].map((c) => c === "1") });
 
 /** 右の部品の片（先端の箱と右の持ち手）。 */
 export const NIPPER_RIGHT_PIECES: NipperPiece[] = [
-${r.rightPieces.map((q) => `  piece(${q.tier}, [
+${r.rightPieces.map((q) => `  piece(${q.tier}, "${q.inner.join("")}", [
 ${wrap(fmt(q.poly), 92, "    ")}
   ]),`).join("\n")}
 ];
 
 /** 左の部品の片（先端の板と左の持ち手）。支点まわりに一緒に回る。 */
 export const NIPPER_LEFT_PIECES: NipperPiece[] = [
-${r.leftPieces.map((q) => `  piece(${q.tier}, [
+${r.leftPieces.map((q) => `  piece(${q.tier}, "${q.inner.join("")}", [
 ${wrap(fmt(q.poly), 92, "    ")}
   ]),`).join("\n")}
 ];
@@ -600,9 +863,14 @@ export const NIPPER_SLOT = {
   x0: ${mx(sl.x0)}, x1: ${mx(sl.x1)}, y0: ${my(sl.y1)}, y1: ${my(sl.y0)},
 };
 
-/** バネの輪。 */
+/**
+ * バネの輪。★\`r\` は**芯の半径**（輪を放射に走査してインクの帯の中心を測った値）、
+ * \`wire\` は**針金の半径**（脚の2本線の垂直な間隔の半分）。どちらも図の実測。
+ * ★18巡目まで \`r\` に「穴の bbox」を入れていたので小さく、太さは手で書いていた。
+ */
 export const NIPPER_COIL = {
-  cx: ${mx(co.cx)}, cy: ${my(co.cy)}, r: ${Math.round(((co.w + co.h) / 4) * K * 10) / 10},
+  cx: ${mx(co.cx)}, cy: ${my(co.cy)},
+  r: ${Math.round(co.r * K * 10) / 10}, wire: ${Math.round(co.wire * K * 10) / 10},
 };
 
 /** ★支点。2部品が重なっているところ（ここを軸にペンチのように動く）。 */

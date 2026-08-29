@@ -21,11 +21,11 @@ export const CHAMFER = 7;
 
 // ---- 多角形の内側へ寄せる ------------------------------------------------
 /**
- * **反時計回りの**多角形を `d` だけ内側へ寄せる（面取りの縁を作る）。
+ * **反時計回りの**多角形を、点ごとの `dist(i)` だけ内側へ寄せる（面取りの縁を作る）。
  * ★角では**二等分線**に沿って寄せる。鋭い角では伸びが発散するので、
  *   伸びを 3 倍で頭打ちにする（スリットの奥で自分と交差させないため）。
  */
-function inset(pts: P2[], d: number): P2[] {
+function inset(pts: P2[], dist: (i: number) => number): P2[] {
   const n = pts.length;
   const out: P2[] = [];
   for (let i = 0; i < n; i++) {
@@ -34,6 +34,7 @@ function inset(pts: P2[], d: number): P2[] {
     const e0 = { x: c.x - p.x, y: c.y - p.y }, e1 = { x: q.x - c.x, y: q.y - c.y };
     const m0 = Math.hypot(e0.x, e0.y) || 1, m1 = Math.hypot(e1.x, e1.y) || 1;
     const n0 = { x: -e0.y / m0, y: e0.x / m0 }, n1 = { x: -e1.y / m1, y: e1.x / m1 };
+    const d = dist(i);
     let bx = n0.x + n1.x, by = n0.y + n1.y;
     const bm = Math.hypot(bx, by);
     if (bm < 1e-6) { out.push({ x: c.x + n1.x * d, y: c.y + n1.y * d }); continue; }
@@ -71,7 +72,9 @@ function quad(v: number[], a: Vector3, b: Vector3, c: Vector3, d: Vector3) {
  * `NIPPER_*_PIECES`）、ここで高さの関数を持つ必要はない ―― 18巡目に捨てた。
  * 塗り分けは y の帯ではない（中と薄が y で重なる）ので、関数では表せなかった。
  */
-export function buildPart(input: P2[], half: number, chamfer = CHAMFER): BufferGeometry {
+export function buildPart(
+  input: P2[], half: number, chamfer = CHAMFER, inner?: boolean[],
+): BufferGeometry {
   // ★★**まず反時計回りに揃える**（+y が上）。巻きが逆だと側壁の法線が内を向き、
   //   面が裏になって落ち、**中が透けて見える**（17巡目に実測）。
   let a2 = 0;
@@ -79,10 +82,15 @@ export function buildPart(input: P2[], half: number, chamfer = CHAMFER): BufferG
     const p = input[i], q = input[(i + 1) % input.length];
     a2 += p.x * q.y - q.x * p.y;
   }
-  const poly = a2 >= 0 ? input : [...input].reverse();
+  const flip = a2 < 0;
+  const poly = flip ? [...input].reverse() : input;
+  const mark = inner && (flip ? [...inner].reverse() : inner);
   const n = poly.length;
   const body = poly;
-  const lip = inset(poly, chamfer);
+  // ★★**段の境目は面取りしない**（寄せ幅 0）。面取りを回すと段差が坂に見える ――
+  //   面取り 7 に対し段差は 17 しかないので、41% が斜面になっていた（19巡目に指摘）。
+  //   寄せ 0 の点では面取りの四角形が潰れる（面積 0）が、描画に害は無い。
+  const lip = inset(poly, (i) => (mark?.[i] ? 0 : chamfer));
   const z = Math.max(half, chamfer * 1.2);
   const rings: Ring[] = [
     { pts: lip, z: lip.map(() => -z) },

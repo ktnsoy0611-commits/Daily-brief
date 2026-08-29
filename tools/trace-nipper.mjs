@@ -472,6 +472,30 @@ const r = await page.evaluate(async (uris) => {
     }
     return outp;
   };
+  // ★★★**塗り残しは「いちばん近い塗り」に倒す**（21巡目）。
+  //   手で塗った図は**輪郭の黒い線の上を塗れない**ので、部品のふちに 2〜4画素の
+  //   塗り残しが帯として残る（実測 956px、部品ぜんぶのふちに沿って）。
+  //   既定を「厚い」にしていたため、**薄いはずの先端のふちだけが厚いまま**
+  //   立ち上がっていた（ユーザーが赤丸で指摘した「エッジだけ高い」）。
+  //   多源の幅優先で、近い塗りの段へ配る。
+  {
+    const q2 = new Int32Array(W * H);
+    const seen = new Uint8Array(W * H);
+    let head = 0, tail = 0;
+    for (let p = 0; p < W * H; p++) {
+      if (!solidLeft[p]) continue;
+      const i = p * 4, R = dDepth[i], G = dDepth[i + 1], B = dDepth[i + 2];
+      const painted = (B > R + 40 && B > G + 40) || (R > G + 40 && R > B + 40);
+      if (painted) { seen[p] = 1; q2[tail++] = p; }
+    }
+    while (head < tail) {
+      const p = q2[head++], x = p % W, y = (p / W) | 0;
+      const go = (t) => { if (solidLeft[t] && !seen[t]) { seen[t] = 1; tier[t] = tier[p]; q2[tail++] = t; } };
+      if (x > 0) go(p - 1); if (x < W - 1) go(p + 1);
+      if (y > 0) go(p - W); if (y < H - 1) go(p + W);
+    }
+  }
+
   // ★★**右の部品の中では、左は必ず薄い段**にする（塗り分けより優先）。
   //   左は赤の中へ挟み込まれているので、そこで厚い段になっていると面が重なって
   //   ちらつく（21巡目に実測 ― 192px の細い筋が頭を縦に走った）。
@@ -690,7 +714,12 @@ const r = await page.evaluate(async (uris) => {
     W, H, lineWidth: lineW,
     area: { right: pixOf(solidRight).length, left: pixOf(solidLeft).length, overlap: ovN },
     overlapBox: { x0: ovX0, x1: ovX1, y0: ovY0, y1: ovY1 },
-    depthPixels: { thick: tierPx[0], thin: tierPx[1], forcedThin },
+    depthPixels: { thick: tierPx[0], thin: tierPx[1], forcedThin,
+      // ★配ったあとの、左の面での実際の内訳
+      leftThick: (() => { let n = 0;
+        for (let p = 0; p < W * H; p++) if (solidLeft[p] && tier[p] === 0) n++; return n; })(),
+      leftThin: (() => { let n = 0;
+        for (let p = 0; p < W * H; p++) if (solidLeft[p] && tier[p] === 1) n++; return n; })() },
     springPx, coil, pivot, slot: slotBox, slotAll, bbox: all,
     aspect: +(all.w / all.h).toFixed(4),
     rightPieces, leftPieces,

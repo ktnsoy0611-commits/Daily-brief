@@ -29,15 +29,11 @@ import {
  *   塗り分けは y の帯ではない（中と薄が y で重なる）ので表せなかった。
  */
 export const HALF = [45, 28];
-/**
- * ★★段ごとに**色の段をいくつ下げるか**（0=厚 1=薄）。
- * 厚い片も薄い片も**正面の法線は +z** なので同じ色になり、違いは段差の壁だけ。
- * その壁は 17単位 × 画角 0.22 ＝ **画面上 4px** しかなく、角度の問題なので
- * 形をどれだけ綺麗にしても見えない（20巡目に実測）。
- * このアプリの規則「陰の手当ては群にまとめて1度だけ段を下げる」で見せる ――
- * 引っ込んだ面は光が届きにくいので、物理的にも自然。
- */
-const DIM = [0, 1];
+/** 段ごとに**色の段をいくつ下げるか**。 */
+// ★★21巡目に **[0, 0]（＝塗り分けない）** へ戻した（ユーザー指定
+//   「左の部品の塗り分けはやめて元の色に戻して全体が同じ色になるように」）。
+//   段は**形**で見せる。色は道具ぜんぶで同じ。
+const DIM = [0, 0];
 
 /**
  * 押し切ったときの角（度）。★**正＝青の持ち手が右へ寄る**（＝開きが閉じる）。
@@ -74,33 +70,49 @@ export const NIPPER_CENTER = {
   y: (NIPPER_EXTENT.y0 + NIPPER_EXTENT.y1) / 2,
 };
 
-function coilPath(): Vector3[] {
-  // ★★1周の折れ数。18巡目に 10 → 48（ユーザー指摘「リングがリングに見えない」）。
-  //   ここだけは**滑らかにする** ― 輪は輪に見えないと道具に見えない。
-  //   針金の**断面は8角形のまま**（アプリの語彙）。
-  // ★★★**輪は1本**（19巡目）。18巡目は2巻きを半径差3・z差4で重ねていたが、
-  //   針金の直径 17 に対して差が小さすぎて融合し、**筒に見えた**（ユーザー指摘）。
-  //   平面図も円を1本しか描いていない。
-  const N = 64;
-  const at = (p: { x: number; y: number }) => new Vector3(p.x, p.y, COIL_Z);
-  const pts = NIPPER_COIL.legFar.map(at);
-  // ★★輪は**片方の脚が触れる角から、もう片方の脚が触れる角＋1周**まで掃く。
-  //   20巡目は開始角まで1周してから反対側の脚へ飛んでいたので、**輪の穴を弦が
-  //   横切っていた**（ユーザー指摘「リングの形がかなりおかしい」）。
-  const ang = (p: { x: number; y: number }) =>
-    Math.atan2(p.y - NIPPER_COIL.cy, p.x - NIPPER_COIL.cx);
-  const a0 = ang(NIPPER_COIL.legFar[1]);
+/**
+ * ★★★**脚は輪の接線方向に伸びる**（21巡目にユーザー指定）。
+ * 付け根 `P` から円へ引ける接線は2本ある。**図で実際に触れている側**を採る ――
+ * トレースが「脚が輪のどこに当たっているか」を測っているので、その角にいちばん
+ * 近い接点を選べば、向きの理屈をこねる必要がない。
+ */
+function tangentPoint(
+  P: { x: number; y: number }, hint: { x: number; y: number },
+): { x: number; y: number } {
+  const { cx, cy, r } = NIPPER_COIL;
+  const d = Math.hypot(P.x - cx, P.y - cy);
+  if (d <= r * 1.001) return hint;
+  const phi = Math.atan2(P.y - cy, P.x - cx), alpha = Math.acos(r / d);
+  const hintA = Math.atan2(hint.y - cy, hint.x - cx);
   const TAU = Math.PI * 2;
-  const a1 = a0 + (((ang(NIPPER_COIL.legNear[0]) - a0) % TAU) + TAU) % TAU + TAU;
+  const gap = (a: number) => {
+    const g = Math.abs(((a - hintA) % TAU + TAU) % TAU);
+    return Math.min(g, TAU - g);
+  };
+  const a = gap(phi + alpha) <= gap(phi - alpha) ? phi + alpha : phi - alpha;
+  return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
+}
+
+/**
+ * バネの針金。★★**輪は閉じた1本の丸**、脚はそこへ接線で入る ―― 3本に分けて作る。
+ * 1本の管では枝分かれできないし、1周ぶん掃くと自分と重なる。
+ * 接点は輪の面の中にあるので、繋ぎ目は針金の中へ隠れる。
+ */
+function coilPaths(): Vector3[][] {
+  const { cx, cy, r } = NIPPER_COIL;
+  const at = (p: { x: number; y: number }) => new Vector3(p.x, p.y, COIL_Z);
+  const rootA = NIPPER_COIL.legFar[0], rootB = NIPPER_COIL.legNear[1];
+  const TA = tangentPoint(rootA, NIPPER_COIL.legFar[1]);
+  const TB = tangentPoint(rootB, NIPPER_COIL.legNear[0]);
+  // 輪。★1周＋少しだけ重ねて閉じる（継ぎ目が出ない）。
+  const N = 64;
+  const a0 = Math.atan2(TA.y - cy, TA.x - cx);
+  const ring: Vector3[] = [];
   for (let i = 0; i <= N; i++) {
-    const t = a0 + ((a1 - a0) * i) / N;
-    pts.push(new Vector3(
-      NIPPER_COIL.cx + Math.cos(t) * NIPPER_COIL.r,
-      NIPPER_COIL.cy + Math.sin(t) * NIPPER_COIL.r, COIL_Z,
-    ));
+    const t = a0 + (i / N) * (Math.PI * 2 + 0.12);
+    ring.push(new Vector3(cx + Math.cos(t) * r, cy + Math.sin(t) * r, COIL_Z));
   }
-  pts.push(...NIPPER_COIL.legNear.map(at));
-  return pts;
+  return [ring, [at(rootA), at(TA)], [at(TB), at(rootB)]];
 }
 
 export interface NipperRig {
@@ -158,7 +170,7 @@ export function buildNipperRig(): NipperRig {
   // バネ
   const coil = new Group();
   tool.add(coil);
-  add(buildWire(coilPath(), NIPPER_COIL.wire), coil);
+  for (const path of coilPaths()) add(buildWire(path, NIPPER_COIL.wire), coil);
 
   return {
     root, lever, coil,

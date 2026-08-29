@@ -11,7 +11,8 @@
 //   原点は**継ぎ目 × 全体の天** = 図の (209, 36)。1px = 2.2 単位。+y は上。
 //   縦横比 0.7129（図の実測）。
 
-import type { P2 } from "@/lib/nipperSolid";
+/** 平面の点。★この表は**描き方から独立している**ので、ここで持つ。 */
+export interface P2 { x: number; y: number }
 
 /** 右の部品 ＝ 先端の箱と右の持ち手（一体）。**厚い**。 */
 export const NIPPER_RIGHT: P2[] = [

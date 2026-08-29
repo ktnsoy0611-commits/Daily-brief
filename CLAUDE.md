@@ -77,12 +77,14 @@
   入口は**右下の輪の SETTING だけ**（`CreateMenu`）。
 - ★**刷新中の部品**（まだ `/dev/explore` にしか無い。4タブは手つかず）…
   `components/explore/Ticket.tsx`（券）/ `PunchMark.tsx`（鋏痕）/ `lib/ticket.ts`、
-  `components/explore/Nipper.tsx`（改札鋏の寸法・群・動き）＋
-  `lib/nipperSolid.ts`（**立体そのもの**。押し出し・フラットシェーディング・
-  投影・隠れ）＋ `NipperViews.tsx`（三面図。開発用）。
+  改札鋏（★**three.js／WebGL**。第17巡に SVG の自前投影をやめた）…
+  `components/explore/Nipper.tsx`（画角・器・動き）／`NipperViews.tsx`（三面図。開発用）
+  ＋ `lib/nipperMesh.ts`（**立体の作り方**。面取り・厚み・針金・段の当て方）
+  ＋ `lib/nipperRig.ts`（**組み立てと光**。本番と三面図が同じものを見るための1か所）。
   ★★**鋏の形は `lib/nipperShape.ts` が正**（`tools/trace-nipper.mjs` が
   平面図と色分け図から作る**生成物**。手で直さない ―― 目で数値を打ち込んでいた
   9〜15巡目はプロポーションが合わなかった）。設計の正は `docs/explore-redesign.md`。
+  ★禁じられているのは **CSS の 3D 変形**であって WebGL ではない（design.md 冒頭）。
 
 ## タスク（TASK）
 **タスク図形は常に GRAVITY 空間にだけ在る**（第52巡に TOP/UNDER の4層を破棄）。

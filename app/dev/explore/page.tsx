@@ -5,7 +5,7 @@ import {
   BG, INK, ITEM_DOMAINS, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
 } from "@/lib/constants";
 import { PunchGlyph } from "@/components/explore/PunchMark";
-import { Nipper, NIPPER_NOSE, NIPPER_ORIGIN } from "@/components/explore/Nipper";
+import { Nipper, NIPPER_ASPECT, NIPPER_NOSE } from "@/components/explore/Nipper";
 import { NipperTriView } from "@/components/explore/NipperViews";
 import { Ticket, type TicketData, type TicketPunch } from "@/components/explore/Ticket";
 
@@ -29,8 +29,9 @@ function fakePhoto(a: string, b: string) {
 // ★以下は目盛りの外（実寸の枠と図形の座標）。
 const STAGE = { w: 390, h: 844 };   // iPhone の見えている範囲
 const STAGE_TICKET = 300;           // 提案の券の幅（本番と同じ）
-const STAGE_NIPPER = 240;           // 鋏の幅（viewBox 480 × 0.5）
-const NIPPER_S = STAGE_NIPPER / 480;
+const STAGE_NIPPER = 300;           // 鋏の幅
+/** 鋏の器の高さ。★`NIPPER_NOSE` は器の左上からの**割合**なので、これが要る。 */
+const NIPPER_H = STAGE_NIPPER / NIPPER_ASPECT;
 /** ★カメラの高さ（画面と同じ px の尺度）。消失点は画面の中心。 */
 // ★目標画像では奥の腕が手前から**幅の3割ほど**ずれて見える。待機位置で
 // その見え方になるようカメラの高さを合わせた。仕組みは変えていない。
@@ -40,12 +41,16 @@ const awayAt = (x: number, y: number) => ({
   x: (x - STAGE.w / 2) / CAM,
   y: (y - STAGE.h / 2) / CAM,
 });
-/** 先端（口）を画面のどこへ置くかで、鋏の原点が決まる。 */
-const originFor = (nose: { x: number; y: number }) => ({
-  left: Math.round(nose.x - (NIPPER_ORIGIN.x + NIPPER_NOSE.x) * NIPPER_S),
-  top: Math.round(nose.y - (NIPPER_ORIGIN.y + NIPPER_NOSE.y) * NIPPER_S),
-  at: { x: nose.x - NIPPER_NOSE.x * NIPPER_S, y: nose.y - NIPPER_NOSE.y * NIPPER_S },
-});
+/** 先端（口）を画面のどこへ置くかで、鋏の器の場所が決まる。 */
+const originFor = (nose: { x: number; y: number }) => {
+  const left = nose.x - NIPPER_NOSE.x * STAGE_NIPPER;
+  const top = nose.y - NIPPER_NOSE.y * NIPPER_H;
+  return {
+    left: Math.round(left), top: Math.round(top),
+    // パースは**器の中心**がどこにあるかで決まる。
+    at: { x: left + STAGE_NIPPER / 2, y: top + NIPPER_H / 2 },
+  };
+};
 /** 待機 … 口は券のすぐ下。柄は画面の右下へ抜ける（そこに手がある）。 */
 const IDLE = originFor({ x: 314, y: 556 });
 /** 入鋏 … 口を券の右の縁の鋏痕へ合わせる。 */
@@ -134,7 +139,7 @@ export default function DevExplore() {
                 />
               </span>
               {/* ★目盛りの外（図形の配置） */}
-              <span style={{
+              <div style={{
                 position: "absolute",
                 left: biting ? BITE.left : IDLE.left,
                 top: biting ? BITE.top : IDLE.top,
@@ -144,8 +149,9 @@ export default function DevExplore() {
                   open={biting ? 0 : 1}
                   closing={biting}
                   away={awayAt(biting ? BITE.at.x : IDLE.at.x, biting ? BITE.at.y : IDLE.at.y)}
+                  ground={false}
                 />
-              </span>
+              </div>
             </div>
           </div>
         ))}
@@ -187,16 +193,16 @@ export default function DevExplore() {
         <Label>Nipper</Label>
         {/* ★★参考画像と同じ画角（ほぼ真上から・わずかに右）。**形の合否はここで見る**。
             四隅の4体は「掴んで動かすとパースが変わる」ことの確認用で、画角が違う。 */}
-        <span style={{ width: 300 }}>
+        <div style={{ width: 300 }}>
           <Nipper open={1} away={{ x: 0.22, y: 0.62 }} />
-        </span>
+        </div>
         {/* ★一点透視の確認。左へ置くと右面、右へ置くと左面が見える。 */}
         <div style={{ display: "flex", gap: SPACE.xl, alignItems: "flex-start" }}>
           {/* ★掴んで動かしたときの検証。画面のどこに置いたかでパースが変わる。 */}
           {[[60, 180], [330, 180], [60, 720], [330, 720]].map(([x, y]) => (
-            <span key={`${x}-${y}`} style={{ width: 176 }}>
+            <div key={`${x}-${y}`} style={{ width: 176 }}>
               <Nipper open={1} away={awayAt(x, y)} />
-            </span>
+            </div>
           ))}
         </div>
       </div>

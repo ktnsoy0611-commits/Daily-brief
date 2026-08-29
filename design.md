@@ -5,6 +5,7 @@
 ★段を増やさないこと。**目盛りの外に居てよいもの**は §7。段を決めた経緯は
 `docs/project_knowledge.md` §3。
 ★入れないもの … shadcn/ui・Tailwind・Framer Motion・`layoutId`・CSS の 3D 変形
+（★**WebGL は別件**で、使ってよい。改札鋏は three.js で描いている ―― 第17巡）
 （`perspective` / `rotateX/Y`）。理由は `docs/archive/shell-redesign-2026-08.md` §65。
 
 ---

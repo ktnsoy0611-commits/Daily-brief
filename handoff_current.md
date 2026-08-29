@@ -135,14 +135,11 @@
 - **9巡目**… 輪郭を描くのをやめ、立体を組んで面を落とす作りへ。動きは `lib/spring.ts`
   の減衰振動＋rAF（framer-motion は入れない）。★JSX 側は「いまのバネの値」で書く。
 
-### ★★アプリ全体のハイドレーションが壊れていたのを直した（`app/layout.tsx`）
+### ★★`app/layout.tsx` のハイドレーションが壊れていた（全画面に効く修正）
 
 `<style>` を `<html>` の直下に `precedence` 無しで置いていた。不正な HTML なので
-**ハイドレーションが失敗し、クライアント側が丸ごと動かなくなる**。
-`href="tokens" precedence="default"` を付けて React に `<head>` へ持ち上げさせた。
-★これは Explore とは無関係の**全画面に効く**修正。
-
----
+ハイドレーションが失敗し、クライアント側が丸ごと動かなくなる。
+`href="tokens" precedence="default"` を付けて `<head>` へ持ち上げさせた。
 
 ## 次の一手
 

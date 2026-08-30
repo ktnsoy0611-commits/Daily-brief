@@ -17,7 +17,7 @@ export type TabIconName =
   | "list" | "pie" | "layers" | "pin"
   | "drift" | "pile"
   | "pen" | "dots" | "cassette"
-  | "sparkle" | "plus" | "gear" | "record";
+  | "sparkle" | "plus" | "gear" | "record" | "ticket";
 
 const S = 24;
 // 未選択のアイコンの色。**不透明**にすること(半透明にすると上記の
@@ -47,6 +47,18 @@ function shapes(name: TabIconName, c: string) {
             <rect x="8.8" y="10.2" width="12.8" height="3.6" rx="1.8" />
             <circle cx="4.4" cy="18" r="1.9" />
           </g>
+        </>
+      );
+    // ★確認(DEV) = 券。**面だけ**で描く(輪郭線を引かない)。左右の縁に鋏痕の
+    //   切り欠きを入れて「入鋏された券」にする。切り欠きは**地を抜く**のではなく
+    //   薄いほうの段で描く ― タブバーの地は選択状態で変わるので、抜くと形が壊れる。
+    case "ticket":
+      return (
+        <>
+          <rect x="3.4" y="4.6" width="17.2" height="14.8" rx="1.6" fill={c} opacity={PALE} />
+          <rect x="3.4" y="4.6" width="17.2" height="6.4" rx="1.6" fill={c} />
+          <circle cx="3.4" cy="12" r="2.1" fill={c} />
+          <circle cx="20.6" cy="12" r="2.1" fill={c} />
         </>
       );
     // ゴール = 円グラフ(達成の度合い)。

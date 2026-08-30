@@ -463,7 +463,9 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
 // (紙色・墨色・影・角丸・カードの語彙)を共有し、違うのは背景色と中身だけ。
 export type AppId = "tasks" | "life" | "journal";
 
-export type LifeTabId = "brief" | "stock" | "goals" | "execute";
+// ★`life-dev` は**確認用**（第70巡）。刷新した券と鋏を実機で見るためだけの
+//   タブなので、Explore の刷新が終わったら**型ごと消す**。
+export type LifeTabId = "brief" | "stock" | "goals" | "execute" | "life-dev";
 // ★タスクは2タブ(2026-08-12にユーザー確定)。日付での区切り(今日/すべて)は
 // 廃止した。「何が差し迫っているか」は日付の文字ではなく**物体の大きさと
 // 山の高さ**が語る。drift=未確定の候補が無重力で漂う / gravity=確定した

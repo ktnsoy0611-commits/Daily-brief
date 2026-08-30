@@ -60,6 +60,9 @@ export const APPS: AppDef[] = [
       { id: "goals", label: "ゴール", en: "GOALS", icon: "pie" },
       { id: "stock", label: "ストック", en: "STOCK", icon: "layers" },
       { id: "execute", label: "プラン", en: "PLAN", icon: "pin" },
+      // ★★**確認用**（第70巡）。刷新した券と鋏を実機で見るためだけのタブ。
+      //   Explore の刷新が終わったら**この行ごと消す**。
+      { id: "life-dev", label: "確認", en: "DEV", icon: "ticket" },
     ],
   },
 ];

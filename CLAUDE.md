@@ -75,7 +75,11 @@
 - `components/tabs/GoalsTab.tsx` — ゴールのバインダーとチェックイン。
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
   入口は**右下の輪の SETTING だけ**（`CreateMenu`）。
-- ★**刷新中の部品**（まだ `/dev/explore` にしか無い。4タブは手つかず）…
+- ★`components/tabs/DevStageTab.tsx` — **開発用の `DEV` タブ**（第70巡）。刷新した
+  券と鋏を**実機で**見るためだけに在る。★★Explore の刷新が本物になったら、
+  このファイル／`lib/apps.ts` の `life-dev`／`lib/types.ts` の `LifeTabId`／
+  `components/TabIcons.tsx` の `ticket` を**まとめて消す**。
+- ★**刷新中の部品**（`/dev/explore` と `DEV` タブにしか無い。4タブは手つかず）…
   `components/explore/Ticket.tsx`（券）/ `PunchMark.tsx`（鋏痕）/ `lib/ticket.ts`、
   改札鋏（★**three.js／WebGL**。第17巡に SVG の自前投影をやめた）…
   `components/explore/Nipper.tsx`（画角・器・動き）／`NipperViews.tsx`（三面図。開発用）

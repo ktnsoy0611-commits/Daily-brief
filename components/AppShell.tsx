@@ -14,6 +14,7 @@ import { useVoiceRecorder } from "@/components/VoiceRecorder";
 import { VoiceOverlay } from "@/components/VoiceStudio";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
+import { DevStageTab } from "@/components/tabs/DevStageTab";
 import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
@@ -197,6 +198,9 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 {tab === "stock" && <StockTab {...tabProps} />}
                 {tab === "goals" && <GoalsTab {...tabProps} />}
                 {tab === "execute" && <ExecuteTab {...tabProps} />}
+                {/* ★確認用（第70巡）。刷新した券と鋏を実機で見るためだけのタブ。
+                    Explore の刷新が終わったら**この行ごと消す**。 */}
+                {tab === "life-dev" && <DevStageTab />}
                 {/* ★タスクアプリは**4層をまとめて持つ1枚の器**(縦のカメラ)。
                     タブを押しても指で払っても、起きるのはカメラの上下移動だけ。
                     active(このアプリが表示中か)は、物理の rAF と候補の揺れを

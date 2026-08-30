@@ -282,34 +282,69 @@ export function applySteel(m: MeshToonMaterial, u: SteelBounce = steelBounce()) 
        uniform vec3 uBounceAt;
        uniform float uBounceAmt;
        float nHash( float p ) { p = fract( p * 0.1031 ); p *= p + 33.33; p *= p + p; return fract( p ); }
-       float nLine( float x ) { float i = floor( x ), f = fract( x );
-         f = f * f * ( 3.0 - 2.0 * f );
-         return mix( nHash( i ), nHash( i + 1.0 ), f ); }
        vec2 rot2( vec2 v, float a ) { float c = cos( a ), s = sin( a );
          return vec2( c * v.x - s * v.y, s * v.x + c * v.y ); }
-       // ★★**すり傷は1層＝1つの向き＋1つの太さ**。層を重ねて多方向にする。
-       //   seg が**線を短く切る** ―― これが無いと端から端まで走る筋になり、
-       //   実物（1本1本が短く、太さがまちまち）とまるで違う（第70巡・写真が正）。
-       float scLayer( vec3 o, float ang, float freq, float cut, float seed ) {
-         vec2 q = rot2( o.xy, ang );
-         float line = smoothstep( cut, 1.0, nLine( q.y * freq + o.z * 0.20 + seed ) );
-         float seg  = smoothstep( 0.42, 0.88, nLine( q.x * freq * 0.13 + seed * 0.7 ) );
-         return line * seg;
+       // ★★★**2次元**の値雑音。★1次元の雑音を「x と y の一次結合」で引くと
+       //   **等値線が必ず平行な直線になる** ＝ 斜めの縞そのもの。うねりに1次元を
+       //   使っていたのが「規則的に斜めのライン」の正体だった（第70巡に判明）。
+       float nHash2( vec2 p ) { p = fract( p * vec2( 0.1031, 0.1030 ) );
+         p += dot( p, p.yx + 33.33 ); return fract( ( p.x + p.y ) * p.x ); }
+       float vnoise( vec2 p ) {
+         vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+         return mix( mix( nHash2( i ), nHash2( i + vec2( 1.0, 0.0 ) ), f.x ),
+                     mix( nHash2( i + vec2( 0.0, 1.0 ) ), nHash2( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
        }
-       // ★向きは等間隔にしない（等間隔は格子に見える）。刻みが細かい層ほど細い線。
-       float scratchAt( vec3 o ) {
-         return scLayer( o, 0.30, 0.085, 0.78, 11.0 ) * 1.00
-              + scLayer( o, 1.15, 0.170, 0.82, 37.0 ) * 0.85
-              + scLayer( o, 2.06, 0.260, 0.85, 61.0 ) * 0.70
-              + scLayer( o, 2.76, 0.420, 0.87, 89.0 ) * 0.55;
-       }
-       // ★**うねり** … 鍛えた面のゆるい濃淡（−0.5〜0.5）。周期は 100 単位ほど。
-       //   ★2方向にする（1方向だと刷毛目に見える）。
+       // ★**うねり** … 鍛えた面のゆるい濃淡（−0.5〜0.5）。向きを持たない。
+       //   ★段ごとに**回してから**重ねる（格子の目が水平垂直にそろって見えるのを防ぐ）。
        float sheenAt( vec3 o ) {
-         vec2 a = rot2( o.xy, 0.55 ), b = rot2( o.xy, 2.30 );
-         return nLine( a.y * 0.011 + a.x * 0.0016 ) * 0.40
-              + nLine( b.y * 0.019 + b.x * 0.0024 ) * 0.34
-              + nLine( a.y * 0.041 + o.z * 0.02 ) * 0.26 - 0.5;
+         vec2 p = o.xy * 0.010 + o.z * 0.004;
+         return vnoise( p ) * 0.55
+              + vnoise( rot2( p, 2.1 ) * 2.7 ) * 0.30
+              + vnoise( rot2( p, 4.3 ) * 6.1 ) * 0.15 - 0.5;
+       }
+       // ★★★**すり傷は「セルに1本」**（第70巡）。横切る軸をセルに割り、位置・太さ・
+       //   長さをセル番号のハッシュから引く。**なめらかな雑音を閾値で切る**やり方だと
+       //   線がほぼ等間隔に並び、太さも一様になって不自然だった。
+       // ★★**太さと長さは「図の単位」で決める**（工具は 633 × 898）。刻みに対する
+       //   割合で決めると、細かい層ほど線が画素より細くなり**点々にしか見えない**
+       //   （第70巡に実測）。pitch＝筋の間隔、len＝1本の長さ。
+       // ★★★**軸は3次元で持つ**（ax＝筋に沿う向き／ay＝筋を横切る向き。互いに直交）。
+       //   図の xy 面だけで回していたときは、**小口の面では x がほぼ一定**になるため
+       //   1本が面を端から端まで貫く**長い直線**にしかならなかった（第70巡に実測 ――
+       //   平らな面では細かいのに、小口だけ白い筋が数本走る）。層ごとに軸を
+       //   3次元でばらけさせると、どの向きの面にも短い筋がいろんな向きで乗る。
+       float scLayer( vec3 o, vec3 ax, vec3 ay, float pitch, float len, float seed ) {
+         float y = dot( o, ay ) / pitch;
+         float cell = floor( y );
+         float h1 = nHash( cell + seed ), h2 = nHash( cell * 1.7 + seed ), h3 = nHash( cell * 3.3 + seed );
+         float pos = cell + 0.18 + h1 * 0.64;                  // セルの中で位置をばらす
+         float wid = mix( 1.2, 5.0, h2 * h2 ) / pitch;         // ★二乗＝細いのが多く太いのは稀
+         float line = smoothstep( wid, 0.0, abs( y - pos ) );
+         float u = dot( o, ax ) / len + h3 * 20.0;
+         float k = floor( u ), t = fract( u );
+         float on = step( nHash( k * 5.1 + cell ), 0.13 );     // ★8本に7本は空き＝疎ら
+         // ★★**1本ごとに長さと濃さを変える**。枠の長さをそのまま使うと、どの筋も
+         //   同じ長さ・同じ濃さで並び、短い棒が規則正しく散った模様に見える
+         //   （第70巡に実測）。fil＝枠のうち実際に埋める割合、amp＝濃さ（二乗＝
+         //   薄いのが多く、はっきり見えるのは稀）。
+         float fil = mix( 0.30, 1.00, nHash( k * 2.3 + cell + seed ) );
+         float amp = 0.22 + 0.78 * pow( nHash( k * 9.7 + cell ), 2.0 );
+         float taper = smoothstep( 0.0, 0.20 * fil, t ) * smoothstep( fil, fil * 0.74, t );
+         return line * on * amp * taper;
+       }
+       // ★角度も間隔も**等間隔にしない**（等間隔は格子に見える）。
+       // ★★軸は **x・y・z のどの向きの面に落としても、ax と ay の影が平行に
+       //   ならない**ように選ぶ（手で選び、下の条件で検算した）。
+       //   平行になった面では **u（＝筋に沿う座標）が一定**になり、1本が面を
+       //   端から端まで貫く**長い直線**が等間隔に並ぶ（第70巡に実測 ―― 正面の
+       //   面に、うすい横線が何本も走った）。条件は「面へ落とした長さ ≧ 0.42、
+       //   2本のなす角の余弦 ≦ 0.80」。
+       float scratchAt( vec3 o ) {
+         return scLayer( o, vec3( -0.69,  0.01, -0.72 ), vec3( -0.64, -0.48,  0.60 ), 34.0, 46.0, 11.0 ) * 1.00
+              + scLayer( o, vec3( -0.15,  0.65, -0.75 ), vec3(  0.77,  0.55,  0.32 ), 21.0, 33.0, 37.0 ) * 0.85
+              + scLayer( o, vec3(  0.81, -0.40,  0.42 ), vec3( -0.13,  0.59,  0.80 ), 15.0, 25.0, 61.0 ) * 0.75
+              + scLayer( o, vec3(  0.28, -0.71,  0.64 ), vec3( -0.82,  0.17,  0.55 ), 11.0, 19.0, 89.0 ) * 0.60
+              + scLayer( o, vec3( -0.77, -0.48, -0.42 ), vec3( -0.12,  0.76, -0.63 ),  8.0, 14.0, 53.0 ) * 0.45;
        }
        // 場の傾き。★**うねりとすり傷は刻みが2桁違う**ので、別々に取って
        //   別々の強さで法線へ効かせる（1つにまとめると細かいほうが全部食う）。

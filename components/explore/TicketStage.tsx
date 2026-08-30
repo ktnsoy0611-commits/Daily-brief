@@ -241,8 +241,14 @@ export function TicketStage({
 
   return (
     <div style={{ position: "relative", width: w, height: h, overflow: "hidden" }}>
-      {/* 券の版面（DOM のまま）。★canvas は券の面のところだけ穴が空いている。 */}
-      <span style={{ position: "absolute", left: card.x, top: card.y, width: card.w }}>
+      {/* 券の版面（DOM のまま）。★canvas は券の面のところだけ穴が空いている。
+          ★★★`isolation` で**積み重ねの文脈を閉じる**。券の中には `zIndex` を
+          持った要素（写真・欄・鋏痕）があり、閉じないと**それらが canvas より
+          上へ出て、鋏の手前に文字が浮く**（第70巡に実際にそうなった）。 */}
+      <span style={{
+        position: "absolute", left: card.x, top: card.y, width: card.w,
+        isolation: "isolate",
+      }}>
         {children}
       </span>
       <div ref={host} aria-hidden

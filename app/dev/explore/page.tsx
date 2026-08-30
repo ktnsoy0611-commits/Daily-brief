@@ -124,17 +124,20 @@ const CARD = {
 /** 3D の場では**図そのものの幅**を渡す（`STAGE_NIPPER` は余白こみの器の幅）。 */
 const STAGE_NIPPER_FIG = 260;
 /**
- * ★鋏は**券の右下**。頭が画面の中に入り、**柄は下の画面外へ抜ける**。
- * 頭は上・柄は下のまま、**平らな面だけを左（券のほう）へ回す**（`yaw`）。
- * ★80° はユーザー指定（第70巡）。ほぼ真横向きになる。
+ * ★鋏の**定位置は券の右下で、券に被らない**（第70巡・ユーザー確定）。
+ * 頭が画面の中に入り、**柄は下の画面外へ抜ける**。頭は上・柄は下のまま、
+ * **平らな面だけを左（券のほう）へ回す**（`yaw`）。★80° はユーザー指定。
  */
-const STAGE_SHOTS = [80].map((yaw) => ({
-  label: `面を左へ ${yaw}°`,
-  nipper: {
-    nose: { x: 292, y: 556 }, w: STAGE_NIPPER_FIG, open: 1,
-    z: 60, yaw, tilt: 12,
-  },
-}));
+const NIPPER_YAW = 80;      // ★ユーザー指定（第70巡）
+const NIPPER_TILT = 22;     // 頭が左へ倒れる角
+const STAGE_SHOTS = [
+  { label: "定位置（券に被らない右下）",
+    nipper: { nose: { x: 312, y: 726 }, w: STAGE_NIPPER_FIG, open: 1, z: 60,
+      yaw: NIPPER_YAW, tilt: NIPPER_TILT } },
+  { label: "券の縁へ寄せたところ",
+    nipper: { nose: { x: 330, y: 470 }, w: STAGE_NIPPER_FIG, open: 0, closing: true, z: 0,
+      yaw: NIPPER_YAW, tilt: NIPPER_TILT } },
+];
 
 export default function DevExplore() {
   return (

@@ -191,11 +191,10 @@
 - ブリーフ … `lib/briefPipeline.ts`（`fetchSite` / `fetchDirect` / `jinaSlot`）
   ／ 単体チェック `npx tsx tools/jina-check.mjs`
 - 検証 … 開発サーバーは `NODE_EXTRA_CA_CERTS` と `NODE_OPTIONS=--use-env-proxy` の
-  **両方**が要る（片方だと next/font/google が落ちてページが 500）。
-  Playwright は `executablePath: "/opt/pw-browsers/chromium"`、
-  **`localhost` で開く**（`127.0.0.1` だと Next が開発用の資材を弾く）。
+  **両方**が要る（片方だと next/font/google が落ちて 500）。Playwright は
+  `executablePath: "/opt/pw-browsers/chromium"`、**`localhost` で開く**。
   ★**WebGL を撮るには** `--use-gl=angle --use-angle=swiftshader
-  --enable-unsafe-swiftshader` が要る（無いと canvas が空で返る）。
+  --enable-unsafe-swiftshader`（無いと canvas が空で返る）。
   ★★測り方の罠 … ①dispatch 直後に DOM を読むと rAF 前の値 ②遠い行を測ると
   「連鎖」の遅れを不具合と読み違える ③`waitForTimeout(40)` は 2.4 コマぶんしか
   無い ④★**同じ式から書いた2つの値を突き合わせても検証にならない** ―

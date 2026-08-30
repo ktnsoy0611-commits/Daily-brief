@@ -456,8 +456,13 @@ export const TICKET_DOMAIN_COLOR: Record<ItemDomain, string> = {
 export const TICKET_PAPER = PAPER;
 // 券が乗る台。切り欠きから透けて見えるのはこの色。
 export const TICKET_DECK = "#26251F";
-// 券の縦横比。★カード(3/4)でも写真(5/7)でもなく、**券の比**。
-export const TICKET_ASPECT = "13 / 21";
+// 券の縦横比。★★第72巡に **13/21(高さ 1.62倍) → 3/4(1.33倍)** へ
+// (ユーザー指定「縦の比率が大きいのがあまり可愛くない」)。
+// ★背が低くなったぶん、写真は**余りを全部取る**形で大きく取れる
+// (`components/explore/samples/TicketParts.tsx` の `Figure`)。
+export const TICKET_ASPECT = "3 / 4";
+// ★数で要るとき用。`TICKET_ASPECT` と**同じ比**をここから引く(2か所に書かない)。
+export const TICKET_H_PER_W = 4 / 3;
 // ミシン目の穿孔。★彩度の高い紙の上に置くので、黒の薄めで足りる。
 export const TICKET_PERF = "rgba(26,26,24,0.34)";
 

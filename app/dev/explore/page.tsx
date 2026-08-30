@@ -2,7 +2,7 @@
 
 import { SPACE, TYPE, TRACK, WEIGHT, LEAD } from "@/lib/tokens";
 import {
-  BG, INK, ITEM_DOMAINS, KIND_DOMAIN, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
+  BG, INK, ITEM_DOMAINS, KIND_DOMAIN, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE, TICKET_H_PER_W,
 } from "@/lib/constants";
 import { PunchGlyph } from "@/components/explore/PunchMark";
 import { Nipper, NIPPER_ASPECT, NIPPER_NOSE } from "@/components/explore/Nipper";
@@ -114,7 +114,7 @@ function Label({ children }: { children: React.ReactNode }) {
  * ★3D の場に置く券。**ステージのど真ん中**に置く ―― カメラの焦点（＝消失点）は
  * 画面の中心なので、こうすると「券の真正面から見ている」ことになる。
  */
-const CARD_H = Math.round(STAGE_TICKET * 21 / 13);   // ★目盛りの外（TICKET_ASPECT の比）
+const CARD_H = Math.round(STAGE_TICKET * TICKET_H_PER_W);
 const CARD = {
   x: Math.round((STAGE.w - STAGE_TICKET) / 2),
   y: Math.round((STAGE.h - CARD_H) / 2),

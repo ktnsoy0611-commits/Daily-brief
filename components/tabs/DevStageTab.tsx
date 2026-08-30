@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import {
   BG, INK, KIND_DOMAIN, LATIN, MUTED, PAPER, SANS, SECOND,
-  TICKET_DOMAIN_COLOR, navHeightPx,
+  TICKET_DOMAIN_COLOR, TICKET_H_PER_W, navHeightPx,
 } from "@/lib/constants";
 import { TicketStage } from "@/components/explore/TicketStage";
 import { TICKET_SAMPLES } from "@/components/explore/samples";
@@ -123,12 +123,8 @@ function Readout({ v }: { v: Record<string, number> }) {
 
 /**
  * 3D の場に載せる券。★**案が決まったらここの id を差し替える**。
- * ★★いまは **D**。現行（案0）は 300 × 485 で組んであり、**290px より細くすると
- *   中身が器からあふれる**（実測 … 275px で 15px、240px で 64px はみ出す）。
- *   刷新した案 A〜F はどれも **260px まで**崩れない（F は 220px まで）ので、
- *   「券を小さくする」というユーザー指定は刷新した案でしか満たせない。
  */
-const STAGE_SAMPLE = "D";
+const STAGE_SAMPLE = "N1";
 const Baseline = (TICKET_SAMPLES.find((s) => s.id === STAGE_SAMPLE) ?? TICKET_SAMPLES[0]).Render;
 
 /** 券と鋏の3D。★**器そのものを画面にする**（`full-bleed` ＋ `100dvh`）。 */
@@ -160,7 +156,7 @@ function Stage() {
   const inset = size ? Math.max(0, (size.w - (window.innerWidth || size.w)) / 2) : 0;
   const sw = size ? size.w - inset * 2 : 0;
   const cardW = Math.round(sw * CARD_W);
-  const cardH = Math.round(cardW * (21 / 13));
+  const cardH = Math.round(cardW * TICKET_H_PER_W);
   /** ★タブバーの裏を数に入れない ―― 券も鋏も**見えている範囲**の中に置く。 */
   const view = size ? size.h - nav : 0;
   const cardY = Math.round(view * CARD_MID - cardH / 2);

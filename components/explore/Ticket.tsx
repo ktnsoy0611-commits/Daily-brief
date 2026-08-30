@@ -3,7 +3,7 @@
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import {
   INK, LATIN, SANS, SOFT_SHADOW_LG,
-  TICKET_ASPECT, TICKET_DECK, TICKET_DOMAIN_COLOR, TICKET_PERF,
+  TICKET_DECK, TICKET_DOMAIN_COLOR, TICKET_PERF,
   itemKindOf, KIND_DOMAIN,
 } from "@/lib/constants";
 import { PAPER_SHEET_SRC } from "@/lib/paperTexture";
@@ -65,6 +65,10 @@ const BARCODE_H = 12;      // 半券のバーコードの高さ
 const PHOTO_PCT = 36;      // 写真の高さ（券の高さに対する％。横長の帯になる）
 const LABEL_W = 64;        // 欄の左のラベル列の幅
 const PAPER_MULT = 0.42;   // 紙の目の強さ（multiply）
+/** ★★**旧版の比**。新しい比は `TICKET_ASPECT`（3/4）で、見本帳の3案がそれを使う。
+ *  この版は 300 × 485 で組んであり 3/4 では中身が入らないので、差し替わるまで
+ *  自分の比を持たせておく（第72巡）。 */
+const OLD_ASPECT = "13 / 21";  // ★目盛りの外（旧版の版面の比）
 
 /** 欄の左に立つ、和文＋欧文の2行ラベル。Vitsœ の独／英の対と同じ役。 */
 function FieldLabel({ ja, en }: { ja: string; en: string }) {
@@ -124,7 +128,7 @@ export function Ticket({ data, punch, deck = TICKET_DECK, width }: {
     <div style={{
       position: "relative",
       width: width ?? "100%",
-      aspectRatio: TICKET_ASPECT,
+      aspectRatio: OLD_ASPECT,
       background: stock,
       borderRadius: RADIUS.sm,
       boxShadow: SOFT_SHADOW_LG,

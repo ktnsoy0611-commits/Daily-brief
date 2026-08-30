@@ -102,8 +102,8 @@ const ON_G = PAPER;
 const DIM = "rgba(250,250,249,0.44)";
 /** カードの地。 */
 const CELL = "rgba(250,250,249,0.07)";
-/** 赤の相方(淡い赤)。塗った赤の上に乗る文字。 */
-const RUST_INK = SCHEME.vermilion.ink;
+/** 危険の相方(サブ)。塗った錆橙の上に乗る文字。 */
+const RUST_INK = SCHEME.rust.sub;
 /** 浮かせるもの(カレンダー・ダイアル)の地。 */
 const FLOAT = CHARCOAL;
 /** 今日のマスの塗り。選んでいる日(アクセント)と混ざらないよう沈ませる。 */

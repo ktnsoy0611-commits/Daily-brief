@@ -21,8 +21,10 @@ import type { TaskTag } from "./types";
 // 作らないこと**(2026-08-17確定)。
 export interface TagDef { id: TaskTag; label: string; color: string; ink: string; face: number }
 
-const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }, face: number): TagDef =>
-  ({ id, label, color: p.bg, ink: p.ink, face });
+// ★図形に載るのは**タグの名前＝大きな文字**なので、`ink` は組の**サブ**を採る
+//   （本文の色ではない。使い分けの理由は `lib/constants.ts` の `SCHEME` の見出し）。
+const tag = (id: TaskTag, label: string, p: { main: string; sub: string }, face: number): TagDef =>
+  ({ id, label, color: p.main, ink: p.sub, face });
 
 // ★★★第73巡に**ドメインと重ならない5色**へ振り直した。
 //   それまでは sky / forest / yellow / red / orange で、そのうち3つ（sky・yellow・
@@ -31,12 +33,15 @@ const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }, face: n
 //   「9色を9つの役へ配るだけ」で済む。
 //   ★TASK と EXPLORE は別のアプリなので色を借りても混同はしないが、
 //     **同じ色が2つの意味を持つ状態**は、色を選び直すときに必ず詰まる。
+// ★★第75巡に色を差し替えた。どの組をどのタグへ当てるかは
+//   **修正前（第73巡）の色との OKLab 距離が最小**になる組み合わせを解いて決めた
+//   ―― ユーザー指定「修正前の色に近いものを図形に割り当てる」。
 export const TASK_TAGS: TagDef[] = [
-  tag("work", "WORK", SCHEME.teal, 1),          // ティール × 白 / ゴシック700
-  tag("life", "LIFE", SCHEME.green, 3),         // 緑 × 白       / 丸ゴシック500
-  tag("wellness", "WELLNESS", SCHEME.mint, 4),  // ミント × 黒   / Dela(極太)
-  tag("social", "SOCIAL", SCHEME.vermilion, 5), // 朱 × 黒       / M PLUS 1 800
-  tag("growth", "GROWTH", SCHEME.iris, 2),      // 藤 × 黒       / ゴシック700斜体
+  tag("work", "WORK", SCHEME.pine, 1),        // 深緑 × 淡桃  / ゴシック700
+  tag("life", "LIFE", SCHEME.sage, 3),        // セージ × 墨緑 / 丸ゴシック500
+  tag("wellness", "WELLNESS", SCHEME.iris, 4),// 藤 × 濃藍    / Dela(極太)
+  tag("social", "SOCIAL", SCHEME.rust, 5),    // 錆橙 × 淡黄  / M PLUS 1 800
+  tag("growth", "GROWTH", SCHEME.crimson, 2), // 深紅 × サーモン / ゴシック700斜体
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>

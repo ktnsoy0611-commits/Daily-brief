@@ -1,13 +1,26 @@
 "use client";
 
+import { createContext, useContext } from "react";
+
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import {
   INK, KIND_DOMAIN, LATIN, SANS, SOFT_SHADOW_LG,
   TICKET_ASPECT, TICKET_DECK, itemKindOf,
 } from "@/lib/constants";
 import { grainStyle, useDevicePixelRatio } from "@/lib/printGrain";
+import { bodyInkOn, DOMAIN_SUB } from "@/lib/palette";
 import { PunchNotch } from "../PunchMark";
 import type { TicketData, TicketPunch } from "../Ticket";
+
+// ★★**紙の色から「サブ」と「本文の色」を1か所で決め、下の段が受け取る**（第75巡）。
+//   ユーザー指定「メインと、それぞれに対応するサブカラーをセットで使う」。
+//   ★★サブは**大きな文字だけ**（題 `head` と印 `nano`、それに罫）。要約は
+//     `body`(13) なので `INK`／`PAPER` を使う ―― 参照画像のサブは表示用の色で、
+//     組によっては本文に要る 4.5 に届かない（実測 2.98〜6.78）。
+//   ★各案が `ink` を渡さないかぎりこの値が既定になるので、5案は素のままでよい。
+interface Pair { sub: string; body: string }
+const PairCtx = createContext<Pair>({ sub: INK, body: INK });
+const usePair = () => useContext(PairCtx);
 
 // ★★★**券の見本帳の共通部品**（2026-08-31・第72巡に組み直し）。
 //
@@ -95,17 +108,19 @@ export function Sheet({ data, punch, deck = TICKET_DECK, width, stock, children 
   children: React.ReactNode;
 }) {
   const domain = KIND_DOMAIN[data.kind];
+  // ★紙が案ごとに違う（写真の上・色の面の上）ので、**その案が敷いた色**から引く。
+  const pair: Pair = { sub: DOMAIN_SUB[domain], body: bodyInkOn(stock) };
   const notchPos: Record<string, React.CSSProperties> = {
     left: { left: 0, top: `${punch ? punch.t * 100 : 0}%`, transform: "translateY(-50%)" },
     right: { right: 0, top: `${punch ? punch.t * 100 : 0}%`, transform: "translateY(-50%)" },
     top: { top: 0, left: `${punch ? punch.t * 100 : 0}%`, transform: "translateX(-50%)" },
     bottom: { bottom: 0, left: `${punch ? punch.t * 100 : 0}%`, transform: "translateX(-50%)" },
   };
-  return (
+  const sheet = (
     <div style={{
       position: "relative", width: width ?? "100%", aspectRatio: TICKET_ASPECT,
       background: stock, borderRadius: RADIUS.sm, boxShadow: SOFT_SHADOW_LG,
-      display: "flex", flexDirection: "column", overflow: "hidden", color: INK,
+      display: "flex", flexDirection: "column", overflow: "hidden", color: pair.body,
       // ★券の中には zIndex を持つ要素があるので、積み重ねの文脈をここで閉じる
       //   （第70巡に、閉じていなくて文字だけが 3D の canvas を突き抜けた）。
       isolation: "isolate",
@@ -124,6 +139,7 @@ export function Sheet({ data, punch, deck = TICKET_DECK, width, stock, children 
       )}
     </div>
   );
+  return <PairCtx.Provider value={pair}>{sheet}</PairCtx.Provider>;
 }
 
 /** ★**左右の余白を持つのはこの器だけ**（design.md §2）。版面の左端はここで1本になる。 */
@@ -137,8 +153,9 @@ export function Pad({ children, style }: { children: React.ReactNode; style?: Re
 }
 
 /** 罫。★`Pad` の外に置けば**紙の端まで**走る。 */
-export function Rule({ weight = RULE_HAIR, ink = INK }: { weight?: number; ink?: string }) {
-  return <span aria-hidden style={{ flex: "none", height: weight, background: ink }} />;
+export function Rule({ weight = RULE_HAIR, ink }: { weight?: number; ink?: string }) {
+  const pair = usePair();
+  return <span aria-hidden style={{ flex: "none", height: weight, background: ink ?? pair.sub }} />;
 }
 
 /** 印刷の粒。★**色のすぐ上・文字の下**に敷く。 */
@@ -156,12 +173,13 @@ export function Grain() {
  *   分かりません」）。`SOON` は「会期が近い」の曖昧な合図、`Nº` は券らしさの
  *   飾りで意味が無かった。**券らしさはギザギザが担う**ので、記号は要らない。
  */
-export function Mark({ data, ink = INK }: { data: TicketData; ink?: string }) {
+export function Mark({ data, ink }: { data: TicketData; ink?: string }) {
+  const pair = usePair();
   return (
     <span style={{
       flex: "none",
       fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
-      letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: ink,
+      letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: ink ?? pair.body,
       textTransform: "uppercase",
     }}>{data.handwritten ? "Self issued" : itemKindOf(data.kind).en}</span>
   );
@@ -175,14 +193,15 @@ export function Mark({ data, ink = INK }: { data: TicketData; ink?: string }) {
  *   `head`(20) なら12文字入るので、たいていの題が1行に収まる。
  *   主役は**写真**なので、題がいちばん大きい文字であれば足りる。
  */
-export function Title({ children, ink = INK, style }: {
+export function Title({ children, ink, style }: {
   children: React.ReactNode; ink?: string; style?: React.CSSProperties;
 }) {
+  const pair = usePair();
   return (
     <span style={{
       flex: "none",
       fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.black,
-      lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink,
+      lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink ?? pair.sub,
       display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
       ...style,
     }}>{children}</span>
@@ -194,14 +213,15 @@ export function Title({ children, ink = INK, style }: {
  * （`body` は文章のための段）。★**3行**（ユーザー指定「文字は小さくて良いから
  * 3行くらいは入るように」）。★ここが写真の大きさを食う。
  */
-export function Lede({ children, ink = INK, lines = 3, style }: {
+export function Lede({ children, ink, lines = 3, style }: {
   children: React.ReactNode; ink?: string; lines?: number; style?: React.CSSProperties;
 }) {
+  const pair = usePair();
   return (
     <span style={{
       flex: "none",
       fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text,
-      lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: ink,
+      lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: ink ?? pair.body,
       display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden",
       ...style,
     }}>{children}</span>
@@ -214,9 +234,11 @@ export function Lede({ children, ink = INK, lines = 3, style }: {
  * ★段は `small`(11) / `bold` / `flat` ―― **design.md §1 の表どおり**。
  *   要約（`body` 13 / `text`）より**小さく太い**ので、文章とデータが混ざらない。
  */
-export function Meta({ period, until, place, ink = INK, style }: {
+export function Meta({ period, until, place, ink, style }: {
   period: string; until?: string; place: string; ink?: string; style?: React.CSSProperties;
 }) {
+  const pair = usePair();
+  const c = ink ?? pair.body;
   return (
     <div style={{
       flex: "none", display: "flex", alignItems: "stretch", gap: SPACE.sm, ...style,
@@ -226,18 +248,18 @@ export function Meta({ period, until, place, ink = INK, style }: {
       <span style={{
         flex: "none", display: "flex", flexDirection: "column",
         padding: `${SPACE.xs}px ${SPACE.sm}px`,
-        border: `${RULE_HAIR}px solid ${ink}`,
+        border: `${RULE_HAIR}px solid ${c}`,
       }}>
         {/* ★数字だけ欧文＋等幅数字＋詰めた字間（design.md §1）。 */}
         <span style={{
           fontFamily: LATIN, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
-          lineHeight: LEAD.snug, letterSpacing: TRACK.tight, color: ink,
+          lineHeight: LEAD.snug, letterSpacing: TRACK.tight, color: c,
           fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
         }}>{period}</span>
         {until && (
           <span style={{
             fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
-            lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: ink,
+            lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: c,
             fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
           }}>– {until}</span>
         )}
@@ -246,7 +268,7 @@ export function Meta({ period, until, place, ink = INK, style }: {
       <span style={{
         flex: 1, minWidth: 0, display: "flex", alignItems: "center",
         fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
-        lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink,
+        lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: c,
       }}>
         <span style={{
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",

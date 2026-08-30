@@ -17,7 +17,11 @@ import type { NipperPiece, P2 } from "@/lib/nipperPath";
 // ★曲線は持たない（アプリ全体の語彙）。面取りは**1段**、管の断面は**8角形**。
 
 /** 面取りの幅（＝角を落とす量）。★1段だけ。深いと明るい帯が広く走る（12巡目の教訓）。 */
-export const CHAMFER = 7;
+export const CHAMFER = 11;
+/** 面取りの段数。★**1 にすると1枚の平面**＝第69巡までと同じ（後方互換）。 */
+const BEVEL_STEPS = 3;
+/** その場所の狭さのうち、面取りに使ってよい割合。★狭いところを守る上限。 */
+const BEVEL_ROOM = 0.34;
 
 // ---- 多角形の内側へ寄せる ------------------------------------------------
 /**
@@ -86,18 +90,28 @@ export function buildPart(
   const poly = flip ? [...input].reverse() : input;
   const mark = inner && (flip ? [...inner].reverse() : inner);
   const n = poly.length;
-  const body = poly;
-  // ★★**段の境目は面取りしない**（寄せ幅 0）。面取りを回すと段差が坂に見える ――
-  //   面取り 7 に対し段差は 17 しかないので、41% が斜面になっていた（19巡目に指摘）。
-  //   寄せ 0 の点では面取りの四角形が潰れる（面積 0）が、描画に害は無い。
-  const lip = inset(poly, (i) => (mark?.[i] ? 0 : chamfer));
+  // ★★**面取りは頂点ごとに上限を持つ**（第70巡）。半径を上げるだけだと
+  //   **狭いところが埋まる** ―― 紙のスリットは 20 しかないので、両側から 11 ずつ
+  //   取ると溝が消える。その場所の狭さを測って `BEVEL_ROOM` 倍までに抑える。
+  // ★★**段の境目は面取りしない**（0）。面取りを回すと段差が坂に見える ――
+  //   段差は 17 しかないので、7 でも 41% が斜面になる（19巡目に指摘）。
+  const wide = localWidth(poly);
+  const cAt = poly.map((_, i) => (mark?.[i] ? 0 : Math.min(chamfer, BEVEL_ROOM * wide[i])));
   const z = Math.max(half, chamfer * 1.2);
-  const rings: Ring[] = [
-    { pts: lip, z: lip.map(() => -z) },
-    { pts: body, z: body.map(() => -z + chamfer) },
-    { pts: body, z: body.map(() => z - chamfer) },
-    { pts: lip, z: lip.map(() => z) },
-  ];
+  // ★★**四分円に沿った輪**にする（1枚の平面だと稜線が硬い）。
+  //   θ = 90° · s/STEPS  →  寄せ = c(1 − cosθ)、z = ±(t − c + c·sinθ)
+  //   ★`BEVEL_STEPS = 1` にすると**以前とまったく同じ**（後方互換）。
+  const ringAt = (s: number, front: boolean): Ring => {
+    const th = (Math.PI / 2) * (s / BEVEL_STEPS), co = 1 - Math.cos(th), si = Math.sin(th);
+    return {
+      pts: inset(poly, (i) => cAt[i] * co),
+      z: poly.map((_, i) => (front ? 1 : -1) * (z - cAt[i] + cAt[i] * si)),
+    };
+  };
+  const rings: Ring[] = [];
+  for (let s = BEVEL_STEPS; s >= 0; s--) rings.push(ringAt(s, false));   // 奥の蓋 → 奥の本体
+  for (let s = 0; s <= BEVEL_STEPS; s++) rings.push(ringAt(s, true));    // 手前の本体 → 手前の蓋
+
   const v: number[] = [];
   const at = (r: Ring, i: number) => new Vector3(r.pts[i].x, r.pts[i].y, r.z[i]);
   for (let k = 0; k + 1 < rings.length; k++) {
@@ -108,7 +122,8 @@ export function buildPart(
     }
   }
   // 蓋。★凹んだ多角形なので earcut（three が持っている）で三角に割る。
-  const flat = lip.map((p) => new Vector2(p.x, p.y));
+  const lipRing = rings[rings.length - 1];
+  const flat = lipRing.pts.map((p) => new Vector2(p.x, p.y));
   const tris = ShapeUtils.triangulateShape(flat, []);
   const cap = (r: Ring, front: boolean) => {
     for (const t of tris) {
@@ -116,13 +131,33 @@ export function buildPart(
       for (const i of [a, b, c]) v.push(r.pts[i].x, r.pts[i].y, r.z[i]);
     }
   };
-  cap(rings[3], true);
+  cap(lipRing, true);
   cap(rings[0], false);
 
   const g = new BufferGeometry();
   g.setAttribute("position", new BufferAttribute(new Float32Array(v), 3));
   g.computeVertexNormals();   // 頂点を共有していないので**面ごとの法線**になる
   return g;
+}
+
+/**
+ * ★各頂点の「局所の狭さ」＝**輪郭に沿って十分離れた点までの最短距離**。
+ * 溝の壁なら向かいの壁まで、広い持ち手なら反対の縁までが返る。
+ * これで面取りの上限を場所ごとに決められる。
+ */
+function localWidth(poly: P2[]): number[] {
+  const n = poly.length;
+  const apart = Math.max(4, Math.round(n * 0.06));   // これより近い隣どうしは見ない
+  return poly.map((p, i) => {
+    let m = Infinity;
+    for (let j = 0; j < n; j++) {
+      const d = Math.abs(i - j);
+      if (Math.min(d, n - d) < apart) continue;
+      const q = Math.hypot(p.x - poly[j].x, p.y - poly[j].y);
+      if (q < m) m = q;
+    }
+    return m;
+  });
 }
 
 /** 直線で繋ぐ折れ線（★曲線にしない）。バネの針金の芯。 */
@@ -212,9 +247,23 @@ export function applyAppTones(m: MeshToonMaterial) {
  *   小口でも同じ密度の筋が入る。
  * ★向きは図の x へ 20° 寝かせた筋。工具は縦長なので、真横だと縞に見える。
  */
-export function applySteel(m: MeshToonMaterial) {
+export interface SteelBounce {
+  /** 券の紙の色。 */ uBounce: { value: Color };
+  /** 券の中心（★**視点座標**）。 */ uBounceAt: { value: Vector3 };
+  /** 強さ（0 で映り込み無し）。 */ uBounceAmt: { value: number };
+}
+
+/** 映り込みの入れ物を作る（既定は無し）。 */
+export const steelBounce = (): SteelBounce => ({
+  uBounce: { value: new Color(0xffffff) },
+  uBounceAt: { value: new Vector3(0, 0, 1) },
+  uBounceAmt: { value: 0 },
+});
+
+export function applySteel(m: MeshToonMaterial, u: SteelBounce = steelBounce()) {
   const P = NIPPER_PAINT;
   m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, u);
     shader.vertexShader = shader.vertexShader
       .replace("void main() {", "varying vec3 vObj;\nvarying vec3 vObjN;\nvarying vec3 vVpos;\nvoid main() {")
       .replace("#include <beginnormal_vertex>", "#include <beginnormal_vertex>\n\tvObjN = objectNormal;")
@@ -229,28 +278,38 @@ export function applySteel(m: MeshToonMaterial) {
        // ★normalMatrix は既定では**頂点側にしか宣言が無い**。値は three が毎回
        //   入れてくれるので、こちらで宣言すれば断片側でも使える。
        uniform mat3 normalMatrix;
+       uniform vec3 uBounce;
+       uniform vec3 uBounceAt;
+       uniform float uBounceAmt;
        float nHash( float p ) { p = fract( p * 0.1031 ); p *= p + 33.33; p *= p + p; return fract( p ); }
        float nLine( float x ) { float i = floor( x ), f = fract( x );
          f = f * f * ( 3.0 - 2.0 * f );
          return mix( nHash( i ), nHash( i + 1.0 ), f ); }
-       // ★刻みは**図の単位**（工具は 633 × 898）。向きは x へ 20° 寝かせる。
-       vec2 grain( vec3 o ) {
-         return vec2( dot( o.xy, vec2( 0.940, 0.342 ) ),                 // 筋に沿う
-                      dot( o.xy, vec2( -0.342, 0.940 ) ) + o.z * 0.35 ); // 筋を横切る
+       vec2 rot2( vec2 v, float a ) { float c = cos( a ), s = sin( a );
+         return vec2( c * v.x - s * v.y, s * v.x + c * v.y ); }
+       // ★★**すり傷は1層＝1つの向き＋1つの太さ**。層を重ねて多方向にする。
+       //   seg が**線を短く切る** ―― これが無いと端から端まで走る筋になり、
+       //   実物（1本1本が短く、太さがまちまち）とまるで違う（第70巡・写真が正）。
+       float scLayer( vec3 o, float ang, float freq, float cut, float seed ) {
+         vec2 q = rot2( o.xy, ang );
+         float line = smoothstep( cut, 1.0, nLine( q.y * freq + o.z * 0.20 + seed ) );
+         float seg  = smoothstep( 0.42, 0.88, nLine( q.x * freq * 0.13 + seed * 0.7 ) );
+         return line * seg;
+       }
+       // ★向きは等間隔にしない（等間隔は格子に見える）。刻みが細かい層ほど細い線。
+       float scratchAt( vec3 o ) {
+         return scLayer( o, 0.30, 0.085, 0.78, 11.0 ) * 1.00
+              + scLayer( o, 1.15, 0.170, 0.82, 37.0 ) * 0.85
+              + scLayer( o, 2.06, 0.260, 0.85, 61.0 ) * 0.70
+              + scLayer( o, 2.76, 0.420, 0.87, 89.0 ) * 0.55;
        }
        // ★**うねり** … 鍛えた面のゆるい濃淡（−0.5〜0.5）。周期は 100 単位ほど。
+       //   ★2方向にする（1方向だと刷毛目に見える）。
        float sheenAt( vec3 o ) {
-         vec2 g = grain( o );
-         return nLine( g.y * 0.010 + g.x * 0.0014 ) * 0.62
-              + nLine( g.y * 0.034 + g.x * 0.0035 ) * 0.38 - 0.5;
-       }
-       // ★**すり傷** … **疎らな細い線**だけを立てる（0〜1）。一様に敷くと
-       //   金属ではなく**布**に見える（第70巡に実測）。
-       float lineAt( float x ) { return smoothstep( 0.74, 1.0, nLine( x ) ); }
-       float scratchAt( vec3 o ) {
-         vec2 g = grain( o );
-         return lineAt( g.y * 0.085 + g.x * 0.004 ) * 0.62
-              + lineAt( g.y * 0.290 + g.x * 0.011 ) * 0.38;
+         vec2 a = rot2( o.xy, 0.55 ), b = rot2( o.xy, 2.30 );
+         return nLine( a.y * 0.011 + a.x * 0.0016 ) * 0.40
+              + nLine( b.y * 0.019 + b.x * 0.0024 ) * 0.34
+              + nLine( a.y * 0.041 + o.z * 0.02 ) * 0.26 - 0.5;
        }
        // 場の傾き。★**うねりとすり傷は刻みが2桁違う**ので、別々に取って
        //   別々の強さで法線へ効かせる（1つにまとめると細かいほうが全部食う）。
@@ -279,15 +338,24 @@ export function applySteel(m: MeshToonMaterial) {
          // ★傾きは**物の座標での差分**で取る（画面微分だと縮尺で見え方が変わり、
          //   線が点線に切れる ―― 第70巡に実測）。
          vec3 nO = normalize( vObjN
-                    - tang( gradOf( vObj, 40.0, 0 ), vObjN ) * 34.0    // うねり（ゆるい）
-                    - tang( gradOf( vObj,  3.0, 1 ), vObjN ) * 0.13 ); // すり傷（細い）
+                    - tang( gradOf( vObj, 40.0, 0 ), vObjN ) * 30.0    // うねり（ゆるい）
+                    - tang( gradOf( vObj,  2.0, 1 ), vObjN ) * 0.10 ); // すり傷（細い）
          vec3 nB = normalize( normalMatrix * nO );
          vec3 sL = normalize( directionalLights[ 0 ].direction );
          vec3 sH = normalize( sL + normalize( vVpos ) );
-         float sp = pow( max( dot( nB, sH ), 0.0 ), ${P.shine.toFixed(1)} );
+         float dh = max( dot( nB, sH ), 0.0 );
+         // ★山は2つ … 鋭い芯と、そのまわりの広い明るみ（実物の写真がそうなっている）。
+         // ★広い山は**弱く**。強くすると面ぜんぶが持ち上がって白く飛び、
+         //   「鈍い鉛色」ではなく銀色のプラスチックに見える（第70巡に実測）。
+         float sp = pow( dh, ${P.shine.toFixed(1)} ) + pow( dh, ${(P.shine / 6).toFixed(2)} ) * 0.10;
+         // ★★**券の色の映り込み** … 券のほうを向いた面にだけ乗せる。
+         //   uBounceAt は視点座標、- vVpos が断片の視点座標なので、差が向き。
+         vec3 bDir = normalize( uBounceAt + vVpos );
+         float bq = max( dot( nB, bDir ), 0.0 );
          outgoingLight += vec3( sheenAt( vObj ) * ${(P.scratch * 0.16).toFixed(3)}   // 面のむら
                               + sp * ${P.gloss.toFixed(3)}                            // 光沢
-                              + scratchAt( vObj ) * ${(P.gloss * 0.16).toFixed(3)} ); // すり傷の照り
+                              + scratchAt( vObj ) * ${(P.gloss * 0.14).toFixed(3)} )  // すり傷の照り
+                       + uBounce * bq * bq * uBounceAmt;
        #endif
        #include <opaque_fragment>`,
     );

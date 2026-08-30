@@ -3,7 +3,8 @@ import {
 } from "three";
 
 import {
-  buildPart, buildWire, flattenPiece, toneRamp, applySteel, CHAMFER, LIGHT_INTENSITY,
+  buildPart, buildWire, flattenPiece, toneRamp, applySteel, steelBounce, CHAMFER,
+  LIGHT_INTENSITY, type SteelBounce,
 } from "@/lib/nipperMesh";
 import {
   NIPPER_COIL, NIPPER_EXTENT, NIPPER_LEFT_PIECES, NIPPER_PIVOT, NIPPER_RIGHT_PIECES,
@@ -125,6 +126,12 @@ export interface NipperRig {
   lever: Group;
   /** バネ（押すと横へ詰まる）。 */
   coil: Group;
+  /**
+   * ★**券の色の映り込み**。`uBounceAt` は**視点座標**なので、置く側が毎フレーム
+   * `camera.matrixWorldInverse` を掛けて入れる（`TicketStage` がやっている）。
+   * `Nipper` 単体では `uBounceAmt` が 0 のままなので何も乗らない。
+   */
+  bounce: SteelBounce;
   dispose(): void;
 }
 
@@ -137,9 +144,11 @@ export function buildNipperRig(): NipperRig {
 
   // 段ごとに材質を1つ（表を焼くときに段を下げてある。差し替えは同じ）。
   const ramps = DIM.map((d) => toneRamp(d));
+  // ★券の色の映り込みは**材質どうしで共有**する（1か所を書き換えれば全部が変わる）。
+  const bounce = steelBounce();
   const steels = ramps.map((gradientMap) => {
     const m = new MeshToonMaterial({ color: 0xffffff, gradientMap });
-    applySteel(m);   // ★段の上に光沢とすり傷を重ねる（`applyAppTones` は紙のほう）
+    applySteel(m, bounce);   // ★段の上に光沢とすり傷（`applyAppTones` は紙のほう）
     return m;
   });
   const add = (g: BufferGeometry, parent: Group, tier = 0) => {
@@ -176,7 +185,7 @@ export function buildNipperRig(): NipperRig {
   for (const path of coilPaths()) add(buildWire(path, NIPPER_COIL.wire), coil);
 
   return {
-    root, lever, coil,
+    root, lever, coil, bounce,
     dispose() {
       root.traverse((o: Object3D) => { if (o instanceof Mesh) o.geometry.dispose(); });
       for (const m of steels) m.dispose();

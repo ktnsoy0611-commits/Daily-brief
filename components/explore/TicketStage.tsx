@@ -154,6 +154,8 @@ export function TicketStage({
 
     const rig = buildNipperRig();
     scene.add(rig.root);
+    /** 券の中心（世界座標）。★毎フレーム視点座標へ移して uniform に入れる。 */
+    const cardAt = new Vector3();
     const key = nipperLights();
     scene.add(key, key.target);
 
@@ -190,6 +192,12 @@ export function TicketStage({
       );
 
 
+      // ★券の色を鋏へ**映り込ませる**（毎フレーム更新するので券の色に追従する）。
+      //   置く場所は世界座標で控え、視点座標への変換は描くたびに行う。
+      cardAt.copy(face.position);
+      rig.bounce.uBounce.value.set(c.paper);
+      rig.bounce.uBounceAmt.value = P.bounce;
+
       // 床 … 券の下端の少し下に水平に敷く。奥は地平まで伸ばす。
       floor.position.copy(at(sw / 2, c.y + c.h + FLOOR_GAP, -sh));
       floor.scale.set(sw * 6, sh * 4, 1);
@@ -218,6 +226,9 @@ export function TicketStage({
       springTo(s, wv, shut ? K_TRAVEL : K_SETTLE, shut ? D_TRAVEL : D_SETTLE);
       if (settled(s, wv)) { s.p = wv; s.v = 0; }
       poseNipper(rig, s.p);
+      // ★映り込みの向きは**視点座標**で要る。カメラは動かないが、1か所で済むので
+      //   ここで毎フレーム移す（券が動く演出を足しても自動で付いてくる）。
+      rig.bounce.uBounceAt.value.copy(cardAt).applyMatrix4(camera.matrixWorldInverse);
       renderer.render(scene, camera);
       id = requestAnimationFrame(tick);
     };

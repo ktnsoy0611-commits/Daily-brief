@@ -103,7 +103,7 @@ const DIM = "rgba(250,250,249,0.44)";
 /** カードの地。 */
 const CELL = "rgba(250,250,249,0.07)";
 /** 赤の相方(淡い赤)。塗った赤の上に乗る文字。 */
-const RUST_INK = SCHEME.red.ink;
+const RUST_INK = SCHEME.vermilion.ink;
 /** 浮かせるもの(カレンダー・ダイアル)の地。 */
 const FLOAT = CHARCOAL;
 /** 今日のマスの塗り。選んでいる日(アクセント)と混ざらないよう沈ませる。 */
@@ -280,7 +280,7 @@ export function WhenSheet({ value, accent, onChange, onCancel, onCommit }: {
       }} aria-label="クリア" className="tc-lamp" style={{
         // ★★**文字だけの行から、塗ったボタンへ**(2026-08-18・第19巡にユーザー
         //   指定「クリアはボタンにして塗りにしてください」)。赤と、その相方の
-        //   淡い赤(`SCHEME.red`)はアプリ共通の一対 — タグの丸と同じ語彙で塗る。
+        //   淡い赤(`SCHEME.vermilion`)はアプリ共通の一対 — タグの丸と同じ語彙で塗る。
         width: "100%", height: CLEAR_H, borderRadius: RADIUS.pill, flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
         background: RUST,

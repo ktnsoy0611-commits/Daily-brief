@@ -24,17 +24,17 @@ import { KIND_DOMAIN, SCHEME } from "./constants";
 /** ドメインの色（4）。★これが「何であるか」を表す唯一の色。 */
 export const DOMAIN_COLOR: Record<ItemDomain, string> = {
   place: SCHEME.yellow.bg,
-  experience: SCHEME.orange.bg,
+  experience: SCHEME.peach.bg,
   info: SCHEME.sky.bg,
-  thing: SCHEME.pink.bg,
+  thing: SCHEME.rose.bg,
 };
 
 /** その色の上に載せる文字・図形の色。★必ず同じ組から取る（明るい地に明るい字を防ぐ）。 */
 export const DOMAIN_INK: Record<ItemDomain, string> = {
   place: SCHEME.yellow.ink,
-  experience: SCHEME.orange.ink,
+  experience: SCHEME.peach.ink,
   info: SCHEME.sky.ink,
-  thing: SCHEME.pink.ink,
+  thing: SCHEME.rose.ink,
 };
 
 /** kind（10種）→ 色。★**ドメインを通す**ので、kind ごとの色は持たない。 */

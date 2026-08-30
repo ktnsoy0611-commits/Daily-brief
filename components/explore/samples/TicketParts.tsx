@@ -168,7 +168,8 @@ export function Mark({ data, ink = INK }: { data: TicketData; ink?: string }) {
 }
 
 /**
- * 【主】題。`head`(20) bold。★2行まで。
+ * 【主】題。`head`(20) **`black`(900)**。★2行まで。
+ * ★★第74巡にユーザー指定で**一番太い 900** へ（`bold` 700 から）。
  * ★★`display`(26) では**和文が9文字で折り返し、2行目に1文字だけ残る**
  *   （第72巡に実測 ―― 券の幅 278、版面 246 に対し 26×10 = 260）。
  *   `head`(20) なら12文字入るので、たいていの題が1行に収まる。
@@ -180,7 +181,7 @@ export function Title({ children, ink = INK, style }: {
   return (
     <span style={{
       flex: "none",
-      fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.bold,
+      fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.black,
       lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink,
       display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
       ...style,

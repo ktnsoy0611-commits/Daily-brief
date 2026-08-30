@@ -166,6 +166,8 @@
   タグ5（タスクの図形）。**重ならない**（`SCHEME` の9組を1対1で使い切る）。
   ★★色そのものは `SCHEME` が持つ。**パレットを替えるときは `SCHEME` だけ書き換える。**
   ★kind（10種）は色を持たない ―― ドメインを通す。違いは文字・字面・形が担う。
+  ★★状態3（危険・肯定・選択中）も**この9つから借りる**。新しい色を足さない。
+  ★地を替えたら `app/manifest.ts` の `background_color`/`theme_color` も同時に直す。
 - `lib/tokens.ts` — **余白・文字・角丸の目盛り（`SPACE`/`TYPE`/`RADIUS`）**。
   数字が不揃いに見えたらここを見る。増やさない。
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。

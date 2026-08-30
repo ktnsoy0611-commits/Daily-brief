@@ -2,7 +2,7 @@
 
 import { SPACE, TYPE, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Check, Sparkles } from "lucide-react";
-import { GOLD, HAIRLINE, INK, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
+import { GREEN, GREEN_TINT, HAIRLINE, INK, MUTED, PAPER, SANS, SOFT_SHADOW } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import type { Task } from "@/lib/types";
 
@@ -53,7 +53,7 @@ export function TaskRow({ task, onToggle, onOpen }: { task: Task; onToggle: (id:
       {pending > 0 && !task.done && (
         <span style={{
           display: "inline-flex", alignItems: "center", gap: SPACE.xs, flexShrink: 0,
-          background: "rgba(199,148,51,0.16)", color: GOLD, borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.sm}px`,
+          background: GREEN_TINT, color: GREEN, borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.sm}px`,
           fontSize: TYPE.small, fontWeight: WEIGHT.bold,
         }}>
           <Sparkles size={10} strokeWidth={2.4} />

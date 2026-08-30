@@ -32,11 +32,11 @@ const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }, face: n
 //   ★TASK と EXPLORE は別のアプリなので色を借りても混同はしないが、
 //     **同じ色が2つの意味を持つ状態**は、色を選び直すときに必ず詰まる。
 export const TASK_TAGS: TagDef[] = [
-  tag("work", "WORK", SCHEME.navy, 1),          // 濃紺 × 桃     / ゴシック700
-  tag("life", "LIFE", SCHEME.forest, 3),        // 深緑 × 淡桃   / 丸ゴシック500
-  tag("wellness", "WELLNESS", SCHEME.violet, 4),// 青紫 × 白     / Dela(極太)
-  tag("social", "SOCIAL", SCHEME.red, 5),       // 赤 × 淡桃     / M PLUS 1 800
-  tag("growth", "GROWTH", SCHEME.wine, 2),      // ワイン × 淡緑 / ゴシック700斜体
+  tag("work", "WORK", SCHEME.teal, 1),          // ティール × 白 / ゴシック700
+  tag("life", "LIFE", SCHEME.green, 3),         // 緑 × 白       / 丸ゴシック500
+  tag("wellness", "WELLNESS", SCHEME.mint, 4),  // ミント × 黒   / Dela(極太)
+  tag("social", "SOCIAL", SCHEME.vermilion, 5), // 朱 × 黒       / M PLUS 1 800
+  tag("growth", "GROWTH", SCHEME.iris, 2),      // 藤 × 黒       / ゴシック700斜体
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>

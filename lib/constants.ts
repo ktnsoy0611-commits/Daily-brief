@@ -157,7 +157,12 @@ export const STUDIO = {
 // （`lib/palette.ts` の `DOMAIN_COLOR` と `DOMAIN_STEPS`）。
 // 同じ「展覧会」が券では橙・バインダーでは青緑、という食い違いがここで消えた。
 
-// ── カラースキーム(2026-08-16にユーザー指定・参照画像=Spotifyの配色見本) ──
+// ── カラースキーム(2026-08-31・第74巡にユーザーが参照画像で指定) ──
+//
+// ★★★**9つの役に9つの色**。名前は**実体と合わせてある**（第74巡に改名 ―
+// 以前は Spotify の配色見本から採った名前が中身と食い違っていた）。
+// ★★色を替えるときは**この9行だけ**を書き換える。役との対応は `lib/palette.ts`、
+// 呼び出し側は名前しか見ていないので、全部そのまま追従する。
 //
 // ★**色の出どころはここ1つ**。9つの「地の色 × その上に載る文字の色」の組。
 // 使うのは**地の色**の方で、それがアプリの基本の色になる。文字の色は、
@@ -172,30 +177,34 @@ export interface ColorPair {
   ink: string;
 }
 export const SCHEME = {
-  pink: { bg: "#F76FA1", ink: "#4B2438" },
-  orange: { bg: "#FA6E31", ink: "#1B2B4F" },
-  sky: { bg: "#509BF5", ink: "#C4F0C5" },
-  red: { bg: "#EE1B33", ink: "#F9C3C9" },
-  violet: { bg: "#4100F5", ink: "#FFFFFF" },
-  yellow: { bg: "#F5E837", ink: "#EF3E23" },
-  navy: { bg: "#1E3264", ink: "#F573A0" },
-  wine: { bg: "#8C1932", ink: "#A3E3C8" },
-  forest: { bg: "#04624A", ink: "#F7D6D3" },
+  // ドメイン4（券の紙。★**黒い文字が載る**ので、比が高い側から選ぶ）
+  yellow: { bg: "#F9E595", ink: "#1A1A18" },      // バショ        黒 13.8
+  peach: { bg: "#FEAE8F", ink: "#1A1A18" },       // タイケン      黒  9.7
+  sky: { bg: "#B3D4E9", ink: "#1A1A18" },         // ジョウホウ    黒 11.2
+  rose: { bg: "#D5BFC0", ink: "#1A1A18" },        // モノ          黒 10.0
+  // タグ5（タスクの図形。★状態の3色もここから借りる）
+  teal: { bg: "#03686D", ink: "#FFFFFF" },        // WORK          白  6.6
+  green: { bg: "#538352", ink: "#FFFFFF" },       // LIFE ／肯定   白  4.4
+  mint: { bg: "#B3D2C5", ink: "#1A1A18" },        // WELLNESS      黒 10.7
+  vermilion: { bg: "#FE6C43", ink: "#1A1A18" },   // SOCIAL ／危険 黒  6.2
+  iris: { bg: "#8688C8", ink: "#1A1A18" },        // GROWTH ／選択 黒  5.3
 } as const satisfies Record<string, ColorPair>;
 
 // アプリが前から持っている6つのアクセントの名前は変えず、**中身をスキームの
 // 地の色へ差し替える**。呼び出し側(数十箇所)はそのまま新しい色になる。
 // どれを当てるかは「元の色相を保つ」ことと「その色の上に何が載るか」で決めた。
 // ★★**状態の色は3つだけ**（2026-08-31・第73巡）。分類の9色から借りている。
-export const BLUE = SCHEME.violet.bg;   // 選ばれている・リンク。濃いので細い字でも読める
-export const RUST = SCHEME.red.bg;      // 危険（削除・エラー）。最も強い赤
-export const GREEN = SCHEME.forest.bg;  // 肯定・達成
-// ★`GOLD` は「白い ✓ を載せる面」。★第73巡に `PLUM` / `SLATE` を**消した**
-//   （どちらも使い手が 0 件だった）。
-export const GOLD = SCHEME.orange.bg;
-/** RUST の淡い敷き。以前は rgba(193,80,46,…) を各所に直書きしていた。 */
-export const RUST_TINT = "rgba(238,27,51,0.12)";
-export const RUST_EDGE = "rgba(238,27,51,0.45)";
+export const BLUE = SCHEME.iris.bg;        // 選ばれている・リンク
+export const RUST = SCHEME.vermilion.bg;   // 危険（削除・エラー）。★ユーザー指定でオレンジ
+export const GREEN = SCHEME.green.bg;      // 肯定・達成。白い ✓ もこの面に載る
+// ★第73巡に `PLUM` / `SLATE`、第74巡に `GOLD` を**消した**。`GOLD` は
+//   「白い ✓ を載せる面」＝**肯定**そのものだったので `GREEN` に寄せた（13箇所）。
+/** RUST の淡い敷き。★朱 `#FE6C43` = rgb(254,108,67) から作る（第74巡）。 */
+export const RUST_TINT = "rgba(254,108,67,0.14)";
+export const RUST_EDGE = "rgba(254,108,67,0.50)";
+/** GREEN の淡い敷き。★緑 `#538352` = rgb(83,131,82) から作る（第74巡）。
+ *  以前は `TaskRow` が `rgba(199,148,51,…)`（旧 GOLD の色）を直書きしていた。 */
+export const GREEN_TINT = "rgba(83,131,82,0.16)";
 export const HAIRLINE = "rgba(26,26,24,0.08)";
 // カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
 export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";
@@ -224,11 +233,11 @@ export const NAV_PILL_PAD = 6;
 
 // 背景(AppBackdrop)の地と図形。画面より下(iOSでツールバーが引っ込んだ
 // ときに現れる帯)にも同じ色が要るので、ここに置いて body へも書く。
-export const BD_GREY = "#ECECEA";
+export const BD_GREY = "#E1E1F0";   // ★第74巡に参照画像の地へ（淡い藤色の白）
 // ★ジャーナル(声の記録)の地と図。参考画像(2026-08-11)から採った、暖かみの
 // ある中間グレー。地と図の差はごくわずか(明度差 約18)で、円は「浮いた面」
 // ではなく「地の濃淡」として読める。
-export const JOURNAL_BG = "#B3B3AE";
+export const JOURNAL_BG = "#CDBBA4";  // ★第74巡に参照画像のベージュへ
 // ★円は地よりはっきり明るく、ほぼ白へ寄せる。以前は明度差18しか無く、
 // 「まだ背景に見えてしまう」と報告された(2026-08-11)。
 export const JOURNAL_FIG = "#EAEAE6";

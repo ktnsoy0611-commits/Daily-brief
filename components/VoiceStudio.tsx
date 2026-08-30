@@ -4,7 +4,7 @@ import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CHARCOAL, GOLD, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS, STUDIO } from "@/lib/constants";
+import { CHARCOAL, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS, STUDIO } from "@/lib/constants";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
@@ -836,7 +836,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         {/* ★PAUSE。録音中だけ押せる。押すとその場で止まり、もう一度押すと
             そのまま続きから録れる(MediaRecorder の pause/resume)。 */}
         <TransportKey
-          label="PAUSE" lamp={GOLD} bars
+          label="PAUSE" lamp={GREEN} bars
           pressed={paused} enabled={recording} lit={recording}
           onPress={voice.togglePause}
           fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}

@@ -8,7 +8,7 @@ import { Button } from "@/components/Button";
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, SectionLabel } from "@/components/common";
 import { TabIcon } from "@/components/TabIcons";
 import { appTitle } from "@/lib/apps";
-import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
+import { BLUE, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
 import { domainOf, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
 import { colorOfKind } from "@/lib/palette";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
@@ -324,7 +324,7 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
                   }}>
                     <span style={{
                       flexShrink: 0, width: 19, height: 19, borderRadius: RADIUS.circle, display: "flex", alignItems: "center", justifyContent: "center",
-                      background: bound ? GOLD : "transparent", border: `1.5px solid ${bound ? GOLD : "rgba(26,26,24,0.25)"}`,
+                      background: bound ? GREEN : "transparent", border: `1.5px solid ${bound ? GREEN : "rgba(26,26,24,0.25)"}`,
                     }}>
                       {bound && <Check size={11} strokeWidth={3} color={PAPER} />}
                     </span>

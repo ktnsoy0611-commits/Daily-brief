@@ -5,7 +5,7 @@ import { Check, Sparkles } from "lucide-react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { KIND_ICON } from "@/components/tabs/StockTab";
-import { BLUE, GOLD, GREEN, INK, MUTED, PAPER, RUST, SANS, itemKindOf, SECOND } from "@/lib/constants";
+import { BLUE, GREEN, INK, MUTED, PAPER, RUST, SANS, itemKindOf, SECOND } from "@/lib/constants";
 import { haptic, img } from "@/lib/helpers";
 import type { GeneratedPlan, PlanWeight } from "@/lib/planPipeline";
 import { PLAN_WEIGHTS } from "@/lib/planPipeline";
@@ -60,7 +60,7 @@ function GeneratingIndicator() {
       <div style={{ position: "relative", width: 200, height: 28, overflow: "hidden" }}>
         <span className="brief-roll-shape" style={{ ...base, marginTop: -8 /* ★目盛りの外（図形の -height/2＝縦の中央合わせ） */, width: 16, height: 16, borderRadius: RADIUS.circle, background: RUST, animationDelay: "0s" }} />
         <span className="brief-roll-shape" style={{ ...base, marginTop: -8 /* ★目盛りの外（図形の -height/2＝縦の中央合わせ） */, width: 16, height: 16, background: BLUE, animationDelay: "0.6s" }} />
-        <span className="brief-roll-shape" style={{ ...base, marginTop: -7 /* ★目盛りの外（図形の -height/2＝縦の中央合わせ） */, width: 0, height: 0, borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `14px solid ${GOLD}`, animationDelay: "1.2s" }} />
+        <span className="brief-roll-shape" style={{ ...base, marginTop: -7 /* ★目盛りの外（図形の -height/2＝縦の中央合わせ） */, width: 0, height: 0, borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `14px solid ${GREEN}`, animationDelay: "1.2s" }} />
         <span className="brief-roll-shape" style={{ ...base, marginTop: -5 /* ★目盛りの外（図形の -height/2＝縦の中央合わせ） */, width: 20, height: 10, borderRadius: RADIUS.sm, background: GREEN, animationDelay: "1.8s" }} />
       </div>
       <div style={{ color: MUTED, fontSize: TYPE.small, fontWeight: WEIGHT.text, letterSpacing: TRACK.normal }}>プランを考えています…</div>

@@ -180,12 +180,11 @@
   ／ 目盛り … `lib/tokens.ts` ／ 色 … `lib/constants.ts`
 - 券 … `components/explore/Ticket.tsx` / `PunchMark.tsx` / `lib/ticket.ts`
 - ★券と鋏を同じ3D空間に置く器 … `components/explore/TicketStage.tsx`
-- 鋏（★three.js）… `components/explore/Nipper.tsx`（画角・器・動き）
-  ＋ `lib/nipperMesh.ts`（立体の作り方）＋ `lib/nipperRig.ts`（組み立てと光）
-  ＋ ★形の生成 … `lib/nipperPath.ts`（語彙・手書き）→ `tools/trace-nipper.mjs`
-  → `lib/nipperShapeRaw.ts`（生）→ `tools/clean-nipper.mts` → `lib/nipperShape.ts`
-  （**どちらも生成物。手で直さない**）／元データの凍結 `docs/archive/nipper-shape-21.ts`
-  ／ 三面図 `components/explore/NipperViews.tsx` ／ 確認画面 `app/dev/explore`
+- 鋏（★three.js）… `Nipper.tsx`（画角・動き）＋ `lib/nipperMesh.ts`（立体と質感）
+  ＋ `lib/nipperRig.ts`（組み立てと光）／三面図 `NipperViews.tsx`／`app/dev/explore`
+  ＋ ★形の生成 … `lib/nipperPath.ts`（手書き）→ `tools/trace-nipper.mjs` →
+  `lib/nipperShapeRaw.ts` → `tools/clean-nipper.mts` → `lib/nipperShape.ts`
+  （**どちらも生成物。手で直さない**）／凍結 `docs/archive/nipper-shape-21.ts`
 - タスクの本体 … `components/tabs/GravityTab.tsx`
 - 入口の輪 … `components/CreateMenu.tsx`（RECORD / TASKS / SETTING）
 - カメラ … `components/tasks/TaskSpace.tsx`
@@ -197,8 +196,7 @@
   **`localhost` で開く**（`127.0.0.1` だと Next が開発用の資材を弾く）。
   ★**WebGL を撮るには** `--use-gl=angle --use-angle=swiftshader
   --enable-unsafe-swiftshader` が要る（無いと canvas が空で返る）。
-  ★★測り方の罠4つ … ①dispatch 直後に DOM を読むと rAF 前の値が返る
-  ②遠い行を測ると「連鎖」の遅れを不具合と読み違える（**焦点の行**を測る）
-  ③`waitForTimeout(40)` は 60fps に対して 2.4 コマなので**測り方のせいで**ばらつく
-  ④★**同じ式から書いた2つの値を突き合わせても検証にならない** ―
+  ★★測り方の罠 … ①dispatch 直後に DOM を読むと rAF 前の値 ②遠い行を測ると
+  「連鎖」の遅れを不具合と読み違える ③`waitForTimeout(40)` は 2.4 コマぶんしか
+  無い ④★**同じ式から書いた2つの値を突き合わせても検証にならない** ―
   「見えている幾何」を測り、**比較できた件数を必ず出す**

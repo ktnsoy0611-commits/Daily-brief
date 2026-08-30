@@ -15,6 +15,8 @@ import {
   NIPPER_COIL, NIPPER_EXTENT, NIPPER_LEFT_PIECES, NIPPER_PIVOT, NIPPER_RIGHT_PIECES, NIPPER_SLOT,
 } from "../lib/nipperShapeRaw";
 import type { NipperEdge, NipperPiece, P2 } from "../lib/nipperPath";
+// ★面取りの幅は `lib/nipperMesh.ts` が持ち主。ここで数字を書き写さない。
+import { CHAMFER } from "../lib/nipperMesh";
 
 // ---- 目盛り（触るのはここだけ） -------------------------------------------
 /** シルエットがずれてよい量（単位）。図の線の太さは 4.4。 */
@@ -33,6 +35,29 @@ const FLAT_SAG = 2.5;
 //   ★幅は面取り(7)の2倍より広く取る。狭いと寄せた輪郭が潰れて bevel が破綻する。
 //   ★元の溝は右へ 50 ほど傾いているので、垂直にすると下で 36 ほどずれる（指定どおり）。
 const SLOT = { xL: 155, xR: 175, yBottom: -229 };
+
+/**
+ * ★持ち手の**内側**を削る（図面はパースで持ち手が太い。**外側と先端の底は正しい**）。
+ * 値は**ユーザーのスクショの青い線から実測**した（23巡目・比較 左764行／右751行）。
+ * ★青い線の太さは 13px ＝ 約9.7単位あるので、**線の内側の縁**（＝残す材料の境目）で
+ *   測る。中心で測ると全体に約5単位ぶん多く出て、削る量 0 のはずの上端でも 6 出る。
+ * ★左右で実測が違った（右15／左9）が、これは**パースの見え方の差**なので
+ *   （右の持ち手だけ内側の側面が見えている）、ユーザー確定で**平均を左右に当てる**。
+ */
+const SHAVE = {
+  /** これより下を「持ち手」とみなす。 */
+  topY: -360,
+  /** いちばん削る量（単位）。t=0 が頭との付け根、t=1 が内側のベベルの付け根。 */
+  max: 12,
+  /** ここまでで max に達する（なめらかに立ち上げる）。 */
+  ramp: 0.7,
+  /**
+   * ★その高さの**正面の面の幅**（＝幅 − 面取り2つ）に対する上限。
+   * これが**先端を守る** ―― 右の内側のベベルは横に 11 単位しか走っていないので、
+   * 根元を 12 動かすとベベルが裏返る。実測でも先端では青い線が縁へ戻っていた。
+   */
+  cap: 0.30,
+};
 
 // ---- 小道具 ---------------------------------------------------------------
 const TAU = Math.PI * 2;
@@ -309,6 +334,134 @@ function rebuildSlot(pc: NipperPiece): NipperPiece {
   return { ...pc, edges: [...pc.edges.slice(0, i0), ...rebuilt, ...pc.edges.slice(i1)] };
 }
 
+// ---- 規則8: 持ち手の内側を削る --------------------------------------------
+/** なめらかな立ち上がり（0→1）。 */
+const smooth = (t: number) => { const u = t < 0 ? 0 : t > 1 ? 1 : t; return u * u * (3 - 2 * u); };
+
+/**
+ * 走査線ごとの、持ち手の**内側と外側**の x（内側＝道具の中心線 x=0 に近いほう）。
+ */
+function widthAt(pc: NipperPiece) {
+  const poly = toPoints(pc, Math.PI / 180);
+  return (y: number): [number, number] | null => {
+    const xs: number[] = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      if ((a.y - y) * (b.y - y) <= 0 && a.y !== b.y) xs.push(a.x + ((b.x - a.x) * (y - a.y)) / (b.y - a.y));
+    }
+    if (xs.length < 2) return null;
+    xs.sort((m, n) => m - n);
+    const lo = xs[0], hi = xs[xs.length - 1];
+    return Math.abs(lo) < Math.abs(hi) ? [lo, hi] : [hi, lo];   // [内, 外]
+  };
+}
+
+/** 3点を通る円。★端点を動かしたあとの弧はこれで引き直す（3点で一意に決まる）。 */
+function circleThrough(a: P2, b: P2, c: P2) {
+  const d = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+  if (Math.abs(d) < 1e-9) return null;
+  const sa = a.x * a.x + a.y * a.y, sb = b.x * b.x + b.y * b.y, sc = c.x * c.x + c.y * c.y;
+  const cx = (sa * (b.y - c.y) + sb * (c.y - a.y) + sc * (a.y - b.y)) / d;
+  const cy = (sa * (c.x - b.x) + sb * (a.x - c.x) + sc * (b.x - a.x)) / d;
+  return { c: { x: cx, y: cy }, r: Math.hypot(a.x - cx, a.y - cy) };
+}
+
+/** 弧の中点（掃きの半分のところ）。 */
+const arcMid = (from: P2, e: NipperEdge): P2 => {
+  const c = e.c!, t = Math.atan2(from.y - c.y, from.x - c.x) + sweepOf(from, e) / 2;
+  return { x: c.x + Math.cos(t) * e.r!, y: c.y + Math.sin(t) * e.r! };
+};
+
+interface Shaved {
+  pc: NipperPiece; head: P2; root: P2; arcs: number;
+  /** 根元で削った量。 */ peak: number;
+  /** 弧を引き直したときの、狙いからの最大のずれ。 */ off: number;
+  /** 内側のベベルに残った横の走り。 */ bevel: number;
+}
+
+/**
+ * 持ち手の内側の弧を、`SHAVE` のぶんだけ**外側へ水平に**ずらす。
+ * ★**辺の番号は書かない。走って見つける** ―― 辺の番号を書くと、整理の規則を
+ *   変えたとたんに別の場所を削りにいく（22巡目にスリットで実際に起きた）。
+ * ★弧は**始点・中点・終点の3点**を動かして引き直すので、**辺の数は変わらない**。
+ */
+function shaveInner(pc: NipperPiece): Shaved | null {
+  const W = widthAt(pc);
+  const isInner = (p: P2) => {
+    if (p.y > SHAVE.topY) return false;
+    const w = W(p.y);
+    return !!w && Math.abs(p.x - w[0]) < Math.abs(p.x - w[1]);
+  };
+  // 内側に載っている弧が、いちばん長く連なったところ。
+  // ★**両端とも**内側であること ―― 終点だけ見ると、頭から降りてくる弧
+  //   （左では段の境目の印を持つ辺）まで巻き込む。
+  const startOf0 = (i: number) => (i === 0 ? pc.start : pc.edges[i - 1].to);
+  const ok = (i: number) => !!pc.edges[i].r && isInner(pc.edges[i].to) && isInner(startOf0(i));
+  let best = { i: -1, len: 0 };
+  for (let i = 0; i < pc.edges.length; i++) {
+    if (!ok(i)) continue;
+    let j = i;
+    while (j < pc.edges.length && ok(j)) j++;
+    if (j - i > best.len) best = { i, len: j - i };
+    i = j;
+  }
+  if (best.len < 2) return null;
+
+  const i0 = best.i, i1 = best.i + best.len;
+  const startOf = (i: number) => (i === 0 ? pc.start : pc.edges[i - 1].to);
+  const ends: [P2, P2] = [startOf(i0), pc.edges[i1 - 1].to];
+  // ★**辿る向きは片によって逆**（右は下から上、左は上から下）。y で決める ――
+  //   辺の並び順で決めると、片方だけ t が裏返って上下逆に削れる。
+  const head = ends[0].y > ends[1].y ? ends[0] : ends[1];   // 頭との付け根（削る量 0）
+  const root = ends[0].y > ends[1].y ? ends[1] : ends[0];   // 内側のベベルの付け根（最大）
+  const w0 = W(head.y)!;
+  const dir = Math.sign(w0[1] - w0[0]);                     // 中心線から遠ざかる向き
+
+  const shave = (p: P2) => {
+    const t = (p.y - head.y) / (root.y - head.y);
+    const w = W(p.y);
+    const face = w ? Math.abs(w[1] - w[0]) - 2 * CHAMFER : Infinity;
+    return Math.min(SHAVE.max * smooth(t / SHAVE.ramp), SHAVE.cap * face);
+  };
+  const move = (p: P2): P2 => ({ x: p.x + dir * shave(p), y: p.y });
+
+  const edges = pc.edges.map((e) => ({ ...e }));
+  let cur = startOf(i0), off = 0;
+  for (let i = i0; i < i1; i++) {
+    const e = edges[i], from = cur;
+    const a = move(from), b = move(arcMid(from, e)), c = move(e.to);
+    cur = e.to;
+    const fit = circleThrough(a, b, c);
+    if (!fit) continue;
+    // 回る向きは「中点が掃きの中に来るほう」を採る（`linesToArc` と同じ決め方）
+    let put: NipperEdge = { ...e, to: c, r: fit.r, c: fit.c, ccw: true };
+    if (hyp(arcMid(a, put), b) > hyp(arcMid(a, { ...put, ccw: false }), b)) put = { ...put, ccw: false };
+    edges[i] = put;
+    // 狙い（元の弧を細かく開いて動かした点）が、引き直した円からどれだけ外れるか。
+    // ★円までの距離は | |p−中心| − 半径 | で厳密に出る（総当たりは要らない）。
+    for (const q of [a, ...openEdge(from, e, Math.PI / 90).map((r) => move(r))]) {
+      const d = Math.abs(hyp(q, fit.c) - fit.r);
+      if (d > off) off = d;
+    }
+  }
+  // ★run の**始点**は「1つ前の辺の終点」なので、そこも動かす ―― 右の片は
+  //   始点が根元なので、直さないと弧が実際の始点を通らなくなる（浮いて隙間が出る）。
+  //   頭の側は削る量 0 なので、どちらの向きでも安全。
+  let start = pc.start;
+  if (i0 === 0) start = move(pc.start);
+  else edges[i0 - 1] = { ...edges[i0 - 1], to: move(startOf(i0)) };
+  const out = { ...pc, start, edges };
+  // 内側のベベル … 根元の側で run に隣り合う辺。その横の走りが残っているか。
+  const outStartOf = (i: number) => (i === 0 ? out.start : out.edges[i - 1].to);
+  const bevel = startOf(i0).y === root.y
+    ? Math.abs(outStartOf(i0).x - outStartOf(i0 - 1 < 0 ? out.edges.length - 1 : i0 - 1).x)
+    : Math.abs(out.edges[i1 - 1].to.x - out.edges[i1 % out.edges.length].to.x);
+  return {
+    pc: out, head, root, arcs: best.len,
+    peak: shave(root), off, bevel,
+  };
+}
+
 // ---- 規則7: 面取りの余裕を確かめる ----------------------------------------
 /** いちばん細いくびれ（向かい合う辺の距離）。面取り 7 を両側から取るので 14 は要る。 */
 function narrowest(pc: NipperPiece) {
@@ -328,6 +481,7 @@ function narrowest(pc: NipperPiece) {
 
 // ---- 走らせる -------------------------------------------------------------
 const round = (v: number) => Math.round(v * 10) / 10;
+const fmtP = (p: P2) => `(${p.x.toFixed(1)}, ${p.y.toFixed(1)})`;
 const stats = (pc: NipperPiece) => {
   const arcs = pc.edges.filter((e) => e.r).length;
   let axis = 0, tiny = 0, cur = pc.start;
@@ -352,6 +506,9 @@ rawAll.forEach((rawPc, k) => {
   pc = snapAxes(pc);
   // ★スリットは**いちばん最後**に作る。先に作ると、あとの規則が直角を丸めてしまう。
   if (k === 0) pc = rebuildSlot(pc);
+  // ★持ち手を削るのも最後（先にやると、あとの規則が削った弧を当て直す）。
+  const sh = shaveInner(pc);
+  if (sh) pc = sh.pc;
   pc = dropTiny(pc);
   // 座標を 0.1 に丸める
   pc = {
@@ -368,11 +525,19 @@ rawAll.forEach((rawPc, k) => {
   const a = stats(rawPc), b = stats(pc);
   const rawPts = toPoints(rawPc, Math.PI / 180);
   const cleanPts = toPoints(pc, Math.PI / 180);
-  let worst = 0, worstSlot = 0;
+  let worst = 0, worstSlot = 0, worstShave = 0;
   const inSlot = (p: P2) => k === 0 && p.x > SLOT.xL - 60 && p.x < SLOT.xR + 60 && p.y > SLOT.yBottom - 20 && p.y < 20;
+  // ★削った持ち手の内側は**意図して形を変えた**ので、シルエットの検査から外して別に出す。
+  const rawW = widthAt(rawPc);
+  const inShave = (p: P2) => {
+    if (!sh || p.y > SHAVE.topY) return false;
+    const w = rawW(p.y);
+    return !!w && Math.abs(p.x - w[0]) < Math.abs(p.x - w[1]);   // 内側の縁だけ
+  };
   for (const p of rawPts) {
     const d = distPath(p, cleanPts);
     if (inSlot(p)) { if (d > worstSlot) worstSlot = d; }
+    else if (inShave(p)) { if (d > worstShave) worstShave = d; }
     else if (d > worst) worst = d;
   }
   console.log(`${NAMES[k]}  辺 ${a.edges}→${b.edges}`
@@ -380,7 +545,11 @@ rawAll.forEach((rawPc, k) => {
     + ` 軸平行 ${a.axis}→${b.axis} 潰れ ${a.tiny}→${b.tiny}`
     + ` ／ ずれ 最大 ${worst.toFixed(2)}（許容 ${TOL}）`
     + (k === 0 ? ` ／ スリット ${worstSlot.toFixed(1)}（指定の造形）` : "")
-    + ` ／ 最小のくびれ ${narrowest(pc).toFixed(1)}（面取り2倍 = 14）`);
+    + ` ／ 最小のくびれ ${narrowest(pc).toFixed(1)}（面取り2倍 = ${2 * CHAMFER}）`);
+  if (sh) console.log(`      └ 持ち手の内側を削った … 弧 ${sh.arcs} 本`
+    + `（${fmtP(sh.head)} 〜 ${fmtP(sh.root)}）`
+    + ` ／ 根元で ${sh.peak.toFixed(1)} 単位 ／ 元の形からのずれ ${worstShave.toFixed(1)}（指定の造形）`
+    + ` ／ 弧の引き直しのずれ ${sh.off.toFixed(2)} ／ 内側のベベルの残り ${sh.bevel.toFixed(1)}`);
 });
 
 // ---- 吐く -----------------------------------------------------------------

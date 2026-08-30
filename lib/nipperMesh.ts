@@ -380,6 +380,10 @@ export function applySteel(m: MeshToonMaterial, u: SteelBounce = steelBounce()) 
          vec3 sH = normalize( sL + normalize( vVpos ) );
          float dh = max( dot( nB, sH ), 0.0 );
          // ★山は2つ … 鋭い芯と、そのまわりの広い明るみ（実物の写真がそうなっている）。
+         // ★★すり傷の照りは gloss ではなく **scratch** から引く ―― 光沢を
+         //   落として（第72巡に 0.85 → 0.14）も傷が消えないようにするため。
+         //   ★GLSL のコメントにバッククォートを書かない（4度目。TS の
+         //     テンプレート文字列が閉じて工具が消える）。
          // ★広い山は**弱く**。強くすると面ぜんぶが持ち上がって白く飛び、
          //   「鈍い鉛色」ではなく銀色のプラスチックに見える（第70巡に実測）。
          float sp = pow( dh, ${P.shine.toFixed(1)} ) + pow( dh, ${(P.shine / 6).toFixed(2)} ) * 0.10;
@@ -389,7 +393,7 @@ export function applySteel(m: MeshToonMaterial, u: SteelBounce = steelBounce()) 
          float bq = max( dot( nB, bDir ), 0.0 );
          outgoingLight += vec3( sheenAt( vObj ) * ${(P.scratch * 0.16).toFixed(3)}   // 面のむら
                               + sp * ${P.gloss.toFixed(3)}                            // 光沢
-                              + scratchAt( vObj ) * ${(P.gloss * 0.14).toFixed(3)} )  // すり傷の照り
+                              + scratchAt( vObj ) * ${(P.scratch * 0.16).toFixed(3)} )  // すり傷の照り
                        + uBounce * bq * bq * uBounceAmt;
        #endif
        #include <opaque_fragment>`,

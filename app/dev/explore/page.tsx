@@ -179,7 +179,6 @@ export default function DevExplore() {
                   open={biting ? 0 : 1}
                   closing={biting}
                   away={awayAt(biting ? BITE.at.x : IDLE.at.x, biting ? BITE.at.y : IDLE.at.y)}
-                  ground={false}
                 />
               </div>
             </div>

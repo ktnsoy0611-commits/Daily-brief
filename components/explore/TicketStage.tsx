@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BoxGeometry, Color, Mesh, MeshBasicMaterial, MeshToonMaterial, PCFSoftShadowMap,
-  PerspectiveCamera, PlaneGeometry, Scene, ShadowMaterial, Vector3, WebGLRenderer,
+  BoxGeometry, Color, Mesh, MeshBasicMaterial, MeshToonMaterial,
+  PerspectiveCamera, PlaneGeometry, Scene, Vector3, WebGLRenderer,
 } from "three";
 
 import { NIPPER_PAINT as P } from "@/lib/constants";
@@ -36,13 +36,10 @@ import {
 const FOV = 26;
 /** 券の紙の厚み（＝小口の見える幅）。★実物どおりだと1px も無いので、読める厚みに。 */
 const CARD_T = 5;
-/**
- * ★★**床は水平**（第70巡・ユーザー確定 ―― 券は地面に対して垂直に浮いている）。
- * カメラは券の真正面で水平を向いているので、床は**画面の中ほど（＝地平）から
- * 下**に見える。★床そのものは塗らない（影だけが床の在り処を教える）。
- * 数値は「券の下端から何 px 下か」。
- */
-const FLOOR_GAP = 24;
+// ★★★**影も床も置かない**（2026-08-31・第72巡にユーザー確定）。
+//   券は**平らな刷り物**なので、影が落ちると「写真の中の物体」に見えてしまう。
+//   第70巡は水平な床に影を落としていたが、券の版面が刷り物として固まったので撤去した。
+//   `renderer.shadowMap` ごと切ってある（影を落とす相手が居ないため）。
 /**
  * ★★**画面と平行な面に当たる段の色**。紙の色をこれで割ってから渡すと、
  * 正面を向いた面（＝束の見えている縁）が**券の紙そのものの色**になる。
@@ -87,14 +84,13 @@ export interface StageNipper {
 }
 
 export function TicketStage({
-  w, h, card, nipper, ground = true, children,
+  w, h, card, nipper, children,
 }: {
   /** ステージの大きさ（CSS px）。 */
   w: number; h: number;
   card: StageCard;
   nipper: StageNipper;
   /** 地と影を敷くか。 */
-  ground?: boolean;
   /** 券の DOM。★`card` の場所へそのまま置かれる。 */
   children?: ReactNode;
 }) {
@@ -114,8 +110,6 @@ export function TicketStage({
 
     const renderer = new WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = PCFSoftShadowMap;
     const canvas = renderer.domElement;
     canvas.style.cssText = "display:block;width:100%;height:100%";
     box.appendChild(canvas);
@@ -139,18 +133,7 @@ export function TicketStage({
     face.renderOrder = -1;
     // 券の小口（紙の厚み）。面のすぐ奥に、同じ大きさの薄い箱。
     const body = new Mesh(new BoxGeometry(1, 1, CARD_T), paper);
-    body.castShadow = true;
-    // 鋏の影を**券の上に**受ける面（券の面のすぐ手前）。
-    const onCardMat = new ShadowMaterial({ color: P.cast, opacity: P.castAlpha });
-    const onCard = new Mesh(new PlaneGeometry(1, 1), onCardMat);
-    onCard.receiveShadow = true;
-    // 床。★**水平**な1枚（券も鋏もここへ影を落とす）。塗らないので影だけが見える。
-    const groundMat = new ShadowMaterial({ color: P.cast, opacity: P.castAlpha });
-    const floor = new Mesh(new PlaneGeometry(1, 1), groundMat);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    floor.visible = ground;
-    scene.add(floor, body, face, onCard);
+    scene.add(body, face);
 
     const rig = buildNipperRig();
     scene.add(rig.root);
@@ -180,8 +163,6 @@ export function TicketStage({
       // 1 単位さげれば前面は落ち、**側面（小口）だけが残る**（消失点の側に見える）。
       body.position.copy(at(cx, cy, -CARD_T / 2 - 1));
       body.scale.set(c.w, c.h, 1);
-      onCard.position.copy(at(cx, cy, 1));
-      onCard.scale.set(c.w, c.h, 1);
       // ★小口（側面）は階調を掛ける面なので、**正面を向いた面が `c.paper` に
       //   なるよう**段のぶんを先に割っておく。
       const want = new Color(c.paper);
@@ -199,8 +180,6 @@ export function TicketStage({
       rig.bounce.uBounceAmt.value = P.bounce;
 
       // 床 … 券の下端の少し下に水平に敷く。奥は地平まで伸ばす。
-      floor.position.copy(at(sw / 2, c.y + c.h + FLOOR_GAP, -sh));
-      floor.scale.set(sw * 6, sh * 4, 1);
 
       // 鋏 … **口（スリットの中心）**を指定の場所へ。縮尺は幅で決める。
       const k = n.w / (NIPPER_EXTENT.x1 - NIPPER_EXTENT.x0);
@@ -239,13 +218,12 @@ export function TicketStage({
       cancelAnimationFrame(id);
       ro.disconnect();
       rig.dispose();
-      for (const m of [face, body, onCard, floor]) m.geometry.dispose();
+      for (const m of [face, body]) m.geometry.dispose();
       hole.dispose(); paper.dispose(); ramp.dispose();
-      onCardMat.dispose(); groundMat.dispose();
       renderer.dispose();
       canvas.remove();
     };
-  }, [ground]);
+  }, []);
 
   // 場所が変わったら組み直すだけ（立体は作り直さない）。
   useEffect(() => { layRef.current?.(); });

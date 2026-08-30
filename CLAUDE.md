@@ -82,12 +82,15 @@
   ★★Explore の刷新が本物になったら、このファイル／`components/explore/samples/`／
   `lib/apps.ts` の `life-dev`／`lib/types.ts` の `LifeTabId`／
   `components/TabIcons.tsx` の `ticket` を**まとめて消す**。
-- ★`components/explore/samples/` — **券の見本帳**（第72巡に3案へ組み直し）。
-  N1「帯」／N2「全面」／N3「額」＋ 共通部品 `TicketParts.tsx` ＋ 一覧 `index.ts`。
+- ★`components/explore/samples/` — **券の見本帳**（第72巡に5案へ組み直し）。
+  N1 帯／N2 全面／N3 額／N4 札／N5 挟み ＋ `TicketParts.tsx` ＋ `index.ts`。
+  ★**色がどれだけ見えるか**で振ってある（N2 → N1 → N5 → N3 → N4 の順に増える）。
   ★★**役と段は1対1**（題 `head` 20 ／ 会期・会場 `body` 13 ／ 要約 `small` 11 ／
   印 `nano` 7 の**4段だけ**）。**写真が余りを全部取る**ので spacer を置かない。
   ★紙の形は**上下の縁のギザギザ**（`scallopMask`。`mask-composite: intersect`。
-  使えない環境では**ひとりでに素の矩形へ戻る**）。比は `TICKET_ASPECT`＝**3/4**。
+  使えない環境では**ひとりでに素の矩形へ戻る**）。★★**間隔ではなく「数」で持つ**
+  （`calc(100% / N)`。px だと券の幅で割り切れず右端が切れる）。
+  比は `TICKET_ASPECT`＝**3/4**、数で要るときは `TICKET_H_PER_W`。
   ★★**選ばれた1案を `Ticket.tsx` へ畳んだら、ディレクトリごと消す。**
 - ★**刷新中の部品**（`/dev/explore` と `DEV` タブにしか無い。4タブは手つかず）…
   `components/explore/Ticket.tsx`（券）/ `PunchMark.tsx`（鋏痕）/ `lib/ticket.ts`、

@@ -6,7 +6,6 @@ import {
   TICKET_ASPECT, TICKET_DECK, itemKindOf,
 } from "@/lib/constants";
 import { grainStyle, useDevicePixelRatio } from "@/lib/printGrain";
-import { serialOf } from "@/lib/ticket";
 import { PunchNotch } from "../PunchMark";
 import type { TicketData, TicketPunch } from "../Ticket";
 
@@ -41,14 +40,17 @@ export interface SampleProps {
 
 // ── 紙の形 ────────────────────────────────────────────────────────
 /**
- * ギザギザの半円の半径と、中心どうしの間隔。★目盛りの外（図形）
+ * ギザギザ。★目盛りの外（図形）
  * ★★**上下の縁に付ける**（2026-08-31・ユーザー指定）。参照の NYC の券は横長で、
  *   ギザギザは**短いほうの縁**に並んでいた。こちらは縦長なので短辺は上下になる。
- * ★踏んだ穴 … r=6/gap=16 は**フリル**、r=4/gap=13 は**綴じたノート**に見えた
- *   （どちらも数が多すぎた）。**深さより「数」が印象を決める。**
- *   いまは券の幅 278 に対して 11〜12 個。
+ * ★★★**間隔ではなく「数」で持つ。** px の間隔で並べると券の幅で割り切れず、
+ *   **右端の1個が途中で切れる**（第72巡にユーザー指摘「割り付けが合っておらず汚い」
+ *   ―― 幅 278 ÷ 24px = 11.58 個だった）。`calc(100% / N)` なら幅がいくつでも
+ *   必ず割り切れ、間隔は幅に比例して伸び縮みする。
+ * ★踏んだ穴 … r=6 で密に並べると**フリル**、r=4 で密だと**綴じたノート**に見えた。
+ *   **深さより「数」が印象を決める。**
  */
-const SCALLOP = { r: 7, gap: 24 };  // ★目盛りの外（図形の座標系）
+const SCALLOP = { r: 7, count: 11 };
 
 /**
  * ★★**上下の縁のギザギザ**（2026-08-31・ユーザー指定。NYC の地下鉄券）。
@@ -62,11 +64,12 @@ const SCALLOP = { r: 7, gap: 24 };  // ★目盛りの外（図形の座標系�
  * ★`#000` は色ではなく**不透明**の意味（`TimeRange` / `GravityTab` と同じ作法）。
  */
 export function scallopMask(): React.CSSProperties {
-  const { r, gap } = SCALLOP;
+  const { r, count } = SCALLOP;
   const hole = (side: string) =>
     `radial-gradient(circle ${r}px at ${side}, transparent 98%, #000 100%)`;  // ★目盛りの外（マスクの #000 は「色」でなく「不透明」）
   const image = `${hole("top")}, ${hole("bottom")}`;
-  const size = `${gap}px 100%, ${gap}px 100%`;
+  const tile = `calc(100% / ${count})`;
+  const size = `${tile} 100%, ${tile} 100%`;
   const pos = "left top, left bottom";
   const repeat = "repeat-x, repeat-x";
   return {
@@ -147,23 +150,20 @@ export function Grain() {
 // ── 4つの段 ──────────────────────────────────────────────────────
 // ★★これ以外の段を券の中で使わないこと（design.md §5-1「★4段まで」）。
 
-/** 【印】券種・状態・番号。`nano`(7) caps。 */
+/**
+ * 【印】券種。`nano`(7) caps。
+ * ★★★第72巡に **`SOON` と `Nº 0143` を消した**（ユーザー指定「役割がよく
+ *   分かりません」）。`SOON` は「会期が近い」の曖昧な合図、`Nº` は券らしさの
+ *   飾りで意味が無かった。**券らしさはギザギザが担う**ので、記号は要らない。
+ */
 export function Mark({ data, ink = INK }: { data: TicketData; ink?: string }) {
-  const cap: React.CSSProperties = {
-    fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
-    letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: ink,
-    textTransform: "uppercase",
-  };
-  const kind = data.handwritten ? "Self issued" : itemKindOf(data.kind).en;
   return (
-    <div style={{
-      flex: "none", display: "flex", alignItems: "baseline",
-      justifyContent: "space-between", gap: SPACE.sm,
-    }}>
-      {/* ★「会期が近い」は色ではなく**語**で伝える（有彩色は紙の1色だけ）。 */}
-      <span style={cap}>{kind}{data.soon ? " — Soon" : ""}</span>
-      <span style={{ ...cap, fontVariantNumeric: "tabular-nums" }}>Nº {serialOf(data.serial)}</span>
-    </div>
+    <span style={{
+      flex: "none",
+      fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
+      letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: ink,
+      textTransform: "uppercase",
+    }}>{data.handwritten ? "Self issued" : itemKindOf(data.kind).en}</span>
   );
 }
 
@@ -188,14 +188,18 @@ export function Title({ children, ink = INK, style }: {
   );
 }
 
-/** 【付帯】要約。`small`(11) text。★1行だけ ―― ここが写真の大きさを食う。 */
-export function Lede({ children, ink = INK, lines = 1, style }: {
+/**
+ * 【付帯】要約。`body`(13) / `text` / `body` 行間 ―― **design.md §1 の表どおり**
+ * （`body` は文章のための段）。★**3行**（ユーザー指定「文字は小さくて良いから
+ * 3行くらいは入るように」）。★ここが写真の大きさを食う。
+ */
+export function Lede({ children, ink = INK, lines = 3, style }: {
   children: React.ReactNode; ink?: string; lines?: number; style?: React.CSSProperties;
 }) {
   return (
     <span style={{
       flex: "none",
-      fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.text,
+      fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text,
       lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: ink,
       display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden",
       ...style,
@@ -206,6 +210,8 @@ export function Lede({ children, ink = INK, lines = 1, style }: {
 /**
  * 【従】会期と会場。★**ラベル列を作らない** ―― 日付は罫で囲った**升**になり、
  * 会場はその右へ置く。イベントカードの `DEC / 12 / TUE` の升と同じ役。
+ * ★段は `small`(11) / `bold` / `flat` ―― **design.md §1 の表どおり**。
+ *   要約（`body` 13 / `text`）より**小さく太い**ので、文章とデータが混ざらない。
  */
 export function Meta({ period, until, place, ink = INK, style }: {
   period: string; until?: string; place: string; ink?: string; style?: React.CSSProperties;
@@ -223,7 +229,7 @@ export function Meta({ period, until, place, ink = INK, style }: {
       }}>
         {/* ★数字だけ欧文＋等幅数字＋詰めた字間（design.md §1）。 */}
         <span style={{
-          fontFamily: LATIN, fontSize: TYPE.body, fontWeight: WEIGHT.bold,
+          fontFamily: LATIN, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
           lineHeight: LEAD.snug, letterSpacing: TRACK.tight, color: ink,
           fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
         }}>{period}</span>
@@ -238,7 +244,7 @@ export function Meta({ period, until, place, ink = INK, style }: {
       {/* ★center は意匠 ―― 升と同じ高さの中に置く（design.md §1 の③）。 */}
       <span style={{
         flex: 1, minWidth: 0, display: "flex", alignItems: "center",
-        fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold,
+        fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
         lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink,
       }}>
         <span style={{

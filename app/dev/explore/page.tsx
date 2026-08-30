@@ -110,23 +110,31 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** ★3D の場に置く券（DOM の券と**同じ数値**をそのまま渡す）。 */
+/**
+ * ★3D の場に置く券。**ステージのど真ん中**に置く ―― カメラの焦点（＝消失点）は
+ * 画面の中心なので、こうすると「券の真正面から見ている」ことになる。
+ */
+const CARD_H = Math.round(STAGE_TICKET * 21 / 13);   // ★目盛りの外（TICKET_ASPECT の比）
 const CARD = {
-  x: SPACE.lg, y: SPACE.xl, w: STAGE_TICKET,
-  h: Math.round(STAGE_TICKET * 21 / 13),          // ★目盛りの外（TICKET_ASPECT の比）
+  x: Math.round((STAGE.w - STAGE_TICKET) / 2),
+  y: Math.round((STAGE.h - CARD_H) / 2),
+  w: STAGE_TICKET, h: CARD_H,
   paper: TICKET_DOMAIN_COLOR[KIND_DOMAIN[SAMPLES[0].data.kind]],
 };
 /** 3D の場では**図そのものの幅**を渡す（`STAGE_NIPPER` は余白こみの器の幅）。 */
-const STAGE_NIPPER_FIG = Math.round(STAGE_NIPPER * 0.74);   // ★目盛りの外（`FIT`）
-/** 3つの場面。★`z` は券の面からの隔たり（正＝手前・負＝奥）。 */
-const STAGE_SHOTS = [
-  { label: "待機（手前）", punch: false,
-    nipper: { nose: { x: 314, y: 556 }, w: STAGE_NIPPER_FIG, open: 1, z: 90 } },
-  { label: "入鋏（券をくわえる）", punch: true, closing: true,
-    nipper: { nose: { x: 322, y: 372 }, w: STAGE_NIPPER_FIG, open: 0, closing: true, z: 0 } },
-  { label: "券の奥へ回る", punch: false,
-    nipper: { nose: { x: 190, y: 300 }, w: STAGE_NIPPER_FIG, open: 1, z: -90 } },
-];
+const STAGE_NIPPER_FIG = 260;
+/**
+ * ★鋏は**券の右下**。頭が画面の中に入り、**柄は下の画面外へ抜ける**。
+ * 頭は上・柄は下のまま、**平らな面だけを左（券のほう）へ回す**（`yaw`）。
+ * ★80° はユーザー指定（第70巡）。ほぼ真横向きになる。
+ */
+const STAGE_SHOTS = [80].map((yaw) => ({
+  label: `面を左へ ${yaw}°`,
+  nipper: {
+    nose: { x: 292, y: 556 }, w: STAGE_NIPPER_FIG, open: 1,
+    z: 60, yaw, tilt: 12,
+  },
+}));
 
 export default function DevExplore() {
   return (
@@ -184,17 +192,8 @@ export default function DevExplore() {
             <div key={shot.label} style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
               <Label>{shot.label}</Label>
               <div style={{ background: BG, flex: "none" }}>
-                <TicketStage
-                  w={STAGE.w} h={STAGE.h}
-                  card={CARD}
-                  nipper={shot.nipper}
-                >
-                  <Ticket
-                    data={SAMPLES[0].data}
-                    punch={shot.punch ? SAMPLES[0].punch : null}
-                    deck={BG}
-                    width={STAGE_TICKET}
-                  />
+                <TicketStage w={STAGE.w} h={STAGE.h} card={CARD} nipper={shot.nipper}>
+                  <Ticket data={SAMPLES[0].data} punch={null} deck={BG} width={STAGE_TICKET} />
                 </TicketStage>
               </div>
             </div>

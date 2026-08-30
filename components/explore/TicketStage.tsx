@@ -37,11 +37,12 @@ const FOV = 26;
 /** 券の紙の厚み（＝小口の見える幅）。★実物どおりだと1px も無いので、読める厚みに。 */
 const CARD_T = 5;
 /**
- * 地（券と鋏が浮いている面）。★画面と平行な1枚。影はここへ落ちる。
- * ★遠くへ置くほど影が横へ流れる（横のずれ ＝ 深さ × 2.05）。近くに置いて
- *   「紙のすぐ下に敷いた面」にする。
+ * ★★**床は水平**（第70巡・ユーザー確定 ―― 券は地面に対して垂直に浮いている）。
+ * カメラは券の真正面で水平を向いているので、床は**画面の中ほど（＝地平）から
+ * 下**に見える。★床そのものは塗らない（影だけが床の在り処を教える）。
+ * 数値は「券の下端から何 px 下か」。
  */
-const GROUND_Z = -40;
+const FLOOR_GAP = 24;
 /**
  * ★★**画面と平行な面に当たる段の色**。紙の色をこれで割ってから渡すと、
  * 正面を向いた面（＝束の見えている縁）が**券の紙そのものの色**になる。
@@ -76,6 +77,13 @@ export interface StageNipper {
    * ★入鋏のときは 0 ―― 券が鋏の厚みの真ん中を通る＝口にくわえた形になる。
    */
   z?: number;
+  /**
+   * ★**平らな面を左へ回す角**（度）。縦の軸（画面の上下）まわりに回るので、
+   * 頭は上・柄は下のまま、面だけが券のほうを向く。0 なら画面と平行。
+   */
+  yaw?: number;
+  /** ★画面の中での傾き（度）。**正で頭が左へ**倒れる。 */
+  tilt?: number;
 }
 
 export function TicketStage({
@@ -136,9 +144,10 @@ export function TicketStage({
     const onCardMat = new ShadowMaterial({ color: P.cast, opacity: P.castAlpha });
     const onCard = new Mesh(new PlaneGeometry(1, 1), onCardMat);
     onCard.receiveShadow = true;
-    // 地。★画面と平行な1枚（券も鋏もここへ影を落とす）。
+    // 床。★**水平**な1枚（券も鋏もここへ影を落とす）。塗らないので影だけが見える。
     const groundMat = new ShadowMaterial({ color: P.cast, opacity: P.castAlpha });
     const floor = new Mesh(new PlaneGeometry(1, 1), groundMat);
+    floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     floor.visible = ground;
     scene.add(floor, body, face, onCard);
@@ -181,14 +190,19 @@ export function TicketStage({
       );
 
 
-      floor.position.copy(at(sw / 2, sh / 2, GROUND_Z));
-      floor.scale.set(sw * 3, sh * 3, 1);
+      // 床 … 券の下端の少し下に水平に敷く。奥は地平まで伸ばす。
+      floor.position.copy(at(sw / 2, c.y + c.h + FLOOR_GAP, -sh));
+      floor.scale.set(sw * 6, sh * 4, 1);
 
       // 鋏 … **口（スリットの中心）**を指定の場所へ。縮尺は幅で決める。
       const k = n.w / (NIPPER_EXTENT.x1 - NIPPER_EXTENT.x0);
       rig.root.scale.setScalar(k);
-      rig.root.position.copy(at(n.nose.x, n.nose.y, n.z ?? 0))
-        .sub(new Vector3(NOSE.x - NIPPER_CENTER.x, NOSE.y - NIPPER_CENTER.y, 0).multiplyScalar(k));
+      // ★回してから置く。`XYZ` の順なので **z（画面の中の傾き）が先、y（面を回す）が後**。
+      rig.root.rotation.set(0, (-(n.yaw ?? 0) * Math.PI) / 180, ((n.tilt ?? 0) * Math.PI) / 180);
+      // 口（スリットの中心）が指定の場所へ来るように、回したあとの隔たりを引く。
+      const off = new Vector3(NOSE.x - NIPPER_CENTER.x, NOSE.y - NIPPER_CENTER.y, 0)
+        .multiplyScalar(k).applyEuler(rig.root.rotation);
+      rig.root.position.copy(at(n.nose.x, n.nose.y, n.z ?? 0)).sub(off);
     };
     lay();
     layRef.current = lay;

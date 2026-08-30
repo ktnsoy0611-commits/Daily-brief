@@ -438,11 +438,16 @@ export const kindsOfDomain = (domain: ItemDomain) => ITEM_KINDS.filter((k) => k.
 //   Vitsœ のラベルが正)。だから**暗い色は使えない** ― forest/violet/wine の上では
 //   黒が沈む。SCHEME の明るい4色から、色相が離れている4つを選ぶ。
 //   黒 INK(#1A1A18) との比はいずれも 6:1 以上で本文に耐える。
+// ★★割り当ては**アプリが kind ごとに持っている色**(`lib/deckStyle.ts`)へ寄せる
+//   (第70巡・ユーザー確定)。同じものがアプリの中で2色になっていたのを直した。
+//   もの→桃・情報→空は `deckStyle` と**完全に一致**する。
+//   体験(展覧会=navy/ライブ=violet/体験=orange/食=red)で黒が読めるのは**橙**だけ。
+//   場所は `deckStyle` では緑だが、緑の上では黒が沈むので使えず、余った**黄**を当てる。
 export const TICKET_DOMAIN_COLOR: Record<ItemDomain, string> = {
-  place: SCHEME.sky.bg,          // #509BF5
-  experience: SCHEME.pink.bg,    // #F76FA1
-  info: SCHEME.yellow.bg,        // #F5E837
-  thing: SCHEME.orange.bg,       // #FA6E31
+  place: SCHEME.yellow.bg,       // #F5E837（deckStyle は緑。黒が読めないので黄）
+  experience: SCHEME.orange.bg,  // #FA6E31（deckStyle の activity と一致）
+  info: SCHEME.sky.bg,           // #509BF5（deckStyle の info と一致）
+  thing: SCHEME.pink.bg,         // #F76FA1（deckStyle の thing と一致）
 };
 // 券の紙。★第33巡で暖色のクリームは廃止したので戻さない。
 // 紙らしさは**本物の写真**(`public/paper-kraft.webp`・`lib/paperTexture.ts`)で

@@ -75,10 +75,16 @@
 - `components/tabs/GoalsTab.tsx` — ゴールのバインダーとチェックイン。
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
   入口は**右下の輪の SETTING だけ**（`CreateMenu`）。
-- ★`components/tabs/DevStageTab.tsx` — **開発用の `DEV` タブ**（第70巡）。刷新した
-  券と鋏を**実機で**見るためだけに在る。★★Explore の刷新が本物になったら、
-  このファイル／`lib/apps.ts` の `life-dev`／`lib/types.ts` の `LifeTabId`／
+- ★`components/tabs/DevStageTab.tsx` — **開発用の `DEV` タブ**（第70巡）。中身は
+  「**券**」＝版面の見本帳と「**場**」＝券と鋏の3D。**実機で見るためだけ**に在る。
+  ★★★**タブバーの高さは `navHeightPx()` から引く。自分で測らない**（`.app-nav` の
+  矩形は `NAV_H` と一致しない ―― Chromium 81px／実機 132px。第71巡に踏んだ）。
+  ★★Explore の刷新が本物になったら、このファイル／`components/explore/samples/`／
+  `lib/apps.ts` の `life-dev`／`lib/types.ts` の `LifeTabId`／
   `components/TabIcons.tsx` の `ticket` を**まとめて消す**。
+- ★`components/explore/samples/` — **券の版面の見本帳**（第71巡）。参照4枚の作法を
+  1案1ファイルで写した A〜F ＋ 共通部品 `TicketParts.tsx` ＋ 一覧 `index.ts`。
+  ★★**選ばれた1案を `Ticket.tsx` へ畳んだら、ディレクトリごと消す。**
 - ★**刷新中の部品**（`/dev/explore` と `DEV` タブにしか無い。4タブは手つかず）…
   `components/explore/Ticket.tsx`（券）/ `PunchMark.tsx`（鋏痕）/ `lib/ticket.ts`、
   改札鋏（★**three.js／WebGL**。第17巡に SVG の自前投影をやめた）…
@@ -162,6 +168,11 @@
   ★**画面の上下の帯**は別件で、`statusBarStyle: "default"` で解決済み（第35巡）。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
+- ★`lib/printGrain.ts` — **券の「印刷の粒」を知っている唯一の場所**（第71巡）。
+  `tools/make-grain.mjs` → `public/print-grain.webp`（128px 角）。
+  ★★**1画像画素 = 1デバイス画素**で敷く（`background-size: 128 / dpr`）。等倍だと
+  3x の実機で粒が3倍に太る。★濃さは**タイルの中央**（247）で決める ―― 不透明度で
+  薄めると地ごと沈む。★★下の**クラフト紙とは別物**。混ぜない（券は板紙、図形は切った紙）。
 - `lib/paperTexture.ts` — **クラフト紙の目を知っている唯一の場所**。図形と文字の面に
   だけ**焼き込む**（`lib/solidPaint.ts` が焼くときに1度だけ。毎フレームの負荷はゼロで、
   図形が回れば紙も回る）。強さは **`PAPER_ALPHA`**（既定 0.12）の1つだけ。

@@ -31,9 +31,16 @@
 // ★強さは `PAPER_ALPHA` の**1つだけ**。濃くしたければここを上げる。
 // ★★**タイルには二度と手を入れないこと。** 薄く感じたら `PAPER_ALPHA` を上げる。
 //
-// ★★★**券（`lib/printGrain.ts`）と同じ 1 枚を敷く**（第76巡にユーザー指定
-//   「両方とも網点」）。第75巡までの「券は板紙・図形は切った紙。混ぜない」は
-//   **この巡で撤回された**。強さだけが別（こちらは焼き込み、あちらは CSS）。
+// ★★★**券（`lib/printGrain.ts`）と同じ 1 枚を敷く**（第76巡にユーザー指定）。
+//   第75巡までの「券は板紙・図形は切った紙。混ぜない」は**撤回された**。
+//   強さだけが別（こちらは焼き込み、あちらは CSS）。
+//
+// ★★★2026-08-31・**第77巡にしわ紙へ差し替えた**（ユーザー指定「もう一方を試して」）。
+//   ★★**しわは低い刻みなので拡大縮小してよい。網点は高い刻みなのでいけない。**
+//     第76巡の「1画像画素 = 1デバイス画素」は**網点の規則**で、しわには当てない。
+//   ★★その結果**繰り返さなくてよくなった** ―― シートの一部を切り出して、絵の大きさへ
+//     伸ばして敷く。**継ぎ目もタイルの周期も存在しない**。散らすのは
+//     **向き4つ × 切り出す場所 × 切り出す大きさ**の3つ。
 
 /** 質感の濃さ。★ユーザー確定「見てわかる程度」(2026-08-26)。★**強さの目盛りはこれ1つ**。
  *  ★★第76巡に 0.12 → 0.5。`soft-light` は `source-atop` の直塗りよりずっと穏やかで、
@@ -41,11 +48,11 @@
  *  乗せ方が変わったから**。 */
 export const PAPER_ALPHA = 0.5;
 
-/** タイル（`tools/make-halftone.mjs` の生成物）。★**券と同じ 1 枚**。 */
-const SHEET_SRC = "/halftone.webp";
-/** タイル1辺（**デバイス**画素）。★網点の周期 9px × 14 ＝ 126。
- *  整数周期で切ってあるので、並べても格子はずれない。 */
-const TILE = 126;
+/** シート（`tools/make-crumple.mjs` の生成物）。★**券と同じ 1 枚**。 */
+const SHEET_SRC = "/crumple.webp";
+/** シート1辺。★正方形なのは90度4向きに回すため。**画素の等倍で敷かない**ので、
+ *  この値は「回すための器の大きさ」でしかない。 */
+const TILE = 512;
 
 let sheet: HTMLImageElement | null = null;
 let loading = false;
@@ -125,8 +132,6 @@ export function paperize(
   const n = hash32(seed);
   const tile = tileFor(n % 4);
   if (!tile) return;
-  const pat = ctx.createPattern(tile, "repeat");
-  if (!pat) return;
   const cv = ctx.canvas;
 
   // ★★焼く前の絵を控える。`soft-light` は**透明な地にもテクスチャを置いてしまう**
@@ -137,17 +142,22 @@ export function paperize(
   if (!kctx) return;
   kctx.drawImage(cv, 0, 0);
 
-  const ox = (n >>> 4) % TILE;
-  const oy = (n >>> 14) % TILE;
+  // ★★シートの**一部**を切り出して、絵いっぱいへ伸ばす。切り出す大きさも種から
+  //   決めるので、隣り合った図形がしわの同じ場所・同じ縮尺になることがない。
+  const frac = 0.55 + ((n >>> 2) % 46) / 100;      // 0.55〜1.00
+  const cw = Math.round(TILE * frac);
+  const cx = (n >>> 8) % (TILE - cw + 1);
+  const cy = (n >>> 16) % (TILE - cw + 1);
+  // ★短いほうに合わせて**覆う**（伸び縮みでしわの形が歪まないように）。
+  const bw = w * dpr, bh = h * dpr;
+  const scale = Math.max(bw / cw, bh / cw);
+  const dw = cw * scale, dh = cw * scale;
+
   ctx.save();
-  // ★タイルは**デバイス画素**で持っているので、変形を素へ戻してから貼る
-  //   (CSS px の座標系で貼ると網点まで拡大されて、ただのシミになる)。
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = "soft-light";
   ctx.globalAlpha = PAPER_ALPHA;
-  ctx.translate(-ox, -oy);
-  ctx.fillStyle = pat;
-  ctx.fillRect(ox, oy, w * dpr, h * dpr);
+  ctx.drawImage(tile, cx, cy, cw, cw, (bw - dw) / 2, (bh - dh) / 2, dw, dh);
   ctx.restore();
 
   // ★元の α へ戻す（はみ出したぶんを落とす）。

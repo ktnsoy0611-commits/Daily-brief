@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 // ★★★**券の質感を知っている唯一の場所**(第71巡に「印刷の粒」で導入、
 // 2026-08-31・**第76巡に網点へ差し替え**)。作り方は `tools/make-halftone.mjs`。
 //
@@ -20,17 +18,17 @@ import { useEffect, useState } from "react";
 //     13〜19% 暗くなり、青だけ 6pt 余計に落ちる茶色かぶり）。それが
 //     ユーザーの言う「濁った色」で、いまはこの面に一本化した。
 //
-// ★★★**1画像画素 = 1デバイス画素**で敷く。だから `background-size` は
-//   `GRAIN_TILE / devicePixelRatio` の CSS px。等倍(`auto`)にすると 3x の実機で
-//   網点が3倍に太り、「印刷の点」ではなく「水玉」に見える。
+// ★★★2026-08-31・**第77巡にしわ紙へ差し替えた**（ユーザー指定）。
+//   ★★**しわは低い刻みなので拡大縮小してよい。網点は高い刻みなのでいけない。**
+//     第76巡の「1画像画素 = 1デバイス画素」は**網点の規則**で、しわには当てない
+//     （網点を伸ばすと点が太って「水玉」になるが、しわは伸ばしても質が変わらない）。
+//   ★★だから `cover` で**1枚を券いっぱいに伸ばす**。**繰り返さない**ので、
+//     継ぎ目もタイルの周期も存在しない。
 //
 // ★★質感は**色のすぐ上・文字の下**に置くこと。最前面へ出すと写真も文字も霞む。
 
-/** タイルの画像(`tools/make-halftone.mjs` の生成物)。★図形と**同じ 1 枚**。 */
-export const GRAIN_SRC = "/halftone.webp";
-/** タイル1辺(**デバイス**画素)。★`tools/make-halftone.mjs` の `N` と同じ値
- *  ―― 網点の周期 9px × 14 ＝ 126。**整数周期なので継ぎ目が構造として無い**。 */
-export const GRAIN_TILE = 126;
+/** シートの画像(`tools/make-crumple.mjs` の生成物)。★図形と**同じ 1 枚**。 */
+export const GRAIN_SRC = "/crumple.webp";
 /**
  * 濃さ(`soft-light` の不透明度)。★**強さの目盛りはこれ1つだけ**。
  * ★★タイルの平均は **128 ちょうど**（`soft-light` の恒等点）なので、
@@ -41,31 +39,19 @@ export const GRAIN_TILE = 126;
  */
 export const GRAIN_ALPHA = 0.55;
 
-/**
- * いまの画面の画素密度。★サーバーでは 1 を返し、乗ってから本当の値へ差し替える
- * (粒は飾りなので、立ち上がりに一度切り替わっても見えない)。
- */
-export function useDevicePixelRatio(): number {
-  const [dpr, setDpr] = useState(1);
-  useEffect(() => {
-    const read = () => setDpr(window.devicePixelRatio || 1);
-    read();
-    // ★端末を回すと変わることがある(ブラウザの拡大でも変わる)。
-    const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
-    mq.addEventListener("change", read);
-    return () => mq.removeEventListener("change", read);
-  }, []);
-  return dpr;
-}
+// ★★第77巡に `useDevicePixelRatio` を**撤去した**。等倍で敷かなくなったので、
+//   画素密度を知る必要がなくなったため（網点のときは 1画像画素=1デバイス画素に
+//   するために要った）。★戻すときは `git log` から拾えばよい。
 
 /** 券の面へ敷く質感の style。★`position: absolute; inset: 0` の面に当てる。 */
-export function grainStyle(dpr: number): React.CSSProperties {
-  const css = GRAIN_TILE / (dpr || 1);
+export function grainStyle(): React.CSSProperties {
   return {
     position: "absolute", inset: 0, pointerEvents: "none",
     backgroundImage: `url("${GRAIN_SRC}")`,
-    backgroundRepeat: "repeat",
-    backgroundSize: `${css}px ${css}px`,
+    // ★**伸ばして1枚だけ敷く**。しわは低い刻みなので縮尺が変わっても質が落ちない。
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "cover",
+    backgroundPosition: "center",
     mixBlendMode: "soft-light",
     opacity: GRAIN_ALPHA,
   };

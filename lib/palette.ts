@@ -1,5 +1,5 @@
 import type { ItemDomain, ItemKind } from "./types";
-import { INK, KIND_DOMAIN, PAPER, SCHEME } from "./constants";
+import { INK, KIND_DOMAIN, MUTED, PAPER, SCHEME } from "./constants";
 
 // ★★★**有彩色の出どころはここ1つ**（2026-08-31・第73巡）。
 //
@@ -15,6 +15,9 @@ import { INK, KIND_DOMAIN, PAPER, SCHEME } from "./constants";
 //   ・**タグ 5**（WORK / LIFE / WELLNESS / SOCIAL / GROWTH）
 //       → タスクの図形。ドメインとは**別の軸**（TASK と EXPLORE は別のアプリで、
 //         同じ画面に並ばないので色は借りてよいが、意味は混ぜない）。
+//   ★★★第77巡から**ドメイン4もタグ5も同じ「メイン5色」から取る**（ユーザー指定
+//     「券の色もこのメイン5色を優先に。残りの4色は足りなくなった時に使う」）。
+//     券に入らないのは黒桜だけ ―― 暗い券は作らない（ユーザー確定）。
 //   ・**状態 3**（危険／肯定／選ばれている）は、この9つから**借りる**。
 //
 // ★★★**色そのものは `SCHEME`（`lib/constants.ts`）が持つ。ここは「役 → 色」の
@@ -48,20 +51,41 @@ const contrast = (a: string, b: string): number => {
 export const bodyInkOn = (main: string): string =>
   contrast(main, INK) >= contrast(main, PAPER) ? INK : PAPER;
 
+/**
+ * ★**地の上に直接いる文字の色**を CSS 変数で配る（第77巡）。
+ * `--ink-on` … その地の上の主役の文字（`Masthead` の字）。**面としても使う**
+ *   ―― タブバー右端の「作る」の丸は、地が明るければ黒・暗ければ白。
+ * `--on-ink` … その `--ink-on` の面に載る色（丸の中のアイコン）。
+ * `--muted-on` … その地の上の控えめな文字（`SectionLabel`・日付）。
+ * ★★★呼ぶのは **`components/AppShell.tsx` の列だけ**（地を敷いているのと同じ場所）。
+ *   ここ以外で呼ぶと出どころが2つになり、遷移中に必ずズレる。
+ * ★暗い地では「控えめ」を**不透明度ではなく混色**で作る ―― `MUTED`(#8E8E88) は
+ *   明るい地の前提で選んだ値で、暗い地では逆に浮く。
+ */
+export const inkVarsOn = (ground: string): Record<string, string> => {
+  const ink = bodyInkOn(ground);
+  const dark = ink !== INK;   // 地が暗い＝紙色の文字を載せている
+  return {
+    "--ink-on": ink,
+    "--on-ink": bodyInkOn(ink),
+    "--muted-on": dark ? "rgba(255,251,245,0.52)" : MUTED,
+  };
+};
+
 /** ドメインの色（4）。★これが「何であるか」を表す唯一の色＝**メイン**。 */
 export const DOMAIN_COLOR: Record<ItemDomain, string> = {
   place: SCHEME.sherbert.main,
-  experience: SCHEME.pink.main,
+  experience: SCHEME.fiery.main,
   info: SCHEME.aqua.main,
-  thing: SCHEME.lilac.main,
+  thing: SCHEME.limeade.main,
 };
 
 /** ★**サブ**。そのメインの上に載る**大きな文字**（券の題・印・罫）の色。 */
 export const DOMAIN_SUB: Record<ItemDomain, string> = {
   place: SCHEME.sherbert.sub,
-  experience: SCHEME.pink.sub,
+  experience: SCHEME.fiery.sub,
   info: SCHEME.aqua.sub,
-  thing: SCHEME.lilac.sub,
+  thing: SCHEME.limeade.sub,
 };
 
 /** その面の**本文**の色。★メインから導くので、`SCHEME` を替えれば追従する。 */

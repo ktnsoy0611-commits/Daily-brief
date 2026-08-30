@@ -5,7 +5,7 @@ import {
   INK, KIND_DOMAIN, LATIN, SANS, SOFT_SHADOW_LG, TICKET_DECK, TICKET_PERF, itemKindOf,
 } from "@/lib/constants";
 import { DOMAIN_COLOR } from "@/lib/palette";
-import { grainStyle, useDevicePixelRatio } from "@/lib/printGrain";
+import { grainStyle } from "@/lib/printGrain";
 import { serialOf, type TicketEdge } from "@/lib/ticket";
 import type { ItemKind } from "@/lib/types";
 import { Barcode, PunchNotch } from "./PunchMark";
@@ -107,7 +107,6 @@ export function Ticket({ data, punch, deck = TICKET_DECK, width }: {
   deck?: string;
   width?: number | string;
 }) {
-  const dpr = useDevicePixelRatio();
   const kindDef = itemKindOf(data.kind);
   const domain = KIND_DOMAIN[data.kind];
   const stock = DOMAIN_COLOR[domain];
@@ -141,7 +140,7 @@ export function Ticket({ data, punch, deck = TICKET_DECK, width }: {
           第71巡に見本帳だけ `Grain` へ移し、こちらが取り残されていた。
           いまは**券も図形も同じ網点**で、平均 128 を `soft-light`（＝128 が恒等）
           なので**地の色は動かない**。★色のすぐ上・文字の下に置くこと。 */}
-      <span aria-hidden style={{ ...grainStyle(dpr), zIndex: 1 }} />
+      <span aria-hidden style={{ ...grainStyle(), zIndex: 1 }} />
 
       {/* 券面。★左右の余白はこの器だけが持つ。 */}
       <div style={{

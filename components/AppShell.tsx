@@ -5,6 +5,7 @@ import { ms as msOf, T_ITEM } from "@/lib/motion";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop, groundOf } from "@/components/AppBackdrop";
+import { inkVarsOn } from "@/lib/palette";
 import { CreateMenu, type MenuAt } from "@/components/CreateMenu";
 import { TabGlyph, TabIcon } from "@/components/TabIcons";
 import { Dashboard } from "@/components/Dashboard";
@@ -133,6 +134,12 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
           // ★タブや中身の側で地色を塗らないこと。塗ると出どころが2つになり、
           // 遷移中にどちらかがズレて必ず境目が出る。
           background: groundOf(a.id),
+          // ★★★**地の上に直接いる文字の色を、ここで決めて配る**（第77巡）。
+          //   JOURNAL の地が暗くなったので、`Masthead` と `SectionLabel` は
+          //   地によって墨／紙を切り替える必要がある。プロップを配ると呼び出し側
+          //   （3アプリ・十数か所）を全部触ることになるので、**地を敷いている
+          //   この1か所で変数を置く**。色は `bodyInkOn()` が導く＝判断を増やさない。
+          ...inkVarsOn(groundOf(a.id)),
         }}>
           <div data-tab-scroll-root style={{
             width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
@@ -259,6 +266,10 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             position: "absolute", left: 0, right: 0, bottom: 0,
             display: "flex", flexDirection: "column", alignItems: "center",
             padding: `0 ${SPACE.lg}px`, zIndex: 25, pointerEvents: "none",
+            // ★★タブバーは列の**外**にいるので、変数をここでも置く（出どころの
+            //   関数は1つ）。JOURNAL の地が暗くなり、「作る」の黒い丸が地に
+            //   溶けたため（第77巡）。
+            ...inkVarsOn(groundOf(a.id)),
           }}>
             {/* いま3つのアプリのどこにいるか。文字は出さず、点だけの控えめな
                 目印にしている。この目印もトラックに乗っているので、指で
@@ -330,11 +341,13 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 //   このボタンに重なって消える ― どこか途中で消えるのではなく。
                 data-create-anchor
                 style={{
-                  flexShrink: 0, width: 52, height: 52, borderRadius: RADIUS.circle, background: INK, border: "none", cursor: "pointer",
+                  // ★地が明るければ黒い丸、暗ければ白い丸（`--ink-on`）。
+                  flexShrink: 0, width: 52, height: 52, borderRadius: RADIUS.circle,
+                  background: `var(--ink-on, ${INK})`, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
                 }}
               >
-                <TabIcon name="record" color={PAPER} size={22} />
+                <TabIcon name="record" color={`var(--on-ink, ${PAPER})`} size={22} />
               </button>
             </div>
           </nav>

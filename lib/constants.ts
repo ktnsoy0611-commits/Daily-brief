@@ -107,11 +107,11 @@ export const FONT_FACES: FontFace[] = [
 //
 // 色を捨てたぶん、残したアクセント(下のBLUE/RUST/GREEN/GOLDと、バインダー
 // のアクセント各種)がはっきり効くようになる = 「遊び心」はそちらが担う。
-// ★★★墨は **BLACK CHERRY `#3E0D20`**（2026-08-31・第76巡）。参照した盤が
-// この色を「MAIN / TEXT COLOR」＝**主要色でもあり文字色でもある**と定めている
-// ので、`INK` と タグ SOCIAL の両方を担う。地 `#FFFBF5` との比 15.87 で、
-// 前の純黒 `#1A1A18`（比 14.73）より読みやすい。
-export const INK = "#3E0D20";
+// ★★★墨は **Velvet Black `#2C2627`**（2026-08-31・第77巡にユーザー指定
+// 「文字や、タブバーや、record タブの黒寄りの色は添付のブラックに」）。
+// 地 `#FFFBF5` との比 14.41。★わずかに赤へ寄った黒（HSL 350°/7%/16%）なので、
+// 暖かい地 CLOUD と喧嘩しない。★★**黒はこの1つだけ**（下の `CHARCOAL` も同じ値）。
+export const INK = "#2C2627";
 export const PAPER = "#FAFAF9";
 export const BG = "#F0F0EE";
 // 背景(AppBackdrop)専用の2段。バインダーの表紙と同じ「下地(=BG) / 帯(SHADE) /
@@ -122,14 +122,16 @@ export const SHADE = "#E9E9E6";
 export const SHADE_DEEP = "#E0E0DC";
 // 全画面のオーバーレイの地(声の録音・タスクの入力)。★出どころはここ1つ。
 // 明るい地から切り離して「いまは書く/録るためだけの画面」を作るための墨。
-export const CHARCOAL = "#2A2A28";
+// ★★★第77巡に `INK` と**同じ値**にした（ユーザー指定の黒は1つ）。その結果
+// **グレーの段は 4 → 3**（`INK`＝`CHARCOAL` / `SECOND` / `MUTED`）。増やさない。
+export const CHARCOAL = INK;
 // 補助の文字色。以前は各所で "#9A988E" を直書きしていたものをここへ集約した。
 export const MUTED = "#8E8E88";
 
 /** ★副文(二番目に強い文字)。CHARCOAL(12.6:1) と MUTED(2.9:1) の間が空いていて、
  *  名前を持たないまま `#5A5A54` が 17 箇所・9 ファイルで埋めていた(第65巡)。
  *  MUTED へ丸めると本文が **WCAG AA(4.5:1) を割る**ので、ここだけ名前を与えた。
- *  ★グレーはこの4段(INK / CHARCOAL / SECOND / MUTED)で打ち止め。増やさない。 */
+ *  ★グレーは3段(INK＝CHARCOAL / SECOND / MUTED)で打ち止め。増やさない。 */
 export const SECOND = "#5A5A54";   // 6.08:1
 
 /** ★写真や暗幕の上に乗る**純白**。`PAPER`(#FAFAF9) は紙の面の色で**別物**。
@@ -147,10 +149,12 @@ export const TAB_ICON_OFF = "#9C9C9B";
  *  **画面固有のパレット**なので、無彩色の梯子には混ぜない(`TASK_TAGS` と同じ作法)。
  *  ★どれも不透明にすること — 下が明るい円か地かで見え方が変わらないように。 */
 export const STUDIO = {
-  figureDim: "#3A3A37",
-  wellDim: "#141417",    wellLit: "#8F8F89",
-  capOffDim: "#383835",  capOffLit: "#A6A6A0",
-  lampOffDim: "#1F1F22", lampOffLit: "#8A8A84",
+  // ★★第77巡に **Velvet Black `#2C2627`** を土台に作り直した（ユーザー指定
+  //   「record タブの黒寄りの色は添付のブラックに」）。明暗の段だけを付けている。
+  figureDim: "#4E4749",
+  wellDim: "#1B1718",    wellLit: "#8F8A8B",
+  capOffDim: "#3A3436",  capOffLit: "#A6A1A2",
+  lampOffDim: "#231E1F", lampOffLit: "#8A8586",
   lampRec: "#D0412B",
 } as const;
 
@@ -192,21 +196,21 @@ export interface ColorPair {
   sub: string;
 }
 export const SCHEME = {
-  // ドメイン4（券の紙・ブリーフのカード・バインダー・ストック・マップ）
-  // ★**淡い4色**に揃える ―― 券の紙は本文が載る面なので、明るい側から選ぶ。
-  sherbert: { main: "#FFBF85", sub: "#3E0D20" },    // バショ          サブ比 10.16
-  pink: { main: "#FFA5CB", sub: "#9C0003" },        // タイケン        サブ比  4.76
-  aqua: { main: "#D1EAF1", sub: "#9C0003" },        // ジョウホウ      サブ比  6.94
-  lilac: { main: "#EEDDFF", sub: "#9C0003" },       // モノ            サブ比  6.80
-  // タグ5（タスクの図形。★状態の3色もここから借りる）
-  // ★★**work / life / growth はこの盤で彩度の高い上位3色**（.210 / .161 / .178）
-  //   かつ互いによく離れている（最小 ΔE 0.25）。ユーザー指定「被らないように、
-  //   かつパレットの雰囲気をとらえた主要な色」を、目ではなく**数で**満たしている。
-  fiery: { main: "#FF582E", sub: "#FFFBF5" },       // WORK ／選択     サブ比  3.05
-  limeade: { main: "#E5F167", sub: "#3E0D20" },     // LIFE ／肯定     サブ比 13.33
-  deepred: { main: "#9C0003", sub: "#D1EAF1" },     // GROWTH ／危険   サブ比  6.94
-  sky: { main: "#C3D9FF", sub: "#9C0003" },         // WELLNESS        サブ比  6.08
-  cherry: { main: "#3E0D20", sub: "#D1EAF1" },      // SOCIAL ／墨     サブ比 13.05
+  // ★★★**メイン5色**（2026-08-31・第77巡）。**図形5 と 券の紙4 の両方をここから取る**
+  //   （ユーザー指定「9色のうち5色をメインとして図形に適応。券の色もこのメイン5色を
+  //   優先に」）。TASK と EXPLORE は別のアプリで同じ画面に並ばないので、重なってよい。
+  fiery: { main: "#FF582E", sub: "#FFFBF5" },       // WORK ／タイケン ／選択  サブ比  3.05
+  limeade: { main: "#E5F167", sub: "#3E0D20" },     // LIFE ／モノ     ／肯定  サブ比 13.33
+  cherry: { main: "#3E0D20", sub: "#D1EAF1" },      // GROWTH                  サブ比 13.05
+  aqua: { main: "#D1EAF1", sub: "#9C0003" },        // WELLNESS ／ジョウホウ   サブ比  6.94
+  sherbert: { main: "#FFBF85", sub: "#3E0D20" },    // SOCIAL ／バショ         サブ比 10.16
+  // ★**予備の4色**。足りなくなったら使う（ユーザー指定）。いま使っているのは
+  //   `deepred` だけ ―― 状態の「危険」は**紙の上に文字で出る**場所があり、
+  //   本文の 4.5 を満たすのが深紅（8.43）しかないため。
+  lilac: { main: "#EEDDFF", sub: "#9C0003" },       // 予備                    サブ比  6.80
+  pink: { main: "#FFA5CB", sub: "#9C0003" },        // 予備                    サブ比  4.76
+  sky: { main: "#C3D9FF", sub: "#9C0003" },         // 予備                    サブ比  6.08
+  deepred: { main: "#9C0003", sub: "#D1EAF1" },     // 予備 ／危険             サブ比  6.94
 } as const satisfies Record<string, ColorPair>;
 
 // アプリが前から持っている6つのアクセントの名前は変えず、**中身をスキームの
@@ -214,7 +218,7 @@ export const SCHEME = {
 // どれを当てるかは「元の色相を保つ」ことと「その色の上に何が載るか」で決めた。
 // ★★**状態の色は3つだけ**（2026-08-31・第73巡）。分類の9色から借りている。
 export const BLUE = SCHEME.fiery.main;     // 選ばれている・リンク（地との比 3.05）
-export const RUST = SCHEME.deepred.main;   // 危険（削除・エラー）
+export const RUST = SCHEME.deepred.main;   // 危険（削除・エラー）。★予備から取る唯一の色
 export const GREEN = SCHEME.limeade.main;  // 肯定・達成
 /** ★★★**状態の面に載る色**（第76巡）。この盤は**明るい色が主役**なので、
  *  「肯定＝緑の面に白い ✓」がそのままでは成り立たない（若草に白は比 1.19）。
@@ -263,12 +267,18 @@ export const BD_GREY = "#FFFBF5";   // ★第76巡に盤の CLOUD（BACKGROUND C
 // ★ジャーナル(声の記録)の地と図。参考画像(2026-08-11)から採った、暖かみの
 // ある中間グレー。地と図の差はごくわずか(明度差 約18)で、円は「浮いた面」
 // ではなく「地の濃淡」として読める。
-export const JOURNAL_BG = "#D1EAF1";  // ★第76巡に盤の AQUA（SECONDARY COLOR）へ
+// ★★★第77巡にユーザー指定で **Velvet Black** へ ―― JOURNAL だけ**暗いアプリ**になる。
+// 水は券の紙（ジョウホウ）に回ったので、地としては使わない。
+export const JOURNAL_BG = INK;
 // ★円は地よりはっきり明るく、ほぼ白へ寄せる。以前は明度差18しか無く、
 // 「まだ背景に見えてしまう」と報告された(2026-08-11)。
-export const JOURNAL_FIG = "#EAEAE6";
+// ★★第77巡に地が暗くなったので、円は**地より少しだけ明るい**方向へ作り直す。
+// 明るい地のときは「地の濃淡」に見せるために差を 18 に抑えていたが、暗い地では
+// 同じ役を**上へ**取る（地との比 1.64。第75巡の明るい地では 1.75 だった）。
+// ★白へ振り切らないこと ―― 円は「面」ではなく「地の起伏」。
+export const JOURNAL_FIG = "#4E4749";
 // この地の上での控えめな文字色。
-export const JOURNAL_MUTED = "rgba(26,26,24,0.46)";
+export const JOURNAL_MUTED = "rgba(255,251,245,0.52)";  // ★暗い地の上の控えめな文字
 export const BD_LIGHT = "#F3F3F1";
 
 // navのピル自体を画面下端からどれだけ浮かせるか。ホーム画面に追加した

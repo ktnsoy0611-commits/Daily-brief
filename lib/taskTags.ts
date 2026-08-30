@@ -33,20 +33,19 @@ const tag = (id: TaskTag, label: string, p: { main: string; sub: string }, face:
 //   「9色を9つの役へ配るだけ」で済む。
 //   ★TASK と EXPLORE は別のアプリなので色を借りても混同はしないが、
 //     **同じ色が2つの意味を持つ状態**は、色を選び直すときに必ず詰まる。
-// ★★★第76巡に色を差し替えた。ユーザー指定は2つ …
-//   ①「work と life と growth が多いので、そこら辺の色が被らないように」
-//   ②「かつカラーパレットの雰囲気をとらえた主要な色に」
-//   → この盤で**彩度の高い上位3色**（FIERY .210 / DEEP RED .178 / LIMEADE .161）を
-//     その3つに当てた。互いの見分けは最小 ΔE 0.25、5色ぜんぶでも 0.22
-//     （第75巡は 0.116 だった ―― 約2倍に離れた）。
-//   ★★目で選ばないこと。前回は「修正前の色にいちばん近い」で解いて、
-//     結果として近い色どうしが山に並んだ。**多い3つを最初に離す**のが順番。
+// ★★★第77巡に色を差し替えた。ユーザー指定は「単純な濃さとかではなく、この
+//   カラーパレットの雰囲気を作る上で**理論的に重要**なカラーとし、できるだけ
+//   **バランス**をとる」。→ 盤の9色を**4つの尺度**で採点して選んだ5色:
+//   色相の最小隔たり 28.0°（第76巡は 6.2° ＝ 赤に偏っていた）／明度の幅 0.67／
+//   彩度の幅 0.18／見分けの最小 ΔE 0.144。
+//   ★★**多い3つ（work / life / growth）＝ 朱 / 若草 / 黒桜** ―― この5色の中で
+//     互いにいちばん離れ（最小 ΔE 0.34）、彩度の合計も最大（.449）。
 export const TASK_TAGS: TagDef[] = [
   tag("work", "WORK", SCHEME.fiery, 1),        // 朱 × 雲白    / ゴシック700
   tag("life", "LIFE", SCHEME.limeade, 3),      // 若草 × 黒桜  / 丸ゴシック500
-  tag("wellness", "WELLNESS", SCHEME.sky, 4),  // 空 × 深紅    / Dela(極太)
-  tag("social", "SOCIAL", SCHEME.cherry, 5),   // 黒桜 × 水    / M PLUS 1 800
-  tag("growth", "GROWTH", SCHEME.deepred, 2),  // 深紅 × 水    / ゴシック700斜体
+  tag("wellness", "WELLNESS", SCHEME.aqua, 4), // 水 × 深紅    / Dela(極太)
+  tag("social", "SOCIAL", SCHEME.sherbert, 5), // 杏 × 黒桜    / M PLUS 1 800
+  tag("growth", "GROWTH", SCHEME.cherry, 2),   // 黒桜 × 水    / ゴシック700斜体
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>

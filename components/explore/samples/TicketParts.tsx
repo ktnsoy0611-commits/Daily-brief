@@ -7,7 +7,7 @@ import {
   INK, KIND_DOMAIN, LATIN, SANS, SOFT_SHADOW_LG,
   TICKET_ASPECT, TICKET_DECK, itemKindOf,
 } from "@/lib/constants";
-import { grainStyle, useDevicePixelRatio } from "@/lib/printGrain";
+import { grainStyle } from "@/lib/printGrain";
 import { bodyInkOn, DOMAIN_SUB } from "@/lib/palette";
 import { PunchNotch } from "../PunchMark";
 import type { TicketData, TicketPunch } from "../Ticket";
@@ -160,8 +160,7 @@ export function Rule({ weight = RULE_HAIR, ink }: { weight?: number; ink?: strin
 
 /** 印刷の粒。★**色のすぐ上・文字の下**に敷く。 */
 export function Grain() {
-  const dpr = useDevicePixelRatio();
-  return <span aria-hidden style={{ ...grainStyle(dpr), zIndex: 1 }} />;
+  return <span aria-hidden style={{ ...grainStyle(), zIndex: 1 }} />;
 }
 
 // ── 4つの段 ──────────────────────────────────────────────────────

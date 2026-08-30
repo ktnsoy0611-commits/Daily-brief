@@ -27,8 +27,9 @@ export function Masthead({ title, dateline }: {
   return (
     <header style={{ padding: `${SPACE.md}px 0 ${SPACE.lg}px` }}>
       <div style={{ minWidth: 0 }}>
-        <GeoText text={title} size={30} color={INK} />
-        {dateline && <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.md }}>{dateline}</div>}
+        {/* ★色は地が決める（`AppShell` が `--ink-on` を置く）。既定は明るい地。 */}
+        <GeoText text={title} size={30} color={`var(--ink-on, ${INK})`} />
+        {dateline && <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: `var(--muted-on, ${MUTED})`, marginTop: SPACE.md }}>{dateline}</div>}
       </div>
     </header>
   );
@@ -43,7 +44,7 @@ export function Masthead({ title, dateline }: {
 // (以前は 9/10/11px と字間がタブごとにばらばらだった)。
 export function SectionLabel({ text, style }: { text: string; style?: CSSProperties }) {
   return (
-    <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.wide, color: MUTED, lineHeight: LEAD.snug, ...style }}>
+    <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.wide, color: `var(--muted-on, ${MUTED})`, lineHeight: LEAD.snug, ...style }}>
       {text}
     </div>
   );

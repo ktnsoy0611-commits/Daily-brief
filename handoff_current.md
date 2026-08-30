@@ -175,9 +175,8 @@
 
 ## 重要パス
 
-- ★Explore 刷新の設計 … `docs/explore-redesign.md`
-- ★UI の規約と機械チェック13本 … `design.md`（作業の前後に必ず走らせる）
-  ／ 目盛り … `lib/tokens.ts` ／ 色 … `lib/constants.ts`
+- ★Explore 刷新の設計 … `docs/explore-redesign.md`／★UI の規約と機械チェック13本
+  … `design.md`（前後に必ず走らせる）／目盛り `lib/tokens.ts`／色 `lib/constants.ts`
 - 券 … `components/explore/Ticket.tsx` / `PunchMark.tsx` / `lib/ticket.ts`
 - ★券と鋏を同じ3D空間に置く器 … `components/explore/TicketStage.tsx`
 - 鋏（★three.js）… `Nipper.tsx`（画角・動き）＋ `lib/nipperMesh.ts`（立体と質感）

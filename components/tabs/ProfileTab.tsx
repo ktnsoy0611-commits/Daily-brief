@@ -5,7 +5,7 @@ import { Activity, BarChart3, Heart, Link2, RotateCcw, Sparkles, X } from "lucid
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { Button } from "@/components/Button";
-import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SECOND } from "@/lib/constants";
+import { FIXED_SOURCES, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SECOND } from "@/lib/constants";
 import { isViewportDebug, setViewportDebug } from "@/lib/debugViewport";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
@@ -832,7 +832,7 @@ export function ProfileTab({ appState, persist, onClose }: {
               )}
               {c.sourceUrl && (
                 <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer"
-                  style={{ display: "inline-block", marginTop: SPACE.sm, fontSize: TYPE.small, fontWeight: WEIGHT.text, color: BLUE, wordBreak: "break-all" }}>
+                  style={{ display: "inline-block", marginTop: SPACE.sm, fontSize: TYPE.small, fontWeight: WEIGHT.text, color: INK, wordBreak: "break-all" }}>
                   {c.sourceLabel || c.sourceUrl}
                 </a>
               )}
@@ -849,11 +849,11 @@ export function ProfileTab({ appState, persist, onClose }: {
               {genSites.map((s, i) => (
                 <div key={i} style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginBottom: SPACE.sm, lineHeight: LEAD.body }}>
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    <span style={{ color: s.fetched ? GREEN : RUST }}>{s.fetched ? "✓" : "×"}</span> {s.source}
+                    <span style={{ color: s.fetched ? INK : RUST }}>{s.fetched ? "✓" : "×"}</span> {s.source}
                   </div>
                   {s.fetched && (
                     <div style={{ paddingLeft: SPACE.lg }}>
-                      候補<span style={{ color: (s.candidates ?? 0) > 0 ? GREEN : RUST, fontWeight: WEIGHT.bold }}>{s.candidates ?? 0}</span>件 ／ Markdown中のリンク:{s.linkCount}
+                      候補<span style={{ color: (s.candidates ?? 0) > 0 ? INK : RUST, fontWeight: WEIGHT.bold }}>{s.candidates ?? 0}</span>件 ／ Markdown中のリンク:{s.linkCount}
                     </div>
                   )}
                 </div>
@@ -866,7 +866,7 @@ export function ProfileTab({ appState, persist, onClose }: {
               <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>取得したページ（✓=Markdown取得成功）→ 抽出候補{genCandidateCount}件</div>
               {genPagesRead.map((s, i) => (
                 <div key={i} style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: MUTED, marginBottom: SPACE.xs, display: "flex", gap: SPACE.sm }}>
-                  <span style={{ color: s.ok ? GREEN : RUST, flexShrink: 0 }}>{s.ok ? "✓" : "×"}</span>
+                  <span style={{ color: s.ok ? INK : RUST, flexShrink: 0 }}>{s.ok ? "✓" : "×"}</span>
                   <a href={s.url} target="_blank" rel="noopener noreferrer"
                     style={{ color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.url}</a>
                 </div>

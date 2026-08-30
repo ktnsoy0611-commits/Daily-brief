@@ -3,7 +3,7 @@
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-react";
 import { memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW, SECOND, WHITE } from "@/lib/constants";
+import { BLUE, BLUE_INK, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW, SECOND, WHITE } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
 import { GeoText } from "./GeoType";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
@@ -63,9 +63,9 @@ export function Dot({ color, label }: { color: string; label: string }) {
 }
 
 export function keepStatus(k: { status: string }) {
-  if (k.status === "planned") return { label: "マガジン掲載中", color: BLUE };
+  if (k.status === "planned") return { label: "マガジン掲載中", color: INK };
   if (k.status === "done") return { label: "実行済み", color: MUTED };
-  return { label: "候補", color: GREEN };
+  return { label: "候補", color: INK };
 }
 
 // カードの左端に開ける、「バインダーに綴じられている」ことを示すパンチ穴。
@@ -191,7 +191,7 @@ export const PosterCard = memo(function PosterCard({ image, color, title, sub, l
               width: 28, height: 28, borderRadius: RADIUS.circle, border: "none", cursor: "pointer", flexShrink: 0,
               background: good ? GREEN : "rgba(26,26,24,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
             }}>
-              <Star size={14} fill={good ? WHITE : "none"} color={WHITE} strokeWidth={2} />
+              <Star size={14} fill={good ? GREEN_INK : "none"} color={good ? GREEN_INK : WHITE} strokeWidth={2} />
             </button>
           )}
         </div>
@@ -230,9 +230,9 @@ export function SelectablePosterCard({ selected, onToggle, size = 132, ...cardPr
     >
       <PosterCard {...cardProps} size={size} onClick={onToggle} />
       {selected && (
-        <div style={{ position: "absolute", inset: 0, borderRadius: RADIUS.xl, background: "rgba(43,63,191,0.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div style={{ position: "absolute", inset: 0, borderRadius: RADIUS.xl, background: "rgba(255,88,46,0.28)", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
           <div style={{ width: 30, height: 30, borderRadius: RADIUS.circle, background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(26,26,24,0.3)" }}>
-            <Check size={16} color={PAPER} strokeWidth={3} />
+            <Check size={16} color={BLUE_INK} strokeWidth={3} />
           </div>
         </div>
       )}

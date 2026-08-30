@@ -8,7 +8,7 @@ import { Button } from "@/components/Button";
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, SectionLabel } from "@/components/common";
 import { TabIcon } from "@/components/TabIcons";
 import { appTitle } from "@/lib/apps";
-import { BLUE, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
+import { BLUE, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
 import { domainOf, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
 import { colorOfKind } from "@/lib/palette";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
@@ -326,7 +326,7 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
                       flexShrink: 0, width: 19, height: 19, borderRadius: RADIUS.circle, display: "flex", alignItems: "center", justifyContent: "center",
                       background: bound ? GREEN : "transparent", border: `1.5px solid ${bound ? GREEN : "rgba(26,26,24,0.25)"}`,
                     }}>
-                      {bound && <Check size={11} strokeWidth={3} color={PAPER} />}
+                      {bound && <Check size={11} strokeWidth={3} color={GREEN_INK} />}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.title}</div>
@@ -408,7 +408,7 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
               <Button variant="primary" onClick={() => { updateWish(wishDetail!.id, { status: "fulfilled", fulfilledAt: new Date().toISOString() }); close(); }}>叶えた！</Button>
             )}
             {!wishDetailBound && (
-              <Button variant="secondary" tone={GREEN} onClick={() => { makeGoal(wishDetail!); close(); }}>ゴールにする</Button>
+              <Button variant="secondary" onClick={() => { makeGoal(wishDetail!); close(); }}>ゴールにする</Button>
             )}
             <Button variant="secondary" tone={RUST} onClick={() => { removeWish(wishDetail!.id); close(); }}>削除</Button>
           </div>

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { Masthead, SectionLabel } from "@/components/common";
 import { appTitle } from "@/lib/apps";
-import { GREEN, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf, SECOND } from "@/lib/constants";
+import { GREEN, GREEN_INK, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf, SECOND } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
 import { dayInfo, img, todayKey } from "@/lib/helpers";
 import type { JournalEntry, JournalTabId, TabProps, VoiceNote } from "@/lib/types";
@@ -76,7 +76,7 @@ function DoneList({ day }: { day: DayRecord }) {
           {day.tasks.map((t) => (
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: SPACE.sm, padding: `${SPACE.xs}px 0` }}>
               <span style={{ width: 17, height: 17, borderRadius: RADIUS.circle, background: GREEN, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Check size={10} strokeWidth={3} color={PAPER} />
+                <Check size={10} strokeWidth={3} color={GREEN_INK} />
               </span>
               <span style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, color: SECOND, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
             </div>
@@ -124,7 +124,7 @@ function DayCard({ day, summary, onOpen }: { day: DayRecord; summary?: string; o
       {day.tasks.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginBottom: excerpt ? SPACE.sm : 0 }}>
           <span style={{ width: 15, height: 15, borderRadius: RADIUS.circle, background: GREEN, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Check size={9} strokeWidth={3} color={PAPER} />
+            <Check size={9} strokeWidth={3} color={GREEN_INK} />
           </span>
           <span style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: SECOND, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
             {day.tasks[0].title}{day.tasks.length > 1 ? ` ほか${day.tasks.length - 1}件` : ""}

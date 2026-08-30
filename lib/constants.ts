@@ -107,7 +107,11 @@ export const FONT_FACES: FontFace[] = [
 //
 // 色を捨てたぶん、残したアクセント(下のBLUE/RUST/GREEN/GOLDと、バインダー
 // のアクセント各種)がはっきり効くようになる = 「遊び心」はそちらが担う。
-export const INK = "#1A1A18";
+// ★★★墨は **BLACK CHERRY `#3E0D20`**（2026-08-31・第76巡）。参照した盤が
+// この色を「MAIN / TEXT COLOR」＝**主要色でもあり文字色でもある**と定めている
+// ので、`INK` と タグ SOCIAL の両方を担う。地 `#FFFBF5` との比 15.87 で、
+// 前の純黒 `#1A1A18`（比 14.73）より読みやすい。
+export const INK = "#3E0D20";
 export const PAPER = "#FAFAF9";
 export const BG = "#F0F0EE";
 // 背景(AppBackdrop)専用の2段。バインダーの表紙と同じ「下地(=BG) / 帯(SHADE) /
@@ -189,36 +193,44 @@ export interface ColorPair {
 }
 export const SCHEME = {
   // ドメイン4（券の紙・ブリーフのカード・バインダー・ストック・マップ）
-  amber: { main: "#FDCD84", sub: "#A96017" },       // バショ          サブ比 3.26
-  terracotta: { main: "#D37552", sub: "#6D190D" },  // タイケン        サブ比 3.59
-  aqua: { main: "#6AB3CD", sub: "#084753" },        // ジョウホウ      サブ比 4.39
-  lilac: { main: "#E3B3D6", sub: "#661B54" },       // モノ            サブ比 6.32
+  // ★**淡い4色**に揃える ―― 券の紙は本文が載る面なので、明るい側から選ぶ。
+  sherbert: { main: "#FFBF85", sub: "#3E0D20" },    // バショ          サブ比 10.16
+  pink: { main: "#FFA5CB", sub: "#9C0003" },        // タイケン        サブ比  4.76
+  aqua: { main: "#D1EAF1", sub: "#9C0003" },        // ジョウホウ      サブ比  6.94
+  lilac: { main: "#EEDDFF", sub: "#9C0003" },       // モノ            サブ比  6.80
   // タグ5（タスクの図形。★状態の3色もここから借りる）
-  pine: { main: "#344C41", sub: "#F2D1C3" },        // WORK ／肯定     サブ比 6.51
-  sage: { main: "#85AD9D", sub: "#0F2114" },        // LIFE            サブ比 6.78
-  // ★★ここだけ画像の色そのままではない ―― 画像の組は 2.98 で AA の 3.0 を割った。
-  //   OKLab で**明度だけ 0.012 下げた**（色相・彩度は据え置き。ΔE 0.013 ＝ 目には
-  //   分からない）。★他の8組は画像の実測値のまま。
-  iris: { main: "#8176B7", sub: "#2F247B" },        // WELLNESS ／選択 サブ比 3.14
-  rust: { main: "#B65116", sub: "#FDCF76" },        // SOCIAL ／危険   サブ比 3.44
-  crimson: { main: "#9B1A14", sub: "#F9A788" },     // GROWTH          サブ比 4.28
+  // ★★**work / life / growth はこの盤で彩度の高い上位3色**（.210 / .161 / .178）
+  //   かつ互いによく離れている（最小 ΔE 0.25）。ユーザー指定「被らないように、
+  //   かつパレットの雰囲気をとらえた主要な色」を、目ではなく**数で**満たしている。
+  fiery: { main: "#FF582E", sub: "#FFFBF5" },       // WORK ／選択     サブ比  3.05
+  limeade: { main: "#E5F167", sub: "#3E0D20" },     // LIFE ／肯定     サブ比 13.33
+  deepred: { main: "#9C0003", sub: "#D1EAF1" },     // GROWTH ／危険   サブ比  6.94
+  sky: { main: "#C3D9FF", sub: "#9C0003" },         // WELLNESS        サブ比  6.08
+  cherry: { main: "#3E0D20", sub: "#D1EAF1" },      // SOCIAL ／墨     サブ比 13.05
 } as const satisfies Record<string, ColorPair>;
 
 // アプリが前から持っている6つのアクセントの名前は変えず、**中身をスキームの
 // 地の色へ差し替える**。呼び出し側(数十箇所)はそのまま新しい色になる。
 // どれを当てるかは「元の色相を保つ」ことと「その色の上に何が載るか」で決めた。
 // ★★**状態の色は3つだけ**（2026-08-31・第73巡）。分類の9色から借りている。
-export const BLUE = SCHEME.iris.main;      // 選ばれている・リンク
-export const RUST = SCHEME.rust.main;      // 危険（削除・エラー）。★ユーザー指定でオレンジ
-export const GREEN = SCHEME.pine.main;     // 肯定・達成。白い ✓ もこの面に載る（比 8.9）
+export const BLUE = SCHEME.fiery.main;     // 選ばれている・リンク（地との比 3.05）
+export const RUST = SCHEME.deepred.main;   // 危険（削除・エラー）
+export const GREEN = SCHEME.limeade.main;  // 肯定・達成
+/** ★★★**状態の面に載る色**（第76巡）。この盤は**明るい色が主役**なので、
+ *  「肯定＝緑の面に白い ✓」がそのままでは成り立たない（若草に白は比 1.19）。
+ *  面ごとに**その組のサブ**を当てる。★★状態の色を**そのまま文字に使わないこと** ――
+ *  紙 `#FAFAF9` の上で 4.5 を満たすのは `RUST`(8.43) と `INK`(15.5) だけで、
+ *  `GREEN`(1.19) と `BLUE`(4.45) は満たさない。**状態は「面」で見せる。** */
+export const GREEN_INK = SCHEME.limeade.sub;  // 若草の面に載る（比 13.33）
+export const BLUE_INK = SCHEME.fiery.sub;     // 朱の面に載る（比 3.05）
 // ★第73巡に `PLUM` / `SLATE`、第74巡に `GOLD` を**消した**。`GOLD` は
 //   「白い ✓ を載せる面」＝**肯定**そのものだったので `GREEN` に寄せた（13箇所）。
-/** RUST の淡い敷き。★錆橙 `#B65116` = rgb(182,81,22) から作る（第75巡）。 */
-export const RUST_TINT = "rgba(182,81,22,0.14)";
-export const RUST_EDGE = "rgba(182,81,22,0.50)";
-/** GREEN の淡い敷き。★深緑 `#344C41` = rgb(52,76,65) から作る（第75巡）。
- *  以前は `TaskRow` が `rgba(199,148,51,…)`（旧 GOLD の色）を直書きしていた。 */
-export const GREEN_TINT = "rgba(52,76,65,0.16)";
+/** RUST の淡い敷き。★深紅 `#9C0003` = rgb(156,0,3) から作る（第76巡）。 */
+export const RUST_TINT = "rgba(156,0,3,0.14)";
+export const RUST_EDGE = "rgba(156,0,3,0.50)";
+/** GREEN の淡い敷き。★若草 `#E5F167` = rgb(229,241,103) から作る（第76巡）。
+ *  ★★若草は**明るい**ので、この上の ✓ は白ではなく `INK`（比 13.3）。 */
+export const GREEN_TINT = "rgba(229,241,103,0.30)";
 export const HAIRLINE = "rgba(26,26,24,0.08)";
 // カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
 export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";
@@ -247,11 +259,11 @@ export const NAV_PILL_PAD = 6;
 
 // 背景(AppBackdrop)の地と図形。画面より下(iOSでツールバーが引っ込んだ
 // ときに現れる帯)にも同じ色が要るので、ここに置いて body へも書く。
-export const BD_GREY = "#E6E7E1";   // ★第75巡に参照画像の地へ（わずかに緑がかった白）
+export const BD_GREY = "#FFFBF5";   // ★第76巡に盤の CLOUD（BACKGROUND COLOR）へ
 // ★ジャーナル(声の記録)の地と図。参考画像(2026-08-11)から採った、暖かみの
 // ある中間グレー。地と図の差はごくわずか(明度差 約18)で、円は「浮いた面」
 // ではなく「地の濃淡」として読める。
-export const JOURNAL_BG = "#B3B3AE";  // ★第75巡に第73巡の中間グレーへ戻した
+export const JOURNAL_BG = "#D1EAF1";  // ★第76巡に盤の AQUA（SECONDARY COLOR）へ
 // ★円は地よりはっきり明るく、ほぼ白へ寄せる。以前は明度差18しか無く、
 // 「まだ背景に見えてしまう」と報告された(2026-08-11)。
 export const JOURNAL_FIG = "#EAEAE6";

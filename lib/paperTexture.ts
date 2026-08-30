@@ -1,46 +1,51 @@
-// ★★★クラフト紙の目を作る**唯一の場所**(2026-08-26・第63巡にユーザー指定
-// 「物理演算が効く、図形やテキストの部分だけ、紙(クラフト紙)のようなテクスチャを
-// 薄っすら重ねて」)。第62巡の画面全体のグレイン(`body::after`)は**撤去した**。
+// ★★★図形と文字の面に**質感**を焼き込む**唯一の場所**。
 //
-// ★★第64巡に**本物の写真**へ差し替え、第65巡に**加工をやめた**。
-// 第64巡は写真を使ったつもりで3つ手を加えていた ―(1)色を捨ててグレースケール化、
-// (2)粒を std 11 → 21.6 へ**2倍に増幅**、(3)ハイパスで低周波を除去。
-// 測ってみると写真の低周波は std 1.7〜2.6 しか無く、**(3)はほとんど何も
-// 取り除いていない**のに、そのために色と諧調を捨てていた。増幅のせいで圧縮も効かず
-// 重くなっていた(121KB)。**手数が多いほど元から遠ざかる**という失敗。
-// いまは `tools/make-paper.py` が**等倍で切って縮めるだけ**(768px角・83KB)。
+// ★★★2026-08-31・第76巡に**網点へ差し替え、乗せ方を根治した**。
+//   ユーザー報告「カラーパレットの色を反映させているはずなのに、すごく濁った色に
+//   見えてしまいます。おそらくテクスチャののせ方のせいだと思うので、綺麗に質感だけ
+//   のせて、色は濁らせないでください」。**そのとおりで、原因は2つあった**:
 //
-// ★★★**紙の凹凸だけを写す**(2026-08-26・第65巡にユーザー確定)。
-// 写真の**明るさの起伏だけ**を無彩色(黒/白)で乗せるので、図形の色相は一切動かない。
-// 第64巡の「暗い側＝茶／明るい側＝麦わら」という色付けはやめた ― あれは
-// 「紙の色を薄く混ぜる」であって「凹凸を写す」ではなかった。
+//   ①**チャンネルの取り違え**。`d[i]`（＝**赤**）を読みながら、`PAPER_MID`
+//     （＝**輝度**の中央値 161/255）と比べていた。クラフト紙の写真は赤の平均が
+//     **175** なので、ほとんどの画素が「明るい側」＝**白**へ倒れた。実測で
+//     **白側 α 0.287 ／ 黒側 α 0.012 ＝ 96% が白**。凹凸ではなく**白の薄塗り**。
+//   ②**白黒の斑点**。`PAPER_GAIN = 5.0` で多くの画素が α 1.0 に飽和し、
+//     **純白／純黒の点**になっていた。点の1つ1つは彩度ゼロなので、
+//     平均を直すだけでは足りない ―― 局所的に色が抜ける。
 //
-// ★★**焼き込む**(ユーザー確定「図形と一緒に回る」)。`lib/solidPaint.ts` が絵を
-// 焼くときに1度だけ重ねるので、**毎フレームの負荷はゼロ**で、図形が回れば紙の目も
+//   白が混ざると**明るくなりながら彩度が落ちる**（実測 深緑 −4.6%／小麦 −3.6%）。
+//   これが「濁った」の正体。**色相は動いていなかったので気づきにくかった。**
+//
+// ★★★直し方 ―― **平均 128 の無彩色を `soft-light` で乗せる**。
+//   `soft-light` は **128 が恒等**なので、テクスチャは**明暗だけ**を足し、
+//   地の色を原理的に動かさない。タイル（`tools/make-halftone.mjs` の生成物）は
+//   平均をきっちり 128 に合わせてある。
+//   ★★キャンバスのブレンドは Porter-Duff の `source-over` で合成されるので、
+//     **透明な地にも乗ってしまう**。焼く前の絵を控えておき、`soft-light` のあと
+//     `destination-in` で**元の α に切り抜く**。焼き込みは1回だけなので負荷は無い。
+//
+// ★★**焼き込む**（ユーザー確定「図形と一緒に回る」）。`lib/solidPaint.ts` が絵を
+// 焼くときに1度だけ重ねるので、**毎フレームの負荷はゼロ**で、図形が回れば質感も
 // 一緒に回る ―「紙に刷ったカードそのもの」になる。
 //
 // ★強さは `PAPER_ALPHA` の**1つだけ**。濃くしたければここを上げる。
-// ★★**写真には二度と手を入れないこと。** 薄く感じたら `PAPER_ALPHA` を上げる。
+// ★★**タイルには二度と手を入れないこと。** 薄く感じたら `PAPER_ALPHA` を上げる。
+//
+// ★★★**券（`lib/printGrain.ts`）と同じ 1 枚を敷く**（第76巡にユーザー指定
+//   「両方とも網点」）。第75巡までの「券は板紙・図形は切った紙。混ぜない」は
+//   **この巡で撤回された**。強さだけが別（こちらは焼き込み、あちらは CSS）。
 
-/** 紙の濃さ。★ユーザー確定「見てわかる程度」(2026-08-26)。 */
-export const PAPER_ALPHA = 0.12;
+/** 質感の濃さ。★ユーザー確定「見てわかる程度」(2026-08-26)。★**強さの目盛りはこれ1つ**。
+ *  ★★第76巡に 0.12 → 0.5。`soft-light` は `source-atop` の直塗りよりずっと穏やかで、
+ *  0.12 では何も見えなかった。**数字が増えたのは強くしたからではなく、
+ *  乗せ方が変わったから**。 */
+export const PAPER_ALPHA = 0.5;
 
-/** シート(`public/paper-kraft.webp`)の作り。★`tools/make-paper.py` と対。
- *  ★**1枚**(第65巡。第64巡は 320px角×4枚だった)。768 あれば図形1つ
- *  (いちばん大きくても 400 デバイス px)は**繰り返しに当たらない**ので、
- *  継ぎ目を消す細工ごと要らなくなった。散らすのは向きとずらしで足りる。 */
-/** ★第69巡に export した。券(`components/explore/Ticket.tsx`)は canvas では
- *  なく DOM なので焼き込めないが、**同じ写真**を CSS の背景に敷いて
- *  `mix-blend-mode: multiply` で重ねる。紙の出どころを1つに保つため。 */
-export const PAPER_SHEET_SRC = "/paper-kraft.webp";
-const SHEET_SRC = PAPER_SHEET_SRC;
-const SHEET = 768;
-/** 明るさのばらつきを、見える濃さへ持ち上げる係数。★据え置き(第64巡と同じ 5.0)。
- *  ★★**写真を増幅しない**ので、結果として第64巡の**約半分の強さ**になる
- *  ― それが「写真そのままの強さ」(ユーザー確定)。 */
-const PAPER_GAIN = 5.0;
-/** 写真の明るさの中央値(実測 161/255)。ここからの隔たりが凹凸の深さになる。 */
-const PAPER_MID = 161 / 255;
+/** タイル（`tools/make-halftone.mjs` の生成物）。★**券と同じ 1 枚**。 */
+const SHEET_SRC = "/halftone.webp";
+/** タイル1辺（**デバイス**画素）。★網点の周期 9px × 14 ＝ 126。
+ *  整数周期で切ってあるので、並べても格子はずれない。 */
+const TILE = 126;
 
 let sheet: HTMLImageElement | null = null;
 let loading = false;
@@ -75,37 +80,26 @@ function hash32(s: string): number {
   return h >>> 0;
 }
 
-/** 焼き直したタイル(90度4向き)。要求されたときだけ作る。 */
+/** 90度4向きに回したタイル。要求されたときだけ作る。 */
 const tiles = new Map<number, HTMLCanvasElement>();
 
 /**
- * シートを `rot`(0..3 ＝ 90度きざみ)回して、**凹凸の濃さ**へ焼き直す。
- * 明るさの中央値からの隔たりが濃さになり、**暗い側は黒・明るい側は白**。
- * ★色を持たないので、下の図形の色相は一切動かない ―「凹凸だけを写す」。
+ * タイルを `rot`(0..3 ＝ 90度きざみ)回す。
+ * ★★★**画素はいじらない。** タイルはすでに「平均 128 の無彩色」で、
+ * それが `soft-light` の恒等点。ここで明るさを触ると地の色が動く
+ * ―― 第76巡まで、まさにそれをやっていて色が濁っていた。
  */
 function tileFor(rot: number): HTMLCanvasElement | null {
   const had = tiles.get(rot);
   if (had) return had;
   if (!sheet) return null;
   const cv = document.createElement("canvas");
-  cv.width = SHEET; cv.height = SHEET;
-  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  cv.width = TILE; cv.height = TILE;
+  const ctx = cv.getContext("2d");
   if (!ctx) return null;
-  ctx.save();
-  ctx.translate(SHEET / 2, SHEET / 2);
+  ctx.translate(TILE / 2, TILE / 2);
   ctx.rotate((rot * Math.PI) / 2);
-  ctx.drawImage(sheet, -SHEET / 2, -SHEET / 2, SHEET, SHEET);
-  ctx.restore();
-  const img = ctx.getImageData(0, 0, SHEET, SHEET);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const v = d[i] / 255 - PAPER_MID;
-    const a = Math.min(1, Math.abs(v) * PAPER_GAIN);
-    const lit = v < 0 ? 0 : 255;      // 暗い側＝黒(凹) / 明るい側＝白(凸)
-    d[i] = lit; d[i + 1] = lit; d[i + 2] = lit;
-    d[i + 3] = Math.round(a * 255);
-  }
-  ctx.putImageData(img, 0, 0);
+  ctx.drawImage(sheet, -TILE / 2, -TILE / 2, TILE, TILE);
   tiles.set(rot, cv);
   return cv;
 }
@@ -131,18 +125,36 @@ export function paperize(
   const n = hash32(seed);
   const tile = tileFor(n % 4);
   if (!tile) return;
-  const ox = (n >>> 4) % SHEET;
-  const oy = (n >>> 14) % SHEET;
   const pat = ctx.createPattern(tile, "repeat");
   if (!pat) return;
+  const cv = ctx.canvas;
+
+  // ★★焼く前の絵を控える。`soft-light` は**透明な地にもテクスチャを置いてしまう**
+  //   ので、あとでこの α に切り抜く。焼き込みは1回だけなので、この1枚は安い。
+  const keep = document.createElement("canvas");
+  keep.width = cv.width; keep.height = cv.height;
+  const kctx = keep.getContext("2d");
+  if (!kctx) return;
+  kctx.drawImage(cv, 0, 0);
+
+  const ox = (n >>> 4) % TILE;
+  const oy = (n >>> 14) % TILE;
   ctx.save();
-  ctx.globalCompositeOperation = "source-atop";
-  ctx.globalAlpha = PAPER_ALPHA;
   // ★タイルは**デバイス画素**で持っているので、変形を素へ戻してから貼る
-  //   (CSS px の座標系で貼ると紙の目まで拡大されて、ただのシミになる)。
+  //   (CSS px の座標系で貼ると網点まで拡大されて、ただのシミになる)。
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = "soft-light";
+  ctx.globalAlpha = PAPER_ALPHA;
   ctx.translate(-ox, -oy);
   ctx.fillStyle = pat;
   ctx.fillRect(ox, oy, w * dpr, h * dpr);
+  ctx.restore();
+
+  // ★元の α へ戻す（はみ出したぶんを落とす）。
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = "destination-in";
+  ctx.globalAlpha = 1;
+  ctx.drawImage(keep, 0, 0);
   ctx.restore();
 }

@@ -5,7 +5,7 @@ import {
   INK, KIND_DOMAIN, LATIN, SANS, SOFT_SHADOW_LG, TICKET_DECK, TICKET_PERF, itemKindOf,
 } from "@/lib/constants";
 import { DOMAIN_COLOR } from "@/lib/palette";
-import { PAPER_SHEET_SRC } from "@/lib/paperTexture";
+import { grainStyle, useDevicePixelRatio } from "@/lib/printGrain";
 import { serialOf, type TicketEdge } from "@/lib/ticket";
 import type { ItemKind } from "@/lib/types";
 import { Barcode, PunchNotch } from "./PunchMark";
@@ -63,7 +63,6 @@ const PERF_D = 3;          // ミシン目の穴の直径
 const BARCODE_H = 12;      // 半券のバーコードの高さ
 const PHOTO_PCT = 36;      // 写真の高さ（券の高さに対する％。横長の帯になる）
 const LABEL_W = 64;        // 欄の左のラベル列の幅
-const PAPER_MULT = 0.42;   // 紙の目の強さ（multiply）
 /** ★★**旧版の比**。新しい比は `TICKET_ASPECT`（3/4）で、見本帳の3案がそれを使う。
  *  この版は 300 × 485 で組んであり 3/4 では中身が入らないので、差し替わるまで
  *  自分の比を持たせておく（第72巡）。 */
@@ -108,6 +107,7 @@ export function Ticket({ data, punch, deck = TICKET_DECK, width }: {
   deck?: string;
   width?: number | string;
 }) {
+  const dpr = useDevicePixelRatio();
   const kindDef = itemKindOf(data.kind);
   const domain = KIND_DOMAIN[data.kind];
   const stock = DOMAIN_COLOR[domain];
@@ -135,14 +135,13 @@ export function Ticket({ data, punch, deck = TICKET_DECK, width }: {
       overflow: "hidden",
       color: INK,
     }}>
-      {/* 紙の目。★**色のすぐ上・文字の下**。図形が焼き込んでいるのと同じ写真を
-          等倍で敷く（★縮小しない。紙の目は高周波なので消える）。 */}
-      <span aria-hidden style={{
-        position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1,
-        backgroundImage: `url("${PAPER_SHEET_SRC}")`,
-        backgroundSize: "auto", backgroundRepeat: "no-repeat", backgroundPosition: "center",
-        mixBlendMode: "multiply", opacity: PAPER_MULT,
-      }} />
+      {/* 質感。★★★第76巡まで、ここは**茶色いカラー写真**を `multiply` 0.42 で
+          敷いていた ―― 実効倍率 R×0.868 / G×0.840 / B×0.809 で、**13〜19% 暗く
+          なり、青だけ 6pt 余計に落ちる茶色かぶり**だった（ユーザー報告「濁った色」）。
+          第71巡に見本帳だけ `Grain` へ移し、こちらが取り残されていた。
+          いまは**券も図形も同じ網点**で、平均 128 を `soft-light`（＝128 が恒等）
+          なので**地の色は動かない**。★色のすぐ上・文字の下に置くこと。 */}
+      <span aria-hidden style={{ ...grainStyle(dpr), zIndex: 1 }} />
 
       {/* 券面。★左右の余白はこの器だけが持つ。 */}
       <div style={{

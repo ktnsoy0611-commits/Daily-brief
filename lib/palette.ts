@@ -50,16 +50,16 @@ export const bodyInkOn = (main: string): string =>
 
 /** ドメインの色（4）。★これが「何であるか」を表す唯一の色＝**メイン**。 */
 export const DOMAIN_COLOR: Record<ItemDomain, string> = {
-  place: SCHEME.amber.main,
-  experience: SCHEME.terracotta.main,
+  place: SCHEME.sherbert.main,
+  experience: SCHEME.pink.main,
   info: SCHEME.aqua.main,
   thing: SCHEME.lilac.main,
 };
 
 /** ★**サブ**。そのメインの上に載る**大きな文字**（券の題・印・罫）の色。 */
 export const DOMAIN_SUB: Record<ItemDomain, string> = {
-  place: SCHEME.amber.sub,
-  experience: SCHEME.terracotta.sub,
+  place: SCHEME.sherbert.sub,
+  experience: SCHEME.pink.sub,
   info: SCHEME.aqua.sub,
   thing: SCHEME.lilac.sub,
 };

@@ -5,7 +5,7 @@ import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
 import { appTitle } from "@/lib/apps";
-import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP, WHITE } from "@/lib/constants";
+import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP, WHITE } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
@@ -36,7 +36,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
           border: `2px solid ${GREEN}`, position: "relative", userSelect: "none",
         }}>
-          <div style={{ flex: "0 0 38%", background: GREEN, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.md, color: PAPER }}>
+          <div style={{ flex: "0 0 38%", background: GREEN, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.md, color: GREEN_INK }}>
             <Sprout size={32} strokeWidth={1.5} />
             <span style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.wide, opacity: 0.8 }}>CHECK-IN</span>
           </div>
@@ -691,7 +691,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
             {isGrowth && (
               <div style={{ display: "flex", gap: SPACE.md }}>
                 <button onClick={() => commit("skip")} style={{ flex: 1, padding: `${SPACE.md}px 0`, background: "transparent", border: "1.5px solid rgba(26,26,24,0.3)", borderRadius: RADIUS.pill, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: SECOND, cursor: "pointer" }}>あとで</button>
-                <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: `${SPACE.md}px 0`, background: isMilestone ? RUST : GREEN, border: "none", borderRadius: RADIUS.pill, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: PAPER, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
+                <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: `${SPACE.md}px 0`, background: isMilestone ? RUST : GREEN, border: "none", borderRadius: RADIUS.pill, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: isMilestone ? PAPER : GREEN_INK, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
               </div>
             )}
           </footer>
@@ -711,7 +711,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
           <SectionLabel text="今日はここまで" style={{ marginBottom: SPACE.lg }} />
           {keptCards.map((c, i) => (
             <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: SPACE.md, padding: `${SPACE.md}px 0`, borderTop: `1px solid ${HAIRLINE}` }}>
-              <span style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
+              <span style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: INK, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
               <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead }}>{c.title}</div>
             </div>
           ))}
@@ -744,7 +744,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
               ))}
             {readItem.sourceUrl && (
               <a href={readItem.sourceUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
-                style={{ display: "inline-block", marginTop: SPACE.xs, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: BLUE, textDecoration: "none" }}>
+                style={{ display: "inline-block", marginTop: SPACE.xs, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: INK, textDecoration: "none" }}>
                 元の記事を開く →{readItem.sourceLabel ? ` (${readItem.sourceLabel})` : ""}
               </a>
             )}

@@ -3,7 +3,7 @@ import {
 } from "three";
 
 import {
-  buildPart, buildWire, flattenPiece, toneRamp, applyAppTones, CHAMFER, LIGHT_INTENSITY,
+  buildPart, buildWire, flattenPiece, toneRamp, applySteel, CHAMFER, LIGHT_INTENSITY,
 } from "@/lib/nipperMesh";
 import {
   NIPPER_COIL, NIPPER_EXTENT, NIPPER_LEFT_PIECES, NIPPER_PIVOT, NIPPER_RIGHT_PIECES,
@@ -22,15 +22,16 @@ import {
  * ★21巡目に段が3つから2つになった ―― 以前の「中 40」は、**2部品が重なった図の上で
  *   塗っていたための取り違え**だった。部品ごとの図をもらって解消した。
  *   右の部品は一定、左だけ持ち手が厚・先端が薄。
- * ★★第70巡に**ユーザー指定で 1.5 倍**にした（45／28 → 67.5／42）。
- *   厚みの**比**（45:28）は保ってある。バネの z（`COIL_Z`）も同じ 1.5 倍。
+ * ★★第70巡に**ユーザー指定で 2 倍**にした（45／28 → 90／56。1.5 倍でも薄いと
+ *   いう指摘で二度上げた）。厚みの**比**（45:28）は保ってある。
+ *   バネの z（`COIL_Z`）も同じだけ動かす（26 → 52）。
  * **どこがどの段かは平面図の塗り分けが決める**（`lib/nipperShape.ts` の
  * `NIPPER_*_PIECES`）。ここは段に厚みを与えるだけ。
  *
  * ★18巡目まで「部品ごと＋肩から上だけ薄い」という **y の関数**で決めていたが、
  *   塗り分けは y の帯ではない（中と薄が y で重なる）ので表せなかった。
  */
-export const HALF = [67.5, 42];
+export const HALF = [90, 56];
 /** 段ごとに**色の段をいくつ下げるか**。 */
 // ★★21巡目に **[0, 0]（＝塗り分けない）** へ戻した（ユーザー指定
 //   「左の部品の塗り分けはやめて元の色に戻して全体が同じ色になるように」）。
@@ -52,7 +53,7 @@ export const SQUEEZE = 0.34;
  * いない」と指摘された ―― 図が持っている情報を書き写していた。
  * ★z だけは平面図に無いので、ここで決める（バネは1枚の平たいねじりばね）。
  */
-const COIL_Z = 39;
+const COIL_Z = 52;
 export const COIL_ANCHOR_X = NIPPER_COIL.legNear[1].x;
 
 /**
@@ -138,7 +139,7 @@ export function buildNipperRig(): NipperRig {
   const ramps = DIM.map((d) => toneRamp(d));
   const steels = ramps.map((gradientMap) => {
     const m = new MeshToonMaterial({ color: 0xffffff, gradientMap });
-    applyAppTones(m);
+    applySteel(m);   // ★段の上に光沢とすり傷を重ねる（`applyAppTones` は紙のほう）
     return m;
   });
   const add = (g: BufferGeometry, parent: Group, tier = 0) => {

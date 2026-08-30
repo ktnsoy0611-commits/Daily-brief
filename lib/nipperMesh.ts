@@ -201,6 +201,102 @@ export function applyAppTones(m: MeshToonMaterial) {
 }
 
 /**
+ * ★★★**金属らしさ**（第70巡・ユーザー指定「鈍い鉛色に、光沢とすり傷」）。
+ *
+ * 段（フラットな帯）は**アプリの語彙なので土台に残す**。その上へ2つ重ねる:
+ * 1. **光沢** … 段とは別の、なめらかなハイライト。段だけだと平らな塗りに見える。
+ * 2. **すり傷** … 段の境目を荒らし、光沢に筋を入れる。
+ *
+ * ★★**すり傷は「物の座標」で作る**（UV を張らない）。`buildPart` は押し出しで
+ *   面を作るので UV が無く、張ると側面が伸びて汚れる。物の座標なら、面でも
+ *   小口でも同じ密度の筋が入る。
+ * ★向きは図の x へ 20° 寝かせた筋。工具は縦長なので、真横だと縞に見える。
+ */
+export function applySteel(m: MeshToonMaterial) {
+  const P = NIPPER_PAINT;
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("void main() {", "varying vec3 vObj;\nvarying vec3 vObjN;\nvarying vec3 vVpos;\nvoid main() {")
+      .replace("#include <beginnormal_vertex>", "#include <beginnormal_vertex>\n\tvObjN = objectNormal;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvObj = position;")
+      .replace("#include <project_vertex>", "#include <project_vertex>\n\tvVpos = - mvPosition.xyz;");
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <gradientmap_pars_fragment>",
+      `uniform sampler2D gradientMap;
+       varying vec3 vObj;
+       varying vec3 vObjN;
+       varying vec3 vVpos;
+       // ★normalMatrix は既定では**頂点側にしか宣言が無い**。値は three が毎回
+       //   入れてくれるので、こちらで宣言すれば断片側でも使える。
+       uniform mat3 normalMatrix;
+       float nHash( float p ) { p = fract( p * 0.1031 ); p *= p + 33.33; p *= p + p; return fract( p ); }
+       float nLine( float x ) { float i = floor( x ), f = fract( x );
+         f = f * f * ( 3.0 - 2.0 * f );
+         return mix( nHash( i ), nHash( i + 1.0 ), f ); }
+       // ★刻みは**図の単位**（工具は 633 × 898）。向きは x へ 20° 寝かせる。
+       vec2 grain( vec3 o ) {
+         return vec2( dot( o.xy, vec2( 0.940, 0.342 ) ),                 // 筋に沿う
+                      dot( o.xy, vec2( -0.342, 0.940 ) ) + o.z * 0.35 ); // 筋を横切る
+       }
+       // ★**うねり** … 鍛えた面のゆるい濃淡（−0.5〜0.5）。周期は 100 単位ほど。
+       float sheenAt( vec3 o ) {
+         vec2 g = grain( o );
+         return nLine( g.y * 0.010 + g.x * 0.0014 ) * 0.62
+              + nLine( g.y * 0.034 + g.x * 0.0035 ) * 0.38 - 0.5;
+       }
+       // ★**すり傷** … **疎らな細い線**だけを立てる（0〜1）。一様に敷くと
+       //   金属ではなく**布**に見える（第70巡に実測）。
+       float lineAt( float x ) { return smoothstep( 0.74, 1.0, nLine( x ) ); }
+       float scratchAt( vec3 o ) {
+         vec2 g = grain( o );
+         return lineAt( g.y * 0.085 + g.x * 0.004 ) * 0.62
+              + lineAt( g.y * 0.290 + g.x * 0.011 ) * 0.38;
+       }
+       // 場の傾き。★**うねりとすり傷は刻みが2桁違う**ので、別々に取って
+       //   別々の強さで法線へ効かせる（1つにまとめると細かいほうが全部食う）。
+       vec3 gradOf( vec3 o, float e, int kind ) {
+         float f = kind == 0 ? sheenAt( o ) : scratchAt( o );
+         vec3 d;
+         d.x = ( kind == 0 ? sheenAt( o + vec3( e, 0.0, 0.0 ) ) : scratchAt( o + vec3( e, 0.0, 0.0 ) ) ) - f;
+         d.y = ( kind == 0 ? sheenAt( o + vec3( 0.0, e, 0.0 ) ) : scratchAt( o + vec3( 0.0, e, 0.0 ) ) ) - f;
+         d.z = ( kind == 0 ? sheenAt( o + vec3( 0.0, 0.0, e ) ) : scratchAt( o + vec3( 0.0, 0.0, e ) ) ) - f;
+         return d / e;
+       }
+       vec3 tang( vec3 g, vec3 n ) { return g - dot( g, n ) * n; }
+       vec3 getGradientIrradiance( vec3 normal, vec3 lightDirection ) {
+         float t = ( dot( normal, lightDirection ) + ${SKY.toFixed(3)} * normal.y
+                   - ${LIT_LOW.toFixed(3)} ) / ${LIT_SPAN.toFixed(3)};
+         return texture2D( gradientMap, vec2( clamp( t, 0.0, 1.0 ), 0.0 ) ).rgb;
+       }`,
+    ).replace(
+      "#include <opaque_fragment>",
+      `#if NUM_DIR_LIGHTS > 0
+         // ★★★**平らな面は、そのままでは光沢も濃淡も一定になる**（法線も視線も
+         //   変わらないので）。金属に見せるには2つ要る:
+         //   ① 面のむら … 段を**通さず**に足すなめらかな濃淡（段は6つしか無いので、
+         //      段のほうを揺らしても境目を越えず何も起きない ―― 第70巡に実測）。
+         //   ② 光沢 … **うねりとすり傷で法線を傾けてから**当てる。
+         // ★傾きは**物の座標での差分**で取る（画面微分だと縮尺で見え方が変わり、
+         //   線が点線に切れる ―― 第70巡に実測）。
+         vec3 nO = normalize( vObjN
+                    - tang( gradOf( vObj, 40.0, 0 ), vObjN ) * 34.0    // うねり（ゆるい）
+                    - tang( gradOf( vObj,  3.0, 1 ), vObjN ) * 0.13 ); // すり傷（細い）
+         vec3 nB = normalize( normalMatrix * nO );
+         vec3 sL = normalize( directionalLights[ 0 ].direction );
+         vec3 sH = normalize( sL + normalize( vVpos ) );
+         float sp = pow( max( dot( nB, sH ), 0.0 ), ${P.shine.toFixed(1)} );
+         outgoingLight += vec3( sheenAt( vObj ) * ${(P.scratch * 0.16).toFixed(3)}   // 面のむら
+                              + sp * ${P.gloss.toFixed(3)}                            // 光沢
+                              + scratchAt( vObj ) * ${(P.gloss * 0.16).toFixed(3)} ); // すり傷の照り
+       #endif
+       #include <opaque_fragment>`,
+    );
+  };
+  // ★同じ差し替えをした材質どうしでシェーダーを使い回させる。
+  m.customProgramCacheKey = () => "nipper-steel";
+}
+
+/**
  * ★**段の表のどこに当たるか**を JS 側でも引けるようにする（式は上の1つだけ）。
  * 画面と平行な面が何色になるかが分かるので、**その色をあらかじめ割っておけば
  * 「正面を向いた面が狙いの色そのものになる」**（`TicketStage` の紙がそれ）。

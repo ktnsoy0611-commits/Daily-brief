@@ -89,6 +89,9 @@
   元データは `docs/archive/nipper-shape-21.ts` に凍結（誰も import しない。消さない）。
   目で数値を打ち込んでいた 9〜15巡目はプロポーションが合わなかった。
   設計の正は `docs/explore-redesign.md`。
+  ★★券と鋏を**同じ3D空間**に置く器 … `components/explore/TicketStage.tsx`
+  （**券の面は「深さだけ書く板」**なので、下に敷いた DOM の券がそのまま見える
+  ＝版面は劣化しないのに、鋏が券の奥へ回れば隠れる）。
   ★禁じられているのは **CSS の 3D 変形**であって WebGL ではない（design.md 冒頭）。
 
 ## タスク（TASK）

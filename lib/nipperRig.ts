@@ -182,6 +182,16 @@ export function buildNipperRig(): NipperRig {
   };
 }
 
+/**
+ * 開き具合（0=閉じ 1=開き）を**姿勢へ落とす**。★腕・バネの3つは必ず一緒に動く
+ * ので1か所にまとめる（`Nipper` と `TicketStage` の両方から呼ぶ）。
+ */
+export function poseNipper(rig: NipperRig, p: number) {
+  rig.lever.rotation.z = (p * THETA * Math.PI) / 180;
+  rig.coil.scale.x = 1 - p * SQUEEZE;
+  rig.coil.position.x = COIL_ANCHOR_X * p * SQUEEZE;
+}
+
 /** 光。★向きだけが階調を決める（`gradientMap` の6段）。 */
 export function nipperLights(): DirectionalLight {
   const key = new DirectionalLight(0xffffff, LIGHT_INTENSITY);

@@ -201,6 +201,18 @@ export function applyAppTones(m: MeshToonMaterial) {
 }
 
 /**
+ * ★**段の表のどこに当たるか**を JS 側でも引けるようにする（式は上の1つだけ）。
+ * 画面と平行な面が何色になるかが分かるので、**その色をあらかじめ割っておけば
+ * 「正面を向いた面が狙いの色そのものになる」**（`TicketStage` の紙がそれ）。
+ */
+export function appTone(n: Vector3, light: Vector3): Color {
+  const t = (n.dot(light) + SKY * n.y - LIT_LOW) / LIT_SPAN;
+  const ramp = NIPPER_PAINT.ramp;
+  const i = Math.min(ramp.length - 1, Math.max(0, Math.floor(Math.min(Math.max(t, 0), 1) * ramp.length)));
+  return new Color(ramp[i]);
+}
+
+/**
  * 光の強さ。★three は拡散を 1/π するので、**π を入れて 1 に戻す**。
  * こうすると画面に出る色が段の表の色そのものになる。
  */

@@ -11,7 +11,7 @@ import {
   spring, springTo, settled, K_TRAVEL, D_TRAVEL, K_SETTLE, D_SETTLE,
 } from "@/lib/spring";
 import {
-  buildNipperRig, nipperLights, COIL_ANCHOR_X, NIPPER_CENTER, SQUEEZE, THETA,
+  buildNipperRig, nipperLights, poseNipper, NIPPER_CENTER,
 } from "@/lib/nipperRig";
 import { NIPPER_EXTENT, NIPPER_SLOT, type P2 } from "@/lib/nipperShape";
 
@@ -122,9 +122,7 @@ export function Nipper({
       const shut = w > s.p;
       springTo(s, w, shut ? K_TRAVEL : K_SETTLE, shut ? D_TRAVEL : D_SETTLE);
       if (settled(s, w)) { s.p = w; s.v = 0; }
-      rig.lever.rotation.z = (s.p * THETA * Math.PI) / 180;
-      rig.coil.scale.x = 1 - s.p * SQUEEZE;
-      rig.coil.position.x = COIL_ANCHOR_X * s.p * SQUEEZE;
+      poseNipper(rig, s.p);
       renderer.render(scene, camera);
       id = requestAnimationFrame(tick);
     };

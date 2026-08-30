@@ -2,12 +2,13 @@
 
 import { SPACE, TYPE, TRACK, WEIGHT, LEAD } from "@/lib/tokens";
 import {
-  BG, INK, ITEM_DOMAINS, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
+  BG, INK, ITEM_DOMAINS, KIND_DOMAIN, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE,
 } from "@/lib/constants";
 import { PunchGlyph } from "@/components/explore/PunchMark";
 import { Nipper, NIPPER_ASPECT, NIPPER_NOSE } from "@/components/explore/Nipper";
 import { NipperTriView } from "@/components/explore/NipperViews";
 import { Ticket, type TicketData, type TicketPunch } from "@/components/explore/Ticket";
+import { TicketStage } from "@/components/explore/TicketStage";
 
 // ★開発用。券・切り欠き・鋏を並べて目で確かめるだけの画面。
 //   本番の導線からは辿れない（/dev/explore を直接開く）。完成したら撤去する。
@@ -109,6 +110,24 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** ★3D の場に置く券（DOM の券と**同じ数値**をそのまま渡す）。 */
+const CARD = {
+  x: SPACE.lg, y: SPACE.xl, w: STAGE_TICKET,
+  h: Math.round(STAGE_TICKET * 21 / 13),          // ★目盛りの外（TICKET_ASPECT の比）
+  paper: TICKET_DOMAIN_COLOR[KIND_DOMAIN[SAMPLES[0].data.kind]],
+};
+/** 3D の場では**図そのものの幅**を渡す（`STAGE_NIPPER` は余白こみの器の幅）。 */
+const STAGE_NIPPER_FIG = Math.round(STAGE_NIPPER * 0.74);   // ★目盛りの外（`FIT`）
+/** 3つの場面。★`z` は券の面からの隔たり（正＝手前・負＝奥）。 */
+const STAGE_SHOTS = [
+  { label: "待機（手前）", punch: false,
+    nipper: { nose: { x: 314, y: 556 }, w: STAGE_NIPPER_FIG, open: 1, z: 90 } },
+  { label: "入鋏（券をくわえる）", punch: true, closing: true,
+    nipper: { nose: { x: 322, y: 372 }, w: STAGE_NIPPER_FIG, open: 0, closing: true, z: 0 } },
+  { label: "券の奥へ回る", punch: false,
+    nipper: { nose: { x: 190, y: 300 }, w: STAGE_NIPPER_FIG, open: 1, z: -90 } },
+];
+
 export default function DevExplore() {
   return (
     <main style={{
@@ -155,6 +174,32 @@ export default function DevExplore() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ★★3D の場。券と鋏が**同じ空間**に居る（束・小口・影つき）。 */}
+      <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+        <Label>Today — 3D の場（券1枚と鋏）</Label>
+        <div style={{ display: "flex", gap: SPACE.xl, alignItems: "flex-start" }}>
+          {STAGE_SHOTS.map((shot) => (
+            <div key={shot.label} style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
+              <Label>{shot.label}</Label>
+              <div style={{ background: BG, flex: "none" }}>
+                <TicketStage
+                  w={STAGE.w} h={STAGE.h}
+                  card={CARD}
+                  nipper={shot.nipper}
+                >
+                  <Ticket
+                    data={SAMPLES[0].data}
+                    punch={shot.punch ? SAMPLES[0].punch : null}
+                    deck={BG}
+                    width={STAGE_TICKET}
+                  />
+                </TicketStage>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* 切り欠きの4つ */}

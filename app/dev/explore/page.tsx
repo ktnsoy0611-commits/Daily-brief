@@ -2,8 +2,9 @@
 
 import { SPACE, TYPE, TRACK, WEIGHT, LEAD } from "@/lib/tokens";
 import {
-  BG, INK, ITEM_DOMAINS, KIND_DOMAIN, LATIN, SANS, TICKET_DECK, TICKET_DOMAIN_COLOR, WHITE, TICKET_H_PER_W,
+  BG, INK, ITEM_DOMAINS, KIND_DOMAIN, LATIN, SANS, TICKET_DECK, TICKET_H_PER_W, WHITE,
 } from "@/lib/constants";
+import { DOMAIN_COLOR } from "@/lib/palette";
 import { PunchGlyph } from "@/components/explore/PunchMark";
 import { Nipper, NIPPER_ASPECT, NIPPER_NOSE } from "@/components/explore/Nipper";
 import { NipperTriView } from "@/components/explore/NipperViews";
@@ -119,7 +120,7 @@ const CARD = {
   x: Math.round((STAGE.w - STAGE_TICKET) / 2),
   y: Math.round((STAGE.h - CARD_H) / 2),
   w: STAGE_TICKET, h: CARD_H,
-  paper: TICKET_DOMAIN_COLOR[KIND_DOMAIN[SAMPLES[0].data.kind]],
+  paper: DOMAIN_COLOR[KIND_DOMAIN[SAMPLES[0].data.kind]],
 };
 /** 3D の場では**図そのものの幅**を渡す（`STAGE_NIPPER` は余白こみの器の幅）。 */
 const STAGE_NIPPER_FIG = 260;
@@ -209,7 +210,7 @@ export default function DevExplore() {
         <div style={{ display: "flex", gap: SPACE.lg, alignItems: "flex-start" }}>
           {ITEM_DOMAINS.map((d) => (
             <span key={d.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: SPACE.xs }}>
-              <PunchGlyph domain={d.id} size={SPACE.xl} color={TICKET_DOMAIN_COLOR[d.id]} />
+              <PunchGlyph domain={d.id} size={SPACE.xl} color={DOMAIN_COLOR[d.id]} />
               <span style={{
                 fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
                 letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: WHITE,

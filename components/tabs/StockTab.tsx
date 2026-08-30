@@ -8,8 +8,9 @@ import { Button } from "@/components/Button";
 import { BinderModal, CardStack, type IconType, Masthead, PosterCard, SectionLabel } from "@/components/common";
 import { TabIcon } from "@/components/TabIcons";
 import { appTitle } from "@/lib/apps";
-import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, POSTER_PALETTE, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
-import { domainOf, hashStr, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
+import { BLUE, GOLD, GREEN, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
+import { domainOf, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
+import { colorOfKind } from "@/lib/palette";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
 
 // 種類ごとのアイコン。Itemの全kindをここで引ける。
@@ -365,7 +366,9 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
               lat: data.lat, lng: data.lng, placeId: data.placeId,
               sourceUrl: data.mapUrl || undefined,
               sourceLabel: data.mapUrl ? (data.isMaps ? "地図で見る" : "リンクを見る") : undefined,
-              color: POSTER_PALETTE[hashStr(data.title) % POSTER_PALETTE.length],
+              // ★色は**そのものの kind のドメイン**から引く（第73巡）。
+              //   題のハッシュで散らすのをやめた ―― 同じものが開くたび違う色になっていた。
+              color: colorOfKind(data.kind),
               origin: "manual",
             }, `${domainDefOf(adding).label}をストックしました`);
           }}

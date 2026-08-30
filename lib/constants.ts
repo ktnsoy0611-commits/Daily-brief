@@ -44,8 +44,8 @@ export const SWIPE_THRESHOLD = 90;
 // フォント本体は app/layout.tsx で next/font/google により読み込み、CSS変数
 // として <html> に適用している。ここではその変数を参照するだけ。
 // マガジン風(明朝体の見出し+Playfairの斜体数字)の縛りは撤廃し、ミニマルで
-// リッチな1書体構成に統一した。SERIF/DISPLAYという名前は既存コード互換の
-// ために残しているが、実体はどちらもSANSを指す(見出しも本文も同じサンセリフ)。
+// リッチな1書体構成に統一した。★第73巡に `SERIF` / `DISPLAY` という別名を
+// **消した** ―― どちらも中身は `SANS` で、名前だけが残っていた(12箇所を直した)。
 // ★★**欧文は Archivo、和文は Noto Sans JP**(2026-08-24・第53巡にユーザー確定)。
 // 「ブルータリズム/スイスに合う、太めで幅が少し詰まった、洗練された書体」という
 // 指定に対して Archivo(可変フォント)を選んだ。幅は `app/globals.css` の
@@ -72,8 +72,6 @@ export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, s
 //   使い手が居なくなり、`TYPE.display`(26) と 2px しか違わない別系統だったので
 //   捨てた。**残るのは表示専用の巨大欧文だけ**。
 export const SWISS_XL = 72;   // TIMELINE の曜日の見出し(これ1つ。増やさない)
-export const SERIF = SANS;
-export const DISPLAY = SANS;
 
 // ★タスクの図形に載る文字の書体。**タグごとに1つ**選ぶ(番号は
 // lib/taskTags.ts が持つ)。読み込みは app/layout.tsx が行い、ここは表だけ。
@@ -154,16 +152,10 @@ export const STUDIO = {
 
 /** ★ゴールのバインダー固有の意匠(`components/Binder.tsx`)。色相は名前のハッシュで
  *  選ぶので、**集合として持つ**必要がある。無彩色の梯子には混ぜない。 */
-export const BINDER_COLORS = {
-  goal:  ["#B8742E", "#2C6E8A", "#8A3C2A", "#3F6B45", "#6B4A2E", "#C1502E", "#4A5C3E"],
-  thing: ["#8A6B2E", "#4A5C3E", "#6B4A2E", "#2C6E8A", "#8A3C2A", "#5A6B7A"],
-  place: ["#2C6E8A", "#B8742E", "#8A3C2A", "#3F6B45", "#6B4A2E", "#4A5C3E", "#C1502E", "#5A6B7A"],
-  date:  ["#6B5A42", "#42586B", "#6B4238", "#42546B", "#5A4230", "#3E4A3A"],
-  kind: {
-    movie: "#2C4E74", book: "#33633F", album: "#C1922E", info: "#4A5C3E",
-    exhibition: "#2C6E7A", live: "#B8442E", activity: "#7A4432", food: "#A8552F",
-  },
-} as const;
+// ★★第73巡に **`BINDER_COLORS`（22色の独自パレット）を撤去**した。
+// ゴールのバインダーは、ドメインの4色を `shade` で明暗に振って使う
+// （`lib/palette.ts` の `DOMAIN_COLOR` と `DOMAIN_STEPS`）。
+// 同じ「展覧会」が券では橙・バインダーでは青緑、という食い違いがここで消えた。
 
 // ── カラースキーム(2026-08-16にユーザー指定・参照画像=Spotifyの配色見本) ──
 //
@@ -194,12 +186,13 @@ export const SCHEME = {
 // アプリが前から持っている6つのアクセントの名前は変えず、**中身をスキームの
 // 地の色へ差し替える**。呼び出し側(数十箇所)はそのまま新しい色になる。
 // どれを当てるかは「元の色相を保つ」ことと「その色の上に何が載るか」で決めた。
-export const BLUE = SCHEME.violet.bg;   // 選択中・リンク。濃いので細い字でも読める
-export const RUST = SCHEME.red.bg;      // 削除・エラー。警告として最も強い赤
+// ★★**状態の色は3つだけ**（2026-08-31・第73巡）。分類の9色から借りている。
+export const BLUE = SCHEME.violet.bg;   // 選ばれている・リンク。濃いので細い字でも読める
+export const RUST = SCHEME.red.bg;      // 危険（削除・エラー）。最も強い赤
 export const GREEN = SCHEME.forest.bg;  // 肯定・達成
-export const GOLD = SCHEME.orange.bg;   // ★白い ✓ を載せる面。黄だと白が消える
-export const PLUM = SCHEME.wine.bg;
-export const SLATE = SCHEME.navy.bg;
+// ★`GOLD` は「白い ✓ を載せる面」。★第73巡に `PLUM` / `SLATE` を**消した**
+//   （どちらも使い手が 0 件だった）。
+export const GOLD = SCHEME.orange.bg;
 /** RUST の淡い敷き。以前は rgba(193,80,46,…) を各所に直書きしていた。 */
 export const RUST_TINT = "rgba(238,27,51,0.12)";
 export const RUST_EDGE = "rgba(238,27,51,0.45)";
@@ -218,9 +211,9 @@ export const HEADER_CHIP_SIZE = 40;
 export const ITEM_CARD_ASPECT = "3 / 4";
 export const GOAL_CARD_ASPECT = ITEM_CARD_ASPECT;
 
-// 文字だけのカードの地。スキームの地の色から、濃さの違う4つを選ぶ
-// (白い文字が載るので、明るい黄・空・ピンクは使わない)。
-export const POSTER_PALETTE = [SCHEME.navy.bg, SCHEME.orange.bg, SCHEME.red.bg, SCHEME.forest.bg];
+// ★★第73巡に撤去。文字だけのカードの地も**そのカードのドメインの色**を使う
+// （`lib/palette.ts` の `colorOfKind`）。題のハッシュで色を散らすのをやめた
+// ―― 同じ展覧会が開くたびに違う色になっていた。
 
 // ★タブバーの寸法。選択中の印は**正円**で、その直径がそのまま
 // ピルの内側の高さになる(ピルの高さ = TAB_MARK + NAV_PILL_PAD * 2 = 64)。
@@ -443,12 +436,9 @@ export const kindsOfDomain = (domain: ItemDomain) => ITEM_KINDS.filter((k) => k.
 //   もの→桃・情報→空は `deckStyle` と**完全に一致**する。
 //   体験(展覧会=navy/ライブ=violet/体験=orange/食=red)で黒が読めるのは**橙**だけ。
 //   場所は `deckStyle` では緑だが、緑の上では黒が沈むので使えず、余った**黄**を当てる。
-export const TICKET_DOMAIN_COLOR: Record<ItemDomain, string> = {
-  place: SCHEME.yellow.bg,       // #F5E837（deckStyle は緑。黒が読めないので黄）
-  experience: SCHEME.orange.bg,  // #FA6E31（deckStyle の activity と一致）
-  info: SCHEME.sky.bg,           // #509BF5（deckStyle の info と一致）
-  thing: SCHEME.pink.bg,         // #F76FA1（deckStyle の thing と一致）
-};
+// ★★第73巡に**`lib/palette.ts` の `DOMAIN_COLOR` へ引っ越した**。
+//   券もブリーフもバインダーもマップも、ドメインの色は**そこ1か所**から引く。
+//   この名前は呼び出し側の互換のために残してあるだけ。
 // 券の紙。★第33巡で暖色のクリームは廃止したので戻さない。
 // 紙らしさは**本物の写真**(`public/paper-kraft.webp`・`lib/paperTexture.ts`)で
 // 出す。★★テクスチャは**色のすぐ上・文字の下**に multiply で敷く(下地)。

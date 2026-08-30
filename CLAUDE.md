@@ -161,6 +161,11 @@
 
 ## データ・ロジック
 - `lib/types.ts` — **データモデルの正**。`lib/constants.ts` — 色・書体・部品の寸法。
+- ★`lib/palette.ts` — **有彩色の「役 → 色」の対応表**（第73巡）。分類に使う色は
+  **9つだけ** … ドメイン4（券・ブリーフ・バインダー・ストック・マップ）＋
+  タグ5（タスクの図形）。**重ならない**（`SCHEME` の9組を1対1で使い切る）。
+  ★★色そのものは `SCHEME` が持つ。**パレットを替えるときは `SCHEME` だけ書き換える。**
+  ★kind（10種）は色を持たない ―― ドメインを通す。違いは文字・字面・形が担う。
 - `lib/tokens.ts` — **余白・文字・角丸の目盛り（`SPACE`/`TYPE`/`RADIUS`）**。
   数字が不揃いに見えたらここを見る。増やさない。
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。

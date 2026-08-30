@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { SPACE } from "@/lib/tokens";
 import { BD_GREY, INK, GREEN, RUST } from "@/lib/constants";
-import { Anton, Archivo, Dela_Gothic_One, M_PLUS_1, Noto_Sans_JP, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
+import { Archivo, Dela_Gothic_One, M_PLUS_1, Noto_Sans_JP, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
 import "./globals.css";
 
 // ミニマルなデザインへの刷新に伴い、明朝体(Zen Old Mincho)とPlayfair
@@ -28,24 +28,17 @@ const archivo = Archivo({
   preload: false,
 });
 
+// ★★★**可変で読む**（2026-08-31・第73巡）。`["400","500","700"]` の固定3本だと
+// **`WEIGHT.heavy`(800) が和文で出ない** ―― 実測でインクの量が 700 / 800 / 900 とも
+// 1319 で同じだった（欧文 Archivo は 5段とも違う）。`weight` を渡さなければ
+// 可変フォント（100〜900）として届き、使う場所の `fontWeight` がそのまま効く。
+// ★Noto Sans JP は **源ノ角ゴシック**（Adobe 名 Source Han Sans）と同じ書体。
 const notoSansJP = Noto_Sans_JP({
   variable: "--font-noto-sans-jp",
-  weight: ["400", "500", "700"],
   preload: false,
 });
 
-// バインダー(components/Binder.tsx)専用の、ミッドセンチュリーのポスター
-// レタリングを思わせる太いディスプレイ書体。ラテン文字のみのフォントだが、
-// 和文が来た場合はfont-familyのフォールバックでZen Kaku Gothic Newへ
-// 自動的に切り替わるため、英字の見出し(PLACE/GOALなど)だけにこの書体が
-// 効く形で共存できる。
-const anton = Anton({
-  variable: "--font-anton",
-  weight: "400",
-  subsets: ["latin"],
-  preload: false,
-});
-
+// ★第73巡に **Anton を撤去**（使い手 0 件だった）。
 // ★タスクの図形に載る文字は、**タグごとに書体を変える**(組み合わせの表は
 // lib/constants.ts の FONT_FACES が正)。★明朝(Zen Old Mincho)は
 // 2026-08-16にユーザー指定で廃止し、ゴシック系だけにした。
@@ -134,7 +127,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja" className={[
-      zenKakuGothicNew.variable, anton.variable, archivo.variable, notoSansJP.variable,
+      zenKakuGothicNew.variable, archivo.variable, notoSansJP.variable,
       zenMaruGothic.variable, delaGothicOne.variable, mplus1.variable,
     ].join(" ")}>
       {/* ★色の持ち主は `lib/constants.ts` の1か所だけ。CSS には**変数で配る**。

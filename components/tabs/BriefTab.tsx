@@ -5,7 +5,7 @@ import { Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
 import { appTitle } from "@/lib/apps";
-import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, DISPLAY, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SERIF, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP, WHITE } from "@/lib/constants";
+import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP, WHITE } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
@@ -42,7 +42,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           </div>
           <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.xl}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
             <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
-            <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>最近は、どうですか？</h2>
+            <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>最近は、どうですか？</h2>
             <textarea
               value={checkinValue}
               onChange={(e) => onCheckinChange(e.target.value)}
@@ -68,7 +68,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
         </div>
         <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.xl}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
-          <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.snug, color: INK }}>できるようになったこと、ありますか？</h2>
+          <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.snug, color: INK }}>できるようになったこと、ありますか？</h2>
           <textarea
             value={milestoneText}
             onChange={(e) => onMilestoneTextChange(e.target.value)}
@@ -111,7 +111,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           <img src={img(card.images![0], 500, 400)} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         ) : (
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span aria-hidden style={{ fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: "min(42vw, 170px)", lineHeight: LEAD.flat, color: card.fg, opacity: 0.92 }}>{card.glyph}</span>
+            <span aria-hidden style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: "min(42vw, 170px)", lineHeight: LEAD.flat, color: card.fg, opacity: 0.92 }}>{card.glyph}</span>
           </div>
         )}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.1), rgba(0,0,0,0) 40%, rgba(0,0,0,0.22) 100%)", pointerEvents: "none" }} />
@@ -133,7 +133,7 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
             <span style={{ fontSize: TYPE.micro, color: SECOND, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal }}>{card.category}{card.trigger && card.trigger !== "セレンディピティ" ? ` ・ ${card.trigger}` : ""}{card.goalTitle ? `（${card.goalTitle}）` : ""}</span>
           </span>
         </div>
-        <h2 style={{ margin: `0 0 ${SPACE.sm}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>{card.title}</h2>
+        <h2 style={{ margin: `0 0 ${SPACE.sm}px`, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>{card.title}</h2>
         {/* paddingRightはisTopに関わらず常に一定にしている。以前はisTop&&
             onFlagの時だけ26pxを足していたため、peekだったカードがtopに
             切り替わる瞬間にpaddingが0→26へ非連続にジャンプし、transform
@@ -711,8 +711,8 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
           <SectionLabel text="今日はここまで" style={{ marginBottom: SPACE.lg }} />
           {keptCards.map((c, i) => (
             <div key={c.id} style={{ display: "flex", alignItems: "baseline", gap: SPACE.md, padding: `${SPACE.md}px 0`, borderTop: `1px solid ${HAIRLINE}` }}>
-              <span style={{ fontFamily: DISPLAY, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
-              <div style={{ fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.lead }}>{c.title}</div>
+              <span style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: BLUE, minWidth: 28 }}>{String(i + 1).padStart(2, "0")}</span>
+              <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead }}>{c.title}</div>
             </div>
           ))}
           <button onClick={() => goTab("execute")} style={{ marginTop: SPACE.xl, width: "100%", padding: `${SPACE.md}px 0`, background: INK, border: "none", borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: PAPER }}>
@@ -736,11 +736,11 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
               <span style={{ fontSize: TYPE.micro, color: MUTED, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, paddingTop: SPACE.xs }}>{readItem.category}{readItem.trigger ? ` ・ ${readItem.trigger}` : ""}</span>
               <button onClick={() => setReadItem(null)} aria-label="閉じる" style={{ background: "rgba(26,26,24,0.06)", border: "none", borderRadius: RADIUS.pill, width: 30, height: 30, cursor: "pointer", fontSize: TYPE.lead, fontWeight: WEIGHT.text, color: INK, flexShrink: 0 }}>✕</button>
             </div>
-            <h2 style={{ margin: `0 0 ${SPACE.lg}px`, fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>{readItem.title}</h2>
+            <h2 style={{ margin: `0 0 ${SPACE.lg}px`, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>{readItem.title}</h2>
             {(readItem.detail && readItem.detail.trim() ? readItem.detail : readItem.body)
               .split(/\n{2,}|\n/).filter((p) => p.trim())
               .map((para, i) => (
-                <p key={i} style={{ margin: `0 0 ${SPACE.lg}px`, fontFamily: SERIF, fontSize: TYPE.lead, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: CHARCOAL }}>{para.trim()}</p>
+                <p key={i} style={{ margin: `0 0 ${SPACE.lg}px`, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: CHARCOAL }}>{para.trim()}</p>
               ))}
             {readItem.sourceUrl && (
               <a href={readItem.sourceUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}

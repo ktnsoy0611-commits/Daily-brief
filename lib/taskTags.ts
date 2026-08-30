@@ -24,12 +24,19 @@ export interface TagDef { id: TaskTag; label: string; color: string; ink: string
 const tag = (id: TaskTag, label: string, p: { bg: string; ink: string }, face: number): TagDef =>
   ({ id, label, color: p.bg, ink: p.ink, face });
 
+// ★★★第73巡に**ドメインと重ならない5色**へ振り直した。
+//   それまでは sky / forest / yellow / red / orange で、そのうち3つ（sky・yellow・
+//   orange）が Explore のドメインと同じ色だった。`SCHEME` の9組を
+//   **ドメイン4 ＋ タグ5 で1対1**に使い切る形にすると、パレットを差し替えるとき
+//   「9色を9つの役へ配るだけ」で済む。
+//   ★TASK と EXPLORE は別のアプリなので色を借りても混同はしないが、
+//     **同じ色が2つの意味を持つ状態**は、色を選び直すときに必ず詰まる。
 export const TASK_TAGS: TagDef[] = [
-  tag("work", "WORK", SCHEME.sky, 1),           // 空 × 淡い緑   / ゴシック700
+  tag("work", "WORK", SCHEME.navy, 1),          // 濃紺 × 桃     / ゴシック700
   tag("life", "LIFE", SCHEME.forest, 3),        // 深緑 × 淡桃   / 丸ゴシック500
-  tag("wellness", "WELLNESS", SCHEME.yellow, 4),// 黄 × 朱       / Dela(極太)
+  tag("wellness", "WELLNESS", SCHEME.violet, 4),// 青紫 × 白     / Dela(極太)
   tag("social", "SOCIAL", SCHEME.red, 5),       // 赤 × 淡桃     / M PLUS 1 800
-  tag("growth", "GROWTH", SCHEME.orange, 2),    // 橙 × 濃紺     / ゴシック700斜体
+  tag("growth", "GROWTH", SCHEME.wine, 2),      // ワイン × 淡緑 / ゴシック700斜体
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>

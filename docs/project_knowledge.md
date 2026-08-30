@@ -147,10 +147,22 @@ localStorage のキーは `qol-app-state-v1`。
 - **幅** … Archivo は `wdth`(62〜125) の軸を持つ。`app/globals.css` の `body` に
   `font-variation-settings: "wdth" 88` を置き、**全体を少し詰める**。和文の Noto は
   この軸を持たないので無視される。`ctx.font`（canvas の図形の文字）にも掛からない。
-- **太さ** … 使う場所で `fontWeight`（見出しは 700〜800）。★`app/layout.tsx` で
-  `weight` を固定で渡さないこと（渡すと可変でなくなり、幅の軸も効かなくなる）。
+- **太さ** … 使う場所で `fontWeight`（見出しは 700〜800）。★★★`app/layout.tsx` で
+  **`weight` を固定で渡さないこと**。渡すと可変でなくなる。
+  ★第73巡に踏んだ … `Noto Sans JP` を `["400","500","700"]` の固定3本で読んでいて、
+  **`WEIGHT.heavy`(800) が和文で出ていなかった**（13箇所が影響）。
+  ★★**確かめ方**：`document.fonts.check` は**近い太さへ落ちても true** を返すので
+  使えない。**描いたインクの量**（canvas に描いて α を合計）を測る。
+  和文は幅では測れない（どの字も 1em 幅）。実測 …
+  直す前 400=841 / 500=1055 / **700=800=900=1319**（3段）→
+  直した後 841 / 1055 / 1319 / **1450** / **1587**（5段）。
 - **並び順が「欧文だけ Archivo」を作っている** … 和文は Archivo にグリフが無いので
   自動的に次点の Noto Sans JP へ落ちる。
+- ★★**`Noto Sans JP` ＝ 源ノ角ゴシック**（Adobe 名 Source Han Sans と同じ書体。
+  Google 名が Noto Sans CJK JP → Noto Sans JP）。**和文はすでに源ノ角**で、
+  源ノ角でないのは**欧文だけ**。
+- ★第73巡に **`SERIF` / `DISPLAY` という別名を消した**（中身はどちらも `SANS`
+  だった。12箇所を直した）。**`--font-anton` も撤去**（使い手 0 件）。
 ```
 export const SANS  = 'var(--font-archivo), "Archivo", var(--font-noto-sans-jp), "Noto Sans JP", sans-serif';
 export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, sans-serif';  // 欧文だけ(旧 HELV)
@@ -161,9 +173,34 @@ export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, s
 ★**タスクの図形に載る文字(`FONT_FACES`)はこの対象外**（ユーザー確定）。
 そちらは骨格の違う5書体を保つ（上の「書体はタグごとに1つ」を参照）。
 
-### 色（`lib/constants.ts`）
+### ★★★色 ── 分類に使う有彩色は **9つだけ**（2026-08-31・第73巡）
 
-**無彩色**（地とタイトル）— ここは色を持たない。カラースキームの対象外。
+第73巡の棚卸しで、アプリ全体に**異なる色が 79**あり、**分類の色が4系統に
+散らばっていた**（タスクのタグ5／Explore のドメイン4／ブリーフの kind 10／
+バインダーの独自パレット22）。同じ「展覧会」が、券では橙・ブリーフでは紺・
+バインダーでは青緑になっていた。**これが「統一されていない」の正体。**
+
+**役 → 色の対応表は `lib/palette.ts` 1か所。色そのものは `SCHEME` が持つ。**
+パレットを差し替えるときは `SCHEME` の中身を書き換えるだけで全部が追従する。
+
+| 役 | 数 | 色 | どこに出るか |
+|---|---|---|---|
+| **ドメイン** | **4** | `yellow` / `orange` / `sky` / `pink` | 券の紙・鋏痕・ブリーフのカード・バインダー・ストック・マップのノード |
+| **タグ** | **5** | `navy` / `forest` / `violet` / `red` / `wine` | タスクの図形 |
+| 状態 | 3 | `BLUE`=violet / `RUST`=red / `GREEN`=forest | 選ばれている／危険／肯定 |
+
+★★**ドメイン4とタグ5は重ならない**（`SCHEME` の9組を1対1で使い切る）。
+TASK と EXPLORE は別のアプリなので色を借りても混同はしないが、**同じ色が2つの
+意味を持つ状態は、色を選び直すときに必ず詰まる**。第73巡にそう振り直した。
+
+★**kind（10種）は色を持たない。** ドメインを通す（`colorOfKind`）。kind の違いは
+**文字と字面（glyph）と形**が担う。バインダーも同じで、個体差は**同じ色相の明暗**
+（`DOMAIN_STEPS`）だけで出す。
+★第73巡に撤去したもの … `BINDER_COLORS`(22色) ／ `POSTER_PALETTE`(4) ／
+`TICKET_DOMAIN_COLOR`（`DOMAIN_COLOR` へ引っ越し）／ `PLUM`・`SLATE`（使い手0）。
+**異なる16進は 79 → 57 になった。**
+
+**無彩色**（地とタイトル）— カラースキームの対象外。
 | 用途 | 定数 | 値 |
 |---|---|---|
 | 地（EXPLORE / TASK） | `BD_GREY` | `#ECECEA` |
@@ -172,27 +209,19 @@ export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, s
 | 墨 | `INK` | `#1A1A18` |
 | 控えめな字 | `MUTED` | `#8E8E88` |
 
-**カラースキーム `SCHEME`**（2026-08-16 確定・参照画像＝Spotify の配色見本）
-— **色の出どころはここ 1 つ**。9 つの「地の色 × その上に載る文字の色」の組で、
-使うのは**地の色**の方。文字の色は、その地の上に何かを載せるときの相方。
+**カラースキーム `SCHEME`** — 9つの「地の色 × その上に載る文字の色」の組。
 
-| 名前 | 地 | 相方の文字 |
-|---|---|---|
-| `pink` | `#F76FA1` | `#4B2438` |
-| `orange` | `#FA6E31` | `#1B2B4F` |
-| `sky` | `#509BF5` | `#C4F0C5` |
-| `red` | `#EE1B33` | `#F9C3C9` |
-| `violet` | `#4100F5` | `#FFFFFF` |
-| `yellow` | `#F5E837` | `#EF3E23` |
-| `navy` | `#1E3264` | `#F573A0` |
-| `wine` | `#8C1932` | `#A3E3C8` |
-| `forest` | `#04624A` | `#F7D6D3` |
-
-前からある 6 つのアクセントは**名前を変えずに中身を差し替えて**ある
-（`BLUE`=violet / `RUST`=red / `GREEN`=forest / `GOLD`=orange /
-`PLUM`=wine / `SLATE`=navy）。呼び出し側は数十箇所あるので、名前は動かさない。
-★`GOLD` に黄ではなく橙を当てているのは、その面に**白い ✓ が載る**ため
-（黄だと白が消える）。
+| 名前 | 地 | 相方の文字 | 役 |
+|---|---|---|---|
+| `yellow` | `#F5E837` | `#EF3E23` | ドメイン バショ |
+| `orange` | `#FA6E31` | `#1B2B4F` | ドメイン タイケン ／ `GOLD` |
+| `sky` | `#509BF5` | `#C4F0C5` | ドメイン ジョウホウ |
+| `pink` | `#F76FA1` | `#4B2438` | ドメイン モノ |
+| `navy` | `#1E3264` | `#F573A0` | タグ WORK |
+| `forest` | `#04624A` | `#F7D6D3` | タグ LIFE ／ `GREEN` |
+| `violet` | `#4100F5` | `#FFFFFF` | タグ WELLNESS ／ `BLUE` |
+| `red` | `#EE1B33` | `#F9C3C9` | タグ SOCIAL ／ `RUST` |
+| `wine` | `#8C1932` | `#A3E3C8` | タグ GROWTH |
 
 ★**新しい色を hex で直書きしない。** 必ず `SCHEME` から取る。地と字面は
 **必ず同じ組から**取ること（片方だけ差し替えると、明るい地に明るい字が

@@ -1,7 +1,10 @@
 "use client";
 
 import { SPACE } from "@/lib/tokens";
-import { INK, KIND_DOMAIN, TICKET_DOMAIN_COLOR } from "@/lib/constants";
+import {
+  INK, KIND_DOMAIN,
+} from "@/lib/constants";
+import { DOMAIN_COLOR } from "@/lib/palette";
 import {
   Figure, Lede, Mark, Meta, Pad, Sheet, Title, partsOf, type SampleProps,
 } from "./TicketParts";
@@ -18,7 +21,7 @@ import {
 const THUMB = 38;
 
 export function TicketN4({ data, punch, deck, width }: SampleProps) {
-  const color = TICKET_DOMAIN_COLOR[KIND_DOMAIN[data.kind]];
+  const color = DOMAIN_COLOR[KIND_DOMAIN[data.kind]];
   const { period, until, place } = partsOf(data);
 
   return (

@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import {
-  BG, INK, KIND_DOMAIN, LATIN, MUTED, PAPER, SANS, SECOND,
-  TICKET_DOMAIN_COLOR, TICKET_H_PER_W, navHeightPx,
+  BG, INK, KIND_DOMAIN, LATIN, MUTED, PAPER, SANS, SECOND, TICKET_H_PER_W, navHeightPx,
 } from "@/lib/constants";
+import { DOMAIN_COLOR } from "@/lib/palette";
 import { TicketStage } from "@/components/explore/TicketStage";
 import { TICKET_SAMPLES } from "@/components/explore/samples";
 import type { TicketData } from "@/components/explore/Ticket";
@@ -171,7 +171,7 @@ function Stage() {
           card={{
             x: inset + Math.round((sw - cardW) / 2), y: cardY,
             w: cardW, h: cardH,
-            paper: TICKET_DOMAIN_COLOR[KIND_DOMAIN[SAMPLE.kind]],
+            paper: DOMAIN_COLOR[KIND_DOMAIN[SAMPLE.kind]],
           }}
           nipper={{
             nose: { x: inset + Math.round(sw * NOSE.x), y: Math.round(view * NOSE.y) },

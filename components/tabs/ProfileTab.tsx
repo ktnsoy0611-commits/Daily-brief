@@ -5,7 +5,7 @@ import { Activity, BarChart3, Heart, Link2, RotateCcw, Sparkles, X } from "lucid
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { Button } from "@/components/Button";
-import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SERIF, SECOND } from "@/lib/constants";
+import { BLUE, FIXED_SOURCES, GREEN, HAIRLINE, INK, MUTED, PAPER, RUST, RUST_EDGE, RUST_TINT, SANS, SECOND } from "@/lib/constants";
 import { isViewportDebug, setViewportDebug } from "@/lib/debugViewport";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
@@ -562,7 +562,7 @@ export function ProfileTab({ appState, persist, onClose }: {
       {/* ★左右のパディングは持たない（design.md §2）。 */}
       <header style={{ padding: `${SPACE.lg}px 0 ${SPACE.md}px`, borderBottom: `2px solid ${INK}`, display: "flex", alignItems: "center", gap: SPACE.md }}>
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: TYPE.head, fontWeight: WEIGHT.text, color: INK, padding: 0, lineHeight: LEAD.flat }} aria-label="閉じる">←</button>
-        <div style={{ fontFamily: SERIF, fontWeight: WEIGHT.bold, fontSize: TYPE.head, letterSpacing: TRACK.normal, lineHeight: LEAD.flat }}>設定</div>
+        <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, letterSpacing: TRACK.normal, lineHeight: LEAD.flat }}>設定</div>
       </header>
 
       <main style={{ paddingTop: SPACE.lg }}>

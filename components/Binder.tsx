@@ -25,7 +25,18 @@
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BG, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW, BINDER_COLORS, SHADE } from "@/lib/constants";
+import { BG, INK, ITEM_CARD_ASPECT, PAPER, SANS, SOFT_SHADOW, SHADE, KIND_DOMAIN } from "@/lib/constants";
+import { DOMAIN_COLOR, DOMAIN_STEPS } from "@/lib/palette";
+
+// ★★★第73巡に **`BINDER_COLORS`（22色の独自パレット）をやめた**。
+//   バインダーの色は**そのもののドメインの色**（`DOMAIN_COLOR`）から取り、
+//   個体差は**同じ色相の明暗**（`DOMAIN_STEPS`）で出す。
+//   ★これで「展覧会」が券・ブリーフ・バインダーで**同じ色**になる。
+//   以前は券では橙・ブリーフでは紺・バインダーでは青緑と3つに割れていた。
+
+/** ドメインの色を、明暗の段だけずらして散らす（個体差はここでしか出さない）。 */
+const hueOf = (domain: keyof typeof DOMAIN_COLOR, i: number) =>
+  shade(DOMAIN_COLOR[domain], DOMAIN_STEPS[i % DOMAIN_STEPS.length]);
 import { haptic, shade } from "@/lib/helpers";
 
 // ドラッグ中だけ、html全体のtouch-actionを切り替えるためのヘルパー。
@@ -163,10 +174,9 @@ export const GOAL_BASE = SHADE;   // ★SHADE と値が完全一致だったの�
 // 参考画像(生成りのクリーム地+黒・マスタード・コーラル・ティール・
 // 深緑)に合わせ、寒色寄りの紫を含む配色からこの5色家族の暖色アース
 // カラーへ全面的に入れ替えた。
-const GOAL_HUES = BINDER_COLORS.goal;
+// ★ゴールはドメインを持たないので、**タイケン**の色相を借りて明暗で散らす。
 export function goalAccent(seed: string): Accent {
-  const h = hashString(seed);
-  return { kind: "target", color: GOAL_HUES[h % GOAL_HUES.length] };
+  return { kind: "target", color: hueOf("experience", hashString(seed)) };
 }
 
 // ジョウホウドメインのkindごとのワンポイント(図形+色)。RecordsTabの棚
@@ -176,10 +186,11 @@ export function goalAccent(seed: string): Accent {
 // タイケンには下記EXPERIENCE_ACCENT(side型)という専用のデザインコードを
 // 新設したため、ここはジョウホウ専用に絞った。
 export const MEDIA_ACCENT: Record<"movie" | "book" | "album" | "info", Accent> = {
-  movie: { kind: "media", shape: "semicircleUp", color: BINDER_COLORS.kind.movie },
-  book: { kind: "media", shape: "rectangle", color: BINDER_COLORS.kind.book },
-  album: { kind: "media", shape: "semicircleDown", color: BINDER_COLORS.kind.album },
-  info: { kind: "media", shape: "triangleDown", color: BINDER_COLORS.kind.info },
+  // ★色は**ドメイン**（ジョウホウ）で1つ。見分けは**形**が担う。
+  movie: { kind: "media", shape: "semicircleUp", color: DOMAIN_COLOR[KIND_DOMAIN.movie] },
+  book: { kind: "media", shape: "rectangle", color: DOMAIN_COLOR[KIND_DOMAIN.book] },
+  album: { kind: "media", shape: "semicircleDown", color: DOMAIN_COLOR[KIND_DOMAIN.album] },
+  info: { kind: "media", shape: "triangleDown", color: DOMAIN_COLOR[KIND_DOMAIN.info] },
 };
 
 // タイケン専用のデザインコード。ジョウホウ(media型: 上端の細い帯+縦縞+
@@ -189,15 +200,15 @@ export const MEDIA_ACCENT: Record<"movie" | "book" | "album" | "info", Accent> =
 // 色や図形だけ変えると結局ジョウホウと同じ見た目になってしまうため、
 // 帯の向き自体(横→縦)を変えることで一目で見分けられるようにした。
 export const EXPERIENCE_ACCENT: Record<"exhibition" | "live" | "activity" | "food", Accent> = {
-  exhibition: { kind: "side", shape: "triangleUp", color: BINDER_COLORS.kind.exhibition },
-  live: { kind: "side", shape: "circle", color: BINDER_COLORS.kind.live },
-  activity: { kind: "side", shape: "quarterTL", color: BINDER_COLORS.kind.activity },
+  exhibition: { kind: "side", shape: "triangleUp", color: DOMAIN_COLOR[KIND_DOMAIN.exhibition] },
+  live: { kind: "side", shape: "circle", color: DOMAIN_COLOR[KIND_DOMAIN.live] },
+  activity: { kind: "side", shape: "quarterTL", color: DOMAIN_COLOR[KIND_DOMAIN.activity] },
   // グルメは以前quarterBR(隅の四半円)だったが、同じ「隅の四半円」系統の
   // activity(quarterTL)と小さいグリッドの中では見分けにくいという指摘を
   // 受け、系統ごと変えた: 半円(semicircleUp)を隙間なく積むと、連続した
   // 半円が並ぶ構図になる(下記SideSquareCellの高さ基準サイジングにより
   // セル同士が接するため、この形が自然に連なって見える)。
-  food: { kind: "side", shape: "semicircleUp", color: BINDER_COLORS.kind.food },
+  food: { kind: "side", shape: "semicircleUp", color: DOMAIN_COLOR[KIND_DOMAIN.food] },
 };
 
 // ExecuteTabのデモデータ生成など、ジョウホウ・タイケンを問わず種類から
@@ -212,9 +223,8 @@ export const KIND_ACCENT: Record<"movie" | "exhibition" | "live" | "book" | "alb
 // 個性を出さず、「何巻目か」だけを軸に色を変える。買った物が積み上がって
 // THING_ITEMS_PER_VOLUMEを超えると、同じ意匠のまま色だけ変わる次の巻へ
 // 自動的に分かれる(RecordsTab.tsx参照)。
-const THING_VOLUME_HUES = BINDER_COLORS.thing;
 export function thingVolumeAccent(volumeIndex: number): Accent {
-  return { kind: "stamp", color: THING_VOLUME_HUES[volumeIndex % THING_VOLUME_HUES.length] };
+  return { kind: "stamp", color: hueOf("thing", volumeIndex) };
 }
 export const THING_ITEMS_PER_VOLUME = 20;
 
@@ -386,18 +396,18 @@ const GEO_LAYOUTS: GeoLayout[] = ["bigShape", "grid2x2", "units", "stripePatch"]
 // 行った場所(エリア)は際限なく増えるため固定色を割り当てず、名前の
 // ハッシュから色相・構図・細部をすべて決める。同じ色相のエリアが
 // 出てきても、構図や角度/本数が違うので1冊1冊に個性が出る。
-const PLACE_HUES = BINDER_COLORS.place;
+
 export function placeAccent(seed: string): Accent {
   const h = hashString(seed);
-  return { kind: "geo", color: PLACE_HUES[h % PLACE_HUES.length], layout: GEO_LAYOUTS[(h >> 4) % GEO_LAYOUTS.length], seed: h };
+  return { kind: "geo", color: hueOf("place", h), layout: GEO_LAYOUTS[(h >> 4) % GEO_LAYOUTS.length], seed: h };
 }
 
 // 日付ビューの各日も同様に無限に増える。場所とは別の色相セットにして、
 // 隣り合っても混同しないようにしている。
-const DATE_HUES = BINDER_COLORS.date;
+
 export function dateAccent(seed: string): Accent {
   const h = hashString(seed);
-  return { kind: "geo", color: DATE_HUES[h % DATE_HUES.length], layout: GEO_LAYOUTS[(h >> 6) % GEO_LAYOUTS.length], seed: h };
+  return { kind: "geo", color: hueOf("place", h), layout: GEO_LAYOUTS[(h >> 6) % GEO_LAYOUTS.length], seed: h };
 }
 
 // ---- 表紙面・背表紙面・無地の側面・裏表紙 -----------------------------------

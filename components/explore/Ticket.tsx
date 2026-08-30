@@ -2,10 +2,9 @@
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import {
-  INK, LATIN, SANS, SOFT_SHADOW_LG,
-  TICKET_DECK, TICKET_DOMAIN_COLOR, TICKET_PERF,
-  itemKindOf, KIND_DOMAIN,
+  INK, KIND_DOMAIN, LATIN, SANS, SOFT_SHADOW_LG, TICKET_DECK, TICKET_PERF, itemKindOf,
 } from "@/lib/constants";
+import { DOMAIN_COLOR } from "@/lib/palette";
 import { PAPER_SHEET_SRC } from "@/lib/paperTexture";
 import { serialOf, type TicketEdge } from "@/lib/ticket";
 import type { ItemKind } from "@/lib/types";
@@ -111,7 +110,7 @@ export function Ticket({ data, punch, deck = TICKET_DECK, width }: {
 }) {
   const kindDef = itemKindOf(data.kind);
   const domain = KIND_DOMAIN[data.kind];
-  const stock = TICKET_DOMAIN_COLOR[domain];
+  const stock = DOMAIN_COLOR[domain];
   const span = [data.date, data.until].filter(Boolean);
   const period = (span[0] === span[1] ? span.slice(0, 1) : span).join(" – ") || "—";
   const place = [data.venue, data.area].filter(Boolean).join("・") || "—";

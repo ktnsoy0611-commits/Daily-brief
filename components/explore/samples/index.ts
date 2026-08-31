@@ -1,26 +1,20 @@
 import type { ComponentType } from "react";
 
-import { TicketN1 } from "./TicketN1";
-import { TicketN2 } from "./TicketN2";
-import { TicketN3 } from "./TicketN3";
-import { TicketN4 } from "./TicketN4";
-import { TicketN5 } from "./TicketN5";
-import { TicketN6 } from "./TicketN6";
-import { TicketN7 } from "./TicketN7";
-import { TicketN8 } from "./TicketN8";
-import { TicketN9 } from "./TicketN9";
+import { TicketP1 } from "./TicketP1";
+import { TicketP2 } from "./TicketP2";
+import { TicketP3 } from "./TicketP3";
+import { TicketP4 } from "./TicketP4";
 import type { SampleProps } from "./TicketParts";
 
-// ★★★**券の見本帳の一覧**（第71巡に7案 → 第72巡に3案へ組み直し）。
+// ★★★**券の見本帳の一覧**（第72巡 3案 → 第79巡 9案 → 第80巡に**4案へ絞った**）。
 //   選ばれた1案を `components/explore/Ticket.tsx` へ畳み、**このディレクトリごと消す**。
 //
-// ★★**2つの軸で振ってある**（第79巡に4案を足して9案へ）:
-//   ・**N1〜N5** … 「**色がどれだけ見えるか**」。N2（帯だけ）→ N1 → N5（上下から
-//     挟む）→ N3（額）→ N4（色が主役）の順に色の面積が増える。
-//   ・**N6〜N9** … 「**面をどう割るか**」。N1〜N5 はどれも**横に割って**いたので、
-//     縦に割る（N6）／重ねる（N7）／切り離す（N8）／上下を入れ替える（N9）を足した。
-// ★★★見本帳は**案ごとに違う色**で並べる（`DevStageTab` が4つのドメインを巡らせる）。
-//   同じ版面でも紙の色で印象が変わるので、1色で9枚並べても比べられない。
+// ★★★9案は「**色がどれだけ見えるか**」「**面をどう割るか**」で振ってあったが、
+//   第80巡に**色が面から退いた**（紙は白1色）ので、前半5案の前提そのものが消えた。
+//   いま振っている軸は1つ ―― **大きな英語と写真がどう出会うか**。
+//
+// ★★見本帳は**案ごとに違うドメイン**で並ぶ（`DevStageTab` の `SAMPLES` 4枚）。
+//   紙は白のままで、**大きな英語の色だけ**が案ごとに変わる。
 
 export interface TicketSample {
   id: string;
@@ -32,13 +26,8 @@ export interface TicketSample {
 }
 
 export const TICKET_SAMPLES: TicketSample[] = [
-  { id: "N1", name: "帯 ── 写真が上、下が色", from: "ポッドキャストのカード", Render: TicketN1 },
-  { id: "N2", name: "全面 ── 写真いっぱい、下に色の帯", from: "イベントのカード", Render: TicketN2 },
-  { id: "N3", name: "額 ── 色の地に写真を貼る", from: "Vitsœ の荷札", Render: TicketN3 },
-  { id: "N4", name: "札 ── 色が主役、写真は小窓", from: "組織カード", Render: TicketN4 },
-  { id: "N5", name: "挟み ── 色の帯が上下から挟む", from: "実物の券", Render: TicketN5 },
-  { id: "N6", name: "柱 ── 左に色の柱、題を縦に組む", from: "短冊", Render: TicketN6 },
-  { id: "N7", name: "札 ── 写真に色の札が差し込む", from: "美術館のキャプション", Render: TicketN7 },
-  { id: "N8", name: "半券 ── 右端がちぎれる、本体は白", from: "実物の入場券", Render: TicketN8 },
-  { id: "N9", name: "見出し ── 色が上、写真が下（N1 の反転）", from: "新聞の1面", Render: TicketN9 },
+  { id: "P1", name: "天地 ── 言葉が上、写真が下", from: "刷り物の作法", Render: TicketP1 },
+  { id: "P2", name: "逆天地 ── 写真が上、言葉が下", from: "実物の券", Render: TicketP2 },
+  { id: "P3", name: "重ね ── 写真の上に白い帯", from: "映画のポスター", Render: TicketP3 },
+  { id: "P4", name: "活字 ── 語が主役、写真は小窓", from: "スイスの版面", Render: TicketP4 },
 ];

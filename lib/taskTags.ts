@@ -1,4 +1,5 @@
 import { SCHEME } from "./constants";
+import { bodyInkOn } from "./palette";
 import type { TaskTag } from "./types";
 
 // ★タスクのタグ。**固定の5つ**から選ぶ(2026-08-13にユーザー確定)。
@@ -21,34 +22,29 @@ import type { TaskTag } from "./types";
 // 作らないこと**(2026-08-17確定)。
 export interface TagDef { id: TaskTag; label: string; color: string; ink: string; face: number }
 
-// ★図形に載るのは**タグの名前＝大きな文字**なので、`ink` は組の**サブ**を採る
-//   （本文の色ではない。使い分けの理由は `lib/constants.ts` の `SCHEME` の見出し）。
-const tag = (id: TaskTag, label: string, p: { main: string; sub: string }, face: number): TagDef =>
-  ({ id, label, color: p.main, ink: p.sub, face });
+// ★★★第80巡から**組（メイン×サブ）ではなく色1つ**を受ける。図形に載る名前の色は
+//   `bodyInkOn()` が**面から導く**ので、表で持たない（表にすると片方だけ直される）。
+const tag = (id: TaskTag, label: string, color: string, face: number): TagDef =>
+  ({ id, label, color, ink: bodyInkOn(color), face });
 
-// ★★★第73巡に**ドメインと重ならない5色**へ振り直した。
-//   それまでは sky / forest / yellow / red / orange で、そのうち3つ（sky・yellow・
-//   orange）が Explore のドメインと同じ色だった。`SCHEME` の9組を
-//   **ドメイン4 ＋ タグ5 で1対1**に使い切る形にすると、パレットを差し替えるとき
-//   「9色を9つの役へ配るだけ」で済む。
-//   ★TASK と EXPLORE は別のアプリなので色を借りても混同はしないが、
-//     **同じ色が2つの意味を持つ状態**は、色を選び直すときに必ず詰まる。
-// ★★★第77巡に色を差し替えた。ユーザー指定は「単純な濃さとかではなく、この
-//   カラーパレットの雰囲気を作る上で**理論的に重要**なカラーとし、できるだけ
-//   **バランス**をとる」。→ 盤の9色を**4つの尺度**で採点して選んだ5色:
-//   色相の最小隔たり 28.0°（第76巡は 6.2° ＝ 赤に偏っていた）／明度の幅 0.67／
-//   彩度の幅 0.18／見分けの最小 ΔE 0.144。
-//   ★★**多い3つ（work / life / growth）**は互いにいちばん離れた組（最小 ΔE 0.34）。
-//   ★★★第78巡に**役だけ入れ替えた**（ユーザー指定「色を入れ替えます(役割を交換する
-//     だけ)」）… wellness 水→**杏** ／ social 杏→**黒桜** ／ growth 黒桜→**水**。
-//     **色の集合は変わっていない**ので、見分け・彩度・色相の数値はすべて据え置き。
-//     ★書体（`face`）と id は動かさない ―― 動かすと「同じタグなら必ず同じ書体」が壊れる。
+// ★★★第80巡にパレットを差し替えた（ユーザー指定の6色）。**要るのは5色**で、
+//   ドメイン4は同じ5色から借りる（TASK と EXPLORE は同じ画面に並ばない）。
+//   選び方は目ではなく**採点** ―― 6色から5色を選ぶ6通りを全部採点し、
+//   **Magenta を外した組**がいちばん良かった:
+//   色相の最小隔たり **47.7°**（前は 28.0°）／明度の幅 0.326／彩度の幅 0.091／
+//   見分けの最小 ΔE **0.187**（前は 0.144）。
+//   ★★外した Magenta は**危険**へ回る（白い紙の上 6.07 ＝ 本文が書ける深い赤）。
+//     第77巡の「危険だけ予備から借りる」問題がここで解けた。
+//   ★★★**書体（`face`）と id は動かさない** ―― 動かすと「同じタグなら必ず同じ書体」
+//     が壊れる。第78巡・第80巡とも色だけを差し替えている。
 export const TASK_TAGS: TagDef[] = [
-  tag("work", "WORK", SCHEME.fiery, 1),        // 朱 × 雲白    / ゴシック700
-  tag("life", "LIFE", SCHEME.limeade, 3),      // 若草 × 黒桜  / 丸ゴシック500
-  tag("wellness", "WELLNESS", SCHEME.sherbert, 4), // 杏 × 黒桜  / Dela(極太)
-  tag("social", "SOCIAL", SCHEME.cherry, 5),       // 黒桜 × 水  / M PLUS 1 800
-  tag("growth", "GROWTH", SCHEME.aqua, 2),         // 水 × 深紅  / ゴシック700斜体
+  // ★★色は `SCHEME`（`lib/constants.ts`）が持つ。ここは**役 → 色**の参照だけ。
+  //   多い3つ（work / life / growth）は色相 255°／152°／35° と大きく離してある。
+  tag("work", "WORK", SCHEME.work, 1),             // Azul     / ゴシック700
+  tag("life", "LIFE", SCHEME.life, 3),             // Verde    / 丸ゴシック500
+  tag("wellness", "WELLNESS", SCHEME.wellness, 4), // Amarillo / Dela(極太)
+  tag("social", "SOCIAL", SCHEME.social, 5),       // Rosa     / M PLUS 1 800
+  tag("growth", "GROWTH", SCHEME.growth, 2),       // Terracota/ ゴシック700斜体
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>

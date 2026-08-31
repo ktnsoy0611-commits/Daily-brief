@@ -1,5 +1,5 @@
 import type { ItemDomain, ItemKind } from "./types";
-import { INK, KIND_DOMAIN, MUTED, PAPER, SCHEME } from "./constants";
+import { INK, KIND_DOMAIN, MUTED, PALETTE, PAPER, SCHEME } from "./constants";
 
 // ★★★**有彩色の出どころはここ1つ**（2026-08-31・第73巡）。
 //
@@ -25,11 +25,11 @@ import { INK, KIND_DOMAIN, MUTED, PAPER, SCHEME } from "./constants";
 //   ここも呼び出し側も全部そのまま追従する。
 //
 // ★★**「メイン／サブ／本文」の3つを分けて出す**（第75巡）:
-//   ・`DOMAIN_COLOR` … メイン。面の色。
-//   ・`DOMAIN_SUB`   … サブ。その面に載る**大きな文字**（券の題・印・罫）の色。
-//   ・`DOMAIN_INK`   … その面の**本文**（`body` 13）の色。**メインから導く**。
-//   なぜ本文だけ別かは `lib/constants.ts` の `SCHEME` の見出しに書いた ――
-//   サブは表示用の大きな字の色なので、本文に要る 4.5 に届かない組がある。
+//   ・`DOMAIN_COLOR` … その分類の色。券では**大きな英語**、他では面の色。
+//   ・`DOMAIN_INK`   … その色を**面**として使ったとき、上に載る字の色。
+//   ★★★第80巡に**`DOMAIN_SUB`（サブの表）を消した**。サブは「色の面に載る
+//     大きな文字」の色だったが、券が白い紙になって面の上に大きな文字を載せなく
+//     なったので役目が終わった。載る字は `bodyInkOn()` が**面から導く**。
 
 /**
  * ★**その面の本文の色を、面の色から導く**（`INK` か `PAPER` の読めるほう）。
@@ -52,14 +52,16 @@ export const bodyInkOn = (main: string): string =>
   contrast(main, INK) >= contrast(main, PAPER) ? INK : PAPER;
 
 /**
- * ★★**盤の赤は2つある**（朱 `#FF582E` と 深紅 `#9C0003`）。**その面で読めるほう**を返す。
- * 暗い面には朱、明るい面には深紅。★録音の赤は、乗る面が2つある ――
- * **キーの面**（journal は黒・オーバーレイは白）と**地**（journal はクリーム・
- * オーバーレイは黒）で、必要な赤が**逆になる**。1つの規則で両方を導く。
+ * ★★**盤の赤は2つある**（Terracota `#EA5E3D` と Magenta `#B42648`）。
+ * **その面で読めるほう**を返す ―― 暗い面には Terracota（墨の上 4.36）、
+ * 明るい面には Magenta（紙の上 6.07）。
+ * ★録音の赤は乗る面が2つ（キーの面と地）あり、**必要な赤が逆になる**ので、
+ * 手で書き分けずにここに導かせる。★パレットが替わっても、2つの赤の
+ * **明暗の役**さえ同じなら、この関数はそのまま効く。
  */
 export const redOn = (surface: string): string =>
-  contrast(surface, SCHEME.deepred.main) >= contrast(surface, SCHEME.fiery.main)
-    ? SCHEME.deepred.main : SCHEME.fiery.main;
+  contrast(surface, SCHEME.danger) >= contrast(surface, PALETTE.terracota)
+    ? SCHEME.danger : PALETTE.terracota;
 
 /**
  * ★**地の上に直接いる文字の色**を CSS 変数で配る（第77巡）。
@@ -82,20 +84,21 @@ export const inkVarsOn = (ground: string): Record<string, string> => {
   };
 };
 
-/** ドメインの色（4）。★これが「何であるか」を表す唯一の色＝**メイン**。 */
+/**
+ * ドメインの色（4）。★これが「何であるか」を表す唯一の色。
+ * ★★★第80巡から**券では「面の色」ではなく「大きな英語の色」**になった
+ * （ユーザー指定「色は背景ではなく、大きな文字のアクセントにワンポイントで」）。
+ * だから**白い紙の上で読めること**が条件になる ―― 実測 …
+ * バショ 6.07 ／ タイケン 3.26 ／ ジョウホウ 4.83 ／ **モノ 2.81 ★**。
+ * ★モノ(Verde)だけ大きな文字の下限 3.0 に 0.19 届かない。券の英語は `poster`(38)
+ * の 900 なので実用上は読めるが、**目盛りの外**なので `design.md` に数字ごと
+ * 書いてある。代わりに置ける色は 1.43／1.50 しかなく、もっと悪い。
+ */
 export const DOMAIN_COLOR: Record<ItemDomain, string> = {
-  place: SCHEME.sherbert.main,
-  experience: SCHEME.fiery.main,
-  info: SCHEME.aqua.main,
-  thing: SCHEME.limeade.main,
-};
-
-/** ★**サブ**。そのメインの上に載る**大きな文字**（券の題・印・罫）の色。 */
-export const DOMAIN_SUB: Record<ItemDomain, string> = {
-  place: SCHEME.sherbert.sub,
-  experience: SCHEME.fiery.sub,
-  info: SCHEME.aqua.sub,
-  thing: SCHEME.limeade.sub,
+  place: SCHEME.danger,       // Magenta comunidad（共同体）
+  experience: SCHEME.growth,  // Terracota Ancestral（土）
+  info: SCHEME.work,          // Azul saberes（知）
+  thing: SCHEME.life,         // Verde Raíz（根）
 };
 
 /** その面の**本文**の色。★メインから導くので、`SCHEME` を替えれば追従する。 */
@@ -108,7 +111,6 @@ export const DOMAIN_INK: Record<ItemDomain, string> = {
 
 /** kind（10種）→ 色。★**ドメインを通す**ので、kind ごとの色は持たない。 */
 export const colorOfKind = (kind: ItemKind): string => DOMAIN_COLOR[KIND_DOMAIN[kind]];
-export const subOfKind = (kind: ItemKind): string => DOMAIN_SUB[KIND_DOMAIN[kind]];
 export const inkOfKind = (kind: ItemKind): string => DOMAIN_INK[KIND_DOMAIN[kind]];
 
 /**

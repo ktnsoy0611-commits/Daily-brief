@@ -1,43 +1,37 @@
 "use client";
 
-import { createContext, useContext } from "react";
-
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT } from "@/lib/tokens";
 import {
-  INK, KIND_DOMAIN, LATIN, SANS, SOFT_SHADOW_LG,
+  INK, KIND_DOMAIN, LATIN, MUTED, PAPER, SANS, SECOND, TICKET_SHADOW,
   TICKET_ASPECT, TICKET_DECK, TICKET_H_PER_W, itemKindOf,
 } from "@/lib/constants";
 import { grainStyle } from "@/lib/printGrain";
-import { bodyInkOn, DOMAIN_SUB } from "@/lib/palette";
+import { DOMAIN_COLOR } from "@/lib/palette";
 import { PunchNotch } from "../PunchMark";
 import type { TicketData, TicketPunch } from "../Ticket";
 
-// ★★**紙の色から「サブ」と「本文の色」を1か所で決め、下の段が受け取る**（第75巡）。
-//   ユーザー指定「メインと、それぞれに対応するサブカラーをセットで使う」。
-//   ★★サブは**大きな文字だけ**（題 `head` と印 `nano`、それに罫）。要約は
-//     `body`(13) なので `INK`／`PAPER` を使う ―― 参照画像のサブは表示用の色で、
-//     組によっては本文に要る 4.5 に届かない（実測 2.98〜6.78）。
-//   ★各案が `ink` を渡さないかぎりこの値が既定になるので、5案は素のままでよい。
-interface Pair { sub: string; body: string }
-const PairCtx = createContext<Pair>({ sub: INK, body: INK });
-const usePair = () => useContext(PairCtx);
-
-// ★★★**券の見本帳の共通部品**（2026-08-31・第72巡に組み直し）。
+// ★★★**券の共通部品**（2026-08-31・第80巡に版面ごと作り直し）。
+//
+// ★★★第79巡までの券は「**色の紙**に文字を刷る」形だった。ユーザーの判断は
+//   「**色は背景として使うのではなく、大きな文字のアクセントやアイコンなど
+//   ワンポイントで**」「まだ幼稚。洗練されていて、ミニマルで、**タイポグラフィが
+//   際立った**デザインに到達していない」。→ 3つを同時に変えた:
+//
+//   ① **紙は白1色**（`PAPER`）。どの券も同じ紙。色が面になる場所を作らない。
+//   ② **色が出るのは2か所だけ** … 券種の**大きな英語**と、**鋏痕**。
+//   ③ **段を組み直した**。主役は写真でも題でもなく **`poster`(38) の英語**。
+//
+// ★★★**役と段は1対1**（4段）。この4つ以外を券の中で使わない:
+//   【印】券種の英語 `poster` 38 / `black` 900 … **唯一の色**
+//   【主】題（和文）   `head`   20 / `bold`  700 … 墨
+//   【付帯】要約（和文）`small`  11 / `text`  400 … 副文グレー（★表の外。下記）
+//   【従】会期・会場   `micro`   9 / `bold`  700 … 控えめグレー
 //
 // ★★★**選ばれなかった案は次回まとめて消す**。このディレクトリ
 //   （`components/explore/samples/`）ごと消せるように、外から参照しているのは
 //   `components/tabs/DevStageTab.tsx` の1か所だけにしてある。
-//
-// ★★★第72巡の指摘は版面の割り方ではなく**組み立てそのもの**だった
-//   （「全くオーガナイズされていません。並列に情報が並んでいるだけで、写真も
-//   小さいし、無駄が非常に多い」）。直したのは4つ:
-//   ① **写真が余りを全部取る**（`flex: 1`）。割合を決め打ちしない ＝ 空きが出ない。
-//   ② **段は4つだけ**（26 / 13 / 11 / 7）。役の数だけ使う（design.md §5-1）。
-//   ③ **ラベル列を捨てた**。日付は「かたち」（罫で囲った升）になり、
-//      `会期／SOON／会場／VENUE` の4行のラベルが 0 行になった。
-//   ④ **版面の左端を1本にそろえた**（バー・題・要約・升が同じ縦線に乗る）。
 
-/** 罫の太さ。★参照はどれも罫を**2種**しか使わない ―― 太いバーと細罫。 */
+/** 罫の太さ。★いまの版面は罫を使わないが、案が要るときのために残す。 */
 export const RULE_HAIR = 1;
 export const RULE_BAR = 4;   // ★目盛りの外（罫の太さ）
 /** 写真がこれ以上痩せないところ（券の高さに対する％）。★目盛りの外（図形） */
@@ -54,29 +48,41 @@ export interface SampleProps {
 // ── 紙の形 ────────────────────────────────────────────────────────
 /**
  * ギザギザ。★目盛りの外（図形）
- * ★★**上下の縁に付ける**（2026-08-31・ユーザー指定）。参照の NYC の券は横長で、
+ * ★★**上下の縁に付ける**（第72巡・ユーザー指定）。参照の NYC の券は横長で、
  *   ギザギザは**短いほうの縁**に並んでいた。こちらは縦長なので短辺は上下になる。
  * ★★★**間隔ではなく「数」で持つ。** px の間隔で並べると券の幅で割り切れず、
- *   **右端の1個が途中で切れる**（第72巡にユーザー指摘「割り付けが合っておらず汚い」
- *   ―― 幅 278 ÷ 24px = 11.58 個だった）。`calc(100% / N)` なら幅がいくつでも
- *   必ず割り切れ、間隔は幅に比例して伸び縮みする。
+ *   **右端の1個が途中で切れる**（第72巡にユーザー指摘）。`calc(100% / N)` なら
+ *   幅がいくつでも必ず割り切れ、間隔は幅に比例して伸び縮みする。
  * ★踏んだ穴 … r=6 で密に並べると**フリル**、r=4 で密だと**綴じたノート**に見えた。
  *   **深さより「数」が印象を決める。**
  */
 const SCALLOP = { r: 7, count: 11 };
 
 /**
- * ★★**四隅の切り欠き**（2026-08-31・第78巡にユーザー指定「角丸ではなく四角に。
- * 四つの角が大きく円で切り欠かれている感じに」）。
+ * ★★**四隅の切り欠き**（第78巡にユーザー指定「角丸ではなく四角に。四つの角が
+ * 大きく円で切り欠かれている感じに」／第80巡に「**もう少し大きい円で**」）。
  * ★★**券の幅に対する割合**で持つ ―― px で持つと券の大きさが変わったときに
  *   ギザギザ（幅に比例する）と食い合う。ギザギザの半径 7px（券の幅 278 のとき
- *   約 2.5%）に対し、こちらは **7%** ＝ 明確に大きい。
+ *   約 2.5%）に対し、こちらは **14%** ＝ 5倍以上。
  */
-const CORNER_PCT = 7;
+const CORNER_PCT = 14;
 
 /**
- * ★★**上下の縁のギザギザ ＋ 四隅の切り欠き**（ギザギザは第72巡、四隅は第78巡。
- * どちらもユーザー指定）。
+ * ★★★**欠けに触れないための余白**（第80巡。ユーザー指摘「切り欠いた部分に対して
+ * スペーシングなどが考えられていません」）。
+ *
+ * ★★**CSS の `padding` に `%` を書くと、必ず親の「幅」に対して解決される**
+ *   （縦の余白でも高さではなく幅で決まる）。だから `paddingTop: SAFE` は
+ *   **切り欠きの半径とぴったり同じ px** になる。
+ * ★★★円は**角から半径の距離までしか食わない**ので、上端（下端）から半径ぶん
+ *   下がった所より内側なら、**横位置がどこであっても欠けに掛からない**。
+ *   ―― これが「安全域を縦の余白1つで解ける」理由。
+ * ★★**避けるのは文字だけ。写真は逆に欠けへ噛ませる**（紙の端まで出す）。
+ */
+export const SAFE = `${CORNER_PCT}%`;
+
+/**
+ * ★★**上下の縁のギザギザ ＋ 四隅の切り欠き**。
  *
  * 穴を開けたマスクを何枚も重ねて**掛け合わせる**（`intersect`）。
  * 全部が不透明なところだけ残るので、どの穴も抜ける。**6枚** ――
@@ -86,8 +92,6 @@ const CORNER_PCT = 7;
  *   既定の合成は `add`＝和なので、ある層の穴を別の層の不透明が埋めて
  *   「穴の無いマスク」になる。JS で能力を見に行く必要がない。
  * ★`#000` は色ではなく**不透明**の意味（`TimeRange` / `GravityTab` と同じ作法）。
- * ★★**券の幅に対する割合**で持つのは四隅だけ（ギザギザは px の半径を
- *   `calc(100% / N)` の升へ並べる ―― 数で持つのが第72巡の結論）。
  */
 export function scallopMask(): React.CSSProperties {
   const { r, count } = SCALLOP;
@@ -120,33 +124,31 @@ export function scallopMask(): React.CSSProperties {
 
 /**
  * 券の外形。★どの案も同じ … 比・影・粒・ギザギザ・四隅の切り欠き・鋏痕。
- * ★★**角丸は 0**（第78巡にユーザー指定「角丸ではなく四角に」）。
- *   丸みは**四隅の切り欠き**（`scallopMask`）が持つ ―― 角丸と切り欠きを
- *   同時に掛けると、切り欠きの縁が角丸に削られて形が濁る。
+ * ★★**角丸は 0**（第78巡にユーザー指定）。丸みは**四隅の切り欠き**が持つ。
+ * ★★★**紙は白1色**（第80巡）。案が `stock` を選ぶ余地を無くしてある ――
+ *   「色を面に使わない」は、選べるようにした瞬間に破られる。
  */
-export function Sheet({ data, punch, deck = TICKET_DECK, width, stock, children }: {
+export function Sheet({ data, punch, deck = TICKET_DECK, width, children }: {
   data: TicketData;
   punch?: TicketPunch | null;
   deck?: string;
   width?: number | string;
-  /** 紙の地。 */
-  stock: string;
   children: React.ReactNode;
 }) {
   const domain = KIND_DOMAIN[data.kind];
-  // ★紙が案ごとに違う（写真の上・色の面の上）ので、**その案が敷いた色**から引く。
-  const pair: Pair = { sub: DOMAIN_SUB[domain], body: bodyInkOn(stock) };
   const notchPos: Record<string, React.CSSProperties> = {
     left: { left: 0, top: `${punch ? punch.t * 100 : 0}%`, transform: "translateY(-50%)" },
     right: { right: 0, top: `${punch ? punch.t * 100 : 0}%`, transform: "translateY(-50%)" },
     top: { top: 0, left: `${punch ? punch.t * 100 : 0}%`, transform: "translateX(-50%)" },
     bottom: { bottom: 0, left: `${punch ? punch.t * 100 : 0}%`, transform: "translateX(-50%)" },
   };
-  const sheet = (
+  return (
+    // ★影は**外側の器**が持つ（マスクした要素に `box-shadow` を書いても消える）。
+    <div style={{ width: width ?? "100%", filter: TICKET_SHADOW }}>
     <div style={{
-      position: "relative", width: width ?? "100%", aspectRatio: TICKET_ASPECT,
-      background: stock, boxShadow: SOFT_SHADOW_LG,
-      display: "flex", flexDirection: "column", overflow: "hidden", color: pair.body,
+      position: "relative", width: "100%", aspectRatio: TICKET_ASPECT,
+      background: PAPER,
+      display: "flex", flexDirection: "column", overflow: "hidden", color: INK,
       // ★券の中には zIndex を持つ要素があるので、積み重ねの文脈をここで閉じる
       //   （第70巡に、閉じていなくて文字だけが 3D の canvas を突き抜けた）。
       isolation: "isolate",
@@ -164,8 +166,8 @@ export function Sheet({ data, punch, deck = TICKET_DECK, width, stock, children 
         </span>
       )}
     </div>
+    </div>
   );
-  return <PairCtx.Provider value={pair}>{sheet}</PairCtx.Provider>;
 }
 
 /** ★**左右の余白を持つのはこの器だけ**（design.md §2）。版面の左端はここで1本になる。 */
@@ -180,11 +182,10 @@ export function Pad({ children, style }: { children: React.ReactNode; style?: Re
 
 /** 罫。★`Pad` の外に置けば**紙の端まで**走る。 */
 export function Rule({ weight = RULE_HAIR, ink }: { weight?: number; ink?: string }) {
-  const pair = usePair();
-  return <span aria-hidden style={{ flex: "none", height: weight, background: ink ?? pair.sub }} />;
+  return <span aria-hidden style={{ flex: "none", height: weight, background: ink ?? INK }} />;
 }
 
-/** 印刷の粒。★**色のすぐ上・文字の下**に敷く。 */
+/** 印刷の粒。★**紙のすぐ上・文字の下**に敷く。 */
 export function Grain() {
   return <span aria-hidden style={{ ...grainStyle(), zIndex: 1 }} />;
 }
@@ -193,40 +194,40 @@ export function Grain() {
 // ★★これ以外の段を券の中で使わないこと（design.md §5-1「★4段まで」）。
 
 /**
- * 【印】券種。`nano`(7) caps。
- * ★★★第72巡に **`SOON` と `Nº 0143` を消した**（ユーザー指定「役割がよく
- *   分かりません」）。`SOON` は「会期が近い」の曖昧な合図、`Nº` は券らしさの
- *   飾りで意味が無かった。**券らしさはギザギザが担う**ので、記号は要らない。
+ * 【印】券種の**英語**。`poster`(38) **`black`(900)**。**この券で唯一の色**。
+ *
+ * ★★★第80巡にユーザー指定「Exhibition などの英語を**太いボールドで大きく**」。
+ *   `nano`(7) の小さなラベルから **5.4倍**にして、版面の主役へ引き上げた。
+ * ★★大きな欧文の caps に `caps`(0.16em) の字間を足さない ―― 字間は**小さい字を
+ *   読ませるため**のもので、大きくすると逆に語が散る。`tight` を当てる。
+ * ★2行まで（EXHIBITION は 10 文字で、狭い券では折り返す）。
  */
 export function Mark({ data, ink }: { data: TicketData; ink?: string }) {
-  const pair = usePair();
+  const color = ink ?? DOMAIN_COLOR[KIND_DOMAIN[data.kind]];
   return (
     <span style={{
       flex: "none",
-      fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
-      letterSpacing: TRACK.caps, lineHeight: LEAD.flat, color: ink ?? pair.body,
+      fontFamily: LATIN, fontSize: TYPE.poster, fontWeight: WEIGHT.black,
+      letterSpacing: TRACK.tight, lineHeight: LEAD.snug, color,
       textTransform: "uppercase",
+      display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
     }}>{data.handwritten ? "Self issued" : itemKindOf(data.kind).en}</span>
   );
 }
 
 /**
- * 【主】題。`head`(20) **`black`(900)**。★2行まで。
- * ★★第74巡にユーザー指定で**一番太い 900** へ（`bold` 700 から）。
- * ★★`display`(26) では**和文が9文字で折り返し、2行目に1文字だけ残る**
- *   （第72巡に実測 ―― 券の幅 278、版面 246 に対し 26×10 = 260）。
- *   `head`(20) なら12文字入るので、たいていの題が1行に収まる。
- *   主役は**写真**なので、題がいちばん大きい文字であれば足りる。
+ * 【主】題（和文）。`head`(20) / `bold`(700)。★2行まで。
+ * ★★第80巡に **`black`(900) を英語へ譲って `bold` へ下がった**。
+ *   大きな英語が主役になったので、題まで 900 だと版面に主役が2つできる。
  */
 export function Title({ children, ink, style }: {
   children: React.ReactNode; ink?: string; style?: React.CSSProperties;
 }) {
-  const pair = usePair();
   return (
     <span style={{
       flex: "none",
-      fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.black,
-      lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink ?? pair.sub,
+      fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.bold,
+      lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink ?? INK,
       display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
       ...style,
     }}>{children}</span>
@@ -234,19 +235,20 @@ export function Title({ children, ink, style }: {
 }
 
 /**
- * 【付帯】要約。`body`(13) / `text` / `body` 行間 ―― **design.md §1 の表どおり**
- * （`body` は文章のための段）。★**3行**（ユーザー指定「文字は小さくて良いから
- * 3行くらいは入るように」）。★ここが写真の大きさを食う。
+ * 【付帯】要約（和文）。`small`(11) / `text`(400) / `body` 行間。
+ * ★★★**`small` を文章に使うのは表の外**（本来は `bold`/`flat` のラベル用）。
+ *   第80巡にユーザー指定「日本語の詳細な説明の文字は**もっと小さくて良い**」。
+ *   `body`(13) から1段落とした。**券だけの例外**として `design.md` に書いてある。
+ * ★色も**副文グレー**へ落とす（墨だと題と競る）。
  */
 export function Lede({ children, ink, lines = 3, style }: {
   children: React.ReactNode; ink?: string; lines?: number; style?: React.CSSProperties;
 }) {
-  const pair = usePair();
   return (
     <span style={{
       flex: "none",
-      fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text,
-      lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: ink ?? pair.body,
+      fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.text,
+      lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: ink ?? SECOND,
       display: "-webkit-box", WebkitLineClamp: lines, WebkitBoxOrient: "vertical", overflow: "hidden",
       ...style,
     }}>{children}</span>
@@ -254,51 +256,33 @@ export function Lede({ children, ink, lines = 3, style }: {
 }
 
 /**
- * 【従】会期と会場。★**ラベル列を作らない** ―― 日付は罫で囲った**升**になり、
- * 会場はその右へ置く。イベントカードの `DEC / 12 / TUE` の升と同じ役。
- * ★段は `small`(11) / `bold` / `flat` ―― **design.md §1 の表どおり**。
- *   要約（`body` 13 / `text`）より**小さく太い**ので、文章とデータが混ざらない。
+ * 【従】会期と会場。`micro`(9) / `bold` / `flat` / `caps` の**1行**。
+ * ★★★第80巡に**升（罫で囲った日付の箱）をやめた** ―― 区切りに線を引かないのが
+ *   このアプリの語彙（第79巡）。日付・会場を中黒でつないだ1行にする。
+ * ★★数字は欧文＋等幅（`LATIN` / `tabular-nums`）。和文の会場だけ `SANS` にすると
+ *   1行の中で書体が2つになるので、**行ごと `LATIN` に置いて和文は自動で落とす**
+ *   のではなく、**span を分ける**（欧文は `LATIN`・和文は `SANS`）。
  */
 export function Meta({ period, until, place, ink, style }: {
   period: string; until?: string; place: string; ink?: string; style?: React.CSSProperties;
 }) {
-  const pair = usePair();
-  const c = ink ?? pair.body;
+  const c = ink ?? MUTED;
+  const base: React.CSSProperties = {
+    fontSize: TYPE.micro, fontWeight: WEIGHT.bold,
+    lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: c,
+  };
   return (
     <div style={{
-      flex: "none", display: "flex", alignItems: "stretch", gap: SPACE.sm, ...style,
+      flex: "none", display: "flex", alignItems: "center", gap: SPACE.sm,
+      minWidth: 0, ...style,
     }}>
-      {/* ★★升は**細く**する。会期を1行に伸ばすと 130px 食い、会場が2行に折れて
-          「東京都現代美術館・清澄／白河」と割れた（第72巡に実測）。 */}
-      <span style={{
-        flex: "none", display: "flex", flexDirection: "column",
-        padding: `${SPACE.xs}px ${SPACE.sm}px`,
-        border: `${RULE_HAIR}px solid ${c}`,
-      }}>
-        {/* ★数字だけ欧文＋等幅数字＋詰めた字間（design.md §1）。 */}
-        <span style={{
-          fontFamily: LATIN, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
-          lineHeight: LEAD.snug, letterSpacing: TRACK.tight, color: c,
-          fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
-        }}>{period}</span>
-        {until && (
-          <span style={{
-            fontFamily: LATIN, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
-            lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: c,
-            fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
-          }}>– {until}</span>
-        )}
+      <span style={{ ...base, fontFamily: LATIN, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+        {period}{until ? `–${until}` : ""}
       </span>
-      {/* ★center は意匠 ―― 升と同じ高さの中に置く（design.md §1 の③）。 */}
       <span style={{
-        flex: 1, minWidth: 0, display: "flex", alignItems: "center",
-        fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
-        lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: c,
-      }}>
-        <span style={{
-          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-        }}>{place}</span>
-      </span>
+        ...base, fontFamily: SANS, letterSpacing: TRACK.normal,
+        minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>{place}</span>
     </div>
   );
 }
@@ -317,7 +301,7 @@ export function Photo({ src, style }: { src: string; style?: React.CSSProperties
 }
 
 /**
- * ドメインの**平らな幾何形1つ**（写真の無い券が使う）。
+ * ドメインの**平らな幾何形1つ**（写真の無い券が使う。小さく添える「印」にもなる）。
  * ★形の性格は鋏痕（`PUNCH_BY_DOMAIN`）と**そろえてある** ――
  *   弧（半円）／斜め（三角）／直角（四角）／切れ込み（十字）。形だけ差し替えないこと。
  */
@@ -343,7 +327,7 @@ export function DomainFigure({ domain, fill, style }: {
 
 /** 写真か、無ければドメインの幾何形。★どの案も入口はここ1つ。 */
 export function Figure({ data, fill, style }: {
-  data: TicketData; fill: string; style?: React.CSSProperties;
+  data: TicketData; fill?: string; style?: React.CSSProperties;
 }) {
   if (data.image) return <Photo src={data.image} style={style} />;
   return (
@@ -351,7 +335,7 @@ export function Figure({ data, fill, style }: {
       flex: "1 1 auto", minHeight: `${PHOTO_MIN}%`, position: "relative", zIndex: 2,
       display: "flex", alignItems: "center", justifyContent: "center", ...style,
     }}>
-      <DomainFigure domain={KIND_DOMAIN[data.kind]} fill={fill}
+      <DomainFigure domain={KIND_DOMAIN[data.kind]} fill={fill ?? DOMAIN_COLOR[KIND_DOMAIN[data.kind]]}
         style={{ width: "46%", height: "62%" }} />
     </div>
   );
@@ -360,9 +344,9 @@ export function Figure({ data, fill, style }: {
 /** 期間と場所の文字（どの案も同じ文面を使う）。 */
 export function partsOf(data: TicketData) {
   return {
-    /** 升の1行目（始まり）。 */
+    /** 始まり。 */
     period: data.date || data.until || "—",
-    /** 升の2行目（終わり）。★始まりと同じなら出さない。 */
+    /** 終わり。★始まりと同じなら出さない。 */
     until: data.until && data.until !== data.date ? data.until : undefined,
     place: [data.venue, data.area].filter(Boolean).join("・") || "—",
   };

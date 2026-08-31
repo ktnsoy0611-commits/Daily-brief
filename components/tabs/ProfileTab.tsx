@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { Button } from "@/components/Button";
 import { SectionLabel } from "@/components/common";
-import { CHARCOAL, FIXED_SOURCES, SANS } from "@/lib/constants";
+import { CHARCOAL, FIXED_SOURCES, SANS, SCHEME, SURFACE_DIM, SURFACE_DIM_2 } from "@/lib/constants";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { pushGround } from "@/lib/ground";
 import { isViewportDebug, setViewportDebug } from "@/lib/debugViewport";
@@ -31,15 +31,25 @@ const ON_MUTE = "rgba(255,251,245,0.50)";     // 控えめ・非活性
 // このアプリの語彙ではない」）。区切りは**面の交代と余白**だけで作る。
 // ★縁取りが無くなったぶん、面は**地から離す**（0.06 は比 1.20 で、縁ありきの
 // 濃さだった）。実測 … カード 0.08 ＝ 1.27／中の小区分 0.16 ＝ カードの上で 1.60。
-const ON_FILL = "rgba(255,251,245,0.08)";     // 面（カードの地）
-const ON_FILL2 = "rgba(255,251,245,0.16)";    // 面（カードの中の小区分・入力欄）
+// ★★★第80巡に**半透明の重ねがけをやめた**（ユーザー指定「グレーを復活させて」）。
+// 白の 8%/16% を重ねると、下に何が居るかで色が変わり、**重ねる順で結果が動く**。
+// 不透明のグレー1枚（`SURFACE_DIM` / `SURFACE_DIM_2`）なら動かない。
+const ON_FILL = SURFACE_DIM;                  // 面（カードの地。地との比 1.24）
+const ON_FILL2 = SURFACE_DIM_2;               // 面（小区分・入力欄。カードの上 1.24）
 const ON_DEAD = "rgba(255,251,245,0.22)";     // 押せない面
-// ★危険は**朱**になる ―― 深紅は暗い地で比 1.71 しかない（`redOn` が選ぶ）。
-const DANGER = redOn(LIFT);
-const DANGER_INK = bodyInkOn(DANGER);         // 危険の面に載る色
-const DANGER_TINT = "rgba(255,88,46,0.16)";
-// ★★縁は**図形**なので 3.0 が要る。0.52 は 2.22 しか出ていなかった（第79巡に実測）。
-const DANGER_EDGE = "rgba(255,88,46,0.78)";  // 地の上で 3.40
+// ★★★危険は**2つの赤を役で分ける**（第80巡。新しいパレットの実測がそう決めた）:
+//   ・**縁とアイコン**＝ Terracota（暗い地の上 3.62 ＝ 図形の 3.0 を満たす唯一の赤）
+//   ・**塗る面**＝ Magenta（この上の紙色が 6.07 ＝ 本文が書ける）
+//   ★★Terracota を面にすると、その上の字が墨 4.36／紙 3.26 で**どちらも 4.5 に
+//     届かない**。Magenta を縁にすると地の上 1.94 で**見えない**。逆にできない。
+const DANGER = redOn(LIFT);                   // Terracota（縁・アイコン）
+const DANGER_FILL = SCHEME.danger;            // Magenta（塗る面）
+const DANGER_INK = bodyInkOn(DANGER_FILL);    // その面に載る色（紙色 6.07）
+const DANGER_TINT = "rgba(234,94,61,0.18)";   // Terracota の淡い敷き
+const DANGER_EDGE = DANGER;                   // ★縁は**不透明**（半透明だと 2.75 で割る）
+// ★★★**暗い地の上で、赤は「文章」にならない**（Terracota 3.62 ＜ 本文の 4.5）。
+//   赤が持てるのは**面・縁・印**（✓ や × のような記号。3.0 でよい）だけ。
+//   エラーの文章そのものは `ON`（紙色 12.6）で書き、赤は印が担う。
 
 // フェーズC-0「プロンプト実験場」で生成されるカードの形(BriefCard相当の
 // 部分集合)。本番のデッキ統合前に、設定画面で品質を目視確認するためだけの
@@ -124,7 +134,7 @@ function ConfirmDeleteButton({ armed, onArm, onConfirm, label }: {
   if (armed) {
     return (
       <button onClick={onConfirm} aria-label={`${label}を本当に削除する`} style={{
-        height: 28, padding: `0 ${SPACE.md}px`, borderRadius: RADIUS.pill, border: "none", background: DANGER, color: DANGER_INK,
+        height: 28, padding: `0 ${SPACE.md}px`, borderRadius: RADIUS.pill, border: "none", background: DANGER_FILL, color: DANGER_INK,
         display: "flex", alignItems: "center", cursor: "pointer", fontFamily: SANS, fontWeight: WEIGHT.bold,
         fontSize: TYPE.small, letterSpacing: TRACK.normal, flexShrink: 0, whiteSpace: "nowrap",
       }}>本当に削除？</button>
@@ -204,7 +214,7 @@ function InterestChips({ items, onRemove, inputValue, onInputChange, onAdd, plac
             {item.label}
             {armed ? (
               <button onClick={() => handleX(item.id)} aria-label={`${item.label}を削除する`} style={{
-                height: 16, padding: `0 ${SPACE.sm}px`, borderRadius: RADIUS.pill, border: "none", background: DANGER, color: DANGER_INK,
+                height: 16, padding: `0 ${SPACE.sm}px`, borderRadius: RADIUS.pill, border: "none", background: DANGER_FILL, color: DANGER_INK,
                 display: "flex", alignItems: "center", cursor: "pointer", fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.micro, letterSpacing: TRACK.normal, flexShrink: 0,
               }}>消す</button>
             ) : (
@@ -753,7 +763,7 @@ export function ProfileTab({ appState, persist, onClose }: {
                 {genNow === "loading" ? "生成中…（1分ほどかかります）" : "今すぐ生成"}
               </button>
               {genNowMsg && (
-                <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: genNow === "error" ? DANGER : ON_MUTE, lineHeight: LEAD.body, margin: `${SPACE.md}px 0 0` }}>{genNowMsg}</p>
+                <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: genNow === "error" ? ON : ON_MUTE, lineHeight: LEAD.body, margin: `${SPACE.md}px 0 0` }}>{genNowMsg}</p>
               )}
             </>
           )}
@@ -784,12 +794,13 @@ export function ProfileTab({ appState, persist, onClose }: {
           </p>
           {armedKey === "clear-test" ? (
             <button onClick={() => { disarm(); clearTestData(); }} style={{
-              width: "100%", padding: `${SPACE.md}px 0`, background: DANGER, color: DANGER_INK, border: "none", borderRadius: RADIUS.pill,
+              width: "100%", padding: `${SPACE.md}px 0`, background: DANGER_FILL, color: DANGER_INK, border: "none", borderRadius: RADIUS.pill,
               cursor: "pointer", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
             }}>本当に削除？（元に戻せません）</button>
           ) : (
             <button onClick={() => arm("clear-test")} style={{
-              width: "100%", padding: `${SPACE.md}px 0`, background: "transparent", color: DANGER, border: `1.5px solid ${DANGER_EDGE}`,
+              // ★字は紙色。赤は**縁**が持つ（Terracota の字は 3.62 で本文 4.5 に届かない）。
+              width: "100%", padding: `${SPACE.md}px 0`, background: "transparent", color: ON, border: `1.5px solid ${DANGER_EDGE}`,
               borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
             }}>デモ・テストデータを削除</button>
           )}
@@ -859,7 +870,7 @@ export function ProfileTab({ appState, persist, onClose }: {
           </button>
 
           {genMsg && (
-            <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: genState === "error" ? DANGER : ON_MUTE, lineHeight: LEAD.body, margin: `${SPACE.md}px 0 0` }}>{genMsg}</p>
+            <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: genState === "error" ? ON : ON_MUTE, lineHeight: LEAD.body, margin: `${SPACE.md}px 0 0` }}>{genMsg}</p>
           )}
 
           {genCards.map((c, i) => (
@@ -900,7 +911,7 @@ export function ProfileTab({ appState, persist, onClose }: {
                   </div>
                   {s.fetched && (
                     <div style={{ paddingLeft: SPACE.lg }}>
-                      候補<span style={{ color: (s.candidates ?? 0) > 0 ? ON : DANGER, fontWeight: WEIGHT.bold }}>{s.candidates ?? 0}</span>件 ／ Markdown中のリンク:{s.linkCount}
+                      候補<span style={{ color: ON, fontWeight: WEIGHT.bold }}>{s.candidates ?? 0}</span>件 ／ Markdown中のリンク:{s.linkCount}
                     </div>
                   )}
                 </div>

@@ -4,9 +4,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import {
-  BG, INK, KIND_DOMAIN, LATIN, MUTED, PAPER, SANS, SECOND, TICKET_H_PER_W, navHeightPx,
+  BG, INK, LATIN, MUTED, PAPER, SANS, SECOND, TICKET_H_PER_W, navHeightPx,
 } from "@/lib/constants";
-import { DOMAIN_COLOR } from "@/lib/palette";
 import { TicketStage } from "@/components/explore/TicketStage";
 import { TICKET_SAMPLES } from "@/components/explore/samples";
 import type { TicketData } from "@/components/explore/Ticket";
@@ -54,9 +53,9 @@ function fakePhoto(a: string, b: string) {
 }
 
 // ★★★見本は**4枚**（第79巡）。**ドメインが4つ＝紙の色が4つ**なので、
-//   1枚ずつ用意して見本帳で**巡らせる**。同じ版面でも紙の色で印象が変わり、
-//   1色で9枚並べても比べようがなかった（ユーザー指定「色々な色のチケットが見たい」）。
-//   ★暗い券（黒桜）は作らない（第77巡のユーザー確定）。
+//   1枚ずつ用意して見本帳で**巡らせる**（案4つ × ドメイン4つが1対1で並ぶ）。
+//   ★★★第80巡から**紙は白1色**。変わるのは**大きな英語の色**だけ
+//   （ユーザー指定「色は背景として使うのではなく、大きな文字のアクセントに」）。
 const SAMPLES: TicketData[] = [
   {
     kind: "exhibition", glyph: "展", title: "見えないものたちの庭",   // タイケン＝朱
@@ -126,7 +125,7 @@ function SampleBook() {
               lineHeight: LEAD.flat, letterSpacing: TRACK.normal, color: MUTED,
             }}>{s.from}</span>
           </span>
-          {/* ★案ごとに紙の色を替える（4つのドメインを巡る）。 */}
+          {/* ★案ごとにドメインを替える（紙は白のまま、大きな英語の色だけが変わる）。 */}
           <s.Render data={SAMPLES[i % SAMPLES.length]} punch={null} width={`${BOOK_W * 100}%`} />
         </section>
       ))}
@@ -150,7 +149,7 @@ function Readout({ v }: { v: Record<string, number> }) {
 /**
  * 3D の場に載せる券。★**案が決まったらここの id を差し替える**。
  */
-const STAGE_SAMPLE = "N1";
+const STAGE_SAMPLE = "P1";
 const Baseline = (TICKET_SAMPLES.find((s) => s.id === STAGE_SAMPLE) ?? TICKET_SAMPLES[0]).Render;
 
 /** 券と鋏の3D。★**器そのものを画面にする**（`full-bleed` ＋ `100dvh`）。 */
@@ -197,7 +196,8 @@ function Stage() {
           card={{
             x: inset + Math.round((sw - cardW) / 2), y: cardY,
             w: cardW, h: cardH,
-            paper: DOMAIN_COLOR[KIND_DOMAIN[SAMPLE.kind]],
+            // ★第80巡から紙は白1色（券の色は大きな英語だけが持つ）。
+            paper: PAPER,
           }}
           nipper={{
             nose: { x: inset + Math.round(sw * NOSE.x), y: Math.round(view * NOSE.y) },

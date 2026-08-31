@@ -2,10 +2,10 @@
 
 import { createContext, useContext } from "react";
 
-import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT } from "@/lib/tokens";
 import {
   INK, KIND_DOMAIN, LATIN, SANS, SOFT_SHADOW_LG,
-  TICKET_ASPECT, TICKET_DECK, itemKindOf,
+  TICKET_ASPECT, TICKET_DECK, TICKET_H_PER_W, itemKindOf,
 } from "@/lib/constants";
 import { grainStyle } from "@/lib/printGrain";
 import { bodyInkOn, DOMAIN_SUB } from "@/lib/palette";
@@ -66,25 +66,49 @@ export interface SampleProps {
 const SCALLOP = { r: 7, count: 11 };
 
 /**
- * ★★**上下の縁のギザギザ**（2026-08-31・ユーザー指定。NYC の地下鉄券）。
+ * ★★**四隅の切り欠き**（2026-08-31・第78巡にユーザー指定「角丸ではなく四角に。
+ * 四つの角が大きく円で切り欠かれている感じに」）。
+ * ★★**券の幅に対する割合**で持つ ―― px で持つと券の大きさが変わったときに
+ *   ギザギザ（幅に比例する）と食い合う。ギザギザの半径 7px（券の幅 278 のとき
+ *   約 2.5%）に対し、こちらは **7%** ＝ 明確に大きい。
+ */
+const CORNER_PCT = 7;
+
+/**
+ * ★★**上下の縁のギザギザ ＋ 四隅の切り欠き**（ギザギザは第72巡、四隅は第78巡。
+ * どちらもユーザー指定）。
  *
- * 上の縁に穴を開けたマスクと、下の縁に穴を開けたマスクを**掛け合わせる**
- * （`intersect`）。両方が不透明なところだけ残るので、どちらの穴も抜ける。
+ * 穴を開けたマスクを何枚も重ねて**掛け合わせる**（`intersect`）。
+ * 全部が不透明なところだけ残るので、どの穴も抜ける。**6枚** ――
+ * 上のギザギザ / 下のギザギザ / 四隅の円 4枚。
  *
  * ★★★**`mask-composite` が無い環境では、ひとりでに素の矩形へ戻る。**
- *   既定の合成は `add`＝和なので、片方の穴をもう片方の不透明が埋めて
+ *   既定の合成は `add`＝和なので、ある層の穴を別の層の不透明が埋めて
  *   「穴の無いマスク」になる。JS で能力を見に行く必要がない。
  * ★`#000` は色ではなく**不透明**の意味（`TimeRange` / `GravityTab` と同じ作法）。
+ * ★★**券の幅に対する割合**で持つのは四隅だけ（ギザギザは px の半径を
+ *   `calc(100% / N)` の升へ並べる ―― 数で持つのが第72巡の結論）。
  */
 export function scallopMask(): React.CSSProperties {
   const { r, count } = SCALLOP;
-  const hole = (side: string) =>
+  const scallop = (side: string) =>
     `radial-gradient(circle ${r}px at ${side}, transparent 98%, #000 100%)`;  // ★目盛りの外（マスクの #000 は「色」でなく「不透明」）
-  const image = `${hole("top")}, ${hole("bottom")}`;
+  // ★★四隅。**層は券いっぱい**に敷く（`100% 100%`）。★★★**小さな箱に
+  //   `no-repeat` で置いてはいけない** ―― 箱の外はその層の α が 0 になり、
+  //   `intersect` は「全部の層が不透明な所」しか残さないので、**券が丸ごと
+  //   消える**（第78巡に実際に消した）。
+  // ★`circle` の半径は**割合で書けない**ので `ellipse` を使い、縦横で別の
+  //   割合を与えて**結果として真円**にする。券の比は `TICKET_ASPECT`＝3/4 で
+  //   固定なので、縦の割合は横 ÷ `TICKET_H_PER_W`。
+  const ry = +(CORNER_PCT / TICKET_H_PER_W).toFixed(3);
+  const corner = (at: string) =>
+    `radial-gradient(ellipse ${CORNER_PCT}% ${ry}% at ${at}, transparent 98%, #000 100%)`;  // ★目盛りの外（同上）
+  const corners = ["top left", "top right", "bottom left", "bottom right"];
+  const image = [scallop("top"), scallop("bottom"), ...corners.map(corner)].join(", ");
   const tile = `calc(100% / ${count})`;
-  const size = `${tile} 100%, ${tile} 100%`;
-  const pos = "left top, left bottom";
-  const repeat = "repeat-x, repeat-x";
+  const size = [`${tile} 100%`, `${tile} 100%`, ...corners.map(() => "100% 100%")].join(", ");
+  const pos = ["left top", "left bottom", ...corners.map(() => "center")].join(", ");
+  const repeat = ["repeat-x", "repeat-x", ...corners.map(() => "no-repeat")].join(", ");
   return {
     maskImage: image, WebkitMaskImage: image,
     maskSize: size, WebkitMaskSize: size,
@@ -95,8 +119,10 @@ export function scallopMask(): React.CSSProperties {
 }
 
 /**
- * 券の外形。★どの案も同じ … 比・角丸・影・粒・ギザギザ・切り欠き。
- * ★角丸は `sm` まで。ギザギザと大きな角丸は喧嘩する。
+ * 券の外形。★どの案も同じ … 比・影・粒・ギザギザ・四隅の切り欠き・鋏痕。
+ * ★★**角丸は 0**（第78巡にユーザー指定「角丸ではなく四角に」）。
+ *   丸みは**四隅の切り欠き**（`scallopMask`）が持つ ―― 角丸と切り欠きを
+ *   同時に掛けると、切り欠きの縁が角丸に削られて形が濁る。
  */
 export function Sheet({ data, punch, deck = TICKET_DECK, width, stock, children }: {
   data: TicketData;
@@ -119,7 +145,7 @@ export function Sheet({ data, punch, deck = TICKET_DECK, width, stock, children 
   const sheet = (
     <div style={{
       position: "relative", width: width ?? "100%", aspectRatio: TICKET_ASPECT,
-      background: stock, borderRadius: RADIUS.sm, boxShadow: SOFT_SHADOW_LG,
+      background: stock, boxShadow: SOFT_SHADOW_LG,
       display: "flex", flexDirection: "column", overflow: "hidden", color: pair.body,
       // ★券の中には zIndex を持つ要素があるので、積み重ねの文脈をここで閉じる
       //   （第70巡に、閉じていなくて文字だけが 3D の canvas を突き抜けた）。

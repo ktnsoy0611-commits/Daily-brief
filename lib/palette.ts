@@ -52,6 +52,16 @@ export const bodyInkOn = (main: string): string =>
   contrast(main, INK) >= contrast(main, PAPER) ? INK : PAPER;
 
 /**
+ * ★★**盤の赤は2つある**（朱 `#FF582E` と 深紅 `#9C0003`）。**その面で読めるほう**を返す。
+ * 暗い面には朱、明るい面には深紅。★録音の赤は、乗る面が2つある ――
+ * **キーの面**（journal は黒・オーバーレイは白）と**地**（journal はクリーム・
+ * オーバーレイは黒）で、必要な赤が**逆になる**。1つの規則で両方を導く。
+ */
+export const redOn = (surface: string): string =>
+  contrast(surface, SCHEME.deepred.main) >= contrast(surface, SCHEME.fiery.main)
+    ? SCHEME.deepred.main : SCHEME.fiery.main;
+
+/**
  * ★**地の上に直接いる文字の色**を CSS 変数で配る（第77巡）。
  * `--ink-on` … その地の上の主役の文字（`Masthead` の字）。**面としても使う**
  *   ―― タブバー右端の「作る」の丸は、地が明るければ黒・暗ければ白。

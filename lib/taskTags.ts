@@ -38,14 +38,17 @@ const tag = (id: TaskTag, label: string, p: { main: string; sub: string }, face:
 //   **バランス**をとる」。→ 盤の9色を**4つの尺度**で採点して選んだ5色:
 //   色相の最小隔たり 28.0°（第76巡は 6.2° ＝ 赤に偏っていた）／明度の幅 0.67／
 //   彩度の幅 0.18／見分けの最小 ΔE 0.144。
-//   ★★**多い3つ（work / life / growth）＝ 朱 / 若草 / 黒桜** ―― この5色の中で
-//     互いにいちばん離れ（最小 ΔE 0.34）、彩度の合計も最大（.449）。
+//   ★★**多い3つ（work / life / growth）**は互いにいちばん離れた組（最小 ΔE 0.34）。
+//   ★★★第78巡に**役だけ入れ替えた**（ユーザー指定「色を入れ替えます(役割を交換する
+//     だけ)」）… wellness 水→**杏** ／ social 杏→**黒桜** ／ growth 黒桜→**水**。
+//     **色の集合は変わっていない**ので、見分け・彩度・色相の数値はすべて据え置き。
+//     ★書体（`face`）と id は動かさない ―― 動かすと「同じタグなら必ず同じ書体」が壊れる。
 export const TASK_TAGS: TagDef[] = [
   tag("work", "WORK", SCHEME.fiery, 1),        // 朱 × 雲白    / ゴシック700
   tag("life", "LIFE", SCHEME.limeade, 3),      // 若草 × 黒桜  / 丸ゴシック500
-  tag("wellness", "WELLNESS", SCHEME.aqua, 4), // 水 × 深紅    / Dela(極太)
-  tag("social", "SOCIAL", SCHEME.sherbert, 5), // 杏 × 黒桜    / M PLUS 1 800
-  tag("growth", "GROWTH", SCHEME.cherry, 2),   // 黒桜 × 水    / ゴシック700斜体
+  tag("wellness", "WELLNESS", SCHEME.sherbert, 4), // 杏 × 黒桜  / Dela(極太)
+  tag("social", "SOCIAL", SCHEME.cherry, 5),       // 黒桜 × 水  / M PLUS 1 800
+  tag("growth", "GROWTH", SCHEME.aqua, 2),         // 水 × 深紅  / ゴシック700斜体
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>

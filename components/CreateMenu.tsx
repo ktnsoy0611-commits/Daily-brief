@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Press } from "@/components/Button";
 import { INK, LATIN, PAPER } from "@/lib/constants";
+import { TabIcon } from "@/components/TabIcons";
 import { haptic } from "@/lib/helpers";
 import { ms, T_OUT } from "@/lib/motion";
 
@@ -140,6 +141,34 @@ export function CreateMenu({ at, onRecord, onTask, onSetting, onClose }: {
         {item("RECORD", "tc-cue-1", 255, () => { close(); onRecord(); })}
         {item("TASKS", "tc-cue-2", 220, () => { close(); onTask(); })}
         {item("SETTING", "tc-cue-3", 185, () => { close(); onSetting(); })}
+        {/* ★★**輪の真ん中に、押した丸をそのまま残す**（2026-08-31・第78巡に
+            ユーザー指定「真ん中にボタンを残して、もう一度真ん中をタップすれば
+            閉じれるように」）。タブバーの丸は `zIndex 25` で**輪(58)の下に隠れる**
+            ので、同じ見た目のものをここに置く。
+            ★吸い込みの終点とちょうど重なるので、閉じる動きはいままでのまま。 */}
+        <button
+          type="button"
+          onClick={() => { haptic(10); close(); }}
+          aria-label="閉じる"
+          style={{
+            position: "absolute", /* ★目盛りの外（極座標の中心＝押した丸の場所） */
+            left: R - btnR, top: R - btnR, width: btnR * 2, height: btnR * 2,
+            borderRadius: RADIUS.circle, padding: 0, cursor: "pointer",
+            // ★★輪と同じ色なので、**縁の線だけ**で「ボタンがそこに在る」ことを出す。
+            //   面まで反転させると、閉じるとき（輪が丸へ吸い込まれる）に
+            //   明→暗が一瞬光って見える。線なら輪と一緒に消える。
+            border: `1.5px solid ${PAPER}`,
+            // ★タブバーの丸と**同じ見え方**にする。★★ただしこれは
+            //   `document.body` へのポータルなので**列の外**にいて、`--ink-on` は
+            //   届かない ―― いま3アプリの地はすべてクリームなので、既定の
+            //   `INK` がそのまま正しい。地を暗くするアプリを作るなら、
+            //   ここへ `inkVarsOn()` を渡すこと。
+            background: `var(--ink-on, ${INK})`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <TabIcon name="record" color={`var(--on-ink, ${PAPER})`} size={22} />
+        </button>
       </div>
     </div>
   ), document.body);

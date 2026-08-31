@@ -26,7 +26,7 @@ import { TaskSpace } from "@/components/tasks/TaskSpace";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
-import { BD_GREY, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
+import { BD_GREY, CHARCOAL, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { kickViewport } from "@/lib/viewportKick";
@@ -1019,7 +1019,9 @@ export function AppShell() {
   // 設定画面は3アプリ共通の1枚なので、横スライドのトラックとは別に出す。
   if (showProfile) {
     return (
-      <div style={{ height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: INK, position: "relative" }}>
+      // ★★設定は**全画面のオーバーレイ**。第78巡にユーザー指定で**暗い地**へ
+      //   （入力画面・録音と揃える）。色の語彙は `ProfileTab` が自分で持つ。
+      <div style={{ height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", fontFamily: SANS, color: PAPER, background: CHARCOAL, position: "relative" }}>
         <div data-tab-scroll-root style={{
           width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
           overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain", overflowAnchor: "none",

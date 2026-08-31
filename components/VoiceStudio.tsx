@@ -4,7 +4,8 @@ import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CHARCOAL, GREEN, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS, STUDIO } from "@/lib/constants";
+import { BD_GREY, CHARCOAL, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS, STUDIO, STUDIO_KEY } from "@/lib/constants";
+import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
@@ -119,7 +120,6 @@ const LEVEL_FLOOR = 0.1;
  *  (タスクの入力画面も同じ地)。html の地色にも同じ値を書く(下記 VoiceOverlay)。 */
 const DIM_GROUND = CHARCOAL;
 /** ランプの色。トリミングの縦線もこの赤を使う。 */
-const LAMP_REC = STUDIO.lampRec;
 /** 指を離したあとの惰性。1フレームごとに速度へ掛ける摩擦と、止まる閾値。 */
 const COAST_FRICTION = 0.94;
 const COAST_STOP = 0.00035;
@@ -163,14 +163,28 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // アプリの遷移中にどちらかがズレて必ず境目が出る。
   // 全画面のオーバーレイだけは列の外なので、自分で暗い地を塗る。
   const ground = dim ? DIM_GROUND : undefined;
+  // ★★★第78巡に**明暗がひっくり返った**。journal はクリームの地に**黒い機械**、
+  //   オーバーレイは暗い地に**白い機械**（どちらもユーザー指定）。
+  //   大きな円とキーの面は**同じ材料**（`figure` 1つ）。
   const figure = dim ? STUDIO.figureDim : JOURNAL_FIG;
+  //  地の上に直接いる文字（キーのラベル）は地から決まる。
   const fg = dim ? PAPER : INK;
-  const mute = dim ? "rgba(255,255,255,0.46)" : JOURNAL_MUTED;
-  const tick = dim ? "rgba(255,255,255,0.40)" : "rgba(26,26,24,0.38)";
-  // 物理キーの色。★どれも不透明にする(下が明るい円か地かで変わらないように)。
+  const mute = dim ? "rgba(255,251,245,0.52)" : JOURNAL_MUTED;
+  const tick = dim ? "rgba(44,38,39,0.38)" : "rgba(255,251,245,0.40)";
+
   const well = dim ? STUDIO.wellDim : STUDIO.wellLit;
   const capOff = dim ? STUDIO.capOffDim : STUDIO.capOffLit;
   const lampOff = dim ? STUDIO.lampOffDim : STUDIO.lampOffLit;
+  // ★★キーの記号は**面の上**に乗るので、色は面から決める（地からではない）。
+  const capInk = bodyInkOn(figure);
+  // ★★アクセントは**暗い面のときだけ**盤の色が乗る。明るい面では記号は墨で、
+  //   REC の輪だけ盤のもう一つの赤（深紅）。理由は `lib/constants.ts` の
+  //   `STUDIO_KEY` の見出しに書いた（同じ4色は両方の面では原理的に使えない）。
+  const acc = dim ? { pause: capInk, send: capInk, cancel: capInk } : STUDIO_KEY;
+  // ★★録音の赤は**乗る面で決まる** … 輪は**キーの面**、波形の線は**地**の上。
+  //   journal と オーバーレイで**必要な赤が逆**になるので、`redOn()` に導かせる。
+  const ringRec = redOn(figure);
+  const lineRec = redOn(dim ? DIM_GROUND : BD_GREY);
 
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -355,7 +369,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       // 赤い線。帯より少し高く出して、参考画像と同じく主役にする。
       c.lineCap = "round";
       c.lineWidth = 2.5;
-      c.strokeStyle = LAMP_REC;
+      c.strokeStyle = lineRec;
       c.beginPath();
       c.moveTo(lineX, 2);
       c.lineTo(lineX, ch - 2);
@@ -388,7 +402,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       const s = splitRef.current;
       c.lineCap = "butt";
       c.lineWidth = 2.5;
-      c.strokeStyle = LAMP_REC;
+      c.strokeStyle = lineRec;
       for (const r of [REC_LINE_AT + (t.start - REC_LINE_AT) * s, REC_LINE_AT + (t.end - REC_LINE_AT) * s]) {
         const x = Math.min(cw - 1.5, Math.max(1.5, r * cw));
         c.beginPath();
@@ -397,7 +411,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         c.stroke();
       }
     }
-  }, [fg, mute, recording, levelsRef, timesRef, elapsedMs]);
+  }, [fg, mute, lineRec, recording, levelsRef, timesRef, elapsedMs]);
 
   // ★同じ文字列なら書かない。textContent への代入は、値が同じでもその
   // 要素のレイアウトを汚す。毎フレームやると、巨大な円を含むページの
@@ -828,7 +842,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       }}>
         <div style={{ display: "flex", alignItems: "flex-end", gap: SPACE.sm, pointerEvents: "auto" }}>
         <TransportKey
-          label="REC" ring={LAMP_REC}
+          label="REC" ring={ringRec}
           pressed={recording} enabled={!sending}
           onPress={() => voice.toggle()}
           fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
@@ -836,13 +850,13 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         {/* ★PAUSE。録音中だけ押せる。押すとその場で止まり、もう一度押すと
             そのまま続きから録れる(MediaRecorder の pause/resume)。 */}
         <TransportKey
-          label="PAUSE" lamp={GREEN} bars
+          label="PAUSE" lamp={acc.pause} bars
           pressed={paused} enabled={recording} lit={recording}
           onPress={voice.togglePause}
           fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
         />
         <TransportKey
-          label="SEND" lamp={GREEN}
+          label="SEND" lamp={acc.send}
           pressed={sending} enabled={review} lit={review}
           onPress={() => voice.send(trimRef.current)}
           fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
@@ -853,7 +867,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             (右上の閉じるボタンは廃止した)。 */}
         <div style={{ marginLeft: SPACE.lg }}>
           <TransportKey
-            label="CANCEL" cross
+            label="CANCEL" cross crossInk={acc.cancel}
             pressed={false} enabled={!sending && !leaving}
             onPress={onCancelKey}
             fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
@@ -873,7 +887,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
  *  ・enabled=false … 沈んだまま暗い。押せない。
  *  ・lit=true      … ランプが灯る(押せることの合図)。
  *  ・pressed=true  … 押し込まれたまま(録音中のRECなど)。 */
-function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, onPress, fg, mute, figure, well, capOff, lampOff }: {
+function TransportKey({ label, lamp, ring, cross, crossInk, bars, pressed, enabled, lit, onPress, fg, mute, figure, well, capOff, lampOff }: {
   label: string;
   /** 丸いランプの色(点灯時)。 */
   lamp?: string;
@@ -881,6 +895,8 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
   ring?: string;
   /** CANCEL の ✕。 */
   cross?: boolean;
+  /** ✕ の色。★**キーの面の上**に乗るので、地ではなく面から決まる。 */
+  crossInk?: string;
   /** PAUSE の2本線。灯っていれば lamp の色、消えていれば lampOff。 */
   bars?: boolean;
   pressed: boolean;
@@ -944,15 +960,15 @@ function TransportKey({ label, lamp, ring, cross, bars, pressed, enabled, lit, o
           ) : cross ? (
             // CANCEL の ✕。2本の直線で。
             <span style={{ position: "relative", width: 12, height: 12 }}>
-              <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: enabled ? fg : mute, transform: "rotate(45deg)" }} />
-              <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: enabled ? fg : mute, transform: "rotate(-45deg)" }} />
+              <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: enabled ? (crossInk ?? fg) : lampOff, transform: "rotate(45deg)" }} />
+              <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: enabled ? (crossInk ?? fg) : lampOff, transform: "rotate(-45deg)" }} />
             </span>
           ) : ring ? (
             // ★REC の赤い線は、**ボタンの丸い面の内側の縁に沿わせる**
             // (ユーザー指定)。中央の小さな輪ではなく、キーいっぱいの円環。
             <span style={{
               position: "absolute", /* ★目盛りの外（円の中の輪＝図形の座標系） */ inset: 4, borderRadius: RADIUS.circle,
-              border: `1.5px solid ${enabled ? ring : mute}`,
+              border: `1.5px solid ${enabled ? ring : lampOff}`,
             }} />
           ) : (
             // ランプ。押せるようになると灯る。

@@ -53,13 +53,38 @@ function fakePhoto(a: string, b: string) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-// 見本の1枚。★本番はここが生成された券になる。
-const SAMPLE: TicketData = {
-  kind: "exhibition", glyph: "展", title: "見えないものたちの庭",
-  summary: "音と光だけで構成された9つの部屋を、順路を決めずに歩く。図録は会期後半に出る。",
-  venue: "東京都現代美術館", area: "清澄白河", date: "12.02", until: "03.16", soon: true,
-  image: fakePhoto("#FFE58A", "#101B3A"), serial: 143, // ★目盛りの外（ダミー画像の色）
-};
+// ★★★見本は**4枚**（第79巡）。**ドメインが4つ＝紙の色が4つ**なので、
+//   1枚ずつ用意して見本帳で**巡らせる**。同じ版面でも紙の色で印象が変わり、
+//   1色で9枚並べても比べようがなかった（ユーザー指定「色々な色のチケットが見たい」）。
+//   ★暗い券（黒桜）は作らない（第77巡のユーザー確定）。
+const SAMPLES: TicketData[] = [
+  {
+    kind: "exhibition", glyph: "展", title: "見えないものたちの庭",   // タイケン＝朱
+    summary: "音と光だけで構成された9つの部屋を、順路を決めずに歩く。図録は会期後半に出る。",
+    venue: "東京都現代美術館", area: "清澄白河", date: "12.02", until: "03.16", soon: true,
+    image: fakePhoto("#FFE58A", "#101B3A"), serial: 143, // ★目盛りの外（ダミー画像の色）
+  },
+  {
+    kind: "place", glyph: "場", title: "崖の上の無人駅",              // バショ＝杏
+    summary: "1日に4本しか止まらない。ホームの先が切れていて、そのまま海へ落ちている。",
+    venue: "下灘駅", area: "伊予市", date: "通年",
+    image: fakePhoto("#BFE3F0", "#123044"), serial: 7,   // ★目盛りの外（ダミー画像の色）
+  },
+  {
+    kind: "movie", glyph: "映", title: "夜だけが正しかった",           // ジョウホウ＝水
+    summary: "同じ一日を、街灯の下からだけ撮り続けた記録映画。台詞は最後の8分にしかない。",
+    venue: "ユーロスペース", area: "渋谷", date: "01.10", until: "02.07",
+    image: fakePhoto("#F2C6D5", "#2A1020"), serial: 62,  // ★目盛りの外（ダミー画像の色）
+  },
+  {
+    kind: "thing", glyph: "物", title: "四角い土鍋",                   // モノ＝若草
+    summary: "角があるぶん、火の当たり方が変わる。20年ぶんの型をそのまま使っている。",
+    venue: "工房 かまど", area: "益子", date: "受注",
+    image: fakePhoto("#E8DCC0", "#3A2A18"), serial: 88,  // ★目盛りの外（ダミー画像の色）
+  },
+];
+/** 「場」（3D）が使う1枚。★券の色を1つに決めないと、鋏の見え方が比べられない。 */
+const SAMPLE: TicketData = SAMPLES[0];
 
 /** 「券」／「場」の切り替え。★開発用なので `Button` の語彙は借りない（消す部品）。 */
 function ModeSwitch({ mode, onPick, style }: {
@@ -88,7 +113,7 @@ function ModeSwitch({ mode, onPick, style }: {
 function SampleBook() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xxl, paddingBottom: SPACE.xxl }}>
-      {TICKET_SAMPLES.map((s) => (
+      {TICKET_SAMPLES.map((s, i) => (
         <section key={s.id} data-sample={s.id}
           style={{ display: "flex", flexDirection: "column", gap: SPACE.sm, alignItems: "flex-start" }}>
           <span style={{ display: "flex", flexDirection: "column" }}>
@@ -101,7 +126,8 @@ function SampleBook() {
               lineHeight: LEAD.flat, letterSpacing: TRACK.normal, color: MUTED,
             }}>{s.from}</span>
           </span>
-          <s.Render data={SAMPLE} punch={null} width={`${BOOK_W * 100}%`} />
+          {/* ★案ごとに紙の色を替える（4つのドメインを巡る）。 */}
+          <s.Render data={SAMPLES[i % SAMPLES.length]} punch={null} width={`${BOOK_W * 100}%`} />
         </section>
       ))}
     </div>

@@ -4,7 +4,7 @@ import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BD_GREY, CHARCOAL, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS, STUDIO, STUDIO_KEY } from "@/lib/constants";
+import { BD_GREY, CHARCOAL, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS, SCHEME, STUDIO, STUDIO_KEY } from "@/lib/constants";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { pushGround } from "@/lib/ground";
@@ -107,6 +107,13 @@ const TICKS = 5;
 /** 物理キーの寸法。丸いキーで、出っ張り(depth)ぶん浮いて見える。 */
 const KEY_D = 42;
 const KEY_DEPTH = 4;
+/** ★★キーの輪郭は**沈む穴の影だけ**で見せる（縁取りを足さない・ユーザー確定）。
+ *  白い面がクリームの地とほぼ同じ明るさ（比 1.0）なので、穴をキーより
+ *  **この幅だけ外へ広げて**、四方に影が回るようにする。下に三日月が出るだけでは
+ *  実機で物として読めない。 */
+const WELL_LIP = 3;   // ★目盛りの外（部品の座標系）
+/** ★記号が灯る窓（キーの面に開いた小さな暗い穴）の直径。 */
+const SOCKET_D = 22;  // ★目盛りの外（部品の座標系）
 /** ★操作キーの列を器の下端からどれだけ上に置くか。タブバーの高さぶん。
  *  オーバーレイ(タブバーを覆う)でも同じ値を使い、見た目を揃える。
  *  高さの数字は lib/constants.ts の NAV_H が唯一の出どころ。 */
@@ -163,27 +170,32 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // アプリの遷移中にどちらかがズレて必ず境目が出る。
   // 全画面のオーバーレイだけは列の外なので、自分で暗い地を塗る。
   const ground = dim ? DIM_GROUND : undefined;
-  // ★★★第78巡に**明暗がひっくり返った**。journal はクリームの地に**黒い機械**、
-  //   オーバーレイは暗い地に**白い機械**（どちらもユーザー指定）。
-  //   大きな円とキーの面は**同じ材料**（`figure` 1つ）。
-  const figure = dim ? STUDIO.figureDim : JOURNAL_FIG;
+  // ★★★第78巡に**明暗がひっくり返り**、第79巡に**キーだけ白へ戻った**。
+  //   ・大きなダイヤルの円 `dial` … journal は黒／オーバーレイは白（画面で反転）。
+  //   ・キーの面 `cap` … **どちらの画面でも白**（ユーザー指定・反転しない）。
+  //   第78巡はこの2つが1つの変数だったので、片方だけ戻せなかった。
+  const dial = dim ? STUDIO.dialDim : JOURNAL_FIG;
+  const cap = STUDIO.cap;
   //  地の上に直接いる文字（キーのラベル）は地から決まる。
   const fg = dim ? PAPER : INK;
   const mute = dim ? "rgba(255,251,245,0.52)" : JOURNAL_MUTED;
   const tick = dim ? "rgba(44,38,39,0.38)" : "rgba(255,251,245,0.40)";
 
-  const well = dim ? STUDIO.wellDim : STUDIO.wellLit;
-  const capOff = dim ? STUDIO.capOffDim : STUDIO.capOffLit;
-  const lampOff = dim ? STUDIO.lampOffDim : STUDIO.lampOffLit;
-  // ★★キーの記号は**面の上**に乗るので、色は面から決める（地からではない）。
-  const capInk = bodyInkOn(figure);
-  // ★★アクセントは**暗い面のときだけ**盤の色が乗る。明るい面では記号は墨で、
-  //   REC の輪だけ盤のもう一つの赤（深紅）。理由は `lib/constants.ts` の
-  //   `STUDIO_KEY` の見出しに書いた（同じ4色は両方の面では原理的に使えない）。
-  const acc = dim ? { pause: capInk, send: capInk, cancel: capInk } : STUDIO_KEY;
-  // ★★録音の赤は**乗る面で決まる** … 輪は**キーの面**、波形の線は**地**の上。
-  //   journal と オーバーレイで**必要な赤が逆**になるので、`redOn()` に導かせる。
-  const ringRec = redOn(figure);
+  // ★★★第79巡から**キーまわりは画面で変わらない**（面が両方とも白なので、
+  //   穴も窓もランプも1つで足りる）。分岐が減ったぶん、ズレようがない。
+  const well = STUDIO.well;
+  const socket = STUDIO.socket;
+  const lampOff = STUDIO.lampOff;
+  // ★★記号は**キーの面ではなく、面に開いた墨の窓**の中に灯る。白い面の上では
+  //   盤の色が 1.2〜1.8 しか出ないが、窓の上なら 4.7 以上出る（第79巡の実測）。
+  const acc = STUDIO_KEY;
+  // ★★★REC の輪は**キーの面の上**にいるので、白い面から決まる。
+  //   待機＝墨 14.41／録音中＝**朱** 3.05。★ここだけ `redOn()` を使わない ――
+  //   `redOn(白い面)` は深紅 8.43 を返すが、深紅は待機の墨と見分けが付かず
+  //   「消えている／光っている」が読めない。**光ったと分かる赤**を採る。
+  const ringIdle = bodyInkOn(cap);
+  const ringRec = SCHEME.fiery.main;
+  // ★★波形の線は**地**の上なので、こちらは面が2通りある。`redOn()` に導かせる。
   const lineRec = redOn(dim ? DIM_GROUND : BD_GREY);
 
   const boxRef = useRef<HTMLDivElement>(null);
@@ -694,7 +706,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             // あるため、背景色を変えるだけで巨大な面が塗り直され、
             // transition を付けるとそれが十数フレーム続く(実測でこれだけで
             // 1ドラッグ約500msのコスト)。
-            background: figure,
+            background: dial,
             left: (side === "L" ? cxL : cxR) - RD / 2, top: cy - RD / 2,
             zIndex: 1, pointerEvents: "none",
             // ★掴んだ合図は「一瞬ふくらむ」。iPhoneのWebアプリでは
@@ -842,24 +854,24 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       }}>
         <div style={{ display: "flex", alignItems: "flex-end", gap: SPACE.sm, pointerEvents: "auto" }}>
         <TransportKey
-          label="REC" ring={ringRec}
+          label="REC" ring={ringRec} ringOff={ringIdle}
           pressed={recording} enabled={!sending}
           onPress={() => voice.toggle()}
-          fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
+          fg={fg} cap={cap} well={well} socket={socket} lampOff={lampOff}
         />
         {/* ★PAUSE。録音中だけ押せる。押すとその場で止まり、もう一度押すと
             そのまま続きから録れる(MediaRecorder の pause/resume)。 */}
         <TransportKey
           label="PAUSE" lamp={acc.pause} bars
-          pressed={paused} enabled={recording} lit={recording}
+          pressed={paused} enabled={recording}
           onPress={voice.togglePause}
-          fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
+          fg={fg} cap={cap} well={well} socket={socket} lampOff={lampOff}
         />
         <TransportKey
           label="SEND" lamp={acc.send}
-          pressed={sending} enabled={review} lit={review}
+          pressed={sending} enabled={review}
           onPress={() => voice.send(trimRef.current)}
-          fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
+          fg={fg} cap={cap} well={well} socket={socket} lampOff={lampOff}
         />
         {/* ★CANCEL だけは少し間を空けて置く。いつでも押せて、録音を捨てて
             最初の状態へ戻す(録音中でも、切り出し中でも)。
@@ -867,10 +879,10 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             (右上の閉じるボタンは廃止した)。 */}
         <div style={{ marginLeft: SPACE.lg }}>
           <TransportKey
-            label="CANCEL" cross crossInk={acc.cancel}
+            label="CANCEL" cross lamp={acc.cancel}
             pressed={false} enabled={!sending && !leaving}
             onPress={onCancelKey}
-            fg={fg} mute={mute} figure={figure} well={well} capOff={capOff} lampOff={lampOff}
+            fg={fg} cap={cap} well={well} socket={socket} lampOff={lampOff}
           />
         </div>
         </div>
@@ -883,47 +895,59 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   );
 }
 
-/** カセットプレイヤーの操作キー。出っ張り(KEY_DEPTH)を持ち、押されると沈む。
- *  ・enabled=false … 沈んだまま暗い。押せない。
- *  ・lit=true      … ランプが灯る(押せることの合図)。
- *  ・pressed=true  … 押し込まれたまま(録音中のRECなど)。 */
-function TransportKey({ label, lamp, ring, cross, crossInk, bars, pressed, enabled, lit, onPress, fg, mute, figure, well, capOff, lampOff }: {
+/**
+ * カセットプレイヤーの操作キー。出っ張り(KEY_DEPTH)を持ち、押されると沈む。
+ *
+ * ★★★第79巡に**グレーアウトをやめた**（ユーザー指定）。押せる／押せないを
+ * 面の色で言うのをやめ、**2つの語彙**だけで表す:
+ *   ・**沈んでいるか出ているか**（形）… その機能が**いま働いている**
+ *     （録音中の REC・停止中の PAUSE・送信中の SEND）＋指で押している間。
+ *   ・**ランプが灯っているか**（光）… **いま押せるか**。消えていれば押せない。
+ * ★だから面の色 `cap` はどの状態でも同じ。**キーは死んで見えない。灯りが消える。**
+ *
+ * ★★記号（2本線・✕・丸）は面の上ではなく、面に開いた**墨の窓**(`socket`)の
+ * 中に置く。白い面の上では盤の色が 1.2〜1.8 しか出ないが、墨の上なら
+ * 4.7 以上出る ―― これが「アクセントカラーの点灯」を成立させている唯一の理由。
+ * REC の輪だけは窓ではなく**面の縁**に沿う（ユーザー指定の見え方）。
+ */
+function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enabled, onPress, fg, cap, well, socket, lampOff }: {
   label: string;
-  /** 丸いランプの色(点灯時)。 */
+  /** 窓の中で灯る色。★押せるときだけ灯る。 */
   lamp?: string;
-  /** REC の赤い輪。 */
+  /** REC の輪の色(録音中)。 */
   ring?: string;
+  /** REC の輪の色(待機)。★消灯ではなく**黒い輪**（ユーザー指定）。 */
+  ringOff?: string;
   /** CANCEL の ✕。 */
   cross?: boolean;
-  /** ✕ の色。★**キーの面の上**に乗るので、地ではなく面から決まる。 */
-  crossInk?: string;
-  /** PAUSE の2本線。灯っていれば lamp の色、消えていれば lampOff。 */
+  /** PAUSE の2本線。 */
   bars?: boolean;
+  /** ★**その機能がいま働いているか**。沈んだままになる。 */
   pressed: boolean;
   enabled: boolean;
-  lit?: boolean;
   onPress: () => void;
   fg: string;
-  mute: string;
-  /** 押せるときのキーの面(明るい)。 */
-  figure: string;
+  /** キーの面。★状態で変えない。 */
+  cap: string;
   /** キーが沈む穴。★半透明にしないこと。明るい円の上と地の上とで
    *  見え方が変わり、物として読めなくなる。 */
   well: string;
-  /** 押せないときのキーの面。 */
-  capOff: string;
+  /** 記号が灯る窓。 */
+  socket: string;
   /** 消えているランプ。 */
   lampOff: string;
 }) {
   const [held, setHeld] = useState(false);
-  // 押し込まれて見えるか。押している間・押されたままの状態・押せない状態。
-  const down = pressed || held || !enabled;
+  // 沈んで見えるか。★**押せない**は含めない（それはランプが言う）。
+  const down = pressed || held;
+  const ink = enabled ? (lamp ?? fg) : lampOff;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: SPACE.xs }}>
       <div style={{ position: "relative", width: KEY_D, height: KEY_D + KEY_DEPTH }}>
-        {/* キーが沈む「穴」。出っ張っているときはここが影として見える。 */}
+        {/* キーが沈む「穴」。★キーより WELL_LIP だけ広く、四方に影が回る。 */}
         <div style={{
-          position: "absolute", left: 0, bottom: 0, width: KEY_D, height: KEY_D,
+          position: "absolute", left: -WELL_LIP, bottom: -WELL_LIP,
+          width: KEY_D + WELL_LIP * 2, height: KEY_D + WELL_LIP * 2,
           borderRadius: RADIUS.circle, background: well,
         }} />
         <button
@@ -938,51 +962,58 @@ function TransportKey({ label, lamp, ring, cross, crossInk, bars, pressed, enabl
           style={{
             position: "absolute", left: 0, bottom: 0, width: KEY_D, height: KEY_D,
             borderRadius: RADIUS.circle, border: "none", padding: 0,
-            background: enabled ? figure : capOff,
+            background: cap,
             transform: `translateY(${down ? 0 : -KEY_DEPTH}px)`,
-            transition: "transform var(--t-press) var(--ease-press), background var(--t-item) var(--ease-settle)",
+            transition: "transform var(--t-press) var(--ease-press)",
             cursor: enabled ? "pointer" : "default",
             display: "flex", alignItems: "center", justifyContent: "center",
             userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
           }}
         >
-          {bars ? (
-            // PAUSE の2本線。
-            <span style={{ display: "flex", gap: SPACE.xs }}>
-              {[0, 1].map((i) => (
-                <span key={i} style={{
-                  width: 3, height: 11,
-                  background: lit ? lamp : lampOff,
-                  transition: "background var(--t-item) var(--ease-settle)",
-                }} />
-              ))}
-            </span>
-          ) : cross ? (
-            // CANCEL の ✕。2本の直線で。
-            <span style={{ position: "relative", width: 12, height: 12 }}>
-              <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: enabled ? (crossInk ?? fg) : lampOff, transform: "rotate(45deg)" }} />
-              <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: enabled ? (crossInk ?? fg) : lampOff, transform: "rotate(-45deg)" }} />
-            </span>
-          ) : ring ? (
+          {ring ? (
             // ★REC の赤い線は、**ボタンの丸い面の内側の縁に沿わせる**
-            // (ユーザー指定)。中央の小さな輪ではなく、キーいっぱいの円環。
+            // (ユーザー指定)。待機は黒い輪、録音を始めると赤く光る。
             <span style={{
               position: "absolute", /* ★目盛りの外（円の中の輪＝図形の座標系） */ inset: 4, borderRadius: RADIUS.circle,
-              border: `1.5px solid ${enabled ? ring : lampOff}`,
+              border: `1.5px solid ${pressed ? ring : ringOff}`,
+              transition: "border-color var(--t-item) var(--ease-settle)",
             }} />
           ) : (
-            // ランプ。押せるようになると灯る。
+            // ★記号の窓。この中でだけ盤の色が読める。
             <span style={{
-              width: 8, height: 8, borderRadius: RADIUS.circle,
-              background: lit ? lamp : lampOff,
-              transition: "background var(--t-item) var(--ease-settle)",
-            }} />
+              width: SOCKET_D, height: SOCKET_D, borderRadius: RADIUS.circle,
+              background: socket, display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {bars ? (
+                <span style={{ display: "flex", gap: SPACE.xs }}>
+                  {[0, 1].map((i) => (
+                    <span key={i} style={{
+                      /* ★目盛りの外（記号の線＝図形の座標系） */ width: 3, height: 11,
+                      background: ink,
+                      transition: "background var(--t-item) var(--ease-settle)",
+                    }} />
+                  ))}
+                </span>
+              ) : cross ? (
+                <span style={{ position: "relative", width: 12, height: 12 }}>
+                  <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: ink, transform: "rotate(45deg)" }} />
+                  <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: ink, transform: "rotate(-45deg)" }} />
+                </span>
+              ) : (
+                <span style={{
+                  /* ★目盛りの外（ランプの丸＝図形の座標系） */ width: 8, height: 8, borderRadius: RADIUS.circle,
+                  background: ink,
+                  transition: "background var(--t-item) var(--ease-settle)",
+                }} />
+              )}
+            </span>
           )}
         </button>
       </div>
+      {/* ★ラベルは状態で色を変えない（それもグレーアウトの一種）。 */}
       <span style={{
         fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps,
-        color: enabled ? fg : mute, marginRight: `-${TRACK.caps}`,
+        color: fg, marginRight: `-${TRACK.caps}`,
       }}>{label}</span>
     </div>
   );

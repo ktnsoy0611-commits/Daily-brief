@@ -5,6 +5,7 @@ import { Activity, BarChart3, Heart, Link2, RotateCcw, Sparkles, X } from "lucid
 import { useEffect, useRef, useState } from "react";
 import type { IconType } from "@/components/common";
 import { Button } from "@/components/Button";
+import { SectionLabel } from "@/components/common";
 import { CHARCOAL, FIXED_SOURCES, SANS } from "@/lib/constants";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { pushGround } from "@/lib/ground";
@@ -26,15 +27,19 @@ const ON = bodyInkOn(LIFT);                   // 本文
 const ON_INV = LIFT;                          // 明るい面の上に載る色
 const ON_2 = "rgba(255,251,245,0.74)";        // 副文
 const ON_MUTE = "rgba(255,251,245,0.50)";     // 控えめ・非活性
-const ON_LINE = "rgba(255,251,245,0.16)";     // 罫
-const ON_FILL = "rgba(255,251,245,0.06)";     // 面（カードの地）
-const ON_FILL2 = "rgba(255,251,245,0.10)";    // 面（少し強い）
+// ★★★第79巡に**罫を全部やめた**（ユーザー指定「線でセクションを分けるのは
+// このアプリの語彙ではない」）。区切りは**面の交代と余白**だけで作る。
+// ★縁取りが無くなったぶん、面は**地から離す**（0.06 は比 1.20 で、縁ありきの
+// 濃さだった）。実測 … カード 0.08 ＝ 1.27／中の小区分 0.16 ＝ カードの上で 1.60。
+const ON_FILL = "rgba(255,251,245,0.08)";     // 面（カードの地）
+const ON_FILL2 = "rgba(255,251,245,0.16)";    // 面（カードの中の小区分・入力欄）
 const ON_DEAD = "rgba(255,251,245,0.22)";     // 押せない面
 // ★危険は**朱**になる ―― 深紅は暗い地で比 1.71 しかない（`redOn` が選ぶ）。
 const DANGER = redOn(LIFT);
 const DANGER_INK = bodyInkOn(DANGER);         // 危険の面に載る色
 const DANGER_TINT = "rgba(255,88,46,0.16)";
-const DANGER_EDGE = "rgba(255,88,46,0.52)";
+// ★★縁は**図形**なので 3.0 が要る。0.52 は 2.22 しか出ていなかった（第79巡に実測）。
+const DANGER_EDGE = "rgba(255,88,46,0.78)";  // 地の上で 3.40
 
 // フェーズC-0「プロンプト実験場」で生成されるカードの形(BriefCard相当の
 // 部分集合)。本番のデッキ統合前に、設定画面で品質を目視確認するためだけの
@@ -70,8 +75,9 @@ type GenResponse =
 // 状態遷移に起因する不具合の可能性そのものを消した(詳細は docs/archive/ui-binder-2026-07.md
 // §7.21 参照)。fontSize:16はタップしやすい大きさとしてそのまま残す。)
 const settingsInputStyle: React.CSSProperties = {
-  flex: 1, border: "none", borderBottom: `1.5px solid ${ON}`, background: "transparent",
-  fontFamily: SANS, fontSize: TYPE.lead, padding: `${SPACE.sm}px 0`, outline: "none", minWidth: 0,
+  // ★下線をやめて**面**にした（第79巡）。入力できる所は「くぼみ」で示す。
+  flex: 1, border: "none", background: ON_FILL2, borderRadius: RADIUS.lg,
+  fontFamily: SANS, fontSize: TYPE.lead, padding: `${SPACE.sm}px ${SPACE.md}px`, outline: "none", minWidth: 0,
 };
 
 // 各セクションを1枚の淡いカードにまとめる。以前はラベル+素のテキスト/
@@ -80,10 +86,13 @@ const settingsInputStyle: React.CSSProperties = {
 // 画面にリズムが生まれる。
 function SettingsCard({ label, icon: Icon, children }: { label: string; icon?: IconType; children: React.ReactNode }) {
   return (
-    <section style={{ background: ON_FILL, border: `1px solid ${ON_LINE}`, borderRadius: RADIUS.xl, padding: `${SPACE.lg}px ${SPACE.lg}px ${SPACE.lg}px`, marginBottom: SPACE.lg }}>
+    <section style={{ background: ON_FILL, borderRadius: RADIUS.xl, padding: `${SPACE.lg}px ${SPACE.lg}px ${SPACE.lg}px`, marginBottom: SPACE.lg }}>
       <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, marginBottom: SPACE.md }}>
         {Icon && <Icon size={12} strokeWidth={2.2} color={ON_MUTE} />}
-        <span style={{ fontSize: TYPE.micro, letterSpacing: TRACK.wide, color: ON_MUTE, fontWeight: WEIGHT.bold }}>{label}</span>
+        {/* ★見出しは棚と同じ語彙（`components/common.tsx` の `SectionLabel`）。
+            段（`small` 11）もそのまま借りる ―― 渡すのは**色だけ**
+            （`--muted-on` はこのオーバーレイには届かない）。 */}
+        <SectionLabel text={label} style={{ color: ON_MUTE }} />
       </div>
       {children}
     </section>
@@ -126,12 +135,23 @@ function ConfirmDeleteButton({ armed, onArm, onConfirm, label }: {
   );
 }
 
+// ★★カードの中の小区分。**罫ではなく面**で分ける（第79巡・design.md §4-c）。
+// 罫を引くのはこのアプリの語彙ではない ―― 区切りは面の交代と余白だけで作る。
+function Panel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ marginTop: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.lg, background: ON_FILL2 }}>
+      {children}
+    </div>
+  );
+}
+
 // 情報源・バインドの記録で共通に使う1行リスト(タイトル+補足+右端の
 // アイコンボタン)。見た目(パディング・区切り線・文字サイズ)を1箇所に
 // まとめることで、セクションごとに微妙に違う実装になるのを防ぐ。
 function SettingsRow({ title, sub, faded, action }: { title: string; sub: string; faded?: boolean; action?: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.md}px 0`, borderTop: `1px solid ${ON_LINE}`, opacity: faded ? 0.5 : 1 }}>
+    // ★罫で区切らず、**1行そのものを面**にして余白で離す（第79巡）。
+    <div style={{ display: "flex", alignItems: "center", gap: SPACE.md, padding: SPACE.md, marginTop: SPACE.sm, borderRadius: RADIUS.lg, background: ON_FILL2, opacity: faded ? 0.5 : 1 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: ON_MUTE, marginTop: SPACE.hair, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
@@ -587,7 +607,7 @@ export function ProfileTab({ appState, persist, onClose }: {
   return (
     <>
       {/* ★左右のパディングは持たない（design.md §2）。 */}
-      <header style={{ padding: `${SPACE.lg}px 0 ${SPACE.md}px`, borderBottom: `2px solid ${ON}`, display: "flex", alignItems: "center", gap: SPACE.md }}>
+      <header style={{ padding: `${SPACE.lg}px 0 ${SPACE.md}px`, display: "flex", alignItems: "center", gap: SPACE.md }}>
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: TYPE.head, fontWeight: WEIGHT.text, color: ON, padding: 0, lineHeight: LEAD.flat }} aria-label="閉じる">←</button>
         <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, letterSpacing: TRACK.normal, lineHeight: LEAD.flat }}>設定</div>
       </header>
@@ -777,14 +797,14 @@ export function ProfileTab({ appState, persist, onClose }: {
           {/* ★タスク/候補のダミーだけを消す。上のボタンとは別扱いにしてある —
               上はブリーフ側(アイテム・ウィッシュ・ゴール)を消すもので、
               タスクの山を作り直したいだけのときに巻き添えにしたくない。 */}
-          <div style={{ height: 1, background: ON_LINE, margin: `${SPACE.lg}px 0` }} />
+          <div style={{ height: SPACE.xl }} />
           <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: ON_MUTE, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>
             タスクと候補に入れたデモだけを消します（手で作ったタスクと、声のメモから来た候補は残ります）。
           </p>
           <button onClick={clearTaskDemo} disabled={demoCount === 0} style={{
             width: "100%", padding: `${SPACE.md}px 0`, background: "transparent",
             color: demoCount === 0 ? ON_MUTE : ON,
-            border: `1.5px solid ${demoCount === 0 ? ON_LINE : ON_DEAD}`,
+            border: `1.5px solid ${ON_DEAD}`,
             borderRadius: RADIUS.pill, cursor: demoCount === 0 ? "default" : "pointer",
             fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
           }}>{demoCount === 0 ? "デモのタスク・候補はありません" : `デモのタスク・候補を削除（${demoCount}）`}</button>
@@ -821,7 +841,7 @@ export function ProfileTab({ appState, persist, onClose }: {
             placeholder={"情報源のURLを1行に1つ\n例: https://www.momat.go.jp/"}
             rows={3}
             style={{
-              width: "100%", boxSizing: "border-box", resize: "vertical", border: `1px solid ${ON_LINE}`,
+              width: "100%", boxSizing: "border-box", resize: "vertical", border: "none",
               borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, lineHeight: LEAD.body, outline: "none",
               background: ON_INV, color: ON, marginBottom: SPACE.md,
             }}
@@ -843,7 +863,7 @@ export function ProfileTab({ appState, persist, onClose }: {
           )}
 
           {genCards.map((c, i) => (
-            <div key={i} style={{ marginTop: SPACE.md, padding: `${SPACE.md}px 0 0`, borderTop: `1px solid ${ON_LINE}` }}>
+            <Panel key={i}>
               {/* 興味の広がり(派生)枠のカードも特別扱いせず他のカードと
                   同じ見た目で馴染ませる(trigger文字列ではなく isDerived
                   フラグで判定する)。 */}
@@ -863,7 +883,7 @@ export function ProfileTab({ appState, persist, onClose }: {
                   {c.sourceLabel || c.sourceUrl}
                 </a>
               )}
-            </div>
+            </Panel>
           ))}
 
           {/* 実行トレース: 各段階で何が起きたかを目視確認できるようにする
@@ -871,7 +891,7 @@ export function ProfileTab({ appState, persist, onClose }: {
               トークン実測)。「Geminiに何を渡し何が返ったか見えない」という
               不透明さの解消が目的(HANDOFF §8.12参照)。 */}
           {genSites.length > 0 && (
-            <div style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTop: `1px solid ${ON_LINE}` }}>
+            <Panel>
               <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: ON_MUTE, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>情報源の取得</div>
               {genSites.map((s, i) => (
                 <div key={i} style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: ON_MUTE, marginBottom: SPACE.sm, lineHeight: LEAD.body }}>
@@ -885,11 +905,11 @@ export function ProfileTab({ appState, persist, onClose }: {
                   )}
                 </div>
               ))}
-            </div>
+            </Panel>
           )}
 
           {genPagesRead.length > 0 && (
-            <div style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTop: `1px solid ${ON_LINE}` }}>
+            <Panel>
               <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: ON_MUTE, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>取得したページ（✓=Markdown取得成功）→ 抽出候補{genCandidateCount}件</div>
               {genPagesRead.map((s, i) => (
                 <div key={i} style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: ON_MUTE, marginBottom: SPACE.xs, display: "flex", gap: SPACE.sm }}>
@@ -898,28 +918,28 @@ export function ProfileTab({ appState, persist, onClose }: {
                     style={{ color: ON_MUTE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.url}</a>
                 </div>
               ))}
-            </div>
+            </Panel>
           )}
 
           {genDropped && (
-            <div style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTop: `1px solid ${ON_LINE}` }}>
+            <Panel>
               <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: ON_MUTE, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>分類・除外の内訳（層C分類 → 層D検証）</div>
               <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: ON_MUTE, lineHeight: LEAD.body }}>
                 無関係と分類: {genDropped.irrelevant} ／ 出典URL不一致: {genDropped.sourceInvalid} ／
                 終了済み: {genDropped.expired} ／ 重複候補: {genDropped.duplicateCandidate} ／
                 生活圏外: {genDropped.outOfArea} ／ 上限超過(採用漏れ): {genDropped.overQuota}
               </div>
-            </div>
+            </Panel>
           )}
 
           {genTokens && (
-            <div style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTop: `1px solid ${ON_LINE}` }}>
+            <Panel>
               <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: ON_MUTE, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>トークン使用量（実測）</div>
               <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: ON_MUTE }}>
                 入力 {genTokens.promptTokens.toLocaleString()} ／ 出力 {genTokens.candidateTokens.toLocaleString()} ／
                 合計 {genTokens.totalTokens.toLocaleString()}（{genTokens.calls}回のAPI呼び出し）
               </div>
-            </div>
+            </Panel>
           )}
         </SettingsCard>
 

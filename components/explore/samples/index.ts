@@ -9,12 +9,11 @@ import type { SampleProps } from "./TicketParts";
 // ★★★**券の見本帳の一覧**（第72巡 3案 → 第79巡 9案 → 第80巡に**4案へ絞った**）。
 //   選ばれた1案を `components/explore/Ticket.tsx` へ畳み、**このディレクトリごと消す**。
 //
-// ★★★9案は「**色がどれだけ見えるか**」「**面をどう割るか**」で振ってあったが、
-//   第80巡に**色が面から退いた**（紙は白1色）ので、前半5案の前提そのものが消えた。
-//   いま振っている軸は1つ ―― **大きな英語と写真がどう出会うか**。
-//
+// ★★振っている軸は**大きな英語と写真がどう出会うか**（第80巡）。
+// ★★★第81巡に **P3 だけ「全面が色」**にした ―― 第80巡のユーザー指定
+//   「色は背景ではなくワンポイントで」と、第81巡に提示された参照（5枚中3枚が
+//   全面の色）が正面から食い違うので、**言葉で決めずに実機で並べて決める**。
 // ★★見本帳は**案ごとに違うドメイン**で並ぶ（`DevStageTab` の `SAMPLES` 4枚）。
-//   紙は白のままで、**大きな英語の色だけ**が案ごとに変わる。
 
 export interface TicketSample {
   id: string;
@@ -28,6 +27,6 @@ export interface TicketSample {
 export const TICKET_SAMPLES: TicketSample[] = [
   { id: "P1", name: "天地 ── 言葉が上、写真が下", from: "刷り物の作法", Render: TicketP1 },
   { id: "P2", name: "逆天地 ── 写真が上、言葉が下", from: "実物の券", Render: TicketP2 },
-  { id: "P3", name: "重ね ── 写真の上に白い帯", from: "映画のポスター", Render: TicketP3 },
-  { id: "P4", name: "活字 ── 語が主役、写真は小窓", from: "スイスの版面", Render: TicketP4 },
+  { id: "P3", name: "全面 ── 紙が色。写真が地から浮く", from: "Post Familiar", Render: TicketP3 },
+  { id: "P4", name: "活字 ── 語と余白が主役", from: "スイスの版面", Render: TicketP4 },
 ];

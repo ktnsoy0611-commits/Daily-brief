@@ -41,14 +41,41 @@ const CARD_MID = 0.44;
 /** 鋏の口の場所（見えている範囲に対する割合）。 */
 const NOSE = { x: 0.80, y: 0.80 };
 
-/** 写真の代わりの面。★外に取りに行かず、その場で作る（`app/dev/explore` と同じ）。 */
-function fakePhoto(a: string, b: string) {
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="240">'
-    + '<defs><radialGradient id="g" cx="28%" cy="18%" r="88%">'
-    + `<stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/>`
-    + '</radialGradient></defs><rect width="300" height="240" fill="url(#g)"/>'
-    + `<rect x="30" y="120" width="42" height="120" fill="${a}" opacity="0.5"/>`
-    + `<rect x="196" y="30" width="30" height="210" fill="${b}" opacity="0.45"/></svg>`;
+/**
+ * 写真の代わりの面。★外に取りに行かず、その場で作る（`app/dev/explore` と同じ）。
+ *
+ * ★★★第81巡に**調子を持たせた**。券の写真は**デュオトーン**（明暗だけにして、
+ *   影を色・光を紙へ押し込む）なので、**明暗の幅がそのまま見え方になる**。
+ *   前のダミーは 2色の放射グラデーションで、明度が 0.58〜0.98 に固まっていた
+ *   （実測・中央値 0.70）ため、どのドメインでも「淡い色の靄」にしかならなかった。
+ * ★★色は要らない（デュオトーンが最初に捨てる）。**要るのは暗部・中間・明部**。
+ * ★`seed` で構図を振る（見本4枚が同じ絵にならないように）。
+ */
+/** ダミー写真の階調。★目盛りの外（写真の代わりの明暗であって、UI の色ではない） */
+const TONE = { black: "#0B0B0B", mid: "#4A4A4A", pale: "#9C9C9C", wall: "#D8D8D8", ink: "#050505", ink2: "#0C0C0C", cast: "#0A0A0A", light: "#FFFFFF" };  // ★目盛りの外（ダミー写真の階調）
+
+function fakePhoto(seed: number) {
+  const r = (n: number) => (Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453) % 1;
+  const at = (n: number, lo: number, hi: number) => Math.round(lo + Math.abs(r(n)) * (hi - lo));
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400">'
+    // 地 … 斜めに沈む（逆光の室内）。★**中央値を 0.45 前後**に置く ―― 明るすぎると
+    //    デュオトーンの帯の上半分にしか乗らず、「淡い靄」にしかならない（第81巡に実測）。
+    + '<defs><linearGradient id="g" x1="0.15" y1="0" x2="0.85" y2="1">'
+    + '<stop offset="0" stop-color="' + TONE.black + '"/><stop offset="0.5" stop-color="' + TONE.mid + '"/>'
+    + '<stop offset="1" stop-color="' + TONE.pale + '"/></linearGradient>'
+    + '<radialGradient id="s" cx="' + at(1, 24, 74) + '%" cy="' + at(2, 14, 38) + '%" r="30%">'
+    + '<stop offset="0" stop-color="' + TONE.light + '" stop-opacity="0.92"/>'
+    + '<stop offset="1" stop-color="' + TONE.light + '" stop-opacity="0"/></radialGradient></defs>'
+    + '<rect width="300" height="400" fill="url(#g)"/>'
+    // 明るい面 … 光の当たった壁
+    + '<rect x="' + at(3, 120, 210) + '" y="0" width="' + at(4, 54, 110) + '" height="400" fill="' + TONE.wall + '" opacity="0.55"/>'
+    // 暗い塊 … 前景のもの
+    + '<rect x="' + at(5, 6, 70) + '" y="' + at(6, 130, 230) + '" width="' + at(7, 46, 104) + '" height="270" fill="' + TONE.ink + '" opacity="0.92"/>'
+    + '<rect x="' + at(8, 190, 250) + '" y="' + at(9, 30, 120) + '" width="46" height="300" fill="' + TONE.ink2 + '" opacity="0.8"/>'
+    // 影の帯
+    + '<rect x="0" y="' + at(10, 280, 340) + '" width="300" height="120" fill="' + TONE.cast + '" opacity="0.45"/>'
+    // 光
+    + '<rect width="300" height="400" fill="url(#s)"/></svg>';
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
@@ -61,25 +88,25 @@ const SAMPLES: TicketData[] = [
     kind: "exhibition", glyph: "展", title: "見えないものたちの庭",   // タイケン＝朱
     summary: "音と光だけで構成された9つの部屋を、順路を決めずに歩く。図録は会期後半に出る。",
     venue: "東京都現代美術館", area: "清澄白河", date: "12.02", until: "03.16", soon: true,
-    image: fakePhoto("#FFE58A", "#101B3A"), serial: 143, // ★目盛りの外（ダミー画像の色）
+    image: fakePhoto(1), serial: 143, // ★目盛りの外（ダミー画像の構図）
   },
   {
     kind: "place", glyph: "場", title: "崖の上の無人駅",              // バショ＝杏
     summary: "1日に4本しか止まらない。ホームの先が切れていて、そのまま海へ落ちている。",
     venue: "下灘駅", area: "伊予市", date: "通年",
-    image: fakePhoto("#BFE3F0", "#123044"), serial: 7,   // ★目盛りの外（ダミー画像の色）
+    image: fakePhoto(2), serial: 7,   // ★目盛りの外（ダミー画像の構図）
   },
   {
     kind: "movie", glyph: "映", title: "夜だけが正しかった",           // ジョウホウ＝水
     summary: "同じ一日を、街灯の下からだけ撮り続けた記録映画。台詞は最後の8分にしかない。",
     venue: "ユーロスペース", area: "渋谷", date: "01.10", until: "02.07",
-    image: fakePhoto("#F2C6D5", "#2A1020"), serial: 62,  // ★目盛りの外（ダミー画像の色）
+    image: fakePhoto(3), serial: 62,  // ★目盛りの外（ダミー画像の構図）
   },
   {
     kind: "thing", glyph: "物", title: "四角い土鍋",                   // モノ＝若草
     summary: "角があるぶん、火の当たり方が変わる。20年ぶんの型をそのまま使っている。",
     venue: "工房 かまど", area: "益子", date: "受注",
-    image: fakePhoto("#E8DCC0", "#3A2A18"), serial: 88,  // ★目盛りの外（ダミー画像の色）
+    image: fakePhoto(4), serial: 88,  // ★目盛りの外（ダミー画像の構図）
   },
 ];
 /** 「場」（3D）が使う1枚。★券の色を1つに決めないと、鋏の見え方が比べられない。 */

@@ -1,36 +1,41 @@
 "use client";
 
 import { SPACE } from "@/lib/tokens";
-import { PAPER } from "@/lib/constants";
+import { KIND_DOMAIN } from "@/lib/constants";
+import { DOMAIN_COLOR } from "@/lib/palette";
 import {
-  Figure, Grain, Lede, Mark, Meta, Pad, SAFE, Sheet, Title, partsOf, type SampleProps,
+  DomainMark, Figure, Lede, Mark, Pad, Period, SAFE, Sheet, Title, Venue,
+  partsOf, type SampleProps,
 } from "./TicketParts";
 
-// 案P3「重ね」｜写真が全面。**下端に白い帯が渡り**、その中で言葉が組まれる。
+// 案P3「全面」｜★★★**この案だけ紙がドメインの色**。参照 Post Familiar の作法。
 //
-// ★出どころは映画のポスター（絵の上に、白く抜いた帯で情報を載せる）。
-// ★★帯は**紙と同じ白**（色ではない）。色が面になる場所を作らないという
-//   第80巡の規則を破らずに、写真を紙いっぱいまで使える。
-// ★★写真は `flex: 1` で余りを取り、帯が**その上へ食い込む**（負の余白）。
-//   これで写真は上の欠けにも左右の端にも届く。
+// ★★★第80巡にユーザー指定「色は背景として使うのではなく、大きな文字のアクセントや
+//   アイコンなどワンポイントで」。だが第81巡に提示された参照は5枚中3枚が**全面の色**
+//   だった。**言葉で決めずに実機で並べて決める**ために、4案のうち1つだけ色の紙にする。
+// ★★色の紙でも**デュオトーンの式は同じ**（影＝地の色／光＝紙）。写真の影が地へ
+//   溶けるので、**写真が色の面から浮き上がってくる**ように見える ―― これが
+//   Post Familiar の見え方の正体。
+// ★★★**色の上にもう1つ色を置かない。** 文字も印も紙の色1つ（`skinOf` が導く）。
 
 export function TicketP3({ data, punch, deck, width }: SampleProps) {
-  const { period, until, place } = partsOf(data);
+  const { period, until, place, area } = partsOf(data);
+  const color = DOMAIN_COLOR[KIND_DOMAIN[data.kind]];
 
   return (
-    <Sheet data={data} punch={punch} deck={deck} width={width}>
-      <Figure data={data} />
-      <Pad style={{
-        flex: "none", zIndex: 3, marginTop: `-${SPACE.xxl}px`,
-        background: PAPER, paddingTop: SPACE.lg, paddingBottom: SAFE, gap: SPACE.md,
-      }}>
-        <Grain />
+    <Sheet data={data} punch={punch} deck={deck} width={width} stock={color}>
+      <Pad style={{ flex: "none", paddingTop: SAFE, paddingBottom: SPACE.lg, gap: SPACE.xs }}>
         <Mark data={data} />
-        <span style={{ display: "flex", flexDirection: "column", gap: SPACE.xs }}>
-          <Title>{data.title}</Title>
-          {data.summary && <Lede lines={2}>{data.summary}</Lede>}
-        </span>
-        <Meta period={period} until={until} place={place} />
+        <Period period={period} until={until} />
+      </Pad>
+      <div style={{ flex: "1 1 auto", minHeight: 0, position: "relative", display: "flex" }}>
+        <Figure data={data} />
+        <DomainMark data={data} />
+      </div>
+      <Pad style={{ flex: "none", paddingTop: SPACE.lg, paddingBottom: SAFE, gap: SPACE.xs }}>
+        <Title>{data.title}</Title>
+        {data.summary && <Lede lines={2}>{data.summary}</Lede>}
+        <Venue place={place} area={area} />
       </Pad>
     </Sheet>
   );

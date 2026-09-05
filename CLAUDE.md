@@ -4,6 +4,8 @@
 
 - `docs/project_knowledge.md` … **現行仕様の正**。設計・データモデル・守るべき約束。
 - `handoff_current.md` … いまどこにいるか。直近完了・次の一手・重要パス（200行以内）。
+- ★`docs/redesign-2026-09.md` … **改修の検討の記録**（確定／保留／却下）。
+  ★`docs/redesign-references.md` … **参照のリンクと分析**。サイトのURLはここから開く。
 - `docs/archive/*.md` … 経緯と教訓。**全文を読まない。`grep` で必要な節だけ**。
   コード内コメントの `HANDOFF §N` はここの節番号を指す。§5・§7.x=`ui-binder`、
   §8.x=`brief-pipeline`、§9〜§31・§50・§51・§56・§65〜§67=`shell-redesign`、

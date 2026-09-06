@@ -740,3 +740,23 @@ EPA の冊子は **1冊＝1色**。文字も罫もその色で、黒は本文だ
 | NAMED LIGHT | 同 ／ 生成り | ★**桜は生成りの上だと甘くなる**ので黒地版より慎重に |
 | CHART | グラフ ／ 黒地 | 角丸を 26px にして**カプセルに寄せた**案。黒地でも硬くならない |
 | SPACE | Make More | 帯の列に**ピルと同じ高さの色のタイル**を混ぜる（橙＝急ぎ、緑＝提案） |
+
+---
+
+## 第29便 — 測定した配色（2026-09-06）
+Artifact: https://claude.ai/code/artifact/ea012a42-478a-44c0-872b-b9a0618be835
+
+★★★**第26〜28便の色は目分量だった**（ユーザー指摘）。13枚を実際に画素から測り直し、
+**測定値だけで20案を組み直した**。測定の方法・道具・差分・分かったことは
+**`docs/redesign-references.md` の末尾**（`tools/extract-palette.py`）。
+
+★**以後、参照から色を採るときは必ず測る。目分量で書かない。**
+
+### 20案の内訳（すべて測定値）
+NOW／CITY／MISSY LIME／MISSY BLUE／BOOM DARK／BOOM LIGHT／NORI／NORI LIGHT／
+STACK／STACK LIGHT／STICKER／STICKER WARM／KLEUR（乗算）／
+EPA GOLD・BRICK・BLUE（1色）／STRELKA（はみ出す文字）／NAMED／NAMED LIGHT／
+CHART（カプセル）／SPACE（タイル）
+
+導出したのは**紙（ピルの地）だけ**で、参照に白が写っていない **NOW ／ NAMED ／ CHART** の3つ。
+地・墨・3色はすべて測定値そのまま。

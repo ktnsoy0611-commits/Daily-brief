@@ -2,8 +2,14 @@
 
 3アプリ（JOURNAL / TASK / EXPLORE）は動いている。**コードは第81巡から1行も動いていない。**
 
-★★★**2026-09-05 からアプリの大幅改修を検討中。記録は `docs/redesign-2026-09.md`**
-（確定／保留／却下の3分割。**「確定」に書いてあることだけが確定**）。
+★★★**2026-09-05 からアプリの大幅改修を検討中。コードは1行も書いていない（絵と記録だけ）。**
+★★★**次にやること … `docs/redesign-ideas.md` の待ち行列を上から順に絵にして見せる。**
+記録は `docs/redesign-2026-09.md`（確定／保留／却下の3分割。**「確定」だけが確定**）／
+参照のリンクは `docs/redesign-references.md`。
+★★土台は決まった ―― **GRAVITY の世界の語彙だけで書く**（ピル・図形・額縁・円。
+カードもグリッドも持ち込まない）。**候補＝ピル、引くと図形になって落ちる。**
+残っている問題は **提案（タスクではないもの）をどこへ置くか**（`redesign-ideas.md` の P1〜P12）と、
+**形の変態**（ピル→図形→カード→点。同 M1〜M8）。
 ★★**Explore の刷新（券・改札鋏・ゴールのバインダー）は検討の入力から保留**にした。
 コードは消していない（`DEV` タブごと最後に処分）。下の第69〜81巡の記述は
 **その保留中のものについての記録**であり、いま進める作業ではない。
@@ -170,20 +176,14 @@ HTML になり水和が丸ごと失敗する**。`href="tokens" precedence="defa
 
 - ★Explore 刷新の設計 … `docs/explore-redesign.md`／★UI の規約と機械チェック13本
   … `design.md`（前後に必ず走らせる）／目盛り `lib/tokens.ts`／色 `lib/constants.ts`
-- 券 … ★**見本帳 `components/explore/samples/`（4案。選んだら消す）**／
-  旧版 `Ticket.tsx`（`/dev/explore` だけ。★角丸のまま＝**新しい外形は当てていない**）／
-  `PunchMark.tsx`／`lib/ticket.ts`／質感 `lib/printGrain.ts`
-  ★外形（角丸0＋ギザギザ＋四隅の切り欠き）は `TicketParts.scallopMask()`。
+- 券（★保留中）… `components/explore/samples/`（見本帳4案）／`Ticket.tsx`／`PunchMark.tsx`
+  ／`lib/ticket.ts`／質感 `lib/printGrain.ts`。外形は `TicketParts.scallopMask()`。
 - ★**色そのものは `lib/constants.ts` の `PALETTE`（6行）だけ**／役との対応は
   同ファイルの `SCHEME` と `lib/palette.ts`
   ／★**面から導く3つ** … `bodyInkOn`（面に載る字）・`redOn`（盤の赤2つ）・
   `inkVarsOn`（地の上）。**表を持たず、導かせる。**
-- ★券と鋏を同じ3D空間に置く器 … `components/explore/TicketStage.tsx`
-- 鋏（★three.js）… `Nipper.tsx`（画角・動き）＋ `lib/nipperMesh.ts`（立体と質感）
-  ＋ `lib/nipperRig.ts`（組み立てと光）／三面図 `NipperViews.tsx`／`app/dev/explore`
-  ＋ ★形の生成 … `lib/nipperPath.ts`（手書き）→ `tools/trace-nipper.mjs` →
-  `lib/nipperShapeRaw.ts` → `tools/clean-nipper.mts` → `lib/nipperShape.ts`
-  （**どちらも生成物。手で直さない**）／凍結 `docs/archive/nipper-shape-21.ts`
+- 鋏（★保留中・three.js）… `Nipper.tsx`／`lib/nipperMesh.ts`／`lib/nipperRig.ts`／
+  `NipperViews.tsx`／形の生成は `nipperPath → trace → Raw → clean → nipperShape`（生成物。手で直さない）。
 - タスク … `components/tabs/GravityTab.tsx`／カメラ `components/tasks/TaskSpace.tsx`
   ／入口の輪 `components/CreateMenu.tsx`
 - ブリーフ … `lib/briefPipeline.ts`（`fetchSite` / `fetchDirect` / `jinaSlot`）

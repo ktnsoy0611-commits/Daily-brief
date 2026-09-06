@@ -1,77 +1,99 @@
-import sys, math, random
-from PIL import Image
-random.seed(7)
-U="/root/.claude/uploads/6085550b-b4f7-58d5-8298-74c108ced330/"
+"""参照画像から「デザインされた面」だけの配色を採る。
+
+写真が背景にあると、面積で地を決める規則は破綻する（夜景が地に採られる）。
+2つの条件で写真を落とす:
+  1. 局所の分散が小さい画素だけ残す（写真の肌理が落ちる）
+  2. 群の中のばらつき（Lab の標準偏差）が小さく、横に長く連なる群だけ残す
+     ―― 刷られた面は「まったく同じ値」が広く続く。空はゆるやかに変わるので残らない。
+墨（文字の色）は線が細く上の条件を通らないので、ふるいにかけない画素から別に採る。
+"""
+import math, random, sys
+from PIL import Image, ImageFilter
+random.seed(11)
 
 def srgb2lin(c):
     c=c/255.0
     return c/12.92 if c<=0.04045 else ((c+0.055)/1.055)**2.4
 def rgb2lab(r,g,b):
     R,G,B=srgb2lin(r),srgb2lin(g),srgb2lin(b)
-    X=R*0.4124+G*0.3576+B*0.1805; Y=R*0.2126+G*0.7152+B*0.0722; Z=R*0.0193+G*0.1192+B*0.9505
-    Xn,Yn,Zn=0.95047,1.0,1.08883
+    X=R*.4124+G*.3576+B*.1805;Y=R*.2126+G*.7152+B*.0722;Z=R*.0193+G*.1192+B*.9505
     def f(t): return t**(1/3) if t>0.008856 else (7.787*t+16/116)
-    fx,fy,fz=f(X/Xn),f(Y/Yn),f(Z/Zn)
-    return (116*fy-16, 500*(fx-fy), 200*(fy-fz))
+    fx,fy,fz=f(X/.95047),f(Y),f(Z/1.08883)
+    return (116*fy-16,500*(fx-fy),200*(fy-fz))
 def hexs(c): return "#%02X%02X%02X"%tuple(int(round(v)) for v in c)
 
-def kmeans(pts, k, iters=40):
-    # k-means++ init
+def kmeans(pts,k,it=40):
     cents=[random.choice(pts)]
     for _ in range(k-1):
         d=[min(sum((p[i]-c[i])**2 for i in range(3)) for c in cents) for p in pts]
-        tot=sum(d) or 1
-        r=random.random()*tot; acc=0
+        t=sum(d) or 1; r=random.random()*t; a=0
         for p,dd in zip(pts,d):
-            acc+=dd
-            if acc>=r: cents.append(p); break
+            a+=dd
+            if a>=r: cents.append(p); break
         else: cents.append(random.choice(pts))
-    for _ in range(iters):
-        buck=[[] for _ in cents]
+    for _ in range(it):
+        b=[[] for _ in cents]
         for p in pts:
-            bi=min(range(len(cents)), key=lambda i: sum((p[j]-cents[i][j])**2 for j in range(3)))
-            buck[bi].append(p)
-        new=[]
-        for i,b in enumerate(buck):
-            if b: new.append(tuple(sum(x[j] for x in b)/len(b) for j in range(3)))
-            else: new.append(cents[i])
-        if all(sum((new[i][j]-cents[i][j])**2 for j in range(3))<0.5 for i in range(len(cents))): 
-            cents=new; break
-        cents=new
-    buck=[[] for _ in cents]
-    for p in pts:
-        bi=min(range(len(cents)), key=lambda i: sum((p[j]-cents[i][j])**2 for j in range(3)))
-        buck[bi].append(p)
-    return [(cents[i], len(buck[i])/len(pts)) for i in range(len(cents))]
+            i=min(range(len(cents)),key=lambda i:sum((p[j]-cents[i][j])**2 for j in range(3)))
+            b[i].append(p)
+        cents=[tuple(sum(x[j] for x in bb)/len(bb) for j in range(3)) if bb else cents[i]
+               for i,bb in enumerate(b)]
+    return cents
 
-def rep(rgbs, lab_center):
-    # pick the actual pixel colour closest to the cluster centre (in Lab)
-    best=None; bd=1e9
-    for c in rgbs:
-        L=rgb2lab(*c); d=sum((L[i]-lab_center[i])**2 for i in range(3))
-        if d<bd: bd=d; best=c
-    return best
-
-def run(fn, name, k=8, crop=None):
-    im=Image.open(U+fn).convert("RGB")
+def palette(path,k=16,crop=None,spread=2.2,minrun=0.08,size=300):
+    im=Image.open(path).convert("RGB")
     if crop: im=im.crop(crop)
-    im.thumbnail((260,260))
-    px=list(im.getdata())
-    labs=[rgb2lab(*p) for p in px]
-    cl=kmeans(labs, k)
-    cl.sort(key=lambda x:-x[1])
-    out=[]
-    for c,w in cl:
-        if w<0.012: continue
-        col=rep(px, c)
-        L,a,bb=rgb2lab(*col)
-        chroma=math.hypot(a,bb)
-        out.append((hexs(col), round(w*100,1), round(L,1), round(chroma,1)))
-    print("\n== %s  (%s)"%(name, fn))
-    for h,w,L,C in out:
-        print("   %s  %5.1f%%   L*%5.1f  C*%5.1f"%(h,w,L,C))
+    im.thumbnail((size,size)); W,H=im.size; px=im.load()
+    g=im.convert("L"); m=g.filter(ImageFilter.BoxBlur(2)).load()
+    s=Image.eval(g,lambda v:(v*v)//255).filter(ImageFilter.BoxBlur(2)).load()
+    kept=[(x,y) for y in range(H) for x in range(W) if s[x,y]*255-m[x,y]*m[x,y] < 9]
+    labs=[rgb2lab(*px[p]) for p in kept]
+    cents=kmeans(labs,k)
+    idx=[min(range(k),key=lambda i:sum((L[j]-cents[i][j])**2 for j in range(3))) for L in labs]
+    grp=[[] for _ in range(k)]
+    for L,i in zip(labs,idx): grp[i].append(L)
+    A={p:i for p,i in zip(kept,idx)}
+    mr=[0]*k
+    for y in range(H):
+        c=-1;n=0
+        for x in range(W):
+            a=A.get((x,y),-2)
+            if a==c: n+=1
+            else:
+                if c>=0: mr[c]=max(mr[c],n)
+                c=a;n=1
+        if c>=0: mr[c]=max(mr[c],n)
+    tot=len(kept); rows=[]
+    for i in range(k):
+        n=len(grp[i])
+        if n/tot<0.008: continue
+        mu=[sum(x[j] for x in grp[i])/n for j in range(3)]
+        sd=math.sqrt(sum(sum((x[j]-mu[j])**2 for j in range(3)) for x in grp[i])/n)
+        if sd>spread or mr[i]/W<minrun: continue
+        best=None;bd=1e9
+        for p in kept:
+            L=rgb2lab(*px[p]);d=sum((L[j]-cents[i][j])**2 for j in range(3))
+            if d<bd: bd=d;best=px[p]
+        L,a,b=rgb2lab(*best)
+        rows.append({"hex":hexs(best),"n":n,"L":L,"C":math.hypot(a,b)})
+    t=sum(r["n"] for r in rows) or 1
+    for r in rows: r["pct"]=r["n"]/t*100
+    rows.sort(key=lambda r:-r["pct"])
+    # 墨 ── 面のふるいを通らない細い線から採る
+    ink=min((px[(x,y)] for y in range(H) for x in range(W)),
+            key=lambda c: rgb2lab(*c)[0])
+    return rows, hexs(ink)
 
 if __name__=="__main__":
-    for a in sys.argv[1:]:
-        f,n,k=a.split("|")
-        run(f,n,int(k))
+    U="/root/.claude/uploads/6085550b-b4f7-58d5-8298-74c108ced330/"
+    JOBS=[("d2315c89-image.jpg","01 EPA 1970",20,(24,140,1170,1000)),
+          ("144ceff6-image.jpg","02 Make More of Every Space",16,None),
+          ("aadbe818-image.jpg","03 Strelka",12,None),
+          ("d0f4899d-image.jpg","04 色名のパレット",12,None),
+          ("7f56555e-image.jpg","05 黒地のグラフ",10,None)]
+    for fn,name,k,crop in JOBS:
+        rows,ink=palette(U+fn,k,crop)
+        print("\n=== %s"%name)
+        print("   墨（細い線から）%s"%ink)
+        for r in rows:
+            print("   %s %5.1f%%  L*%5.1f  C*%5.1f"%(r["hex"],r["pct"],r["L"],r["C"]))

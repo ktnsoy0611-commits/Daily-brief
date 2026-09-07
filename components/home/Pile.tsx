@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BAND_BEZEL, INK, LATIN, PAPER, RUST } from "@/lib/constants";
+import { BAND_BEZEL, INK, LATIN, PAPER, RUST, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { colorOfKind } from "@/lib/palette";
+import { bodyInkOn, colorOfKind } from "@/lib/palette";
+import { glyphOfKind } from "@/lib/deckStyle";
 import { areaOf, specOf, weightArea } from "@/lib/taskSize";
 import { resolveTag, tagColor, tagFace, tagInk } from "@/lib/taskTags";
 import { canvasFont, drawFitted, ensureGlyphs, fitText } from "@/lib/textFit";
 import { paperize } from "@/lib/paperTexture";
-import { RADIUS } from "@/lib/tokens";
+import { LEAD, RADIUS, TRACK, WEIGHT } from "@/lib/tokens";
 import { aimTargets, DropTargets, fireTarget, targetAt } from "@/components/tasks/DropTargets";
-import { GeoText, geoTextWidth } from "@/components/GeoType";
+
 import type { Body, Engine } from "matter-js";
 import type { Item, Task } from "@/lib/types";
 
@@ -51,6 +52,8 @@ const FILL = 0.22;
  *  ―― 実機で「大きすぎるやつがある」と言われたのがこれ。 */
 const FIT_W = 0.62;
 const FIT_H = 0.34;
+/** ★提案の円の大きさ。**いちばん重いタスク × これ**（2026-09-08 に 1 → 1.6）。 */
+const OFFER_K = 1.6;
 /** 未読のトゲトゲの円。★12頂点・内半径 0.40（`docs/home-spec.md` §5-b）。 */
 const ZIG_N = 12;
 const ZIG_IN = 0.4;
@@ -70,6 +73,8 @@ const WORD_PAD = 4;
 const WORD_PAD_Y = 2;
 /** 文字の板が使ってよい幅の割合。★図形を小さくしたぶん、板も細くする。 */
 const WORD_W = 0.48;
+/** 測るときの基準の大きさ。★幅は文字サイズに比例するので、1回測れば次が直接出る。 */
+const WORD_BASE = 100;
 
 const frac = (s: string) => {
   let h = 0;
@@ -88,6 +93,8 @@ interface Piece {
   title?: string;
   face_?: number;      // 書体の番号（タグが決める）
   photo?: string;
+  /** ★写真が無い提案の顔（「展」「場」）。 */
+  glyph?: string;
   count?: number;
   /** 文字の板（日付・曜日）だけが持つ。 */
   wordFs?: number;
@@ -133,6 +140,38 @@ function taskBitmap(p: Piece, dpr: number): HTMLCanvasElement | undefined {
   if (bakeCache.size > 80) bakeCache.clear();
   bakeCache.set(key, cv);
   return cv;
+}
+
+/**
+ * ★★**日付と曜日の組み方はここ1つ**（測るときと描くときで必ず同じにする）。
+ * Archivo の 900。★幅の軸は画面のほかの英語と同じ `wdth 88`。
+ * ★字間は大きな欧文の規則どおり `tight`（`design.md` §1）。
+ */
+const wordStyle = (fs: number): React.CSSProperties => ({
+  fontFamily: LATIN, fontSize: fs, fontWeight: WEIGHT.black,
+  letterSpacing: TRACK.tight, lineHeight: LEAD.flat,
+  fontVariationSettings: '"wdth" 88',
+});
+
+/** ★組んだ字の箱を**実測**する。canvas では幅の軸が効かないので DOM で測る。 */
+function measureWord(text: string, fs: number): { w: number; h: number } {
+  const el = document.createElement("span");
+  Object.assign(el.style, {
+    position: "absolute", visibility: "hidden", whiteSpace: "nowrap",
+    left: "0", top: "0",
+  } as CSSStyleDeclaration);
+  const st = wordStyle(fs);
+  el.style.fontFamily = String(st.fontFamily);
+  el.style.fontSize = `${fs}px`;
+  el.style.fontWeight = String(st.fontWeight);
+  el.style.letterSpacing = String(st.letterSpacing);
+  el.style.lineHeight = String(st.lineHeight);
+  el.style.setProperty("font-variation-settings", '"wdth" 88');
+  el.textContent = text;
+  document.body.appendChild(el);
+  const r = el.getBoundingClientRect();
+  el.remove();
+  return { w: r.width, h: r.height };
 }
 
 /** 写真は1度だけ読み込んで使い回す。★読み終わるまでは色ベタの円。 */
@@ -212,7 +251,7 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
       //   大きさの比がそのまま重要度なので、比を保ったまま全体を縮める。
       const areas = [
         ...tasks.map((t) => areaOf(t, today)),
-        ...offers.map(() => weightArea(2)),
+        ...offers.map(() => weightArea(3) * OFFER_K),
       ];
       const total = areas.reduce((a, b) => a + b, 0) || 1;
       let unit = Math.max(16, Math.min(UNIT, Math.sqrt((w * h * FILL) / total)));
@@ -270,15 +309,21 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
       });
 
       offers.forEach((it, i) => {
-        // ★提案は重さを持たないので、**重要度は「中」**として置く。
-        const r = Math.max(22, Math.sqrt((weightArea(2) * unit * unit) / Math.PI));
+        // ★★提案は重さを持たないので、**いちばん重いタスクと同じ**として置く
+        //   （2026-09-08 ユーザー指定「提案の図形はもっと大きく」）。山の中で
+        //   **今日行くと決めた1件**は、済ませる細かなタスクより大きくてよい。
+        const area = weightArea(3) * OFFER_K;
+        const r = Math.max(28, Math.sqrt((area * unit * unit) / Math.PI));
         const body = M.Bodies.circle(0, 0, r, BODY);
-        M.Body.setMass(body, weightArea(2) * MASS_K);
+        M.Body.setMass(body, area * MASS_K);
         toss(body, it.id, tasks.length + i, r * 2);
+        const face = it.color ?? colorOfKind(it.kind);
         pieces.push({
           id: it.id, body, kind: "offer", r,
-          face: it.color ?? colorOfKind(it.kind), ink: PAPER,
+          face, ink: bodyInkOn(face),
           photo: it.images?.[0], title: it.title,
+          // ★写真が無い提案の顔＝**字面**（ブリーフのカードと同じ規則）。
+          glyph: glyphOfKind(it.kind),
         });
       });
 
@@ -290,24 +335,26 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
 
       // ★★★**その日の日付と曜日も一緒に落とす**（2026-09-07 ユーザー指定。
       //   `GravityTab` と同じ ―― 枠の無い、文字だけの黒い板）。
-      // ★★★**字は幾何アルファベット**（`components/GeoType.tsx`）にした
-      //   （2026-09-08 ユーザー指摘「曜日と日付のフォントがダサい」）。canvas に
-      //   Archivo を描くと、body に掛けている `wdth 88` が効かず**素の幅のまま**
-      //   出るので、画面のほかの英語と字の太り方が食い違う。幾何アルファベットは
-      //   **このアプリが自分で持っている顔**（左上の名前と同じ）で、canvas では
-      //   なく DOM（SVG）なので、幅も形もそのまま出る。
+      // ★★★**字は Archivo の 900**（2026-09-08 ユーザー指定「ボールドの太くて
+      //   美しいフォント」）。★canvas ではなく **DOM** で描くのが要点 ――
+      //   canvas の `ctx.font` には `font-variation-settings` が乗らないので、
+      //   Archivo が**素の幅（wdth 100）**で出て、画面のほかの英語（`wdth 88`）と
+      //   字の太り方が食い違う。DOM なら幅の軸がそのまま効く。
+      //   ★★これで日付を `9/8` と書ける（幾何アルファベットは A-Z と 0-9 しか
+      //   持たないので `SEP08` にしていた）。
       // ★★2枚は**同じ大きさ**で組む（長いほう＝曜日で決める）。別々に決めると
       //   上端も下端も食い違って見える（`GravityTab` の教訓）。
       const wd = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][today.getDay()];
-      const mo = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][today.getMonth()];
-      const dd = String(today.getDate()).padStart(2, "0");
-      const words = [`${mo}${dd}`, wd];
-      // ★1文字の外形（＝高さ）を基準に、長いほうが器の `WORD_W` に収まる大きさを出す。
-      const glyphBox = geoTextWidth("A") || 1;
-      const wordFs = Math.max(18, (w * WORD_W * glyphBox) / Math.max(...words.map((x) => geoTextWidth(x)), 1));
+      const words = [`${today.getMonth() + 1}/${today.getDate()}`, wd];
+      // ★★大きさは**実際に組んだ字を測って**決める（`measureWord`）。長いほうが
+      //   器の `WORD_W` に収まる大きさを出し、**2枚とも同じ大きさ**で組む ――
+      //   別々に決めると上端も下端も食い違って見える（`GravityTab` の教訓）。
+      const base = measureWord(wd, WORD_BASE);
+      const wordFs = Math.max(18, (WORD_BASE * w * WORD_W) / Math.max(1, base.w));
       words.forEach((word, i) => {
-        const bw = Math.max(8, (wordFs * geoTextWidth(word)) / glyphBox + WORD_PAD * 2);
-        const bh = Math.max(8, wordFs + WORD_PAD_Y * 2);
+        const m = measureWord(word, wordFs);
+        const bw = Math.max(8, m.w + WORD_PAD * 2);
+        const bh = Math.max(8, m.h + WORD_PAD_Y * 2);
         const body = M.Bodies.rectangle(0, 0, bw, bh, BODY);
         // ★★★**文字の板はほとんど回さない**（2026-09-08）。板は薄くて長いので、
         //   ほかと同じに回すと**逆さまや裏返しで積まれて読めなくなる**（実機で
@@ -361,6 +408,20 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
             ctx.closePath();
             ctx.fill();
             const im = p.photo ? photoOf(p.photo, redraw) : undefined;
+            if (!im && p.glyph) {
+              // ★★★**写真が無い提案の顔は「字面」**（2026-09-08）。ブリーフの
+              //   カードが写真の無いときにやっていることと**同じ規則**なので、
+              //   ホームと EXPLORE で同じものが同じ顔になる。
+              //   ★帯のピルでは字面をやめた（小さい器では題より字面が強くなる）。
+              //   山の円は**題を持たない大きな面**なので、ここでは字面が中身そのもの。
+              ctx.rotate(-b.angle);          // ★読ませる字なので回さない
+              ctx.fillStyle = p.ink;
+              ctx.globalAlpha = 0.92;
+              ctx.font = canvasFont(WEIGHT.bold, p.r * 1.15, SANS);
+              ctx.textAlign = "center"; ctx.textBaseline = "middle";
+              ctx.fillText(p.glyph, 0, 0);
+              ctx.globalAlpha = 1;
+            }
             if (im) {
               const inner = Math.max(4, p.r - BAND_BEZEL);
               ctx.save();
@@ -514,10 +575,12 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
           key={wd.id}
           ref={(el) => { if (el) wordEls.current.set(wd.id, el); else wordEls.current.delete(wd.id); }}
           aria-hidden
-          style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", willChange: "transform" }}
-        >
-          <GeoText text={wd.text} size={wd.size} color={INK} />
-        </div>
+          style={{
+            position: "absolute", left: 0, top: 0, pointerEvents: "none", willChange: "transform",
+            whiteSpace: "nowrap", color: INK,
+            ...wordStyle(wd.size),
+          }}
+        >{wd.text}</div>
       ))}
       <PileTargets holding={holding} aimRef={aimRef} dropRef={dropRef} />
     </div>

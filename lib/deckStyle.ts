@@ -26,6 +26,11 @@ const KIND_META: Record<ItemKind, { category: string; categoryJp: string; glyph:
 };
 const FALLBACK_META = KIND_META.info;
 
+/** ★kind → **字面**（「展」「場」「本」）。写真が無いカードの顔で、ブリーフの
+ *  カードがずっとやってきたこと。★ホームの山の円（写真が無い提案）も**同じ字面**
+ *  を使うので、ここから引く（表を2つ持たない）。 */
+export const glyphOfKind = (kind: ItemKind): string => (KIND_META[kind] ?? FALLBACK_META).glyph;
+
 const isUrl = (s: string) => /^https?:\/\//i.test(s.trim());
 function hostOf(u?: string): string | undefined {
   if (!u) return undefined;

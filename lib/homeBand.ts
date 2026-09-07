@@ -62,21 +62,51 @@ const taskFace = (t: Partial<Task> | Partial<InboxCandidate>, seed: string): str
   tagColor(resolveTag(t.tag, seed, t.title, t.context, t.belongings));
 
 /**
- * その日のデッキのうち、まだ決めていないカード。
+ * まだ決めていない提案のカード。
  * ★山の**トゲトゲの円**が数えるのもこれ（未読の全枚数。2026-09-07 ユーザー確定）。
+ *
+ * ★★★**「今日の号」だけを見てはいけない**（2026-09-07・実機で帯の1段目が
+ * 空になって発覚）。既存の BRIEF は、デッキを**日をまたいだ未消化のプール**
+ * として持っている ―― 新しい号から順に集め、**どの日の決定でも**消化済みなら
+ * 除き、会期切れも除く。夜間の生成がまだ走っていない日は今日の号が存在しない
+ * ので、今日だけを見ると**必ず空**になる。
+ * ★ここは `components/tabs/BriefTab.tsx` の `deck` と**同じ規則**にしてある。
+ * 片方を直したらもう片方も直すこと（同じものを2つの画面に出しているため）。
  */
-export function unreadCards(state: AppState, dayKey: string): BriefCard[] {
-  const deck = state.generatedDecks?.[dayKey] ?? [];
-  const decided = new Set(Object.keys(state.briefs?.[dayKey]?.decisions ?? {}));
-  return deck.filter((c): c is BriefCard => !("type" in c && c.type) && !decided.has(String(c.id)));
+export function unreadCards(state: AppState): BriefCard[] {
+  const decks = state.generatedDecks ?? {};
+  // ★決定は日ごとの `briefs[*]` に散っている。カード id は生成ごとに一意なので、
+  //   全日ぶんをマージして引く（BriefTab の `allDecisions` と同じ）。
+  const decided = new Set<string>();
+  for (const b of Object.values(state.briefs ?? {})) {
+    for (const id of Object.keys(b?.decisions ?? {})) decided.add(id);
+  }
+  const now = Date.now();
+  const seen = new Set<string>();
+  const pool: BriefCard[] = [];
+  // ★キー（"YYYY-MM-DD"）は文字列比較で新しい順に並ぶ。
+  for (const ek of Object.keys(decks).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))) {
+    for (const c of decks[ek] ?? []) {
+      if ("type" in c && c.type) continue;            // 育成カードは提案ではない
+      const id = String(c.id);
+      if (seen.has(id) || decided.has(id)) continue;
+      seen.add(id);
+      if (c.expiresAt) {
+        const t = Date.parse(c.expiresAt);
+        if (!Number.isNaN(t) && t < now) continue;    // 会期切れは出さない
+      }
+      pool.push(c);
+    }
+  }
+  return pool;
 }
 
 /** 帯の中身（種類ごと）。★**出どころだけで決める**（切実さで混ぜない）。 */
-export function bandItems(state: AppState, dayKey: string): BandItem[] {
+export function bandItems(state: AppState): BandItem[] {
   const out: BandItem[] = [];
 
   // 1 今日入った、おすすめの提案。★色も写真も字面も、Explore のカードのまま。
-  for (const c of unreadCards(state, dayKey)) {
+  for (const c of unreadCards(state)) {
     out.push({
       id: `offer-${c.id}`, kind: "offer", text: cardText(c),
       face: cardFace(c), photo: c.images?.[0], glyph: c.glyph,
@@ -116,8 +146,8 @@ export function bandItems(state: AppState, dayKey: string): BandItem[] {
 }
 
 /** 3段ぶんに振り分け、段ごとに上限で切る。★空の段はそのまま空で返す（描く側が消す）。 */
-export function bandRows(state: AppState, dayKey: string): [BandItem[], BandItem[], BandItem[]] {
+export function bandRows(state: AppState): [BandItem[], BandItem[], BandItem[]] {
   const rows: [BandItem[], BandItem[], BandItem[]] = [[], [], []];
-  for (const it of bandItems(state, dayKey)) rows[BAND_ROW[it.kind]].push(it);
+  for (const it of bandItems(state)) rows[BAND_ROW[it.kind]].push(it);
   return rows.map((r) => r.slice(0, BAND_LIMIT)) as [BandItem[], BandItem[], BandItem[]];
 }

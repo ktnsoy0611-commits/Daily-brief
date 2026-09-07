@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import { Band } from "@/components/home/Band";
 import { bandRows } from "@/lib/homeBand";
-import { todayKey } from "@/lib/helpers";
 import { SPACE } from "@/lib/tokens";
 import type { TabProps } from "@/lib/types";
 
@@ -20,8 +19,7 @@ import type { TabProps } from "@/lib/types";
 //   下は地のまま空けてある。
 
 export function HomeTab({ appState }: TabProps) {
-  const day = todayKey();
-  const rows = useMemo(() => bandRows(appState, day), [appState, day]);
+  const rows = useMemo(() => bandRows(appState), [appState]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", paddingTop: SPACE.sm }}>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { BAND_H, SANS } from "@/lib/constants";
+import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { type BandItem } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
@@ -31,48 +31,40 @@ const HEIGHT: Record<Row, number> = { 0: BAND_H.photo, 1: BAND_H.plain, 2: BAND_
  * ピル1つ。★色は**その中身が既存のアプリで持っている色**（`lib/homeBand.ts`）。
  * 面に載る字は `bodyInkOn()` が面から導く（表に持たない）。
  *
- * ★★★**提案の丸は、Explore と同じ規則**（2026-09-07・ユーザー指摘「写真もないし、
- *   現状の Explore と繋がっていない」）―― 写真があればその写真、無ければ
- *   **色ベタの上に巨大な字面**（「展」「本」）。だから列には必ず「顔」が並ぶ。
+ * ★★★**写真がある提案だけが丸を持つ**（2026-09-07・ユーザー指定「画像がない時は
+ *   なくて良い」）。写真の無い提案に字面を大きく置くのは**やめた** ―― 帯の中では
+ *   字面が主役になってしまい、題より大きな塊が列に並ぶ。
+ * ★★**丸はピルの中に収める**（縁とのあいだに `SPACE.sm` の縁取り）。高さいっぱいに
+ *   すると、丸とピルの輪郭が接して「はめ込んだ」ではなく「はみ出した」に見える。
  */
 function Pill({ item, row }: { item: BandItem; row: Row }) {
   const face = item.face;
   const ink = bodyInkOn(face);
   const h = HEIGHT[row];
-  const head = row === 0;                    // 提案の段だけ、丸と大きな題を持つ
+  const head = row === 0;                              // 提案の段
+  const photo = head ? item.photo : undefined;
+  // ★丸の直径 ＝ ピルの高さ − 縁取り2つぶん。
+  const dia = h - BAND_BEZEL * 2;
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: SPACE.md, flexShrink: 0,
       height: h, borderRadius: RADIUS.pill, background: face,
-      // ★丸は左端に密着するので、そのときだけ左の余白を持たない。
-      padding: head ? `0 ${SPACE.xl}px 0 0` : `0 ${SPACE.xl}px`,
+      // ★丸があるときは、左の余白を縁取りぶんだけにする（丸が余白を持つ）。
+      padding: photo ? `0 ${SPACE.xl}px 0 ${BAND_BEZEL}px` : `0 ${SPACE.xl}px`,
       maxWidth: "84vw",
     }}>
-      {head && (
-        <div style={{
-          width: h, height: h, borderRadius: RADIUS.circle, flexShrink: 0,
-          overflow: "hidden", position: "relative",
-          // ★写真が無いときの地。★Explore のカードと同じ「色ベタ＋字面」。
-          background: face, display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          {item.photo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={img(item.photo, 200, 200)} alt=""
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          ) : (
-            <span aria-hidden style={{
-              // ★★字面は**丸いっぱい**に。`TYPE` の段から選ばない＝目盛りの外
-              //   （器の直径から決まる寸法。Explore の `min(42vw,170px)` と同じ考え方）。
-              fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: h * 0.72,
-              lineHeight: LEAD.flat, color: ink, opacity: 0.92,
-            }}>{item.glyph ?? ""}</span>
-          )}
-        </div>
+      {photo && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={img(photo, 200, 200)} alt=""
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
+          style={{
+            width: dia, height: dia, borderRadius: RADIUS.circle,
+            objectFit: "cover", display: "block", flexShrink: 0,
+          }} />
       )}
       <span style={{
-        // ★★提案は `head`(20) ―― 帯の中で主役をひとつ作る（ユーザー指摘
-        //   「パンチが足りない」）。★候補・期日未割当は `lead`(16)。
+        // ★★提案は `head`(20) ―― 帯の中で主役をひとつ作る。
+        //   候補・期日未割当は `lead`(16)。
         //   ★どちらも 700 以上なので、面の比が 4.5 に届かない色でも
         //   「大きな文字 3.0」で通る。
         fontFamily: SANS, fontSize: head ? TYPE.head : TYPE.lead, fontWeight: WEIGHT.bold,

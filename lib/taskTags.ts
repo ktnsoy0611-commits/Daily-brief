@@ -1,4 +1,4 @@
-import { TAG_STEPS } from "./constants";
+import { SCHEME } from "./constants";
 import { bodyInkOn } from "./palette";
 import type { TaskTag } from "./types";
 
@@ -7,8 +7,9 @@ import type { TaskTag } from "./types";
 // タグが決める。表示は**英字のみ**(日本語は出さない)。
 // 自由入力にすると似たタグが増えて色が似通い、山の中で見分けが付かなくなる。
 //
-// ★★★2026-09-07 に**タグは色を持たなくなった**（下の `TASK_TAGS`）。図形の塗りは
-// **濃さ5段**（`TAG_STEPS`）で、載る字は `bodyInkOn()` が面から導く。
+// ★色は**スキームの組をそのまま**当てる(2026-08-16にユーザー確定・参照画像)。
+// 「図形の色」と「文字の色」は画像の組み合わせどおりで、タグと**一対一対応**。
+// 明度から白黒を選ぶ(inkOn)のはやめた — 相方の色は画像が決めている。
 
 // ★書体もタグと対応させる(2026-08-16にユーザー確定)。同じタグのタスクは
 // 必ず同じ書体になり、色と書体の2つでタグが読める。番号は
@@ -26,22 +27,24 @@ export interface TagDef { id: TaskTag; label: string; color: string; ink: string
 const tag = (id: TaskTag, label: string, color: string, face: number): TagDef =>
   ({ id, label, color, ink: bodyInkOn(color), face });
 
-// ★★★**書体（`face`）と id は動かさない** ―― 動かすと「同じタグなら必ず同じ書体」
-//   が壊れる。第78巡・第80巡は色だけを差し替え、2026-09-07 は色を**濃さへ**替えた。
+// ★★★第80巡にパレットを差し替えた（ユーザー指定の6色）。**要るのは5色**で、
+//   ドメイン4は同じ5色から借りる（TASK と EXPLORE は同じ画面に並ばない）。
+//   選び方は目ではなく**採点** ―― 6色から5色を選ぶ6通りを全部採点し、
+//   **Magenta を外した組**がいちばん良かった:
+//   色相の最小隔たり **47.7°**（前は 28.0°）／明度の幅 0.326／彩度の幅 0.091／
+//   見分けの最小 ΔE **0.187**（前は 0.144）。
+//   ★★外した Magenta は**危険**へ回る（白い紙の上 6.07 ＝ 本文が書ける深い赤）。
+//     第77巡の「危険だけ予備から借りる」問題がここで解けた。
+//   ★★★**書体（`face`）と id は動かさない** ―― 動かすと「同じタグなら必ず同じ書体」
+//     が壊れる。第78巡・第80巡とも色だけを差し替えている。
 export const TASK_TAGS: TagDef[] = [
-  // ★★★2026-09-07 に**タグの色を廃止した**（ユーザー確定）。新しい5色は
-  //   SKY / STORM / SEA が**同じ色相の3段**（隔たり 5.4°）で、5つ並べても山の中で
-  //   見分けが付かない ―― **この5色は「役の階段」であって「分類の色」ではない**。
-  //   `docs/home-spec.md` §2-c の「色が出るのは帯の上段・提案の丸・未読のバッジだけ。
-  //   タスクの四角は白と墨」も同じことを言っている。
-  // ★★**代わりに濃さ5段**（地と `INK` の混色を **L\* で等間隔**に切った値）。
-  //   図形に載る字は `bodyInkOn()` が面から導くので、明るい側は自動で墨になる。
-  //   見分けは**濃さ ＋ 書体**の2つが持つ（書体の対応は動かしていない）。
-  tag("work", "WORK", TAG_STEPS[0], 1),             // L* 16 / ゴシック700
-  tag("life", "LIFE", TAG_STEPS[1], 3),             // L* 34 / 丸ゴシック500
-  tag("wellness", "WELLNESS", TAG_STEPS[2], 4),     // L* 52 / Dela(極太)
-  tag("social", "SOCIAL", TAG_STEPS[3], 5),         // L* 70 / M PLUS 1 800
-  tag("growth", "GROWTH", TAG_STEPS[4], 2),         // L* 88 / ゴシック700斜体
+  // ★★色は `SCHEME`（`lib/constants.ts`）が持つ。ここは**役 → 色**の参照だけ。
+  //   多い3つ（work / life / growth）は色相 255°／152°／35° と大きく離してある。
+  tag("work", "WORK", SCHEME.work, 1),             // Azul     / ゴシック700
+  tag("life", "LIFE", SCHEME.life, 3),             // Verde    / 丸ゴシック500
+  tag("wellness", "WELLNESS", SCHEME.wellness, 4), // Amarillo / Dela(極太)
+  tag("social", "SOCIAL", SCHEME.social, 5),       // Rosa     / M PLUS 1 800
+  tag("growth", "GROWTH", SCHEME.growth, 2),       // Terracota/ ゴシック700斜体
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>
@@ -61,10 +64,11 @@ export const tagFace = (id: TaskTag | undefined): number => tagDef(id)?.face ?? 
 
 export const tagLabel = (id: TaskTag | undefined): string => tagDef(id)?.label ?? TASK_TAGS[0].label;
 
-// ★墨地(入力画面・日程のシート)の上で使う「そのタグの濃さ」
+// ★墨地(入力画面・日程のシート)の上で使う「そのタグの色」
 // (2026-08-17にユーザー確定「アクセントはそのタスクのタグの色」)。
-// ★濃い段は墨の上で沈んで読めないので、その場合だけ**載る字の色**(ink)へ替える。
-// 新しい値は作らない — 使うのは必ずそのタグが持っている2つのどちらか。
+// ただし LIFE の深緑(#04624A)のように**墨の上で沈んで読めない**組がある。
+// その場合だけ**相方の色**(ink)へ替える。新しい色は作らない — 使うのは
+// 必ず SCHEME の対の中から。
 /** sRGB の相対輝度(WCAG)。 */
 function relLum(hex: string): number {
   const v = [1, 3, 5].map((i) => {

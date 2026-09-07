@@ -29,16 +29,6 @@ export interface AppDef {
 }
 
 export const APPS: AppDef[] = [
-  // ★★★**ホームは4つ目の列**(2026-09-07・`docs/home-spec.md`)。3アプリの入口で、
-  //   3アプリの枠を越えて情報が一元化される場所。**自分のタブを持たない** ――
-  //   タブバーの中身が「3アプリの名前」に変わる(`components/AppShell.tsx`)。
-  //   ★循環は HOME → JOURNAL → TASK → EXPLORE → HOME。列の仕組みは足していない。
-  {
-    id: "home",
-    label: "ホーム",
-    en: "HOME",
-    tabs: [{ id: "home", label: "ホーム", en: "HOME", icon: "list" }],
-  },
   {
     id: "journal",
     label: "ジャーナル",
@@ -77,7 +67,7 @@ export const APPS: AppDef[] = [
   },
 ];
 
-export const appDef = (id: AppId): AppDef => APPS.find((a) => a.id === id) ?? APPS[0];
+export const appDef = (id: AppId): AppDef => APPS.find((a) => a.id === id) ?? APPS[2];
 
 /** 画面左上に出すアプリの名前。どのタブでもアプリ名を出す。 */
 export const appTitle = (id: AppId): string => appDef(id).en;
@@ -91,7 +81,6 @@ export function cycleApp(id: AppId, dir: 1 | -1): AppId {
 
 // 各アプリを開いたとき最初に見せるタブ。
 export const DEFAULT_TAB: Record<AppId, TabId> = {
-  home: "home",
   tasks: "tasks-drift",
   life: "brief",
   journal: "journal-record",

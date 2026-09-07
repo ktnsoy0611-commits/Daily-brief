@@ -23,7 +23,7 @@ import type { AppId } from "@/lib/types";
 // 正しく下に回る。
 
 export function groundOf(app: AppId): string {
-  return app === "journal" ? JOURNAL_BG : BD_GREY;   // ★地は4列とも同じ1色
+  return app === "journal" ? JOURNAL_BG : BD_GREY;
 }
 
 // ★★ここが塗るのは「列の外」だけ(2026-08-12)。

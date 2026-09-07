@@ -17,7 +17,6 @@ import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { DevStageTab } from "@/components/tabs/DevStageTab";
 import { GoalsTab } from "@/components/tabs/GoalsTab";
-import { HomeTab } from "@/components/tabs/HomeTab";
 import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { RecordTab } from "@/components/tabs/RecordTab";
@@ -102,21 +101,14 @@ interface AppColumnProps {
   memoryMode: boolean;
   tabProps: TabProps;
   goTab: (id: TabId) => void;
-  /** ★ホームの列だけが使う ―― タブバーが「3アプリの名前」になるので、
-   *  押されたらそのアプリの列へ移る。 */
-  goApp: (id: AppId) => void;
   onNavPointerDown: (e: ReactPointerEvent) => void;
   onRecord: (from: HTMLElement) => void;
   navDragged: React.MutableRefObject<boolean>;
 }
 
-const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, goTab, goApp, onNavPointerDown, onRecord, navDragged }: AppColumnProps) {
+const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, goTab, onNavPointerDown, onRecord, navDragged }: AppColumnProps) {
   // ★1画面で完結し、スクロールさせないタブ。
-  // ★ホームは**1枚きり**（帯 ＋ 山）なのでスクロールさせない。
-  const scrollLocked = tab === "brief" || tab === "journal-record" || tab === "home";
-  // ★★ホームだけタブバーの中身が「3アプリの名前」になる（`docs/home-spec.md` §7-c）。
-  //   ホームは3アプリの**入口**で、自分のタブを持たないため。
-  const isHome = a.id === "home";
+  const scrollLocked = tab === "brief" || tab === "journal-record";
   // ★タスクアプリは4層が1本の縦の空間に積まれているので、タブごとの
   //   入場アニメーションも作り直しもしない(下の枠を参照)。
   const isTasks = a.id === "tasks";
@@ -209,7 +201,6 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 paddingBottom: "var(--nav-h)",
                 ...(scrollLocked ? { position: "relative" as const, zIndex: 16 } : null),
               }}>
-                {tab === "home" && <HomeTab {...tabProps} />}
                 {tab === "brief" && <BriefTab {...tabProps} />}
                 {tab === "stock" && <StockTab {...tabProps} />}
                 {tab === "goals" && <GoalsTab {...tabProps} />}
@@ -317,26 +308,8 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                   そのままピルの内側の高さになる。文字は出さず、読み上げ用の
                   ラベルは aria-label に残す。 */}
               <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: RADIUS.pill, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: NAV_PILL_PAD, marginBottom: NAV_BOTTOM_GAP }}>
-                {/* ★★ホームのタブバー ―― **3アプリの名前だけ**（`docs/home-spec.md` §7-c）。
-                    ★選択中の印を置かない。ホームは「いまどのタブか」ではなく
-                    **どこへ行くか**を出す場所で、選ばれているものが無い。 */}
-                {isHome && APPS.filter((d) => d.id !== "home").map((d) => (
-                  <button
-                    key={d.id}
-                    aria-label={d.label}
-                    onClick={() => { if (navDragged.current) return; haptic(5); goApp(d.id); }}
-                    style={{
-                      position: "relative", zIndex: 1, flex: 1, height: TAB_MARK, padding: 0,
-                      background: "none", border: "none", cursor: "pointer",
-                      userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontFamily: SANS, fontSize: TYPE.micro, fontWeight: WEIGHT.bold,
-                      letterSpacing: TRACK.caps, color: INK, marginRight: `-${TRACK.caps}`,
-                    }}
-                  >{d.en}</button>
-                ))}
                 {/* 選択中の印。1枚だけ置いて隣のタブへ滑らせる。 */}
-                {!isHome && <div aria-hidden style={{
+                <div aria-hidden style={{
                   position: "absolute", top: NAV_PILL_PAD, left: NAV_PILL_PAD, height: TAB_MARK,
                   width: `calc((100% - ${NAV_PILL_PAD * 2}px) / ${a.tabs.length})`,
                   transform: `translateX(${Math.max(0, a.tabs.findIndex((t) => t.id === tab)) * 100}%)`,
@@ -344,8 +317,8 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                   display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
                 }}>
                   <div style={{ width: TAB_MARK, height: TAB_MARK, borderRadius: RADIUS.circle, background: INK }} />
-                </div>}
-                {!isHome && a.tabs.map((t) => {
+                </div>
+                {a.tabs.map((t) => {
                   const active = tab === t.id;
                   return (
                     <button key={t.id} aria-label={t.label} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, height: TAB_MARK, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -391,8 +364,7 @@ export function AppShell() {
   // 右へ払うと3, 4… と増え、左へ払うと -1, -2… と減る。丸めてしまうと端で
   // 位置が飛んでしまい、一周ループのアニメーションが繋がらない。
   // 実際のアプリは pos を3で割った余りで決まる(下の appId)。
-  // ★★★起動時に最初に出るのは**ホーム**（`docs/home-spec.md` §0）。
-  const [pos, setPos] = useState(() => APPS.findIndex((a) => a.id === "home"));
+  const [pos, setPos] = useState(() => APPS.findIndex((a) => a.id === "life"));
   const appId = APPS[((pos % APPS.length) + APPS.length) % APPS.length].id;
   const setAppId = useCallback((id: AppId) => {
     setPos((prev) => {
@@ -688,7 +660,7 @@ export function AppShell() {
   // タブを普通にタップしただけでアプリ2つのマウントとアンマウントが往復し、
   // 実機ではそこで1秒以上メインスレッドが止まっていた(ユーザー報告「タップ
   // しても切り替わらない」の直接の原因)。一度用意したら以後ずっと使い回す。
-  const [mountedApps, setMountedApps] = useState<AppId[]>(["home"]);
+  const [mountedApps, setMountedApps] = useState<AppId[]>(["life"]);
   const mountApp = useCallback((id: AppId) => {
     setMountedApps((prev) => (prev.includes(id) ? prev : [...prev, id]));
   }, []);
@@ -1108,7 +1080,6 @@ export function AppShell() {
           memoryMode={storageMode === "memory"}
           tabProps={tabProps}
           goTab={goTab}
-          goApp={setAppId}
           onNavPointerDown={onNavPointerDown}
           onRecord={onRecord}
           navDragged={navDraggedRef}

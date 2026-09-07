@@ -461,10 +461,7 @@ export function isGrowthCard(card: DeckCard): card is GrowthCard {
 // ★アプリは3つ(タスク / 今のアプリ / ジャーナル)。タブバーの上を左右に
 // スワイプすると、この順で循環して切り替わる。3つとも同じデザイン言語
 // (紙色・墨色・影・角丸・カードの語彙)を共有し、違うのは背景色と中身だけ。
-// ★★★2026-09-07 に**ホームが4つ目の列**として加わった(`docs/home-spec.md`)。
-//   ホームは3アプリの**入口**で、自分のタブを持たない ―― タブバーの中身が
-//   「3アプリの名前」に変わる。**列の仕組みは何も足していない。**
-export type AppId = "home" | "tasks" | "life" | "journal";
+export type AppId = "tasks" | "life" | "journal";
 
 // ★`life-dev` は**確認用**（第70巡）。刷新した券と鋏を実機で見るためだけの
 //   タブなので、Explore の刷新が終わったら**型ごと消す**。
@@ -480,10 +477,7 @@ export type TasksTabId = "tasks-drift" | "tasks-gravity";
 // プレイヤーをタップして声で記録する、「今日」=その日の記録、
 // 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10)。
 export type JournalTabId = "journal-record" | "journal-today" | "journal-archive";
-// ★ホームは1枚きり。タブは持たないが、列の仕組み(アプリごとに最後に見ていた
-//   タブを覚える)がタブ id を要求するので、名前だけの1つを置く。
-export type HomeTabId = "home";
-export type TabId = LifeTabId | TasksTabId | JournalTabId | HomeTabId;
+export type TabId = LifeTabId | TasksTabId | JournalTabId;
 
 // プラン(実行タブ)へバインドする候補の選択。タブを跨いで持ち回せるよう
 // AppShellへ状態を引き上げ、ストックタブ・プランタブどちらからも同じ

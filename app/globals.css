@@ -32,6 +32,12 @@
   --t-amb-tape:  260ms;   /* テープの送り目 */
   --t-amb-blink: 1.15s;   /* 録音中の赤 */
   --t-amb-bob:   5.4s;    /* 候補が浮遊してゆれる */
+  /* ★★★ホームの帯（2026-09-07）。**等速で流し続けない** ―― ピル1つぶん動いて、
+     止まって、また動く。動きは既存の `--ease-settle`（すっと出てふわっと止まる）
+     を使うので、**新しい曲線は作らない**。
+     ★★実機で速すぎたら／遅すぎたらこの2行だけを直す。 */
+  --t-amb-band-step: 900ms;   /* ピル1つぶん動くのにかける時間 */
+  --t-amb-band-hold: 2500ms;  /* 次に動き出すまで止まっている時間 */
 
 
   /* ★★**`--screen-h` は撤去した**(2026-08-23・第34巡で入れ、同巡で撤回)。
@@ -884,4 +890,21 @@ button:active {
   [data-composer-plate], [data-create-menu] { clip-path: none !important; }
   .press, .tc-lamp { transition: none; }
   [data-composer-shell] { transition: none !important; }
+}
+
+/* ★★★ホームの帯（2026-09-07）。**動きは Web Animations API が作る**
+   （`components/home/Band.tsx`）―― 1歩の量が「次のピルの幅」なので、
+   ピルの幅がまちまちだと CSS のキーフレームでは書けない。時間と曲線は
+   上の `:root` から読むので、**数字はこのファイルの中だけ**にある。
+   ここに置くのは、器の作り（はみ出しを切る）と、動きを止める指定だけ。 */
+.band-row {
+  overflow: hidden;
+}
+.band-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .band-track { transform: none !important; }
 }

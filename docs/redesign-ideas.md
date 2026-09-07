@@ -848,3 +848,17 @@ Artifact: https://claude.ai/code/artifact/84d0dd0f-af3d-48b4-8f25-95e50a6f3f16
 - **09 Holz Antiqua** … 白の代わりが**完全な無彩色の灰 `#D1D1D1`（C* 0.0）**。
   ★**地に色みが1ミリも無いので、色がいちばん正確に出る**
 - **10 121 Brand** … ★**この参照だけ「色を1つ選ぶ」在庫として使える**（第28便の1色システムと組む）
+
+---
+
+## ★★★配色 確定（2026-09-06）
+
+**06 SKY / STORM / SEA / CREAM / ROSE ＋ 墨（黒寄りの soft black）** でユーザー確定。
+
+```
+WHITE #FCF7F4   INK #23252B
+SKY #C3BFE0   STORM #858AC2   SEA #144474   CREAM #FEE1D1   ROSE #E15442
+```
+
+**以後、ホームの実装の正は `docs/home-spec.md`。** この待ち行列（第18〜33便）は
+**経緯と却下案の記録**として残す。仕様として読まないこと。

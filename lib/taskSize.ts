@@ -101,7 +101,12 @@ export const slabsOf = (t: Pick<Task, "subtasks">): number =>
  */
 export function specOf(t: Partial<Task> & { title: string }, today = new Date()): SolidSpec {
   const area = areaOf(t, today);
-  const sides = sidesOf(t);
+  // ★★★**形はもう「入力の埋まり具合」を言わない**（2026-09-07・ユーザー確定
+  //   「形は全て角丸の四角に統一」「埋まり具合は捨てる」）。タスクは**必ず**
+  //   角丸の四角で、形が言うのは**ジャンル**だけ（四角＝タスク／円＝提案）。
+  //   ★★`sidesOf()` は**データとしては残す**（入力欄がどの面を埋めたかを見る）が、
+  //   **形には効かない**。`SolidSpec.sides` は「断面の形＝4」を表すだけになった。
+  const sides = SIDE_KEYS;
   const n = sides.length;
   // ★**塗られる**面積を重要度に揃える。形ごとの塗り率で外接箱を広げるので、
   // 三角でも四角でも同じ重要度なら色の量が同じになる。

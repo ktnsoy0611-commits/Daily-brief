@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Band } from "@/components/home/Band";
+import { Pile } from "@/components/home/Pile";
 import { TabIcon } from "@/components/TabIcons";
 import { HEADER_CHIP_SIZE, INK, MUTED, SANS, SCHEME } from "@/lib/constants";
 import { bandRows, unreadCards } from "@/lib/homeBand";
@@ -22,8 +23,8 @@ import type { TabProps } from "@/lib/types";
 //   ここの見出しは `HOME ／ 07 SEP ／ SUN` の**小さなラベル1行だけ**にする。
 //   ごちゃごちゃの正体は、大きな英語が2つあることだった（第24〜25便）。
 //
-// ★★山（GRAVITY）はまだ繋いでいない（`docs/home-spec.md` §10-4）。いまは帯の
-//   動きを実機で見るための段階（§10-3）で、下は地のまま空けてある。
+// ★★**山にいるのは今日のものだけ**（2026-09-07 ユーザー確定）。明日以降のものは
+//   ここに出さない ―― だから山は日付のラベルもレーンも要らない。
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const DAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -90,9 +91,14 @@ export function HomeTab({ appState, showToast }: TabProps) {
   //   ★★「持った」の印はデータモデルにまだ無い（`handoff_current.md` の未解決）。
   const carry = (appState.tasks ?? []).filter((t) => !t.done && t.belongings?.trim()).length;
   const unread = unreadCards(appState, day).length;
+  // ★山＝**今日**。期日が今日のもの（と、期日を過ぎてまだ終わっていないもの）。
+  const pile = useMemo(
+    () => (appState.tasks ?? []).filter((t) => !t.done && t.dueDate && t.dueDate <= day),
+    [appState.tasks, day],
+  );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
       {/* 見出しの行。★左右のパディングは持たない（持ち主は `AppShell` だけ）。 */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -104,6 +110,9 @@ export function HomeTab({ appState, showToast }: TabProps) {
 
       {/* 帯（3段）。★器の左右のパディングの外へ出る（`.bleed-x`）。 */}
       <Band rows={rows} />
+
+      {/* 山。★帯の下の**残り全部**を器にする（帯が何段でも山が余りを取る）。 */}
+      <Pile tasks={pile} unread={unread} today={now} />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { tagColor, tagFace, tagInk, tagLabel } from "./taskTags";
 import { canvasFont, drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
 import type { TaskTag } from "./types";
 import { paperize, setPaperReadyHandler } from "./paperTexture";
+import { RADIUS } from "./tokens";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
 // 確定)。真横から見た立面を2枚、ベタ塗りで描くだけ。
@@ -99,7 +100,21 @@ export function paintShape(
   const s = Math.sqrt(p.spec.area) * unit;
 
   ctx.fillStyle = fill;
-  const path = () => poly(ctx, outline.map((q) => ({ x: q.x * wpx, y: q.y * hpx })), 1);
+  // ★★★**タスクは角丸の四角**（2026-09-07・`docs/home-spec.md` §5-b。ユーザー確定
+  //   「形は全て角丸の四角に統一」）。角丸は**画面の寸法**なので `unit` で伸縮
+  //   させない ―― 山が混んで図形が縮んでも、角の丸みは同じままにする。
+  //   ★小さい図形で潰れないよう、辺の半分でクランプする。
+  //   ★`roundRect` の無い環境では素の四角へ戻る（形は変わるが、消えはしない）。
+  const path = () => {
+    if (n === 4 && typeof ctx.roundRect === "function") {
+      const r = Math.min(RADIUS.lg, wpx / 2, hpx / 2);
+      ctx.beginPath();
+      ctx.roundRect(-wpx / 2, -hpx / 2, wpx, hpx, r);
+      ctx.closePath();
+      return;
+    }
+    poly(ctx, outline.map((q) => ({ x: q.x * wpx, y: q.y * hpx })), 1);
+  };
 
   if (tagView || s < LOD_NO_SLIT || p.spec.slabs <= 1) {
     // 切れ目なし。輪郭をそのまま塗る。

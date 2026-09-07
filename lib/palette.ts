@@ -1,5 +1,5 @@
 import type { ItemDomain, ItemKind } from "./types";
-import { INK, KIND_DOMAIN, MUTED, PALETTE, PAPER, SCHEME } from "./constants";
+import { INK, KIND_DOMAIN, MUTED, PAPER, SCHEME } from "./constants";
 
 // ★★★**有彩色の出どころはここ1つ**（2026-08-31・第73巡）。
 //
@@ -8,17 +8,13 @@ import { INK, KIND_DOMAIN, MUTED, PALETTE, PAPER, SCHEME } from "./constants";
 // バインダーの独自パレット22）。同じ「展覧会」が、券では橙・ブリーフでは紺・
 // バインダーでは青緑になっていた ―― これが「統一されていない」の正体。
 //
-// ★★**分類に使う有彩色は9つだけ**にする:
+// ★★★2026-09-07 に**分類に使う有彩色は「ドメイン4」だけ**になった。
 //   ・**ドメイン 4**（バショ／タイケン／ジョウホウ／モノ）
-//       → 券の紙・鋏痕・マップのノード・ストックの絞り込み・ブリーフのカード・
-//         バインダー。**「何であるか」を表す色はこれしかない。**
-//   ・**タグ 5**（WORK / LIFE / WELLNESS / SOCIAL / GROWTH）
-//       → タスクの図形。ドメインとは**別の軸**（TASK と EXPLORE は別のアプリで、
-//         同じ画面に並ばないので色は借りてよいが、意味は混ぜない）。
-//   ★★★第77巡から**ドメイン4もタグ5も同じ「メイン5色」から取る**（ユーザー指定
-//     「券の色もこのメイン5色を優先に。残りの4色は足りなくなった時に使う」）。
-//     券に入らないのは黒桜だけ ―― 暗い券は作らない（ユーザー確定）。
-//   ・**状態 3**（危険／肯定／選ばれている）は、この9つから**借りる**。
+//       → 券の大きな英語・鋏痕・マップのノード・ストックの絞り込み・ブリーフの
+//         カード・バインダー。**「何であるか」を表す色はこれしかない。**
+//   ・**タグ 5**（タスクの図形）は**色を持たなくなった** ―― 濃さ5段（`TAG_STEPS`）。
+//     新しい5色は SKY / STORM / SEA が同じ色相の3段なので、分類には使えない。
+//   ・**状態 3**（危険／肯定／選ばれている）は、この4つから**借りる**。
 //
 // ★★★**色そのものは `SCHEME`（`lib/constants.ts`）が持つ。ここは「役 → 色」の
 //   対応表だけ**。パレットを差し替えるときは `SCHEME` の中身を書き換えれば、
@@ -52,16 +48,16 @@ export const bodyInkOn = (main: string): string =>
   contrast(main, INK) >= contrast(main, PAPER) ? INK : PAPER;
 
 /**
- * ★★**盤の赤は2つある**（Terracota `#EA5E3D` と Magenta `#B42648`）。
- * **その面で読めるほう**を返す ―― 暗い面には Terracota（墨の上 4.36）、
- * 明るい面には Magenta（紙の上 6.07）。
- * ★録音の赤は乗る面が2つ（キーの面と地）あり、**必要な赤が逆になる**ので、
- * 手で書き分けずにここに導かせる。★パレットが替わっても、2つの赤の
- * **明暗の役**さえ同じなら、この関数はそのまま効く。
+ * ★★★**盤の赤は1つになった**（2026-09-07・ホームの配色）。新しい5色に赤は
+ * **ROSE `#E15442` しか無い**ので、「暗い面には朱、明るい面には深紅」という
+ * 使い分けはパレットの側から消えた。
+ * ★★**関数は残す** ―― 呼び出し側（`VoiceStudio` の REC の輪など）は「面から赤を
+ * 導く」という約束を見ており、赤が2つに戻ったときに直す場所を1つに保つため。
+ * ★ROSE は墨の面の上 4.05／地の上 3.56。どちらも**面・縁・印**としての値で、
+ * **この赤で文章を書かないこと**（`design.md` §3-3）。
  */
-export const redOn = (surface: string): string =>
-  contrast(surface, SCHEME.danger) >= contrast(surface, PALETTE.terracota)
-    ? SCHEME.danger : PALETTE.terracota;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const redOn = (surface: string): string => SCHEME.danger;
 
 /**
  * ★**地の上に直接いる文字の色**を CSS 変数で配る（第77巡）。
@@ -103,17 +99,18 @@ export const deepen = (hex: string, k: number): string => {
  * ドメインの色（4）。★これが「何であるか」を表す唯一の色。
  * ★★★第80巡から**券では「面の色」ではなく「大きな英語の色」**になった
  * （ユーザー指定「色は背景ではなく、大きな文字のアクセントにワンポイントで」）。
- * だから**白い紙の上で読めること**が条件になる ―― 実測 …
- * バショ 6.07 ／ タイケン 3.26 ／ ジョウホウ 4.83 ／ **モノ 2.81 ★**。
- * ★モノ(Verde)だけ大きな文字の下限 3.0 に 0.19 届かない。券の英語は `poster`(38)
- * の 900 なので実用上は読めるが、**目盛りの外**なので `design.md` に数字ごと
- * 書いてある。代わりに置ける色は 1.43／1.50 しかなく、もっと悪い。
+ * だから**白い紙の上で読めること**が条件になる ―― 実測（2026-09-07 の5色）…
+ * バショ 9.37 ／ タイケン 3.08 ／ ジョウホウ ―― ★**モノ(SKY)は 1.67**。
+ * ★★★新しい5色で「大きな文字の 3.0」を満たすのは SEA 9.37 ／ ROSE 3.56 ／
+ * STORM 3.08 の**3つだけ**なので、4つ目のモノは必ず割れる。**目盛りの外**。
+ * ★Explore（券）は保留中で、再開するときに `docs/explore-redesign.md` ごと
+ * 見直す。ホームの規約（色が出るのは帯と山だけ）が先に決まっているため。
  */
 export const DOMAIN_COLOR: Record<ItemDomain, string> = {
-  place: SCHEME.danger,       // Magenta comunidad（共同体）
-  experience: SCHEME.growth,  // Terracota Ancestral（土）
-  info: SCHEME.work,          // Azul saberes（知）
-  thing: SCHEME.life,         // Verde Raíz（根）
+  place: SCHEME.danger,       // ROSE  珊瑚（地の上 3.56）
+  experience: SCHEME.growth,  // STORM 青紫（3.08）
+  info: SCHEME.work,          // SEA   紺（9.37）
+  thing: SCHEME.life,         // SKY   藤（1.67）★目盛りの外（大きな文字の 3.0 に届かない）
 };
 
 /** その面の**本文**の色。★メインから導くので、`SCHEME` を替えれば追従する。 */

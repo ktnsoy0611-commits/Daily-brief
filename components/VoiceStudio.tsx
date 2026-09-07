@@ -190,11 +190,11 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   //   盤の色が 1.2〜1.8 しか出ないが、窓の上なら 4.7 以上出る（第79巡の実測）。
   const acc = STUDIO_KEY;
   // ★★★REC の輪は**キーの面の上**にいるので、白い面から決まる。
-  //   待機＝墨 14.41／録音中＝**Terracota** 3.26。★ここだけ `redOn()` を使わない ――
-  //   `redOn(白い面)` は Magenta 6.07 を返すが、暗い赤は待機の墨と見分けが付かず
-  //   「消えている／光っている」が読めない。**光ったと分かる赤**を採る。
+  //   待機＝墨 14.41／録音中＝**ROSE** 3.56。**光ったと分かる赤**を採る、という
+  //   選び方は第79巡のまま。★2026-09-07 に赤が1つになったので、`redOn()` と
+  //   同じ色になった（分岐が消えただけで、規則は変わっていない）。
   const ringIdle = bodyInkOn(cap);
-  const ringRec = PALETTE.terracota;
+  const ringRec = PALETTE.rose;
   // ★★波形の線は**地**の上なので、こちらは面が2通りある。`redOn()` に導かせる。
   const lineRec = redOn(dim ? DIM_GROUND : BD_GREY);
 

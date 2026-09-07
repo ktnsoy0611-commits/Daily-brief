@@ -107,19 +107,23 @@ export const FONT_FACES: FontFace[] = [
 //
 // 色を捨てたぶん、残したアクセント(下のBLUE/RUST/GREEN/GOLDと、バインダー
 // のアクセント各種)がはっきり効くようになる = 「遊び心」はそちらが担う。
-// ★★★墨は **Velvet Black `#2C2627`**（2026-08-31・第77巡にユーザー指定
-// 「文字や、タブバーや、record タブの黒寄りの色は添付のブラックに」）。
-// 地 `#FFFBF5` との比 14.41。★わずかに赤へ寄った黒（HSL 350°/7%/16%）なので、
-// 暖かい地 CLOUD と喧嘩しない。★★**黒はこの1つだけ**（下の `CHARCOAL` も同じ値）。
-export const INK = "#2C2627";
-export const PAPER = "#FAFAF9";
-export const BG = "#F0F0EE";
+// ★★★墨は **`#23252B`**（2026-09-07・ホームの配色の確定。`docs/home-spec.md` §2）。
+// それまでの Velvet Black `#2C2627` は**暖色**（HSL 350°）だったが、パレットが
+// SKY / STORM / SEA の**寒色**へ寄ったので、暖色の墨だと墨だけが浮く。
+// 地 `#FCF7F4` との比 **14.41**（前の組み合わせと同じ値。階層は動かない）。
+// ★★**黒はこの1つだけ**。純黒は `VOID`（穴の芯）だけが持つ。
+export const INK = "#23252B";
+// ★★★**無彩色は地（`BD_GREY`）と `INK` の混色で導く**（`docs/home-spec.md` §2-a）。
+// 値は**現行の比をそのまま保つ**ように解いてあるので、色みだけが寒色へ移り、
+// 明暗の階層は1段も動かない（移行の前後で computed style を突き合わせて確認済み）。
+export const PAPER = "#FAF6F3";   // 面としての紙（地との比 1.01）
+export const BG = "#EAE6E3";      // 中性の下地（地との比 1.17）
 // 背景(AppBackdrop)専用の2段。バインダーの表紙と同じ「下地(=BG) / 帯(SHADE) /
 // 図形(SHADE_DEEP)」の3層を、グレーの濃淡だけで作るための値。
 // 地に溶ける透かしの調子は保ちたいので、いちばん濃いSHADE_DEEPでも地との差は
 // 16程度に留めてある。ここを触ると背景の主張の強さが変わる。
-export const SHADE = "#E9E9E6";
-export const SHADE_DEEP = "#E0E0DC";
+export const SHADE = "#F2EDEB";
+export const SHADE_DEEP = "#EAE6E3";
 // 全画面のオーバーレイの地(声の録音・タスクの入力・設定)。★出どころはここ1つ。
 // 明るい地から切り離して「いまは書く/録るためだけの画面」を作るための墨。
 // ★★★第80巡に**復活**（第77巡に `INK` と同じ値へ畳んでいた）。ユーザー指定
@@ -127,25 +131,25 @@ export const SHADE_DEEP = "#E0E0DC";
 // **無彩色が1つも無い**ので、面と文字のためのグレーを持ち直す必要がある。
 // ★★`INK` より**ほんの少しだけ明るい**（クリームの地との比 11.94）。地を黒
 // そのものにすると、その上の墨のものが完全に沈んで層が読めなくなる。
-export const CHARCOAL = "#383432";
+export const CHARCOAL = "#313238";
 // 補助の文字色。以前は各所で "#9A988E" を直書きしていたものをここへ集約した。
-export const MUTED = "#8E8E88";
+export const MUTED = "#8C8B8C";
 
 /** ★★**面のためのグレー**（第80巡に復活）。カード・入力欄・カードの中の小区分。
  *  ★★★**半透明の重ねがけをやめるために在る** ―― 白の 6%/16% を重ねると、
  *  下に何が居るかで色が変わり、重ねる順で結果が動く。**不透明の1枚**なら動かない。
  *  クリームの地との比 1.17／この上の墨 12.36。★暗い画面用は `SURFACE_DIM`。 */
-export const SURFACE = "#EDEAE2";
+export const SURFACE = "#EAE6E3";
 /** ★暗いオーバーレイの上の面（カード）。`CHARCOAL` の地との比 1.24。 */
-export const SURFACE_DIM = "#464240";
+export const SURFACE_DIM = "#404045";
 /** ★そのカードの中の小区分。`SURFACE_DIM` の上で 1.24／地から 1.54。 */
-export const SURFACE_DIM_2 = "#545049";
+export const SURFACE_DIM_2 = "#4E4D52";
 
 /** ★副文(二番目に強い文字)。CHARCOAL(12.6:1) と MUTED(2.9:1) の間が空いていて、
  *  名前を持たないまま `#5A5A54` が 17 箇所・9 ファイルで埋めていた(第65巡)。
  *  MUTED へ丸めると本文が **WCAG AA(4.5:1) を割る**ので、ここだけ名前を与えた。
  *  ★グレーは3段(INK＝CHARCOAL / SECOND / MUTED)で打ち止め。増やさない。 */
-export const SECOND = "#5A5A54";   // 6.08:1
+export const SECOND = "#5D5E61";   // 6.10:1
 
 /** ★写真や暗幕の上に乗る**純白**。`PAPER`(#FAFAF9) は紙の面の色で**別物**。
  *  用途が違うので混ぜない(紙の上に純白を置くと浮き、写真の上に紙色を置くと濁る)。 */
@@ -156,7 +160,18 @@ export const WHITE = "#FFFFFF";
 export const VOID = "#000000";
 
 /** タブバーの非活性のアイコン。 */
-export const TAB_ICON_OFF = "#9C9C9B";
+export const TAB_ICON_OFF = "#999799";
+
+/**
+ * ★★★**タグの濃さ5段**（2026-09-07・タグの色の廃止にともなって生まれた）。
+ * 地 `BD_GREY` と `INK` の混色を **L\* で等間隔**（16 / 34 / 52 / 70 / 88）に
+ * 切った5つ。★**色ではなく濃さで分ける**のは、新しい5色が「役の階段」であって
+ * 「分類の色」ではないから（色相の隔たりが 5.4°しか無い）。
+ * ★載る字の色は表に持たず `bodyInkOn()` が面から導く（濃い3段は紙・淡い2段は墨）。
+ * ★★**無彩色の梯子（`INK`〜`SURFACE`）とは別物**。あちらは文字と面の役、
+ * こちらは**図形の塗り**で、役が違うので混ぜない。
+ */
+export const TAG_STEPS = ["#26272D", "#4F4F54", "#7C7C7E", "#ADABAB", "#E0DCDA"] as const;
 
 /** ★録音機の素材色(`VoiceStudio` の物理キーとランプ)。`dim` は全画面の暗い状態。
  *  **画面固有のパレット**なので、無彩色の梯子には混ぜない(`TASK_TAGS` と同じ作法)。
@@ -168,21 +183,21 @@ export const STUDIO = {
   //   ・`dial` … 大きなダイヤルの円。journal は黒／オーバーレイは白（画面で反転）。
   //   ・`cap`  … 押せるキーの面。**どちらの画面でも白**（反転しない）。
   /** オーバーレイの大きな円。★白い機械。 */
-  dialDim: "#EFEAE8",
+  dialDim: "#F1EDEA",
   /** journal の大きな円。★黒い機械（クリームの地との比 11.25）。 */
-  dialLit: "#3E3739",
+  dialLit: "#35363C",
   /** ★★キーの面。**両方の画面で同じ白**。 */
-  cap: "#FFFBF5",
+  cap: "#FCF7F4",
   /** ★★キーが沈む穴。**面との比 18.21**。★キーの輪郭はこの影だけで見せる
    *  （ユーザー確定・第79巡）ので、穴は**キーより少しだけ大きく**取る
    *  （`VoiceStudio` の `WELL_LIP`）。そうしないと下の三日月しか見えない。 */
-  well: "#141112",
+  well: "#0E0E0D",
   /** ★★★**記号が灯る窓**（キーの面に開いた小さな暗い穴）。
    *  白い面の上では盤の色が 1.2〜1.8 しか出ないが、**この墨の上なら全部 4.7 以上**
    *  出る（杏 9.23／若草 12.10／桃 8.13／朱 4.73）。面との比 14.41。 */
-  socket: "#2C2627",
+  socket: "#23252B",
   /** 消えているランプ。★窓の上で**かすかに見える**だけ（比 2.11）。 */
-  lampOff: "#5E5758",
+  lampOff: "#56565A",
 } as const;
 
 /** ★ゴールのバインダー固有の意匠(`components/Binder.tsx`)。色相は名前のハッシュで
@@ -209,13 +224,20 @@ export const STUDIO = {
 //   大きな文字」の色だったが、券が**白い紙**になって面の上に大きな文字を載せなく
 //   なったので役目が終わった。面に載る字は `bodyInkOn()` が**面から導く**
 //   （表を持たない ―― 表にすると、色を替えた人が片方だけ直す）。
+// ★★★2026-09-07・ホームの配色の確定（`docs/home-spec.md` §2）。参照画像の画素から
+//   測った5色（`tools/extract-palette.py`。印字 HEX との差は最大 1）。
+//   ★★**この5色は「役の階段」として選ばれている** ―― 明度の幅 63.2（前 44.2）で、
+//   CREAM 91.5 → SKY 78.6 → STORM 59.0 → ROSE 54.8 → SEA 28.2 と濃さが並ぶ。
+//   ★★★代わりに**色相はほとんど散っていない**（最小の隔たり 5.4°。前は 25.3°）
+//   ―― SKY / STORM / SEA は**同じ色相の3段**である。だから**分類を色で言えない**。
+//   これが「タグの色を廃止し、山の図形を濃さで分ける」ことの直接の理由
+//   （2026-09-07 ユーザー確定）。**色は帯の上段・提案の丸・未読のバッジにしか出ない。**
 export const PALETTE = {
-  terracota: "#EA5E3D",  // Terracota Ancestral（土）
-  magenta:   "#B42648",  // Magenta comunidad（共同体）
-  verde:     "#14AD5C",  // Verde Raíz（根）
-  azul:      "#096ED1",  // Azul saberes（知）
-  amarillo:  "#FFCD50",  // Amarillo Vital（生命力）
-  rosa:      "#FFBBDE",  // Rosa Cuidado（ケア）
+  sky:   "#C3BFE0",  // SKY   ── 藤（地の上 1.67／墨を載せて 8.64）
+  storm: "#858AC2",  // STORM ── 青紫（地の上 3.08／墨を載せて 4.68）
+  sea:   "#144474",  // SEA   ── 紺（地の上 9.37 ＝ この5色で唯一「文章が書ける」）
+  cream: "#FEE1D1",  // CREAM ── 生成りの桃（地の上 1.17 ＝ 2つ目の明るい面）
+  rose:  "#E15442",  // ROSE  ── 珊瑚（地の上 3.56／墨を載せて 4.05）
 } as const;
 
 // ★★★**役 → 色**。ここが「何がどの色か」の唯一の表。
@@ -228,13 +250,18 @@ export const PALETTE = {
 //   いちばん近い組だった。外すと**危険**にちょうど回る（白い紙の上 6.07 ＝
 //   本文が書ける深い赤）。第77巡の「危険だけ予備から借りる」問題がここで解けた。
 // ★多いタグ（work / life / growth）を先に離してある（色相 255°／152°／35°）。
+// ★★★2026-09-07 に**役の中身が変わった**。タグ5色は廃止されたので、この表が
+//   受け持つのは **①状態3（危険・肯定・選択）②ドメイン4（Explore）③盤のキーの記号3**
+//   の3つだけになった。名前（`work` / `life` …）は呼び出し側が見ているので変えない。
+// ★★**危険は文字にできない**（ROSE は地の上 3.56 ＝ AA 4.5 に届かない）。
+//   赤が持てるのは**面・縁・印**だけで、文言そのものは墨で書く（`design.md` §3-3）。
 export const SCHEME = {
-  work: PALETTE.azul,          // WORK ／ジョウホウ(info) ／選ばれている
-  life: PALETTE.verde,         // LIFE ／モノ(thing)      ／肯定
-  growth: PALETTE.terracota,   // GROWTH ／タイケン(experience)
-  wellness: PALETTE.amarillo,  // WELLNESS
-  social: PALETTE.rosa,        // SOCIAL
-  danger: PALETTE.magenta,     // 危険 ／バショ(place)
+  work: PALETTE.sea,        // 選ばれている・リンク ／ジョウホウ(info)。地の上 9.37 ＝文章も可
+  life: PALETTE.sky,        // 肯定 ／モノ(thing)。★面で見せる（地の上 1.67）
+  growth: PALETTE.storm,    // タイケン(experience)。地の上 3.08
+  wellness: PALETTE.cream,  // 2つ目の明るい面 ／盤の「休止」（墨の窓の中 12.33）
+  social: PALETTE.rose,     // 盤の「取消」（墨の窓の中 4.05）
+  danger: PALETTE.rose,     // 危険 ／バショ(place) ／急ぎ ／未読のバッジ
 } as const;
 
 /**
@@ -244,37 +271,42 @@ export const SCHEME = {
  * ★★★第79巡に**画面ごとの分岐が消えた**。記号は `STUDIO.socket`（墨）の窓の
  * 中に置くようにしたので、**どちらの画面でも同じ3色**でよくなった
  * （第78巡は明るい面の上で 1.2〜1.8 しか出ず、片側を墨に落としていた）。
- * ★★**REC の赤はここに書かない** ―― 乗る面が2つ（キーの面と地）あり、
- * 必要な赤が逆になるので `redOn()`（`lib/palette.ts`）が面から導く。
+ * ★★**REC の赤はここに書かない** ―― `redOn()`（`lib/palette.ts`）が持つ。
+ * ★★★2026-09-07 に**盤の赤は1つになった** ―― 新しい5色に赤は ROSE しか無い。
+ * 「暗い面には朱、明るい面には深紅」の使い分けはパレットの側から消えた。
  */
 export const STUDIO_KEY = {
-  pause: SCHEME.wellness,   // Amarillo … 墨の窓の上で 9.97
-  send: SCHEME.life,        // Verde    … 5.07
-  cancel: SCHEME.social,    // Rosa     … 9.49
+  pause: SCHEME.wellness,   // CREAM … 墨の窓の中で 12.33
+  send: SCHEME.life,        // SKY   … 8.64
+  cancel: SCHEME.social,    // ROSE  … 4.05
 } as const;
 
 // アプリが前から持っている6つのアクセントの名前は変えず、**中身をスキームの
 // 地の色へ差し替える**。呼び出し側(数十箇所)はそのまま新しい色になる。
 // どれを当てるかは「元の色相を保つ」ことと「その色の上に何が載るか」で決めた。
 // ★★**状態の色は3つだけ**（2026-08-31・第73巡）。分類の9色から借りている。
-export const BLUE = SCHEME.work;     // 選ばれている・リンク（紙の上 4.83 ＝本文も可）
-export const RUST = SCHEME.danger;   // 危険（削除・エラー）。★紙の上 6.07 ＝本文も可
-export const GREEN = SCHEME.life;    // 肯定・達成（紙の上 2.81 ＝**面で見せる**）
+export const BLUE = SCHEME.work;     // 選ばれている・リンク（地の上 9.37 ＝本文も可）
+// ★★★**危険は「面・縁・印」だけ**（2026-09-07）。ROSE は地の上 3.56 で AA を割るので、
+//   **エラーや削除の文言そのものは墨で書く**。前のパレットの Magenta（6.07）は
+//   文章に使えたが、新しい5色に「文章が書ける赤」は無い。
+export const RUST = SCHEME.danger;   // 危険（削除・エラー）。★面・縁・印だけ（3.56）
+export const GREEN = SCHEME.life;    // 肯定・達成（地の上 1.67 ＝**面で見せる**）
 /** ★★★**状態の面に載る色**（第76巡）。この盤は**明るい色が主役**なので、
  *  「肯定＝緑の面に白い ✓」がそのままでは成り立たない（若草に白は比 1.19）。
- *  面ごとに**その組のサブ**を当てる。★★状態の色を**そのまま文字に使わないこと** ――
- *  紙 `#FAFAF9` の上で 4.5 を満たすのは `RUST`(8.43) と `INK`(15.5) だけで、
- *  `GREEN`(1.19) と `BLUE`(4.45) は満たさない。**状態は「面」で見せる。** */
-export const GREEN_INK = INK;    // Verde の面に載る（比 5.07。`bodyInkOn` と同じ結果）
-export const BLUE_INK = PAPER;   // Azul の面に載る（比 4.83。同上）
+ *  面ごとに載る字は `bodyInkOn()` が導く。★★状態の色を**そのまま文字に使わないこと** ――
+ *  地 `#FCF7F4` の上で 4.5 を満たすのは `BLUE`(9.37) と `INK`(14.41) だけで、
+ *  `GREEN`(1.67) と `RUST`(3.56) は満たさない。**状態は「面」で見せる。** */
+export const GREEN_INK = INK;    // SKY の面に載る（比 8.64。`bodyInkOn` と同じ結果）
+export const BLUE_INK = PAPER;   // SEA の面に載る（比 9.37。同上）
 // ★第73巡に `PLUM` / `SLATE`、第74巡に `GOLD` を**消した**。`GOLD` は
 //   「白い ✓ を載せる面」＝**肯定**そのものだったので `GREEN` に寄せた（13箇所）。
-/** RUST の淡い敷き。★Magenta `#B42648` = rgb(180,38,72) から作る。 */
-export const RUST_TINT = "rgba(180,38,72,0.14)";
-export const RUST_EDGE = "rgba(180,38,72,0.50)";
-/** GREEN の淡い敷き。★Verde `#14AD5C` = rgb(20,173,92) から作る。 */
-export const GREEN_TINT = "rgba(20,173,92,0.24)";
-export const HAIRLINE = "rgba(26,26,24,0.08)";
+/** RUST の淡い敷き。★ROSE `#E15442` = rgb(225,84,66) から作る。 */
+export const RUST_TINT = "rgba(225,84,66,0.14)";
+export const RUST_EDGE = "rgba(225,84,66,0.50)";
+/** GREEN の淡い敷き。★SKY `#C3BFE0` = rgb(195,191,224) から作る。★元の色が
+ *  淡いので、同じ濃さに見えるまで α を上げてある（0.24 → 0.34）。 */
+export const GREEN_TINT = "rgba(195,191,224,0.34)";
+export const HAIRLINE = "rgba(35,37,43,0.08)";
 // カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
 export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";
 export const SOFT_SHADOW_LG = "0 12px 32px rgba(28,28,30,0.12)";
@@ -315,7 +347,7 @@ export const NAV_PILL_PAD = 6;
 
 // 背景(AppBackdrop)の地と図形。画面より下(iOSでツールバーが引っ込んだ
 // ときに現れる帯)にも同じ色が要るので、ここに置いて body へも書く。
-export const BD_GREY = "#FFFBF5";   // ★第76巡に盤の CLOUD（BACKGROUND COLOR）へ
+export const BD_GREY = "#FCF7F4";   // ★第76巡に盤の CLOUD（BACKGROUND COLOR）へ
 // ★ジャーナル(声の記録)の地と図。参考画像(2026-08-11)から採った、暖かみの
 // ある中間グレー。地と図の差はごくわずか(明度差 約18)で、円は「浮いた面」
 // ではなく「地の濃淡」として読める。
@@ -329,8 +361,8 @@ export const JOURNAL_BG = BD_GREY;
 // ―― 大きな円とキーの面は**同じ材料**（出どころを2つにしない）。
 export const JOURNAL_FIG = STUDIO.dialLit;
 // この地の上での控えめな文字色。
-export const JOURNAL_MUTED = "rgba(44,38,39,0.66)";  // ★クリームの地の上の控えめな文字（比 4.84）
-export const BD_LIGHT = "#F3F3F1";
+export const JOURNAL_MUTED = "rgba(35,37,43,0.66)";  // ★クリームの地の上の控えめな文字（比 4.84）
+export const BD_LIGHT = "#F6F1EF";
 
 // navのピル自体を画面下端からどれだけ浮かせるか。ホーム画面に追加した
 // PWA(スタンドアロン)起動時、env(safe-area-inset-bottom)をそのまま
@@ -550,7 +582,7 @@ export const TICKET_ASPECT = "3 / 4";
 // ★数で要るとき用。`TICKET_ASPECT` と**同じ比**をここから引く(2か所に書かない)。
 export const TICKET_H_PER_W = 4 / 3;
 // ミシン目の穿孔。★彩度の高い紙の上に置くので、黒の薄めで足りる。
-export const TICKET_PERF = "rgba(26,26,24,0.34)";
+export const TICKET_PERF = "rgba(35,37,43,0.34)";
 
 /** 2つの色を混ぜる(0=a, 1=b)。★金属の段を**地の色から**作るのに使う。 */
 function mixHex(a: string, b: string, t: number) {

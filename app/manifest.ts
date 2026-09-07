@@ -13,9 +13,9 @@ export default function manifest(): MetadataRoute.Manifest {
     // 帆布が届かなかった所がその色の帯として残る。
     // ★変えても、すでにホーム画面にあるアプリには反映されない。
     //   一度消して追加し直すこと。
-    // ★第76巡に `BD_GREY` を盤の CLOUD `#FFFBF5` へ変えたので、ここも合わせた。
-    background_color: "#FFFBF5",
-    theme_color: "#FFFBF5",
+    // ★2026-09-07 に `BD_GREY` が `#FCF7F4` になったので、ここも合わせた。
+    background_color: "#FCF7F4",
+    theme_color: "#FCF7F4",
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },

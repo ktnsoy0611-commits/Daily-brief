@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { INK, LATIN, PAPER, RUST, SWISS_XL } from "@/lib/constants";
+import { BAND_BEZEL, INK, LATIN, PAPER, RUST, SWISS_XL } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { colorOfKind } from "@/lib/palette";
 import { areaOf, specOf, weightArea } from "@/lib/taskSize";
@@ -42,28 +42,38 @@ const TAP_MOVE = 8;
 /** 掴んだ図形が指へ寄る強さと、離れてよい上限。★同上。 */
 const GRAB_K = 0.34;
 const GRAB_MAX = 34;
-/** 山が器に占める割合。★目盛りの外（詰め込み具合）。 */
-const FILL = 0.42;
+/** 山が器に占める割合。★目盛りの外（詰め込み具合）。★0.42 では図形が大きすぎた。 */
+const FILL = 0.30;
 /** 未読のトゲトゲの円。★12頂点・内半径 0.40（`docs/home-spec.md` §5-b）。 */
 const ZIG_N = 12;
 const ZIG_IN = 0.4;
-const BADGE_R = 26;
-/** 傾き 3〜6°。★0°だと格子になって「積もった」に見えず、10°超は漫画になる。 */
-const TILT_MIN = (3 * Math.PI) / 180;
-const TILT_MAX = (6 * Math.PI) / 180;
+/** ★未読の数の図形。**数字を読ませる図形**なので、タスクより大きく取る。 */
+const BADGE_R = 44;
+/** ★★★落とし方は `GravityTab` と**同じ**（傾き・回り・横の初速）。
+ *  「傾きは 3〜6°」「回さない」は**やめた**（2026-09-07 ユーザー指定
+ *  「回転しても良いです。普通に落としてください」）―― 回転を止めると
+ *  角度が変わらないまま降りてきて、物体に見えない。 */
+const SPAWN_TILT = 0.5;      // 初期の傾き（±0.25 rad ≒ ±14°）
+const SPAWN_SPIN = 0.05;     // 初期の回り
+const SPAWN_VX = 1.2;        // 横の初速
+/** 山の左右の余白。★`GravityTab` の `PILE_INSET` と同じ考え方（壁と出どころを揃える）。 */
+const INSET = 16;
+/** 文字の板（曜日・日付）の縁。★`GravityTab` の `PILE_WORD_PAD` と同じ。 */
+const WORD_PAD = 4;
+const WORD_PAD_Y = 2;
+/** 文字の板が使ってよい幅の割合。 */
+const WORD_W = 0.62;
 
 const frac = (s: string) => {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return (Math.imul(h, 2654435761) >>> 0) / 4294967296;
 };
-const tiltOf = (seed: string) =>
-  (frac(seed) < 0.5 ? -1 : 1) * (TILT_MIN + frac(`${seed}!`) * (TILT_MAX - TILT_MIN));
 
 interface Piece {
   id: string;
   body: Body;
-  kind: "task" | "offer" | "badge";
+  kind: "task" | "offer" | "badge" | "word";
   /** 角丸の四角の外接箱（タスク）。円は `r`。 */
   w?: number; h?: number; r?: number;
   face: string;
@@ -72,6 +82,25 @@ interface Piece {
   face_?: number;      // 書体の番号（タグが決める）
   photo?: string;
   count?: number;
+  /** 文字の板（日付・曜日）だけが持つ。 */
+  wordFs?: number; wordDx?: number; wordDy?: number;
+}
+
+/**
+ * ★文字の**塗りぴったりの箱**を測る（`GravityTab` の `inkBoxOf` と同じ計算）。
+ * 箱を塗りに合わせるので、板の中で文字が偏らない。
+ */
+function wordBox(ctx: CanvasRenderingContext2D, word: string, fs: number) {
+  ctx.save();
+  ctx.font = canvasFont(900, fs, LATIN);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const m = ctx.measureText(word);
+  ctx.restore();
+  const l = m.actualBoundingBoxLeft ?? m.width / 2;
+  const r = m.actualBoundingBoxRight ?? m.width / 2;
+  const a = m.actualBoundingBoxAscent ?? fs * 0.36;
+  const d = m.actualBoundingBoxDescent ?? fs * 0.12;
+  return { w: l + r, h: a + d, dx: (r - l) / 2, dy: (d - a) / 2 };
 }
 
 /**
@@ -195,21 +224,44 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
       const unit = Math.max(16, Math.min(UNIT, Math.sqrt((w * h * FILL) / total)));
 
       const pieces: Piece[] = [];
-      const drop = (i: number) => -80 - i * 60;   // ★上から順に落ちてくる
+      // ★★落とし方は `GravityTab` と同じ ―― **どこへ・どの高さから落ちるか**で
+      //   ばらつきを作り、傾きと回りは控えめに添える。
+      const spawnX = (bw: number, r1: number) => {
+        const half = bw / 2;
+        const lo = INSET + half + 4;
+        const hi = Math.max(lo, w - INSET - half - 4);
+        return Math.min(hi, Math.max(lo, INSET + (w - INSET * 2) * (0.08 + r1 * 0.84)));
+      };
+      // ★★★**落とす高さは「それまでに積んだぶん」を足していく**（2026-09-07）。
+      //   一定の間隔で並べると、大きい図形どうしが**落ちている途中でぶつかって
+      //   回り**、逆さまに積まれて名前が読めなくなった。自分の背丈ぶん空ければ、
+      //   ぶつかるのは着地してからになる。
+      let stack = 0;
+      const toss = (body: Body, seed: string, i: number, bh: number) => {
+        const r1 = frac(seed); const r2 = frac(`${seed}y`); const r3 = frac(`${seed}a`);
+        stack += bh + 60 + r2 * 60;
+        M.Body.setPosition(body, { x: spawnX(body.bounds.max.x - body.bounds.min.x, r1), y: -stack });
+        M.Body.setAngle(body, (r3 - 0.5) * SPAWN_TILT);
+        // ★★**回りの強さは背丈に比例させる**（2026-09-07）。同じ回りを与えると、
+        //   小さくて軽い図形ほどよく回り、**着地までに一回転して逆さまに積まれる**
+        //   （実測 … 小さい2枚だけが 180°で止まっていた）。題が読めなくなるので、
+        //   小さいものほど控えめに回す。回ること自体はそのまま。
+        M.Body.setAngularVelocity(body, (r3 - 0.5) * SPAWN_SPIN * Math.min(1, Math.max(0.3, bh / 120)));
+        M.Body.setVelocity(body, { x: (r1 - 0.5) * SPAWN_VX, y: 0 });
+      };
 
       tasks.forEach((t, i) => {
         const spec = specOf(t, today);
         const tag = resolveTag(t.tag, t.id, t.title, t.context, t.belongings);
         const pw = Math.max(28, spec.w * unit);
         const ph = Math.max(24, spec.h * unit);
-        const x = Math.min(w - pw / 2, Math.max(pw / 2, w * (0.12 + frac(t.id) * 0.76)));
-        const body = M.Bodies.rectangle(x, drop(i), pw, ph, { ...BODY, angle: tiltOf(t.id) });
+        const body = M.Bodies.rectangle(0, 0, pw, ph, BODY);
         M.Body.setMass(body, spec.area * MASS_K);
-        // ★★★**転がらせない**（`inertia` を無限に）。自由に回る物体は積まれる
-        //   うちに 60°まで倒れ、戻そうとすると衝突の解決と綱引きになって固まる。
-        //   回転を止めれば最初に与えた 3〜6°が最後まで残る ―― 紙が少しずつ
-        //   ずれて積まれた見た目そのもの。★落下と横滑りはそのまま効く。
-        M.Body.setInertia(body, Infinity);
+        // ★★**回り慣性を重くする**（`GravityTab` が文字の板でやっているのと同じ）。
+        //   回ってよいが、**逆さまになると題が読めない**ので、ひっくり返るほどは
+        //   回らない重さにする。落ちるあいだの回転はそのまま見える。
+        M.Body.setInertia(body, body.inertia * 5);
+        toss(body, t.id, i, ph);
         pieces.push({
           id: t.id, body, kind: "task", w: pw, h: ph,
           face: tagColor(tag), ink: tagInk(tag), title: t.title, face_: tagFace(tag),
@@ -219,9 +271,9 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
       offers.forEach((it, i) => {
         // ★提案は重さを持たないので、**重要度は「中」**として置く。
         const r = Math.max(22, Math.sqrt((weightArea(2) * unit * unit) / Math.PI));
-        const x = Math.min(w - r, Math.max(r, w * (0.18 + frac(it.id) * 0.64)));
-        const body = M.Bodies.circle(x, drop(tasks.length + i), r, BODY);
+        const body = M.Bodies.circle(0, 0, r, BODY);
         M.Body.setMass(body, weightArea(2) * MASS_K);
+        toss(body, it.id, tasks.length + i, r * 2);
         pieces.push({
           id: it.id, body, kind: "offer", r,
           face: it.color ?? colorOfKind(it.kind), ink: PAPER,
@@ -230,20 +282,41 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
       });
 
       if (unread > 0) {
-        const body = M.Bodies.circle(w * 0.5, drop(tasks.length + offers.length), BADGE_R, BODY);
+        const body = M.Bodies.circle(0, 0, BADGE_R, BODY);
+        toss(body, "unread", tasks.length + offers.length, BADGE_R * 2);
         pieces.push({ id: "unread", body, kind: "badge", r: BADGE_R, face: RUST, ink: PAPER, count: unread });
       }
 
+      // ★★★**その日の日付と曜日も一緒に落とす**（2026-09-07 ユーザー指定。
+      //   `GravityTab` と同じ ―― 枠の無い、文字だけの黒い板）。背景に置くのを
+      //   やめたのは、**版面の柱として敷くと山と分離して見えた**ため。
+      //   ★★**2枚は同じ大きさで組む**（長いほう＝曜日で決める）。別々に決めると
+      //   キャップラインもベースラインも食い違って見える（`GravityTab` の教訓）。
+      const words = [
+        `${today.getMonth() + 1}/${today.getDate()}`,
+        ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][today.getDay()],
+      ];
+      const room = w * WORD_W;
+      ctx.font = canvasFont(900, SWISS_XL, LATIN);
+      const widest = Math.max(...words.map((x) => ctx.measureText(x).width), 1);
+      const wordFs = SWISS_XL * (room / widest);
+      words.forEach((word, i) => {
+        const box = wordBox(ctx, word, wordFs);
+        const bw = Math.max(8, box.w + WORD_PAD * 2);
+        const bh = Math.max(8, box.h + WORD_PAD_Y * 2);
+        const body = M.Bodies.rectangle(0, 0, bw, bh, BODY);
+        // ★★回り慣性を重くする（`GravityTab` と同じ）。板は薄いので、そのままだと
+        //   小突かれて短い辺で立ってしまう。落ちるあいだは変わらず回る。
+        M.Body.setInertia(body, body.inertia * 5);
+        toss(body, `word${i}`, tasks.length + offers.length + 1 + i, bh);
+        pieces.push({
+          id: `word${i}`, body, kind: "word", w: bw, h: bh,
+          face: INK, ink: INK, title: word, wordFs, wordDx: box.dx, wordDy: box.dy,
+        });
+      });
+
       M.Composite.add(engine.world, pieces.map((p) => p.body));
       piecesRef.current = pieces;
-
-      // ★大きな英語（今日の曜日）。★**版面の柱**なので物理に参加しない。
-      //   **画面に1つだけ**の大きな英語で、色は墨（ユーザー確定）。
-      const word = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][today.getDay()];
-      // ★★**段から選ばず、版面の幅に合わせて組む** ―― 大きさを固定すると
-      //   SUNDAY と WEDNESDAY で柱の太さが変わる。★目盛りの外（幾何から決まる）。
-      ctx.font = canvasFont(900, SWISS_XL, LATIN);
-      const wordFs = SWISS_XL * (w / Math.max(1, ctx.measureText(word).width));
 
       const roundRect = (x: number, y: number, bw: number, bh: number) => {
         const r = Math.min(RADIUS.lg, bw / 2, bh / 2);
@@ -257,14 +330,6 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, h);
 
-        // 版面の柱。★山の後ろ、地の上。
-        ctx.save();
-        ctx.font = canvasFont(900, wordFs, LATIN);
-        ctx.fillStyle = INK;
-        ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-        ctx.fillText(word, 0, h);
-        ctx.restore();
-
         for (const p of piecesRef.current) {
           const b = p.body;
           ctx.save();
@@ -276,17 +341,29 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
             const bmp = taskBitmap(p, dpr);
             if (bmp) ctx.drawImage(bmp, -p.w / 2, -p.h / 2, p.w, p.h);
             else { roundRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.fill(); }
+          } else if (p.kind === "word" && p.wordFs !== undefined) {
+            // ★枠の無い、文字だけの黒い板。★掴めない（`down` が避ける）。
+            ctx.fillStyle = p.ink;
+            ctx.font = canvasFont(900, p.wordFs, LATIN);
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(p.title ?? "", -(p.wordDx ?? 0), -(p.wordDy ?? 0));
           } else if (p.kind === "offer" && p.r) {
+            // ★★**写真の周りにベゼル**（2026-09-07 ユーザー指定）。円はその提案の色で、
+            //   写真は**一回り小さい円**に収まる ―― 色の輪が縁として残る。
             ctx.beginPath();
             ctx.arc(0, 0, p.r, 0, Math.PI * 2);
             ctx.closePath();
             ctx.fill();
             const im = p.photo ? photoOf(p.photo, redraw) : undefined;
             if (im) {
+              const inner = Math.max(4, p.r - BAND_BEZEL);
               ctx.save();
+              ctx.beginPath();
+              ctx.arc(0, 0, inner, 0, Math.PI * 2);
+              ctx.closePath();
               ctx.clip();
-              const s = Math.max((p.r * 2) / im.naturalWidth, (p.r * 2) / im.naturalHeight);
-              const iw = im.naturalWidth * s; const ih = im.naturalHeight * s;
+              const s2 = Math.max((inner * 2) / im.naturalWidth, (inner * 2) / im.naturalHeight);
+              const iw = im.naturalWidth * s2; const ih = im.naturalHeight * s2;
               ctx.drawImage(im, -iw / 2, -ih / 2, iw, ih);
               ctx.restore();
             }
@@ -300,6 +377,9 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
             }
             ctx.closePath();
             ctx.fill();
+            // ★★**数字は回さない**（図形は回る）。読ませるための数字なので、
+            //   逆さまになったら役に立たない。図形の回転だけを打ち消す。
+            ctx.rotate(-b.angle);
             ctx.fillStyle = p.ink;
             ctx.font = canvasFont(900, p.r * 0.9, LATIN);
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -309,12 +389,12 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
         }
       };
 
-      let last = performance.now();
       const loop = () => {
         if (stop) return;
-        const now = performance.now();
-        M.Engine.update(engine, Math.min(32, now - last));
-        last = now;
+        // ★★★**刻みは固定**（`GravityTab` と同じ 1000/60）。実時間の差分を渡すと、
+        //   フレームが落ちた瞬間に刻みが伸びて**貫通・弾け・震え**が起きる
+        //   ―― 「落ちる動作が不安定」の直接の原因だった（2026-09-07）。
+        M.Engine.update(engine, 1000 / 60);
         // 掴んでいる図形は、指の方へバネで寄せる（`GravityTab` と同じ作法）。
         const d = dragRef.current;
         if (d) {
@@ -357,7 +437,8 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
     if (press.current) return;
     const timer = window.setTimeout(() => {
       const p = pickAt(e.clientX, e.clientY);
-      if (!p || p.kind === "badge") return;         // ★バッジは掴めない（数だけの図形）
+      // ★数だけの図形（バッジ）と文字の板は掴めない（`GravityTab` と同じ）。
+      if (!p || p.kind === "badge" || p.kind === "word") return;
       const box = boxRef.current!.getBoundingClientRect();
       dragRef.current = { piece: p, x: e.clientX - box.left, y: e.clientY - box.top };
       setHolding(true);

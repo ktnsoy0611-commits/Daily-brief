@@ -6,6 +6,7 @@
 - `handoff_current.md` … いまどこにいるか。直近完了・次の一手・重要パス（200行以内）。
 - ★★★`docs/home-spec.md` … **ホームの実装仕様の正**（2026-09-06 確定）。
   配色・寸法・帯の動き・山の形・段取り・検証まで、これだけ読めば実装に入れる。
+  ★実装セッションへ渡すプロンプトは `docs/home-implementation-prompt.md`。
 - ★`docs/redesign-2026-09.md` … **改修の検討の記録**（確定／保留／却下）。
   ★`docs/redesign-references.md` … **参照のリンクと分析**。サイトのURLはここから開く。
   ★★`docs/redesign-ideas.md` … **アイデアの待ち行列**。上から順に絵にして見せる。

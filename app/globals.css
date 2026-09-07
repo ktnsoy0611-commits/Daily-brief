@@ -32,6 +32,15 @@
   --t-amb-tape:  260ms;   /* テープの送り目 */
   --t-amb-blink: 1.15s;   /* 録音中の赤 */
   --t-amb-bob:   5.4s;    /* 候補が浮遊してゆれる */
+  /* ★★★ホームの帯の循環(2026-09-07)。**一周にかかる時間**で、段ごとに違う。
+     上の段ほど速い ―― 厚さ・濃さ・速さの3つが同じ向きを向いているので、
+     どれが切実かを説明せずに言える(`docs/home-spec.md` §4-c)。
+     ★対称でない曲線は使わない。**この3つだけ `linear`**(等速でないと、
+     無限に繰り返したとき継ぎ目で速さが飛ぶ)。
+     ★★実機で速すぎたら**この3行だけ**を倍にする。 */
+  --t-amb-band-1: 44s;    /* 段1 … AI から来たもの(提案・急ぎ)。左へ */
+  --t-amb-band-2: 58s;    /* 段2 … 声から出た候補。**右へ** */
+  --t-amb-band-3: 72s;    /* 段3 … いつかやる。左へ */
 
 
   /* ★★**`--screen-h` は撤去した**(2026-08-23・第34巡で入れ、同巡で撤回)。
@@ -884,4 +893,25 @@ button:active {
   [data-composer-plate], [data-create-menu] { clip-path: none !important; }
   .press, .tc-lamp { transition: none; }
   [data-composer-shell] { transition: none !important; }
+}
+
+/* ★★★ホームの帯(2026-09-07・`docs/home-spec.md` §4-c)。
+   **中身を2回並べて `translateX(-50%)`** ―― 半分ぶん送ると2周目の先頭が
+   1周目の先頭と同じ位置に来るので、継ぎ目が原理的に存在しない。
+   ★逆向きは `animation-direction: reverse`(2つ目の keyframes を作らない)。
+   ★★**指が触れている間は止める** … `[data-band-hold="1"]` で
+   `animation-play-state: paused`。離すと**位置を戻さずに**流れ出す。 */
+@keyframes band-slide {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.band-track {
+  display: flex;
+  width: max-content;
+  animation: band-slide var(--band-dur) linear infinite;
+}
+.band-track[data-reverse="1"] { animation-direction: reverse; }
+.band-row[data-band-hold="1"] .band-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .band-track { animation: none; }
 }

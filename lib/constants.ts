@@ -345,6 +345,21 @@ export const GOAL_CARD_ASPECT = ITEM_CARD_ASPECT;
 export const TAB_MARK = 52;
 export const NAV_PILL_PAD = 6;
 
+/**
+ * ★★★**ホームの帯の3段の厚み**（2026-09-07・`docs/home-spec.md` §4）。
+ * 段 ＝ 出どころ で、**上の段ほど厚く・濃く・速い**。3つの規則が同じ向きを
+ * 向いているので、どれが切実かを説明せずに言える。
+ * ★★これは「余白」ではなく**部品の寸法**（`TAB_MARK` と同じ扱い）。段1と段2の
+ * 差（18px）が「明確に厚い」を作っているので、**3つは互いに縛り合っている**。
+ * ★段1だけ写真の丸を**高さいっぱい**に入れるので、直径もこの値になる。
+ */
+export const BAND_H = { lead: 70, mid: 52, tail: 46 } as const;
+/** ★段3の「縁だけ」のピルの縁。地と `INK` の 30% の混色（`docs/home-spec.md` §4-b）。
+ *  ★塗られていない＝まだ自分の時間を割り当てていない、を形で言うためのもの。 */
+export const BAND_EDGE = "#BBB8B8";
+/** ★段3の縁の太さ。1px では消え、2px では線が主張する（`docs/home-spec.md` §4-b）。 */
+export const BAND_EDGE_W = 1.5;
+
 // 背景(AppBackdrop)の地と図形。画面より下(iOSでツールバーが引っ込んだ
 // ときに現れる帯)にも同じ色が要るので、ここに置いて body へも書く。
 export const BD_GREY = "#FCF7F4";   // ★第76巡に盤の CLOUD（BACKGROUND COLOR）へ

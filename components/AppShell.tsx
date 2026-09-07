@@ -327,15 +327,21 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                     key={id}
                     aria-label={appDef(id).label}
                     onClick={() => { if (navDragged.current) return; haptic(5); goApp(id); }}
-                    style={{
-                      position: "relative", zIndex: 1, flex: 1, height: TAB_MARK, padding: 0,
-                      background: "none", border: "none", cursor: "pointer",
-                      userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontFamily: SANS, fontSize: TYPE.micro, fontWeight: WEIGHT.bold,
-                      letterSpacing: TRACK.caps, color: INK, marginRight: `-${TRACK.caps}`,
-                    }}
-                  >{appDef(id).en}</button>
+                    style={{ position: "relative", zIndex: 1, flex: 1, height: TAB_MARK, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    {/* ★★タブバーの組み方は3アプリと**まったく同じ**（`TabGlyph`＝面の
+                        アイコン＋その下の短い英語）。中身が「タブ」から「アプリの
+                        名前」に変わるだけで、部品も高さも余白も共有する。
+                        ★アイコンはそのアプリを開いたとき最初に出るタブのもの
+                        （`DEFAULT_TAB`）を使う ―― そこへ着くのだから同じ顔でよい。
+                        ★色は `INK` … ホームには「選ばれているタブ」が無いので、
+                        非活性の灰にすると3つとも押せないように見える。 */}
+                    <TabGlyph
+                      name={appDef(id).tabs.find((t) => t.id === DEFAULT_TAB[id])?.icon ?? appDef(id).tabs[0].icon}
+                      label={appDef(id).en}
+                      color={INK}
+                    />
+                  </button>
                 ))}
                 {/* 選択中の印。1枚だけ置いて隣のタブへ滑らせる。 */}
                 {!isHome && <div aria-hidden style={{

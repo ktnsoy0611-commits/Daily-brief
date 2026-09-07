@@ -2,20 +2,19 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { BAND_H, SANS } from "@/lib/constants";
-import { BAND_FACE, type BandItem } from "@/lib/homeBand";
+import { img } from "@/lib/helpers";
+import { type BandItem } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
-import { RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
+import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
 //
-// ★★**動きは「ピル1つぶん動いて、止まって、また動く」**（ユーザー確定）。
-//   等速で流し続けない ―― 動き続けるものは目を引き続け、下の山を見られなくする。
-//   ★動き出しと止まりは既存の `--ease-settle`（すっと出てふわっと止まる）。
-//   **新しい曲線は作っていない。**
-// ★★★**1歩の量は「いま先頭にいるピルの幅」**なので、幅がまちまちだと CSS の
-//   キーフレームでは書けない。だから **Web Animations API** で、測った幅から
-//   キーフレームを組む。★時間と曲線は `app/globals.css` の `:root` から読む
-//   （このファイルに数字を書かない）。
+// ★★**ゆっくり流れ続けて循環する**（2026-09-07 ユーザー確定）。等速（`linear`）
+//   ―― 環境の動き（止まらずに回り続けるもの）は曲線4本の対象外で、等速でないと
+//   繰り返しの継ぎ目で速さが飛ぶ。
+// ★★★**速さは「画面の幅ぶん流れる時間」で持つ**（`--t-amb-band-lap`）。一周の
+//   時間で持つと、並ぶ件数が変わるたびに速さが変わる（件数は日によって違う）。
+//   幅で持てば何件並んでも速さは同じ。★数字はこのファイルに書かない。
 // ★★段ごとに向きが互い違い（上＝左へ／中＝右へ／下＝左へ）。
 //   **止まって見える瞬間が無い**のは、隣の段が動いているから。
 // ★★左右とも画面の外へ切れる（＝まだ続きがある、を形で言う）。器の左右の
@@ -28,33 +27,56 @@ type Row = 0 | 1 | 2;
 /** 段の厚み。★写真の丸が入る上の段だけ厚い（丸は高さいっぱい）。 */
 const HEIGHT: Record<Row, number> = { 0: BAND_H.photo, 1: BAND_H.plain, 2: BAND_H.plain };
 
-/** ピル1つ。★色は種類が決める（`BAND_FACE`）。文字はその面から導く。 */
+/**
+ * ピル1つ。★色は**その中身が既存のアプリで持っている色**（`lib/homeBand.ts`）。
+ * 面に載る字は `bodyInkOn()` が面から導く（表に持たない）。
+ *
+ * ★★★**提案の丸は、Explore と同じ規則**（2026-09-07・ユーザー指摘「写真もないし、
+ *   現状の Explore と繋がっていない」）―― 写真があればその写真、無ければ
+ *   **色ベタの上に巨大な字面**（「展」「本」）。だから列には必ず「顔」が並ぶ。
+ */
 function Pill({ item, row }: { item: BandItem; row: Row }) {
-  const face = BAND_FACE[item.kind];
+  const face = item.face;
   const ink = bodyInkOn(face);
-  const photo = row === 0 ? item.photo : undefined;
+  const h = HEIGHT[row];
+  const head = row === 0;                    // 提案の段だけ、丸と大きな題を持つ
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: SPACE.md, flexShrink: 0,
-      height: HEIGHT[row], borderRadius: RADIUS.pill, background: face,
-      // ★写真があるときは丸が左端に密着するので、左の余白は持たない。
-      padding: photo ? `0 ${SPACE.xl}px 0 0` : `0 ${SPACE.xl}px`,
-      maxWidth: "80vw",
+      height: h, borderRadius: RADIUS.pill, background: face,
+      // ★丸は左端に密着するので、そのときだけ左の余白を持たない。
+      padding: head ? `0 ${SPACE.xl}px 0 0` : `0 ${SPACE.xl}px`,
+      maxWidth: "84vw",
     }}>
-      {photo && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={photo} alt="" style={{
-          width: HEIGHT[row], height: HEIGHT[row], borderRadius: RADIUS.circle,
-          objectFit: "cover", display: "block", flexShrink: 0,
-        }} />
+      {head && (
+        <div style={{
+          width: h, height: h, borderRadius: RADIUS.circle, flexShrink: 0,
+          overflow: "hidden", position: "relative",
+          // ★写真が無いときの地。★Explore のカードと同じ「色ベタ＋字面」。
+          background: face, display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          {item.photo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={img(item.photo, 200, 200)} alt=""
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ) : (
+            <span aria-hidden style={{
+              // ★★字面は**丸いっぱい**に。`TYPE` の段から選ばない＝目盛りの外
+              //   （器の直径から決まる寸法。Explore の `min(42vw,170px)` と同じ考え方）。
+              fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: h * 0.72,
+              lineHeight: LEAD.flat, color: ink, opacity: 0.92,
+            }}>{item.glyph ?? ""}</span>
+          )}
+        </div>
       )}
       <span style={{
-        // ★★ROSE（フォローアップ）の面は墨との比が 4.05 で本文の 4.5 に届かない。
-        //   **16px / 700 以上**にして「大きな文字 3.0」で通す（ユーザー確定）。
-        //   ★帯は5種類とも同じ組で揃えるので、この1行が全部に効く。
-        //   ★目盛りの外（ROSE の比 4.05。面としての役が要るため）
-        fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.bold,
-        letterSpacing: TRACK.normal, color: ink,
+        // ★★提案は `head`(20) ―― 帯の中で主役をひとつ作る（ユーザー指摘
+        //   「パンチが足りない」）。★候補・期日未割当は `lead`(16)。
+        //   ★どちらも 700 以上なので、面の比が 4.5 に届かない色でも
+        //   「大きな文字 3.0」で通る。
+        fontFamily: SANS, fontSize: head ? TYPE.head : TYPE.lead, fontWeight: WEIGHT.bold,
+        letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
       }}>{item.text}</span>
     </div>
@@ -78,47 +100,32 @@ function BandRow({ row, items }: { row: Row; items: BandItem[] }) {
     animRef.current?.cancel();
     animRef.current = null;
     if (typeof track.animate !== "function") return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
-    // ★1周のピルの幅を測る（隙間込み）。**1歩の量はこの幅**。
-    const half = track.firstElementChild as HTMLElement | null;
-    if (!half) return;
-    const widths = [...half.children].map((c) => (c as HTMLElement).getBoundingClientRect().width);
-    const lap = half.getBoundingClientRect().width;
-    if (!lap || widths.length === 0) return;
+    // ★1周ぶんの幅を測る。**送る量はこれ**（2周ぶん並べてあるので、1周ぶん
+    //   送ると2周目の先頭が1周目の先頭と同じ位置に来て、継ぎ目が存在しない）。
+    const lapEl = track.firstElementChild as HTMLElement | null;
+    if (!lapEl) return;
+    const lap = lapEl.getBoundingClientRect().width;
+    const screen = track.parentElement?.getBoundingClientRect().width || window.innerWidth;
+    if (!lap || !screen) return;
 
-    const css = getComputedStyle(document.documentElement);
-    const num = (name: string, fallback: number) => {
-      const v = css.getPropertyValue(name).trim();
-      const n = parseFloat(v);
-      if (!Number.isFinite(n)) return fallback;
-      return v.endsWith("ms") ? n : n * 1000;
-    };
-    const step = num("--t-amb-band-step", 900);
-    const hold = num("--t-amb-band-hold", 2500);
-    const ease = css.getPropertyValue("--ease-settle").trim() || "ease-out";
+    // ★★速さは「画面の幅ぶん流れる時間」で持つ（`app/globals.css` の
+    //   `--t-amb-band-lap`）。**一周の時間で持たない** ―― 並ぶ件数は日によって
+    //   変わるので、一周で持つと日ごとに速さが変わってしまう。
+    const v = getComputedStyle(document.documentElement).getPropertyValue("--t-amb-band-lap").trim();
+    const n = parseFloat(v);
+    const perScreen = Number.isFinite(n) ? (v.endsWith("ms") ? n : n * 1000) : 26000;
+    const duration = (lap / screen) * perScreen;
 
-    // ★1歩＝「動く」＋「止まる」。周の合計がそのまま一周の時間になる。
-    const total = widths.length * (step + hold);
-    const frames: Keyframe[] = [];
-    let at = 0;      // 進んだ距離
-    let t = 0;       // 進んだ時間
-    for (const w of widths) {
-      frames.push({ offset: t / total, transform: `translateX(${-at}px)`, easing: ease });
-      t += step;
-      at += w;
-      frames.push({ offset: t / total, transform: `translateX(${-at}px)`, easing: "linear" });
-      t += hold;     // ここから次の歩まで止まる（値が変わらない＝止まって見える）
-    }
-    frames.push({ offset: 1, transform: `translateX(${-lap}px)` });
-
-    // ★中の段だけ**右へ**流す。2つ目のキーフレームを書かず、向きだけ逆にする。
-    const anim = track.animate(frames, {
-      duration: total, iterations: Infinity,
-      direction: row === 1 ? "reverse" : "normal",
-    });
-    animRef.current = anim;
+    animRef.current = track.animate(
+      [{ transform: "translateX(0)" }, { transform: `translateX(${-lap}px)` }],
+      {
+        duration, iterations: Infinity, easing: "linear",
+        // ★中の段だけ**右へ**流す。2つ目のキーフレームを書かず、向きだけ逆にする。
+        direction: row === 1 ? "reverse" : "normal",
+      },
+    );
   }, [row]);
 
   useEffect(() => {

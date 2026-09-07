@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
+import { Masthead } from "@/components/common";
 import { Band } from "@/components/home/Band";
 import { Pile } from "@/components/home/Pile";
+import { appTitle } from "@/lib/apps";
 import { bandRows, unreadCards } from "@/lib/homeBand";
 import { haptic, todayKey } from "@/lib/helpers";
-import { SPACE } from "@/lib/tokens";
 import type { TabProps } from "@/lib/types";
 
 // ★★★**ホーム**（2026-09-07）。起動して最初に見る画面で、3アプリの**玄関**。
@@ -76,7 +77,10 @@ export function HomeTab({ appState, persist, showToast }: TabProps) {
   }, [appState, persist]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", paddingTop: SPACE.sm }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+      {/* ★左上の名前。**3アプリとまったく同じ組み方**（幾何アルファベットの
+          `Masthead`）。ホームも列の1つなので、顔を揃える。 */}
+      <Masthead title={appTitle("home")} />
       {/* 帯（3段）。★器の左右のパディングの外へ出る（`.bleed-x`）ので、
           左右とも画面の外へ切れる ＝「まだ続きがある」を形で言う。 */}
       <Band rows={rows} />

@@ -63,11 +63,11 @@ function Pill({ item, row }: { item: BandItem; row: Row }) {
           }} />
       )}
       <span style={{
-        // ★★提案は `head`(20) ―― 帯の中で主役をひとつ作る。
-        //   候補・期日未割当は `lead`(16)。
-        //   ★どちらも 700 以上なので、面の比が 4.5 に届かない色でも
-        //   「大きな文字 3.0」で通る。
-        fontFamily: SANS, fontSize: head ? TYPE.head : TYPE.lead, fontWeight: WEIGHT.bold,
+        // ★★提案は `lead`(16)、候補・期日未割当は `body`(13)。
+        //   ★実機で「ピルが全体的に大きすぎる」ため1段ずつ下げた（2026-09-08）。
+        //   ★どちらも 700 なので、面の比が 4.5 に届かない色でも
+        //   「大きな文字 3.0」で通る（`lead` は 16px＝太字の下限ちょうど）。
+        fontFamily: SANS, fontSize: head ? TYPE.lead : TYPE.body, fontWeight: WEIGHT.bold,
         letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
       }}>{item.text}</span>

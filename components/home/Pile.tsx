@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BAND_BEZEL, INK, LATIN, PAPER, RUST, SWISS_XL } from "@/lib/constants";
+import { BAND_BEZEL, INK, LATIN, PAPER, RUST } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { colorOfKind } from "@/lib/palette";
 import { areaOf, specOf, weightArea } from "@/lib/taskSize";
@@ -10,6 +10,7 @@ import { canvasFont, drawFitted, ensureGlyphs, fitText } from "@/lib/textFit";
 import { paperize } from "@/lib/paperTexture";
 import { RADIUS } from "@/lib/tokens";
 import { aimTargets, DropTargets, fireTarget, targetAt } from "@/components/tasks/DropTargets";
+import { GeoText, geoTextWidth } from "@/components/GeoType";
 import type { Body, Engine } from "matter-js";
 import type { Item, Task } from "@/lib/types";
 
@@ -42,8 +43,14 @@ const TAP_MOVE = 8;
 /** 掴んだ図形が指へ寄る強さと、離れてよい上限。★同上。 */
 const GRAB_K = 0.34;
 const GRAB_MAX = 34;
-/** 山が器に占める割合。★目盛りの外（詰め込み具合）。★0.42 では図形が大きすぎた。 */
-const FILL = 0.30;
+/** 山が器に占める割合。★目盛りの外（詰め込み具合）。0.42 → 0.30 → **0.22**。
+ *  ★★**帯が厚いほど山の取り分が減る**ので、帯の厚み（`BAND_H`）とセットで決める。 */
+const FILL = 0.22;
+/** ★★**1つの図形が器に対して取ってよい上限**（`GravityTab` の `FIT_W`/`FIT_H` と
+ *  同じ考え方）。面積の予算だけだと、重要度の高い1枚が器の半分を覆ってしまう
+ *  ―― 実機で「大きすぎるやつがある」と言われたのがこれ。 */
+const FIT_W = 0.62;
+const FIT_H = 0.34;
 /** 未読のトゲトゲの円。★12頂点・内半径 0.40（`docs/home-spec.md` §5-b）。 */
 const ZIG_N = 12;
 const ZIG_IN = 0.4;
@@ -61,8 +68,8 @@ const INSET = 16;
 /** 文字の板（曜日・日付）の縁。★`GravityTab` の `PILE_WORD_PAD` と同じ。 */
 const WORD_PAD = 4;
 const WORD_PAD_Y = 2;
-/** 文字の板が使ってよい幅の割合。 */
-const WORD_W = 0.62;
+/** 文字の板が使ってよい幅の割合。★図形を小さくしたぶん、板も細くする。 */
+const WORD_W = 0.48;
 
 const frac = (s: string) => {
   let h = 0;
@@ -83,25 +90,9 @@ interface Piece {
   photo?: string;
   count?: number;
   /** 文字の板（日付・曜日）だけが持つ。 */
-  wordFs?: number; wordDx?: number; wordDy?: number;
+  wordFs?: number;
 }
 
-/**
- * ★文字の**塗りぴったりの箱**を測る（`GravityTab` の `inkBoxOf` と同じ計算）。
- * 箱を塗りに合わせるので、板の中で文字が偏らない。
- */
-function wordBox(ctx: CanvasRenderingContext2D, word: string, fs: number) {
-  ctx.save();
-  ctx.font = canvasFont(900, fs, LATIN);
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  const m = ctx.measureText(word);
-  ctx.restore();
-  const l = m.actualBoundingBoxLeft ?? m.width / 2;
-  const r = m.actualBoundingBoxRight ?? m.width / 2;
-  const a = m.actualBoundingBoxAscent ?? fs * 0.36;
-  const d = m.actualBoundingBoxDescent ?? fs * 0.12;
-  return { w: l + r, h: a + d, dx: (r - l) / 2, dy: (d - a) / 2 };
-}
 
 /**
  * ★★★**タスクの図形は1枚に焼いてから貼る**。`paperize`（紙の目）は canvas 全面を
@@ -172,6 +163,9 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
   const engineRef = useRef<Engine | null>(null);
   const rafRef = useRef(0);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  /** 落ちてくる文字の板（日付・曜日）。★字は DOM の幾何アルファベットで描く。 */
+  const [words, setWords] = useState<{ id: string; text: string; size: number }[]>([]);
+  const wordEls = useRef(new Map<string, HTMLDivElement>());
   const [holding, setHolding] = useState(false);
   const dragRef = useRef<{ piece: Piece; x: number; y: number } | null>(null);
 
@@ -221,7 +215,14 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
         ...offers.map(() => weightArea(2)),
       ];
       const total = areas.reduce((a, b) => a + b, 0) || 1;
-      const unit = Math.max(16, Math.min(UNIT, Math.sqrt((w * h * FILL) / total)));
+      let unit = Math.max(16, Math.min(UNIT, Math.sqrt((w * h * FILL) / total)));
+      // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。
+      //   1枚だけ縮めない ―― 図形どうしの大きさの比がそのまま重要度なので。
+      for (const t of tasks) {
+        const sp = specOf(t, today);
+        unit = Math.min(unit, (w * FIT_W) / Math.max(1, sp.w), (h * FIT_H) / Math.max(1, sp.h));
+      }
+      unit = Math.max(14, unit);
 
       const pieces: Piece[] = [];
       // ★★落とし方は `GravityTab` と同じ ―― **どこへ・どの高さから落ちるか**で
@@ -288,32 +289,40 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
       }
 
       // ★★★**その日の日付と曜日も一緒に落とす**（2026-09-07 ユーザー指定。
-      //   `GravityTab` と同じ ―― 枠の無い、文字だけの黒い板）。背景に置くのを
-      //   やめたのは、**版面の柱として敷くと山と分離して見えた**ため。
-      //   ★★**2枚は同じ大きさで組む**（長いほう＝曜日で決める）。別々に決めると
-      //   キャップラインもベースラインも食い違って見える（`GravityTab` の教訓）。
-      const words = [
-        `${today.getMonth() + 1}/${today.getDate()}`,
-        ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][today.getDay()],
-      ];
-      const room = w * WORD_W;
-      ctx.font = canvasFont(900, SWISS_XL, LATIN);
-      const widest = Math.max(...words.map((x) => ctx.measureText(x).width), 1);
-      const wordFs = SWISS_XL * (room / widest);
+      //   `GravityTab` と同じ ―― 枠の無い、文字だけの黒い板）。
+      // ★★★**字は幾何アルファベット**（`components/GeoType.tsx`）にした
+      //   （2026-09-08 ユーザー指摘「曜日と日付のフォントがダサい」）。canvas に
+      //   Archivo を描くと、body に掛けている `wdth 88` が効かず**素の幅のまま**
+      //   出るので、画面のほかの英語と字の太り方が食い違う。幾何アルファベットは
+      //   **このアプリが自分で持っている顔**（左上の名前と同じ）で、canvas では
+      //   なく DOM（SVG）なので、幅も形もそのまま出る。
+      // ★★2枚は**同じ大きさ**で組む（長いほう＝曜日で決める）。別々に決めると
+      //   上端も下端も食い違って見える（`GravityTab` の教訓）。
+      const wd = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][today.getDay()];
+      const mo = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][today.getMonth()];
+      const dd = String(today.getDate()).padStart(2, "0");
+      const words = [`${mo}${dd}`, wd];
+      // ★1文字の外形（＝高さ）を基準に、長いほうが器の `WORD_W` に収まる大きさを出す。
+      const glyphBox = geoTextWidth("A") || 1;
+      const wordFs = Math.max(18, (w * WORD_W * glyphBox) / Math.max(...words.map((x) => geoTextWidth(x)), 1));
       words.forEach((word, i) => {
-        const box = wordBox(ctx, word, wordFs);
-        const bw = Math.max(8, box.w + WORD_PAD * 2);
-        const bh = Math.max(8, box.h + WORD_PAD_Y * 2);
+        const bw = Math.max(8, (wordFs * geoTextWidth(word)) / glyphBox + WORD_PAD * 2);
+        const bh = Math.max(8, wordFs + WORD_PAD_Y * 2);
         const body = M.Bodies.rectangle(0, 0, bw, bh, BODY);
-        // ★★回り慣性を重くする（`GravityTab` と同じ）。板は薄いので、そのままだと
-        //   小突かれて短い辺で立ってしまう。落ちるあいだは変わらず回る。
-        M.Body.setInertia(body, body.inertia * 5);
+        // ★★★**文字の板はほとんど回さない**（2026-09-08）。板は薄くて長いので、
+        //   ほかと同じに回すと**逆さまや裏返しで積まれて読めなくなる**（実機で
+        //   実際にそうなった）。回り慣性を重くし、初速の回りもほぼ 0 にする
+        //   ―― 落ちながらわずかに傾くだけになる。
+        M.Body.setInertia(body, body.inertia * 20);
         toss(body, `word${i}`, tasks.length + offers.length + 1 + i, bh);
+        M.Body.setAngle(body, (frac(`word${i}a`) - 0.5) * 0.16);
+        M.Body.setAngularVelocity(body, 0);
         pieces.push({
           id: `word${i}`, body, kind: "word", w: bw, h: bh,
-          face: INK, ink: INK, title: word, wordFs, wordDx: box.dx, wordDy: box.dy,
+          face: INK, ink: INK, title: word, wordFs,
         });
       });
+      setWords(words.map((word, i) => ({ id: `word${i}`, text: word, size: wordFs })));
 
       M.Composite.add(engine.world, pieces.map((p) => p.body));
       piecesRef.current = pieces;
@@ -341,12 +350,9 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
             const bmp = taskBitmap(p, dpr);
             if (bmp) ctx.drawImage(bmp, -p.w / 2, -p.h / 2, p.w, p.h);
             else { roundRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.fill(); }
-          } else if (p.kind === "word" && p.wordFs !== undefined) {
-            // ★枠の無い、文字だけの黒い板。★掴めない（`down` が避ける）。
-            ctx.fillStyle = p.ink;
-            ctx.font = canvasFont(900, p.wordFs, LATIN);
-            ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText(p.title ?? "", -(p.wordDx ?? 0), -(p.wordDy ?? 0));
+          } else if (p.kind === "word") {
+            // ★★文字の板は **DOM（幾何アルファベット）**が描く。ここでは何もしない
+            //   ―― 位置と角度だけ下の `wordEls` へ毎フレーム書き写す。
           } else if (p.kind === "offer" && p.r) {
             // ★★**写真の周りにベゼル**（2026-09-07 ユーザー指定）。円はその提案の色で、
             //   写真は**一回り小さい円**に収まる ―― 色の輪が縁として残る。
@@ -404,6 +410,15 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
           M.Body.setVelocity(b, { x: dx * GRAB_K * k, y: dy * GRAB_K * k });
         }
         draw();
+        // ★文字の板（DOM）を物体の位置へ運ぶ。**React の再描画は起こさない**
+        //   ―― 毎フレーム setState すると列ごと作り直しになる。
+        for (const p of piecesRef.current) {
+          if (p.kind !== "word") continue;
+          const el = wordEls.current.get(p.id);
+          if (!el) continue;
+          el.style.transform =
+            `translate(${p.body.position.x}px, ${p.body.position.y}px) translate(-50%, -50%) rotate(${p.body.angle}rad)`;
+        }
         rafRef.current = requestAnimationFrame(loop);
       };
       rafRef.current = requestAnimationFrame(loop);
@@ -492,6 +507,18 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
       onPointerCancel={onUp}
     >
       <canvas ref={cvRef} style={{ position: "absolute", inset: 0, display: "block" }} />
+      {/* ★日付と曜日。**枠の無い、文字だけの板**として山と一緒に落ちる。
+          位置と角度は毎フレーム物理から書き写す（React は再描画しない）。 */}
+      {words.map((wd) => (
+        <div
+          key={wd.id}
+          ref={(el) => { if (el) wordEls.current.set(wd.id, el); else wordEls.current.delete(wd.id); }}
+          aria-hidden
+          style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", willChange: "transform" }}
+        >
+          <GeoText text={wd.text} size={wd.size} color={INK} />
+        </div>
+      ))}
       <PileTargets holding={holding} aimRef={aimRef} dropRef={dropRef} />
     </div>
   );

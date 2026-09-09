@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { Masthead } from "@/components/common";
 import { Band } from "@/components/home/Band";
 import { Pile } from "@/components/home/Pile";
 import { appTitle } from "@/lib/apps";
 import { bandRows, unreadCards } from "@/lib/homeBand";
-import { haptic, todayKey } from "@/lib/helpers";
+import { todayKey } from "@/lib/helpers";
 import type { TabProps } from "@/lib/types";
 
 // ★★★**ホーム**（2026-09-07）。起動して最初に見る画面で、3アプリの**玄関**。
@@ -20,7 +20,7 @@ import type { TabProps } from "@/lib/types";
 // 帯のピルを掴んで引き下ろすと、図形に変わって山へ落ちる ―― この一続きの
 // 動きが軸（★引き下ろしはこの次に作る）。
 
-export function HomeTab({ appState, persist, showToast }: TabProps) {
+export function HomeTab({ appState }: TabProps) {
   const day = todayKey();
   const today = useMemo(() => new Date(), []);
   const rows = useMemo(() => bandRows(appState), [appState]);
@@ -44,37 +44,9 @@ export function HomeTab({ appState, persist, showToast }: TabProps) {
     });
   }, [appState.items, appState.magazine, day]);
 
-  // ★口＝完了 ／ ゴミ箱＝削除。**既存の GRAVITY と同じ動作**（掴んで放り込む）。
-  const complete = useCallback((p: { kind: "task" | "offer"; id: string }) => {
-    haptic(8);
-    const next = structuredClone(appState);
-    if (p.kind === "task") {
-      const t = next.tasks.find((x) => x.id === p.id);
-      if (!t) return;
-      t.done = true; t.doneAt = new Date().toISOString();
-      showToast(`${t.title} を終えた`);
-    } else {
-      const it = next.items.find((x) => x.id === p.id);
-      if (!it) return;
-      it.status = "done"; it.doneAt = new Date().toISOString();
-      showToast(`${it.title} を終えた`);
-    }
-    persist(next);
-  }, [appState, persist, showToast]);
-
-  const remove = useCallback((p: { kind: "task" | "offer"; id: string }) => {
-    haptic(8);
-    const next = structuredClone(appState);
-    if (p.kind === "task") {
-      next.tasks = next.tasks.filter((x) => x.id !== p.id);
-    } else {
-      // ★提案は消さずに**候補へ戻す**（ストックに残る）。山から下ろすだけ。
-      const it = next.items.find((x) => x.id === p.id);
-      if (it) it.status = "candidate";
-      if (next.magazine) next.magazine.itemIds = next.magazine.itemIds.filter((id) => id !== p.id);
-    }
-    persist(next);
-  }, [appState, persist]);
+  // ★★★**口とブラックホールは置かない**（2026-09-09 ユーザー指定で削除）。
+  //   山で図形にできるのは**掴んで運ぶこと**だけ。完了も削除もここでは起こさない
+  //   ―― 何をどうやって片づけるかは、引き下ろしの動きと一緒に決める。
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
@@ -85,14 +57,7 @@ export function HomeTab({ appState, persist, showToast }: TabProps) {
           左右とも画面の外へ切れる ＝「まだ続きがある」を形で言う。 */}
       <Band rows={rows} />
       {/* 山。★帯の下の**残り全部**を器にする（帯が何段でも山が余りを取る）。 */}
-      <Pile
-        tasks={pileTasks}
-        offers={pileOffers}
-        unread={unread}
-        today={today}
-        onComplete={complete}
-        onDelete={remove}
-      />
+      <Pile tasks={pileTasks} offers={pileOffers} unread={unread} today={today} />
     </div>
   );
 }

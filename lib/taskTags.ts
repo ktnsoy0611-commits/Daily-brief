@@ -1,4 +1,5 @@
 import { SCHEME } from "./constants";
+import { ACCENT_TEST, accentSteps } from "./appAccent";
 import { bodyInkOn } from "./palette";
 import type { TaskTag } from "./types";
 
@@ -37,7 +38,18 @@ const tag = (id: TaskTag, label: string, color: string, face: number): TagDef =>
 //     第77巡の「危険だけ予備から借りる」問題がここで解けた。
 //   ★★★**書体（`face`）と id は動かさない** ―― 動かすと「同じタグなら必ず同じ書体」
 //     が壊れる。第78巡・第80巡とも色だけを差し替えている。
-export const TASK_TAGS: TagDef[] = [
+// ★★★**テスト（2026-09-09）**。`ACCENT_TEST` の間は、タグ5色を **TASK の家族の
+//   濃淡5段**にする ―― 色相はアプリの識別に使い切っているので、アプリの中では
+//   増やさない。`lib/appAccent.ts` の1行を `false` にすれば下の元の割り当てへ戻る。
+const ACCENT_TAGS = accentSteps("tasks", 5);
+
+export const TASK_TAGS: TagDef[] = ACCENT_TEST ? [
+  tag("work", "WORK", ACCENT_TAGS[0], 1),
+  tag("life", "LIFE", ACCENT_TAGS[1], 3),
+  tag("wellness", "WELLNESS", ACCENT_TAGS[2], 4),
+  tag("social", "SOCIAL", ACCENT_TAGS[3], 5),
+  tag("growth", "GROWTH", ACCENT_TAGS[4], 2),
+] : [
   // ★★色は `SCHEME`（`lib/constants.ts`）が持つ。ここは**役 → 色**の参照だけ。
   //   多い3つ（work / life / growth）は色相 255°／152°／35° と大きく離してある。
   tag("work", "WORK", SCHEME.work, 1),             // Azul     / ゴシック700

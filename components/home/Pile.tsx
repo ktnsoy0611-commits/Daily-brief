@@ -9,8 +9,7 @@ import { areaOf, specOf, weightArea } from "@/lib/taskSize";
 import { resolveTag, tagColor, tagFace, tagInk } from "@/lib/taskTags";
 import { canvasFont, drawFitted, ensureGlyphs, fitText } from "@/lib/textFit";
 import { paperize } from "@/lib/paperTexture";
-import { LEAD, RADIUS, TRACK, WEIGHT } from "@/lib/tokens";
-import { aimTargets, DropTargets, fireTarget, targetAt } from "@/components/tasks/DropTargets";
+import { RADIUS, TRACK, WEIGHT } from "@/lib/tokens";
 
 import type { Body, Engine } from "matter-js";
 import type { Item, Task } from "@/lib/types";
@@ -41,17 +40,20 @@ const WALL_T = 200;
 /** 掴むまでの長押し。★`GravityTab` と同じ（動かすとスワイプ扱い）。 */
 const HOLD_MS = 150;
 const TAP_MOVE = 8;
+/** ★指の太さぶんの余裕（当たり判定を外へ広げる）。★目盛りの外（触りごこち）。 */
+const TOUCH_SLOP = 10;
 /** 掴んだ図形が指へ寄る強さと、離れてよい上限。★同上。 */
 const GRAB_K = 0.34;
 const GRAB_MAX = 34;
 /** 山が器に占める割合。★目盛りの外（詰め込み具合）。0.42 → 0.30 → **0.22**。
- *  ★★**帯が厚いほど山の取り分が減る**ので、帯の厚み（`BAND_H`）とセットで決める。 */
-const FILL = 0.22;
+ *  ★★**帯が厚いほど山の取り分が減る**ので、帯の厚み（`BAND_H`）とセットで決める。
+ *  ★2026-09-09 に 0.22 → **0.28**（ユーザー指定「タスクはもう少し大きく」）。 */
+const FILL = 0.28;
 /** ★★**1つの図形が器に対して取ってよい上限**（`GravityTab` の `FIT_W`/`FIT_H` と
  *  同じ考え方）。面積の予算だけだと、重要度の高い1枚が器の半分を覆ってしまう
  *  ―― 実機で「大きすぎるやつがある」と言われたのがこれ。 */
-const FIT_W = 0.62;
-const FIT_H = 0.34;
+const FIT_W = 0.68;
+const FIT_H = 0.38;
 /** ★提案の円の大きさ。**いちばん重いタスク × これ**（2026-09-08 に 1 → 1.6）。 */
 const OFFER_K = 1.6;
 /** 未読のトゲトゲの円。★12頂点・内半径 0.40（`docs/home-spec.md` §5-b）。 */
@@ -62,7 +64,12 @@ const BADGE_R = 44;
 /** ★★★落とし方は `GravityTab` と**同じ**（傾き・回り・横の初速）。
  *  「傾きは 3〜6°」「回さない」は**やめた**（2026-09-07 ユーザー指定
  *  「回転しても良いです。普通に落としてください」）―― 回転を止めると
- *  角度が変わらないまま降りてきて、物体に見えない。 */
+ *  角度が変わらないまま降りてきて、物体に見えない。
+ *  ★★★2026-09-09 に**回り慣性の細工を全部やめた**（ユーザー指定「ひっくり返っても
+ *  なんでもいいので自然に落としてください」）。`setInertia` で回りにくくしたり、
+ *  背丈で回りの強さを割ったりすると、**質量と形から決まる本来の慣性と食い違う**
+ *  ―― 落ちるあいだは重そうなのに、ぶつかった瞬間だけ勝手に向きが戻る、という
+ *  物体に見えない動きになっていた。**形が決めた慣性のまま落とすのが自然。** */
 const SPAWN_TILT = 0.5;      // 初期の傾き（±0.25 rad ≒ ±14°）
 const SPAWN_SPIN = 0.05;     // 初期の回り
 const SPAWN_VX = 1.2;        // 横の初速
@@ -71,8 +78,14 @@ const INSET = 16;
 /** 文字の板（曜日・日付）の縁。★`GravityTab` の `PILE_WORD_PAD` と同じ。 */
 const WORD_PAD = 4;
 const WORD_PAD_Y = 2;
-/** 文字の板が使ってよい幅の割合。★図形を小さくしたぶん、板も細くする。 */
-const WORD_W = 0.48;
+/** 文字の板が使ってよい幅の割合。★2026-09-09 に 0.48 → **0.66**（もっと大きく）。 */
+const WORD_W = 0.66;
+/** ★★**字の幅**（Archivo の可変の軸）。既定は画面ぜんぶが 88 だが、
+ *  この板だけ **62（いちばん縦長）**にする（ユーザー指定「縦長で…もっと太い」）。
+ *  ★太さと縦長は別の軸 ―― 太さ 900 のまま幅だけ絞ると、線は太いのに姿は縦長になる。 */
+const WORD_WDTH = 62;
+/** ★★**行間を詰める**。2行を1つの塊として読ませるので、行間は字面より狭く取る。 */
+const WORD_LEAD = 0.82;
 /** 測るときの基準の大きさ。★幅は文字サイズに比例するので、1回測れば次が直接出る。 */
 const WORD_BASE = 100;
 
@@ -149,15 +162,16 @@ function taskBitmap(p: Piece, dpr: number): HTMLCanvasElement | undefined {
  */
 const wordStyle = (fs: number): React.CSSProperties => ({
   fontFamily: LATIN, fontSize: fs, fontWeight: WEIGHT.black,
-  letterSpacing: TRACK.tight, lineHeight: LEAD.flat,
-  fontVariationSettings: '"wdth" 88',
+  letterSpacing: TRACK.tight, lineHeight: WORD_LEAD,
+  fontVariationSettings: `"wdth" ${WORD_WDTH}`,
+  whiteSpace: "pre",          // ★2行を改行で持つ（\n をそのまま効かせる）
 });
 
 /** ★組んだ字の箱を**実測**する。canvas では幅の軸が効かないので DOM で測る。 */
 function measureWord(text: string, fs: number): { w: number; h: number } {
   const el = document.createElement("span");
   Object.assign(el.style, {
-    position: "absolute", visibility: "hidden", whiteSpace: "nowrap",
+    position: "absolute", visibility: "hidden",
     left: "0", top: "0",
   } as CSSStyleDeclaration);
   const st = wordStyle(fs);
@@ -166,7 +180,8 @@ function measureWord(text: string, fs: number): { w: number; h: number } {
   el.style.fontWeight = String(st.fontWeight);
   el.style.letterSpacing = String(st.letterSpacing);
   el.style.lineHeight = String(st.lineHeight);
-  el.style.setProperty("font-variation-settings", '"wdth" 88');
+  el.style.setProperty("font-variation-settings", `"wdth" ${WORD_WDTH}`);
+  el.style.whiteSpace = "pre";
   el.textContent = text;
   document.body.appendChild(el);
   const r = el.getBoundingClientRect();
@@ -187,13 +202,11 @@ function photoOf(url: string, onLoad: () => void): HTMLImageElement | undefined 
   return undefined;
 }
 
-export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
+export function Pile({ tasks, offers, unread, today }: {
   tasks: Task[];
   offers: Item[];
   unread: number;
   today: Date;
-  onComplete: (p: { kind: "task" | "offer"; id: string }) => void;
-  onDelete: (p: { kind: "task" | "offer"; id: string }) => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -230,6 +243,10 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
 
     (async () => {
       const M = (await import("matter-js")).default ?? (await import("matter-js"));
+      // ★★★**書体が届くまで待つ**（2026-09-09）。日付の板は**実際に組んだ字を
+      //   測って**大きさを決めるので、Archivo が届く前に測ると**代替の書体の幅**で
+      //   決まってしまい、板が小さいまま出る（実測 155px／狙いは 236px）。
+      await document.fonts?.ready;
       if (stop) return;
       matterRef.current = M;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -277,38 +294,79 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
       //   回り**、逆さまに積まれて名前が読めなくなった。自分の背丈ぶん空ければ、
       //   ぶつかるのは着地してからになる。
       let stack = 0;
-      const toss = (body: Body, seed: string, i: number, bh: number) => {
+      const toss = (body: Body, seed: string, bh: number) => {
         const r1 = frac(seed); const r2 = frac(`${seed}y`); const r3 = frac(`${seed}a`);
         stack += bh + 60 + r2 * 60;
         M.Body.setPosition(body, { x: spawnX(body.bounds.max.x - body.bounds.min.x, r1), y: -stack });
         M.Body.setAngle(body, (r3 - 0.5) * SPAWN_TILT);
-        // ★★**回りの強さは背丈に比例させる**（2026-09-07）。同じ回りを与えると、
-        //   小さくて軽い図形ほどよく回り、**着地までに一回転して逆さまに積まれる**
-        //   （実測 … 小さい2枚だけが 180°で止まっていた）。題が読めなくなるので、
-        //   小さいものほど控えめに回す。回ること自体はそのまま。
-        M.Body.setAngularVelocity(body, (r3 - 0.5) * SPAWN_SPIN * Math.min(1, Math.max(0.3, bh / 120)));
+        // ★★**回りは形の大小で加減しない**（2026-09-09）。大きさで割ると、小さい
+        //   ものだけ空中で止まって見える。同じ初速を与えて、あとは形が決めた
+        //   慣性に任せる ―― ひっくり返るなら、それが自然な落ち方。
+        M.Body.setAngularVelocity(body, (r3 - 0.5) * SPAWN_SPIN);
         M.Body.setVelocity(body, { x: (r1 - 0.5) * SPAWN_VX, y: 0 });
       };
 
-      tasks.forEach((t, i) => {
+      // ★★★**その日の日付と曜日も一緒に落とす**（2026-09-07 ユーザー指定。
+      //   `GravityTab` と同じ ―― 枠の無い、文字だけの黒い板）。
+      // ★★★**字は Archivo の 900**（2026-09-08 ユーザー指定「ボールドの太くて
+      //   美しいフォント」）。★canvas ではなく **DOM** で描くのが要点 ――
+      //   canvas の `ctx.font` には `font-variation-settings` が乗らないので、
+      //   Archivo が**素の幅（wdth 100）**で出て、画面のほかの英語（`wdth 88`）と
+      //   字の太り方が食い違う。DOM なら幅の軸がそのまま効く。
+      //   ★★これで日付を `9/8` と書ける（幾何アルファベットは A-Z と 0-9 しか
+      //   持たないので `SEP08` にしていた）。
+      // ★★★**板は1枚**（2026-09-09 ユーザー指定「もっと大きく、縦長で行間を詰めて」）。
+      //   2枚に分けると、行間は**2つの板の隙間**になるので詰められない ――
+      //   物理が決めてしまう。1枚の中の2行にすれば `WORD_LEAD` で詰められ、
+      //   落ちるときも日付と曜日が離れ離れにならない。
+      // ★短い行（日付）を上・長い行（曜日）を下に置く ―― 左揃えの2行は、
+      //   下が長いほうが塊として安定して見える。
+      const wd = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][today.getDay()];
+      const word = `${today.getMonth() + 1}/${today.getDate()}\n${wd}`;
+      // ★★大きさは**実際に組んだ字を測って**決める（`measureWord`）。器の `WORD_W`
+      //   に**長いほうの行**が収まる大きさを出す。
+      const base = measureWord(word, WORD_BASE);
+      const wordFs = Math.max(18, (WORD_BASE * w * WORD_W) / Math.max(1, base.w));
+      {
+        const m = measureWord(word, wordFs);
+        const bw = Math.max(8, m.w + WORD_PAD * 2);
+        const bh = Math.max(8, m.h + WORD_PAD_Y * 2);
+        const body = M.Bodies.rectangle(0, 0, bw, bh, BODY);
+        // ★★2行になって板が**背の高い塊**になったので、薄い板のときのような
+        //   細工（回り慣性を 20 倍）は要らない ―― 形が決めた慣性のまま落とす。
+        // ★★★**いちばん先に落とす**（2026-09-09）。最後に落とすと、板は山の
+        //   **凸凹の上**へ着地して 59° 傾いた（実測。3回とも同じ）。日付は読ませる
+        //   字なので、**平らな床の上**に先に置き、図形をその上に積む。
+        //   ★板は canvas の上の DOM なので、**上に積まれても字は隠れない**
+        //   ―― 物理では山の底、絵では山の手前。
+        // ★初速の回りは与えない（傾くのは着地の弾みぶんだけ）。
+        toss(body, "word", bh);
+        M.Body.setAngle(body, (frac("worda") - 0.5) * 0.16);
+        M.Body.setAngularVelocity(body, 0);
+        pieces.push({
+          id: "word", body, kind: "word", w: bw, h: bh,
+          face: INK, ink: INK, title: word, wordFs,
+        });
+        setWords([{ id: "word", text: word, size: wordFs }]);
+      }
+
+      tasks.forEach((t) => {
         const spec = specOf(t, today);
         const tag = resolveTag(t.tag, t.id, t.title, t.context, t.belongings);
         const pw = Math.max(28, spec.w * unit);
         const ph = Math.max(24, spec.h * unit);
         const body = M.Bodies.rectangle(0, 0, pw, ph, BODY);
+        // ★★★**質量だけ与えて、回り慣性は触らない**（2026-09-09）。`setMass` は
+        //   慣性も一緒に比例させるので、形と重さから正しい回りにくさが出る。
         M.Body.setMass(body, spec.area * MASS_K);
-        // ★★**回り慣性を重くする**（`GravityTab` が文字の板でやっているのと同じ）。
-        //   回ってよいが、**逆さまになると題が読めない**ので、ひっくり返るほどは
-        //   回らない重さにする。落ちるあいだの回転はそのまま見える。
-        M.Body.setInertia(body, body.inertia * 5);
-        toss(body, t.id, i, ph);
+        toss(body, t.id, ph);
         pieces.push({
           id: t.id, body, kind: "task", w: pw, h: ph,
           face: tagColor(tag), ink: tagInk(tag), title: t.title, face_: tagFace(tag),
         });
       });
 
-      offers.forEach((it, i) => {
+      offers.forEach((it) => {
         // ★★提案は重さを持たないので、**いちばん重いタスクと同じ**として置く
         //   （2026-09-08 ユーザー指定「提案の図形はもっと大きく」）。山の中で
         //   **今日行くと決めた1件**は、済ませる細かなタスクより大きくてよい。
@@ -316,7 +374,7 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
         const r = Math.max(28, Math.sqrt((area * unit * unit) / Math.PI));
         const body = M.Bodies.circle(0, 0, r, BODY);
         M.Body.setMass(body, area * MASS_K);
-        toss(body, it.id, tasks.length + i, r * 2);
+        toss(body, it.id, r * 2);
         const face = it.color ?? colorOfKind(it.kind);
         pieces.push({
           id: it.id, body, kind: "offer", r,
@@ -329,47 +387,9 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
 
       if (unread > 0) {
         const body = M.Bodies.circle(0, 0, BADGE_R, BODY);
-        toss(body, "unread", tasks.length + offers.length, BADGE_R * 2);
+        toss(body, "unread", BADGE_R * 2);
         pieces.push({ id: "unread", body, kind: "badge", r: BADGE_R, face: RUST, ink: PAPER, count: unread });
       }
-
-      // ★★★**その日の日付と曜日も一緒に落とす**（2026-09-07 ユーザー指定。
-      //   `GravityTab` と同じ ―― 枠の無い、文字だけの黒い板）。
-      // ★★★**字は Archivo の 900**（2026-09-08 ユーザー指定「ボールドの太くて
-      //   美しいフォント」）。★canvas ではなく **DOM** で描くのが要点 ――
-      //   canvas の `ctx.font` には `font-variation-settings` が乗らないので、
-      //   Archivo が**素の幅（wdth 100）**で出て、画面のほかの英語（`wdth 88`）と
-      //   字の太り方が食い違う。DOM なら幅の軸がそのまま効く。
-      //   ★★これで日付を `9/8` と書ける（幾何アルファベットは A-Z と 0-9 しか
-      //   持たないので `SEP08` にしていた）。
-      // ★★2枚は**同じ大きさ**で組む（長いほう＝曜日で決める）。別々に決めると
-      //   上端も下端も食い違って見える（`GravityTab` の教訓）。
-      const wd = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][today.getDay()];
-      const words = [`${today.getMonth() + 1}/${today.getDate()}`, wd];
-      // ★★大きさは**実際に組んだ字を測って**決める（`measureWord`）。長いほうが
-      //   器の `WORD_W` に収まる大きさを出し、**2枚とも同じ大きさ**で組む ――
-      //   別々に決めると上端も下端も食い違って見える（`GravityTab` の教訓）。
-      const base = measureWord(wd, WORD_BASE);
-      const wordFs = Math.max(18, (WORD_BASE * w * WORD_W) / Math.max(1, base.w));
-      words.forEach((word, i) => {
-        const m = measureWord(word, wordFs);
-        const bw = Math.max(8, m.w + WORD_PAD * 2);
-        const bh = Math.max(8, m.h + WORD_PAD_Y * 2);
-        const body = M.Bodies.rectangle(0, 0, bw, bh, BODY);
-        // ★★★**文字の板はほとんど回さない**（2026-09-08）。板は薄くて長いので、
-        //   ほかと同じに回すと**逆さまや裏返しで積まれて読めなくなる**（実機で
-        //   実際にそうなった）。回り慣性を重くし、初速の回りもほぼ 0 にする
-        //   ―― 落ちながらわずかに傾くだけになる。
-        M.Body.setInertia(body, body.inertia * 20);
-        toss(body, `word${i}`, tasks.length + offers.length + 1 + i, bh);
-        M.Body.setAngle(body, (frac(`word${i}a`) - 0.5) * 0.16);
-        M.Body.setAngularVelocity(body, 0);
-        pieces.push({
-          id: `word${i}`, body, kind: "word", w: bw, h: bh,
-          face: INK, ink: INK, title: word, wordFs,
-        });
-      });
-      setWords(words.map((word, i) => ({ id: `word${i}`, text: word, size: wordFs })));
 
       M.Composite.add(engine.world, pieces.map((p) => p.body));
       piecesRef.current = pieces;
@@ -493,18 +513,44 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
     };
   }, [tasks, offers, unread, today, size, redraw]);
 
-  // ── 掴む・完了・削除 ────────────────────────────────────────
+  // ── 掴む ──────────────────────────────────────────────────
+  /**
+   * ★★★**当たり判定**（2026-09-09 に作り直した）。直す前は3つ外していた:
+   *   1. **掴めないもの（数の図形・文字の板）が上に乗っていると、下の図形が
+   *      掴めなかった** ―― 手前から順に見て最初に当たったものを返し、それが
+   *      掴めない種類なら**そこで諦めて**いた。板は器の 2/3 の幅があるので、
+   *      山の真ん中がまるごと反応しない。**掴めないものは初めから見ない。**
+   *   2. **円を多角形として見ていた** ―― matter.js の円は 25 角形で、頂点は
+   *      円周上にあるから**辺の内側が欠ける**。円は半径で見る。
+   *   3. **指の太さぶんの余裕が無かった** ―― 縁のちょうど外を押すと外れる。
+   *      `TOUCH_SLOP` ぶん広げ、**当たった中でいちばん近いもの**を採る。
+   */
   const pickAt = (cx: number, cy: number): Piece | null => {
     const box = boxRef.current;
     const M = matterRef.current;
     if (!box || !M) return null;
     const r = box.getBoundingClientRect();
     const pt = { x: cx - r.left, y: cy - r.top };
-    for (let i = piecesRef.current.length - 1; i >= 0; i--) {
-      const p = piecesRef.current[i];
-      if (M.Bounds.contains(p.body.bounds, pt) && M.Vertices.contains(p.body.vertices, pt)) return p;
+    let best: Piece | null = null;
+    let bestD = Infinity;
+    for (const p of piecesRef.current) {
+      if (p.kind === "badge" || p.kind === "word") continue;   // ★掴めないものは見ない
+      const b = p.body;
+      const dx = pt.x - b.position.x; const dy = pt.y - b.position.y;
+      const d = Math.hypot(dx, dy);
+      let inside: boolean;
+      if (p.kind === "offer" && p.r) {
+        inside = d <= p.r + TOUCH_SLOP;
+      } else {
+        // ★回っている四角は、**体の向きへ座標を戻してから**箱で見る。
+        const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
+        const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
+        inside = Math.abs(lx) <= (p.w ?? 0) / 2 + TOUCH_SLOP
+              && Math.abs(ly) <= (p.h ?? 0) / 2 + TOUCH_SLOP;
+      }
+      if (inside && d < bestD) { best = p; bestD = d; }
     }
-    return null;
+    return best;
   };
 
   const press = useRef<{ id: number; x: number; y: number; timer: number } | null>(null);
@@ -537,25 +583,18 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
     const box = boxRef.current!.getBoundingClientRect();
     dragRef.current.x = e.clientX - box.left;
     dragRef.current.y = e.clientY - box.top;
-    aimRef.current?.(e.clientX, e.clientY);
   };
 
-  const onUp = (e: React.PointerEvent) => {
+  // ★★★**口とブラックホールは置かない**（2026-09-09 ユーザー指定で削除）。
+  //   山で掴めるのは**運ぶこと**だけで、完了も削除もここでは起こさない
+  //   ―― `components/tasks/DropTargets.tsx` は TASK 側がそのまま使っている。
+  const onUp = () => {
     const pr = press.current;
     if (pr) window.clearTimeout(pr.timer);
     press.current = null;
-    const d = dragRef.current;
     dragRef.current = null;
     setHolding(false);
-    if (!d) return;
-    const hit = dropRef.current?.(e.clientX, e.clientY);
-    if (hit === "mouth") onComplete({ kind: d.piece.kind as "task" | "offer", id: d.piece.id });
-    else if (hit === "trash") onDelete({ kind: d.piece.kind as "task" | "offer", id: d.piece.id });
   };
-
-  /** 的の当たり判定は器（`HomeTab`）が持つ。ここは呼ぶだけ。 */
-  const aimRef = useRef<((x: number, y: number) => void) | null>(null);
-  const dropRef = useRef<((x: number, y: number) => "mouth" | "trash" | null) | null>(null);
 
   return (
     <div
@@ -577,36 +616,11 @@ export function Pile({ tasks, offers, unread, today, onComplete, onDelete }: {
           aria-hidden
           style={{
             position: "absolute", left: 0, top: 0, pointerEvents: "none", willChange: "transform",
-            whiteSpace: "nowrap", color: INK,
+            color: INK, textAlign: "left",
             ...wordStyle(wd.size),
           }}
         >{wd.text}</div>
       ))}
-      <PileTargets holding={holding} aimRef={aimRef} dropRef={dropRef} />
     </div>
   );
-}
-
-/** 掴んでいるあいだだけ出る「口＝完了」と「ゴミ箱＝削除」。★既存の共通部品。 */
-function PileTargets({ holding, aimRef, dropRef }: {
-  holding: boolean;
-  aimRef: React.MutableRefObject<((x: number, y: number) => void) | null>;
-  dropRef: React.MutableRefObject<((x: number, y: number) => "mouth" | "trash" | null) | null>;
-}) {
-  const mouthRef = useRef<HTMLDivElement>(null);
-  const trashRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<"mouth" | "trash" | null>(null);
-
-  useEffect(() => {
-    aimRef.current = (x, y) => setHover(aimTargets(mouthRef.current, trashRef.current, x, y));
-    dropRef.current = (x, y) => {
-      const t = targetAt(mouthRef.current, trashRef.current, x, y);
-      if (t === "mouth") fireTarget(mouthRef.current);
-      if (t === "trash") fireTarget(trashRef.current);
-      return t;
-    };
-    return () => { aimRef.current = null; dropRef.current = null; };
-  }, [aimRef, dropRef]);
-
-  return <DropTargets show={holding} hover={hover} mouthRef={mouthRef} trashRef={trashRef} />;
 }

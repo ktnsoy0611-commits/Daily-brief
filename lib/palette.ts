@@ -1,5 +1,6 @@
 import type { ItemDomain, ItemKind } from "./types";
 import { INK, KIND_DOMAIN, MUTED, PALETTE, PAPER, SCHEME } from "./constants";
+import { ACCENT_TEST, accentSteps } from "./appAccent";
 
 // ★★★**有彩色の出どころはここ1つ**（2026-08-31・第73巡）。
 //
@@ -109,7 +110,16 @@ export const deepen = (hex: string, k: number): string => {
  * の 900 なので実用上は読めるが、**目盛りの外**なので `design.md` に数字ごと
  * 書いてある。代わりに置ける色は 1.43／1.50 しかなく、もっと悪い。
  */
-export const DOMAIN_COLOR: Record<ItemDomain, string> = {
+// ★★★**テスト（2026-09-09）**。`ACCENT_TEST` の間は、ドメイン4色を
+//   **EXPLORE の家族の濃淡4段**にする。`lib/appAccent.ts` の1行で元へ戻る。
+const ACCENT_DOMAINS = accentSteps("life", 4);
+
+export const DOMAIN_COLOR: Record<ItemDomain, string> = ACCENT_TEST ? {
+  place: ACCENT_DOMAINS[0],
+  experience: ACCENT_DOMAINS[1],
+  info: ACCENT_DOMAINS[2],
+  thing: ACCENT_DOMAINS[3],
+} : {
   place: SCHEME.danger,       // Magenta comunidad（共同体）
   experience: SCHEME.growth,  // Terracota Ancestral（土）
   info: SCHEME.work,          // Azul saberes（知）

@@ -1,4 +1,5 @@
 import type { AppState, ItemDomain, ItemKind } from "./types";
+import { ACCENT_TEST, accentSteps } from "./appAccent";
 
 export const STORAGE_KEY = "qol-app-state-v1";
 
@@ -221,6 +222,14 @@ export const PALETTE = {
   rosa:      "#FFBBDE",  // Rosa Cuidado（ケア）
 } as const;
 
+// ★★★**アプリごとのアクセントは `lib/appAccent.ts` が持つ**（2026-09-09・テスト）。
+//   色の出どころをここ1つにする規則の**唯一の例外**で、理由は
+//   **試しだから** ―― `ACCENT_TEST` を `false` にすると上の `PALETTE` へ丸ごと
+//   戻り、あちらのファイルは誰からも読まれなくなる。**採否が決まったら、
+//   採るなら色を `PALETTE` へ移してあのファイルを消す。捨てるならファイルごと消す。**
+//   ★ここが逆向き（`appAccent` → `constants`）にならないのは、`STUDIO_KEY` が
+//   `accentSteps` を呼ぶため ―― 両方向にすると循環参照で起動しない（実際に踏んだ）。
+
 // ★★★**役 → 色**。ここが「何がどの色か」の唯一の表。
 //
 // ★★選び方は目ではなく**採点**（第77巡に立てた4尺度）。6色から5色を選ぶ
@@ -250,7 +259,16 @@ export const SCHEME = {
  * ★★**REC の赤はここに書かない** ―― 乗る面が2つ（キーの面と地）あり、
  * 必要な赤が逆になるので `redOn()`（`lib/palette.ts`）が面から導く。
  */
-export const STUDIO_KEY = {
+// ★★★**テスト（2026-09-09）**。`ACCENT_TEST` の間は、キーの記号3色を
+//   **JOURNAL の家族の濃淡3段**にする。墨の窓の中なので、家族の全部が読める
+//   （いちばん暗い段でも 9.77）。`lib/appAccent.ts` の1行で元へ戻る。
+const ACCENT_KEYS = accentSteps("journal", 3);
+
+export const STUDIO_KEY = ACCENT_TEST ? {
+  pause: ACCENT_KEYS[0],
+  send: ACCENT_KEYS[1],
+  cancel: ACCENT_KEYS[2],
+} : {
   pause: SCHEME.wellness,   // Amarillo … 墨の窓の上で 9.97
   send: SCHEME.life,        // Verde    … 5.07
   cancel: SCHEME.social,    // Rosa     … 9.49

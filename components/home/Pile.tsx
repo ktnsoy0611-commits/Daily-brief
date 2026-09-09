@@ -88,6 +88,21 @@ const SPAWN_SPIN = 0.05;     // 初期の回り
 const SPAWN_VX = 1.2;        // 横の初速
 /** 山の左右の余白。★`GravityTab` の `PILE_INSET` と同じ考え方（壁と出どころを揃える）。 */
 const INSET = 16;
+/**
+ * ★★★**落とす間隔は「時間」で取る**（2026-09-09。それまでは「高さ」で取っていた）。
+ *
+ * ★★★高さで取ると、**山が大きいほど出どころが空の彼方へ行く** ―― 実測（器 573px）…
+ *   9個で最上段が **-1571px ＝ 器の 2.7 枚ぶん上**。そこから落ちてくるので
+ *   ①最後の1個が着くまで **2.98秒**かかり ②着地の瞬間の速さが **1410 px/秒**に
+ *   達して叩きつけになり ③画面の外で長く待たされる（「落ちる速度がおかしい」）。
+ * ★時間で取れば、**どれも器のすぐ上から同じ速さで落ちる**。実測（同じ山）…
+ *   出どころ **-57〜-99px** ／ 最高速 **812 px/秒** ／ 全部が落ち着くまで **1.70秒**。
+ * ★★間隔は 80／110／160ms を測って **110ms**（80 は 2.13秒・160 は 2.02秒かかる。
+ *   詰めすぎても空けすぎても遅くなる ―― 空中でぶつかるか、順番待ちになるから）。
+ */
+const DROP_EVERY_MS = 110;
+/** 出どころの高さ＝**自分の背丈の半分＋これ**（器のすぐ上から入ってくる）。 */
+const DROP_ABOVE = 24;
 /** 文字の板（曜日・日付）の縁。★`GravityTab` の `PILE_WORD_PAD` と同じ。 */
 const WORD_PAD = 4;
 const WORD_PAD_Y = 2;
@@ -318,15 +333,15 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
         const hi = Math.max(lo, w - INSET - half - 4);
         return Math.min(hi, Math.max(lo, INSET + (w - INSET * 2) * (0.08 + r1 * 0.84)));
       };
-      // ★★★**落とす高さは「それまでに積んだぶん」を足していく**（2026-09-07）。
-      //   一定の間隔で並べると、大きい図形どうしが**落ちている途中でぶつかって
-      //   回り**、逆さまに積まれて名前が読めなくなった。自分の背丈ぶん空ければ、
-      //   ぶつかるのは着地してからになる。
-      let stack = 0;
+      // ★★★**間隔は高さではなく時間で取る**（2026-09-09。理由と実測は `DROP_EVERY_MS`）。
+      //   ここでは**出どころを器のすぐ上に置くだけ**で、順番は下の `release` が
+      //   フレームごとに世界へ入れることで作る。
+      let nth = 0;
       const toss = (body: Body, seed: string, bh: number) => {
         const r1 = frac(seed); const r2 = frac(`${seed}y`); const r3 = frac(`${seed}a`);
-        stack += bh + 60 + r2 * 60;
-        M.Body.setPosition(body, { x: spawnX(body.bounds.max.x - body.bounds.min.x, r1), y: -stack });
+        const up = bh / 2 + DROP_ABOVE + r2 * DROP_ABOVE;
+        body.plugin = { ...(body.plugin ?? {}), releaseAt: nth++ * DROP_EVERY_MS };
+        M.Body.setPosition(body, { x: spawnX(body.bounds.max.x - body.bounds.min.x, r1), y: -up });
         M.Body.setAngle(body, (r3 - 0.5) * SPAWN_TILT);
         // ★★**回りは形の大小で加減しない**（2026-09-09）。大きさで割ると、小さい
         //   ものだけ空中で止まって見える。同じ初速を与えて、あとは形が決めた
@@ -419,7 +434,9 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
         const body = M.Bodies.circle(0, 0, r, BODY);
         M.Body.setMass(body, area * MASS_K);
         toss(body, it.id, r * 2);
-        const face = it.color ?? colorOfKind(it.kind);
+        // ★★**焼き込まれた色を信じない**（帯の `cardFace` と同じ理由）。生成した夜の
+        //   パレットが残っているので、**いま生きている表から引き直す**。
+        const face = ACCENT_TEST ? colorOfKind(it.kind) : (it.color ?? colorOfKind(it.kind));
         pieces.push({
           id: it.id, body, kind: "offer", r,
           face, ink: bodyInkOn(face),
@@ -430,12 +447,14 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       });
 
       if (unread > 0) {
-        // ★★★**輪郭そのもので物体を作る**（2026-09-09）。まん丸で作っていたので
-        //   ①トゲが床に噛まず玉のように滑り ②当たり判定が絵とずれていた。
-        //   ★`fromVertices` は凹んだ形を分解できない環境では**外側の12点の
-        //   多角形**へ落ちるが、それでも円よりずっと絵に近い（トゲの先で支える）。
-        const body = M.Bodies.fromVertices(0, 0, [zigVerts(BADGE_R)], BODY)
-          ?? M.Bodies.circle(0, 0, BADGE_R, BODY);
+        // ★★★**トゲの外側の12点を結んだ多角形**で作る（2026-09-09に作り直し）。
+        //   ★★`Bodies.fromVertices` に**凹んだ星をそのまま渡してはいけない** ――
+        //   `poly-decomp` を積んでいないので分解に失敗し、**凹んだ形を1つの凸形と
+        //   して**扱う（実測 `parts=1` ＋ 警告）。当たり判定が破綻して、山の中で
+        //   引っかかる。**凸なら SAT が正しく効く。**
+        //   ★まん丸に戻さないのは、玉のように滑らず**角で止まる**ため（12角形は
+        //   トゲの先を通る ―― 絵の外周とぴったり一致する）。
+        const body = M.Bodies.polygon(0, 0, ZIG_N, BADGE_R, BODY);
         M.Body.setMass(body, weightArea(3) * MASS_K);
         toss(body, "unread", BADGE_R * 2);
         // ★★色は **EXPLORE の家族のメイン**（2026-09-09 ユーザー指定）。
@@ -449,8 +468,22 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
         });
       }
 
-      M.Composite.add(engine.world, pieces.map((p) => p.body));
+      // ★★★**世界へは1つずつ入れる**（2026-09-09）。まとめて入れると全部が同時に
+      //   落ち始めるので、順番を作るために出どころを空の彼方まで持ち上げる羽目に
+      //   なる。**入れる時刻をずらせば、出どころは器のすぐ上でよい。**
       piecesRef.current = pieces;
+      const startedAt = performance.now();
+      const inWorld = new Set<string>();
+      const release = (now: number) => {
+        for (const p of pieces) {
+          if (inWorld.has(p.id)) continue;
+          const at = (p.body.plugin as { releaseAt?: number } | undefined)?.releaseAt ?? 0;
+          if (now - startedAt < at) continue;
+          inWorld.add(p.id);
+          M.Composite.add(engine.world, p.body);
+        }
+      };
+      release(startedAt);
 
       const roundRect = (x: number, y: number, bw: number, bh: number) => {
         const r = Math.min(RADIUS.lg, bw / 2, bh / 2);
@@ -518,9 +551,10 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
             zigVerts(p.r).forEach((v, i) => { if (i === 0) ctx.moveTo(v.x, v.y); else ctx.lineTo(v.x, v.y); });
             ctx.closePath();
             ctx.fill();
-            // ★★**数字は回さない**（図形は回る）。読ませるための数字なので、
-            //   逆さまになったら役に立たない。図形の回転だけを打ち消す。
-            ctx.rotate(-b.angle);
+            // ★★★**数字も一緒に回す**（2026-09-09 ユーザー指定「そのまま図形に
+            //   焼き付けて落として」）。回転を打ち消していたのをやめた ――
+            //   図形は転がるのに中身だけ据わっていると、**面に描いてあるのではなく
+            //   上に浮いている**ように見えて、物として読めない。
             ctx.fillStyle = p.ink;
             ctx.font = canvasFont(900, p.r * 0.9, LATIN);
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -532,6 +566,7 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
 
       const loop = () => {
         if (stop) return;
+        release(performance.now());
         // ★★★**刻みは固定**（`GravityTab` と同じ 1000/60）。実時間の差分を渡すと、
         //   フレームが落ちた瞬間に刻みが伸びて**貫通・弾け・震え**が起きる
         //   ―― 「落ちる動作が不安定」の直接の原因だった（2026-09-07）。

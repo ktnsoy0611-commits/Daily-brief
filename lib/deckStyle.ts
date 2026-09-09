@@ -31,6 +31,9 @@ const FALLBACK_META = KIND_META.info;
  *  を使うので、ここから引く（表を2つ持たない）。 */
 export const glyphOfKind = (kind: ItemKind): string => (KIND_META[kind] ?? FALLBACK_META).glyph;
 
+/** ★kind → **ジャンルの和名**（「展覧会」「場所」）。ホームの帯のピルの2行目。 */
+export const genreOfKind = (kind: ItemKind): string => (KIND_META[kind] ?? FALLBACK_META).categoryJp;
+
 const isUrl = (s: string) => /^https?:\/\//i.test(s.trim());
 function hostOf(u?: string): string | undefined {
   if (!u) return undefined;

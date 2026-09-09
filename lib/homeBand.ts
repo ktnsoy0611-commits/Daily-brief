@@ -1,5 +1,6 @@
 import type { AppState, BriefCard, InboxCandidate, Task } from "./types";
 import { ACCENT_TEST, accentOf } from "./appAccent";
+import { genreOfKind } from "./deckStyle";
 import { colorOfKind } from "./palette";
 import { resolveTag, tagColor } from "./taskTags";
 
@@ -44,6 +45,8 @@ export interface BandItem {
   photo?: string;
   /** ★写真が無い提案の丸に入る**字面**（「展」「本」）。Explore と同じ規則。 */
   glyph?: string;
+  /** ★1・2 だけが持つ。**ピルの2行目**に小さく出るジャンル（「展覧会」「場所」）。 */
+  genre?: string;
   /** 4 だけが持つ。どのタスクへのフォローアップか。 */
   parentId?: string;
 }
@@ -72,8 +75,16 @@ export const BAND_LIMIT = 6;
 export const BAND_LIMIT_TASKS = 9;
 
 const cardText = (c: BriefCard): string => c.title || c.trigger || c.category;
-/** そのカードの色。★`BriefCard.color` は `deckStyle` がドメインから入れている。 */
-const cardFace = (c: BriefCard): string => c.color ?? colorOfKind(c.kind ?? "info");
+/**
+ * そのカードの色。
+ * ★★★**`BriefCard.color` を信じてはいけない**（2026-09-09・実機で発覚）。
+ *   `deckStyle` が**生成した夜のパレット**で色を焼き込んでいるので、配色を
+ *   替えても**過去に生成された号は昔の色のまま**出てくる（展覧会が古いオレンジ
+ *   のままだったのがこれ）。**いま生きている表から毎回引き直す。**
+ * ★`ACCENT_TEST` を切ったときだけ、焼き込まれた色を尊重する（旧来の挙動）。
+ */
+const cardFace = (c: BriefCard): string =>
+  ACCENT_TEST ? colorOfKind(c.kind ?? "info") : (c.color ?? colorOfKind(c.kind ?? "info"));
 /**
  * タスク系のピルの色。
  * ★★★**TASK のメインカラー1色**（2026-09-09 ユーザー指定）。タグの濃淡には振らない
@@ -133,6 +144,8 @@ export function bandItems(state: AppState): BandItem[] {
     out.push({
       id: `offer-${c.id}`, kind: "offer", text: cardText(c),
       face: cardFace(c), photo: c.images?.[0], glyph: c.glyph,
+      // ★★ジャンルも**いま生きている表から引く**（`c.category` は生成時の焼き込み）。
+      genre: genreOfKind(c.kind ?? "info"),
     });
   }
 

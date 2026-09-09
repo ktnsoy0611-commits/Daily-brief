@@ -44,7 +44,10 @@ function Pill({ item, row }: { item: BandItem; row: Row }) {
   //   ピル（AI がまだ差し出している最中のもの）と1段に混ざっても、
   //   **面の量**で受け取り済みかどうかが読める。
   const outline = isOutlined(item.kind);
-  const ink = outline ? face : bodyInkOn(face);
+  // ★★★**線だけのピルの字は地の色から導く**（`--ink-on`）。**面の色を字に使わない**
+  //   ―― オレンジは明るい地の上で比 2.55 しかなく、13px の本文は読めない。
+  //   色の役目は**輪郭**が持つ（アプリの見分けはそれで足りる）。
+  const ink = outline ? "var(--ink-on)" : bodyInkOn(face);
   const h = HEIGHT[row];
   const head = row === 0;                              // 提案の段
   const photo = head ? item.photo : undefined;
@@ -70,15 +73,28 @@ function Pill({ item, row }: { item: BandItem; row: Row }) {
             objectFit: "cover", display: "block", flexShrink: 0,
           }} />
       )}
-      <span style={{
-        // ★★提案は `lead`(16)、候補・期日未割当は `body`(13)。
-        //   ★実機で「ピルが全体的に大きすぎる」ため1段ずつ下げた（2026-09-08）。
-        //   ★どちらも 700 なので、面の比が 4.5 に届かない色でも
-        //   「大きな文字 3.0」で通る（`lead` は 16px＝太字の下限ちょうど）。
-        fontFamily: SANS, fontSize: head ? TYPE.lead : TYPE.body, fontWeight: WEIGHT.bold,
-        letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
-        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-      }}>{item.text}</span>
+      {/* ★★★**提案のピルは2行**（2026-09-09 ユーザー指定・参照画像）… 題の下に
+          **ジャンル**を小さく置く。「何であるか」が読めないと、題だけでは
+          展覧会なのか店なのか分からない。★2行目は**控えめな色**（`--muted-on`
+          ではなく面から導いた字を薄める ―― 面の上なので地の変数は使えない）。 */}
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: SPACE.hair }}>
+        <span style={{
+          // ★★提案は `lead`(16)、候補・期日未割当は `body`(13)。
+          //   ★実機で「ピルが全体的に大きすぎる」ため1段ずつ下げた（2026-09-08）。
+          //   ★どちらも 700 なので、面の比が 4.5 に届かない色でも
+          //   「大きな文字 3.0」で通る（`lead` は 16px＝太字の下限ちょうど）。
+          fontFamily: SANS, fontSize: head ? TYPE.lead : TYPE.body, fontWeight: WEIGHT.bold,
+          letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>{item.text}</span>
+        {head && item.genre && (
+          <span style={{
+            fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
+            letterSpacing: TRACK.wide, lineHeight: LEAD.flat, color: ink, opacity: 0.62,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>{item.genre}</span>
+        )}
+      </div>
     </div>
   );
 }

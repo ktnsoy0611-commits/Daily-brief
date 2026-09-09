@@ -20,7 +20,10 @@ import type { TabProps } from "@/lib/types";
 // 帯のピルを掴んで引き下ろすと、図形に変わって山へ落ちる ―― この一続きの
 // 動きが軸（★引き下ろしはこの次に作る）。
 
-export function HomeTab({ appState }: TabProps) {
+/** ★★声を録っていない日に山へ落ちる図形の文面。**変えるときはここ1行**。 */
+const JOURNAL_PROMPT = "今日を録る";
+
+export function HomeTab({ appState, goTab }: TabProps) {
   const day = todayKey();
   const today = useMemo(() => new Date(), []);
   const rows = useMemo(() => bandRows(appState), [appState]);
@@ -44,6 +47,14 @@ export function HomeTab({ appState }: TabProps) {
     });
   }, [appState.items, appState.magazine, day]);
 
+  // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も山に落とす**
+  //   （2026-09-09 ユーザー指定）。録ってあれば出さない ―― 済んだことを
+  //   画面に残さない。押すと JOURNAL のレコードへ飛ぶ。
+  const journal = useMemo(() => {
+    const done = (appState.voiceNotes ?? []).some((v) => (v.at ?? "").slice(0, 10) === day);
+    return done ? null : { title: JOURNAL_PROMPT };
+  }, [appState.voiceNotes, day]);
+
   // ★★★**口とブラックホールは置かない**（2026-09-09 ユーザー指定で削除）。
   //   山で図形にできるのは**掴んで運ぶこと**だけ。完了も削除もここでは起こさない
   //   ―― 何をどうやって片づけるかは、引き下ろしの動きと一緒に決める。
@@ -57,7 +68,10 @@ export function HomeTab({ appState }: TabProps) {
           左右とも画面の外へ切れる ＝「まだ続きがある」を形で言う。 */}
       <Band rows={rows} />
       {/* 山。★帯の下の**残り全部**を器にする（帯が何段でも山が余りを取る）。 */}
-      <Pile tasks={pileTasks} offers={pileOffers} unread={unread} today={today} />
+      <Pile
+        tasks={pileTasks} offers={pileOffers} unread={unread} today={today}
+        journal={journal} onOpen={goTab}
+      />
     </div>
   );
 }

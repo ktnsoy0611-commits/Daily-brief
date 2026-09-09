@@ -134,9 +134,16 @@ export const DOMAIN_INK: Record<ItemDomain, string> = {
   thing: bodyInkOn(DOMAIN_COLOR.thing),
 };
 
-/** kind（10種）→ 色。★**ドメインを通す**ので、kind ごとの色は持たない。 */
-export const colorOfKind = (kind: ItemKind): string => DOMAIN_COLOR[KIND_DOMAIN[kind]];
-export const inkOfKind = (kind: ItemKind): string => DOMAIN_INK[KIND_DOMAIN[kind]];
+/**
+ * kind（10種）→ 色。★**ドメインを通す**ので、kind ごとの色は持たない。
+ * ★★**知らない kind でも必ず色を返す**（`info` へ落とす）。kind は AI の生成物なので
+ * 表に無い語が来ることがあり、`undefined` を返すと**面の色を計算する側が落ちる**
+ * （実際に落とした ―― `bodyInkOn(undefined)`）。
+ */
+export const colorOfKind = (kind: ItemKind): string =>
+  DOMAIN_COLOR[KIND_DOMAIN[kind] ?? "info"];
+export const inkOfKind = (kind: ItemKind): string =>
+  DOMAIN_INK[KIND_DOMAIN[kind] ?? "info"];
 
 /**
  * ★**濃さの違いだけで散らす**（バインダーのように「同じ役のものを何十枚も

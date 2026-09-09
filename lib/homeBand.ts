@@ -1,4 +1,5 @@
 import type { AppState, BriefCard, InboxCandidate, Task } from "./types";
+import { ACCENT_TEST, accentOf } from "./appAccent";
 import { colorOfKind } from "./palette";
 import { resolveTag, tagColor } from "./taskTags";
 
@@ -21,8 +22,15 @@ import { resolveTag, tagColor } from "./taskTags";
 //   ★★種類の見分けは**色ではなく、写真の有無と厚み**が担う（上の段だけ厚く、
 //   先頭に丸い写真か字面が付く）。
 //
-// ★★段は**3段** … 上＝1・2（写真を持つものがまとまる）／中＝3・4／下＝5。
+// ★★★段は**2段**（2026-09-09 ユーザー指定「タスク系のピルは一段に」）…
+//   **上＝1・2**（提案。写真を持つものがまとまる）／**下＝3・4・5**（タスク系）。
 //   **空の段は消す**（無いものを説明しない）。
+// ★★★タスク系の1段の中は、**塗りと線で「まだ提案か／もう自分のものか」を分ける**
+//   （2026-09-09 ユーザー指定）:
+//   ・**塗り** … 3・4（AI がまだ差し出している最中のもの）。
+//   ・**線と文字だけ** … 5（**すでに登録してあるタスク**。自分が受け取り済み）。
+//   **色は TASK のメインカラー1色**（家族の濃淡には振らない）―― 1段に混ざるので、
+//   色まで散らすと「塗りか線か」の区別が読めなくなる。
 
 /** 帯の1件。★**印（アイコン・矢印）は持たない。** */
 export interface BandItem {
@@ -42,10 +50,13 @@ export interface BandItem {
 
 export type BandKind = "offer" | "today" | "voice" | "followup" | "someday";
 
-/** どの段に置くか（0=上 / 1=中 / 2=下）。 */
-export const BAND_ROW: Record<BandKind, 0 | 1 | 2> = {
-  offer: 0, today: 0, voice: 1, followup: 1, someday: 2,
+/** どの段に置くか（0=上＝提案 / 1=下＝タスク系）。 */
+export const BAND_ROW: Record<BandKind, 0 | 1> = {
+  offer: 0, today: 0, voice: 1, followup: 1, someday: 1,
 };
+
+/** ★**線と文字だけ**で描く種類（＝すでに登録してあるタスク）。 */
+export const isOutlined = (kind: BandKind): boolean => kind === "someday";
 
 /**
  * ★段ごとの件数の上限（2026-09-07 ユーザー確定）。★目盛りの外（部品の寸法）。
@@ -53,13 +64,25 @@ export const BAND_ROW: Record<BandKind, 0 | 1 | 2> = {
  * 全部並べると一周が長くなりすぎ、同じピルが戻ってくる前に忘れられる。
  */
 export const BAND_LIMIT = 6;
+/**
+ * ★下の段は**3種類（3・4・5）が1段に同居する**ので広げる（2026-09-09）。
+ * 6 のままだと、フォローアップが6件あるだけで**登録済みのタスクが1件も
+ * 出てこない**（種類ごとの取り分が無いため）。★目盛りの外（部品の寸法）。
+ */
+export const BAND_LIMIT_TASKS = 9;
 
 const cardText = (c: BriefCard): string => c.title || c.trigger || c.category;
 /** そのカードの色。★`BriefCard.color` は `deckStyle` がドメインから入れている。 */
 const cardFace = (c: BriefCard): string => c.color ?? colorOfKind(c.kind ?? "info");
-/** そのタスク／候補の色。★TASK の図形と同じ規則（タグ → 色）。 */
+/**
+ * タスク系のピルの色。
+ * ★★★**TASK のメインカラー1色**（2026-09-09 ユーザー指定）。タグの濃淡には振らない
+ *   ―― 3・4・5 が1段に混ざるので、色まで散らすと**塗りと線の区別**が読めなくなる。
+ *   `ACCENT_TEST` を切ったときは、これまでどおり**タグの色**に戻る。
+ */
 const taskFace = (t: Partial<Task> | Partial<InboxCandidate>, seed: string): string =>
-  tagColor(resolveTag(t.tag, seed, t.title, t.context, t.belongings));
+  ACCENT_TEST ? accentOf("tasks").main
+    : tagColor(resolveTag(t.tag, seed, t.title, t.context, t.belongings));
 
 /**
  * まだ決めていない提案のカード。
@@ -145,9 +168,9 @@ export function bandItems(state: AppState): BandItem[] {
   return out;
 }
 
-/** 3段ぶんに振り分け、段ごとに上限で切る。★空の段はそのまま空で返す（描く側が消す）。 */
-export function bandRows(state: AppState): [BandItem[], BandItem[], BandItem[]] {
-  const rows: [BandItem[], BandItem[], BandItem[]] = [[], [], []];
+/** 2段ぶんに振り分け、段ごとに上限で切る。★空の段はそのまま空で返す（描く側が消す）。 */
+export function bandRows(state: AppState): [BandItem[], BandItem[]] {
+  const rows: [BandItem[], BandItem[]] = [[], []];
   for (const it of bandItems(state)) rows[BAND_ROW[it.kind]].push(it);
-  return rows.map((r) => r.slice(0, BAND_LIMIT)) as [BandItem[], BandItem[], BandItem[]];
+  return [rows[0].slice(0, BAND_LIMIT), rows[1].slice(0, BAND_LIMIT_TASKS)];
 }

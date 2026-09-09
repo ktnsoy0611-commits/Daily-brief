@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BAND_BEZEL, INK, LATIN, PAPER, RUST, SANS } from "@/lib/constants";
-import { img } from "@/lib/helpers";
+import { BAND_BEZEL, INK, LATIN, RUST, SANS } from "@/lib/constants";
+import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
+import { haptic, img, pad } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { glyphOfKind } from "@/lib/deckStyle";
 import { areaOf, specOf, weightArea } from "@/lib/taskSize";
@@ -12,7 +13,7 @@ import { paperize } from "@/lib/paperTexture";
 import { RADIUS, TRACK, WEIGHT } from "@/lib/tokens";
 
 import type { Body, Engine } from "matter-js";
-import type { Item, Task } from "@/lib/types";
+import type { Item, TabId, Task } from "@/lib/types";
 
 // ★★★**山**（2026-09-07）。**今日やると決めたもの**が積もる場所。
 //
@@ -61,6 +62,18 @@ const ZIG_N = 12;
 const ZIG_IN = 0.4;
 /** ★未読の数の図形。**数字を読ませる図形**なので、タスクより大きく取る。 */
 const BADGE_R = 44;
+/**
+ * ★★★**トゲトゲの円の輪郭**（2026-09-09）。**絵と物理でここ1つを共有する。**
+ * 前は絵がトゲトゲ・物理が**まん丸**で、①掴もうとしても円の当たり判定と
+ * ずれる ②トゲが床に引っかからず**玉のように滑る**、の2つが起きていた。
+ */
+function zigVerts(r: number): { x: number; y: number }[] {
+  return Array.from({ length: ZIG_N * 2 }, (_, i) => {
+    const a = (i / (ZIG_N * 2)) * Math.PI * 2 - Math.PI / 2;
+    const rr = r * (i % 2 === 0 ? 1 : ZIG_IN + 0.5);
+    return { x: Math.cos(a) * rr, y: Math.sin(a) * rr };
+  });
+}
 /** ★★★落とし方は `GravityTab` と**同じ**（傾き・回り・横の初速）。
  *  「傾きは 3〜6°」「回さない」は**やめた**（2026-09-07 ユーザー指定
  *  「回転しても良いです。普通に落としてください」）―― 回転を止めると
@@ -78,8 +91,8 @@ const INSET = 16;
 /** 文字の板（曜日・日付）の縁。★`GravityTab` の `PILE_WORD_PAD` と同じ。 */
 const WORD_PAD = 4;
 const WORD_PAD_Y = 2;
-/** 文字の板が使ってよい幅の割合。★2026-09-09 に 0.48 → **0.66**（もっと大きく）。 */
-const WORD_W = 0.66;
+/** 文字の板が使ってよい幅の割合。★0.48 → 0.66 → **0.84**（2026-09-09 に2度上げた）。 */
+const WORD_W = 0.84;
 /** ★★**字の幅**（Archivo の可変の軸）。既定は画面ぜんぶが 88 だが、
  *  この板だけ **62（いちばん縦長）**にする（ユーザー指定「縦長で…もっと太い」）。
  *  ★太さと縦長は別の軸 ―― 太さ 900 のまま幅だけ絞ると、線は太いのに姿は縦長になる。 */
@@ -111,6 +124,8 @@ interface Piece {
   count?: number;
   /** 文字の板（日付・曜日）だけが持つ。 */
   wordFs?: number;
+  /** ★★**押すと行き先がある図形**（未読の数＝ブリーフ／ジャーナル＝レコード）。 */
+  nav?: TabId;
 }
 
 
@@ -202,11 +217,15 @@ function photoOf(url: string, onLoad: () => void): HTMLImageElement | undefined 
   return undefined;
 }
 
-export function Pile({ tasks, offers, unread, today }: {
+export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
   tasks: Task[];
   offers: Item[];
   unread: number;
   today: Date;
+  /** ★その日まだ声を録っていないときだけ来る（録っていれば `null`）。 */
+  journal: { title: string } | null;
+  /** ★図形を**軽く押した**ときの行き先。長押しは掴むほうなので走らない。 */
+  onOpen: (tab: TabId) => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -264,18 +283,28 @@ export function Pile({ tasks, offers, unread, today }: {
         M.Bodies.rectangle(w + WALL_T / 2, h / 2, WALL_T, h * 3, { isStatic: true, friction: 0.4 }),
       ]);
 
+      // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**
+      //   （2026-09-09 ユーザー指定）。形は**角丸の四角**＝タスクと同じ ――
+      //   `docs/home-spec.md` の「形に意味を足さない。増えたら色で分ける」に従い、
+      //   **見分けは色**（JOURNAL の家族のメイン）が担う。「今日やること」である
+      //   点でタスクと同じ種類のものなので、形を増やす理由が無い。
+      //   ★録ってあればこの図形は**そもそも出ない**（済んだことを画面に残さない）。
+      const jDue = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      const jTask = journal ? { title: journal.title, weight: 2 as const, dueDate: jDue } : null;
+      const jSpec = jTask ? specOf(jTask, today) : null;
+
       // ★★山に収まるよう**一括で**縮める。1つずつ縮めない ―― 図形どうしの
       //   大きさの比がそのまま重要度なので、比を保ったまま全体を縮める。
       const areas = [
         ...tasks.map((t) => areaOf(t, today)),
         ...offers.map(() => weightArea(3) * OFFER_K),
+        ...(jSpec ? [jSpec.area] : []),
       ];
       const total = areas.reduce((a, b) => a + b, 0) || 1;
       let unit = Math.max(16, Math.min(UNIT, Math.sqrt((w * h * FILL) / total)));
       // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。
       //   1枚だけ縮めない ―― 図形どうしの大きさの比がそのまま重要度なので。
-      for (const t of tasks) {
-        const sp = specOf(t, today);
+      for (const sp of [...tasks.map((t) => specOf(t, today)), ...(jSpec ? [jSpec] : [])]) {
         unit = Math.min(unit, (w * FIT_W) / Math.max(1, sp.w), (h * FIT_H) / Math.max(1, sp.h));
       }
       unit = Math.max(14, unit);
@@ -366,6 +395,21 @@ export function Pile({ tasks, offers, unread, today }: {
         });
       });
 
+      if (jTask && jSpec) {
+        const pw = Math.max(28, jSpec.w * unit);
+        const ph = Math.max(24, jSpec.h * unit);
+        const body = M.Bodies.rectangle(0, 0, pw, ph, BODY);
+        M.Body.setMass(body, jSpec.area * MASS_K);
+        toss(body, "journal", ph);
+        // ★色は **JOURNAL の家族のメイン**（`ACCENT_TEST` を切ったときは録音の赤）。
+        const face = ACCENT_TEST ? accentOf("journal").main : RUST;
+        pieces.push({
+          id: "journal", body, kind: "task", w: pw, h: ph,
+          face, ink: bodyInkOn(face), title: jTask.title, face_: 1,
+          nav: "journal-record",
+        });
+      }
+
       offers.forEach((it) => {
         // ★★提案は重さを持たないので、**いちばん重いタスクと同じ**として置く
         //   （2026-09-08 ユーザー指定「提案の図形はもっと大きく」）。山の中で
@@ -386,9 +430,23 @@ export function Pile({ tasks, offers, unread, today }: {
       });
 
       if (unread > 0) {
-        const body = M.Bodies.circle(0, 0, BADGE_R, BODY);
+        // ★★★**輪郭そのもので物体を作る**（2026-09-09）。まん丸で作っていたので
+        //   ①トゲが床に噛まず玉のように滑り ②当たり判定が絵とずれていた。
+        //   ★`fromVertices` は凹んだ形を分解できない環境では**外側の12点の
+        //   多角形**へ落ちるが、それでも円よりずっと絵に近い（トゲの先で支える）。
+        const body = M.Bodies.fromVertices(0, 0, [zigVerts(BADGE_R)], BODY)
+          ?? M.Bodies.circle(0, 0, BADGE_R, BODY);
+        M.Body.setMass(body, weightArea(3) * MASS_K);
         toss(body, "unread", BADGE_R * 2);
-        pieces.push({ id: "unread", body, kind: "badge", r: BADGE_R, face: RUST, ink: PAPER, count: unread });
+        // ★★色は **EXPLORE の家族のメイン**（2026-09-09 ユーザー指定）。
+        //   数えているのが Explore の未読なので、**行き先と同じ色**を着る。
+        const face = ACCENT_TEST ? accentOf("life").main : RUST;
+        pieces.push({
+          id: "unread", body, kind: "badge", r: BADGE_R,
+          face, ink: bodyInkOn(face), count: unread,
+          // ★押すと EXPLORE のブリーフへ（そこで実際に読める）。
+          nav: "brief",
+        });
       }
 
       M.Composite.add(engine.world, pieces.map((p) => p.body));
@@ -455,13 +513,9 @@ export function Pile({ tasks, offers, unread, today }: {
               ctx.restore();
             }
           } else if (p.kind === "badge" && p.r) {
+            // ★輪郭は物理と同じ `zigVerts`（絵と当たり判定を1つの出どころに）。
             ctx.beginPath();
-            for (let i = 0; i < ZIG_N * 2; i++) {
-              const a = (i / (ZIG_N * 2)) * Math.PI * 2 - Math.PI / 2;
-              const rr = p.r * (i % 2 === 0 ? 1 : ZIG_IN + 0.5);
-              const x = Math.cos(a) * rr; const y = Math.sin(a) * rr;
-              if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
+            zigVerts(p.r).forEach((v, i) => { if (i === 0) ctx.moveTo(v.x, v.y); else ctx.lineTo(v.x, v.y); });
             ctx.closePath();
             ctx.fill();
             // ★★**数字は回さない**（図形は回る）。読ませるための数字なので、
@@ -511,7 +565,7 @@ export function Pile({ tasks, offers, unread, today }: {
       piecesRef.current = [];
       engineRef.current = null;
     };
-  }, [tasks, offers, unread, today, size, redraw]);
+  }, [tasks, offers, unread, today, journal, size, redraw]);
 
   // ── 掴む ──────────────────────────────────────────────────
   /**
@@ -524,6 +578,10 @@ export function Pile({ tasks, offers, unread, today }: {
    *      円周上にあるから**辺の内側が欠ける**。円は半径で見る。
    *   3. **指の太さぶんの余裕が無かった** ―― 縁のちょうど外を押すと外れる。
    *      `TOUCH_SLOP` ぶん広げ、**当たった中でいちばん近いもの**を採る。
+   * ★★★**トゲトゲの円も見る**（2026-09-09 ユーザー指摘）。押すと行き先がある
+   *   図形になったので、**掴めないから見ない**では触れなくなる。トゲの谷まで
+   *   絞らず**外側の半径**で見る ―― 数字を押したつもりで谷に入って外れるほうが
+   *   ずっと悪い。**見ないのは文字の板だけ。**
    */
   const pickAt = (cx: number, cy: number): Piece | null => {
     const box = boxRef.current;
@@ -534,12 +592,12 @@ export function Pile({ tasks, offers, unread, today }: {
     let best: Piece | null = null;
     let bestD = Infinity;
     for (const p of piecesRef.current) {
-      if (p.kind === "badge" || p.kind === "word") continue;   // ★掴めないものは見ない
+      if (p.kind === "word") continue;   // ★文字の板は触れない（下の図形に譲る）
       const b = p.body;
       const dx = pt.x - b.position.x; const dy = pt.y - b.position.y;
       const d = Math.hypot(dx, dy);
       let inside: boolean;
-      if (p.kind === "offer" && p.r) {
+      if ((p.kind === "offer" || p.kind === "badge") && p.r) {
         inside = d <= p.r + TOUCH_SLOP;
       } else {
         // ★回っている四角は、**体の向きへ座標を戻してから**箱で見る。
@@ -559,8 +617,8 @@ export function Pile({ tasks, offers, unread, today }: {
     if (press.current) return;
     const timer = window.setTimeout(() => {
       const p = pickAt(e.clientX, e.clientY);
-      // ★数だけの図形（バッジ）と文字の板は掴めない（`GravityTab` と同じ）。
-      if (!p || p.kind === "badge" || p.kind === "word") return;
+      // ★文字の板は掴めない（`GravityTab` と同じ）。
+      if (!p || p.kind === "word") return;
       const box = boxRef.current!.getBoundingClientRect();
       dragRef.current = { piece: p, x: e.clientX - box.left, y: e.clientY - box.top };
       setHolding(true);
@@ -588,12 +646,20 @@ export function Pile({ tasks, offers, unread, today }: {
   // ★★★**口とブラックホールは置かない**（2026-09-09 ユーザー指定で削除）。
   //   山で掴めるのは**運ぶこと**だけで、完了も削除もここでは起こさない
   //   ―― `components/tasks/DropTargets.tsx` は TASK 側がそのまま使っている。
-  const onUp = () => {
+  // ★★**軽く押したら開く**（2026-09-09）。長押し（`HOLD_MS`）を過ぎる前に、
+  //   `TAP_MOVE` より動かさずに離したときだけ。**掴んだあとは走らない**
+  //   ―― 運んで戻しただけで画面が飛ぶのは事故になる。
+  const onUp = (e: React.PointerEvent) => {
     const pr = press.current;
     if (pr) window.clearTimeout(pr.timer);
     press.current = null;
+    const dragged = dragRef.current;
     dragRef.current = null;
     setHolding(false);
+    if (dragged || !pr) return;
+    if (Math.hypot(e.clientX - pr.x, e.clientY - pr.y) > TAP_MOVE) return;
+    const p = pickAt(e.clientX, e.clientY);
+    if (p?.nav) { haptic(6); onOpen(p.nav); }
   };
 
   return (

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { type BandItem } from "@/lib/homeBand";
+import { type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 
@@ -15,17 +15,17 @@ import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 // ★★★**速さは「画面の幅ぶん流れる時間」で持つ**（`--t-amb-band-lap`）。一周の
 //   時間で持つと、並ぶ件数が変わるたびに速さが変わる（件数は日によって違う）。
 //   幅で持てば何件並んでも速さは同じ。★数字はこのファイルに書かない。
-// ★★段ごとに向きが互い違い（上＝左へ／中＝右へ／下＝左へ）。
-//   **止まって見える瞬間が無い**のは、隣の段が動いているから。
+// ★★段ごとに向きが互い違い（上＝左へ／下＝右へ）。
+//   **止まって見える瞬間が無い**のは、隣の段が逆へ動いているから。
 // ★★左右とも画面の外へ切れる（＝まだ続きがある、を形で言う）。器の左右の
 //   パディングの外へ出すのは `.bleed-x`（既存の語彙。負の余白を書かない）。
 // ★★**指が触れている間は止まる**。離すと続きから動く（位置は戻さない）。
 // ★★**ピルに印（アイコン・矢印）を付けない。**
 
-type Row = 0 | 1 | 2;
+type Row = 0 | 1;
 
 /** 段の厚み。★写真の丸が入る上の段だけ厚い（丸は高さいっぱい）。 */
-const HEIGHT: Record<Row, number> = { 0: BAND_H.photo, 1: BAND_H.plain, 2: BAND_H.plain };
+const HEIGHT: Record<Row, number> = { 0: BAND_H.photo, 1: BAND_H.plain };
 
 /**
  * ピル1つ。★色は**その中身が既存のアプリで持っている色**（`lib/homeBand.ts`）。
@@ -39,7 +39,12 @@ const HEIGHT: Record<Row, number> = { 0: BAND_H.photo, 1: BAND_H.plain, 2: BAND_
  */
 function Pill({ item, row }: { item: BandItem; row: Row }) {
   const face = item.face;
-  const ink = bodyInkOn(face);
+  // ★★★**線と文字だけのピル**（2026-09-09 ユーザー指定）。すでに登録してある
+  //   タスクは「もう自分のもの」なので、**塗らずに輪郭だけ**にする ―― 塗りの
+  //   ピル（AI がまだ差し出している最中のもの）と1段に混ざっても、
+  //   **面の量**で受け取り済みかどうかが読める。
+  const outline = isOutlined(item.kind);
+  const ink = outline ? face : bodyInkOn(face);
   const h = HEIGHT[row];
   const head = row === 0;                              // 提案の段
   const photo = head ? item.photo : undefined;
@@ -48,7 +53,10 @@ function Pill({ item, row }: { item: BandItem; row: Row }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: SPACE.md, flexShrink: 0,
-      height: h, borderRadius: RADIUS.pill, background: face,
+      height: h, borderRadius: RADIUS.pill,
+      background: outline ? "transparent" : face,
+      // ★輪郭は `Button` の secondary と同じ引き方（押せるものの縁）。
+      border: outline ? `1px solid ${face}` : "none",
       // ★丸があるときは、左の余白を縁取りぶんだけにする（丸が余白を持つ）。
       padding: photo ? `0 ${SPACE.xl}px 0 ${BAND_BEZEL}px` : `0 ${SPACE.xl}px`,
       maxWidth: "84vw",
@@ -155,13 +163,12 @@ function BandRow({ row, items }: { row: Row; items: BandItem[] }) {
   );
 }
 
-/** 帯（3段）。★段の順は上から「提案／候補／いつか」で固定。 */
-export function Band({ rows }: { rows: [BandItem[], BandItem[], BandItem[]] }) {
+/** 帯（★2段）。上＝提案／下＝タスク系（塗り＝まだ提案／線＝登録済み）。 */
+export function Band({ rows }: { rows: [BandItem[], BandItem[]] }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
       <BandRow row={0} items={rows[0]} />
       <BandRow row={1} items={rows[1]} />
-      <BandRow row={2} items={rows[2]} />
     </div>
   );
 }

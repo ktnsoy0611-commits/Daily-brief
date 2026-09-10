@@ -8,8 +8,13 @@ import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer
 import { ymd } from "@/components/tasks/WhenSheet";
 import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline, type SolidSpec } from "@/lib/solid";
-import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, wordBitmap, WORD_WEIGHT, type SolidPaint, type SolidView } from "@/lib/solidPaint";
-import { canvasFont, onFontsReady, primeAdvances } from "@/lib/textFit";
+import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, wordBitmap, type SolidPaint, type SolidView } from "@/lib/solidPaint";
+import { onFontsReady, primeAdvances } from "@/lib/textFit";
+import {
+  FREE_PAD as PLATE_FREE_PAD, FREE_PAD_Y as PLATE_FREE_PAD_Y,
+  PLATE_PAD, PLATE_PAD_Y, SQUEEZE_MIN, WD_FULL,
+  drawWordPlate, inkBoxOf, makeWordBody, measureWordPlate, wordFontSize,
+} from "@/lib/wordPlate";
 import { allTagFaces, allTagLabels, resolveTag, tagColor, tagInk } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
@@ -319,14 +324,13 @@ const PAD_L = 20;
 const WD3 = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 /** ★GRAVITY の山へ落とす曜日は**綴りのまま**(第60巡にユーザー指定「曜日の英語」)。
  *  TIMELINE の3文字は列の見出しで、こちらは山に転がる一枚の板 ― 役が違う。 */
-const WD_FULL = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
 /** 山の文字ブロックの**字を組む幅**(山の内寸に対する割合)。高さは塗りから決まる。 */
 const PILE_WORD_W = 0.66;
 /** ★山の板の遊びは**「自由」より小さく**(第63巡にユーザー指摘「日付の図形の
  *  当たり判定が文字に対して少しだけ大きい」)。`8/26` のような短い語では、
  *  `FREE_PAD`(8)/`FREE_PAD_Y`(4) だと塗りに対して箱が目に見えて大きい。 */
-const PILE_WORD_PAD = 4;
-const PILE_WORD_PAD_Y = 2;
+const PILE_WORD_PAD = PLATE_PAD;
+const PILE_WORD_PAD_Y = PLATE_PAD_Y;
 
 /** ★★タスクが無い日に落とす「自由」のブロック(2026-08-25・第56巡にユーザー確定)。
  *  タスクの図形が「色の面＋載った文字」なのに対して、これは**文字そのものが図形**。
@@ -340,13 +344,13 @@ const freeWordOf = (dateKey: string) => FREE_WORDS[Math.floor(frac(dateKey + "fr
  *  **境界を越えて転がった**(ユーザーの写真)。ユーザー確定で
  *  「**小さくしてでも必ず収める**」＝ 物理は図形とまったく同じに戻す。 */
 const FREE_MARGIN = 8;
-/** 横に詰めてよい下限(これ以上は潰さない)。 */
-const FREE_SQUEEZE = 0.50;
+/** 横に詰めてよい下限(これ以上は潰さない)。★共有部品が持つ。 */
+const FREE_SQUEEZE = SQUEEZE_MIN;
 /** 板の遊び。★**縦は横の半分**(第62巡) — 板を平たくするほど「寝る」のが
  *  安定な姿勢になり、短い辺で立ったまま止まりにくい。字はもともと横長なので、
  *  縦の遊びを削っても窮屈には見えない。 */
-const FREE_PAD = 8;
-const FREE_PAD_Y = 4;
+const FREE_PAD = PLATE_FREE_PAD;
+const FREE_PAD_Y = PLATE_FREE_PAD_Y;
 
 interface Shard { x: number; y: number; vx: number; vy: number; r: number; life: number; fill: string }
 const SHARD_MS = 620;
@@ -719,14 +723,12 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         if (p.word) {
           // ★「自由」や日付・曜日 … 色の面を敷かず、**文字そのもの**を置く。
           //   ★第63巡から**焼いた絵**を貼る(紙の目が入り、文字もくっきりする)。
-          const wb = wordBitmap(p.word, p.wordFs ?? 32, p.wordSx ?? 1,
-            p.wordInk ?? MUTED, p.wordFam ?? SANS,
-            p.wordW ?? 40, p.wordH ?? 20, p.wordDx ?? 0, p.wordDy ?? 0, bakeDpr);
-          ctx.save();
-          ctx.translate(p.body.position.x, p.body.position.y);
-          ctx.rotate(p.body.angle);
-          ctx.drawImage(wb.canvas, -wb.w / 2, -wb.h / 2, wb.w, wb.h);
-          ctx.restore();
+          drawWordPlate(ctx, {
+            word: p.word, fs: p.wordFs ?? 32, sx: p.wordSx ?? 1,
+            ink: p.wordInk ?? MUTED, fam: p.wordFam ?? SANS,
+            w: p.wordW ?? 40, h: p.wordH ?? 20,
+            dx: p.wordDx ?? 0, dy: p.wordDy ?? 0, bw: 0, bh: 0,
+          }, p.body.position.x, p.body.position.y, p.body.angle, bakeDpr);
           continue;
         }
         const bmp = want(p.paint, p.unit);
@@ -2528,45 +2530,6 @@ function swapUnit(M: typeof import("matter-js"), world: World, p: Piece, unit: n
  *  「各言語で大きさを合わせて」)。語ごとに幅から出すと `FRI` だけ巨大になる。
  *  **いちばん幅を食う語**がレーンの内寸に収まる大きさを全部で使う。
  *  ★書体は `SANS`(Archivo ＋ Noto Sans JP) — `自由` は Archivo にグリフが無い。 */
-/** 測る用の canvas(使い回す)。 */
-let wordProbe: CanvasRenderingContext2D | null = null;
-const probeCtx = () => (wordProbe ??= document.createElement("canvas").getContext("2d"));
-
-/** ★★★**塗りの矩形**を測る(2026-08-25・第61巡)。
- *  `textAlign:"center"` / `textBaseline:"middle"` で置いたときの原点から見た、
- *  実際にインクが乗る範囲と、その**中心のずれ**を返す。
- *  ★大文字や数字は em の中で上に寄るので、`middle` の原点と塗りの中心は**一致しない**。
- *  ここを補正しないと、物体の中心と字の中心がずれる。 */
-function inkBoxOf(word: string, fs: number, sx: number, fam: string): { w: number; h: number; dx: number; dy: number } {
-  const probe = probeCtx();
-  if (!probe) return { w: fs * word.length * 0.6, h: fs * 0.72, dx: 0, dy: 0 };
-  probe.font = canvasFont(WORD_WEIGHT, fs, fam);
-  probe.textAlign = "center"; probe.textBaseline = "middle";
-  const m = probe.measureText(word);
-  const l = m.actualBoundingBoxLeft ?? m.width / 2;
-  const r = m.actualBoundingBoxRight ?? m.width / 2;
-  const a = m.actualBoundingBoxAscent ?? fs * 0.36;
-  const d = m.actualBoundingBoxDescent ?? fs * 0.12;
-  return {
-    w: (l + r) * sx, h: a + d,
-    dx: ((r - l) / 2) * sx,          // 塗りの中心が原点からどれだけ右か
-    dy: (d - a) / 2,                 // 同じく下か(大文字は負＝上に寄る)
-  };
-}
-
-/** ★字の大きさは「**塗りの幅**が `room` に収まる」で決める(第61巡)。
- *  箱の高さで縛らない ― 高さは塗りから決まるようになったので。 */
-function wordFontSize(words: readonly string[], room: number, fam: string): number {
-  const probe = probeCtx();
-  if (!probe) return 24;
-  const base = 64;
-  probe.font = canvasFont(WORD_WEIGHT, base, fam);
-  let widest = 1;
-  for (const w of words) widest = Math.max(widest, probe.measureText(w).width);
-  // ★横は `FREE_SQUEEZE` まで詰めてよい ― 曜日を `wdth 58` で細く大きく組んで
-  //   いるのと同じ考え方(コンデンス体として読ませる)。
-  return Math.max(14, Math.min(SWISS_XL, Math.round((base * room) / widest / FREE_SQUEEZE)));
-}
 /**
  * ★★★「自由」の**字面と、字を詰める先の幅**(2026-08-25・第62巡)。
  * 板は回るので、条件は「**対角**がレーンの内寸に収まる」。
@@ -2603,15 +2566,6 @@ function freeGeom(laneW: number): { fs: number; room: number } {
   return { fs: 14, room: 40 };
 }
 
-/** その語を決めた幅へ収めるための横の詰め(1 = 詰めない)。 */
-function wordSqueeze(word: string, fs: number, room: number, fam: string): number {
-  const probe = probeCtx();
-  if (!probe) return 1;
-  probe.font = canvasFont(WORD_WEIGHT, fs, fam);
-  const w = probe.measureText(word).width || 1;
-  return Math.max(FREE_SQUEEZE, Math.min(1, room / w));
-}
-
 /** ★★文字のブロックを作る。**物体は「文字の塗り」そのもの**(第61巡)。
  *  第60巡までは「画面幅の 46% × その 40%」という決め打ちの矩形だったので、
  *  `8/25` のような短い語では**箱が塗りよりずっと大きく**、掴めない所で当たっていた
@@ -2624,28 +2578,19 @@ function makeWordPiece(
   room: number, fs: number, x: number, y: number, ink: string, fam: string,
   pad = FREE_PAD, padY = FREE_PAD_Y,
 ): Piece | null {
-  const sx = wordSqueeze(word, fs, room, fam);
-  const ink0 = inkBoxOf(word, fs, sx, fam);
-  const bw = Math.max(8, ink0.w + pad * 2);
-  const bh = Math.max(8, ink0.h + padY * 2);
-  const body = M.Bodies.rectangle(x, y, bw, bh, {
-    restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012,
-  });
-  // ★★★**回る**(第61巡に第59巡の対症療法を撤回)。回転を止めていたので
-  //   「角度が変わらずゆっくり降りてくる」＝物体に見えなかった(ユーザー指摘)。
-  //   ★ただし**回り慣性を重くする**(第62巡)。板は薄いので、横送りでレーンの壁が
-  //   動くたびに小突かれて短い辺で立ってしまう。質量が両端に寄った板だと思えば
-  //   物理的にも素直で、落ちるあいだは変わらず回る(空中では小突かれない)。
-  M.Body.setInertia(body, body.inertia * 5);
+  // ★★★**寸法と物体は `lib/wordPlate.ts` が持つ**（2026-09-10・第89巡に切り出した）。
+  //   ホームの山（`components/home/Pile.tsx`）と**同じ部品**を使うため。
   //   噛まない条件は「**回っても内寸に収まる**」＝ 対角 ≤ レーンの内寸。
   //   大きさは `freeGeom` が**全語の対角**から決めるので収まる。
+  const plate = measureWordPlate(word, fs, room, ink, fam, pad, padY);
+  const body = makeWordBody(M, plate, x, y);
   const spec = specOf({ id, title: word });
   return {
     id, body, spec,
     paint: { spec, view: "name", title: word },
-    girth: Math.min(bw, bh), ox: 0, oy: 0, unit: fs, lane: -1, word, wordFs: fs,
-    wordSx: sx, wordInk: ink, wordDx: ink0.dx, wordDy: ink0.dy, wordFam: fam,
-    wordW: ink0.w, wordH: ink0.h,
+    girth: Math.min(plate.bw, plate.bh), ox: 0, oy: 0, unit: fs, lane: -1, word, wordFs: fs,
+    wordSx: plate.sx, wordInk: ink, wordDx: plate.dx, wordDy: plate.dy, wordFam: fam,
+    wordW: plate.w, wordH: plate.h,
   };
 }
 
@@ -2694,7 +2639,7 @@ function pileWordPieces(
     //   → **長いほう(曜日)で決めた1つの大きさ**を両方に使う。日付は短いので、
     //   同じ大きさのまま箱が狭くなるだけで収まる。
     const room = inner * PILE_WORD_W;
-    const fs = wordFontSize(words as string[], room, LATIN);
+    const fs = wordFontSize(words as string[], room, LATIN, SWISS_XL);
     const r1 = frac(id + seed); const r2 = frac(id + seed + "y");
     const p = makeWordPiece(M, word, id, room, fs,
       w * 0.5, -200 - i * 170 - r2 * 120, INK, LATIN, PILE_WORD_PAD, PILE_WORD_PAD_Y);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BAND_BEZEL, INK, LATIN, RUST, SANS } from "@/lib/constants";
+import { BAND_BEZEL, INK, LATIN, RUST, SANS, SWISS_XL } from "@/lib/constants";
 import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
 import { haptic, img, pad } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -10,7 +10,11 @@ import { areaOf, specOf, weightArea } from "@/lib/taskSize";
 import { resolveTag, tagColor, tagFace, tagInk } from "@/lib/taskTags";
 import { canvasFont, drawFitted, ensureGlyphs, fitText } from "@/lib/textFit";
 import { paperize } from "@/lib/paperTexture";
-import { RADIUS, TRACK, WEIGHT } from "@/lib/tokens";
+import { RADIUS, WEIGHT } from "@/lib/tokens";
+import {
+  WD_FULL, drawWordPlate, makeWordBody, measureWordPlate, wordFontSize,
+  type WordPlate,
+} from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
 import type { Item, TabId, Task } from "@/lib/types";
@@ -105,22 +109,16 @@ const INSET = 16;
 const DROP_EVERY_MS = 110;
 /** 出どころの高さ＝**自分の背丈の半分＋これ**（器のすぐ上から入ってくる）。 */
 const DROP_ABOVE = 24;
-/** 文字の板（曜日・日付）の縁。★`GravityTab` の `PILE_WORD_PAD` と同じ。 */
-const WORD_PAD = 4;
-const WORD_PAD_Y = 2;
-/** 文字の板が使ってよい幅の割合。★0.48 → 0.66 → **0.84**（2026-09-09 に2度上げた）。 */
+/**
+ * ★★★**文字の板の作り方は `lib/wordPlate.ts`**（2026-09-10・第89巡）。
+ * それまでは DOM の `<div>` に可変フォントの `wdth 62` で組み、当たり判定を
+ * 近似していた ―― **板だけが物理とは別の座標系に居た**ので、板まわりだけ
+ * GRAVITY と挙動が違い、直すたびに新しい破綻が出た（宙で固まる／壁に噛む／
+ * 当たり判定が字から離れる）。**GRAVITY と同じ部品に戻したので、もう食い違わない。**
+ * ★ユーザー確定（2026-09-10）… 「gravity と同じ姿にして」＝ **日付と曜日は2枚**。
+ */
+/** 板の字を組む幅（山の**内寸**に対する割合）。★GRAVITY は 0.66、ホームは大きめ。 */
 const WORD_W = 0.84;
-/** ★★**字の幅**（Archivo の可変の軸）。既定は画面ぜんぶが 88 だが、
- *  この板だけ **62（いちばん縦長）**にする（ユーザー指定「縦長で…もっと太い」）。
- *  ★太さと縦長は別の軸 ―― 太さ 900 のまま幅だけ絞ると、線は太いのに姿は縦長になる。 */
-const WORD_WDTH = 62;
-/** ★★**行間を詰める**。2行を1つの塊として読ませるので、行間は字面より狭く取る。 */
-const WORD_LEAD = 0.82;
-/** 測るときの基準の大きさ。★幅は文字サイズに比例するので、1回測れば次が直接出る。 */
-const WORD_BASE = 100;
-/** ★★板が噛まないための見込み。着地の弾みで傾く角度と、壁との遊び。★目盛りの外。 */
-const WORD_TILT_MAX = 0.34;   // ≒19°
-const WORD_JAM_GAP = 24;
 
 const frac = (s: string) => {
   let h = 0;
@@ -142,8 +140,8 @@ interface Piece {
   /** ★写真が無い提案の顔（「展」「場」）。 */
   glyph?: string;
   count?: number;
-  /** 文字の板（日付・曜日）だけが持つ。 */
-  wordFs?: number;
+  /** 文字の板（日付・曜日）だけが持つ。★寸法も描き方も `lib/wordPlate.ts`。 */
+  plate?: WordPlate;
   /** ★★**押すと行き先がある図形**（未読の数＝ブリーフ／ジャーナル＝レコード）。 */
   nav?: TabId;
 }
@@ -190,91 +188,6 @@ function taskBitmap(p: Piece, dpr: number): HTMLCanvasElement | undefined {
   return cv;
 }
 
-/**
- * ★★**日付と曜日の組み方はここ1つ**（測るときと描くときで必ず同じにする）。
- * Archivo の 900。★幅の軸は画面のほかの英語と同じ `wdth 88`。
- * ★字間は大きな欧文の規則どおり `tight`（`design.md` §1）。
- */
-const wordStyle = (fs: number): React.CSSProperties => ({
-  fontFamily: LATIN, fontSize: fs, fontWeight: WEIGHT.black,
-  letterSpacing: TRACK.tight, lineHeight: WORD_LEAD,
-  fontVariationSettings: `"wdth" ${WORD_WDTH}`,
-  whiteSpace: "pre",          // ★2行を改行で持つ（\n をそのまま効かせる）
-});
-
-/**
- * ★★★**文字の板の当たり判定は「塗り」そのもの**（2026-09-10 ユーザー指定
- * 「文字の部分だけに当たり判定があるだけで良い」）。`GravityTab` が第61巡に
- * 同じ指摘（「当たり判定が文字の塗りから離れすぎ」）で `inkBoxOf` を入れたのと
- * **同じ直し**。ここは DOM で組むので2段構えで測る:
- *   ・**幅と行の送り**は DOM（`wdth 62` が効くのは DOM だけ）。
- *   ・**塗りの上端と下端**は canvas の `actualBoundingBox*`（縦の指標は
- *     幅の軸で変わらないので、canvas の値をそのまま使える）。
- * 返す `dy` は**行の箱の中心から見た塗りの中心のずれ**。DOM をこの分ずらして
- * 置くと、**物体の中心と字の中心が一致する**。
- */
-interface WordInk {
-  /** 行ごとの塗りの箱。原点は**行の箱の左上**（＝DOM 要素の左上）。 */
-  lines: { x: number; y: number; w: number; h: number }[];
-  /** 全体の外寸（大きさを決めるときに使う）。 */
-  w: number; h: number;
-}
-let inkProbe: CanvasRenderingContext2D | null = null;
-function measureWordInk(text: string, fs: number): WordInk {
-  const box = measureWord(text, fs);
-  const probe = (inkProbe ??= document.createElement("canvas").getContext("2d"));
-  const rows = text.split("\n");
-  const lineH = WORD_LEAD * fs;
-  if (!probe) return { lines: [{ x: 0, y: 0, w: box.w, h: box.h }], w: box.w, h: box.h };
-  probe.font = canvasFont(WEIGHT.black, fs, LATIN);
-  probe.textAlign = "left"; probe.textBaseline = "alphabetic";
-  const m0 = probe.measureText(rows[0]);
-  // ★行の箱の中でベースラインが来る位置（行送りは上下に半分ずつ付く）。
-  const fa = m0.fontBoundingBoxAscent ?? fs * 0.8;
-  const fd = m0.fontBoundingBoxDescent ?? fs * 0.2;
-  const half = (lineH - (fa + fd)) / 2;
-  // ★canvas は `wdth` を無視するので、**DOM で測った幅との比**で横だけ引き伸ばす。
-  const widest = rows.reduce((a, b) => (a.length >= b.length ? a : b));
-  const flat = probe.measureText(widest).width || 1;
-  const squeeze = Math.min(1.4, box.w / flat);
-  const lines = rows.map((ln, i) => {
-    const m = probe.measureText(ln);
-    const base = half + fa + i * lineH;
-    const top = base - (m.actualBoundingBoxAscent ?? fs * 0.72);
-    const bottom = base + (m.actualBoundingBoxDescent ?? fs * 0.02);
-    const left = -(m.actualBoundingBoxLeft ?? 0) * squeeze;
-    const right = (m.actualBoundingBoxRight ?? m.width) * squeeze;
-    return { x: left, y: top, w: Math.max(4, right - left), h: Math.max(4, bottom - top) };
-  });
-  const x0 = Math.min(...lines.map((l) => l.x));
-  const x1 = Math.max(...lines.map((l) => l.x + l.w));
-  const y0 = Math.min(...lines.map((l) => l.y));
-  const y1 = Math.max(...lines.map((l) => l.y + l.h));
-  return { lines, w: Math.max(8, x1 - x0), h: Math.max(8, y1 - y0) };
-}
-
-/** ★組んだ字の箱を**実測**する。canvas では幅の軸が効かないので DOM で測る。 */
-function measureWord(text: string, fs: number): { w: number; h: number } {
-  const el = document.createElement("span");
-  Object.assign(el.style, {
-    position: "absolute", visibility: "hidden",
-    left: "0", top: "0",
-  } as CSSStyleDeclaration);
-  const st = wordStyle(fs);
-  el.style.fontFamily = String(st.fontFamily);
-  el.style.fontSize = `${fs}px`;
-  el.style.fontWeight = String(st.fontWeight);
-  el.style.letterSpacing = String(st.letterSpacing);
-  el.style.lineHeight = String(st.lineHeight);
-  el.style.setProperty("font-variation-settings", `"wdth" ${WORD_WDTH}`);
-  el.style.whiteSpace = "pre";
-  el.textContent = text;
-  document.body.appendChild(el);
-  const r = el.getBoundingClientRect();
-  el.remove();
-  return { w: r.width, h: r.height };
-}
-
 /** 写真は1度だけ読み込んで使い回す。★読み終わるまでは色ベタの円。 */
 const photoCache = new Map<string, HTMLImageElement>();
 function photoOf(url: string, onLoad: () => void): HTMLImageElement | undefined {
@@ -310,9 +223,6 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
   const sizeRef = useRef({ w: 0, h: 0 });
   /** 最初に測れたら1度だけ真になる（山を組む合図）。以後は動かさない。 */
   const [measured, setMeasured] = useState(false);
-  /** 落ちてくる文字の板（日付・曜日）。★字は DOM の幾何アルファベットで描く。 */
-  const [words, setWords] = useState<{ id: string; text: string; size: number }[]>([]);
-  const wordEls = useRef(new Map<string, HTMLDivElement>());
   const [holding, setHolding] = useState(false);
   const dragRef = useRef<{ piece: Piece; x: number; y: number } | null>(null);
 
@@ -417,29 +327,14 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       //   いなかった ―― 実測で器の 29% を1枚で占め、山の総面積が **80%** に
       //   なっていた（`FILL` は 0.28 のつもり）。詰まった山は解けずに
       //   **押し合って震える**し、上へあふれる（実測 … 4個が器の上に積み上がった）。
-      const wd = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][today.getDay()];
-      const word = `${today.getMonth() + 1}/${today.getDate()}\n${wd}`;
-      // ★★大きさは**実際に組んだ字を測って**決める。器の `WORD_W` に
-      //   **長いほうの行**が収まる大きさを出す。
-      const base = measureWord(word, WORD_BASE);
-      let wordFs = Math.max(18, (WORD_BASE * w * WORD_W) / Math.max(1, base.w));
-      let wordInk = measureWordInk(word, wordFs);
-      /** DOM の左上から見た物体の中心（＝行ごとの塗りの重心）。 */
-      let wordPivot = { x: 0, y: 0 };
-      // ★★★**傾いた幅で収める**（2026-09-10。実機の「引っ掛かる」の正体）。
-      //   板は器の幅の 0.84 を取るので、**少し傾いただけで壁と壁のあいだに
-      //   噛んで宙で止まる**（横に張り出す長さは `W·cosθ + H·sinθ`）。
-      //   実測 … 幅 301／高さ 110／10°傾くと 315 に対し、壁の内寸は 326 ―― 11px。
-      //   ★立った幅ではなく**傾いたときの張り出し**で大きさを決める。
-      {
-        const inner = w - INSET * 2 - WORD_JAM_GAP;
-        const c = Math.cos(WORD_TILT_MAX); const s = Math.sin(WORD_TILT_MAX);
-        const reach = wordInk.w * c + wordInk.h * s;
-        if (reach > inner) {
-          wordFs = Math.max(18, wordFs * (inner / reach));
-          wordInk = measureWordInk(word, wordFs);
-        }
-      }
+      // ★★★**GRAVITY と同じ2枚**（`lib/wordPlate.ts`。ユーザー確定 2026-09-10）。
+      //   ★★字の大きさは**長いほう（曜日）で決めた1つの値**を両方に使う
+      //   （GRAVITY が第67巡に直した通り ―― 別々に決めると、並んだ2枚の
+      //   キャップラインもベースラインも食い違って見える）。
+      const words = [`${today.getMonth() + 1}/${today.getDate()}`, WD_FULL[today.getDay()]];
+      const room = (w - INSET * 2) * WORD_W;
+      const wordFs = wordFontSize(words, room, LATIN, SWISS_XL);
+      const plates = words.map((wd) => measureWordPlate(wd, wordFs, room, INK, LATIN));
 
       // ★★山に収まるよう**一括で**縮める。1つずつ縮めない ―― 図形どうしの
       //   大きさの比がそのまま重要度なので、比を保ったまま全体を縮める。
@@ -450,7 +345,8 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       ];
       const total = areas.reduce((a, b) => a + b, 0) || 1;
       // ★残りの予算 ＝ 器 × `FILL` −（板 ＋ 未読の図形）。0 にはしない。
-      const fixed = wordInk.w * wordInk.h + (unread > 0 ? Math.PI * BADGE_R * BADGE_R : 0);
+      const fixed = plates.reduce((a, pl) => a + pl.w * pl.h, 0)
+        + (unread > 0 ? Math.PI * BADGE_R * BADGE_R : 0);
       const budget = Math.max(w * h * FILL * 0.25, w * h * FILL - fixed);
       // ★★★**下限で予算を破らない**。以前は 16 を床にしていたので、件数が多い日は
       //   予算を無視して大きいまま出て、器に入り切らなかった。
@@ -490,51 +386,24 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
 
       // ★★★**その日の日付と曜日も一緒に落とす**（2026-09-07 ユーザー指定。
       //   `GravityTab` と同じ ―― 枠の無い、文字だけの黒い板）。
-      // ★★★**字は Archivo の 900**（2026-09-08 ユーザー指定「ボールドの太くて
-      //   美しいフォント」）。★canvas ではなく **DOM** で描くのが要点 ――
-      //   canvas の `ctx.font` には `font-variation-settings` が乗らないので、
-      //   Archivo が**素の幅（wdth 100）**で出て、画面のほかの英語（`wdth 88`）と
-      //   字の太り方が食い違う。DOM なら幅の軸がそのまま効く。
-      //   ★★これで日付を `9/8` と書ける（幾何アルファベットは A-Z と 0-9 しか
-      //   持たないので `SEP08` にしていた）。
-      // ★★★**板は1枚**（2026-09-09 ユーザー指定「もっと大きく、縦長で行間を詰めて」）。
-      //   2枚に分けると、行間は**2つの板の隙間**になるので詰められない ――
-      //   物理が決めてしまう。1枚の中の2行にすれば `WORD_LEAD` で詰められ、
-      //   落ちるときも日付と曜日が離れ離れにならない。
-      // ★短い行（日付）を上・長い行（曜日）を下に置く ―― 左揃えの2行は、
-      //   下が長いほうが塊として安定して見える。
-      {
-        const bw = Math.max(8, wordInk.w + WORD_PAD * 2);
-        const bh = Math.max(8, wordInk.h + WORD_PAD_Y * 2);
-        // ★★★**当たり判定は「字の塗り」ぴったりの1枚**（`GravityTab` の
-        //   `makeWordPiece` と同じ）。行の箱（`lineHeight` の上下の空き）は含めない。
-        // ★★★**行ごとに分けた合成物体は失敗した**（2026-09-10 に試して戻した）――
-        //   `Body.create({ parts })` にすると板が**壁のあたりで宙に引っかかり**、
-        //   その上に図形が積み上がって器の天井まで届いた（実測 … 途切れ 196〜636px。
-        //   1枚に戻すと 30〜42px＝連続）。**山の物理は1体1凸形に保つ。**
-        const x0 = Math.min(...wordInk.lines.map((l) => l.x));
-        const y0 = Math.min(...wordInk.lines.map((l) => l.y));
-        const body = M.Bodies.rectangle(0, 0, bw, bh, BODY);
-        // ★DOM の左上から見た物体の中心（＝塗りの箱の中心）。
-        wordPivot = { x: x0 + wordInk.w / 2, y: y0 + wordInk.h / 2 };
-        // ★★**回り慣性を重くする**（`GravityTab` の `makeWordPiece` と同じ 5倍）。
-        //   板は横に長いので、同じに回すと短い辺で立って読めなくなる。
-        M.Body.setInertia(body, body.inertia * 5);
-        // ★★★**いちばん先に落とす**（2026-09-09）。最後に落とすと、板は山の
-        //   **凸凹の上**へ着地して 59° 傾いた（実測。3回とも同じ）。日付は読ませる
-        //   字なので、**平らな床の上**に先に置き、図形をその上に積む。
-        //   ★板は canvas の上の DOM なので、**上に積まれても字は隠れない**
-        //   ―― 物理では山の底、絵では山の手前。
+      // ★★★**作り方は `lib/wordPlate.ts`。GRAVITY とまったく同じ部品**（第89巡）。
+      //   canvas に焼いて貼り、当たり判定は**塗りの実測**、横の細さは `ctx.scale`。
+      //   ★DOM で組んでいたのをやめた ―― 板だけが物理と別の座標系に居たせいで、
+      //   板まわりだけ挙動が違っていた（ユーザー「特に日付と曜日がおかしい」）。
+      // ★★★**いちばん先に落とす**（2026-09-09）。最後に落とすと、板は山の
+      //   **凸凹の上**へ着地して 59° 傾いた（実測。3回とも同じ）。日付は読ませる
+      //   字なので、**平らな床の上**に先に置き、図形をその上に積む。
+      plates.forEach((plate, i) => {
+        const body = makeWordBody(M, plate, 0, 0);
+        toss(body, `word${i}`, plate.bh);
         // ★初速の回りは与えない（傾くのは着地の弾みぶんだけ）。
-        toss(body, "word", bh);
-        M.Body.setAngle(body, (frac("worda") - 0.5) * 0.16);
+        M.Body.setAngle(body, (frac(`word${i}a`) - 0.5) * 0.16);
         M.Body.setAngularVelocity(body, 0);
         pieces.push({
-          id: "word", body, kind: "word", w: bw, h: bh,
-          face: INK, ink: INK, title: word, wordFs,
+          id: `word${i}`, body, kind: "word", w: plate.bw, h: plate.bh,
+          face: INK, ink: INK, title: plate.word, plate,
         });
-        setWords([{ id: "word", text: word, size: wordFs }]);
-      }
+      });
 
       tasks.forEach((t) => {
         const spec = specOf(t, today);
@@ -651,8 +520,9 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
             if (bmp) ctx.drawImage(bmp, -p.w / 2, -p.h / 2, p.w, p.h);
             else { roundRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.fill(); }
           } else if (p.kind === "word") {
-            // ★★文字の板は **DOM（幾何アルファベット）**が描く。ここでは何もしない
-            //   ―― 位置と角度だけ下の `wordEls` へ毎フレーム書き写す。
+            // ★★文字の板は **GRAVITY と同じ焼いた絵**（`lib/wordPlate.ts`）。
+            //   ★ここは既に translate/rotate 済みなので、原点に置くだけ。
+            if (p.plate) drawWordPlate(ctx, p.plate, 0, 0, 0, dpr);
           } else if (p.kind === "offer" && p.r) {
             // ★★**写真の周りにベゼル**（2026-09-07 ユーザー指定）。円はその提案の色で、
             //   写真は**一回り小さい円**に収まる ―― 色の輪が縁として残る。
@@ -726,17 +596,6 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
           M.Body.setVelocity(b, { x: dx * GRAB_K * k, y: dy * GRAB_K * k });
         }
         draw();
-        // ★文字の板（DOM）を物体の位置へ運ぶ。**React の再描画は起こさない**
-        //   ―― 毎フレーム setState すると列ごと作り直しになる。
-        for (const p of piecesRef.current) {
-          if (p.kind !== "word") continue;
-          const el = wordEls.current.get(p.id);
-          if (!el) continue;
-          // ★★物体の中心は**行ごとの塗りの重心**。DOM の左上がそこへ来るよう戻す。
-          el.style.transform =
-            `translate(${p.body.position.x}px, ${p.body.position.y}px) rotate(${p.body.angle}rad)`
-            + ` translate(${-wordPivot.x}px, ${-wordPivot.y}px)`;
-        }
         rafRef.current = requestAnimationFrame(loop);
       };
       rafRef.current = requestAnimationFrame(loop);
@@ -860,20 +719,6 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       onPointerCancel={onUp}
     >
       <canvas ref={cvRef} style={{ position: "absolute", inset: 0, display: "block" }} />
-      {/* ★日付と曜日。**枠の無い、文字だけの板**として山と一緒に落ちる。
-          位置と角度は毎フレーム物理から書き写す（React は再描画しない）。 */}
-      {words.map((wd) => (
-        <div
-          key={wd.id}
-          ref={(el) => { if (el) wordEls.current.set(wd.id, el); else wordEls.current.delete(wd.id); }}
-          aria-hidden
-          style={{
-            position: "absolute", left: 0, top: 0, pointerEvents: "none", willChange: "transform",
-            color: INK, textAlign: "left",
-            ...wordStyle(wd.size),
-          }}
-        >{wd.text}</div>
-      ))}
     </div>
   );
 }

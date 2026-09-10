@@ -218,6 +218,11 @@
 - `lib/tokens.ts` — **余白・文字・角丸の目盛り（`SPACE`/`TYPE`/`RADIUS`）**。
   数字が不揃いに見えたらここを見る。増やさない。
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。
+- ★★★`lib/wordPlate.ts` — **「文字そのものが図形」の板の作り方はここ1つ**（第89巡）。
+  GRAVITY の日付・曜日／TIMELINE の「自由」／**ホームの山の日付・曜日**が同じ関数を読む。
+  canvas に焼いて貼り（`wordBitmap`）、**当たり判定は塗りの実測**（`inkBoxOf`）、
+  横の細さは `ctx.scale`。★**DOM で組み直さないこと** ―― 板だけが物理と別の座標系に
+  居ると、板まわりだけ挙動が違う（第84〜88巡はこれで何度も壊れた）。
 - `lib/spring.ts` — **canvas の図形だけの動きの土台（バネ＝減衰振動）**。係数は4つ。
   CSS の transition には使わない。
 - `lib/scroll.ts` — **スクロールの語彙はここだけ**（指の 1:1 ＋投げ＋減衰＋最寄りへ吸着）。

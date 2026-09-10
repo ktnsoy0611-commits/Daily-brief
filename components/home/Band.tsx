@@ -159,7 +159,8 @@ function BandRow({ row, items }: { row: Row; items: BandItem[] }) {
   return (
     <div
       className="band-row bleed-x"
-      style={{ height: HEIGHT[row], touchAction: "pan-y" }}
+      // ★★帯は山の上に重ねてある。**触れるのはこの段だけ**（外側の器は透かす）。
+      style={{ height: HEIGHT[row], touchAction: "pan-y", pointerEvents: "auto" }}
       // ★指が触れている間だけ止める。離しても**位置は戻さない**。
       onPointerDown={() => animRef.current?.pause()}
       onPointerUp={() => animRef.current?.play()}

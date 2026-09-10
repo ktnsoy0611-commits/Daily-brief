@@ -64,14 +64,23 @@ export function HomeTab({ appState, goTab }: TabProps) {
       {/* ★左上の名前。**3アプリとまったく同じ組み方**（幾何アルファベットの
           `Masthead`）。ホームも列の1つなので、顔を揃える。 */}
       <Masthead title={appTitle("home")} />
-      {/* 帯（3段）。★器の左右のパディングの外へ出る（`.bleed-x`）ので、
-          左右とも画面の外へ切れる ＝「まだ続きがある」を形で言う。 */}
-      <Band rows={rows} />
-      {/* 山。★帯の下の**残り全部**を器にする（帯が何段でも山が余りを取る）。 */}
-      <Pile
-        tasks={pileTasks} offers={pileOffers} unread={unread} today={today}
-        journal={journal} onOpen={goTab}
-      />
+      {/* ★★★**帯は山の上に重ねる**（2026-09-10 ユーザー指定「ピルの後ろに背景が
+          あって図形が落ちてくるのが見えない」）。縦に並べると、山の器は帯の
+          **下から**始まるので、**図形は帯の高さぶん見えないところを落ちてくる**。
+          重ねれば器は名前の下から全部で、**図形はピルの後ろを通って**降りてくる。 */}
+      <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
+        {/* 山。★器は名前の下の**残り全部**。 */}
+        <Pile
+          tasks={pileTasks} offers={pileOffers} unread={unread} today={today}
+          journal={journal} onOpen={goTab}
+        />
+        {/* 帯（2段）。★器の左右のパディングの外へ出る（`.bleed-x`）ので、
+            左右とも画面の外へ切れる ＝「まだ続きがある」を形で言う。
+            ★触れるのはピルだけ（`pointerEvents`）―― 帯の余白で山の操作を殺さない。 */}
+        <div style={{ position: "absolute", left: 0, right: 0, top: 0, pointerEvents: "none" }}>
+          <Band rows={rows} />
+        </div>
+      </div>
     </div>
   );
 }

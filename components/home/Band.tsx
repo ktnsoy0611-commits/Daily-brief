@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import { groundOf } from "@/components/AppBackdrop";
 import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { type BandItem, isOutlined } from "@/lib/homeBand";
@@ -44,10 +45,12 @@ function Pill({ item, row }: { item: BandItem; row: Row }) {
   //   ピル（AI がまだ差し出している最中のもの）と1段に混ざっても、
   //   **面の量**で受け取り済みかどうかが読める。
   const outline = isOutlined(item.kind);
-  // ★★★**線だけのピルの字は地の色から導く**（`--ink-on`）。**面の色を字に使わない**
-  //   ―― オレンジは明るい地の上で比 2.55 しかなく、13px の本文は読めない。
-  //   色の役目は**輪郭**が持つ（アプリの見分けはそれで足りる）。
-  const ink = outline ? "var(--ink-on)" : bodyInkOn(face);
+  // ★★★**線だけのピルも中は塗る**（2026-09-11 ユーザー指定）。**地と同じ色**で
+  //   塗るので見た目は「線だけ」のままだが、**後ろを落ちてくる図形が透けない**
+  //   （帯は山の上に重ねてあるので、透明だと図形がピルの中を通って見える）。
+  // ★★**字は線と同じ色**（同ユーザー指定）。★地の上で比 2.55 しかないので
+  //   `design.md` の本文の下限は割る ―― **目盛りの外（ユーザー指定の配色）**。
+  const ink = outline ? face : bodyInkOn(face);
   const h = HEIGHT[row];
   const head = row === 0;                              // 提案の段
   const photo = head ? item.photo : undefined;
@@ -57,7 +60,8 @@ function Pill({ item, row }: { item: BandItem; row: Row }) {
     <div style={{
       display: "flex", alignItems: "center", gap: SPACE.md, flexShrink: 0,
       height: h, borderRadius: RADIUS.pill,
-      background: outline ? "transparent" : face,
+      // ★地と同じ色で塗る（透過させない）。★色の持ち主は `groundOf` の1か所。
+      background: outline ? groundOf("home") : face,
       // ★輪郭は `Button` の secondary と同じ引き方（押せるものの縁）。
       border: outline ? `1px solid ${face}` : "none",
       // ★丸があるときは、左の余白を縁取りぶんだけにする（丸が余白を持つ）。

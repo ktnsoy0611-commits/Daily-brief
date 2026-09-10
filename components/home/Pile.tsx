@@ -58,9 +58,15 @@ const GRAB_MAX = 34;
 const FILL = 0.36;
 /** ★★**1つの図形が器に対して取ってよい上限**（`GravityTab` の `FIT_W`/`FIT_H` と
  *  同じ考え方）。面積の予算だけだと、重要度の高い1枚が器の半分を覆ってしまう
- *  ―― 実機で「大きすぎるやつがある」と言われたのがこれ。 */
-const FIT_W = 0.68;
-const FIT_H = 0.38;
+ *  ―― 実機で「大きすぎるやつがある」と言われたのがこれ。
+ *  ★★★2026-09-11 に **0.68/0.38 → 0.52/0.28**。**面積の予算は「横に2つ並ぶ」を
+ *  前提にしている**のに、1枚が器の幅の 68% まで取れたので**1行に1枚しか載らず、
+ *  山ではなく塔になった**（実測 … いちばん広い行が器の幅の 89%／山の高さが器の
+ *  74%／上端が 178px で帯の裏まで届いていた）。幅を半分に抑えると横に2つ並び、
+ *  **山の高さ 54%・上端 305px** になる（同じ山で実測）。
+ *  ★GRAVITY で塔にならないのは器が画面まるごとで**倍の高さがある**から。 */
+const FIT_W = 0.52;
+const FIT_H = 0.28;
 /** ★提案の円の大きさ。**いちばん重いタスク × これ**（2026-09-08 に 1 → 1.6）。 */
 const OFFER_K = 1.6;
 /** 未読のトゲトゲの円。★12頂点・内半径 0.40（`docs/home-spec.md` §5-b）。 */
@@ -106,9 +112,16 @@ const INSET = 16;
  * ★★間隔は 80／110／160ms を測って **110ms**（80 は 2.13秒・160 は 2.02秒かかる。
  *   詰めすぎても空けすぎても遅くなる ―― 空中でぶつかるか、順番待ちになるから）。
  */
-const DROP_EVERY_MS = 110;
-/** 出どころの高さ＝**自分の背丈の半分＋これ**（器のすぐ上から入ってくる）。 */
+const DROP_EVERY_MS = 60;
+/**
+ * 出どころの高さ＝**自分の背丈の半分 ＋ これ ＋ 0〜`DROP_SCATTER`**。
+ * ★★★**高さをばらす**（2026-09-11）。等間隔に1つずつ落とすと、どれも同じ速さで
+ * 同じ距離を落ちるので、**一列に並んで順番に降りてくる**（コンベアに見えた）。
+ * GRAVITY は全部を一度に落とすので**降ってくる**ように見える ―― 高さを散らせば、
+ * 出どころを空の彼方へ持ち上げずに同じ見え方になる。
+ */
 const DROP_ABOVE = 24;
+const DROP_SCATTER = 200;
 /**
  * ★★★**文字の板の作り方は `lib/wordPlate.ts`**（2026-09-10・第89巡）。
  * それまでは DOM の `<div>` に可変フォントの `wdth 62` で組み、当たり判定を
@@ -373,7 +386,7 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       let nth = 0;
       const toss = (body: Body, seed: string, bh: number) => {
         const r1 = frac(seed); const r2 = frac(`${seed}y`); const r3 = frac(`${seed}a`);
-        const up = bh / 2 + DROP_ABOVE + r2 * DROP_ABOVE;
+        const up = bh / 2 + DROP_ABOVE + r2 * DROP_SCATTER;
         body.plugin = { ...(body.plugin ?? {}), releaseAt: nth++ * DROP_EVERY_MS };
         M.Body.setPosition(body, { x: spawnX(body.bounds.max.x - body.bounds.min.x, r1), y: -up });
         M.Body.setAngle(body, (r3 - 0.5) * SPAWN_TILT);

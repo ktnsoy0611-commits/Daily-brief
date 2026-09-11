@@ -7,6 +7,7 @@ import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/c
 import { appTitle } from "@/lib/apps";
 import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP, WHITE } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
+import { BRIEF_POOL_CAP } from "@/lib/homeBand";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
 
@@ -195,10 +196,9 @@ function WaitingMark() {
   );
 }
 
-// 未消化カードのプール上限。日をまたいで、まだ消化していない
-// カードを1ヶ月ぶん最大この枚数まで表示する(生成側=CronのPOOL_CAPと同じ値。
-// Cronは30枚に達すると新規生成を止める)。
-const POOL_CAP = 30;
+// ★★★未消化カードのプール上限は **`lib/homeBand.ts` の `BRIEF_POOL_CAP`**
+// （2026-09-11）。以前はここに 30、夜間の生成に 40 と**2つあってずれていた**ので、
+// ホームの数字（41）とこのデッキの枚数（30）が食い違っていた。**出どころは1つ。**
 
 // 育成カード用フッター(あとで/記録する)の高さぶんの予約枠。isGrowthを
 // 問わず常にこの高さを確保しておくことで、フッターの有無によって
@@ -344,7 +344,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
 
   const deck: DeckCard[] = useMemo(() => {
     // デッキ=日をまたいだ「未消化カードのプール」。新しい日から順に、
-    // 会期切れ・マウント時点で消化済みのものを除いて集め、最大 POOL_CAP(30)枚。
+    // 会期切れ・マウント時点で消化済みのものを除いて集め、最大 BRIEF_POOL_CAP 枚。
     // キー("YYYY-MM-DD")は文字列比較で新しい順に並ぶ。
     const nowMs = Date.now();
     const decks = appState.generatedDecks ?? {};
@@ -362,9 +362,9 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
           if (!Number.isNaN(t) && t < nowMs) continue; // 会期切れは出さない
         }
         pool.push(c);
-        if (pool.length >= POOL_CAP) break;
+        if (pool.length >= BRIEF_POOL_CAP) break;
       }
-      if (pool.length >= POOL_CAP) break;
+      if (pool.length >= BRIEF_POOL_CAP) break;
     }
     const base: DeckCard[] = [...pool];
     // 育成カードは1号につき最大1枚だけ差し込む。**既にこの号で育成カードを

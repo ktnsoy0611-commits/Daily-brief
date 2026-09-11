@@ -6,7 +6,6 @@ import { tagColor, tagFace, tagInk, tagLabel, tagPatternOf } from "./taskTags";
 import { tagFill } from "./tagPattern";
 import { canvasFont, drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
 import type { TaskTag } from "./types";
-import { paperize, setPaperReadyHandler } from "./paperTexture";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
 // 確定)。真横から見た立面を2枚、ベタ塗りで描くだけ。
@@ -248,10 +247,11 @@ export function clearSolidBitmaps() {
   planCache.clear();
 }
 
-// ★★紙のシートは非同期に読み込まれる。読み終わるまでに焼かれた絵には紙が乗って
-//   いないので、そのときは**まとめて捨てて焼き直させる**(次のフレームで戻る)。
-//   ★`lib/paperTexture.ts` の側は相手を知らない ― import の輪を作らないため。
-setPaperReadyHandler(clearSolidBitmaps);
+// ★★★**紙の目は図形から外した**（2026-09-11・ユーザー指定「図形の紙の
+//   テクスチャはなくしてください」）。`paperize` は**誰からも呼ばれない**
+//   ―― `lib/paperTexture.ts` は消していないが、残っている使い道は
+//   `lib/printGrain.ts`（券の面。CSS の `mix-blend-mode`）だけで、これは別物。
+//   ★★**`PAPER_ALPHA` を 0 にして誤魔化さないこと。呼ばないのが正。**
 
 export const paintKey = (p: SolidPaint, unit: number): string =>
   [p.view, p.tag ?? "-", p.spec.sides.length, p.spec.area.toFixed(3),
@@ -287,11 +287,6 @@ export function solidBitmap(p: SolidPaint, unit = UNIT_PX, dpr = 1): SolidBitmap
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.translate(w / 2, h / 2);
     paintShape(ctx, p, unit, dpr);
-    // ★★クラフト紙の目を**焼き込む**(第63巡)。`source-atop` なので図形の面と
-    //   その上の文字にだけ乗り、透明な地には乗らない。焼いた絵に入るので
-    //   **毎フレームの負荷はゼロ**、図形が回れば紙の目も一緒に回る。
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    paperize(ctx, w, h, dpr, key);
   }
   const made = { canvas: cv, w, h, dpr };
   bmpCache.set(key, made);
@@ -338,7 +333,6 @@ export function wordBitmap(
     //   当たり判定は塗りのまま。★`track === 0` なら今までどおり1回で描く。
     if (!track) ctx.fillText(word, 0, 0);
     else drawTracked(ctx, word, track * fs);
-    paperize(ctx, w, h, dpr, key);
   }
   const made = { canvas: cv, w, h, dpr };
   bmpCache.set(key, made);

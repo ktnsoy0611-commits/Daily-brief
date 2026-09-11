@@ -18,12 +18,18 @@ import type { TagPattern } from "./types";
 // ctx の dpr を打ち消す。**画像は足さない**（手続きで描く）。
 
 /**
- * ★網点の刻み（デバイス画素）。★目盛りの外（柄の寸法）。
+ * ★網点の刻みと点の半径（**CSS 画素**）。★目盛りの外（柄の寸法）。
+ * ★★タイルは `DOT_PITCH * dpr` の**デバイス画素**で焼き、`setTransform(1/dpr)` で
+ *   打ち消すので、**画面に出る大きさは `DOT_PITCH` CSS 画素**になる。
  * ★★**粗めにする** ―― 図形は**回る**ので、細かいと回転の再標本化でモアレが出る
- * （回転は `design.md` §3-b の想定外）。点の直径は刻みの 0.5 前後。
+ * （回転は `design.md` §3-b の想定外）。
+ * ★★★**7 → 12 へ**（2026-09-11 ユーザー指定「ハーフトーンはもう少し大きく」）。
+ *   7px は実機（dpr 3）で**点の直径が 1.2mm 弱**しかなく、べた塗りとの差が
+ *   遠目に消えていた。**直径 ÷ 刻み ＝ 0.53 を保つ**ので、面の被覆率
+ *   （＝色の濃さ）は変わらない ―― 大きくしただけで、薄くはならない。
  */
-const DOT_PITCH = 7;
-const DOT_R = 1.85;
+const DOT_PITCH = 12;
+const DOT_R = 3.2;
 
 const tileCache = new Map<string, CanvasPattern | null>();
 
@@ -74,8 +80,11 @@ export function tagFill(
  */
 export function tagPatternCss(pattern: TagPattern, color: string): React.CSSProperties {
   if (pattern === "solid") return { background: color };
-  const dot = `radial-gradient(circle at 25% 25%, ${color} ${DOT_R}px, transparent ${DOT_R + 0.5}px)`;
-  const dot2 = `radial-gradient(circle at 75% 75%, ${color} ${DOT_R}px, transparent ${DOT_R + 0.5}px)`;
+  // ★★ぼかしの幅は**点の大きさに比例**させる（固定の 0.5px だと、点を大きく
+  //   した途端に canvas 側（`arc` の素の縁取り）より硬く見える）。
+  const soft = (DOT_R * 1.15).toFixed(2);
+  const dot = `radial-gradient(circle at 25% 25%, ${color} ${DOT_R}px, transparent ${soft}px)`;
+  const dot2 = `radial-gradient(circle at 75% 75%, ${color} ${DOT_R}px, transparent ${soft}px)`;
   return {
     backgroundImage: `${dot}, ${dot2}`,
     backgroundSize: `${DOT_PITCH}px ${DOT_PITCH}px`,

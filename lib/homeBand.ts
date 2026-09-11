@@ -74,6 +74,23 @@ export const BAND_LIMIT = 6;
  */
 export const BAND_LIMIT_TASKS = 9;
 
+/**
+ * ★★★**未読の提案は 15 枚までしか見せない**（2026-09-11 ユーザー確定
+ * 「41 は多すぎて見る気が起きない。15 ぐらいで止めて」）。★目盛りの外（部品の数）。
+ *
+ * ★★**上限の出どころはここ1つ。** これまで `BriefTab` に 30、夜間の生成
+ * （`app/api/cron/build-brief/route.ts`）に 40 と**2つあってずれていた**ので、
+ * ホームの数字（41）とデッキの枚数（30）が食い違っていた。
+ *
+ * ★★★**いまは「表示だけ」の上限**（ユーザー確定）。裏の `generatedDecks` は
+ * 減らないので、**夜間の生成は `POOL_CAP` の番に掛かったまま止まり続ける**
+ * ―― 新しい提案が増えないのが気になったら、`route.ts` の `POOL_CAP` を
+ * この値にし、古い未読を落とす処理を足す（＝**実際に捨てる**側へ切り替える）。
+ * ★**`generatedDecks` はサーバーのもの**（`lib/dataStore.ts` の
+ * `SERVER_OWNED_KEYS`）なので、本当に減らせるのは生成側だけ。
+ */
+export const BRIEF_POOL_CAP = 15;
+
 const cardText = (c: BriefCard): string => c.title || c.trigger || c.category;
 /**
  * そのカードの色。
@@ -130,6 +147,10 @@ export function unreadCards(state: AppState): BriefCard[] {
         if (!Number.isNaN(t) && t < now) continue;    // 会期切れは出さない
       }
       pool.push(c);
+      // ★★**新しい順に 15 枚で打ち切る**（`BRIEF_POOL_CAP`）。キーは
+      //   "YYYY-MM-DD" の文字列比較で**新しい号から**回っているので、
+      //   ここで止めれば残るのは**いちばん新しい 15 枚**になる。
+      if (pool.length >= BRIEF_POOL_CAP) return pool;
     }
   }
   return pool;

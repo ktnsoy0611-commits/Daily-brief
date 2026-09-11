@@ -218,7 +218,19 @@
 - `lib/tokens.ts` — **余白・文字・角丸の目盛り（`SPACE`/`TYPE`/`RADIUS`）**。
   数字が不揃いに見えたらここを見る。増やさない。
 - `lib/helpers.ts`（`domainOf`/`hasPlace`）/ `lib/dataStore.ts`（永続化・`SERVER_OWNED_KEYS`）/ `lib/supabaseClient.ts`。
+- ★★★`components/home/Pile.tsx` ＋ `pileWorld.ts` ＋ `pilePaint.ts` — **ホームの山**
+  （第92巡に土台から組み直して3つに割った）。`Pile.tsx`＝器・世界の寿命・指／
+  `pileWorld.ts`＝物理の値・壁・図形の作り方／`pilePaint.ts`＝焼き方・描き方。
+  ★★★**器を見る ResizeObserver は1つだけ**（2つ付けると先に走ったほうが
+  もう一方の番人を黙らせ、**canvas の実解像度が初回のまま固定される**＝ぼやける）。
+  ★★★**effect は2本** … 世界（engine・壁・ループ）は1度だけ、中身は署名で図形だけ
+  差し替える。**1本にすると、題を1文字直すたびに山ごと落ち直す。**
+  ★★★**山の器は `.bleed-x-b`**（左右 ＋ **下**）。下を出さないと、タブの器の
+  `paddingBottom: var(--nav-h)` と `floorYOf` で**タブバーの高さが二重に引かれる**。
+  ★★**画面の細かさは端末そのまま**（`min(3, dpr)`。2 で止めると実機で 1.5倍に伸びる）。
 - ★★★`lib/tagPattern.ts` — **タグの「柄」はここ1つ**（第91巡）。べた塗り／網点。
+  ★★**刻みは 12 CSS 画素・点の半径 3.2**（第92巡に 7/1.85 から拡大）。
+  **直径 ÷ 刻み ＝ 0.53 を保つ**ので色の濃さは変わらない。
   ★★**タグは2つ**（MUST＝やねば／WANT＝やりたい。`lib/taskTags.ts`）。色は同じで
   **柄だけが違う** ―― 色相はアプリの識別に使い切っているから。
   ★★★**これは質感ではなく塗り**（`design.md` §3-b の「色を動かすな」の外）。
@@ -243,8 +255,11 @@
   ★**画面の上下の帯**は別件で、`statusBarStyle: "default"` で解決済み（第35巡）。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
-- ★★★`lib/printGrain.ts`（券・CSS の面）と `lib/paperTexture.ts`（図形・canvas に
-  焼き込む）— **質感の2つの入口。素材は同じ 1 枚**（`public/crumple.webp`。第77巡に
+- ★★★`lib/printGrain.ts`（券・CSS の面）— **質感の入口はいまここだけ**。
+  ★★★`lib/paperTexture.ts` の `paperize()` は**第92巡に図形から外した**
+  （ユーザー指定）。**どこからも呼ばれていない**が、戻せるように消していない。
+  ★★**`PAPER_ALPHA` を 0 にして誤魔化さないこと。呼ばないのが正。**
+  以下は戻すときのための記録 —— **素材は同じ 1 枚**（`public/crumple.webp`。第77巡に
   ユーザー指定でしわ紙へ。作り方は `tools/make-crumple.mjs`。元画像はリポジトリに
   無く、引数で渡す）。「券は板紙・図形は切った紙。混ぜない」は第76巡に**撤回**。
   ★★★**テクスチャは明暗だけを足すもので、色を変えるものではない。**

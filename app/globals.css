@@ -156,6 +156,25 @@ body {
   margin-right: calc(-1 * var(--pad-x));
 }
 
+/* ★★★左右 ＋ **下のタブバーぶん**だけ画面いっぱい(上はタブの流れのまま)。
+   ホームの山が使う。**上は名前の下から始まりたいが、下は画面の底まで要る**
+   ので `.full-bleed` では広すぎ、`.bleed-x` では足りない。
+
+   ★★★**なぜ下まで要るか**(2026-09-11・第92巡に実機で発覚)。タブの器は
+   `paddingBottom: var(--nav-h)` を持つので、`.bleed-x` だけだと**山の器は
+   すでにタブバーの上で終わっている**。そこへ `lib/pileBox.ts` の
+   `floorYOf`(= 器の高さ − タブバーの高さ − GROUND_LIFT)を当てると、
+   **タブバーの高さが二重に引かれて**床が上がる — Chromium で 113px、
+   実機で 164px も浮き、山の下に大きな空きができていた。
+   GRAVITY の器(`TaskSpace` の `.full-bleed`)は画面の底まで伸びているので
+   同じ式で正しく 32px になる。**式ではなく器が違った。**
+   ★高さの数字を知っているのはここと lib/constants.ts の NAV_H だけ。 */
+.bleed-x-b {
+  margin-left: calc(-1 * var(--pad-x));
+  margin-right: calc(-1 * var(--pad-x));
+  margin-bottom: calc(-1 * var(--nav-h));
+}
+
 /* ★アプリの横スライドとダッシュボードの引き上げは、Reactのstateではなく
    **CSSカスタムプロパティ**で駆動する(2026-08-02)。
    以前は navDragX / dashP を60fpsで setState していたため、指を動かすたびに

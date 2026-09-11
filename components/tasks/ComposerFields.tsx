@@ -7,6 +7,7 @@ import { CAP, DIM, LIFT } from "@/components/tasks/Popover";
 import { PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { TASK_TAGS, tagInk } from "@/lib/taskTags";
+import { tagPatternCss } from "@/lib/tagPattern";
 import type { TaskTag, TaskWeight } from "@/lib/types";
 
 // ★入力画面(TaskComposer)のポップオーバーの中身(重要度 / タグ / テキスト)。
@@ -50,7 +51,12 @@ export function WeightPicker({ value, onPick }: {
   );
 }
 
-/** タグ。**色の円**を横に5つ。選んだものだけ名前が出る。 */
+/**
+ * タグ。★★★**柄の面を横に2つ**（2026-09-11 にユーザー確定でタグを2つへ）。
+ * べた塗り＝やねば／網点＝やりたい。★**色は2つとも同じ**なので、
+ * ここで見分けているのも**柄**（`lib/tagPattern.ts`）。名前は常に出す
+ * ―― 2つしか無いので、選んだほうだけ出すより並べたほうが早く読める。
+ */
 export function TagPicker({ value, onPick }: {
   value: TaskTag;
   onPick: (t: TaskTag) => void;
@@ -64,12 +70,17 @@ export function TagPicker({ value, onPick }: {
             aria-label={t.label}
             className="tc-lamp"
             style={{
-              flex: on ? 2.2 : 1, height: 56, borderRadius: RADIUS.pill,
-              background: t.color, overflow: "hidden",
+              flex: 1, height: 56, borderRadius: RADIUS.pill,
+              overflow: "hidden",
+              // ★★柄そのものを見本にする（選んでいないほうも柄が読める）。
+              ...tagPatternCss(t.pattern, t.color),
               boxShadow: on ? `0 0 0 2.5px ${LIFT}, 0 0 0 4.5px ${t.color}` : "none",
               display: "flex", alignItems: "center", justifyContent: "center",
-              ...CAP, fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: tagInk(t.id),
-            }}>{on ? t.label : ""}</Press>
+              ...CAP, fontSize: TYPE.micro, fontWeight: WEIGHT.text,
+              // ★網点は地が透けるので、字は**地の上の字**として読ませる。
+              color: t.pattern === "solid" ? tagInk(t.id) : "var(--ink-on)",
+              opacity: on ? 1 : 0.78,
+            }}>{t.label}</Press>
         );
       })}
     </div>

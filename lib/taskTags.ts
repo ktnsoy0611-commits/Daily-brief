@@ -1,62 +1,50 @@
 import { SCHEME } from "./constants";
-import { ACCENT_TEST, accentSteps } from "./appAccent";
+import { ACCENT_TEST, accentOf } from "./appAccent";
 import { bodyInkOn } from "./palette";
-import type { TaskTag } from "./types";
+import type { TagPattern, TaskTag } from "./types";
 
-// ★タスクのタグ。**固定の5つ**から選ぶ(2026-08-13にユーザー確定)。
-// 図形の全面の色になり、そこに載る文字(FRONT=題 / BOTTOM=タグの英字)の色も
-// タグが決める。表示は**英字のみ**(日本語は出さない)。
-// 自由入力にすると似たタグが増えて色が似通い、山の中で見分けが付かなくなる。
+// ★★★**タグは2つ。見分けるのは「柄」**（2026-09-11 にユーザー確定）。
 //
-// ★色は**スキームの組をそのまま**当てる(2026-08-16にユーザー確定・参照画像)。
-// 「図形の色」と「文字の色」は画像の組み合わせどおりで、タグと**一対一対応**。
-// 明度から白黒を選ぶ(inkOn)のはやめた — 相方の色は画像が決めている。
+// ★★★**なぜ2つか。** それまでの五つ（WORK / LIFE / WELLNESS / SOCIAL / GROWTH）は
+//   **生活の場面**で割っていたので、必ず重なるものが出た ―― 「仕事のために英語を
+//   学ぶ」は仕事か学びか。**動機**で割れば、この世のどんなタスクも
+//   「やらないと困る（MUST）」か「やりたい（WANT）」の**どちらかに必ず入る**。
+//   ★このアプリが「仕事も週末も余暇も**同じ種類の提案**として扱う」という考えとも
+//   噛み合う ―― 場面で分けないほうが、むしろこのアプリらしい。
+//
+// ★★★**なぜ色をやめたか。** 第87巡でアプリごとのアクセント配色へ替えた結果、
+//   タグ5色は**オレンジの濃淡5段**になり、区別が事実上消えた（ユーザー指摘）。
+//   色相は**アプリの識別**に使い切っているので、アプリの中では増やせない。
+//   → 見分けを**柄**（べた塗り／網点）へ移した。`lib/tagPattern.ts` が持つ。
+//   ★★**色は2つとも同じ**（TASK のメイン1色）。柄だけが違う。
+//
+// ★書体もタグと対応させる（2026-08-16にユーザー確定）。同じタグのタスクは
+//   必ず同じ書体になる。番号は `lib/constants.ts` の `FONT_FACES` の並び。
+//   ★**明朝は使わない**（2026-08-16にユーザー確定）。
 
-// ★書体もタグと対応させる(2026-08-16にユーザー確定)。同じタグのタスクは
-// 必ず同じ書体になり、色と書体の2つでタグが読める。番号は
-// lib/constants.ts の FONT_FACES の並び。
-// ★**明朝は使わない**(2026-08-16にユーザー確定)。ゴシック系だけで
-// 骨格の違う5つ(太 / 丸ゴ / 極太 / ディスプレイ / 太斜体)を当てる。
-// ★SOCIAL(赤)は 細いゴシック → Dela斜体 → Reggae One → **M PLUS 1 (800)**。
-// 細いゴシックは赤地の上で線が消え、Dela の斜体は **iOS が和文の斜体を
-// 合成しない**ため WELLNESS の Dela と同じに見えた。**斜体で見分けを
-// 作らないこと**(2026-08-17確定)。
-export interface TagDef { id: TaskTag; label: string; color: string; ink: string; face: number }
+export interface TagDef {
+  id: TaskTag;
+  label: string;
+  color: string;
+  ink: string;
+  face: number;
+  /** ★★**見分けの本体**。色ではなくこれで読む。 */
+  pattern: TagPattern;
+}
 
-// ★★★第80巡から**組（メイン×サブ）ではなく色1つ**を受ける。図形に載る名前の色は
-//   `bodyInkOn()` が**面から導く**ので、表で持たない（表にすると片方だけ直される）。
-const tag = (id: TaskTag, label: string, color: string, face: number): TagDef =>
-  ({ id, label, color, ink: bodyInkOn(color), face });
+/**
+ * ★★★**色は2つとも TASK のメイン1色**。柄だけが違う。
+ *   `ACCENT_TEST` を切ったときは、旧パレットの2色（Azul / Terracota）へ戻る
+ *   ―― あちらは色数に余裕があるので、色と柄の両方で読める。
+ */
+const FACE_COLOR = ACCENT_TEST ? accentOf("tasks").main : SCHEME.work;
+const WANT_COLOR = ACCENT_TEST ? accentOf("tasks").main : SCHEME.growth;
 
-// ★★★第80巡にパレットを差し替えた（ユーザー指定の6色）。**要るのは5色**で、
-//   ドメイン4は同じ5色から借りる（TASK と EXPLORE は同じ画面に並ばない）。
-//   選び方は目ではなく**採点** ―― 6色から5色を選ぶ6通りを全部採点し、
-//   **Magenta を外した組**がいちばん良かった:
-//   色相の最小隔たり **47.7°**（前は 28.0°）／明度の幅 0.326／彩度の幅 0.091／
-//   見分けの最小 ΔE **0.187**（前は 0.144）。
-//   ★★外した Magenta は**危険**へ回る（白い紙の上 6.07 ＝ 本文が書ける深い赤）。
-//     第77巡の「危険だけ予備から借りる」問題がここで解けた。
-//   ★★★**書体（`face`）と id は動かさない** ―― 動かすと「同じタグなら必ず同じ書体」
-//     が壊れる。第78巡・第80巡とも色だけを差し替えている。
-// ★★★**テスト（2026-09-09）**。`ACCENT_TEST` の間は、タグ5色を **TASK の家族の
-//   濃淡5段**にする ―― 色相はアプリの識別に使い切っているので、アプリの中では
-//   増やさない。`lib/appAccent.ts` の1行を `false` にすれば下の元の割り当てへ戻る。
-const ACCENT_TAGS = accentSteps("tasks", 5);
-
-export const TASK_TAGS: TagDef[] = ACCENT_TEST ? [
-  tag("work", "WORK", ACCENT_TAGS[0], 1),
-  tag("life", "LIFE", ACCENT_TAGS[1], 3),
-  tag("wellness", "WELLNESS", ACCENT_TAGS[2], 4),
-  tag("social", "SOCIAL", ACCENT_TAGS[3], 5),
-  tag("growth", "GROWTH", ACCENT_TAGS[4], 2),
-] : [
-  // ★★色は `SCHEME`（`lib/constants.ts`）が持つ。ここは**役 → 色**の参照だけ。
-  //   多い3つ（work / life / growth）は色相 255°／152°／35° と大きく離してある。
-  tag("work", "WORK", SCHEME.work, 1),             // Azul     / ゴシック700
-  tag("life", "LIFE", SCHEME.life, 3),             // Verde    / 丸ゴシック500
-  tag("wellness", "WELLNESS", SCHEME.wellness, 4), // Amarillo / Dela(極太)
-  tag("social", "SOCIAL", SCHEME.social, 5),       // Rosa     / M PLUS 1 800
-  tag("growth", "GROWTH", SCHEME.growth, 2),       // Terracota/ ゴシック700斜体
+export const TASK_TAGS: TagDef[] = [
+  // ★**やねば** … 義務・締切・責任。**べた塗り**（重い・逃げられない）。
+  { id: "must", label: "MUST", color: FACE_COLOR, ink: bodyInkOn(FACE_COLOR), face: 1, pattern: "solid" },
+  // ★**やりたい** … 欲求・楽しみ。**網点**（軽い・抜けがある）。
+  { id: "want", label: "WANT", color: WANT_COLOR, ink: bodyInkOn(WANT_COLOR), face: 5, pattern: "halftone" },
 ];
 
 export const tagDef = (id: TaskTag | undefined): TagDef | undefined =>
@@ -75,6 +63,10 @@ export const tagInk = (id: TaskTag | undefined): string => tagDef(id)?.ink ?? TA
 export const tagFace = (id: TaskTag | undefined): number => tagDef(id)?.face ?? TASK_TAGS[0].face;
 
 export const tagLabel = (id: TaskTag | undefined): string => tagDef(id)?.label ?? TASK_TAGS[0].label;
+
+/** ★★そのタグの**柄**。見分けの本体（色ではなくこれで読む）。 */
+export const tagPatternOf = (id: TaskTag | undefined): TagPattern =>
+  tagDef(id)?.pattern ?? TASK_TAGS[0].pattern;
 
 // ★墨地(入力画面・日程のシート)の上で使う「そのタグの色」
 // (2026-08-17にユーザー確定「アクセントはそのタスクのタグの色」)。
@@ -121,12 +113,25 @@ export function nextTag(id: TaskTag | undefined): TaskTag {
 // (「歯医者に行く前に本を返す」のように複数当たる場合は、より切実な方=
 // 上に置いた方が勝つ)。
 const TAG_WORDS: { id: TaskTag; words: string[] }[] = [
-  { id: "wellness", words: ["病院", "医者", "歯医", "診察", "健康診断", "検診", "薬", "処方", "運動", "ジム", "ラン", "走", "ストレッチ", "整体", "美容", "髪", "睡眠", "体調", "ワクチン"] },
-  { id: "work", words: ["仕事", "会議", "打ち合", "ミーティング", "資料", "提出", "納品", "取引", "契約", "請求", "見積", "経費", "申告", "確定申告", "出社", "上司", "同僚", "案件", "プレゼン", "報告", "稟議", "面談"] },
-  { id: "social", words: ["誕生日", "お祝い", "祝う", "結婚", "出産", "お礼", "手紙", "年賀", "挨拶", "連絡", "電話", "会う", "family", "家族", "母", "父", "祖母", "祖父", "友人", "友達", "先生", "見舞"] },
-  { id: "growth", words: ["本", "読", "勉強", "学ぶ", "学習", "講座", "授業", "図書館", "資格", "試験", "練習", "英語", "調べ", "記事", "論文", "セミナー"] },
-  // 買い物は LIFE へ吸収した(2026-08-13にユーザー確定)。
-  { id: "life", words: ["買", "購入", "注文", "届", "受け取", "取り寄", "予約する", "店", "ネットスーパー", "通販", "返品", "交換", "掃除", "洗濯", "片付", "整理", "捨て", "ゴミ", "家賃", "振込", "支払", "料金", "更新", "手続", "役所", "銀行", "保険", "修理", "点検", "引越", "料理", "food", "旅行", "帰省", "車", "自転車", "電球", "クリーニング"] },
+  // ★★**やねば** … 外から来た締切・義務・責任。**相手が居る**か**期限がある**もの。
+  //   ★先に当てる ―― 「英語の勉強を提出する」のように両方当たるときは、
+  //   **切実なほう（締切があるほう）が勝つ**のが直感に合う。
+  { id: "must", words: [
+    "締切", "期限", "提出", "納品", "申告", "確定申告", "請求", "見積", "経費", "支払", "振込", "家賃", "料金",
+    "更新", "手続", "役所", "銀行", "保険", "契約", "返信", "返事", "連絡", "電話する", "予約", "申込", "申し込",
+    "会議", "打ち合", "ミーティング", "報告", "稟議", "面談", "出社", "資料", "取引", "上司", "案件",
+    "病院", "医者", "歯医", "診察", "健康診断", "検診", "薬", "処方", "ワクチン", "通院",
+    "掃除", "洗濯", "片付", "捨て", "ゴミ", "返品", "修理", "点検", "車検", "クリーニング", "受け取",
+  ] },
+  // ★★**やりたい** … 自分から始めること。**やらなくても誰も困らない**もの。
+  { id: "want", words: [
+    "行く", "会う", "観る", "見に", "食べ", "飲み", "旅行", "帰省", "散歩", "遊", "誘",
+    "作る", "描", "撮", "書く", "始め", "試し", "挑戦", "企画",
+    "本", "読", "勉強", "学ぶ", "学習", "講座", "授業", "図書館", "資格", "試験", "練習", "英語", "調べ", "セミナー",
+    "運動", "ジム", "ラン", "走", "ストレッチ", "整体", "美容", "髪",
+    "誕生日", "お祝い", "祝う", "お礼", "手紙", "年賀", "見舞",
+    "欲しい", "買いたい", "見たい", "やりたい",
+  ] },
 ];
 
 /** 題や側面の言葉からタグを見立てる。当たらなければ undefined(=色は中間のグレー)。 */
@@ -162,14 +167,20 @@ export function resolveTag(
   return TASK_TAGS[(Math.imul(h >>> 0, 2654435761) >>> 0) % TASK_TAGS.length].id;
 }
 
-/** 旧6タグ → 新5タグ。移行(dataStore の migrate)と取り込みの両方で使う。 */
+/**
+ * ★**旧タグ → 新2タグ**（2026-09-11 にユーザー確定「旧タグを機械的に読み替える」）。
+ * 移行（`dataStore` の migrate）と取り込みの両方で使う。
+ * ★★場面で割っていたものを**動機へ写す**ので、中身と合わないものは残る
+ *   ―― 本人が展開図でいつでも変えられるので実害は小さい。
+ */
 const LEGACY_TAG: Record<string, TaskTag> = {
-  // 現行のidはそのまま通す。
-  work: "work", life: "life", wellness: "wellness", social: "social", growth: "growth",
-  // 旧6タグからの読み替え。
-  shopping: "life", body: "wellness", people: "social", learn: "growth",
-  // Coworkが英字大文字で書いてきた場合。
-  WORK: "work", LIFE: "life", WELLNESS: "wellness", SOCIAL: "social", GROWTH: "growth",
+  // 現行の id はそのまま通す。
+  must: "must", want: "want", MUST: "must", WANT: "want",
+  // ★旧5タグ … 仕事・暮らし・からだは**やねば**、人・学びは**やりたい**へ。
+  work: "must", life: "must", wellness: "must", social: "want", growth: "want",
+  WORK: "must", LIFE: "must", WELLNESS: "must", SOCIAL: "want", GROWTH: "want",
+  // ★さらに旧い6タグからの読み替え。
+  shopping: "must", body: "must", people: "want", learn: "want",
 };
 
 export const normalizeTag = (raw: unknown): TaskTag | undefined =>

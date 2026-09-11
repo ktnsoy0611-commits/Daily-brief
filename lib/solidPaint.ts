@@ -2,7 +2,8 @@ import {
   boundsOf, innerBox, rectOf, sectionOutline, slabRects,
   type Pt, type SolidSpec,
 } from "./solid";
-import { tagColor, tagFace, tagInk, tagLabel } from "./taskTags";
+import { tagColor, tagFace, tagInk, tagLabel, tagPatternOf } from "./taskTags";
+import { tagFill } from "./tagPattern";
 import { canvasFont, drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
 import type { TaskTag } from "./types";
 import { paperize, setPaperReadyHandler } from "./paperTexture";
@@ -98,7 +99,9 @@ export function paintShape(
   // LOD の判定はその形の**代表寸法**で行う(平たい帯だけ不利にならないように)。
   const s = Math.sqrt(p.spec.area) * unit;
 
-  ctx.fillStyle = fill;
+  // ★★★**塗りは「色」ではなく「柄」**（2026-09-11・第91巡）。タグ2つの見分けは
+  //   べた塗り／網点が持つ（色相はアプリの識別に使い切っている）。`lib/tagPattern.ts`。
+  ctx.fillStyle = tagFill(ctx, tagPatternOf(p.tag), fill, dpr);
   const path = () => poly(ctx, outline.map((q) => ({ x: q.x * wpx, y: q.y * hpx })), 1);
 
   if (tagView || s < LOD_NO_SLIT || p.spec.slabs <= 1) {
@@ -309,9 +312,9 @@ export function solidBitmap(p: SolidPaint, unit = UNIT_PX, dpr = 1): SolidBitmap
  */
 export function wordBitmap(
   word: string, fs: number, sx: number, ink: string, fam: string,
-  bw: number, bh: number, dx: number, dy: number, dpr = 1,
+  bw: number, bh: number, dx: number, dy: number, dpr = 1, track = 0,
 ): SolidBitmap {
-  const key = ["W", word, fs.toFixed(1), sx.toFixed(3), ink, fam, bw.toFixed(1), bh.toFixed(1), dpr.toFixed(2)].join("|");
+  const key = ["W", word, fs.toFixed(1), sx.toFixed(3), ink, fam, bw.toFixed(1), bh.toFixed(1), dpr.toFixed(2), track.toFixed(3)].join("|");
   const hit = bmpCache.get(key);
   if (hit) { bmpCache.delete(key); bmpCache.set(key, hit); return hit; }
   // ★はみ出し(斜体のハネ・丸め誤差)のぶんだけ箱を広げて焼く。描く側は中心を合わせる。
@@ -329,8 +332,12 @@ export function wordBitmap(
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.translate(-dx, -dy);
     ctx.scale(sx, 1);
-    ctx.fillText(word, 0, 0);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // ★★★**字間を詰める**（2026-09-11 ユーザー指定「隙間を少なくしてブロックっぽく」）。
+    //   ★`ctx.letterSpacing` は Safari の対応が新しいので**使わない** ―― 1文字ずつ
+    //   送りを足しながら置く。測る側（`inkBoxOf`）も**同じ送り**で測るので、
+    //   当たり判定は塗りのまま。★`track === 0` なら今までどおり1回で描く。
+    if (!track) ctx.fillText(word, 0, 0);
+    else drawTracked(ctx, word, track * fs);
     paperize(ctx, w, h, dpr, key);
   }
   const made = { canvas: cv, w, h, dpr };
@@ -344,3 +351,32 @@ export function wordBitmap(
 
 /** 文字ブロックの太さ。★可変フォントなのでこの重みがそのまま効く。 */
 export const WORD_WEIGHT = 900;
+
+/**
+ * ★★**字間を詰めて組んだときの幅**（`ctx.font` は呼ぶ側が立ててあること）。
+ * 送りの合計 ＋ `gap × (字数 − 1)`。`gap` は負なら詰まる。
+ */
+export function trackedWidth(ctx: CanvasRenderingContext2D, word: string, gap: number): number {
+  const cs = [...word];
+  if (!cs.length) return 0;
+  let w = 0;
+  for (const c of cs) w += ctx.measureText(c).width;
+  return w + gap * (cs.length - 1);
+}
+
+/**
+ * ★★**1文字ずつ置く**（`textAlign:"center"` / `textBaseline:"middle"` の原点から）。
+ * 詰めた全体の幅の**中心**が原点に来るように、左端から順に送る。
+ */
+export function drawTracked(ctx: CanvasRenderingContext2D, word: string, gap: number): void {
+  const cs = [...word];
+  const total = trackedWidth(ctx, word, gap);
+  const prev = ctx.textAlign;
+  ctx.textAlign = "left";
+  let x = -total / 2;
+  for (const c of cs) {
+    ctx.fillText(c, x, 0);
+    x += ctx.measureText(c).width + gap;
+  }
+  ctx.textAlign = prev;
+}

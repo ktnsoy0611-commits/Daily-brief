@@ -7,9 +7,11 @@ import { haptic, img, pad } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { glyphOfKind } from "@/lib/deckStyle";
 import { areaOf, specOf, weightArea } from "@/lib/taskSize";
-import { resolveTag, tagColor, tagFace, tagInk } from "@/lib/taskTags";
+import { resolveTag, tagColor, tagFace, tagInk, tagPatternOf } from "@/lib/taskTags";
+import { tagFill } from "@/lib/tagPattern";
 import { canvasFont, drawFitted, ensureGlyphs, fitText } from "@/lib/textFit";
 import { paperize } from "@/lib/paperTexture";
+import { PILE_INSET, floorYOf } from "@/lib/pileBox";
 import { RADIUS, WEIGHT } from "@/lib/tokens";
 import {
   WD_FULL, drawWordPlate, makeWordBody, measureWordPlate, wordFontSize,
@@ -17,7 +19,7 @@ import {
 } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
-import type { Item, TabId, Task } from "@/lib/types";
+import type { Item, TabId, TagPattern, Task } from "@/lib/types";
 
 // ★★★**山**（2026-09-07）。**今日やると決めたもの**が積もる場所。
 //
@@ -98,8 +100,15 @@ function zigVerts(r: number): { x: number; y: number }[] {
 const SPAWN_TILT = 0.5;      // 初期の傾き（±0.25 rad ≒ ±14°）
 const SPAWN_SPIN = 0.05;     // 初期の回り
 const SPAWN_VX = 1.2;        // 横の初速
-/** 山の左右の余白。★`GravityTab` の `PILE_INSET` と同じ考え方（壁と出どころを揃える）。 */
-const INSET = 16;
+/**
+ * ★★★**山の器（左右の内寸と床）は `lib/pileBox.ts`**（2026-09-11・第91巡）。
+ * それまでは `INSET = 16` と生の数字を持ち、しかも**列のパディングの内側**に
+ * 居たので、図形の壁は**画面の端から 32px**（タブバーは 16px）だった。
+ * ★器は `.bleed-x` で列のパディングの外へ出し、壁を `PILE_INSET` にすることで
+ * **タブバーの左右と揃う**。床も GRAVITY と同じ `floorYOf`（タブバーの上から
+ * `GROUND_LIFT` 浮かせる）にする。
+ */
+const INSET = PILE_INSET;
 /**
  * ★★★**落とす間隔は「時間」で取る**（2026-09-09。それまでは「高さ」で取っていた）。
  *
@@ -149,6 +158,8 @@ interface Piece {
   ink: string;
   title?: string;
   face_?: number;      // 書体の番号（タグが決める）
+  /** ★★タグの柄（べた塗り／網点）。**見分けの本体**。`lib/tagPattern.ts`。 */
+  pat?: TagPattern;
   photo?: string;
   /** ★写真が無い提案の顔（「展」「場」）。 */
   glyph?: string;
@@ -168,7 +179,7 @@ interface Piece {
 const bakeCache = new Map<string, HTMLCanvasElement>();
 function taskBitmap(p: Piece, dpr: number): HTMLCanvasElement | undefined {
   if (!p.w || !p.h || p.face_ === undefined || !p.title) return undefined;
-  const key = [p.id, Math.round(p.w), Math.round(p.h), p.face, p.title, dpr.toFixed(2)].join("|");
+  const key = [p.id, Math.round(p.w), Math.round(p.h), p.face, p.title, dpr.toFixed(2), p.pat ?? "solid"].join("|");
   const hit = bakeCache.get(key);
   if (hit) return hit;
   const cv = document.createElement("canvas");
@@ -182,7 +193,9 @@ function taskBitmap(p: Piece, dpr: number): HTMLCanvasElement | undefined {
   if (typeof ctx.roundRect === "function") ctx.roundRect(0, 0, p.w, p.h, r);
   else ctx.rect(0, 0, p.w, p.h);
   ctx.closePath();
-  ctx.fillStyle = p.face;
+  // ★★★**塗りは「柄」**（2026-09-11）。GRAVITY の図形（`lib/solidPaint.ts`）と
+  //   同じ部品を通す ―― タグの見分けは色ではなく柄が持つ。
+  ctx.fillStyle = tagFill(ctx, p.pat ?? "solid", p.face, dpr);
   ctx.fill();
   // ★紙の目。★色のすぐ上・文字の下（`design.md` §3-b）。
   paperize(ctx, p.w, p.h, dpr, key);
@@ -302,8 +315,11 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       let walls: Body[] = [];
       const buildWalls = (bw: number, bh: number) => {
         if (walls.length) M.Composite.remove(engine.world, walls);
+        // ★★床は**タブバーの上から `GROUND_LIFT` 浮かせる**（`GravityTab` と同じ式）。
+        //   器の下端に置くと、図形がタブバーの下へ潜って読めなくなる。
+        const floorY = floorYOf(bh);
         walls = [
-          M.Bodies.rectangle(bw / 2, bh + WALL_T / 2, bw + WALL_T * 2, WALL_T, { isStatic: true, friction: 0.6 }),
+          M.Bodies.rectangle(bw / 2, floorY + WALL_T / 2, bw + WALL_T * 2, WALL_T, { isStatic: true, friction: 0.6 }),
           M.Bodies.rectangle(INSET - WALL_T / 2, bh / 2, WALL_T, bh * 3, { isStatic: true, friction: 0.4 }),
           M.Bodies.rectangle(bw - INSET + WALL_T / 2, bh / 2, WALL_T, bh * 3, { isStatic: true, friction: 0.4 }),
         ];
@@ -358,16 +374,20 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       ];
       const total = areas.reduce((a, b) => a + b, 0) || 1;
       // ★残りの予算 ＝ 器 × `FILL` −（板 ＋ 未読の図形）。0 にはしない。
+      // ★★★**予算は「図形が居られる高さ」で取る**（2026-09-11）。床を
+      //   `GROUND_LIFT` ぶん上げたので、器の高さ `h` で取ると**入り切らない**
+      //   （実測 … 9件で山が器の天井まで届いた）。使えるのは**床まで**。
+      const usableH = Math.max(120, floorYOf(h));
       const fixed = plates.reduce((a, pl) => a + pl.w * pl.h, 0)
         + (unread > 0 ? Math.PI * BADGE_R * BADGE_R : 0);
-      const budget = Math.max(w * h * FILL * 0.25, w * h * FILL - fixed);
+      const budget = Math.max(w * usableH * FILL * 0.25, w * usableH * FILL - fixed);
       // ★★★**下限で予算を破らない**。以前は 16 を床にしていたので、件数が多い日は
       //   予算を無視して大きいまま出て、器に入り切らなかった。
       let unit = Math.min(UNIT, Math.sqrt(budget / total));
       // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。
       //   1枚だけ縮めない ―― 図形どうしの大きさの比がそのまま重要度なので。
       for (const sp of [...tasks.map((t) => specOf(t, today)), ...(jSpec ? [jSpec] : [])]) {
-        unit = Math.min(unit, (w * FIT_W) / Math.max(1, sp.w), (h * FIT_H) / Math.max(1, sp.h));
+        unit = Math.min(unit, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
       }
       unit = Math.max(10, unit);
 
@@ -431,6 +451,7 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
         pieces.push({
           id: t.id, body, kind: "task", w: pw, h: ph,
           face: tagColor(tag), ink: tagInk(tag), title: t.title, face_: tagFace(tag),
+          pat: tagPatternOf(tag),
         });
       });
 

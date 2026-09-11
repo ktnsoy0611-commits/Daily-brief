@@ -249,7 +249,14 @@ export interface TaskSides {
 export type TaskWeight = 1 | 2 | 3;
 
 // ★タスクのタグ。立体の上下の面の色になる。固定の5つ(lib/taskTags.ts が定義の正)。
-export type TaskTag = "work" | "life" | "wellness" | "social" | "growth";
+// ★★★**タグは2つ**（2026-09-11 にユーザー確定）。それまでの五つ（仕事／暮らし／
+// からだ／人／学び）は**生活の場面**で割っていたので必ず重なった（「仕事のために
+// 英語を学ぶ」は仕事か学びか）。**動機**で割れば、どんなタスクも必ずどちらかに入る。
+// ★見分けは**色ではなく柄**（`lib/tagPattern.ts`）―― 色相はアプリの識別に
+// 使い切っているので、アプリの中では増やせない。
+export type TaskTag = "must" | "want";
+/** タグの柄。★色を使わずに見分けるための軸。 */
+export type TagPattern = "solid" | "halftone";
 
 // ★タスク(タスクアプリ)。
 export interface Task extends TaskSides {

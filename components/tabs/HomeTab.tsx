@@ -68,8 +68,12 @@ export function HomeTab({ appState, goTab }: TabProps) {
           あって図形が落ちてくるのが見えない」）。縦に並べると、山の器は帯の
           **下から**始まるので、**図形は帯の高さぶん見えないところを落ちてくる**。
           重ねれば器は名前の下から全部で、**図形はピルの後ろを通って**降りてくる。 */}
-      <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
-        {/* 山。★器は名前の下の**残り全部**。 */}
+      {/* ★★★**山の器は列のパディングの外へ出す**（2026-09-11・`.bleed-x`）。
+          内側に置くと、図形の壁が**画面の端から 32px**（列の 16 ＋ 壁の 16）になり、
+          **画面の端から 16px のタブバーと揃わない**。外へ出して壁を `PILE_INSET`
+          にすると、左右がタブバーと**同じ位置**になる。★帯と同じ扱い。 */}
+      <div className="bleed-x" style={{ position: "relative", flex: 1, minHeight: 0 }}>
+        {/* 山。★器は名前の下の**残り全部**（左右は画面いっぱい）。 */}
         <Pile
           tasks={pileTasks} offers={pileOffers} unread={unread} today={today}
           journal={journal} onOpen={goTab}

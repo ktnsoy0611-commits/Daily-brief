@@ -10,6 +10,7 @@ import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline, type SolidSpec } from "@/lib/solid";
 import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, wordBitmap, type SolidPaint, type SolidView } from "@/lib/solidPaint";
 import { onFontsReady, primeAdvances } from "@/lib/textFit";
+import { GROUND_LIFT, PILE_INSET, floorYOf, pileBandBottom, pileWOf } from "@/lib/pileBox";
 import {
   FREE_PAD as PLATE_FREE_PAD, FREE_PAD_Y as PLATE_FREE_PAD_Y,
   PLATE_PAD, PLATE_PAD_Y, SQUEEZE_MIN, WD_FULL,
@@ -71,10 +72,8 @@ const SCALE_MAX = 1.15;
  *  広いので canvas 座標では 32px」は**誤り**だった ― `.full-bleed` は親の 16px の
  *  パディングを打ち消すだけなので、**canvas は 0..390 ＝ 画面そのもの**。
  *  実測: 山の塗りが 33..357 に対し、題字の左端は 16 だった。
- *  ★**左右の出どころはここだけ** — 壁も、湧く x も、`pileOf` に渡す幅も全部これを通す。 */
-const PILE_INSET = SPACE.lg;
-/** 山が使える幅(canvas の幅から左右の内寸を引いたもの)。 */
-const pileWOf = (w: number) => Math.max(80, w - PILE_INSET * 2);
+ *  ★**左右の出どころは `lib/pileBox.ts`** — 壁も、湧く x も、`pileOf` に渡す幅も
+ *  全部これを通す。★★ホームの山も**同じものを読む**（第91巡に切り出した）。 */
 const SCALE_EPS = 0.02;
 const PHYS_VERTS = 12;
 /** ★当たり判定を見た目より外側へ出す量(px)。図形どうしのあいだに髪の毛ほどの
@@ -86,11 +85,9 @@ const CULL_PX = 30;
 /** ★地面をタブバーの上端からどれだけ浮かせるか(2026-08-25・第57巡にユーザー確定
  *  「地面が低すぎる」)。★**床の位置の出どころはここだけ** — `fieldOf` も
  *  `rebuildWalls` もこれを通す(数字を二重に持たない)。 */
-const GROUND_LIFT = SPACE.xxl;
-const floorYOf = (h: number) => h - navHeightPx() - GROUND_LIFT;
 /** ★曜日の帯(DOM)の下端。**物理の床と同じだけ**上げないと、図形が帯から浮いて
  *  積まれる(第57巡に地面を上げたとき踏んだ)。`bandTopY()` と対。 */
-const BAND_BOTTOM = `calc(${NAV_H} + ${SPACE.xl + GROUND_LIFT}px)`;
+const BAND_BOTTOM = pileBandBottom;
 
 type Mode = "pile" | "align" | "timeline";
 /** 段取りの局面。null = 物理／落ち着いている。 */

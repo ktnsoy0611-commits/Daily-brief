@@ -26,44 +26,44 @@ export function demoCandidates(now = new Date()): InboxCandidate[] {
   }) as InboxCandidate;
   return [
     // 側面1(円柱): 題だけ。短いので軸も短い。
-    mk(1, { title: "空気を入れる", tag: "life", sourceText: "そういえば自転車の空気がだいぶ抜けてた" }),
+    mk(1, { title: "空気を入れる", tag: "must", sourceText: "そういえば自転車の空気がだいぶ抜けてた" }),
     // 側面2(半円柱)。
-    mk(2, { title: "図書館に本を返す", dueDate: day(now, 5), weight: 2, tag: "growth", sourceText: "図書館の本、今週までだった気がする" }),
+    mk(2, { title: "図書館に本を返す", dueDate: day(now, 5), weight: 2, tag: "want", sourceText: "図書館の本、今週までだった気がする" }),
     // 側面3(三角柱)。
     mk(3, {
-      title: "歯医者を予約する", dueDate: day(now, 9), context: "近所の歯科", weight: 2, tag: "wellness",
+      title: "歯医者を予約する", dueDate: day(now, 9), context: "近所の歯科", weight: 2, tag: "must",
       sourceText: "歯医者、そろそろ行かないとまずい",
     }),
     // 側面4(四角柱)。
     mk(4, {
       title: "母の誕生日を祝う", dueDate: day(now, 21), context: "実家", belongings: "贈り物・カード",
-      weight: 3, tag: "social", note: "だれと: 家族と\nなぜ: 節目の年だから",
+      weight: 3, tag: "want", note: "だれと: 家族と\nなぜ: 節目の年だから",
       sourceText: "来月、母の誕生日。今年はちゃんとやりたい",
     }),
     // 側面4 + 長いタイトル(軸がいちばん伸びる)。
     mk(5, {
       title: "金沢へ二泊三日の旅行に行く", dueDate: day(now, 40), context: "金沢・新幹線", belongings: "切符・カメラ",
-      weight: 3, tag: "life", sourceText: "金沢、連休に行けたらいいな。新幹線で二泊くらい",
+      weight: 3, tag: "must", sourceText: "金沢、連休に行けたらいいな。新幹線で二泊くらい",
     }),
     // ここから増量ぶん。5つのタグ・4つの断面・3段階の重さが一通り出る。
-    mk(6, { title: "名刺を刷り直す", dueDate: day(now, 18), weight: 2, tag: "work", sourceText: "名刺、そろそろ切れる" }),
+    mk(6, { title: "名刺を刷り直す", dueDate: day(now, 18), weight: 2, tag: "must", sourceText: "名刺、そろそろ切れる" }),
     mk(7, {
-      title: "確定申告の資料を集める", dueDate: day(now, 30), context: "自宅", weight: 3, tag: "work",
+      title: "確定申告の資料を集める", dueDate: day(now, 30), context: "自宅", weight: 3, tag: "must",
       sourceText: "領収書、今年こそ月ごとにまとめたい",
     }),
-    mk(8, { title: "走る", weight: 1, tag: "wellness", sourceText: "最近ぜんぜん体を動かしてない" }),
+    mk(8, { title: "走る", weight: 1, tag: "must", sourceText: "最近ぜんぜん体を動かしてない" }),
     mk(9, {
-      title: "祖母に電話する", dueDate: day(now, 3), context: "実家", weight: 2, tag: "social",
+      title: "祖母に電話する", dueDate: day(now, 3), context: "実家", weight: 2, tag: "want",
       sourceText: "おばあちゃん、しばらく声を聞いてない",
     }),
     mk(10, {
       title: "写真の展示を見に行く", dueDate: day(now, 12), context: "恵比寿", belongings: "チケット",
-      weight: 2, tag: "growth", sourceText: "恵比寿の写真展、会期が今月までだった",
+      weight: 2, tag: "want", sourceText: "恵比寿の写真展、会期が今月までだった",
     }),
-    mk(11, { title: "冬のコートをクリーニングに出す", dueDate: day(now, 7), weight: 1, tag: "life", sourceText: "コート、しまう前に出さないと" }),
+    mk(11, { title: "冬のコートをクリーニングに出す", dueDate: day(now, 7), weight: 1, tag: "must", sourceText: "コート、しまう前に出さないと" }),
     mk(12, {
       title: "英語の勉強を再開して毎朝三十分だけ続ける", dueDate: day(now, 2), context: "自宅・アプリ", belongings: "ノート",
-      weight: 3, tag: "growth", sourceText: "英語、朝の30分だけでも続けたい",
+      weight: 3, tag: "want", sourceText: "英語、朝の30分だけでも続けたい",
     }),
   ];
 }
@@ -87,46 +87,46 @@ export function demoTasks(now = new Date()): Task[] {
   return [
     // ── 今日が期日。いちばん大きく出る ──
     mk(1, {
-      title: "確定申告", weight: 3, tag: "work", dueDate: day(now, 0),
+      title: "確定申告", weight: 3, tag: "must", dueDate: day(now, 0),
       context: "自宅", belongings: "領収書",
       subtasks: subs(1, "領収書を集める", "経費を分類する", "電子申告"),
     }),
-    mk(2, { title: "ゴミを出す", weight: 1, tag: "life", dueDate: day(now, 0) }),
-    mk(3, { title: "祖母に電話", weight: 3, tag: "social", dueDate: day(now, 0) }),
+    mk(2, { title: "ゴミを出す", weight: 1, tag: "must", dueDate: day(now, 0) }),
+    mk(3, { title: "祖母に電話", weight: 3, tag: "want", dueDate: day(now, 0) }),
     // ── 明日・明後日 ──
-    mk(4, { title: "家賃の振込", weight: 3, tag: "life", dueDate: day(now, 1) }),
+    mk(4, { title: "家賃の振込", weight: 3, tag: "must", dueDate: day(now, 1) }),
     mk(5, {
-      title: "定例会議の資料", weight: 2, tag: "work", dueDate: day(now, 2),
+      title: "定例会議の資料", weight: 2, tag: "must", dueDate: day(now, 2),
       context: "会議室A",
       subtasks: subs(5, "議事録を読む", "たたき台を書く"),
     }),
     // ── 今週のうち ──
     mk(6, {
-      title: "健康診断を予約する", weight: 2, tag: "wellness", dueDate: day(now, 5),
+      title: "健康診断を予約する", weight: 2, tag: "must", dueDate: day(now, 5),
       context: "クリニック", belongings: "保険証",
     }),
-    mk(7, { title: "走る", weight: 1, tag: "wellness", dueDate: day(now, 6), context: "河川敷" }),
-    mk(8, { title: "お礼状", weight: 2, tag: "social", dueDate: day(now, 7), context: "郵便局" }),
+    mk(7, { title: "走る", weight: 1, tag: "must", dueDate: day(now, 6), context: "河川敷" }),
+    mk(8, { title: "お礼状", weight: 2, tag: "want", dueDate: day(now, 7), context: "郵便局" }),
     // ── 今月のうち ──
     mk(9, {
-      title: "友人の結婚祝いを選んで贈る", weight: 2, tag: "social",
+      title: "友人の結婚祝いを選んで贈る", weight: 2, tag: "want",
       dueDate: day(now, 14), context: "百貨店",
     }),
-    mk(10, { title: "本棚を整理する", weight: 2, tag: "growth", dueDate: day(now, 20) }),
+    mk(10, { title: "本棚を整理する", weight: 2, tag: "want", dueDate: day(now, 20) }),
     mk(11, {
-      title: "読みかけの本を最後まで読み切って感想を残す", weight: 2, tag: "growth",
+      title: "読みかけの本を最後まで読み切って感想を残す", weight: 2, tag: "want",
       dueDate: day(now, 25), context: "自宅", belongings: "しおり",
     }),
     // ── それより先。小さく出て、混雑すると間引かれる ──
     mk(12, {
-      title: "引っ越しの見積もりを三社から取る", weight: 3, tag: "life", dueDate: day(now, 60),
+      title: "引っ越しの見積もりを三社から取る", weight: 3, tag: "must", dueDate: day(now, 60),
       context: "自宅", belongings: "間取り図",
       subtasks: subs(12, "候補を調べる", "電話する"),
     }),
-    mk(13, { title: "名刺を刷る", weight: 1, tag: "work", dueDate: day(now, 90) }),
+    mk(13, { title: "名刺を刷る", weight: 1, tag: "must", dueDate: day(now, 90) }),
     // ── 期日なし ──
-    mk(14, { title: "電球を買う", weight: 1, tag: "life" }),
-    mk(15, { title: "英語の教材を一章ぶん進める", weight: 2, tag: "growth", context: "毎朝・自宅" }),
-    mk(16, { title: "歯医者", weight: 2, tag: "wellness", context: "駅前" }),
+    mk(14, { title: "電球を買う", weight: 1, tag: "must" }),
+    mk(15, { title: "英語の教材を一章ぶん進める", weight: 2, tag: "want", context: "毎朝・自宅" }),
+    mk(16, { title: "歯医者", weight: 2, tag: "must", context: "駅前" }),
   ];
 }

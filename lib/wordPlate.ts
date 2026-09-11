@@ -1,6 +1,6 @@
 import type { Body } from "matter-js";
 import { canvasFont } from "./textFit";
-import { WORD_WEIGHT, wordBitmap } from "./solidPaint";
+import { WORD_WEIGHT, trackedWidth, wordBitmap } from "./solidPaint";
 
 // ★★★**「文字そのものが図形」の板 ―― 作り方はここ1つ**（2026-09-10・第89巡）。
 //
@@ -29,6 +29,17 @@ export const PLATE_PAD_Y = 2;
 export const FREE_PAD = 8;
 export const FREE_PAD_Y = 4;
 
+/**
+ * ★★★**字間を詰めて「塊」に見せる**（2026-09-11 ユーザー指定「文字の隙間を
+ * 少なくしてブロックっぽく／面っぽく」）。`TRACK.tight` を em で取り、
+ * **測るときも描くときも同じ値**を通す（当たり判定は塗りのまま）。
+ * ★大きな欧文の規則どおり（`design.md` §1）。★★**ホームと TASK の両方**が
+ * この部品を読むので、両方が同じだけ詰まる（ユーザー確定 2026-09-10）。
+ */
+export const PLATE_TRACK = -0.06;   // ★目盛りの外（表示専用の巨大欧文。`TRACK` の
+//   いちばん狭い `tight`(-0.02em) では塊にならない ―― `SWISS_XL` とその行間 0.86 が
+//   段の外にあるのと同じ理由で、**この板だけ**の値。`design.md` §7 に併記する。
+
 /** ★山へ落とす曜日は**綴りのまま**（第60巡にユーザー指定「曜日の英語」）。 */
 export const WD_FULL = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
 
@@ -47,14 +58,15 @@ export function inkBoxOf(word: string, fs: number, sx: number, fam: string): { w
   probe.font = canvasFont(WORD_WEIGHT, fs, fam);
   probe.textAlign = "center"; probe.textBaseline = "middle";
   const m = probe.measureText(word);
-  const l = m.actualBoundingBoxLeft ?? m.width / 2;
-  const r = m.actualBoundingBoxRight ?? m.width / 2;
   const a = m.actualBoundingBoxAscent ?? fs * 0.36;
   const d = m.actualBoundingBoxDescent ?? fs * 0.12;
+  // ★★**横は「詰めて組んだ幅」で測る**（描くときと同じ送り）。縦は塗りのまま。
+  //   ★`drawTracked` は詰めた全体の**中心**を原点に置くので、横のずれ `dx` は 0。
+  const w = trackedWidth(probe, word, PLATE_TRACK * fs) * sx;
   return {
-    w: (l + r) * sx, h: a + d,
-    dx: ((r - l) / 2) * sx,          // 塗りの中心が原点からどれだけ右か
-    dy: (d - a) / 2,                 // 同じく下か(大文字は負＝上に寄る)
+    w, h: a + d,
+    dx: 0,                           // 詰めて組むと塗りの中心＝原点
+    dy: (d - a) / 2,                 // 縦は原点とずれる(大文字は負＝上に寄る)
   };
 }
 
@@ -68,7 +80,7 @@ export function wordFontSize(words: readonly string[], room: number, fam: string
   const base = 64;
   probe.font = canvasFont(WORD_WEIGHT, base, fam);
   let widest = 1;
-  for (const w of words) widest = Math.max(widest, probe.measureText(w).width);
+  for (const w of words) widest = Math.max(widest, trackedWidth(probe, w, PLATE_TRACK * base));
   // ★横は `SQUEEZE_MIN` まで詰めてよい ― コンデンス体として読ませる。
   return Math.max(14, Math.min(max, Math.round((base * room) / widest / SQUEEZE_MIN)));
 }
@@ -78,7 +90,7 @@ export function wordSqueeze(word: string, fs: number, room: number, fam: string)
   const probe = probeCtx();
   if (!probe) return 1;
   probe.font = canvasFont(WORD_WEIGHT, fs, fam);
-  const w = probe.measureText(word).width || 1;
+  const w = trackedWidth(probe, word, PLATE_TRACK * fs) || 1;
   return Math.max(SQUEEZE_MIN, Math.min(1, room / w));
 }
 
@@ -133,7 +145,7 @@ export function drawWordPlate(
   x: number, y: number, angle: number, dpr: number,
 ): void {
   const wb = wordBitmap(plate.word, plate.fs, plate.sx, plate.ink, plate.fam,
-    plate.w, plate.h, plate.dx, plate.dy, dpr);
+    plate.w, plate.h, plate.dx, plate.dy, dpr, PLATE_TRACK);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);

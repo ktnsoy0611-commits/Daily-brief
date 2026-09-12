@@ -1,6 +1,6 @@
 import { BAND_BEZEL, BD_GREY, LATIN, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { drawDial } from "@/lib/dial";
+import { drawCassette } from "@/lib/cassette";
 import { canvasFont, drawFitted, ensureGlyphs, fitText } from "@/lib/textFit";
 import { RADIUS, WEIGHT } from "@/lib/tokens";
 import { drawWordPlate } from "@/lib/wordPlate";
@@ -92,6 +92,33 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
 }
 
 /**
+ * カセットを1枚焼く（★合成の絵なので毎フレーム描かない。`taskBitmap` と同じ作法）。
+ * 返る `w`/`h` は**余白を含む整数の箱**。
+ */
+export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
+  if (!p.w || !p.h) return undefined;
+  const pw = Math.ceil(p.w); const ph = Math.ceil(p.h);
+  const w = pw + BAKE_PAD * 2; const h = ph + BAKE_PAD * 2;
+  const key = ["cassette", w, h, p.face, p.ink, dpr.toFixed(2)].join("|");
+  const hit = bakeCache.get(key);
+  if (hit) return hit;
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(2, Math.round(w * dpr));
+  cv.height = Math.max(2, Math.round(h * dpr));
+  const ctx = cv.getContext("2d");
+  if (!ctx) return undefined;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingQuality = "high";
+  // ★原点を絵の中心へ（`drawCassette` は中心に描く）。
+  ctx.translate(w / 2, h / 2);
+  drawCassette(ctx, pw, ph, p.face, p.ink);
+  const made = { canvas: cv, w, h };
+  if (bakeCache.size > 80) bakeCache.clear();
+  bakeCache.set(key, made);
+  return made;
+}
+
+/**
  * 写真は1度だけ読み込んで使い回す。★読み終わるまでは色ベタの円。
  * ★★★**取りに行く大きさは画面の細かさで決める**（2026-09-11）。240 の決め打ちだと、
  * 実機（倍率 3）の円は 420 デバイス画素あるので**引き伸ばして**貼っていた。
@@ -136,10 +163,12 @@ export function drawPile(
         ctx.closePath();
         ctx.fill();
       }
-    } else if (p.kind === "dial" && p.r) {
-      // ★★**録音のダイヤルと同じ円**（`lib/dial.ts`。`VoiceStudio` と同じ数を読む）。
-      //   ★目盛りは体と一緒に回る（ここは既に rotate 済み）。
-      drawDial(ctx, p.r, p.face, p.ink);
+    } else if (p.kind === "cassette" && p.w && p.h) {
+      // ★★**タブのアイコンと同じカセット**（`lib/cassette.ts`。タブの SVG と
+      //   同じ数を読む）。★合成の絵なので**焼いてから貼る**。
+      const bmp = cassetteBitmap(p, dpr);
+      if (bmp) ctx.drawImage(bmp.canvas, -bmp.w / 2, -bmp.h / 2, bmp.w, bmp.h);
+      else drawCassette(ctx, p.w, p.h, p.face, p.ink);
     } else if (p.kind === "word") {
       // ★★文字の板は **GRAVITY と同じ焼いた絵**（`lib/wordPlate.ts`）。
       //   ★ここは既に translate/rotate 済みなので、原点に置くだけ。

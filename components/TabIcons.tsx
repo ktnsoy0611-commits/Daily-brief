@@ -1,6 +1,7 @@
 "use client";
 
 import { TYPE, LEAD, TRACK, WEIGHT } from "@/lib/tokens";
+import { CASSETTE } from "@/lib/cassette";
 import { SANS } from "@/lib/constants";
 
 // ★タブバーのアイコン(2026-08-03)。ユーザー提供の幾何アイコン集
@@ -142,13 +143,26 @@ function shapes(name: TabIconName, c: string) {
       );
     // レコード = カセット(角丸の面に、リールの丸が2つ)。
     case "cassette":
+      // ★★★**寸法は `lib/cassette.ts` の1か所**（2026-09-13・第94巡）。同じ形を
+      //   ホームの山が **canvas** で、録音画面が **DOM** で描くので、数を3度
+      //   書くと必ず食い違う。
+      // ★ここだけは**1色＋`PALE` の濃淡2段**のまま（タブバーの地は選択状態で
+      //   変わるので、青と黒に決め打ちできない）。色で塗り分けるのは山だけ。
       return (
         <>
-          <rect x="2.4" y="5" width="19.2" height="14" rx="2.6" fill={c} opacity={PALE} />
+          <rect
+            x={CASSETTE.body.x} y={CASSETTE.body.y}
+            width={CASSETTE.body.w} height={CASSETTE.body.h} rx={CASSETTE.body.r}
+            fill={c} opacity={PALE}
+          />
           <g fill={c}>
-            <circle cx="8.4" cy="11" r="2.9" />
-            <circle cx="15.6" cy="11" r="2.9" />
-            <rect x="7.2" y="16.2" width="9.6" height="2.8" rx="1.4" />
+            {CASSETTE.reels.map((reel) => (
+              <circle key={reel.x} cx={reel.x} cy={reel.y} r={CASSETTE.reelR} />
+            ))}
+            <rect
+              x={CASSETTE.bar.x} y={CASSETTE.bar.y}
+              width={CASSETTE.bar.w} height={CASSETTE.bar.h} rx={CASSETTE.bar.r}
+            />
           </g>
         </>
       );

@@ -4,11 +4,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import {
-  BG, INK, LATIN, MUTED, PAPER, SANS, SECOND, TICKET_H_PER_W, navHeightPx,
+  BG, INK, ITEM_CARD_ASPECT, LATIN, MUTED, PAPER, SANS, SECOND, TICKET_H_PER_W, navHeightPx,
 } from "@/lib/constants";
 import { TicketStage } from "@/components/explore/TicketStage";
+import { CardFace } from "@/components/tabs/BriefTab";
+import { cardShapeOf } from "@/lib/cardShape";
 import { TICKET_SAMPLES } from "@/components/explore/samples";
 import type { TicketData } from "@/components/explore/Ticket";
+import type { BriefCard, ItemDomain, ItemKind } from "@/lib/types";
 
 // ★★**確認用のタブ**（第70巡）。刷新した券と鋏を**実機で**見るためだけに在る。
 //   Explore の刷新（提案 TODAY）が本物になったら、このファイルごと消す
@@ -18,7 +21,7 @@ import type { TicketData } from "@/components/explore/Ticket";
 //
 // 見るものは2つ … 「券」＝版面の見本帳（第71巡の主役）／「場」＝券と鋏の3D。
 
-type Mode = "sheet" | "stage";
+type Mode = "sheet" | "stage" | "card";
 
 /** 見本帳の券の幅（画面の幅に対する割合）。★本番の提案と同じ寸法で見る。 */
 const BOOK_W = 300 / 390;
@@ -121,7 +124,7 @@ function ModeSwitch({ mode, onPick, style }: {
       display: "flex", gap: SPACE.xs, padding: SPACE.xs,
       background: PAPER, borderRadius: RADIUS.pill, ...style,
     }}>
-      {([["sheet", "券"], ["stage", "場"]] as const).map(([id, label]) => (
+      {([["sheet", "券"], ["card", "札"], ["stage", "場"]] as const).map(([id, label]) => (
         <button key={id} type="button" onClick={() => onPick(id)} style={{
           appearance: "none", border: 0, cursor: "pointer",
           padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.pill,
@@ -154,6 +157,78 @@ function SampleBook() {
           </span>
           {/* ★案ごとにドメインを替える（紙は白のまま、大きな英語の色だけが変わる）。 */}
           <s.Render data={SAMPLES[i % SAMPLES.length]} punch={null} width={`${BOOK_W * 100}%`} />
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * ★★**札の見本帳**（第94巡のパイロット）。**4ドメインを1枚ずつ**縦に並べ、
+ * 「どのジャンルにどの形が当たるか」を**実機で**見るためだけに在る。
+ *
+ * ★★★**本番の `CardFace` をそのまま並べる**（見本用に別実装を作らない）。
+ *   形の割り当ては `cardShapeOf` ＝ 券の鋏痕（`PUNCH_BY_DOMAIN`）から導くので、
+ *   ここに形の知識は一切無い。**見るのは割り当ての結果だけ。**
+ */
+const CARD_SAMPLES: { domain: ItemDomain; jp: string; kind: ItemKind; card: BriefCard }[] = [
+  {
+    domain: "place", jp: "バショ", kind: "place",
+    card: {
+      id: 1, kind: "place", glyph: "場", category: "PLACE", categoryJp: "バショ",
+      trigger: "見本", title: "旧居留地の煉瓦倉庫",
+      body: "港のそばに残る明治の倉庫。中は書店と喫茶で、平日の午後はほとんど人がいない。窓が大きいので雨の日がいい。",
+      bg: PAPER, fg: INK, sourceUrl: "https://example.com/place",
+    },
+  },
+  {
+    domain: "experience", jp: "タイケン", kind: "exhibition",
+    card: {
+      id: 2, kind: "exhibition", glyph: "展", category: "EXHIBITION", categoryJp: "タイケン",
+      trigger: "見本", title: "光と紙の展覧会",
+      body: "紙を透かして光を測る作家の個展。会期は短く、土日は整理券が出る。図録が薄いのに濃い。",
+      bg: PAPER, fg: INK, sourceUrl: "https://example.com/exhibition",
+    },
+  },
+  {
+    domain: "info", jp: "ジョウホウ", kind: "info",
+    card: {
+      id: 3, kind: "info", glyph: "報", category: "INFO", categoryJp: "ジョウホウ",
+      trigger: "見本", title: "活字の幅を測るという仕事",
+      body: "可変フォントの幅の軸が、なぜ 88 という中途半端な値で使われるのか。組版の側から書かれた短い記事。",
+      bg: PAPER, fg: INK, isInfo: true, sourceUrl: "https://example.com/info",
+    },
+  },
+  {
+    domain: "thing", jp: "モノ", kind: "thing",
+    card: {
+      id: 4, kind: "thing", glyph: "物", category: "THING", categoryJp: "モノ",
+      trigger: "見本", title: "真鍮の文鎮",
+      body: "削り出しのままで磨かない。使うほど手の跡が残る。★この札だけ出典を持たない（黒い円が出ないことの確認）。",
+      bg: PAPER, fg: INK,
+    },
+  },
+];
+
+function CardBook() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xxl, paddingBottom: SPACE.xxl }}>
+      {CARD_SAMPLES.map((s) => (
+        <section key={s.domain} data-card-sample={s.domain}
+          style={{ display: "flex", flexDirection: "column", gap: SPACE.sm, alignItems: "flex-start" }}>
+          <span style={{
+            fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
+            lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: INK,
+          }}>{s.jp}　{cardShapeOf(s.domain)}</span>
+          {/* ★寸法は**本番と同じ**（幅 `BOOK_W`／比 `ITEM_CARD_ASPECT`）。 */}
+          <div data-card-shape={cardShapeOf(s.domain)} style={{
+            width: `${BOOK_W * 100}%`, aspectRatio: ITEM_CARD_ASPECT, overflow: "visible",
+          }}>
+            <CardFace card={s.card} dx={0} isTop={false}
+              checkinValue="" onCheckinChange={() => {}}
+              milestoneText="" onMilestoneTextChange={() => {}}
+              milestoneRating={null} onMilestoneRatingChange={() => {}} />
+          </div>
         </section>
       ))}
     </div>
@@ -260,7 +335,7 @@ export function DevStageTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: SPACE.lg }}>
       <ModeSwitch mode={mode} onPick={setMode} style={{ alignSelf: "flex-end" }} />
-      <SampleBook />
+      {mode === "card" ? <CardBook /> : <SampleBook />}
     </div>
   );
 }

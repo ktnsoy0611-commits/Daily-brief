@@ -1,17 +1,27 @@
 "use client";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { Flag, Sprout } from "lucide-react";
+import { ExternalLink, Flag, Sprout } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+// ★`HOLE_CLEAR`/`PunchHoles` は**成長カードだけ**が使う（第94巡に提案カードからは
+//   綴じ穴を外した。ユーザー確定 ―― 参照デザインに穴が無く、穴の逃げで左の余白が
+//   34px に固定されて左右が非対称になっていた）。
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
 import { appTitle } from "@/lib/apps";
-import { BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP, WHITE } from "@/lib/constants";
+import { KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import { BRIEF_POOL_CAP } from "@/lib/homeBand";
+import { accentOf } from "@/lib/appAccent";
+import { bodyInkOn } from "@/lib/palette";
+import { cardShapeMask, cardShapeOf } from "@/lib/cardShape";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
 
-function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange, milestoneText, onMilestoneTextChange, milestoneRating, onMilestoneRatingChange, flagged, onFlag, onRead }: {
+/**
+ * 札の面。★★**見本帳（`DevStageTab` の「札」）も本番のこれをそのまま並べる**
+ * ―― 見本用に別実装を作ると、形の割り当てが2か所になる（第94巡）。
+ */
+export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange, milestoneText, onMilestoneTextChange, milestoneRating, onMilestoneRatingChange, flagged, onFlag, onRead }: {
   card: DeckCard;
   dx: number;
   isTop: boolean;
@@ -93,68 +103,92 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
   }
 
   const hasPhotos = (card.images?.length ?? 0) > 0;
+  // ★★★**色は EXPLORE のメインカラー1色**（2026-09-13・第94巡にユーザー指定
+  //   「色は Explore のメインカラーで統一し、各形はジャンルに対応させて」）。
+  //   ★★**焼き込まれた `card.color`/`bg`/`fg` を信じない**（`lib/homeBand.ts` と
+  //     同じ理由 ―― 生成した夜のパレットが残っている）。面に載る字は
+  //     `bodyInkOn()` が面から導く。
+  // ★★★**分類は色ではなく形が言う** ―― 写真を**ドメインの形で切り抜く**
+  //   （`lib/cardShape.ts`。券の鋏痕と同じ性格を引き継いだ4つ）。
+  //   だから**ジャンルの文字は置かない**（同じことを2つの言い方で言わない）。
+  const face = accentOf("life").main;
+  const ink = bodyInkOn(face);
+  const shape = cardShapeOf(KIND_DOMAIN[card.kind ?? "place"] ?? "info");
   return (
     <div style={{
-      width: "100%", height: "100%", background: PAPER, borderRadius: RADIUS.xl, overflow: "hidden",
+      width: "100%", height: "100%", background: face, borderRadius: RADIUS.sheet, overflow: "hidden",
       display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
       // セレンディピティ枠も特別な縁取りを付けず、他のカードと同じ見た目に
       // 馴染ませる(「思いがけない提案」であることを声高にラベルしない方が
       // 体験として良い、というユーザー指定)。
       border: "none", position: "relative", userSelect: "none",
+      // ★★**綴じ穴をやめたので左右が対称になった**（2026-09-13 ユーザー確定）。
+      //   ★カードは「ページ最上位の器」ではなく部品なので、自分の内側の余白を持つ
+      //   （`design.md` §2 の左右パディングの禁は器の入れ子の話）。
+      padding: SPACE.lg,
     }}>
+      {/* ★★写真を**形で切り抜く**。押すと写真の一覧（今までどおり）。
+          ★★★**マスクは写真だけ。カードには掛けない** ―― 掛けると
+          `box-shadow` が出なくなる（`design.md` §3-c）。 */}
       <div
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => isTop && onOpenBinder && onOpenBinder()}
-        style={{ flex: "0 0 52%", position: "relative", overflow: "hidden", background: card.bg, cursor: isTop && hasPhotos ? "pointer" : "default" }}
+        style={{
+          // ★★★**写真が余りを全部取る**（第94巡）―― 52% の決め打ちだと、
+          //   3:4 の札では文の下に**黄色い空白**が 300px 残った（実測）。
+          //   参照デザインも「写真が上を埋め、文は下に寄る」組み方。
+          flex: "1 1 auto", minHeight: 0, position: "relative", overflow: "hidden",
+          // ★写真が無いときは紙色の面。**形は写真の有無によらず必ず見える**
+          //   （形が分類を担うので、消えてはいけない）。
+          background: PAPER,
+          cursor: isTop && hasPhotos ? "pointer" : "default",
+          ...cardShapeMask(shape),
+        }}
       >
         {hasPhotos ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={img(card.images![0], 500, 400)} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         ) : (
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span aria-hidden style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: "min(42vw, 170px)", lineHeight: LEAD.flat, color: card.fg, opacity: 0.92 }}>{card.glyph}</span>
+            {/* ★字面は形の中に収まる大きさで（形が主役なので、はみ出させない）。 */}
+            <span aria-hidden style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: "min(26vw, 104px)", lineHeight: LEAD.flat, color: INK, opacity: 0.9 }}>{card.glyph}</span>
           </div>
         )}
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.1), rgba(0,0,0,0) 40%, rgba(0,0,0,0.22) 100%)", pointerEvents: "none" }} />
-        {isTop && hasPhotos && (
-          <span style={{
-            position: "absolute", bottom: SPACE.md, right: SPACE.md, display: "flex", alignItems: "center", gap: SPACE.xs,
-            background: "rgba(26,26,24,0.5)", color: WHITE, borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px ${SPACE.xs}px ${SPACE.sm}px`,
-            fontSize: TYPE.small, fontFamily: SANS, fontWeight: WEIGHT.bold, pointerEvents: "none",
-          }}>写真 {card.images!.length} を見る ⤢</span>
-        )}
       </div>
-      <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.lg}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-        <div style={{ marginBottom: SPACE.sm }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: SPACE.xs }}>
-            <span style={{ width: 5, height: 5, borderRadius: RADIUS.circle, background: SECOND, flexShrink: 0 }} />
-            {/* セレンディピティのカードは「セレンディピティ」の語を出さず、
-                カテゴリだけ表示して他カードと同じ見た目にする。 */}
-            {/* ゴール由来のカードは、どのゴールのための提案かを添える(§8.21)。 */}
-            <span style={{ fontSize: TYPE.micro, color: SECOND, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal }}>{card.category}{card.trigger && card.trigger !== "セレンディピティ" ? ` ・ ${card.trigger}` : ""}{card.goalTitle ? `（${card.goalTitle}）` : ""}</span>
-          </span>
-        </div>
-        <h2 style={{ margin: `0 0 ${SPACE.sm}px`, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>{card.title}</h2>
+      {/* ★★余白は**2値**（束の中は `xs`／束と束の間は `xl`）。`md` を使わない ――
+          どこが束かが見えるようにするため（`design.md` §5-2）。 */}
+      <div style={{ flex: "0 0 auto", paddingTop: SPACE.xl, display: "flex", flexDirection: "column", gap: SPACE.xs }}>
+        {/* ★★★役は**3つだけ**（題・要約・操作）。階層は**大きさと太さ**で作り、
+            色は使わない（面が色なので、無彩色の段を混ぜると濁る）。 */}
+        <h2 style={{ margin: 0, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink }}>{card.title}</h2>
         {/* paddingRightはisTopに関わらず常に一定にしている。以前はisTop&&
             onFlagの時だけ26pxを足していたため、peekだったカードがtopに
             切り替わる瞬間にpaddingが0→26へ非連続にジャンプし、transform
             のアニメーションと同時に本文の折り返し位置が一瞬ガクッとズレて
-            見える不具合になっていた(flag矢印ボタン自体はisTopの時だけ
-            描画されるが、そのための余白は常に確保しておく)。 */}
+            見える不具合になっていた。
+            ★★右下の黒い円のぶんも**常に**空けておく（同じ理由）。 */}
         {/* flex:1でwebkit-line-clampと組み合わせると、SafariでB本文が
             クランプされずカードの外(角丸の下)へそのまま溢れて見える
-            不具合があった(flex-basis:0からのflex-growとline-clampの
-            高さ計算がSafari上で噛み合わない)。flexに頼らず、行の高さから
-            算出した固定のmaxHeightで確実に頭打ちにする。 */}
-        <p style={{ margin: 0, maxHeight: "calc(1.7em * 5)", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: SECOND, display: "-webkit-box", WebkitLineClamp: 5, WebkitBoxOrient: "vertical", overflow: "hidden", paddingRight: SPACE.xl }}>{card.body}</p>
+            不具合があった。flexに頼らず、行の高さから算出した固定の
+            maxHeightで確実に頭打ちにする。 */}
+        <p style={{ margin: 0, maxHeight: "calc(1.7em * 3)", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: ink, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{card.body}</p>
+      </div>
+      {/* ★★★**操作は下の1列に集める**（第94巡）。
+          ★★★**列の高さは `LINK_D` で固定** ―― 中身が `isTop` で増減しても
+            **高さが動かない**（絶対配置にすると文と重なり、`flex` に任せると
+            peek→top の瞬間に本文の折り返しがガクッとズレる。:136-146 の罠）。
+          ★★アイコンは `BinderModal` の出典ボタンと**同じ `ExternalLink`**
+            （同じ意味に同じ絵。新しい語彙を作らない）。
+          ★★`onPointerDown` を止めないとスワイプ（KEEP/SKIP）と喧嘩する。 */}
+      <div style={{ flex: "0 0 auto", height: LINK_D, marginTop: SPACE.xs, display: "flex", alignItems: "center", gap: SPACE.sm }}>
         {isTop && onFlag && (
           <button
             onClick={(e) => { e.stopPropagation(); onFlag(); }}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label="この情報の質をフィードバック"
-            style={{ position: "absolute", bottom: SPACE.md, right: SPACE.md, background: "none", border: "none", cursor: "pointer", padding: SPACE.sm, lineHeight: 0 }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: SPACE.sm, lineHeight: 0 }}
           >
-            <Flag size={13} strokeWidth={2} color={flagged ? RUST : SHADE_DEEP} fill={flagged ? RUST : "none"} />
+            <Flag size={13} strokeWidth={2} color={flagged ? RUST : ink} fill={flagged ? RUST : "none"} opacity={flagged ? 1 : 0.45} />
           </button>
         )}
         {/* 情報カード(新着記事)は、タップすると記事の半分要約を全画面で読める。
@@ -163,13 +197,29 @@ function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange
           <button
             onClick={(e) => { e.stopPropagation(); onRead(); }}
             onPointerDown={(e) => e.stopPropagation()}
-            style={{ position: "absolute", bottom: SPACE.md, left: HOLE_CLEAR, background: INK, color: PAPER, border: "none", cursor: "pointer", borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px`, fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal }}
+            style={{ background: INK, color: PAPER, border: "none", cursor: "pointer", borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px`, fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal }}
           >記事を読む →</button>
+        )}
+        <span style={{ flex: 1 }} />
+        {/* ★`sourceUrl` が無いカードには**出さない**（空の円を置かない）。 */}
+        {card.sourceUrl && (
+          <a
+            href={card.sourceUrl} target="_blank" rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={card.sourceLabel ?? "出典を開く"}
+            style={{
+              width: LINK_D, height: LINK_D, borderRadius: RADIUS.circle,
+              background: INK, color: PAPER, textDecoration: "none",
+              display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+            }}
+          >
+            <ExternalLink size={16} strokeWidth={2.2} />
+          </a>
         )}
       </div>
       <div style={{ position: "absolute", top: SPACE.lg, left: SPACE.lg, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>KEEP</div>
       <div style={{ position: "absolute", top: SPACE.lg, right: SPACE.lg, transform: "rotate(12deg)", opacity: skipOpacity, border: `3px solid ${MUTED}`, color: MUTED, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>SKIP</div>
-      <PunchHoles />
     </div>
   );
 }
@@ -199,6 +249,9 @@ function WaitingMark() {
 // ★★★未消化カードのプール上限は **`lib/homeBand.ts` の `BRIEF_POOL_CAP`**
 // （2026-09-11）。以前はここに 30、夜間の生成に 40 と**2つあってずれていた**ので、
 // ホームの数字（41）とこのデッキの枚数（30）が食い違っていた。**出どころは1つ。**
+
+/** ★右下の黒い円（出典へ飛ぶ）の直径＝下の1列の高さ。★目盛りの外（部品の寸法）。 */
+const LINK_D = 44;
 
 // 育成カード用フッター(あとで/記録する)の高さぶんの予約枠。isGrowthを
 // 問わず常にこの高さを確保しておくことで、フッターの有無によって

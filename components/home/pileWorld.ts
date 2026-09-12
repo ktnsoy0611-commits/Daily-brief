@@ -1,4 +1,5 @@
 import { INK, JOURNAL_FACE, LATIN, RUST, SHAPE_FACE, SWISS_XL, TASK_FACE } from "@/lib/constants";
+import { CASSETTE_ASPECT } from "@/lib/cassette";
 import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
 import { pad } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -104,7 +105,7 @@ const frac = (s: string) => {
 export interface Piece {
   id: string;
   body: Body;
-  kind: "task" | "offer" | "badge" | "word" | "dial";
+  kind: "task" | "offer" | "badge" | "word" | "cassette";
   /** 角丸の四角の外接箱（タスク）。円は `r`。 */
   w?: number; h?: number; r?: number;
   face: string;
@@ -159,16 +160,17 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   const { tasks, offers, unread, today, journal } = c;
 
   // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**（2026-09-09）。
-  // ★★★**形は録音の UI の「大きな円」そのもの**（2026-09-12 ユーザー指定
-  //   「ホームで出てくる図形は、journal のその record の ui の円にしてください。
-  //   文字などはいらないです」）。角丸の四角＋「今日を録る」の文字はやめた ――
-  //   **行き先の顔をそのまま持ってくる**ほうが、何が起きるか説明が要らない。
-  //   ★寸法は `lib/dial.ts`（`VoiceStudio` の SVG と同じ数を読む）。
+  // ★★★**形は JOURNAL のタブのアイコン（カセット）そのもの**（2026-09-13・第94巡に
+  //   ユーザー指定「現在の journal のタブのアイコンを図形にして落として。四角い
+  //   部分がブルーで他が黒」）。第93巡の「録音の円」からさらに一歩 ――
+  //   **行き先の顔をそのまま持ってくる**ので、何が起きるか説明が要らない。
+  //   ★寸法は `lib/cassette.ts`（タブの SVG と同じ数を読む）。
   const jDue = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
   // ★**面積は今までと同じ**（重要度 2 ＋ 今日が期限）。変えると山の詰まり具合が動く。
   const jArea = journal ? areaOf({ title: "", weight: 2, dueDate: jDue }, today) : 0;
-  // 円の直径（solid 座標）。★面積の予算と縮めの上限で、四角と同じように扱うため。
-  const jSide = jArea > 0 ? 2 * Math.sqrt(jArea / Math.PI) : 0;
+  // カセットの外接箱（solid 座標）。★面積を保ったままアイコンの比にする。
+  const jW = jArea > 0 ? Math.sqrt(jArea * CASSETTE_ASPECT) : 0;
+  const jH = jArea > 0 ? Math.sqrt(jArea / CASSETTE_ASPECT) : 0;
 
   // ★★★**文字の板は先に決めて、器の予算から差し引く**（2026-09-10）。
   //   板は器の幅の `WORD_W` を取る**いちばん大きな塊**なので、予算に数えないと
@@ -197,7 +199,7 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   //   1枚だけ縮めない ―― 図形どうしの大きさの比がそのまま重要度なので。
   for (const sp of [
     ...tasks.map((t) => specOf(t, today)),
-    ...(jSide > 0 ? [{ w: jSide, h: jSide }] : []),
+    ...(jW > 0 ? [{ w: jW, h: jH }] : []),
   ]) {
     unit = Math.min(unit, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
   }
@@ -263,15 +265,17 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   });
 
   if (jArea > 0) {
-    // ★★**録音のダイヤルと同じ円**。文字は載せない（ユーザー指定）。
-    const r = Math.max(28, Math.sqrt((jArea * unit * unit) / Math.PI));
-    const body = m.Bodies.circle(0, 0, r, BODY);
+    // ★★**タブのアイコンと同じカセット**。文字は載せない（ユーザー指定）。
+    // ★★**体は四角**（円ではない）。当たり判定も `Pile.tsx` の四角の枝へ入る。
+    const pw = Math.max(32, jW * unit);
+    const ph = Math.max(24, jH * unit);
+    const body = m.Bodies.rectangle(0, 0, pw, ph, BODY);
     m.Body.setMass(body, jArea * MASS_K);
-    toss(body, "journal", r * 2);
+    toss(body, "journal", ph);
     pieces.push({
-      id: "journal", body, kind: "dial", r,
-      // ★面（円）と、その上の目盛り。**目盛りは面から導く**（`bodyInkOn`）。
-      face: JOURNAL_FACE, ink: bodyInkOn(JOURNAL_FACE),
+      id: "journal", body, kind: "cassette", w: pw, h: ph,
+      // ★**本体の面が青／リールと帯が黒**（タブのアイコンの塗り分け）。
+      face: JOURNAL_FACE, ink: INK,
       nav: "journal-record",
     });
   }

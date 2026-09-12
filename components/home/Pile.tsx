@@ -285,8 +285,11 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       const dx = pt.x - b.position.x; const dy = pt.y - b.position.y;
       const d = Math.hypot(dx, dy);
       let inside: boolean;
-      // ★★★**円で描くものは半径で見る**（`dial` を忘れると押しても飛ばない）。
-      if ((p.kind === "offer" || p.kind === "badge" || p.kind === "dial") && p.r) {
+      // ★★★**円で描くものは半径で見る**（忘れると押しても飛ばない）。
+      //   ★★カセット（`cassette`）は**四角**なので下の枝（箱で見る）へ入る
+      //     ―― 第94巡に円からカセットへ替えたとき、ここを直すのを忘れると
+      //     四角い図形を円で当てることになる。
+      if ((p.kind === "offer" || p.kind === "badge") && p.r) {
         inside = d <= p.r + TOUCH_SLOP;
       } else {
         // ★回っている四角は、**体の向きへ座標を戻してから**箱で見る。

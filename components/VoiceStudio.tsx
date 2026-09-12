@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, NAV_H, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY } from "@/lib/constants";
 import { DIAL_TICK, DIAL_TICKS, DIAL_VIEW } from "@/lib/dial";
+import { CASSETTE_ASPECT, CASSETTE_R_PER_H } from "@/lib/cassette";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { pushGround } from "@/lib/ground";
@@ -103,6 +104,8 @@ const SPLIT_MS = 420;
  *  (実測: top 16 + 高さ 68 = 84)。 */
 const BAND_TOP = 84;
 const BAND_BOTTOM = 80;
+/** ★カセットの本体が円からどれだけ外へ出るか。★目盛りの外（部品の寸法）。 */
+const PLATE_PAD = SPACE.lg;
 // ★縁の目盛りの本数と寸法は `lib/dial.ts`（ホームの山と共有）。
 /** 物理キーの寸法。丸いキーで、出っ張り(depth)ぶん浮いて見える。 */
 const KEY_D = 42;
@@ -170,24 +173,22 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // アプリの遷移中にどちらかがズレて必ず境目が出る。
   // 全画面のオーバーレイだけは列の外なので、自分で暗い地を塗る。
   const ground = dim ? DIM_GROUND : undefined;
-  // ★★★**大きな円は JOURNAL のメインカラー**（2026-09-12・第93巡にユーザー確定
-  //   「円の色をメインカラーに統一してください」）。**明るいタブも暗い
-  //   オーバーレイも同じ色**で、画面による反転をやめた ―― 第78巡から続いていた
-  //   「暗いのは機械」（クリームの上の黒い円・比 11.25）はここで終わり、
-  //   円は**色で覚えるもの**になった。実測 … 地との比はクリーム **2.02**／
-  //   墨のオーバーレイ **5.9**。明るい画面では円の輪郭が弱くなるが、これは
-  //   淡いアクセントをクリームに置く以上どうにもならない（`lib/appAccent.ts`）。
+  // ★★★**カセットになった**（2026-09-13・第94巡にユーザー指定「円と角丸の四角が
+  //   組み合わさった形にする。**円の大きさや配置は絶対に変えない** ―― 円の後ろに
+  //   ブルーの四角が来る」）。タブのアイコン（`cassette`）と同じ塗り分け ――
+  //   **本体の四角＝青／リールの丸＝黒**。
+  //   ★★第93巡に円を青にしたが、アイコンでは四角が青・丸が黒なので**円は黒へ戻す**。
+  //     副産物として地とのコントラストが **2.02 → 11.25** に戻り、円の輪郭が
+  //     はっきり読めるようになった。
   //   ・キーの面 `cap` … **どちらの画面でも白**（ユーザー指定・反転しない）。
-  //     ★白いキーと円の比は 2.02 しかないが、キーの輪郭は**黒い穴**
-  //     （`STUDIO.well`。面との比 18.21）が作っているので消えない。
-  const dial = JOURNAL_FACE;
+  const dial = INK;
   const cap = STUDIO.cap;
   //  地の上に直接いる文字（キーのラベル）は地から決まる。
   const fg = dim ? PAPER : INK;
   const mute = dim ? "rgba(255,251,245,0.52)" : JOURNAL_MUTED;
   // ★★★**縁の目盛りは円の面から導く**（`bodyInkOn`）。**半透明にしないこと** ――
-  //   元の `rgba(44,38,39,0.38)` を青い円に合成すると**比 1.94 で消える**
-  //   （実測。0.62 でも 3.2）。ベタの墨なら **7.12** 出る。
+  //   第93巡に実測 … `rgba(44,38,39,0.38)` を面に合成すると**比 1.94 で消える**。
+  //   ベタなら黒い円の上で紙色が **11.89** 出る。
   const tick = bodyInkOn(dial);
 
   // ★★★第79巡から**キーまわりは画面で変わらない**（面が両方とも白なので、
@@ -299,6 +300,19 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   const cy = (BAND_TOP + (h - BAND_BOTTOM)) / 2;
   const cxL = -w * DIAL_CX;
   const cxR = w * (1 + DIAL_CX);
+
+  // ---- カセットの本体（円の後ろの青い面） ------------------------------------
+  // ★★★**円は動かさない**（ユーザー指定）。本体は円から**導く**。
+  //   上下は**円を包む**（アイコンと同じ入れ子）―― 高さは直径 ＋ 余白2つぶん。
+  //   幅はアイコンの比（`CASSETTE_ASPECT` ＝ 19.2/14）を守るので、**左右は
+  //   画面の外へ出る**（実測 … 390px 幅で本体は 739px ＝ 片側 175px はみ出す）。
+  // ★★**四隅は画面の外なので見えない。** これは「円を動かさない」という条件の
+  //   帰結で逃げ道が無い ―― 円の直径が画面幅の 1.30 倍あるので、**画面の中で
+  //   円を横に包める四角は存在しない**。見えるのは上下の縁と青い面で、
+  //   「カセットの本体をごく近くで見た絵」になる。
+  const plateH = RD + PLATE_PAD * 2;
+  const plateW = plateH * CASSETTE_ASPECT;
+  const plateCx = (cxL + cxR) / 2;
 
   // ---- 波形の帯の置き場 ------------------------------------------------------
   // ★録音中の帯は「真ん中の少し上」に置き、**円に重ならない幅**までしか
@@ -695,6 +709,28 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         pointerEvents: leaving ? "none" as const : undefined,
       } : null),
     }}>
+      {/* ★★★**カセットの本体**（2026-09-13・第94巡）。円の**後ろ**（`zIndex: 0`）に
+          敷く青い角丸の面。★★**円の `div` の中に入れないこと** ―― 円はそれ自身が
+          `background` ＋ `borderRadius: 50%` の面で、録音中は `.vs-reel-spin` が
+          掛かるので、中に入れた本体も**一緒に回ってしまう**。
+          ★入退場は円と同じ曲線で、**左右へは動かさない**（本体は画面より広いので
+          横に動かしても何も起きない）。不透明度だけ合わせる。
+          ★`pointerEvents: none` … 掴めるのは**円だけ**（`dialAt` は円の式で判定する）。 */}
+      {shown && (
+        <div
+          key={`plate-${enterKey}`}
+          className={leaving ? "vs-plate-out" : "vs-plate-in"}
+          aria-hidden
+          style={{
+            position: "absolute", zIndex: 0, pointerEvents: "none",
+            width: plateW, height: plateH,
+            left: plateCx - plateW / 2, top: cy - plateH / 2,
+            background: JOURNAL_FACE,
+            borderRadius: plateH * CASSETTE_R_PER_H,   /* ★目盛りの外（図形の座標系＝アイコンの比） */
+          }}
+        />
+      )}
+
       {/* 巨大な円ふたつ。ただの塗り面＋縁の目盛り。
           ★指を受けるのはこの円ではなく、**上にある舞台**。円は波形や数字より
           下に描かれる必要がある(zIndex 1)のに、指は上から受けたい——という

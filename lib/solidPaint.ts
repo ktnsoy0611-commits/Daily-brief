@@ -1,22 +1,27 @@
 import {
-  boundsOf, innerBox, rectOf, sectionOutline, slabRects,
+  boundsOf, rectOf, sectionOutline, slabRects,
   type Pt, type SolidSpec,
 } from "./solid";
-import { tagColor, tagFace, tagInk, tagLabel, tagPatternOf } from "./taskTags";
-import { tagFill } from "./tagPattern";
+import { BD_GREY, SHAPE_FACE, TASK_FACE } from "./constants";
+import { bodyInkOn } from "./palette";
 import { canvasFont, drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
-import type { TaskTag } from "./types";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
 // 確定)。真横から見た立面を2枚、ベタ塗りで描くだけ。
 //
-// ★形はビューによらず**1つ**。切り替えても山は動かず、**載る文字だけ**が
-// 変わる(2026-08-16にユーザー確定):
-//   ネームビュー … **タスクの題**を中央に(一定の下限＋面積に比例)
-//   タグビュー   … **タグの英字**を図形いっぱいに
+// ★形はビューによらず**1つ**。切り替えても山は動かず、**載る文字だけ**が変わる。
 //
-// 色はどちらもタグの色を全面に。**文字の色も書体もタグが決める**
-// (画像の組み合わせとの一対一対応・2026-08-16確定)。
+// ★★★**塗り分けは「日付があるか／ないか」の1軸だけ**（2026-09-12・第93巡に
+// ユーザー確定でタグを廃止）:
+//   **日付あり** … メインカラーの**塗り**。字は面から導いた墨（比 5.64）。
+//   **日付なし** … **輪郭線だけ**。中は**地と同じ色**（透けさせない）、
+//                  縁と字はメインカラー（比 2.55 ＝ ★目盛りの外。ユーザー確定）。
+// ★★**これはホームの帯のピルとまったく同じ見え方**（`components/home/Band.tsx`）。
+//   帯から掴んで日付を割り当てた瞬間に塗りへ変わる、を全アプリで同じ言い方にした。
+// ★★★**合図はすでに `spec` の中にある** ―― `lib/taskSize.ts` の `sidesOf()` は
+//   埋まっている側面だけを返すので、**`sides.includes("due")` がそのまま
+//   「日付がある」**。新しいフィールドを足していない。
+// ★書体は**1つ**（`SHAPE_FACE`）。タグが選んでいたのをやめた。
 //
 // ★図形まるごとを1枚のビットマップに焼いてキャッシュする(性能の要)。
 // matter.js の物体は画面内の2D回転しかしないので、キャッシュした絵を
@@ -26,15 +31,31 @@ import type { TaskTag } from "./types";
  *  ★`"none"` は**文字を載せない**(2026-08-26・第65巡)。ALIGN は右に題を大きく出すので、
  *  図形の中にも同じ題があると**二重**になる(ユーザー指摘)。
  *  ★グリフを焼かなくなるぶん、ALIGN の入りはむしろ軽くなる。 */
-export type SolidView = "name" | "tag" | "none";
+export type SolidView = "name" | "none";
 
 export interface SolidPaint {
   spec: SolidSpec;
   view: SolidView;
-  tag?: TaskTag;
-  /** ネームビューに載せる文字(タスクの題)。タグビューはタグの英字を使う。 */
+  /** ネームビューに載せる文字(タスクの題)。 */
   title: string;
+  /**
+   * ★★**地の色**（輪郭のとき中を塗るのに使う）。省略すると画面の地（クリーム）。
+   * ★★★**呼ぶ側が渡すこと** ―― 入力画面だけは地が**墨**（`LIFT`）なので、
+   * ここで決め打ちにすると入力画面の下書きの中だけクリームになる。
+   * ★`lib/` から `components/AppBackdrop` を import しない（依存の向きが逆になる）。
+   */
+  ground?: string;
 }
+
+/**
+ * ★★★**日付があるか** ―― 塗りと輪郭を決める唯一の合図。
+ * `lib/taskSize.ts` の `sidesOf()` が `"due"` を側面に入れるのは
+ * `dueDate` が埋まっているときだけなので、これで足りる。
+ */
+export const isDated = (spec: SolidSpec): boolean => spec.sides.includes("due");
+
+/** 輪郭線の太さ（CSS px）。★帯のピルの `1px solid` と同じ。★目盛りの外（絵の寸法）。 */
+const EDGE = 1;
 
 /** 1単位を何pxで描くか。★2026-08-13にユーザー指定で 32 → 64(2倍)。
  *  実際に渡される unit は、山の混み具合に応じて GravityTab が縮めた値
@@ -83,13 +104,12 @@ const poly = (ctx: CanvasRenderingContext2D, pts: Pt[], unit: number, cx = 0, cy
 export function paintShape(
   ctx: CanvasRenderingContext2D, p: SolidPaint, unit = UNIT_PX, dpr = 1,
 ) {
-  const fill = tagColor(p.tag);
   // ★焼く前に、使う (書体, 文字) の組を取りに行く。まだ届いていなければ
   // fallback で描かれるが、届いた時点で ensureGlyphs が焼き直しを知らせる。
-  ensureGlyphs(tagFace(p.tag), p.title + tagLabel(p.tag));
+  ensureGlyphs(SHAPE_FACE, p.title);
 
-  // ★形はビューによらず1つ。違うのは載せる文字だけ。
-  const tagView = p.view === "tag";
+  const dated = isDated(p.spec);
+  const ground = p.ground ?? BD_GREY;
   const { w, h } = rectOf(p.spec);
   const n = p.spec.sides.length;
   const outline = sectionOutline(n);
@@ -98,25 +118,60 @@ export function paintShape(
   // LOD の判定はその形の**代表寸法**で行う(平たい帯だけ不利にならないように)。
   const s = Math.sqrt(p.spec.area) * unit;
 
-  // ★★★**塗りは「色」ではなく「柄」**（2026-09-11・第91巡）。タグ2つの見分けは
-  //   べた塗り／網点が持つ（色相はアプリの識別に使い切っている）。`lib/tagPattern.ts`。
-  ctx.fillStyle = tagFill(ctx, tagPatternOf(p.tag), fill, dpr);
   const path = () => poly(ctx, outline.map((q) => ({ x: q.x * wpx, y: q.y * hpx })), 1);
+  const slit = s >= LOD_NO_SLIT && p.spec.slabs > 1;
 
-  if (tagView || s < LOD_NO_SLIT || p.spec.slabs <= 1) {
-    // 切れ目なし。輪郭をそのまま塗る。
+  if (dated) {
+    // ── 日付あり … メインカラーで塗る ──
+    ctx.fillStyle = TASK_FACE;
+    if (!slit) {
+      path();
+      ctx.fill();
+    } else {
+      // ★スラブの切れ目。輪郭でクリップしてから、スラブの帯だけを塗る。
+      // 縦の切れ目が形を横切り、残っている手順の数がそこで読める。
+      ctx.save();
+      path();
+      ctx.clip();
+      for (const r of slabRects(p.spec)) {
+        ctx.fillRect(r.x0 * unit, -hpx / 2, (r.x1 - r.x0) * unit, hpx);
+      }
+      ctx.restore();
+    }
+  } else {
+    // ── 日付なし … 輪郭線だけ ──
+    // ★中は**地と同じ色で不透明に**塗る（帯のピルと同じ理由 ―― 透けると
+    //   後ろの図形がピルや図形の中を通って見える）。
+    ctx.fillStyle = ground;
     path();
     ctx.fill();
-  } else {
-    // ★スラブの切れ目。輪郭でクリップしてから、スラブの帯だけを塗る。
-    // 縦の切れ目が形を横切り、残っている手順の数がそこで読める。
-    ctx.save();
-    path();
-    ctx.clip();
-    for (const r of slabRects(p.spec)) {
-      ctx.fillRect(r.x0 * unit, -hpx / 2, (r.x1 - r.x0) * unit, hpx);
+    // ★★★**線は「内側に」引く**（CSS の `border` が内側に引かれるのと同じ）。
+    //   輪郭の**真上**に `EDGE` の線を引くと外へ 0.5px はみ出し、焼き箱の縁
+    //   （`solidBitmap` の `+1`）とぶつかる。**道を `EDGE/2` だけ内側へ寄せて
+    //   `EDGE` の線を引けば**、はみ出さずに済む。
+    //   ★クリップして2倍の太さで引く手も同じ太さになるが、層が1つ増えるだけ
+    //   （実測 … どちらも実効 2.15 デバイス画素／倍率2 ＝ **1.08 CSS 画素**）。
+    ctx.strokeStyle = TASK_FACE;
+    ctx.lineWidth = EDGE;
+    poly(ctx, outline.map((q) => ({ x: q.x * (wpx - EDGE), y: q.y * (hpx - EDGE) })), 1);
+    ctx.stroke();
+    if (slit) {
+      ctx.save();
+      path();
+      ctx.clip();
+      // ★切れ目は「塗らない帯」では出せない（中が地の色なので隙間が見えない）。
+      //   **隙間の真ん中に縦の線**を引いて、残っている手順の数を同じように見せる。
+      //   ★こちらは内側の線なので、クリップで押さえても痩せない。
+      const rs = slabRects(p.spec);
+      for (let i = 0; i < rs.length - 1; i++) {
+        const x = ((rs[i].x1 + rs[i + 1].x0) / 2) * unit;
+        ctx.beginPath();
+        ctx.moveTo(x, -hpx / 2);
+        ctx.lineTo(x, hpx / 2);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
-    ctx.restore();
   }
 
   const plan = textPlanOf(p, unit);
@@ -165,9 +220,11 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   const n = p.spec.sides.length;
   const s = Math.sqrt(p.spec.area) * unit;
   if (s < LOD_NO_TEXT) return null;
-  const tagView = p.view === "tag";
   const { w, h } = rectOf(p.spec);
-  const face = tagFace(p.tag);
+  const face = SHAPE_FACE;
+  // ★★**字の色は塗り方から決まる** … 塗りなら面から導いた墨、輪郭なら縁と同じ色
+  //   （帯のピルの `ink = outline ? face : bodyInkOn(face)` と同じ）。
+  const ink = isDated(p.spec) ? bodyInkOn(TASK_FACE) : TASK_FACE;
   const wpx = w * unit;
   const hpx = h * unit;
   // ★書体が届くまでは文字を描かない(fallback で焼くと、焼いている途中で
@@ -175,18 +232,7 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   // 待つだけにしていたら、届かない・判定が通らない・通知が飛ばないの
   // どれか1つで**文字が永久に出なかった**(2026-08-17に実機で報告)。
   // textDrawable が時間で門を開ける。
-  const text = tagView ? tagLabel(p.tag) : p.title;
-  if (!textDrawable(face, text)) return null;
-  if (tagView) {
-    // タグの英字は**図形いっぱい**。矩形1つ(innerBox)で十分な短さ。
-    const box = innerBox(n);
-    const fit = fitText(tagLabel(p.tag), face, box.w * wpx, box.h * hpx, 2);
-    if (!fit) return null;
-    return {
-      text: tagLabel(p.tag), face, ink: tagInk(p.tag), fit,
-      cx: box.x + box.w / 2, cy: box.y + box.h / 2, size: fit.size,
-    };
-  }
+  if (!textDrawable(face, p.title)) return null;
   // ★タイトルは「最低 TITLE_MIN、図形が大きければ面積に比例して大きく」。
   // ★**形に合わせて折り返す**(2026-08-16にユーザー指摘)。矩形1つだと
   // 三角だけ極端に小さくなる。
@@ -197,7 +243,7 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   );
   if (!fit) return null;
   return {
-    text: p.title, face, ink: tagInk(p.tag), fit,
+    text: p.title, face, ink, fit,
     cx: 0, cy: fit.cy / hpx, size: fit.size,
   };
 }
@@ -253,8 +299,12 @@ export function clearSolidBitmaps() {
 //   `lib/printGrain.ts`（券の面。CSS の `mix-blend-mode`）だけで、これは別物。
 //   ★★**`PAPER_ALPHA` を 0 にして誤魔化さないこと。呼ばないのが正。**
 
+// ★★★**鍵に「日付の有無」と「地の色」を入れること。** `sides` は**数**しか
+//   見ていないので、`["title","due"]` と `["title","context"]` はどちらも 2 ――
+//   **形は同じでも塗りが逆**になるので、入れないと焼いた絵が入れ替わる。
 export const paintKey = (p: SolidPaint, unit: number): string =>
-  [p.view, p.tag ?? "-", p.spec.sides.length, p.spec.area.toFixed(3),
+  [p.view, isDated(p.spec) ? "d" : "-", p.ground ?? "-",
+    p.spec.sides.length, p.spec.area.toFixed(3),
     p.spec.w.toFixed(3), p.spec.h.toFixed(3),
     p.spec.slabs, unit.toFixed(1), p.title].join("|");
 

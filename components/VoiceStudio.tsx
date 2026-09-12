@@ -4,7 +4,8 @@ import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BD_GREY, CHARCOAL, INK, JOURNAL_FIG, JOURNAL_MUTED, NAV_H, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY } from "@/lib/constants";
+import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, NAV_H, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY } from "@/lib/constants";
+import { DIAL_TICK, DIAL_TICKS, DIAL_VIEW } from "@/lib/dial";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { pushGround } from "@/lib/ground";
@@ -102,8 +103,7 @@ const SPLIT_MS = 420;
  *  (実測: top 16 + 高さ 68 = 84)。 */
 const BAND_TOP = 84;
 const BAND_BOTTOM = 80;
-/** 縁の目盛りの本数。 */
-const TICKS = 5;
+// ★縁の目盛りの本数と寸法は `lib/dial.ts`（ホームの山と共有）。
 /** 物理キーの寸法。丸いキーで、出っ張り(depth)ぶん浮いて見える。 */
 const KEY_D = 42;
 const KEY_DEPTH = 4;
@@ -170,16 +170,25 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // アプリの遷移中にどちらかがズレて必ず境目が出る。
   // 全画面のオーバーレイだけは列の外なので、自分で暗い地を塗る。
   const ground = dim ? DIM_GROUND : undefined;
-  // ★★★第78巡に**明暗がひっくり返り**、第79巡に**キーだけ白へ戻った**。
-  //   ・大きなダイヤルの円 `dial` … journal は黒／オーバーレイは白（画面で反転）。
+  // ★★★**大きな円は JOURNAL のメインカラー**（2026-09-12・第93巡にユーザー確定
+  //   「円の色をメインカラーに統一してください」）。**明るいタブも暗い
+  //   オーバーレイも同じ色**で、画面による反転をやめた ―― 第78巡から続いていた
+  //   「暗いのは機械」（クリームの上の黒い円・比 11.25）はここで終わり、
+  //   円は**色で覚えるもの**になった。実測 … 地との比はクリーム **2.02**／
+  //   墨のオーバーレイ **5.9**。明るい画面では円の輪郭が弱くなるが、これは
+  //   淡いアクセントをクリームに置く以上どうにもならない（`lib/appAccent.ts`）。
   //   ・キーの面 `cap` … **どちらの画面でも白**（ユーザー指定・反転しない）。
-  //   第78巡はこの2つが1つの変数だったので、片方だけ戻せなかった。
-  const dial = dim ? STUDIO.dialDim : JOURNAL_FIG;
+  //     ★白いキーと円の比は 2.02 しかないが、キーの輪郭は**黒い穴**
+  //     （`STUDIO.well`。面との比 18.21）が作っているので消えない。
+  const dial = JOURNAL_FACE;
   const cap = STUDIO.cap;
   //  地の上に直接いる文字（キーのラベル）は地から決まる。
   const fg = dim ? PAPER : INK;
   const mute = dim ? "rgba(255,251,245,0.52)" : JOURNAL_MUTED;
-  const tick = dim ? "rgba(44,38,39,0.38)" : "rgba(255,251,245,0.40)";
+  // ★★★**縁の目盛りは円の面から導く**（`bodyInkOn`）。**半透明にしないこと** ――
+  //   元の `rgba(44,38,39,0.38)` を青い円に合成すると**比 1.94 で消える**
+  //   （実測。0.62 でも 3.2）。ベタの墨なら **7.12** 出る。
+  const tick = bodyInkOn(dial);
 
   // ★★★第79巡から**キーまわりは画面で変わらない**（面が両方とも白なので、
   //   穴も窓もランプも1つで足りる）。分岐が減ったぶん、ズレようがない。
@@ -738,13 +747,16 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
               willChange: "transform", transform: "translateZ(0)",
             }}
           >
-            {/* 縁の目盛り。一番端に寄せた、短く太い線。角は丸めない。 */}
-            {Array.from({ length: TICKS }, (_, i) => (
+            {/* 縁の目盛り。一番端に寄せた、短く太い線。角は丸めない。
+                ★★★**寸法は `lib/dial.ts` の1か所**（2026-09-12）―― 同じ円を
+                ホームの山が **canvas** で描くので、数を2度書くと必ず食い違う。 */}
+            {Array.from({ length: DIAL_TICKS }, (_, i) => (
               <rect
                 key={i}
-                x={50 - 0.73} y={0.8} width={1.46} height={4.5}
+                x={DIAL_VIEW / 2 - DIAL_TICK.w / 2} y={DIAL_TICK.inset}
+                width={DIAL_TICK.w} height={DIAL_TICK.h}
                 fill={tick}
-                transform={`rotate(${(i * 360) / TICKS} 50 50)`}
+                transform={`rotate(${(i * 360) / DIAL_TICKS} ${DIAL_VIEW / 2} ${DIAL_VIEW / 2})`}
               />
             ))}
           </svg>

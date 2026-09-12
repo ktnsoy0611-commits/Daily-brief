@@ -1,6 +1,5 @@
 import { DEFAULT_STATE, STORAGE_KEY } from "./constants";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
-import { normalizeTag } from "./taskTags";
 import type { AppState, Item, ItemKind } from "./types";
 
 // v19プロトタイプの window.storage (サンドボックス専用API) を、実ブラウザで
@@ -158,8 +157,9 @@ function migrate(s: any): AppState {
         }
       }
       delete o.when;
-      o.tag = normalizeTag(o.tag);
-      if (!o.tag) delete o.tag;
+      // ★★★**タグは第93巡に廃止**（2026-09-12）。読み替えではなく**掃除**する
+      //   ―― 残しておくと「もう誰も読まない印」が state に永久に居座る。
+      delete o.tag;
       return o;
     };
     merged.tasks = (merged.tasks ?? []).map(migrateSides);

@@ -1,5 +1,5 @@
 import type { AppState, ItemDomain, ItemKind } from "./types";
-import { ACCENT_TEST, accentSteps } from "./appAccent";
+import { ACCENT_TEST, accentOf, accentSteps } from "./appAccent";
 
 export const STORAGE_KEY = "qol-app-state-v1";
 
@@ -74,31 +74,30 @@ export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, s
 //   捨てた。**残るのは表示専用の巨大欧文だけ**。
 export const SWISS_XL = 72;   // TIMELINE の曜日の見出し(これ1つ。増やさない)
 
-// ★タスクの図形に載る文字の書体。**タグごとに1つ**選ぶ(番号は
-// lib/taskTags.ts が持つ)。読み込みは app/layout.tsx が行い、ここは表だけ。
-// ★書体を増やすときは layout.tsx とこの表の2箇所だけを触る。
+// ★タスクの図形に載る文字の書体。**1つだけ**（2026-09-12・第93巡にユーザー確定）。
+// 読み込みは app/layout.tsx が行い、ここは表だけ。
 //
+// ★★★**なぜ1つになったか。** 以前は「**同じタグなら必ず同じ書体**」という
+// 決めごとで、タグ（最後は2つ）が書体を選んでいた。**タグを廃止した**ので
+// 選ぶものが無くなった ―― タスクの見分けは「**日付があるか／ないか**」の1軸だけで、
+// それは**塗りと輪郭**が言う。同じことを書体でも言うと道具が二重になる。
+// ★★**書体を「分類の道具」として使わないこと。** 増やしたくなったら、それは
+// 新しい分類を持ち込もうとしているということ。
 // ★**全部ゴシック系**(2026-08-16にユーザー確定で明朝を廃止)。
 // ★**斜体で見分けを作らないこと**(2026-08-17にユーザー指摘)。iOS は和文の
-// 斜体を合成しないので、実機では直立と区別が付かない。骨格の違う家族を
-// 並べて見分ける(ゴシック / 丸ゴシック / 極太 / ディスプレイ体)。
+// 斜体を合成しないので、実機では直立と区別が付かない。
 export interface FontFace { family: string; weight: number; italic?: boolean }
 
-// ★和文のフォールバックも系統ごとに変えておく。Googleフォントの和文は
-// 分割配信で遅れて届くことがあり、その間も書体の違いが見えるようにするため。
+// ★和文のフォールバックも一緒に持つ（Googleフォントの和文は分割配信で遅れて届く）。
 const GOTHIC = 'var(--font-zen-kaku-gothic-new), "Hiragino Sans", sans-serif';
-const MARU = 'var(--font-zen-maru-gothic), "Hiragino Maru Gothic ProN", sans-serif';
-const DELA = 'var(--font-dela-gothic-one), "Hiragino Sans", sans-serif';
-const MPLUS = 'var(--font-mplus-1), "Hiragino Sans", sans-serif';
 
 export const FONT_FACES: FontFace[] = [
-  { family: GOTHIC, weight: 400 },              // 0 細いゴシック
-  { family: GOTHIC, weight: 700 },              // 1 太いゴシック
-  { family: GOTHIC, weight: 700, italic: true },// 2 太いゴシックの斜体
-  { family: MARU, weight: 500 },                // 3 丸ゴシック
-  { family: DELA, weight: 400 },                // 4 極太
-  { family: MPLUS, weight: 800 },               // 5 幾何学ゴシックの極太
+  { family: GOTHIC, weight: 700 },              // 0 太いゴシック（これ1つ）
 ];
+
+/** ★★図形に載る文字の書体。**`FONT_FACES` の番号はここから引く。** */
+export const SHAPE_FACE = 0;
+
 // ★ネオバウハウス化(2026-08-02)。それまでは暖色のクリーム地(BG #F2EADA /
 // PAPER #FBF6E9)に、アプリごとに違う地の色(グレージュ・緑)を敷いて「別の
 // アプリにいる」ことを伝えていた。ユーザー指定により、地は**3アプリとも
@@ -163,18 +162,15 @@ export const VOID = "#000000";
 export const TAB_ICON_OFF = "#9C9C9B";
 
 /** ★録音機の素材色(`VoiceStudio` の物理キーとランプ)。`dim` は全画面の暗い状態。
- *  **画面固有のパレット**なので、無彩色の梯子には混ぜない(`TASK_TAGS` と同じ作法)。
+ *  **画面固有のパレット**なので、無彩色の梯子には混ぜない。
  *  ★どれも不透明にすること — 下が明るい円か地かで見え方が変わらないように。 */
 export const STUDIO = {
   // ★★★第79巡に**キーだけ白へ戻した**（ユーザー指定「journal のボタンはやはり
   //   白系に」）。第78巡は `figure` 1つが「大きな円」と「キーの面」の両方を
   //   決めていたが、**別の材料**なので割った。
-  //   ・`dial` … 大きなダイヤルの円。journal は黒／オーバーレイは白（画面で反転）。
-  //   ・`cap`  … 押せるキーの面。**どちらの画面でも白**（反転しない）。
-  /** オーバーレイの大きな円。★白い機械。 */
-  dialDim: "#EFEAE8",
-  /** journal の大きな円。★黒い機械（クリームの地との比 11.25）。 */
-  dialLit: "#3E3739",
+  // ★★★**大きな円の色はここに無い**（2026-09-12・第93巡）。`JOURNAL_FACE`
+  //   （アプリのメインカラー）に移した ―― **画面で反転しなくなった**ので、
+  //   `dialLit`/`dialDim` の2つを持つ理由が消えた。
   /** ★★キーの面。**両方の画面で同じ白**。★地（`BD_GREY`）と同じ値。 */
   cap: "#FFFBF5",
   /** ★★キーが沈む穴。**面との比 18.21**。★キーの輪郭はこの影だけで見せる
@@ -263,6 +259,28 @@ export const SCHEME = {
 //   **JOURNAL の家族の濃淡3段**にする。墨の窓の中なので、家族の全部が読める
 //   （いちばん暗い段でも 9.77）。`lib/appAccent.ts` の1行で元へ戻る。
 const ACCENT_KEYS = accentSteps("journal", 3);
+
+/**
+ * ★★★**タスクの図形の色**（2026-09-12・第93巡）。タグを廃止したので**1色**。
+ * ★以前は廃止した `lib/taskTags.ts` が持っていたが、第87巡のアクセント配色で
+ * 2つのタグの色はすでに同じ（`accentOf("tasks").main`）になっていたので、
+ * **廃止しても見た目は変わらない**。
+ * ★`ACCENT_TEST` を切ったときは旧パレットの Azul へ戻る。
+ */
+export const TASK_FACE = ACCENT_TEST ? accentOf("tasks").main : SCHEME.work;
+
+/**
+ * ★★★**録音の大きな円（ダイヤル）の色**（2026-09-12・第93巡にユーザー確定
+ * 「円の色をメインカラーに統一してください」）。**明るいタブも暗いオーバーレイも
+ * 同じ色**（それまでは画面で黒／白に反転していた）。
+ * ★★**実測** … クリームの地との比 **2.02**（元の黒い円は 11.25）／暗い
+ * オーバーレイの地との比 **5.9**。**明るい画面では円の輪郭が弱くなる** ――
+ * これは淡いアクセントをクリームに置く以上どうにもならない色の選択の帰結で、
+ * `lib/appAccent.ts` が同じことを書いている。
+ * ★縁の目盛りは `bodyInkOn(この色)` のベタ（比 **7.12**）。**半透明にしないこと**
+ * ―― 元の `rgba(44,38,39,0.38)` を青に合成すると **1.94 で消える**（実測）。
+ */
+export const JOURNAL_FACE = ACCENT_TEST ? accentOf("journal").main : SCHEME.work;
 
 export const STUDIO_KEY = ACCENT_TEST ? {
   pause: ACCENT_KEYS[0],
@@ -363,11 +381,10 @@ export const BD_GREY = "#FFFBF5";   // ★第76巡に盤の CLOUD（BACKGROUND C
 // ないので、journal もクリームの背景に」）。**3アプリの地はこれで1色**。
 // ★暗さは地ではなく**機械の側**（録音のダイヤルとキー）が持つ。
 export const JOURNAL_BG = BD_GREY;
-// ★★★第78巡にユーザー指定で**黒系**へ（「ボタン関係と円を黒系に」）。
-// クリームの地との比 **11.25**。もう「地の濃淡」ではなく、**クリームの紙の上に
-// 置かれた黒い機械**として読ませる。★`STUDIO.dialLit` と同じ値
-// ―― 大きな円とキーの面は**同じ材料**（出どころを2つにしない）。
-export const JOURNAL_FIG = STUDIO.dialLit;
+// ★★★**大きな円の色は `JOURNAL_FACE`**（2026-09-12・第93巡にユーザー指定で
+// メインカラーへ）。`JOURNAL_FIG` は**廃止**した ―― 同じものを2つの名前で
+// 呼ばない。第78巡の「クリームの紙の上に置かれた**黒い機械**」（比 11.25）は
+// これで終わり、円は**色で覚えるもの**になった。
 // この地の上での控えめな文字色。
 export const JOURNAL_MUTED = "rgba(44,38,39,0.66)";  // ★クリームの地の上の控えめな文字（比 4.84）
 export const BD_LIGHT = "#F3F3F1";

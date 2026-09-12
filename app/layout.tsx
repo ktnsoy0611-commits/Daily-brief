@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { SPACE } from "@/lib/tokens";
 import { BD_GREY, INK, GREEN, RUST } from "@/lib/constants";
-import { Archivo, Dela_Gothic_One, M_PLUS_1, Noto_Sans_JP, Zen_Kaku_Gothic_New, Zen_Maru_Gothic } from "next/font/google";
+import { Archivo, Noto_Sans_JP, Zen_Kaku_Gothic_New } from "next/font/google";
 import "./globals.css";
 
 // ミニマルなデザインへの刷新に伴い、明朝体(Zen Old Mincho)とPlayfair
@@ -46,26 +46,12 @@ const notoSansJP = Noto_Sans_JP({
 // 実際に使われた文字を含む断片だけがダウンロードされる。
 // ★太さは1書体につき1つだけ落とす。太さを増やすとビルドで取りに行く断片が
 // 一気に増える(実測で失敗するほど)。太字・斜体はブラウザの合成に任せる。
-const zenMaruGothic = Zen_Maru_Gothic({
-  variable: "--font-zen-maru-gothic",
-  weight: "500",
-  preload: false,
-});
-
-const delaGothicOne = Dela_Gothic_One({
-  variable: "--font-dela-gothic-one",
-  weight: "400",
-  preload: false,
-});
-
-// ★SOCIAL(赤)の書体。Dela の斜体 → Reggae One → **M PLUS 1 (800)** と
-// 替えた(2026-08-17にユーザー選択)。幾何学的で平らな、いちばん「シンプル」な
-// ゴシック。800 あるので赤地に淡桃の文字でも線が消えない。
-const mplus1 = M_PLUS_1({
-  variable: "--font-mplus-1",
-  weight: "800",
-  preload: false,
-});
+// ★★★**Zen Maru / Dela Gothic One / M PLUS 1 の3本は外した**（2026-09-12・第93巡）。
+// タグを廃止して**図形の書体が1つになった**ので、`FONT_FACES` の 3/4/5 から
+// しか参照されていなかったこの3本は**誰も使わない Web フォント**になった
+// ―― 残すと実機で毎回取りに行くだけの重さになる。
+// ★図形の書体を増やしたくなったら、それは新しい分類を持ち込もうとしている
+//   ということ（`lib/constants.ts` の `FONT_FACES` のコメントを読むこと）。
 
 export const metadata: Metadata = {
   title: "デイリーブリーフ",
@@ -128,7 +114,6 @@ export default function RootLayout({
   return (
     <html lang="ja" className={[
       zenKakuGothicNew.variable, archivo.variable, notoSansJP.variable,
-      zenMaruGothic.variable, delaGothicOne.variable, mplus1.variable,
     ].join(" ")}>
       {/* ★色の持ち主は `lib/constants.ts` の1か所だけ。CSS には**変数で配る**。
           第66巡まで globals.css が地色・墨・緑・赤の4色を

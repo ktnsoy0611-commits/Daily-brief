@@ -1,4 +1,3 @@
-import { inferTag, normalizeTag } from "./taskTags";
 import type { InboxCandidate, JournalEntry, TaskWeight } from "./types";
 
 // ★Coworkが夜間に書いた my-brain のファイルを読み取る(純粋関数)。
@@ -130,9 +129,8 @@ export function parseCandidates(md: string | null): InboxCandidate[] {
         context,
         belongings,
         note,
-        // ★AIから来た時点でタグ(=色)を自動で割り振る。Coworkが書いてくれば
-        // そちらを優先し(旧6タグの綴りも読み替える)、無ければ言葉から見立てる。
-        tag: normalizeTag(f["タグ"]) ?? inferTag(title, when, context, belongings, note),
+        // ★タグは第93巡に廃止（`- タグ:` は読まない）。図形の塗り分けは
+        // **日付があるかどうか**だけで決まる。
         // 重要度の見立て(1〜3)。物体の大きさ = 重要度 × 切迫度 の片方になる。
         // 1〜3以外・未記入は未設定のままにし、アプリ側で「中」として扱う。
         weight: parseWeight(f["重要度"]),

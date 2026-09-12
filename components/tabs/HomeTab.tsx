@@ -20,9 +20,6 @@ import type { TabProps } from "@/lib/types";
 // 帯のピルを掴んで引き下ろすと、図形に変わって山へ落ちる ―― この一続きの
 // 動きが軸（★引き下ろしはこの次に作る）。
 
-/** ★★声を録っていない日に山へ落ちる図形の文面。**変えるときはここ1行**。 */
-const JOURNAL_PROMPT = "今日を録る";
-
 export function HomeTab({ appState, goTab }: TabProps) {
   const day = todayKey();
   const today = useMemo(() => new Date(), []);
@@ -50,10 +47,12 @@ export function HomeTab({ appState, goTab }: TabProps) {
   // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も山に落とす**
   //   （2026-09-09 ユーザー指定）。録ってあれば出さない ―― 済んだことを
   //   画面に残さない。押すと JOURNAL のレコードへ飛ぶ。
-  const journal = useMemo(() => {
-    const done = (appState.voiceNotes ?? []).some((v) => (v.at ?? "").slice(0, 10) === day);
-    return done ? null : { title: JOURNAL_PROMPT };
-  }, [appState.voiceNotes, day]);
+  // ★★★**形は録音の UI の「大きな円」そのもの**（2026-09-12 ユーザー指定）。
+  //   文字は載せないので、ここは**あるか無いか**だけを渡す。
+  const journal = useMemo(
+    () => !(appState.voiceNotes ?? []).some((v) => (v.at ?? "").slice(0, 10) === day),
+    [appState.voiceNotes, day],
+  );
 
   // ★★★**口とブラックホールは置かない**（2026-09-09 ユーザー指定で削除）。
   //   山で図形にできるのは**掴んで運ぶこと**だけ。完了も削除もここでは起こさない

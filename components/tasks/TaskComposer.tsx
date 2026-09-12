@@ -3,22 +3,22 @@
 import { SPACE, TYPE, LEAD, WEIGHT, RADIUS } from "@/lib/tokens";
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { TagPicker, TextField, WeightPicker } from "@/components/tasks/ComposerFields";
+import { TextField, WeightPicker } from "@/components/tasks/ComposerFields";
 import { SHEET_BODY_H, WhenSheet } from "@/components/tasks/WhenSheet";
 import { ComposerToolbar, TOOL_LABEL, type ToolKey } from "@/components/tasks/ComposerToolbar";
 import { Press, pressedRecently } from "@/components/Button";
 import { CAP, keepKeyboard, Popover } from "@/components/tasks/Popover";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
-import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
+import { CHARCOAL, PAPER, SANS, TASK_FACE } from "@/lib/constants";
+import { bodyInkOn } from "@/lib/palette";
 import { isViewportDebug } from "@/lib/debugViewport";
 import { pushGround } from "@/lib/ground";
 import { ms, surfaceOrigin, T_OUT } from "@/lib/motion";
 import { haptic } from "@/lib/helpers";
-import { resolveTag, tagAccent, tagColor, tagInk } from "@/lib/taskTags";
 import { specOf } from "@/lib/taskSize";
 import type { SolidPaint } from "@/lib/solidPaint";
-import type { SubTask, TaskSuggestion, TaskTag, TaskWeight } from "@/lib/types";
+import type { SubTask, TaskSuggestion, TaskWeight } from "@/lib/types";
 
 // ★タスクの入力画面(2026-08-16にユーザー指定で作り直し。旧 TaskSheet.tsx =
 // 方眼の展開図は削除した)。
@@ -74,7 +74,6 @@ export interface ComposerData {
   /** Cowork が書いた補足。形には影響しない(この画面では読むだけ)。 */
   note?: string;
   weight?: TaskWeight;
-  tag?: TaskTag;
   subtasks?: SubTask[];
   suggestions?: TaskSuggestion[];
 }
@@ -156,7 +155,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
   const subs = useMemo(() => draft.subtasks ?? [], [draft.subtasks]);
   const weight = draft.weight ?? 2;
-  const seed = draft.id || "draft";
 
   // ★描画は1テンポ遅らせる。1文字ごとに図形を焼き直すと、打っている間ずっと
   // グリフの焼き込みが走る(useDeferredValue はタイピングを優先してくれる)。
@@ -166,9 +164,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     context: preview.context, belongings: preview.belongings,
     weight: preview.weight, subtasks: preview.subtasks,
   }), [preview]);
-  const tag = resolveTag(preview.tag, seed, preview.title, preview.context, preview.belongings, preview.note);
-  // ツールバーの灯りは下書き(遅らせない方)のタグで出す。
-  const liveTag = resolveTag(draft.tag, seed, draft.title, draft.context, draft.belongings, draft.note);
 
   // ★★積む地色は **LIFT(帯の色)**。CHARCOAL ではない(2026-08-17)。
   // `theme-color` は **iOS が自分で塗る領域**(キーボードの手前＝次候補の帯・
@@ -780,9 +775,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
     belongings: !!(draft.belongings ?? "").trim(),
     // ★既定は**中**。既定のままなら灯さない(最初から設定済みに見えてしまう)。
     weight: (draft.weight ?? 2) !== 2,
-    // ★タグの丸は**常に灯す**。図形には必ず色が付いている(resolveTag)ので、
-    // ここだけ沈んでいると「色が決まっていない」ように見えてしまう。
-    tag: true,
   };
 
   const view = (
@@ -886,7 +878,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         <div data-shape style={{ position: "absolute", inset: 0 }}>
           {/* 形が変わった瞬間だけ弾ませる(key を変えて animation を鳴らし直す)。 */}
           <div key={spec.sides.length} className="tc-pop" style={{ position: "absolute", inset: 0 }}>
-            <ShapeStage spec={spec} title={preview.title} tag={tag} ready={settled} />
+            <ShapeStage spec={spec} title={preview.title} ready={settled} />
           </div>
         </div>
 
@@ -904,7 +896,6 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
                 onChange={(v) => set({ belongings: v.trim() ? v : undefined })} />
             )}
             {shownTool === "weight" && <WeightPicker value={weight} onPick={(w) => set({ weight: w })} />}
-            {shownTool === "tag" && <TagPicker value={liveTag} onPick={(t) => set({ tag: t })} />}
           </Popover>
         )}
       </Press>
@@ -1007,7 +998,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
         <ComposerToolbar
           open={whenOpen ? "due" : tool} filled={filled} onOpen={openTool}
-          on={tagColor(liveTag)} onInk={tagInk(liveTag)} off={ON_GROUND_DIM}
+          on={TASK_FACE} onInk={bodyInkOn(TASK_FACE)} off={ON_GROUND_DIM}
         />
       </div>
       </div>
@@ -1033,7 +1024,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
         }}>
           <WhenSheet
             value={{ dueDate: draft.dueDate, endDate: draft.endDate, dueTime: draft.dueTime, endTime: draft.endTime }}
-            accent={tagAccent(liveTag, LIFT)}
+            accent={TASK_FACE}
             onChange={(v) => set(v)}
             onCancel={() => closeWhen(false)}
             onCommit={() => closeWhen(true)}
@@ -1049,8 +1040,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 }
 
 // ── 図形の舞台。器の大きさを測って、その中央に1つ描く。 ──
-function ShapeStage({ spec, title, tag, ready }: {
-  spec: ReturnType<typeof specOf>; title: string; tag: TaskTag;
+function ShapeStage({ spec, title, ready }: {
+  spec: ReturnType<typeof specOf>; title: string;
   /** 出る動きが終わったか。終わるまで焼かない(呼び側のコメントを参照)。 */
   ready: boolean;
 }) {
@@ -1085,10 +1076,15 @@ function ShapeStage({ spec, title, tag, ready }: {
   // なっていく**ように見える(重要度を上げた／期日を近づけたのが目で追える)。
   // ★透ける瞬間を作らないので、点滅にはならない(第17巡の教訓)。
   const unit = Math.min(box.w / STAGE_SPAN_W, box.h / STAGE_SPAN_H);
-  const paint: SolidPaint = useMemo(() => ({ spec, view: "name", tag, title }), [spec, tag, title]);
-  // 描く中身が変わったかどうかの目印。
+  // ★★**地は墨（`LIFT`）**。輪郭のときに中を塗る色なので、ここを渡さないと
+  //   入力画面の下書きの中だけクリームになる（`SolidPaint.ground`）。
+  const paint: SolidPaint = useMemo(
+    () => ({ spec, view: "name", title, ground: LIFT }), [spec, title],
+  );
+  // 描く中身が変わったかどうかの目印。★`sides` は**中身**で持つ（日付が入ったか
+  // 抜けたかで塗りが変わるので、数だけでは足りない）。
   const key = [spec.sides.join(""), spec.area.toFixed(3), spec.w.toFixed(3),
-    spec.h.toFixed(3), spec.slabs, tag, title].join("|");
+    spec.h.toFixed(3), spec.slabs, title].join("|");
   const paintRef = useRef(paint);
   paintRef.current = paint;
   const lastRef = useRef<{ key: string; paint: SolidPaint } | null>(null);

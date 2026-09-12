@@ -5,13 +5,12 @@ import type { Body, Engine } from "matter-js";
 import { DemoSeedButton } from "@/components/tasks/TaskAddButton";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
-import { MUTED, NAV_H, navHeightPx } from "@/lib/constants";
+import { BD_GREY, MUTED, NAV_H, navHeightPx } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline } from "@/lib/solid";
 import { peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint } from "@/lib/solidPaint";
 import { demoCandidates } from "@/lib/taskDemo";
 import { specOf } from "@/lib/taskSize";
-import { resolveTag } from "@/lib/taskTags";
 import { TYPE, WEIGHT } from "@/lib/tokens";
 import type { InboxCandidate, TabProps } from "@/lib/types";
 
@@ -70,9 +69,9 @@ const AXIS_PX = 10;
 interface Piece { id: string; body: Body; paint: SolidPaint; ox: number; oy: number; unit: number; gone: number; gx: number; gy: number }
 interface Ctrl { sync: (list: InboxCandidate[]) => void; setActive: (on: boolean) => void }
 
+// ★★地の色を渡す（日付の無い候補は輪郭になるので、中を地の色で塗る）。
 const paintOf = (c: InboxCandidate): SolidPaint => ({
-  spec: specOf(c), view: "name", title: c.title,
-  tag: resolveTag(c.tag, c.id, c.title, c.context, c.belongings, c.note),
+  spec: specOf(c), view: "name", title: c.title, ground: BD_GREY,
 });
 
 export function DriftTab({ appState, persist, showToast, goTab, appActive, active, dragged }: TabProps & {
@@ -127,7 +126,7 @@ export function DriftTab({ appState, persist, showToast, goTab, appActive, activ
       id: `task-${Date.now()}`, title: c.title,
       dueDate: c.dueDate, endDate: c.endDate, dueTime: c.dueTime, endTime: c.endTime,
       context: c.context, belongings: c.belongings,
-      weight: c.weight ?? 2, tag: c.tag, note: c.note, done: false, createdAt: new Date().toISOString(),
+      weight: c.weight ?? 2, note: c.note, done: false, createdAt: new Date().toISOString(),
     });
     next.inbox = next.inbox.filter((x) => x.id !== id);
     remember(next, id);

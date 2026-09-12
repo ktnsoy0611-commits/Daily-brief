@@ -6,12 +6,12 @@ import { haptic } from "@/lib/helpers";
 
 // ★入力画面(TaskComposer)の下の帯。5つの項目を面で描いたアイコンで並べる
 // (components/TabIcons.tsx と同じ作り — 線ではなく面だけ)。
-// 値が入っているものはタグの色で灯り、空のものは沈む。
+// 値が入っているものはアプリのメインカラーで灯り、空のものは沈む。
 
-export type ToolKey = "due" | "context" | "belongings" | "weight" | "tag";
+export type ToolKey = "due" | "context" | "belongings" | "weight";
 
 export const TOOL_LABEL: Record<ToolKey, string> = {
-  due: "日付", context: "メモ", belongings: "持ち物", weight: "重要度", tag: "タグ",
+  due: "日付", context: "メモ", belongings: "持ち物", weight: "重要度",
 };
 
 const S = 18;
@@ -60,21 +60,16 @@ function Glyph({ name, c }: { name: ToolKey; c: string }) {
           <rect x="16" y="4.4" width="5" height="16" />
         </svg>
       );
-    // タグ = 円。ここだけタグの色そのものが出る。
-    case "tag":
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="12" r="9" />
-        </svg>
-      );
   }
 }
 
 /**
- * ★丸いボタンを5つ(2026-08-16にユーザー指定で角の立った枠から作り直し)。
+ * ★丸いボタンを4つ(2026-08-16にユーザー指定で角の立った枠から作り直し。
+ * ★第93巡にタグを廃止して**5つ → 4つ**へ ―― タグの丸は `filled` が
+ * **常に真**の唯一の丸だったので、残る4つは全部が状態で灯る)。
  * アプリの他の画面(タブバーのピル・設定の丸ボタン・録音の丸)と同じ語彙。
  *
- *   値が入っている … タグの色で**塗った丸**（アイコンは相方の色）
+ *   値が入っている … アプリのメインカラーで**塗った丸**（アイコンは相方の色）
  *   空             … 地に沈んだ細い輪
  */
 export function ComposerToolbar({ open, filled, onOpen, on, onInk, off }: {
@@ -83,13 +78,13 @@ export function ComposerToolbar({ open, filled, onOpen, on, onInk, off }: {
   /** 値が入っている項目。 */
   filled: Record<ToolKey, boolean>;
   onOpen: (k: ToolKey) => void;
-  /** 灯っているときの丸の色(タグの色)とその上のアイコンの色。 */
+  /** 灯っているときの丸の色(アプリのメインカラー)とその上のアイコンの色。 */
   on: string;
   onInk: string;
   /** 沈んでいるときのアイコンの色。 */
   off: string;
 }) {
-  const keys: ToolKey[] = ["due", "context", "belongings", "weight", "tag"];
+  const keys: ToolKey[] = ["due", "context", "belongings", "weight"];
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: SPACE.xs }}>
       {keys.map((k) => {

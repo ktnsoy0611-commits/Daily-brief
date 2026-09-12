@@ -248,15 +248,14 @@ export interface TaskSides {
 // 立体の断面の大きさ(Y/Z)と、物理演算上の重さに直結する。
 export type TaskWeight = 1 | 2 | 3;
 
-// ★タスクのタグ。立体の上下の面の色になる。固定の5つ(lib/taskTags.ts が定義の正)。
-// ★★★**タグは2つ**（2026-09-11 にユーザー確定）。それまでの五つ（仕事／暮らし／
-// からだ／人／学び）は**生活の場面**で割っていたので必ず重なった（「仕事のために
-// 英語を学ぶ」は仕事か学びか）。**動機**で割れば、どんなタスクも必ずどちらかに入る。
-// ★見分けは**色ではなく柄**（`lib/tagPattern.ts`）―― 色相はアプリの識別に
-// 使い切っているので、アプリの中では増やせない。
-export type TaskTag = "must" | "want";
-/** タグの柄。★色を使わずに見分けるための軸。 */
-export type TagPattern = "solid" | "halftone";
+// ★★★**タグは廃止した**（2026-09-12・第93巡にユーザー確定「タグは全面的に
+// 廃止します」）。経緯 … 固定の5つ（仕事／暮らし／からだ／人／学び）＝**生活の
+// 場面**で割っていたので必ず重なった → 第91巡に**動機**の2つ（MUST／WANT）へ →
+// 第87巡のアクセント配色で**2つの色がすでに同じ**になり、残る差は柄と書体だけ
+// ＝ 意味を持たない2択に成り下がっていた。
+// ★★★**いまタスクの性質は「日付があるか／ないか」の1軸だけ**で、それは
+// **塗り（日付あり）と輪郭（日付なし）**が言う。合図は `Task.dueDate` そのもの
+// （図形の側では `lib/solidPaint.ts` の `isDated(spec)`）。**新しい印を足さない。**
 
 // ★タスク(タスクアプリ)。
 export interface Task extends TaskSides {
@@ -284,8 +283,6 @@ export interface Task extends TaskSides {
   suggestedAt?: string;
   // 重要度。未設定は中扱い。
   weight?: TaskWeight;
-  // タグ。上下の面の色になる。未設定なら中間のグレー。
-  tag?: TaskTag;
 }
 
 // ★ジャーナルの1件。日付ごとに書き足していくログ。
@@ -326,7 +323,6 @@ export interface InboxCandidate extends TaskSides {
   note?: string;
   // 重要度の見立て。Coworkが書いてくれば入る(未設定なら中扱い)。
   weight?: TaskWeight;
-  tag?: TaskTag;
   // 元になった声のメモ(その場で原文を確かめられるように)。
   sourceNoteId?: string;
   sourceText?: string;

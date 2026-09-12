@@ -1,17 +1,16 @@
-import { INK, LATIN, RUST, SWISS_XL } from "@/lib/constants";
+import { INK, JOURNAL_FACE, LATIN, RUST, SHAPE_FACE, SWISS_XL, TASK_FACE } from "@/lib/constants";
 import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
 import { pad } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { glyphOfKind } from "@/lib/deckStyle";
 import { areaOf, specOf, weightArea } from "@/lib/taskSize";
-import { resolveTag, tagColor, tagFace, tagInk, tagPatternOf } from "@/lib/taskTags";
 import { PILE_INSET, floorYOf } from "@/lib/pileBox";
 import {
   WD_FULL, makeWordBody, measureWordPlate, wordFontSize, type WordPlate,
 } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
-import type { Item, TabId, TagPattern, Task } from "@/lib/types";
+import type { Item, TabId, Task } from "@/lib/types";
 
 // ★★★**山の「世界」**（2026-09-11・第92巡に `components/home/Pile.tsx` から分けた）。
 // 物理の値・器の壁・図形の作り方だけがここに居る。**画面と指の扱いは `Pile.tsx`、
@@ -105,15 +104,18 @@ const frac = (s: string) => {
 export interface Piece {
   id: string;
   body: Body;
-  kind: "task" | "offer" | "badge" | "word";
+  kind: "task" | "offer" | "badge" | "word" | "dial";
   /** 角丸の四角の外接箱（タスク）。円は `r`。 */
   w?: number; h?: number; r?: number;
   face: string;
   ink: string;
   title?: string;
   face_?: number;      // 書体の番号（タグが決める）
-  /** ★★タグの柄（べた塗り／網点）。**見分けの本体**。`lib/tagPattern.ts`。 */
-  pat?: TagPattern;
+  /**
+   * ★★★**日付が無い＝輪郭線だけ**（2026-09-12・第93巡）。中は地と同じ色で塗り、
+   * 縁と字はメインカラー ―― **帯のピルとまったく同じ見え方**。
+   */
+  outlined?: boolean;
   photo?: string;
   /** ★写真が無い提案の顔（「展」「場」）。 */
   glyph?: string;
@@ -144,7 +146,8 @@ export interface PileContent {
   offers: Item[];
   unread: number;
   today: Date;
-  journal: { title: string } | null;
+  /** ★その日まだ声を録っていないか（真なら録音のダイヤルの円を落とす）。 */
+  journal: boolean;
 }
 
 /**
@@ -155,13 +158,17 @@ export interface PileContent {
 export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[] {
   const { tasks, offers, unread, today, journal } = c;
 
-  // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**
-  //   （2026-09-09 ユーザー指定）。形は**角丸の四角**＝タスクと同じ ――
-  //   `docs/home-spec.md` の「形に意味を足さない。増えたら色で分ける」に従い、
-  //   **見分けは色**（JOURNAL の家族のメイン）が担う。
+  // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**（2026-09-09）。
+  // ★★★**形は録音の UI の「大きな円」そのもの**（2026-09-12 ユーザー指定
+  //   「ホームで出てくる図形は、journal のその record の ui の円にしてください。
+  //   文字などはいらないです」）。角丸の四角＋「今日を録る」の文字はやめた ――
+  //   **行き先の顔をそのまま持ってくる**ほうが、何が起きるか説明が要らない。
+  //   ★寸法は `lib/dial.ts`（`VoiceStudio` の SVG と同じ数を読む）。
   const jDue = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-  const jTask = journal ? { title: journal.title, weight: 2 as const, dueDate: jDue } : null;
-  const jSpec = jTask ? specOf(jTask, today) : null;
+  // ★**面積は今までと同じ**（重要度 2 ＋ 今日が期限）。変えると山の詰まり具合が動く。
+  const jArea = journal ? areaOf({ title: "", weight: 2, dueDate: jDue }, today) : 0;
+  // 円の直径（solid 座標）。★面積の予算と縮めの上限で、四角と同じように扱うため。
+  const jSide = jArea > 0 ? 2 * Math.sqrt(jArea / Math.PI) : 0;
 
   // ★★★**文字の板は先に決めて、器の予算から差し引く**（2026-09-10）。
   //   板は器の幅の `WORD_W` を取る**いちばん大きな塊**なので、予算に数えないと
@@ -177,7 +184,7 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   const areas = [
     ...tasks.map((t) => areaOf(t, today)),
     ...offers.map(() => weightArea(3) * OFFER_K),
-    ...(jSpec ? [jSpec.area] : []),
+    ...(jArea > 0 ? [jArea] : []),
   ];
   const total = areas.reduce((a, b) => a + b, 0) || 1;
   const fixed = plates.reduce((a, pl) => a + pl.w * pl.h, 0)
@@ -188,7 +195,10 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   let unit = Math.min(UNIT, Math.sqrt(budget / total));
   // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。
   //   1枚だけ縮めない ―― 図形どうしの大きさの比がそのまま重要度なので。
-  for (const sp of [...tasks.map((t) => specOf(t, today)), ...(jSpec ? [jSpec] : [])]) {
+  for (const sp of [
+    ...tasks.map((t) => specOf(t, today)),
+    ...(jSide > 0 ? [{ w: jSide, h: jSide }] : []),
+  ]) {
     unit = Math.min(unit, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
   }
   unit = Math.max(10, unit);
@@ -236,7 +246,6 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
 
   tasks.forEach((t) => {
     const spec = specOf(t, today);
-    const tag = resolveTag(t.tag, t.id, t.title, t.context, t.belongings);
     const pw = Math.max(28, spec.w * unit);
     const ph = Math.max(24, spec.h * unit);
     const body = m.Bodies.rectangle(0, 0, pw, ph, BODY);
@@ -244,24 +253,25 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
     //   慣性も一緒に比例させるので、形と重さから正しい回りにくさが出る。
     m.Body.setMass(body, spec.area * MASS_K);
     toss(body, t.id, ph);
+    // ★★**日付が無ければ輪郭**（塗り／輪郭の1軸。字も縁と同じ色になる）。
+    const outlined = !(t.dueDate ?? "").trim();
     pieces.push({
       id: t.id, body, kind: "task", w: pw, h: ph,
-      face: tagColor(tag), ink: tagInk(tag), title: t.title, face_: tagFace(tag),
-      pat: tagPatternOf(tag),
+      face: TASK_FACE, ink: outlined ? TASK_FACE : bodyInkOn(TASK_FACE),
+      title: t.title, face_: SHAPE_FACE, outlined,
     });
   });
 
-  if (jTask && jSpec) {
-    const pw = Math.max(28, jSpec.w * unit);
-    const ph = Math.max(24, jSpec.h * unit);
-    const body = m.Bodies.rectangle(0, 0, pw, ph, BODY);
-    m.Body.setMass(body, jSpec.area * MASS_K);
-    toss(body, "journal", ph);
-    // ★色は **JOURNAL の家族のメイン**（`ACCENT_TEST` を切ったときは録音の赤）。
-    const face = ACCENT_TEST ? accentOf("journal").main : RUST;
+  if (jArea > 0) {
+    // ★★**録音のダイヤルと同じ円**。文字は載せない（ユーザー指定）。
+    const r = Math.max(28, Math.sqrt((jArea * unit * unit) / Math.PI));
+    const body = m.Bodies.circle(0, 0, r, BODY);
+    m.Body.setMass(body, jArea * MASS_K);
+    toss(body, "journal", r * 2);
     pieces.push({
-      id: "journal", body, kind: "task", w: pw, h: ph,
-      face, ink: bodyInkOn(face), title: jTask.title, face_: 1,
+      id: "journal", body, kind: "dial", r,
+      // ★面（円）と、その上の目盛り。**目盛りは面から導く**（`bodyInkOn`）。
+      face: JOURNAL_FACE, ink: bodyInkOn(JOURNAL_FACE),
       nav: "journal-record",
     });
   }

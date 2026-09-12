@@ -71,8 +71,8 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
   offers: Item[];
   unread: number;
   today: Date;
-  /** ★その日まだ声を録っていないときだけ来る（録っていれば `null`）。 */
-  journal: { title: string } | null;
+  /** ★その日まだ声を録っていないか（真なら録音のダイヤルの円を落とす）。 */
+  journal: boolean;
   /** ★図形を**軽く押した**ときの行き先。長押しは掴むほうなので走らない。 */
   onOpen: (tab: TabId) => void;
 }) {
@@ -233,9 +233,9 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
   //   ので、保存や同期のたびに `appState` が作り直されると**山ごと落ち直して
   //   いた**。中身が同じなら文字列も同じになるので、組み直しは起こらない。
   const sig = [
-    tasks.map((t) => `${t.id}:${t.weight ?? 2}:${t.dueDate ?? ""}:${t.tag ?? ""}:${t.title}`).join("|"),
+    tasks.map((t) => `${t.id}:${t.weight ?? 2}:${t.dueDate ?? ""}:${t.title}`).join("|"),
     offers.map((o) => `${o.id}:${o.kind}`).join("|"),
-    unread, journal?.title ?? "", today.toDateString(),
+    unread, journal ? "rec" : "", today.toDateString(),
   ].join("#");
 
   useEffect(() => {
@@ -285,7 +285,8 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       const dx = pt.x - b.position.x; const dy = pt.y - b.position.y;
       const d = Math.hypot(dx, dy);
       let inside: boolean;
-      if ((p.kind === "offer" || p.kind === "badge") && p.r) {
+      // ★★★**円で描くものは半径で見る**（`dial` を忘れると押しても飛ばない）。
+      if ((p.kind === "offer" || p.kind === "badge" || p.kind === "dial") && p.r) {
         inside = d <= p.r + TOUCH_SLOP;
       } else {
         // ★回っている四角は、**体の向きへ座標を戻してから**箱で見る。

@@ -1,8 +1,8 @@
-import type { AppState, BriefCard, InboxCandidate, Task } from "./types";
-import { ACCENT_TEST, accentOf } from "./appAccent";
+import type { AppState, BriefCard } from "./types";
+import { ACCENT_TEST } from "./appAccent";
 import { genreOfKind } from "./deckStyle";
 import { colorOfKind } from "./palette";
-import { resolveTag, tagColor } from "./taskTags";
+import { TASK_FACE } from "./constants";
 
 // ★★★**帯に何が並ぶかを決める唯一の場所**（2026-09-07・ホームの帯）。
 //
@@ -58,8 +58,17 @@ export const BAND_ROW: Record<BandKind, 0 | 1> = {
   offer: 0, today: 0, voice: 1, followup: 1, someday: 1,
 };
 
-/** ★**線と文字だけ**で描く種類（＝すでに登録してあるタスク）。 */
-export const isOutlined = (kind: BandKind): boolean => kind === "someday";
+/**
+ * ★★★**線と文字だけ**で描く種類（2026-09-12・第93巡）。
+ * **合図は「日付があるか／ないか」の1つだけ** ―― 下の段（3 声の候補・
+ * 4 フォローアップ・5 期日未割当のタスク）は**3種とも日付を持たない**ので、
+ * **下の段はまるごと輪郭**になる。
+ * ★★**前巡の指定「フォローアップは塗りのまま／登録済みだけ線」は、今回の
+ *   「日付あり／なしだけ」に置き換わった**（同じことを2つの言い方で言わない）。
+ * ★上の段（EXPLORE の提案）は**塗りのまま** ―― 黄は地との比が 1.27 しかなく、
+ *   **線にすると実機で消える**（ユーザー確定「輪郭はタスクだけ」）。
+ */
+export const isOutlined = (kind: BandKind): boolean => BAND_ROW[kind] === 1;
 
 /**
  * ★段ごとの件数の上限（2026-09-07 ユーザー確定）。★目盛りの外（部品の寸法）。
@@ -103,14 +112,10 @@ const cardText = (c: BriefCard): string => c.title || c.trigger || c.category;
 const cardFace = (c: BriefCard): string =>
   ACCENT_TEST ? colorOfKind(c.kind ?? "info") : (c.color ?? colorOfKind(c.kind ?? "info"));
 /**
- * タスク系のピルの色。
- * ★★★**TASK のメインカラー1色**（2026-09-09 ユーザー指定）。タグの濃淡には振らない
- *   ―― 3・4・5 が1段に混ざるので、色まで散らすと**塗りと線の区別**が読めなくなる。
- *   `ACCENT_TEST` を切ったときは、これまでどおり**タグの色**に戻る。
+ * タスク系のピルの色。★★**TASK のメインカラー1色**（2026-09-09 ユーザー指定）。
+ * ★第93巡にタグを廃止したので、分岐そのものが消えた（`lib/constants.ts` の1か所）。
  */
-const taskFace = (t: Partial<Task> | Partial<InboxCandidate>, seed: string): string =>
-  ACCENT_TEST ? accentOf("tasks").main
-    : tagColor(resolveTag(t.tag, seed, t.title, t.context, t.belongings));
+const taskFace = (): string => TASK_FACE;
 
 /**
  * まだ決めていない提案のカード。
@@ -179,7 +184,7 @@ export function bandItems(state: AppState): BandItem[] {
   // 3 JOURNAL のデータから抽出されたタスクの候補。
   for (const c of state.inbox ?? []) {
     if (c.dueDate) continue;                       // 日付が付いたものは帯に居ない
-    out.push({ id: `voice-${c.id}`, kind: "voice", text: c.title, face: taskFace(c, c.id) });
+    out.push({ id: `voice-${c.id}`, kind: "voice", text: c.title, face: taskFace() });
   }
 
   // 4 既存のタスクへのフォローアップ（`lib/taskSuggest.ts` が作る）。
@@ -188,7 +193,7 @@ export function bandItems(state: AppState): BandItem[] {
     for (const s of t.suggestions ?? []) {
       out.push({
         id: `follow-${s.id}`, kind: "followup", text: s.title,
-        face: taskFace(t, t.id), parentId: t.id,
+        face: taskFace(), parentId: t.id,
       });
     }
   }
@@ -196,7 +201,7 @@ export function bandItems(state: AppState): BandItem[] {
   // 5 期日を割り当てていないタスク。
   for (const t of state.tasks ?? []) {
     if (t.done || t.dueDate) continue;
-    out.push({ id: `someday-${t.id}`, kind: "someday", text: t.title, face: taskFace(t, t.id) });
+    out.push({ id: `someday-${t.id}`, kind: "someday", text: t.title, face: taskFace() });
   }
 
   return out;

@@ -8,22 +8,21 @@ import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer
 import { ymd } from "@/components/tasks/WhenSheet";
 import { haptic } from "@/lib/helpers";
 import { rectOf, sectionOutline, type SolidSpec } from "@/lib/solid";
-import { clearSolidBitmaps, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, wordBitmap, type SolidPaint, type SolidView } from "@/lib/solidPaint";
-import { onFontsReady, primeAdvances } from "@/lib/textFit";
+import { clearSolidBitmaps, isDated, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, wordBitmap, type SolidPaint, type SolidView } from "@/lib/solidPaint";
+import { onFontsReady } from "@/lib/textFit";
 import { GROUND_LIFT, PILE_INSET, floorYOf, pileBandBottom, pileWOf } from "@/lib/pileBox";
 import {
   FREE_PAD as PLATE_FREE_PAD, FREE_PAD_Y as PLATE_FREE_PAD_Y,
   PLATE_PAD, PLATE_PAD_Y, SQUEEZE_MIN, WD_FULL,
   drawWordPlate, inkBoxOf, makeWordBody, measureWordPlate, wordFontSize,
 } from "@/lib/wordPlate";
-import { allTagFaces, allTagLabels, resolveTag, tagColor, tagInk } from "@/lib/taskTags";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
-import { INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL, SECOND } from "@/lib/constants";
+import { BD_GREY, INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL, SECOND, TASK_FACE } from "@/lib/constants";
 import { ms, T_IN, T_ITEM, T_OUT } from "@/lib/motion";
 import { flick, flickStep, flickThrow, type Flick } from "@/lib/scroll";
 import { D_SETTLE, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring } from "@/lib/spring";
-import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
+import { SPACE, TYPE, LEAD, TRACK, WEIGHT } from "@/lib/tokens";
 import type { AppState, TabProps, Task } from "@/lib/types";
 
 // ★タスクタブ(GRAVITY)。**タスク図形は常にこの空間にだけ在る**(第52巡)。
@@ -373,7 +372,7 @@ interface Piece {
   wordW?: number;
   wordH?: number;
 }
-interface Item { id: string; task: Task; paint: SolidPaint; spec: SolidSpec; tag: string }
+interface Item { id: string; task: Task; paint: SolidPaint; spec: SolidSpec }
 /** ★★ALIGN で**図形と一緒に飛んでいくだけ**の文字ブロック(第61巡)。
  *  日付・曜日の板は円弧のスロットを持たない(タスクではない)ので、道を走り切ったら
  *  そこで描くのをやめる。第60巡はモードが変わった瞬間に消えていた(ユーザー指摘)。 */
@@ -385,9 +384,9 @@ interface Fly {
 /** ALIGN で絵を置く場所。x/y は**絵の中心**。 */
 interface Slot { x: number; y: number; s: number; a: number; o: number }
 
+// ★★地の色を渡す（輪郭のとき中を塗るのに使う）。TASK の地はクリーム1色。
 const paintOf = (t: Task, view: SolidView): SolidPaint => ({
-  spec: specOf(t), view, title: t.title,
-  tag: resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note),
+  spec: specOf(t), view, title: t.title, ground: BD_GREY,
 });
 
 const sameShape = (a: SolidSpec, b: SolidSpec) =>
@@ -736,10 +735,15 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         else {
           ctx.rotate(-p.body.angle);
           ctx.translate(-p.body.position.x, -p.body.position.y);
-          ctx.fillStyle = tagColor(p.paint.tag);
+          // ★焼く前の代替。★塗り／輪郭の分岐も同じにしておく（日付なしだけ線）。
           ctx.beginPath();
           p.body.vertices.forEach((v, i) => (i === 0 ? ctx.moveTo(v.x, v.y) : ctx.lineTo(v.x, v.y)));
-          ctx.closePath(); ctx.fill();
+          ctx.closePath();
+          if (isDated(p.paint.spec)) { ctx.fillStyle = TASK_FACE; ctx.fill(); }
+          else {
+            ctx.fillStyle = BD_GREY; ctx.fill();
+            ctx.strokeStyle = TASK_FACE; ctx.lineWidth = 1; ctx.stroke();
+          }
         }
         ctx.restore();
       }
@@ -1440,10 +1444,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   }, [advance]);
 
   useEffect(() => onFontsReady(() => {
-    clearSolidBitmaps(); primeTagMetrics(); wake(); drawRef.current();
+    clearSolidBitmaps(); wake(); drawRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
-  useEffect(() => { primeTagMetrics(); }, []);
 
   const visibleRef = useRef(active);
   useEffect(() => {
@@ -1604,7 +1607,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       // ★★ALIGN の図形は**文字を持たない**(第65巡)。題は右の行に大きく出るので、
       //   図形の中にも同じ題があると二重になる(ユーザー指摘)。
       const paint = paintOf(t, "none");
-      return { id: t.id, task: t, paint, spec: paint.spec, tag: paint.tag ?? "" };
+      return { id: t.id, task: t, paint, spec: paint.spec };
     });
   }, []);
 
@@ -1861,7 +1864,7 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     const piece = piecesRef.current.find((p) => p.id === id);
     if (!piece) return;
     const { x, y } = piece.body.position;
-    const fill = tagColor(piece.paint.tag);
+    const fill = TASK_FACE;
     for (let i = 0; i < 14; i++) {
       const a = (Math.PI * 2 * i) / 14 + Math.random() * 0.4;
       const sp = 2 + Math.random() * 4;
@@ -2303,16 +2306,8 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                     fontFamily: LATIN, fontWeight: WEIGHT.bold, fontSize: TYPE.small,
                     lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: MUTED, whiteSpace: "nowrap",
                   }}>{dl.sub ? `${dl.text} ${dl.sub}` : dl.text}</span>
-                  <span style={{
-                    display: "inline-block", padding: `0 ${SPACE.sm}px`, borderRadius: RADIUS.pill,
-                    background: tagColor(it.paint.tag), color: tagInk(it.paint.tag),
-                    fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.small,
-                    lineHeight: LEAD.flat, letterSpacing: TRACK.wide, whiteSpace: "nowrap",
-                  }}>
-                    {/* ★字間は最後の字の右にも付くので、そのぶんピルの中で文字が
-                        左に寄って見える。同じ量の負の右マージンで打ち消す。 */}
-                    <span style={{ marginRight: `-${TRACK.wide}` }}>{it.tag.toUpperCase()}</span>
-                  </span>
+                  {/* ★★★**タグのピルは廃止**（2026-09-12・第93巡）。日数のラベル
+                      （`SOMEDAY` / `3 DAYS`）が同じことを言っているので二重だった。 */}
                 </div>
               </div>
             );
@@ -2428,7 +2423,6 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
               </div>
 
               {expandedTasks.map((t, i) => {
-                const tag = resolveTag(t.tag, t.id, t.title, t.context, t.belongings, t.note);
                 const steps = (t.subtasks ?? []).filter((x) => x.title.trim());
                 const when = [t.dueTime, t.endTime].filter(Boolean).join("–");
                 return (
@@ -2440,21 +2434,16 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                       lineHeight: LEAD.snug, display: "-webkit-box", WebkitBoxOrient: "vertical",
                       WebkitLineClamp: 2, overflow: "hidden", wordBreak: "auto-phrase",
                     }}>{t.title || "無題"}</div>
-                    {/* 時刻とタグ … ALIGN と同じ作法(字面の箱を揃えてベースラインで並べる)。 */}
-                    <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm, marginTop: SPACE.hair }}>
-                      {when && (
+                    {/* 時刻 … ALIGN と同じ作法(字面の箱を揃えてベースラインで並べる)。
+                        ★タグのピルは廃止（第93巡）。 */}
+                    {when && (
+                      <div style={{ display: "flex", alignItems: "baseline", gap: SPACE.sm, marginTop: SPACE.hair }}>
                         <span style={{
                           fontFamily: LATIN, fontWeight: WEIGHT.bold, fontSize: TYPE.small,
                           lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: MUTED, whiteSpace: "nowrap",
                         }}>{when}</span>
-                      )}
-                      <span style={{
-                        display: "inline-block", padding: `0 ${SPACE.sm}px`, borderRadius: RADIUS.pill,
-                        background: tagColor(tag), color: tagInk(tag),
-                        fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.small,
-                        lineHeight: LEAD.flat, letterSpacing: TRACK.wide, whiteSpace: "nowrap",
-                      }}><span style={{ marginRight: `-${TRACK.wide}` }}>{tag.toUpperCase()}</span></span>
-                    </div>
+                      </div>
+                    )}
                     {steps.length > 0 && (
                       <div style={{
                         fontFamily: SANS, fontWeight: WEIGHT.text, fontSize: TYPE.body, color: SECOND,
@@ -2504,13 +2493,6 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       )}
     </div>
   );
-}
-
-function primeTagMetrics() {
-  if (typeof window === "undefined") return;
-  const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 32));
-  const step = () => { if (primeAdvances(allTagLabels(), allTagFaces(), 4) > 0) idle(step as never); };
-  idle(step as never);
 }
 
 /** 大きさだけ入れ替える(位置は引き継ぐ。速度は捨てる — 呼ぶのは画面の外だけ)。 */

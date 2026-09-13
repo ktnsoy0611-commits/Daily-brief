@@ -15,8 +15,22 @@ import { WORD_WEIGHT, trackedWidth, wordBitmap } from "./solidPaint";
 // ★中身は GRAVITY から**そのまま**移してある（第61〜63巡の判断を含む）。
 //   使うのは2か所 … GRAVITY の日付・曜日＋TIMELINE の「自由」／ホームの山の日付・曜日。
 
-/** 横に詰めてよい下限（これ以上は潰さない）。★`GravityTab` の `FREE_SQUEEZE`。 */
-export const SQUEEZE_MIN = 0.50;
+// ★★★**偽コンデンスをやめた**（2026-09-13・第100巡にユーザー指定
+//   「アプリで共通で使っている英語のフォントがダサい。**大きい文字と数字が変**」）。
+//   ★★**「変」の正体は書体ではなく潰し方だった** ―― 第99巡までは
+//     `SQUEEZE_MIN = 0.50` で大きさを2倍に取り、**横を 50% に潰して**
+//     コンデンス体に見せていた（Archivo の `wdth` の軸は canvas に届かないので、
+//     縦長は `ctx.scale` で作るしか無かった）。太さ 900 との合わせ技で
+//     「太くて不自然に細長い」字になっていた。
+//   → **大きな欧文は `DISPLAY`（Anton。もともと縦長）**になったので、
+//     **潰す細工が要らない**。`app/layout.tsx` のコメントも読むこと。
+
+/** ★★**狙う詰め**（`wordFontSize` が割る値）。**1 ＝ 意図的に潰さない**。 */
+export const SQUEEZE_AIM = 1;
+/** 横に詰めてよい下限（これ以上は潰さない）。★**安全網だけ**（第100巡に 0.50 → 0.88）。
+ *  ★`GravityTab` の `FREE_SQUEEZE`（和文の「自由」）もこれを読む ―― 和文に欧文の
+ *  詰めを当てないという `design.md` §1 の決まりに、値のほうが寄った。 */
+export const SQUEEZE_MIN = 0.88;
 
 /** ★板の遊び。★★**縦は横の半分**（第62巡）― 板を平たくするほど「寝る」のが
  *  安定な姿勢になり、短い辺で立ったまま止まりにくい。字はもともと横長なので、
@@ -81,8 +95,8 @@ export function wordFontSize(words: readonly string[], room: number, fam: string
   probe.font = canvasFont(WORD_WEIGHT, base, fam);
   let widest = 1;
   for (const w of words) widest = Math.max(widest, trackedWidth(probe, w, PLATE_TRACK * base));
-  // ★横は `SQUEEZE_MIN` まで詰めてよい ― コンデンス体として読ませる。
-  return Math.max(14, Math.min(max, Math.round((base * room) / widest / SQUEEZE_MIN)));
+  // ★★**`SQUEEZE_AIM`(1) で割る ＝ 潰さない前提で大きさを決める**（第100巡）。
+  return Math.max(14, Math.min(max, Math.round((base * room) / widest / SQUEEZE_AIM)));
 }
 
 /** その語を決めた幅へ収めるための横の詰め(1 = 詰めない)。 */

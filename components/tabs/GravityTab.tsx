@@ -18,7 +18,7 @@ import {
 } from "@/lib/wordPlate";
 import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
-import { BD_GREY, INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL, SECOND, TASK_FACE } from "@/lib/constants";
+import { BD_GREY, DISPLAY, INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL, SECOND, TASK_FACE } from "@/lib/constants";
 import { ms, T_IN, T_ITEM, T_OUT } from "@/lib/motion";
 import { flick, flickStep, flickThrow, type Flick } from "@/lib/scroll";
 import { D_SETTLE, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring } from "@/lib/spring";
@@ -259,11 +259,13 @@ const TL_FLAT = 0.04;
 /** ★★1 を超えて**引っ張れる**(第56巡にユーザー指定)。超えたぶんは重くなり、
  *  `TL_STRETCH` へ漸近する。離すとバネで規定(1)へ戻る。 */
 const TL_STRETCH = 1.9;
-/** 曜日の幅の軸(Archivo)。★細くすると**同じレーン幅でより大きく**でき、
- *  変形せずに「少し縦長」になる(第56巡にユーザー確定。★第59巡に 75 → 58)。 */
-const WD_WDTH = 58;
-/** 上の幅での1文字あたりの送り(em)。`laneFs` を決めるのに使う。 */
-const WD_ADV = 0.54;
+// ★★★**`WD_WDTH`（曜日の幅の軸 58）は第100巡に削除した。復活させない。**
+//   大きな欧文が `DISPLAY`（Anton）になり、**縦長は書体そのものが持つ**ようになった
+//   ―― 可変の軸で絞る細工が要らなくなった（`app/layout.tsx` のコメントを読むこと）。
+/** 曜日1文字あたりの送り(em)。`laneFs` を決めるのに使う。
+ *  ★★**Anton の実測**（WebKit … `MON` の送り 0.577em ＋ `TRACK.tight`(-0.02em)）。
+ *  ★書体を替えたら測り直すこと（第99巡までは Archivo の `wdth` 58 で 0.54 だった）。 */
+const WD_ADV = 0.56;
 /** レーン幅に対する図形の大きさ。★第55巡に大きく(0.86→0.94)。 */
 const TL_FILL = 0.94;
 /** レーンの壁の厚み。★境目の**上に**置くので、レーンの内寸は `laneW - WALL_T`。
@@ -366,7 +368,7 @@ interface Piece {
   /** ★塗りの中心が原点からどれだけずれているか(描くときに引く)。 */
   wordDx?: number;
   wordDy?: number;
-  /** ★書体 … 日付・曜日は `LATIN`、「自由」は `SANS`(`自由` は Archivo にグリフが無い)。 */
+  /** ★書体 … 日付・曜日は `DISPLAY`(Anton)、「自由」は `SANS`(和文のグリフが無い)。 */
   wordFam?: string;
   /** 塗りの箱(焼く絵の大きさ)。 */
   wordW?: number;
@@ -2231,8 +2233,8 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
   const today = new Date();
   const { w: sw } = sizeRef.current;
   const laneW = (sw || 390) / LANES_VISIBLE;
-  // ★幅の軸を細く(`WD_WDTH`)したぶん、**同じレーン幅でより大きく**できる
-  //   … 変形せずに「少し縦長」になる(第56巡にユーザー確定)。
+  // ★**縦長の書体（Anton）のぶん、同じレーン幅でより大きく**できる（第100巡）。
+  //   ★`WD_ADV` は Anton の実測。書体を替えたら測り直すこと。
   const laneFs = Math.min(SWISS_XL, Math.floor((laneW * 0.92) / (3 * WD_ADV)));
   // ★閉じている途中も**同じ日を出したまま**にして、拭き取りを逆再生する。
   const shownIdx = expanded ?? closingDay;
@@ -2374,8 +2376,11 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
                   willChange: "transform",
                 }}>
                   <span style={{
-                    fontFamily: LATIN, fontWeight: WEIGHT.heavy, fontSize: laneFs, lineHeight: 0.86,  // ★目盛りの外（表示専用の巨大欧文。行間で字面を詰める）
-                    fontVariationSettings: `"wdth" ${WD_WDTH}`,
+                    // ★★★**大きな欧文は `DISPLAY`（Anton）**（第100巡）。★Anton は
+                    //   **単一ウェイト・軸なし**なので `heavy`(800) も `wdth` も
+                    //   渡さない（渡すと合成ボールドが掛かって汚れる）。
+                    //   **縦長は書体そのものが持っている**（`WD_WDTH` は役目を終えた）。
+                    fontFamily: DISPLAY, fontWeight: WEIGHT.text, fontSize: laneFs, lineHeight: 0.86,  // ★目盛りの外（表示専用の巨大欧文。行間で字面を詰める）
                     letterSpacing: TRACK.tight, whiteSpace: "nowrap", paddingBottom: SPACE.xs,
                     // ★曜日は**黒**(第57巡にユーザー指定)。今日だけ RUST。
                     //   薄墨の階調はやめた(横へ送ると全部が読めなくなっていた)。
@@ -2618,10 +2623,12 @@ function pileWordPieces(
     //   → **長いほう(曜日)で決めた1つの大きさ**を両方に使う。日付は短いので、
     //   同じ大きさのまま箱が狭くなるだけで収まる。
     const room = inner * PILE_WORD_W;
-    const fs = wordFontSize(words as string[], room, LATIN, SWISS_XL);
+    // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。★canvas に焼くので、
+    //   `wdth` のような可変の軸は**そもそも届かない** ―― 縦長は書体が持つ。
+    const fs = wordFontSize(words as string[], room, DISPLAY, SWISS_XL);
     const r1 = frac(id + seed); const r2 = frac(id + seed + "y");
     const p = makeWordPiece(M, word, id, room, fs,
-      w * 0.5, -200 - i * 170 - r2 * 120, INK, LATIN, PILE_WORD_PAD, PILE_WORD_PAD_Y);
+      w * 0.5, -200 - i * 170 - r2 * 120, INK, DISPLAY, PILE_WORD_PAD, PILE_WORD_PAD_Y);
     if (!p) return;
     // ★横は**箱が決まってから**画面の中へ収める(塗りぴったりなので幅は語ごとに違う)。
     const half = (p.body.bounds.max.x - p.body.bounds.min.x) / 2;

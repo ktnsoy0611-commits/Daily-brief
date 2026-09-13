@@ -1,12 +1,14 @@
-import { BAND_BEZEL, BD_GREY, LATIN, SANS } from "@/lib/constants";
+import { BAND_BEZEL, BD_GREY, DISPLAY, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
+import { bodyInkOn } from "@/lib/palette";
 import { CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
 import { traceCardShape } from "@/lib/cardShape";
-import { clampRows, stackOutline } from "@/lib/solid";
+import { clampRows, halfWidthAtStack, stackOutline } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
-import { canvasFont, drawFitted, ensureGlyphs, fitText } from "@/lib/textFit";
+import { canvasFont, drawFitted, ensureGlyphs, layoutInRows } from "@/lib/textFit";
 import { WEIGHT } from "@/lib/tokens";
 import { drawWordPlate } from "@/lib/wordPlate";
+import { WORD_WEIGHT } from "@/lib/solidPaint";
 import { zigVerts, type Piece } from "./pileWorld";
 
 // ★★★**山の焼き方と描き方**（2026-09-11・第92巡に `Pile.tsx` から分けた）。
@@ -57,12 +59,18 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   // ★★★**形は `lib/solid.ts` の「ピルの積み」から引く**（2026-09-13・第99巡）。
   //   山だけ角丸の四角を別に描いていたのをやめた ―― **同じタスクが画面によって
   //   違う形**に見えていた（ユーザー確定で TASK アプリと山の両方を揃える）。
-  //   ★★**段の数は文字の行数**なので、**先に組んでから形を決める**。
   ensureGlyphs(p.face_, p.title);
   // ★★★**段の数は題の文字数から**（`rowsOf`。第99巡）。TASK アプリと**同じ関数**。
   //   ★書体の到着で段数が変わらないよう、行数の実測ではなく純粋な関数から引く。
   const rows = clampRows(rowsOf(p.title));
-  const fit = fitText(p.title, p.face_, pw * 0.82, ph * 0.7, rows);
+  // ★★★**割り付けも TASK アプリと同じ `layoutInRows`**（2026-09-13・第100巡）。
+  //   第99巡は `fitText(..., pw * 0.82, ph * 0.7, rows)` で組んでいた ―― 矩形に
+  //   詰めるので**段の中心と行の中心が一致せず**、`0.7` のぶん山と TASK で
+  //   **同じタスクの絵が違っていた**。段の profile（`halfWidthAtStack`）を渡す。
+  const fit = layoutInRows(
+    p.title, p.face_, rows, pw, ph,
+    (t) => halfWidthAtStack(rows, pw / ph, t), ph / rows,
+  );
   const outline = stackOutline(rows, pw / ph);
   const trace = (sw: number, sh: number) => {
     ctx.beginPath();
@@ -124,7 +132,8 @@ export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
   ctx.imageSmoothingQuality = "high";
   // ★原点を絵の中心へ（`drawCassette` は中心に描く）。
   ctx.translate(w / 2, h / 2);
-  drawCassette(ctx, pw, ph, p.face, p.ink);
+  // ★★芯（`lib/reelHub.ts`）は**リールの面から導く** ―― 黒い円の上の白。
+  drawCassette(ctx, pw, ph, p.face, p.ink, bodyInkOn(p.ink));
   const made = { canvas: cv, w, h };
   if (bakeCache.size > 80) bakeCache.clear();
   bakeCache.set(key, made);
@@ -184,7 +193,7 @@ export function drawPile(
       //   同じ数を読む）。★合成の絵なので**焼いてから貼る**。
       const bmp = cassetteBitmap(p, dpr);
       if (bmp) ctx.drawImage(bmp.canvas, -bmp.w / 2, -bmp.h / 2, bmp.w, bmp.h);
-      else drawCassette(ctx, p.w, p.h, p.face, p.ink);
+      else drawCassette(ctx, p.w, p.h, p.face, p.ink, bodyInkOn(p.ink));
     } else if (p.kind === "word") {
       // ★★文字の板は **GRAVITY と同じ焼いた絵**（`lib/wordPlate.ts`）。
       //   ★ここは既に translate/rotate 済みなので、原点に置くだけ。
@@ -236,7 +245,9 @@ export function drawPile(
       //   焼き付けて落として」）。図形は転がるのに中身だけ据わっていると、
       //   **面に描いてあるのではなく上に浮いている**ように見える。
       ctx.fillStyle = p.ink;
-      ctx.font = canvasFont(900, p.r * 0.9, LATIN);
+      // ★★大きな数字は `DISPLAY`（Anton。第100巡）。単一ウェイトなので 400 で頼む
+      //   （900 を頼むと合成ボールドが掛かる）。
+      ctx.font = canvasFont(WORD_WEIGHT, p.r * 0.9, DISPLAY);
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(String(p.count ?? 0), 0, 0);
     }

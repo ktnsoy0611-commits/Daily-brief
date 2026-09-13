@@ -4,7 +4,7 @@
 //   1. タブバーのアイコン（`components/TabIcons.tsx` の `cassette`。**SVG**）
 //   2. ホームの山が落とす図形（`components/home/pilePaint.ts`。**canvas**）
 //   3. 録音画面の「大きな円2つ＋その後ろの面」（`components/VoiceStudio.tsx`。**DOM**）
-// **同じ数を3度書くと必ず食い違う**（`lib/wordPlate.ts` と `lib/dial.ts` で学んだ）。
+// **同じ数を3度書くと必ず食い違う**（`lib/wordPlate.ts` と `lib/reelHub.ts` で学んだ）。
 //
 // ★★★**録音画面はもともと「カセットを極端に寄って見た絵」だった**（第94巡に判明）。
 //   アイコンのリールの比 `r ÷ リール間 = 2.9 / 7.2 = 0.403`、録音画面の円は
@@ -14,6 +14,8 @@
 // ★★**塗り分けは「四角＝青／他＝黒」**（2026-09-13 ユーザー指定）。
 //   ただし**タブバーの中だけは1色**（地が選択状態で変わるので色を決め打ちできない。
 //   `TabIcons.tsx` の `PALE` の濃淡2段の作法をそのまま使う）。
+
+import { traceHub } from "./reelHub";
 
 /** 寸法を持つ座標系の一辺（＝タブアイコンの `viewBox` と同じ 24）。★目盛りの外（図形の座標系）。 */
 export const CASSETTE_VIEW = 24;
@@ -123,6 +125,20 @@ export const CASSETTE_REEL_GAP_PER_W =
 /** リールの中心 y（本体の上の縁からの割合）。★いまは 0.371 ＝ **中心より少し上**。 */
 export const CASSETTE_REEL_CY_PER_H =
   (CASSETTE.reels[0].y - CASSETTE.body.y) / CASSETTE.body.h;
+// ★★★**録音の波形の帯もリールから導く**（2026-09-13・第100巡にユーザー指定
+//   「**波形の位置がおかしい。以前のように円と円の間の上あたりに表示し、もっと
+//   小さくして、ちゃんとベゼルもとって**」）。
+//   ★★第99巡は `(plateTop + (cy − RD/2)) / 2` ＝**リールより上**へ置いていた。
+//     第98巡までは `cy − 136` で**リールとリールのあいだ**に在った ―― 帯の幅は
+//     「その高さでの円と円の隙間」なので、**リールの上寄り**でこそ広く取れる。
+//   ★★**生の 136 を捨て、リールの直径に対する比で持つ**（リールの大きさが
+//     変わっても「円と円の間の上あたり」が保たれる）。
+/** 波形の帯の中心を、リールの中心から**どれだけ上へ**置くか ÷ リールの直径。
+ *  ★0.44 は第98巡の 136 / 308.6（＝以前の位置そのまま）。 */
+export const CASSETTE_WAVE_CY_PER_D = 0.44;
+/** 波形の帯の高さ ÷ リールの直径。★第98巡は 58/308.6 = 0.188 → **もっと小さく**。 */
+export const CASSETTE_WAVE_H_PER_D = 0.14;
+
 /** 下の段の上端（本体の上の縁からの割合）。★段は本体の下の縁に接していない。 */
 export const CASSETTE_DECK_Y_PER_H = CASSETTE_DECK_Y / CASSETTE.body.h;
 /** 下の段の幅 ÷ 本体の幅。★0.383（第97巡は 0.5 ＝ 半分あった）。 */
@@ -145,6 +161,32 @@ export const CASSETTE_BAR_W_PER_H = CASSETTE.bar.w / CASSETTE.bar.h;
 //   ★★**録音画面は「上の余白・リール・下の段」を自分で積む**（`VoiceStudio` の
 //   `PLATE_PAD` と `deckH`）。**横の比（`CASSETTE_ASPECT`）だけをアイコンから借りる。**
 
+// ★★★**突起は「上だけ角丸」**（2026-09-13・第100巡にユーザー指定
+//   「**左上のボタンは、下は角丸にしないでください。四角からボタンが出っ張って
+//   いることを示すデザインなので、下は角丸だとおかしい**」）。
+//   ★★**3つの技術が同じ「上だけ丸める」を持つ必要がある** ―― SVG の `rx` も
+//     canvas の単一半径も CSS の一括指定も**四隅**を丸めてしまう。だから
+//     **上だけの形をここ1か所**に置き、タブアイコン（SVG の `d`）・ホームの山
+//     （canvas の4値）・録音画面（CSS の4値）がそれぞれの語で読む。
+
+/** 上の2隅だけ丸めた矩形（4値。canvas の `roundRect` と CSS の並びは同じ順）。 */
+export const topRoundRadii = (r: number): [number, number, number, number] => [r, r, 0, 0];
+
+/** 上の2隅だけ丸めた矩形の **SVG のパス**（`TabIcons` が読む）。 */
+export function topRoundRectPath(x: number, y: number, w: number, h: number, r: number): string {
+  const k = Math.max(0, Math.min(r, w / 2, h));
+  return [
+    `M${x + k} ${y}`,
+    `H${x + w - k}`,
+    `A${k} ${k} 0 0 1 ${x + w} ${y + k}`,
+    `V${y + h}`,
+    `H${x}`,
+    `V${y + k}`,
+    `A${k} ${k} 0 0 1 ${x + k} ${y}`,
+    "Z",
+  ].join(" ");
+}
+
 const roundRect = (
   ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number,
 ) => {
@@ -161,7 +203,7 @@ const roundRect = (
  *   2色へ置き換えたもの（canvas には「地が変わる」問題が無いので色で塗れる）。
  */
 export function drawCassette(
-  ctx: CanvasRenderingContext2D, w: number, h: number, face: string, ink: string,
+  ctx: CanvasRenderingContext2D, w: number, h: number, face: string, ink: string, hub: string,
 ): void {
   // 24 の器 → 実寸への倍率。★本体の外接箱が (w, h) になるように取る。
   const kx = w / CASSETTE.body.w;
@@ -184,9 +226,27 @@ export function drawCassette(
     ctx.closePath();
     ctx.fill();
   }
+  // ★★★**リールの芯**（2026-09-13・第100巡）。録音画面の SVG と**同じ点の列**
+  //   （`lib/reelHub.ts`）。★原点をリールの中心へ移して引く。
+  ctx.fillStyle = hub;
+  for (const reel of CASSETTE.reels) {
+    ctx.save();
+    ctx.translate(px(reel.x), py(reel.y));
+    traceHub(ctx, CASSETTE.reelR * 2 * ky);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = ink;
   // ★左上の突起2つ。**本体の上の縁から上へ出る**（`ink`）。
+  // ★★**丸めるのは上の2隅だけ**（第100巡）。`roundRect` が無い環境は素の矩形へ落ちる。
   for (const t of CASSETTE.tabs) {
-    roundRect(ctx, px(t.x), py(t.y), t.w * kx, t.h * ky, t.r * ky);
+    ctx.beginPath();
+    if (typeof ctx.roundRect === "function") {
+      ctx.roundRect(px(t.x), py(t.y), t.w * kx, t.h * ky, topRoundRadii(t.r * ky));
+    } else {
+      ctx.rect(px(t.x), py(t.y), t.w * kx, t.h * ky);
+    }
+    ctx.closePath();
     ctx.fill();
   }
   // ★下の段 … 左の円（REC）と右のバー。**バーと同じ材料（`ink`）**で塗る。

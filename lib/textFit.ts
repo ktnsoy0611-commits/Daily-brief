@@ -8,11 +8,12 @@ import type { FontFace } from "./constants";
 // `lib/constants.ts` の `SHAPE_FACE` が持ち、ここは「番号で渡された書体で
 // 組む」だけ。★書体で分類を作らないこと（分類は塗り／輪郭が言う）。
 //
-// 組み方は2種類:
-//   fitText   … 箱いっぱいに**できるだけ大きく**。BOTTOM のタグ名が使う。
-//   layoutInShape … **一定の大きさ**から始め、**形の輪郭に沿って**折り返し、
-//                   入らなければ縮める。
-//                FRONT のタイトルが使う(左下寄せ)。
+// ★★★組み方は**1つだけ**(2026-09-13・第100巡)。
+//   layoutInRows … **段（ピルの1段）の刻みが先に決まっていて、そこへ1行ずつ**
+//                  置く。字は `pitch × ROW_FILL` で始め、入らなければ縮める。
+//                  四方のベゼルは段の余りから出る（数を置かない）。
+//   ★`fitText`（矩形いっぱい）と `layoutInShape`（形に沿って折り返す）は消した。
+//     理由はこのファイル下部の「第100巡に3つ消した」を読むこと。
 //
 // ★★文字は**グリフのアトラス**を経由して描く。canvas の fillText は、和文の
 // Webフォント(unicode-range で数百の @font-face に分割されている)に対して
@@ -431,10 +432,28 @@ export interface FitResult {
   /** 1文字の高さ(px)。行の高さはこれ × LINE_H。 */
   size: number;
   lines: FitLine[];
+  /** ★★★**行ごとの中心 y**（図形の中心からの px）。`layoutInRows` だけが入れる。
+   *  入っていれば `drawFitted` は**等間隔に積むのをやめて、この位置に置く**。 */
+  ys?: number[];
 }
 
 /** 行の高さ。和文なので詰め気味にする。 */
 export const LINE_H = 1.02;
+
+/**
+ * ★★★**ピルの段の中に置く字の em ÷ 段の刻み**（2026-09-13・第100巡にユーザー指定
+ * 「**一つのピルの段に対して一行の文字**が来るように、**一行の文字がピルの段の中心**に
+ * 来るように。その時**文字とピルの輪郭の間のスペーシング**をちゃんと適切に」）。
+ *
+ * ★★これが「文字とピルの輪郭の間のスペーシング」の**唯一の出どころ** ――
+ *   段の刻み `pitch` に対して字は `pitch × ROW_FILL`、残りの
+ *   `pitch × (1 − LINE_H × ROW_FILL)` が上下の余りで、**その半分を左右にも使う**
+ *   （上下左右が同じ px になるので、ピルの中で字が浮いて見えない）。
+ * ★★`lib/taskSize.ts` の `rowAspect`（箱の比）も**この同じ数から**出る。
+ *   箱を決める側と字を詰める側が別の数を持つと、箱が字に足りない。
+ * ★目盛りの外（**部品の内部の比**。`TYPE` の段ではない）。
+ */
+export const ROW_FILL = 0.62;
 
 /** その文字列を n 行に割る(文字数がなるべく揃うように)。 */
 export function splitLines(text: string, n: number): string[] {
@@ -446,120 +465,73 @@ export function splitLines(text: string, n: number): string[] {
   return out;
 }
 
-/**
- * 箱 w×h に、その書体で組んだ文字列を**できるだけ大きく**収める。
- * 行数の候補をすべて試し、いちばん文字が大きくなる割り方を選ぶ。
- * ★BOTTOM のタグ名専用(「図形いっぱいに」というユーザー指定を守る)。
- * タイトルは layoutInShape を使うこと(形に沿って折り返す)。
- * 幅は advanceOf のキャッシュから出す(measureText は書体×文字につき1回だけ)。
- */
-export function fitText(text: string, face: number, w: number, h: number, maxLines = 4): FitResult | null {
-  const chars = [...(text ?? "").trim()];
-  if (!chars.length || w <= 1 || h <= 1) return null;
-
-  const fi = clampFace(face);
-  const widths = chars.map((c) => advanceOf(fi, c));
-
-  let best: FitResult | null = null;
-  for (let n = 1; n <= Math.min(maxLines, chars.length); n++) {
-    const lines = splitLines(text.trim(), n);
-    let at = 0;
-    const measured: FitLine[] = lines.map((line) => {
-      const count = [...line].length;
-      let sum = 0;
-      for (let k = 0; k < count; k++) sum += widths[at + k];
-      at += count;
-      return { text: line, widthAtGlyph: sum };
-    });
-    const widest = Math.max(...measured.map((m) => m.widthAtGlyph), 1);
-    // 幅から決まる大きさと、高さから決まる大きさの小さい方。
-    const byW = (w * GLYPH_PX) / widest;
-    const byH = h / (lines.length * LINE_H);
-    const size = Math.min(byW, byH);
-    if (!best || size > best.size) best = { size, lines: measured };
-  }
-  return best;
-}
+// ★★★**第100巡に3つ消した。復活させない。**
+//   `fitText`（矩形いっぱいに収める。廃止したタグ名専用だった）／
+//   `layoutInShape`（**行の高さ `size × LINE_H` の塊を箱の中心に置く**）／
+//   `wrapPerLine`（その貪欲な折り返し）。
+//   ★★**`layoutInShape` は段の刻み `boxH / rows` を知らない**ので、ピルの積みと
+//   原理的に噛み合わない（ユーザー指摘「文字の行と段がうまく噛み合っていません」）。
+//   いま文字を組むのは **`layoutInRows` だけ**。割り付けを2つ持つと、また
+//   片方だけが段を知らないまま残る。
 
 /**
- * ★**形に合わせて折り返す**版(2026-08-16にユーザー指摘で追加)。
- * 行ごとに使える幅を断面の輪郭から引くので、三角のように上が狭い形でも
- * 下の広いところを目一杯使える。
+ * ★★★**段の中に1行ずつ置く**（2026-09-13・第100巡）。
  *
- * 矩形1つで収めていた頃は、狭い形が外接箱の 23% しか使えず
- * (四角は 79%)、同じ面積でも三角だけ文字が半分以下になっていた。
+ * `layoutInShape` は「**行の高さ `size × LINE_H` で塊を作り、それを箱の中心に置く**」。
+ * ピルの段の中心は「**刻み `boxH / rows`**」。**2つは別の刻み**なので、
+ * 一致するのは `size × LINE_H === boxH / rows` かつ 行数 === 段数 のときだけで、
+ * どちらも強制されていなかった ―― これが「文字の行と段が噛み合っていない」の正体。
  *
- * @param halfWidth その高さ(-0.5〜0.5)での**半幅**（0〜0.5）を返す関数。
- *   ★★★**形を知らなくてよくなった**（第99巡）―― 呼ぶ側が profile を渡す。
- *   ピルの積みは段数と箱の比で profile が変わるので、数では渡せない。
- * @param boxW  外接箱の幅(px) / @param boxH 外接箱の高さ(px)
- * @returns 収まった結果 ＋ ブロックの中心 y(図形の中心からの px)。
- *          minPx を割るほど縮めないと入らないなら null。
+ * ★★★だから**段を先に決め、そこへ1行ずつ入れる**。段数は
+ * `lib/taskSize.ts` の `rowsOf`（**題の純関数**）が決めているので、
+ * **形・箱の比・行数が同じ1つの数から出る**。
+ *
+ * @param rows      段の数（1..）。**行数はこれに合わせる**（`splitLines`）。
+ * @param halfWidth その高さ(-0.5〜0.5)での半幅(0〜0.5)。`halfWidthAtStack` を渡す。
+ * @returns `ys` に**段の中心**が入った割り付け。入らないなら null。
  */
-export function layoutInShape(
-  text: string, face: number, halfWidth: (t: number) => number,
-  boxW: number, boxH: number,
-  basePx: number, maxLines = 3, minPx = 7,
-): (FitResult & { cy: number }) | null {
+export function layoutInRows(
+  text: string, face: number, rows: number,
+  boxW: number, boxH: number, halfWidth: (t: number) => number,
+  basePx: number, minPx = 7,
+): (FitResult & { ys: number[] }) | null {
   const chars = [...(text ?? "").trim()];
   if (!chars.length || boxW <= 1 || boxH <= 1) return null;
+  const n = Math.max(1, Math.round(rows || 1));
   const fi = clampFace(face);
-  const widths = chars.map((c) => advanceOf(fi, c));
-  // 輪郭へ文字が触れないための余白(幅の比・高さの比)。
-  const INSET = 0.9;
-  const PAD_Y = 0.05;
-  /** その行(中心 y・高さ lh)で使える幅(px)。**狭い方の端**で測る。 */
-  const widthOfLine = (cy: number, lh: number): number => {
-    const a = halfWidth((cy - lh / 2) / boxH);
-    const b = halfWidth((cy + lh / 2) / boxH);
-    return Math.min(a, b) * 2 * boxW * INSET;
-  };
+  const pitch = boxH / n;
+  // ★行は**必ず段の数だけ**に割る（文字数がなるべく揃うように）。
+  //   ★文字が段より少ないときは行が足りないので、**使う段を上下の中央へ寄せる**。
+  const parts = splitLines(text.trim(), n);
+  const k = parts.length;
+  const off = (n - k) / 2;
+  const ys = parts.map((_, i) => -boxH / 2 + pitch * (i + off + 0.5));
+  const widths = parts.map((s) => [...s].reduce((a, c) => a + advanceOf(fi, c), 0));
 
-  let size = Math.min(basePx, boxH / LINE_H);
+  // ★出発点は「段の刻みの ROW_FILL」。ここから入るまで縮める。
+  let size = Math.min(basePx, pitch * ROW_FILL);
   for (let pass = 0; pass < 8; pass++) {
     if (size < minPx) return null;
     const lh = size * LINE_H;
-    const limit = boxH * (1 - PAD_Y * 2);
-    // 行数の候補を小さい方から試し、最初に収まったものを採る。
-    // 収まらなかったときは、**いちばん惜しかったはみ出し具合**で縮める
-    // (固定の倍率で刻むと、あと数%のところで打ち切って文字なしになる)。
-    let best = Infinity;
-    for (let k = 1; k <= maxLines; k++) {
-      const block = k * lh;
-      if (block > limit) break;
-      const top = -block / 2;
-      const maxWs = Array.from({ length: k }, (_, i) => widthOfLine(top + lh * (i + 0.5), lh));
-      if (maxWs.some((w) => w < size * 0.9)) continue; // その行に1文字も入らない
-      const lines = wrapPerLine(chars, widths, maxWs.map((w) => (w * GLYPH_PX) / size), k);
-      if (lines.length > k) continue;
-      const over = Math.max(...lines.map((l, i) => (l.widthAtGlyph * size) / GLYPH_PX / maxWs[i]));
-      if (over <= 1.001) return { size, lines, cy: top + block / 2 };
-      best = Math.min(best, over);
+    // ★★上下の余りの半分を**左右のベゼルにも使う**（四方が同じ px）。
+    const bezel = (pitch - lh) / 2;
+    if (bezel <= 0) { size /= 1.06; continue; }
+    // ★段で使える幅は**字の上端と下端の高さ**で測る（段の中心で測ると角丸に食い込む）。
+    const maxWs = ys.map((cy) => {
+      const a = halfWidth((cy - lh / 2) / boxH);
+      const b = halfWidth((cy + lh / 2) / boxH);
+      return Math.max(1, Math.min(a, b) * 2 * boxW - bezel * 2);
+    });
+    let over = 1;
+    for (let i = 0; i < k; i++) {
+      over = Math.max(over, (widths[i] * size) / GLYPH_PX / maxWs[i]);
     }
-    // 行数を増やせば入る場合もあるので、縮め幅は控えめに見積もる。
-    size /= Math.min(Math.max(Number.isFinite(best) ? best : 1.14, 1.04), 1.4);
+    if (over <= 1.001) {
+      return { size, lines: parts.map((t, i) => ({ text: t, widthAtGlyph: widths[i] })), ys };
+    }
+    size /= Math.min(over, 1.4);
   }
   return null;
-}
-
-/** 行ごとに違う幅(グリフ座標)で貪欲に折り返す。maxLines を超えた分は最後へ。 */
-function wrapPerLine(chars: string[], widths: number[], maxW: number[], maxLines: number): FitLine[] {
-  const out: FitLine[] = [];
-  let text = "";
-  let sum = 0;
-  for (let i = 0; i < chars.length; i++) {
-    const cap = maxW[Math.min(out.length, maxW.length - 1)];
-    if (text && sum + widths[i] > cap && out.length < maxLines - 1) {
-      out.push({ text, widthAtGlyph: sum });
-      text = chars[i];
-      sum = widths[i];
-      continue;
-    }
-    text += chars[i];
-    sum += widths[i];
-  }
-  if (text) out.push({ text, widthAtGlyph: sum });
-  return out;
 }
 
 /**
@@ -589,7 +561,8 @@ export function drawFitted(
   const top = cy - (lines.length * lineH) / 2;
   ctx.imageSmoothingQuality = "high";
   lines.forEach((line, li) => {
-    const y = top + lineH * (li + 0.5);
+    // ★★`ys` があれば**段の中心**に置く（`layoutInRows`）。無ければ等間隔に積む。
+    const y = fit.ys ? cy + fit.ys[li] : top + lineH * (li + 0.5);
     // widthAtGlyph は GLYPH_PX 基準なので、表示サイズへ直す。
     let x = cx - (line.widthAtGlyph * size) / GLYPH_PX / 2;
     for (const ch of [...line.text]) {

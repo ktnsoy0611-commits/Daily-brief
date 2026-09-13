@@ -1,5 +1,7 @@
 import { SIDE_KEYS } from "./types";
 import { MAX_ROWS, STACK_INK, type SolidSpec } from "./solid";
+// ★★箱の比は「字をどう詰めるか」から出る（`rowAspect`）。**数を2度書かない**。
+import { LINE_H, ROW_FILL } from "./textFit";
 import type { InboxCandidate, SideKey, Task, TaskWeight } from "./types";
 
 // ★タスク → 図形の寸法。**純粋関数だけ**。単体テストで検証する。
@@ -82,14 +84,21 @@ export function rowsOf(title: string): number {
 /**
  * ★**1段の比は「その行が何文字を抱えるか」で伸びる**（下限は `ROW_AR`）。
  * 参照の1段は 399 × 131 で、字は段の高さの約 0.62 倍 ―― つまり **1行 約4.9字**。
- * だから **1字あたり 0.62** を掛ければ、字の大きさを保ったまま行が伸びる。
+ *
+ * ★★★**字の大きさを決める側と同じ数から出す**（2026-09-13・第100巡）。
+ *   `lib/textFit.ts` の `layoutInRows` は 1段の刻み `pitch` に対して
+ *   字を `pitch × ROW_FILL` で置き、**四方に `pitch × (1 − LINE_H × ROW_FILL) / 2`
+ *   のベゼル**を取る。だから `per` 文字を収めるのに要る幅は
+ *     `pitch × (ROW_FILL × per + (1 − LINE_H × ROW_FILL))`
+ *   ―― 第99巡は**ベゼルの項が無く**、箱が字にわずかに足りなかった。
  * ★★これが無いと、**長い題 × 低い重要度**の図形で字が入らずに**文字が消える**
  *   （3段が上限なので、段を増やして逃げられない）。
+ * ★★★**純粋な関数のまま保つこと**（`advanceOf` で実測しない）―― 書体が届いた
+ *   瞬間に箱が変わると、1度しか作らない物理の body とずれる（第99巡の轍）。
  */
-const CHARS_AR = 0.62;
 export function rowAspect(title: string, rows: number): number {
   const per = Math.ceil(((title ?? "").trim().length || 1) / Math.max(1, rows));
-  return Math.max(ROW_AR, per * CHARS_AR);
+  return Math.max(ROW_AR, ROW_FILL * per + (1 - LINE_H * ROW_FILL));
 }
 
 /** 縦横比(横 ÷ 縦)。★**1段の比 ÷ 段の数**。 */

@@ -1,4 +1,4 @@
-import { INK, JOURNAL_FACE, KIND_DOMAIN, LATIN, RUST, SHAPE_FACE, SWISS_XL, TASK_FACE } from "@/lib/constants";
+import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, RUST, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { cardShapeOf, type CardShape } from "@/lib/cardShape";
 import { CASSETTE_ASPECT } from "@/lib/cassette";
 import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
@@ -83,6 +83,24 @@ const DROP_ABOVE = 24;
 const DROP_SCATTER = 200;
 /** 板の字を組む幅（山の**内寸**に対する割合）。★GRAVITY は 0.66、ホームは大きめ。 */
 const WORD_W = 0.84;
+/**
+ * ★★★**ホームの日付・曜日の大きさの上限**（2026-09-13・第100巡にユーザー指定
+ * 「ホーム画面の**日付と曜日をもう少し小さく**してください」→ **1割半**）。
+ *
+ * ★★★**`SWISS_XL`(72) を下げてはいけない** ―― あれは TIMELINE の巨大な曜日と
+ *   **共有**なので、下げると TASK 側も縮む。**ホームだけの上限をここに置く。**
+ * ★★★**実測で較正した値**（WebKit・390×844。`wordFontSize` は
+ *   `min(この上限, 64 × room / 最も広い語の幅)` で、ここでは**上限が効いている**）。
+ *   ★塗りの箱（`WEDNESDAY`）… 第99巡 **300.7 × 52** → いま **192.7 × 44**。
+ *     **縦が 0.85 倍**（＝ユーザーの「1割半」）。
+ *   ★★★**承認された「72 → 61」ではこうならない** ―― 同じ巡で書体が Anton に
+ *     なり、**キャップハイトが em に対して 24% 高い**（64px で 46 → 57）ので、
+ *     61 だと縦は **54 ＝ 5% 大きく**なる。**数ではなく「1割半小さく」が指定**
+ *     なので、縦が 0.85 倍になる上限を実測から解いた。
+ *   ★横が 0.64 倍まで縮むのは、第99巡が**横を 63% に潰して room いっぱいへ
+ *     伸ばしていた**から（`SQUEEZE_MIN` を撤回したので、もう伸ばさない）。
+ */
+const PILE_WORD_MAX = 49;
 
 /**
  * ★★★**未読の数のトゲトゲの輪郭（絵だけ）**（2026-09-09）。
@@ -190,8 +208,9 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   // ★★字の大きさは**長いほう（曜日）で決めた1つの値**を両方に使う（第67巡）。
   const words = [`${today.getMonth() + 1}/${today.getDate()}`, WD_FULL[today.getDay()]];
   const room = (w - INSET * 2) * WORD_W;
-  const wordFs = wordFontSize(words, room, LATIN, SWISS_XL);
-  const plates = words.map((wd) => measureWordPlate(wd, wordFs, room, INK, LATIN));
+  // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
+  const wordFs = wordFontSize(words, room, DISPLAY, PILE_WORD_MAX);
+  const plates = words.map((wd) => measureWordPlate(wd, wordFs, room, INK, DISPLAY));
 
   // ★★★**予算は「図形が居られる高さ」で取る** ―― 器の高さ `h` ではなく**床まで**。
   const usableH = Math.max(120, floorYOf(h));

@@ -5,7 +5,7 @@ import {
 import { rowsOf } from "./taskSize";
 import { BD_GREY, SHAPE_FACE, TASK_FACE } from "./constants";
 import { bodyInkOn } from "./palette";
-import { canvasFont, drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
+import { canvasFont, drawFitted, ensureGlyphs, layoutInRows, missingGlyphs, textDrawable, warmGlyphs, type FitResult } from "./textFit";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
 // 確定)。真横から見た立面を2枚、ベタ塗りで描くだけ。
@@ -69,8 +69,13 @@ export const UNIT_PX = 64;
 // 自動的に効く。文字を描かない = グリフを焼かないので、数が増えるほど
 // 1枚あたりのコストが下がる。
 // 判定に使うのは、その形の**代表寸法** s = √(塗られる面積) × unit。
-/** これ未満はタイトルを最大1行に切り詰める。 */
-const LOD_ONE_LINE = 48;
+// ★★★**`LOD_ONE_LINE`（48px 未満は1行に切り詰める）は第100巡に削除した。**
+//   **復活させない** ―― 段が3つあるピルに1行だけ置くと、行が**段ではなく箱の
+//   中心**に来る（2段なら**くびれの上**）。「段に1行」という決まりが小さい図形
+//   だけで破れるのは、ユーザーが第100巡に直させたのと同じ壊れ方。
+//   ★小さい図形で字が消える心配は要らない ―― `layoutInRows` は段の刻みに対して
+//   `ROW_FILL` で字を取るので、小さければ自動的に小さくなり、`minPx`(7) を
+//   割れば `null`（＝文字なし）になる。下の `LOD_NO_TEXT` と地続き。
 /** これ未満は文字を描かない。 */
 const LOD_NO_TEXT = 30;
 /** これ未満はスラブの切れ目も描かない(ベタ塗り1枚)。 */
@@ -193,7 +198,7 @@ export function paintShape(
  */
 interface TextPlan {
   text: string; face: number; ink: string;
-  fit: NonNullable<ReturnType<typeof fitText>>;
+  fit: FitResult;
   /** 文字の塊の中心(正規化座標)。 */
   cx: number; cy: number;
   /** 実際に描かれる文字の高さ(CSS px)。 */
@@ -242,16 +247,18 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   //     （物体は1度しか作らない）。
   //   `rowsOf` は文字数のはしごで、**箱の比（`ratioOf` ＝ 1段の比 ÷ 段の数）も
   //   同じ関数から出ている**ので、行数と段数は必ず噛み合う。
+  //   ★★★**段の中に1行ずつ**（第100巡。`layoutInRows`）―― 行の高さ `size × LINE_H` で
+  //     塊を作って中心に置く `layoutInShape` では、段の刻み `hpx / rows` と噛み合わない。
   const rows = shapeRowsOf(p);
   const ar = wpx / hpx;
-  const fit = layoutInShape(
-    p.title, face, (t) => halfWidthAtStack(rows, ar, t), wpx, hpx, base,
-    s < LOD_ONE_LINE ? 1 : rows,
+  const fit = layoutInRows(
+    p.title, face, rows, wpx, hpx, (t) => halfWidthAtStack(rows, ar, t), base,
   );
   if (!fit) return null;
+  // ★★**段の位置は `fit.ys` が持つ**ので、塊の中心はいつも図形の中心（0）。
   return {
     text: p.title, face, ink, fit,
-    cx: 0, cy: fit.cy / hpx, size: fit.size,
+    cx: 0, cy: 0, size: fit.size,
   };
 }
 
@@ -411,8 +418,15 @@ export function wordBitmap(
   return made;
 }
 
-/** 文字ブロックの太さ。★可変フォントなのでこの重みがそのまま効く。 */
-export const WORD_WEIGHT = 900;
+/**
+ * 文字ブロックの太さ。
+ * ★★★**第100巡に 900 → 400**。大きな欧文が `DISPLAY`（Anton）になり、Anton は
+ *   **単一ウェイト（400）しか持たない** ―― 900 を頼むとブラウザが**合成ボールド**
+ *   （輪郭を太らせるだけの偽の太字）を掛け、また「変」な字になる。
+ * ★読み手は `lib/wordPlate.ts`（測る・詰める）とすぐ上の `wordBitmap`（焼く）の
+ *   **板だけ**。図形の題（`FONT_FACES` / `SHAPE_FACE`）には効かない。
+ */
+export const WORD_WEIGHT = 400;
 
 /**
  * ★★**字間を詰めて組んだときの幅**（`ctx.font` は呼ぶ側が立ててあること）。

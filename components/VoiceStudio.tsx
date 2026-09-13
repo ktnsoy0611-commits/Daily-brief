@@ -5,8 +5,8 @@ import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
-import { DIAL_TICK, DIAL_TICKS, DIAL_VIEW } from "@/lib/dial";
-import { CASSETTE, CASSETTE_ASPECT, CASSETTE_BOX_H_PER_H, CASSETTE_DECK_H, CASSETTE_DECK_W_PER_W, CASSETTE_DECK_X, CASSETTE_DECK_Y_PER_H, CASSETTE_KEY_LIP_PER_H, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W } from "@/lib/cassette";
+import { hubPath } from "@/lib/reelHub";
+import { CASSETTE, CASSETTE_ASPECT, CASSETTE_BOX_H_PER_H, CASSETTE_DECK_H, CASSETTE_DECK_W_PER_W, CASSETTE_DECK_X, CASSETTE_DECK_Y_PER_H, CASSETTE_KEY_LIP_PER_H, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W, CASSETTE_WAVE_CY_PER_D, CASSETTE_WAVE_H_PER_D, topRoundRadii } from "@/lib/cassette";
 import { PILE_INSET } from "@/lib/pileBox";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
@@ -84,11 +84,11 @@ const MIN_SPAN = 0.04;
 //   中心間・中心の高さは**全部 `lib/cassette.ts` の比から導く**。
 //   ★第95巡の `DIAL_RATIO` / `DIAL_CX` / `DIAL_WAIST`（腰を式で縛る仕掛け）は
 //   **役目を終えたので消した** ―― 腰＝リールの隙間も、いまはアイコンの比が決める。
-/** 波形の帯の高さ。★止めても広げない(ユーザー指定)。 */
-const WAVE_H = 58;
-/** 録音中の帯は、円に**絶対に重ならない**幅までしか広げない。
- *  実際の幅はコードが円の式から計算する(WAVE_MARGIN は左右の余白)。 */
-const WAVE_MARGIN = 6;
+// ★★★**帯の高さと位置は `lib/cassette.ts` の比から導く**（2026-09-13・第100巡）。
+//   生の 58 / 136 はもう無い。`CASSETTE_WAVE_H_PER_D` / `CASSETTE_WAVE_CY_PER_D`。
+/** 録音中の帯は、円に**絶対に重ならない**幅までしか広げない（左右のベゼル）。
+ *  ★★第100巡に 6 → `SPACE.lg`（ユーザー指定「ちゃんとベゼルもとって」）。 */
+const WAVE_MARGIN = SPACE.lg;
 /** 録音中の赤い線を帯のどこに立てるか(左からの割合)。左が録れた分、
  *  右がまだ録っていない分(点線)。真ん中より右に置いて履歴を長く見せる。 */
 const REC_LINE_AT = 0.66;
@@ -107,7 +107,7 @@ const DECK_LIFT = SPACE.xl;
 //   上へずれていた**（ユーザー指摘「ボタンの位置がバーの中心とアラインされていない」）。
 //   → いまラベルは**キーと同じ中心の x へ絶対配置**（`bottom: calc(100% + …)`）なので、
 //   **ラベルの高さを誰も知らなくていい**。知らなければ食い違えない。
-// ★縁の目盛りの本数と寸法は `lib/dial.ts`（ホームの山と共有）。
+// ★リールの芯（3本の太い線）の形は `lib/reelHub.ts`（ホームの山と共有）。
 // ★★★**キーが段の中に空ける黒い縁（`KEY_LIP`）も、径も、`lib/cassette.ts` から
 //   導く**（2026-09-13・第98巡）。第97巡は `SPACE.sm`（生の 8）だったが、
 //   **バーの幅がキーの数から決まるようになった**ので、縁も同じ式の中に居ないと
@@ -383,17 +383,18 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   };
 
   // ---- 波形の帯の置き場 ------------------------------------------------------
-  // ★録音中の帯は**本体の上の縁とリールの上端のちょうど真ん中**へ置く
-  //   （2026-09-13・第96巡。前は円の中心から生の -136px だったが、リールが
-  //   小さくなったので、そのままではリールに掛かる）。
+  // ★★★**リールとリールのあいだの「上あたり」**（2026-09-13・第100巡にユーザー指定。
+  //   第99巡はリールより上へ出ていた）。位置も高さも**リールの直径から**導く。
   // ★幅は円の式から。中心から dy 離れた高さでの左右の隙間
   //   = (cxR - cxL) - 2*sqrt(R^2 - dy^2)。帯の上端/下端のうち中心に近い方で決まる。
-  const waveCy = (plateTop + (cy - RD / 2)) / 2;
+  //   ★★だから帯を**リールの上寄り**に置くほど隙間が広く取れる（生の 136 の正体）。
+  const waveH = Math.round(RD * CASSETTE_WAVE_H_PER_D);
+  const waveCy = cy - RD * CASSETTE_WAVE_CY_PER_D;
   const gapAt = (dy: number) => {
     const s = (RD / 2) * (RD / 2) - dy * dy;
     return (cxR - cxL) - 2 * (s > 0 ? Math.sqrt(s) : 0);
   };
-  const nearDy = Math.max(0, Math.abs(waveCy - cy) - WAVE_H / 2);
+  const nearDy = Math.max(0, Math.abs(waveCy - cy) - waveH / 2);
   const waveW = Math.max(90, Math.min(w - 52, gapAt(nearDy) - 2 * WAVE_MARGIN));
   // ★★★**数字はリールの下の隙間へ**（2026-09-13・第98巡）。リールが上がり本体が
   //   伸びたので、上の隙間（本体の上の縁〜リールの上端）は**帯だけで埋まる**。
@@ -820,7 +821,9 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             /* ★目盛りの外（同上） */
             top: plateTop + plateH * ((t.y - CASSETTE.body.y) / CASSETTE.body.h),
             background: INK,
-            borderRadius: plateH * (t.r / CASSETTE.body.h),
+            // ★★**丸めるのは上の2隅だけ**（第100巡）。形は `lib/cassette.ts` の1か所から。
+            borderRadius: topRoundRadii(plateH * (t.r / CASSETTE.body.h))
+              .map((v) => `${v}px`).join(" "),
           }}
         />
       ))}
@@ -892,7 +895,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           }}
         >
           {/* ★回るのはこの層だけ。塗りつぶしの円は回転対称なので静止させる。
-              目盛りは div を10個入れ子にせず **SVG 1枚**にしてある(同じ
+              芯は div を入れ子にせず **SVG 1枚**にしてある(同じ
               大きさのレイヤーでも、ラスタライズが桁違いに安い)。 */}
           <svg
             ref={side === "L" ? reelL : reelR}
@@ -906,18 +909,13 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
               willChange: "transform", transform: "translateZ(0)",
             }}
           >
-            {/* 縁の目盛り。一番端に寄せた、短く太い線。角は丸めない。
-                ★★★**寸法は `lib/dial.ts` の1か所**（2026-09-12）―― 同じ円を
-                ホームの山が **canvas** で描くので、数を2度書くと必ず食い違う。 */}
-            {Array.from({ length: DIAL_TICKS }, (_, i) => (
-              <rect
-                key={i}
-                x={DIAL_VIEW / 2 - DIAL_TICK.w / 2} y={DIAL_TICK.inset}
-                width={DIAL_TICK.w} height={DIAL_TICK.h}
-                fill={tick}
-                transform={`rotate(${(i * 360) / DIAL_TICKS} ${DIAL_VIEW / 2} ${DIAL_VIEW / 2})`}
-              />
-            ))}
+            {/* ★★★**リールの芯**（2026-09-13・第100巡にユーザー指定で、縁の白い点5つ
+                から差し替えた）。中心から 120° ずつ、半径の 1/3 ほどの**とても太い
+                丸い線が3本**、中心では**曲線で滑らかに繋がる**。
+                ★★★**形は `lib/reelHub.ts` の1か所**（2026-09-13）―― 同じ芯を
+                ホームの山が **canvas** で描くので、数を2度書くと必ず食い違う。
+                ★★**回る層の中に置く**ので、録音中は芯が回って分かる（点と同じ役目）。 */}
+            <path d={hubPath()} fill={tick} />
           </svg>
         </div>
       ))}
@@ -950,7 +948,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         style={{
           position: "absolute", zIndex: 2, pointerEvents: "none",
           left: "50%",
-          width: waveW, height: WAVE_H, top: waveCy - WAVE_H / 2,
+          width: waveW, height: waveH, top: waveCy - waveH / 2,
           // ★録音を始めると、横に伸びながら現れる。何も録っていない間は
           // 出さない(以前は横線だけが残り、円の上を横切って見えていた)。
           opacity: waveOn ? 1 : 0,

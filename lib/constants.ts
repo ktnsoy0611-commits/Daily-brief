@@ -62,6 +62,17 @@ export const SANS = 'var(--font-archivo), "Archivo", var(--font-noto-sans-jp), "
 // ★旧名 `HELV`(素の Helvetica)から改名(第53巡)。名前が中身と食い違わないように。
 export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, sans-serif';
 
+// ★★★**大きな欧文と数字だけの書体**（2026-09-13・第100巡にユーザー確定
+//   「**タブの文字は良いですが、大きい文字と数字が変です**」）。
+//   ★★**役を増やして、大きい所だけ差し替える** ―― `SANS` / `LATIN`（Archivo）は
+//     タブの文字・券の小さなラベル・ボタンが読んでいて、そこは「良い」と言われている。
+//   ★★★**線を引く場所は「`SWISS_XL` 級の巨大な文字」と「未読の数（円の径の 0.9 倍）」**。
+//     `TYPE.head`(20) 以下はこれを使わない（残り日数・`CreateMenu`・券のラベル）。
+//   ★Anton は**縦長で単一ウェイト**。だから `fontWeight` は 400 のまま使い、
+//     横を潰して細く見せる細工（`lib/wordPlate.ts` の偽コンデンス）は**しない**。
+//   ★和文のグリフは無いので、**和文に当てないこと**（TIMELINE の「自由」は `SANS`）。
+export const DISPLAY = 'var(--font-anton), "Anton", var(--font-archivo), "Archivo", sans-serif';
+
 // ★スイス見出し(**表示専用の大きな欧文**)。`TYPE` の目盛りは本文のためのもので
 // display(26)止まり。ブルータリズム/スイスの大きな見出しはその外に居る ―
 // `TAB_MARK`(52) などと同じ「部品の寸法」の例外(2026-08-24 にユーザーがこの

@@ -1,7 +1,7 @@
 "use client";
 
 import { TYPE, LEAD, TRACK, WEIGHT } from "@/lib/tokens";
-import { CASSETTE } from "@/lib/cassette";
+import { CASSETTE, topRoundRectPath } from "@/lib/cassette";
 import { SANS } from "@/lib/constants";
 
 // ★タブバーのアイコン(2026-08-03)。ユーザー提供の幾何アイコン集
@@ -156,9 +156,11 @@ function shapes(name: TabIconName, c: string) {
             fill={c} opacity={PALE}
           />
           <g fill={c}>
-            {/* ★左上の四角い突起2つ（第99巡）。本体の上の縁から上へ出る。 */}
+            {/* ★左上の四角い突起2つ（第99巡）。本体の上の縁から上へ出る。
+                ★★**丸めるのは上の2隅だけ**（第100巡。`rx` は四隅を丸めるので
+                `<rect>` では書けない）。形は `lib/cassette.ts` の1か所から。 */}
             {CASSETTE.tabs.map((t) => (
-              <rect key={t.x} x={t.x} y={t.y} width={t.w} height={t.h} rx={t.r} />
+              <path key={t.x} d={topRoundRectPath(t.x, t.y, t.w, t.h, t.r)} />
             ))}
             {CASSETTE.reels.map((reel) => (
               <circle key={reel.x} cx={reel.x} cy={reel.y} r={CASSETTE.reelR} />

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { SPACE } from "@/lib/tokens";
 import { BD_GREY, INK, GREEN, RUST } from "@/lib/constants";
-import { Archivo, Noto_Sans_JP, Zen_Kaku_Gothic_New } from "next/font/google";
+import { Anton, Archivo, Noto_Sans_JP, Zen_Kaku_Gothic_New } from "next/font/google";
 import "./globals.css";
 
 // ミニマルなデザインへの刷新に伴い、明朝体(Zen Old Mincho)とPlayfair
@@ -38,7 +38,29 @@ const notoSansJP = Noto_Sans_JP({
   preload: false,
 });
 
-// ★第73巡に **Anton を撤去**（使い手 0 件だった）。
+// ★★★**大きな欧文と数字だけ Anton**（2026-09-13・第100巡にユーザー確定
+//   「アプリで共通で使っている英語のフォントがダサいので変えたい。**タブの文字は
+//   良いですが、大きい文字と数字が変です**」）。
+//   ★★**何が「変」だったか**（実測）―― 大きな欧文は **Archivo を偽コンデンス**
+//     していた。`globals.css` の `font-variation-settings: "wdth" 88` は **CSS に
+//     しか効かず canvas の `ctx.font` は受け取らない**ので、山と TIMELINE の巨大な
+//     文字は `wdth 100`。そこへ `lib/wordPlate.ts` が横を **50%** に潰し、太さは
+//     900。「太くて不自然に細長い」＝**書体ではなく潰し方**が正体だった。
+//   → **書体そのものが縦長な Anton へ替え、同時に偽コンデンスをやめた**
+//     （`lib/wordPlate.ts` の `SQUEEZE_AIM`）。**片方だけでは直らない。**
+//   ★★★**単一ウェイト（400）なので `weight` を渡す**（可変の Archivo とは逆）。
+//     900 を頼むとブラウザが**合成ボールド**を掛け、また汚くなる
+//     （`lib/solidPaint.ts` の `WORD_WEIGHT` も 400 にしてある）。
+//   ★役は `lib/constants.ts` の **`DISPLAY`**。**`SANS`/`LATIN` は 1 文字も触らない**
+//     ―― タブの文字・券の小さなラベル・ボタンは「良い」と言われている。
+const anton = Anton({
+  variable: "--font-anton",
+  weight: "400",
+  subsets: ["latin"],
+  preload: false,
+});
+
+// ★第73巡に一度 **Anton を撤去**していた（そのときは使い手 0 件だった）。
 // ★タスクの図形に載る文字は、**タグごとに書体を変える**(組み合わせの表は
 // lib/constants.ts の FONT_FACES が正)。★明朝(Zen Old Mincho)は
 // 2026-08-16にユーザー指定で廃止し、ゴシック系だけにした。
@@ -113,7 +135,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja" className={[
-      zenKakuGothicNew.variable, archivo.variable, notoSansJP.variable,
+      zenKakuGothicNew.variable, archivo.variable, anton.variable, notoSansJP.variable,
     ].join(" ")}>
       {/* ★色の持ち主は `lib/constants.ts` の1か所だけ。CSS には**変数で配る**。
           第66巡まで globals.css が地色・墨・緑・赤の4色を

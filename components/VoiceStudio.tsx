@@ -4,9 +4,9 @@ import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, NAV_H, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY } from "@/lib/constants";
+import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { DIAL_TICK, DIAL_TICKS, DIAL_VIEW } from "@/lib/dial";
-import { CASSETTE_ASPECT, CASSETTE_R_PER_H } from "@/lib/cassette";
+import { CASSETTE_ASPECT, CASSETTE_DECK_W, CASSETTE_DECK_X, CASSETTE_R_PER_H, CASSETTE } from "@/lib/cassette";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { pushGround } from "@/lib/ground";
@@ -77,13 +77,20 @@ const NOTCH = (15 * Math.PI) / 180;
 const TAP_SLOP = 0.05;
 /** 開始と終了が潰れないよう、最低これだけは残す。 */
 const MIN_SPAN = 0.04;
-/** ダイヤルの直径(器の幅に対する比)。画面をはみ出す大きさ。 */
-const DIAL_RATIO = 1.30;
+/** ダイヤルの直径(器の幅に対する比)。画面をはみ出す大きさ。
+ *  ★★2026-09-13・第95巡に **1.30 → 1.00**（ユーザー指定「**円を小さくして**、
+ *  もう少し全体が図形のデザインと統一して見えるように」）。390px 幅で直径 507 → 390。 */
+const DIAL_RATIO = 1.00;
+/** ★砂時計の腰の幅(器の幅に対する比)。**これが「そのまま」であること**が
+ *  波形の帯の置き場を決める(ユーザー指定「波形はそのまま」)。 */
+const DIAL_WAIST = 0.30;
 /** 中心のx(器の幅に対する比)。左右へ大きくはみ出す。
- *  ★砂時計の腰の幅は `器の幅 x (1 + 2*DIAL_CX - DIAL_RATIO)` で決まる。
- *  直径を変えるときは、腰が同じ 0.30 になるよう DIAL_CX も一緒に動かすこと
- *  (直径だけ縮めると腰が広がって、砂時計の締まりが無くなる)。 */
-const DIAL_CX = 0.30;
+ *  ★★★**腰から導く**(2026-09-13・第95巡)。腰の幅は
+ *  `器の幅 x (1 + 2*DIAL_CX - DIAL_RATIO)` なので、直径を変えたら中心も
+ *  一緒に動かさないと腰が広がって砂時計の締まりが無くなる。
+ *  **前はコメントで「一緒に動かすこと」と約束していただけだった**ので、
+ *  式にして**別々に動かせなくした**。 */
+const DIAL_CX = (DIAL_RATIO - (1 - DIAL_WAIST)) / 2;
 /** ★波形の帯の中心を、円の中心からどれだけ上へ置くか。
  *  「真ん中の少し上」(ユーザー指定)。 */
 const WAVE_DY = -136;
@@ -97,15 +104,20 @@ const WAVE_MARGIN = 6;
 const REC_LINE_AT = 0.66;
 /** 録音を止めたとき、帯が広がり中心の線が左右へ分かれるまでの時間(ms)。 */
 const SPLIT_MS = 420;
-/** ★円を置く「帯」。上=左上のタイトル(Masthead)の下端、下=タブバーの上端。
- *  円の中心はこの帯のちょうど真ん中に来る(ユーザー指定)。
- *  タブの中でも全画面のオーバーレイでも**同じ値**を使うので、両者の円は
- *  必ず一致する。Masthead の高さを変えたら BAND_TOP を測り直すこと
- *  (実測: top 16 + 高さ 68 = 84)。 */
+/** ★左上のタイトル(Masthead)の下端。**本体の上の縁がここより上へ行かないための
+ *  見張り**に使う(第95巡までは円の中心をここから決めていた)。
+ *  Masthead の高さを変えたら測り直すこと(実測: top 16 + 高さ 68 = 84)。 */
 const BAND_TOP = 84;
-const BAND_BOTTOM = 80;
-/** ★カセットの本体が円からどれだけ外へ出るか。★目盛りの外（部品の寸法）。 */
+/** ★カセットの本体が、リール(円)の上へどれだけ出るか。★目盛りの外（部品の寸法）。 */
 const PLATE_PAD = SPACE.lg;
+/** ★リールと「下の段」(キーの穴)のあいだ。★目盛りの外（部品の寸法）。 */
+const DECK_GAP = SPACE.lg;
+/** ★下の段がキーの列を上下にどれだけ包むか。★目盛りの外（部品の寸法）。 */
+const DECK_LIP = SPACE.sm;
+/** ★キーの列をタブバーの上端からどれだけ浮かせるか。★目盛りの外（部品の寸法）。 */
+const KEY_ROW_GAP = SPACE.xl;
+/** ★キーのラベル1行の高さ（`TYPE.nano` × `LEAD.flat`）。★目盛りの外（部品の寸法）。 */
+const KEY_LABEL_H = 12;
 // ★縁の目盛りの本数と寸法は `lib/dial.ts`（ホームの山と共有）。
 /** 物理キーの寸法。丸いキーで、出っ張り(depth)ぶん浮いて見える。 */
 const KEY_D = 42;
@@ -117,10 +129,6 @@ const KEY_DEPTH = 4;
 const WELL_LIP = 3;   // ★目盛りの外（部品の座標系）
 /** ★記号が灯る窓（キーの面に開いた小さな暗い穴）の直径。 */
 const SOCKET_D = 22;  // ★目盛りの外（部品の座標系）
-/** ★操作キーの列を器の下端からどれだけ上に置くか。タブバーの高さぶん。
- *  オーバーレイ(タブバーを覆う)でも同じ値を使い、見た目を揃える。
- *  高さの数字は lib/constants.ts の NAV_H が唯一の出どころ。 */
-const KEY_BOTTOM = NAV_H;
 /** 円が外へ出ていくアニメーションの長さ(globals.css の vs-dial-out-* と揃える)。 */
 const DIAL_OUT_MS = ms(T_OUT);
 /** ★これ未満の音は棒として描かない。小さい点が並ぶと汚く見えるため
@@ -190,10 +198,14 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   //   第93巡に実測 … `rgba(44,38,39,0.38)` を面に合成すると**比 1.94 で消える**。
   //   ベタなら黒い円の上で紙色が **11.89** 出る。
   const tick = bodyInkOn(dial);
+  // ★★★**下の段（キーの穴）に載るラベルの色は、その面から導く**（第95巡）。
+  //   キーが地の上から墨のバーの上へ移ったので、地から決めていた `fg` では合わない。
+  const deckInk = bodyInkOn(INK);
 
   // ★★★第79巡から**キーまわりは画面で変わらない**（面が両方とも白なので、
   //   穴も窓もランプも1つで足りる）。分岐が減ったぶん、ズレようがない。
-  const well = STUDIO.well;
+  // ★★★**キーの穴は下の段（黒い円とバー）が作る**ので、キーは自分で穴を
+  //   描かない（第95巡）。`STUDIO.well` はもうここでは使わない。
   const socket = STUDIO.socket;
   const lampOff = STUDIO.lampOff;
   // ★★記号は**キーの面ではなく、面に開いた墨の窓**の中に灯る。白い面の上では
@@ -295,24 +307,39 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   const w = size.w || 390;
   const h = size.h || 620;
   const RD = w * DIAL_RATIO;                 // 直径
-  // ★中心は「タイトルの下端 〜 タブバーの上端」のちょうど真ん中(ユーザー指定)。
-  // 器の高さはタブでもオーバーレイでも画面いっぱいなので、両者で一致する。
-  const cy = (BAND_TOP + (h - BAND_BOTTOM)) / 2;
+
+  // ---- カセットの本体と「下の段」（キーの穴） --------------------------------
+  // ★★★**組み立ての順が第94巡と逆になった**（2026-09-13・第95巡）。
+  //   前は「円 → 本体」だったが、いまは **「キーの列 → 下の段 → 本体 → 円」**。
+  //   ユーザー指定 ―― 「**ボタン類をバーに当てはめる**。その際ボタンの大きさや
+  //   形もバーに合わせて調整」「円の上下の中心は上へ動かしてよい」。
+  // ★★★**キーの列を動かさない**（`KEY_BOTTOM` は実機のタブバーの高さに追従する
+  //   `NAV_H` から来ている）。**下の段のほうがキーの列へ行く。**
+  //   ★`navHeightPx()` を使う ―― `.app-nav` の矩形は `NAV_H` と一致しない
+  //   （Chromium 81px／実機 132px）。自分で測らない。
+  const keyRowH = KEY_D + KEY_DEPTH + SPACE.xs + KEY_LABEL_H;
+  const deckH = keyRowH + DECK_LIP * 2;
+  const deckBottom = h - navHeightPx() - KEY_ROW_GAP + DECK_LIP;
+  // 本体は「上の余白 ＋ リール ＋ 隙間 ＋ 下の段」を積んだ高さ。
+  // ★横の比だけアイコンから借りるので、**左右は画面の外へ出たまま**
+  //   （ユーザー確定「画面端から縁がはみ出ている今の感じを残して欲しい」）。
+  const plateH = PLATE_PAD + RD + DECK_GAP + deckH;
+  const plateW = plateH * CASSETTE_ASPECT;
+  // ★★**上の見張り** … 本体が題（Masthead）に掛からないこと。掛かるなら
+  //   下の段はそのままに、上の余白を詰める（円は動かさない）。
+  const plateTop = Math.max(BAND_TOP, deckBottom - plateH);
+  const plateCx = w / 2;
+  // ★中心は**本体から導く**（帯の真ん中ではなくなった）。
+  const cy = plateTop + PLATE_PAD + RD / 2;
   const cxL = -w * DIAL_CX;
   const cxR = w * (1 + DIAL_CX);
-
-  // ---- カセットの本体（円の後ろの青い面） ------------------------------------
-  // ★★★**円は動かさない**（ユーザー指定）。本体は円から**導く**。
-  //   上下は**円を包む**（アイコンと同じ入れ子）―― 高さは直径 ＋ 余白2つぶん。
-  //   幅はアイコンの比（`CASSETTE_ASPECT` ＝ 19.2/14）を守るので、**左右は
-  //   画面の外へ出る**（実測 … 390px 幅で本体は 739px ＝ 片側 175px はみ出す）。
-  // ★★**四隅は画面の外なので見えない。** これは「円を動かさない」という条件の
-  //   帰結で逃げ道が無い ―― 円の直径が画面幅の 1.30 倍あるので、**画面の中で
-  //   円を横に包める四角は存在しない**。見えるのは上下の縁と青い面で、
-  //   「カセットの本体をごく近くで見た絵」になる。
-  const plateH = RD + PLATE_PAD * 2;
-  const plateW = plateH * CASSETTE_ASPECT;
-  const plateCx = (cxL + cxR) / 2;
+  // 下の段（左の円＝REC の穴／右のバー＝残り3つの穴）。アイコンの比で置く。
+  const deckW = (CASSETTE_DECK_W / CASSETTE.body.w) * plateW;
+  const deckLeft = plateCx - plateW / 2 + (CASSETTE_DECK_X / CASSETTE.body.w) * plateW;
+  const deckTop = deckBottom - deckH;
+  const knobD = deckH;
+  const barLeft = deckLeft + knobD + ((CASSETTE.bar.x - (CASSETTE.knob.x + CASSETTE.knob.r)) / CASSETTE.body.w) * plateW;
+  const barW = deckLeft + deckW - barLeft;
 
   // ---- 波形の帯の置き場 ------------------------------------------------------
   // ★録音中の帯は「真ん中の少し上」に置き、**円に重ならない幅**までしか
@@ -724,11 +751,40 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           style={{
             position: "absolute", zIndex: 0, pointerEvents: "none",
             width: plateW, height: plateH,
-            left: plateCx - plateW / 2, top: cy - plateH / 2,
+            left: plateCx - plateW / 2, top: plateTop,
             background: JOURNAL_FACE,
             borderRadius: plateH * CASSETTE_R_PER_H,   /* ★目盛りの外（図形の座標系＝アイコンの比） */
           }}
         />
+      )}
+      {/* ★★★**下の段 ―― 左の円とバー**（2026-09-13・第95巡にユーザー指定
+          「下のバーの部分を…全体の幅を変えず、**左側に円を置いて、その右に
+          今のバーを置いて**もう少しレコーダーっぽく」）。
+          ★★★**これはそのまま「キーの穴」になる** ―― キーは「白い面・黒い穴・
+          墨の窓」（`design.md` §3-3・第79巡）で、輪郭は**黒い穴**が作っている。
+          下の段が穴になるので、**新しい材料を1つも足していない**。
+          ★寸法はアイコンの比（`lib/cassette.ts`）から導く。 */}
+      {shown && (
+        <div
+          key={`deck-${enterKey}`}
+          className={leaving ? "vs-plate-out" : "vs-plate-in"}
+          aria-hidden
+          style={{
+            position: "absolute", zIndex: 0, pointerEvents: "none",
+            left: deckLeft, top: deckTop, width: deckW, height: deckH,
+          }}
+        >
+          <div style={{
+            position: "absolute", left: 0, top: 0, width: knobD, height: knobD,
+            borderRadius: RADIUS.circle, background: INK,
+          }} />
+          <div style={{
+            position: "absolute", left: barLeft - deckLeft, top: 0,
+            width: barW, height: deckH,
+            borderRadius: deckH / 2,   /* ★目盛りの外（図形の座標系＝アイコンの比） */
+            background: INK,
+          }} />
+        </div>
       )}
 
       {/* 巨大な円ふたつ。ただの塗り面＋縁の目盛り。
@@ -882,57 +938,62 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         }}
       />
 
-      {/* ★最下部は、カセットプレイヤーの操作キーを模した3つの物理ボタン。
-          出っ張り(KEY_DEPTH)があり、押されると沈む。押せない間は沈んだまま
-          暗く、押せるようになるとランプが灯る。
-            REC   … 録音の開始/停止。録音中は押し込まれたまま。
-            PAUSE … 録音の一時停止/再開。止めている間は押し込まれたまま。
-            SEND  … 文字起こしへ送る。 */}
+      {/* ★★★**操作キーは「下の段」の中に置く**（2026-09-13・第95巡にユーザー指定
+          「**ボタン類をバーに当てはめる**。その際ボタンの大きさや形もバーに
+          合わせて調整」「**左の円＝REC、バーの中に残り3つ**」）。
+          ★★★**穴はキーが自分で描かない** ―― 下の段（黒い円とバー）が穴なので、
+          `well` に `"transparent"` を渡す。二重に穴を描くと縁が濁る。
+          ★★ラベルは**墨の面の上**にいるので、色は `bodyInkOn(下の段)` が導く
+          （地から決めていた `fg` は使わない。面が変わったのだから）。
+          ★この帯は素通し（`pointerEvents: none`）。指を受けるのはキーだけ ――
+          空いている所で指を吸うと、その下のダイヤルが回せなくなる。 */}
       <div style={{
-        // ★高さは中身に任せる(下端が keyBottom)。以前は固定の96pxで中央寄せに
-        // していたため、キーの下のラベル(REC/PAUSE/…)が枠からはみ出し、
-        // タブバーに隠れて切れていた。
-        position: "absolute", left: 0, right: 0, bottom: `calc(${KEY_BOTTOM} + 34px)`, zIndex: 3,
-        display: "flex", flexDirection: "column", alignItems: "center",
-        // ★この帯は画面幅いっぱい・高さ96pxある。素通しにしておかないと、
-        // 帯の空いている所(キーの左右・文言の行)で指を吸ってしまい、その下の
-        // ダイヤルが回せなくなる。指を受けるのはキーそのものだけにする
-        // (このコードベースで一度やらかした「円が一切操作できない」と同じ罠)。
-        pointerEvents: "none",
+        position: "absolute", left: deckLeft, top: deckTop, width: deckW, height: deckH,
+        zIndex: 3, pointerEvents: "none",
       }}>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: SPACE.sm, pointerEvents: "auto" }}>
-        <TransportKey
-          label="REC" ring={ringRec} ringOff={ringIdle}
-          pressed={recording} enabled={!sending}
-          onPress={() => voice.toggle()}
-          fg={fg} cap={cap} well={well} socket={socket} lampOff={lampOff}
-        />
-        {/* ★PAUSE。録音中だけ押せる。押すとその場で止まり、もう一度押すと
-            そのまま続きから録れる(MediaRecorder の pause/resume)。 */}
-        <TransportKey
-          label="PAUSE" lamp={acc.pause} bars
-          pressed={paused} enabled={recording}
-          onPress={voice.togglePause}
-          fg={fg} cap={cap} well={well} socket={socket} lampOff={lampOff}
-        />
-        <TransportKey
-          label="SEND" lamp={acc.send}
-          pressed={sending} enabled={review}
-          onPress={() => voice.send(trimRef.current)}
-          fg={fg} cap={cap} well={well} socket={socket} lampOff={lampOff}
-        />
-        {/* ★CANCEL だけは少し間を空けて置く。いつでも押せて、録音を捨てて
-            最初の状態へ戻す(録音中でも、切り出し中でも)。
-            オーバーレイでは、これがそのまま「元の画面へ戻る」になる
-            (右上の閉じるボタンは廃止した)。 */}
-        <div style={{ marginLeft: SPACE.lg }}>
+        {/* 左の円 ＝ REC。 */}
+        <div style={{
+          position: "absolute", left: 0, top: DECK_LIP,
+          width: knobD, height: keyRowH,
+          display: "flex", justifyContent: "center", pointerEvents: "auto",
+        }}>
+          <TransportKey
+            label="REC" ring={ringRec} ringOff={ringIdle}
+            pressed={recording} enabled={!sending}
+            onPress={() => voice.toggle()}
+            fg={deckInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+          />
+        </div>
+        {/* 右のバー ＝ PAUSE / SEND / CANCEL。 */}
+        <div style={{
+          position: "absolute", left: barLeft - deckLeft, top: DECK_LIP,
+          width: barW, height: keyRowH,
+          display: "flex", alignItems: "flex-start", justifyContent: "space-evenly",
+          pointerEvents: "auto",
+        }}>
+          {/* ★PAUSE。録音中だけ押せる。押すとその場で止まり、もう一度押すと
+              そのまま続きから録れる(MediaRecorder の pause/resume)。 */}
+          <TransportKey
+            label="PAUSE" lamp={acc.pause} bars
+            pressed={paused} enabled={recording}
+            onPress={voice.togglePause}
+            fg={deckInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+          />
+          <TransportKey
+            label="SEND" lamp={acc.send}
+            pressed={sending} enabled={review}
+            onPress={() => voice.send(trimRef.current)}
+            fg={deckInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+          />
+          {/* ★CANCEL はいつでも押せて、録音を捨てて最初の状態へ戻す。
+              オーバーレイでは、これがそのまま「元の画面へ戻る」になる
+              (右上の閉じるボタンは廃止した)。 */}
           <TransportKey
             label="CANCEL" cross lamp={acc.cancel}
             pressed={false} enabled={!sending && !leaving}
             onPress={onCancelKey}
-            fg={fg} cap={cap} well={well} socket={socket} lampOff={lampOff}
+            fg={deckInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
           />
-        </div>
         </div>
       </div>
 

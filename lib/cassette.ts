@@ -28,9 +28,28 @@ export const CASSETTE = {
   /** リールの丸2つ（本体の中に収まる）。 */
   reels: [{ x: 8.4, y: 11 }, { x: 15.6, y: 11 }],
   reelR: 2.9,
-  /** 下の帯（本体の下の縁に接する）。 */
-  bar: { x: 7.2, y: 16.2, w: 9.6, h: 2.8, r: 1.4 },
+  // ★★★**下の段は「左に円・右にバー」**（2026-09-13・第95巡にユーザー指定
+  //   「下のバーの部分を今は一直線ですが、**全体の幅を変えず**、左側に円を置いて、
+  //   その右に今のバーを置いてもう少しレコーダーっぽく」）。
+  //   ★★**総幅は 9.6 のまま**（円の左端 7.2 ＝ 8.6 − 1.4／バーの右端 16.8 ＝ 10.6 + 6.2）。
+  //   ★★**円の直径 2.8 ＝ バーの高さ**。同じ高さで並ぶので前面の並びに見える。
+  //   ★★★**録音画面ではこの2つが「キーの穴」になる** ―― 円＝REC、バー＝残り3つ
+  //   （`design.md` §3-3 の「白い面・黒い穴」。新しい材料を足していない）。
+  /** 下の段の左の円（録音画面では REC のキーの穴）。 */
+  knob: { x: 8.6, y: 17.6, r: 1.4 },
+  /** 下の段の右のバー（録音画面では残り3キーの穴）。本体の下の縁に接する。 */
+  bar: { x: 10.6, y: 16.2, w: 6.2, h: 2.8, r: 1.4 },
 } as const;
+
+/** 下の段の総幅（円の左端からバーの右端まで）。★アイコンと録音画面が同じ比を読む。 */
+export const CASSETTE_DECK_W =
+  CASSETTE.bar.x + CASSETTE.bar.w - (CASSETTE.knob.x - CASSETTE.knob.r);
+/** 下の段の高さ（＝バーの高さ＝円の直径）。 */
+export const CASSETTE_DECK_H = CASSETTE.bar.h;
+/** 下の段の左端（本体の左の縁からの距離）。 */
+export const CASSETTE_DECK_X = CASSETTE.knob.x - CASSETTE.knob.r - CASSETTE.body.x;
+/** 下の段の上端（本体の上の縁からの距離）。 */
+export const CASSETTE_DECK_Y = CASSETTE.bar.y - CASSETTE.body.y;
 
 /** 本体の縦横比（外接箱を作るときに使う）。 */
 export const CASSETTE_ASPECT = CASSETTE.body.w / CASSETTE.body.h;
@@ -38,13 +57,11 @@ export const CASSETTE_ASPECT = CASSETTE.body.w / CASSETTE.body.h;
 /** 本体の角丸を「高さに対する割合」で（大きく拡大するときに使う）。 */
 export const CASSETTE_R_PER_H = CASSETTE.body.r / CASSETTE.body.h;
 
-// ★★★**アイコンの余白の比は録音画面では使えない**（第94巡に実測して捨てた）。
-//   アイコンの本体はリールに対して**とても大きい**（リールの直径 5.8 に対して、
-//   上に 3.1・下に 5.1）。同じ比を録音画面の円（直径 507px）に当てると本体は
-//   **1224px 高**になり、390×844 の画面が**全面青**になって縁が1本も見えない。
-//   だから録音画面は**一定の余白1つ**（`VoiceStudio` の `PLATE_PAD`）で円を包む
-//   ―― ユーザー確定「アイコンの図形を拡大しているような感じになっていれば良い」。
-//   ★**比を復活させないこと。** 円を動かさない限り、比は成り立たない。
+// ★★★**アイコンの縦の比をそのまま録音画面へ当ててはいけない**（第94巡に実測）。
+//   アイコンの本体はリールに対してとても大きく（リールの直径 5.8 に対して上 3.1・
+//   下 5.1）、同じ比を大きな円へ当てると本体が画面の何倍にもなって縁が見えない。
+//   ★★**録音画面は「上の余白・リール・下の段」を自分で積む**（`VoiceStudio` の
+//   `PLATE_PAD` と `deckH`）。**横の比（`CASSETTE_ASPECT`）だけをアイコンから借りる。**
 
 const roundRect = (
   ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number,
@@ -85,6 +102,11 @@ export function drawCassette(
     ctx.closePath();
     ctx.fill();
   }
+  // ★下の段 … 左の円（REC）と右のバー。**バーと同じ材料（`ink`）**で塗る。
+  ctx.beginPath();
+  ctx.arc(px(CASSETTE.knob.x), py(CASSETTE.knob.y), CASSETTE.knob.r * ky, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.fill();
   roundRect(
     ctx, px(CASSETTE.bar.x), py(CASSETTE.bar.y),
     CASSETTE.bar.w * kx, CASSETTE.bar.h * ky, CASSETTE.bar.r * ky,

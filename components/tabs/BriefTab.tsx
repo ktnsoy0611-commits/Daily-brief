@@ -2,7 +2,7 @@
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ExternalLink, Flag, Sprout } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "react";
 // ★`HOLE_CLEAR`/`PunchHoles` は**成長カードだけ**が使う（第94巡に提案カードからは
 //   綴じ穴を外した。ユーザー確定 ―― 参照デザインに穴が無く、穴の逃げで左の余白が
 //   34px に固定されて左右が非対称になっていた）。
@@ -13,7 +13,8 @@ import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/he
 import { BRIEF_POOL_CAP } from "@/lib/homeBand";
 import { accentOf } from "@/lib/appAccent";
 import { bodyInkOn } from "@/lib/palette";
-import { cardShapeMask, cardShapeOf } from "@/lib/cardShape";
+import { cardShapeClip, cardShapeOf } from "@/lib/cardShape";
+import { CardShapeDefs } from "@/components/explore/CardShapeDefs";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
 import { isGrowthCard } from "@/lib/types";
 
@@ -36,6 +37,10 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
   onFlag?: () => void;
   onRead?: () => void;
 }) {
+  // ★★★**切り抜きの id は札ごとに違う**（`AppShell` はタブを全部載せたまま
+  //   横へ送るので、BRIEF の札と `DEV` の見本帳が同時に存在する）。
+  //   ★フックなので**早期 return より前**で取る（育成カードの枝がある）。
+  const clipId = useId().replace(/:/g, "");   /* ★目盛りの外（id に使えない文字を落とす） */
   const keepOpacity = isTop ? Math.min(Math.max(dx / SWIPE_THRESHOLD, 0), 1) : 0;
   const skipOpacity = isTop ? Math.min(Math.max(-dx / SWIPE_THRESHOLD, 0), 1) : 0;
 
@@ -127,9 +132,14 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
       //   （`design.md` §2 の左右パディングの禁は器の入れ子の話）。
       padding: SPACE.lg,
     }}>
+      {/* ★この札だけの `<clipPath>`。**場所は取らない**（幅も高さも 0）。 */}
+      <CardShapeDefs prefix={clipId} />
       {/* ★★写真を**形で切り抜く**。押すと写真の一覧（今までどおり）。
-          ★★★**マスクは写真だけ。カードには掛けない** ―― 掛けると
-          `box-shadow` が出なくなる（`design.md` §3-c）。 */}
+          ★★★**切るのは写真だけ。カードには掛けない** ―― 掛けると
+          `box-shadow` が出なくなる（`design.md` §3-c）。
+          ★★★**CSS のマスクは使わない**（実機で `mask-size` が効かなかった。
+          理由は `lib/cardShape.ts` の頭）。`clip-path` は画像としての寸法計算が
+          無いので、器の比へそのまま伸びる。 */}
       <div
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => isTop && onOpenBinder && onOpenBinder()}
@@ -142,12 +152,12 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
           //   （形が分類を担うので、消えてはいけない）。
           background: PAPER,
           cursor: isTop && hasPhotos ? "pointer" : "default",
-          ...cardShapeMask(shape),
+          ...cardShapeClip(shape, clipId),
         }}
       >
         {hasPhotos ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={img(card.images![0], 500, 400)} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          <img src={img(card.images![0], 500, 400)} alt="" onError={(e) => { e.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }} />
         ) : (
           <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {/* ★字面は形の中に収まる大きさで（形が主役なので、はみ出させない）。 */}

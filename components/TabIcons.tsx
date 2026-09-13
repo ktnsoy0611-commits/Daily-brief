@@ -159,6 +159,8 @@ function shapes(name: TabIconName, c: string) {
             {CASSETTE.reels.map((reel) => (
               <circle key={reel.x} cx={reel.x} cy={reel.y} r={CASSETTE.reelR} />
             ))}
+            {/* ★下の段は「左に円・右にバー」（第95巡）。総幅は変わっていない。 */}
+            <circle cx={CASSETTE.knob.x} cy={CASSETTE.knob.y} r={CASSETTE.knob.r} />
             <rect
               x={CASSETTE.bar.x} y={CASSETTE.bar.y}
               width={CASSETTE.bar.w} height={CASSETTE.bar.h} rx={CASSETTE.bar.r}

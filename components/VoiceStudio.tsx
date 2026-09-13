@@ -100,19 +100,38 @@ const SPLIT_MS = 420;
 const BAND_TOP = 84;
 /** ★本体の下の縁をタブバーの上端からどれだけ浮かせるか。 */
 const DECK_LIFT = SPACE.xl;
-/** ★キーのラベル1行の高さ（`TYPE.nano` × `LEAD.flat`）。★目盛りの外（部品の寸法）。 */
-const KEY_LABEL_H = 12;
+// ★★★**`KEY_LABEL_H` は第97巡に消した。復活させない。**
+//   第96巡は `const KEY_LABEL_H = 12` で、コメントには「`TYPE.nano` × `LEAD.flat`」
+//   ＝ **7** と書いてあった。**コメントと値が食い違った定数**の余り 5px が
+//   `justifyContent: "flex-start"` で下に捨てられ、**キーの列がまるごと 5px
+//   上へずれていた**（ユーザー指摘「ボタンの位置がバーの中心とアラインされていない」）。
+//   → いまラベルは**キーと同じ中心の x へ絶対配置**（`bottom: calc(100% + …)`）なので、
+//   **ラベルの高さを誰も知らなくていい**。知らなければ食い違えない。
 // ★縁の目盛りの本数と寸法は `lib/dial.ts`（ホームの山と共有）。
-/** 物理キーの寸法。丸いキーで、出っ張り(depth)ぶん浮いて見える。 */
-const KEY_D = 42;
+/** ★★★**キーが下の段（穴）の中に空ける黒い縁**（2026-09-13・第97巡）。
+ *  ★★**キーの径はここから導く** … `KEY_D = deckH − KEY_LIP × 2`。
+ *  第96巡は `KEY_D = 42` という**生の数**で、段の高さ（アイコンの比から出る 67）と
+ *  何の関係も無かった ―― ユーザー指摘「バーとボタンの幅とか高さが全く合っていない」。
+ *  ★★**この1つの値が四方に回る** … バーの上下の縁・バーの端の丸のまわり・
+ *  REC の穴のまわりが**全部同じ 8**。 */
+const KEY_LIP = SPACE.sm;
+/** キーが沈む深さ。★出っ張り(depth)ぶん浮いて見える。 */
 const KEY_DEPTH = 4;
+/** ★★キーの中の部品は**すべてキーの径に対する割合**（2026-09-13・第97巡）。
+ *  第96巡までは 42px のキーを前提にした生の px だったので、径を `deckH` から
+ *  導くようにした途端に比が崩れた（窓が 52% → 43%）。★分母の 42 は
+ *  **第96巡までのキーの径**＝この比を測った元の寸法。★目盛りの外（部品の比）。 */
+const SOCKET_PER_KEY = 22 / 42;
+const LAMP_PER_KEY = 8 / 42;
+const BAR_W_PER_KEY = 3 / 42;
+const BAR_H_PER_KEY = 11 / 42;
+const CROSS_PER_KEY = 12 / 42;
+const CROSS_LINE_PER_KEY = 1.5 / 42;
 /** ★★キーの輪郭は**沈む穴の影だけ**で見せる（縁取りを足さない・ユーザー確定）。
  *  白い面がクリームの地とほぼ同じ明るさ（比 1.0）なので、穴をキーより
  *  **この幅だけ外へ広げて**、四方に影が回るようにする。下に三日月が出るだけでは
  *  実機で物として読めない。 */
 const WELL_LIP = 3;   // ★目盛りの外（部品の座標系）
-/** ★記号が灯る窓（キーの面に開いた小さな暗い穴）の直径。 */
-const SOCKET_D = 22;  // ★目盛りの外（部品の座標系）
 /** 円が外へ出ていくアニメーションの長さ(globals.css の vs-dial-out-* と揃える)。 */
 const DIAL_OUT_MS = ms(T_OUT);
 /** ★これ未満の音は棒として描かない。小さい点が並ぶと汚く見えるため
@@ -332,10 +351,21 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   const barLeft = deckLeft + knobD
     + plateW * ((CASSETTE.bar.x - (CASSETTE.knob.x + CASSETTE.knob.r)) / CASSETTE.body.w);
   const barW = deckLeft + deckW - barLeft;
-  // ★★★**ラベルは段の外＝キーの上**（2026-09-13・第96巡にユーザー確定）。
-  //   段が薄くなったので、キー（42px）とラベルの両方は中に入らない。
-  //   リールの下端と段の上端のあいだへ置く（面は**青い本体**）。
-  const labelBottom = deckTop - SPACE.xs;
+  // ★★★**キーの径は段の高さから導く**（2026-09-13・第97巡）。四方の黒い縁が
+  //   `KEY_LIP` で揃う（上下＝段の縁、左右＝バーの端の丸）。生の 42 は捨てた。
+  const keyD = Math.max(24, deckH - KEY_LIP * 2);
+  // ★★★**3つのキーはバーの「端の丸」と「中心」に同心で置く**（第97巡）。
+  //   `space-evenly` をやめた理由 ―― 端の余白が 28.8 になり、上下の 8 と揃わず、
+  //   バーの丸い端とキーの丸が**別の中心**を持ってしまう（ユーザー指摘
+  //   「ボタンの位置がバーの線とアラインされていない」）。
+  //   ★バーの角丸は `deckH/2` なので、端の丸の中心は端から `deckH/2`。
+  const barX = barLeft - deckLeft;
+  const keyCx = {
+    rec: knobD / 2,                       // 左の円（REC の穴）の中心
+    pause: barX + deckH / 2,              // バーの左の端の丸の中心
+    send: barX + barW / 2,                // バーの中心
+    cancel: barX + barW - deckH / 2,      // バーの右の端の丸の中心
+  };
 
   // ---- 波形の帯の置き場 ------------------------------------------------------
   // ★録音中の帯は**本体の上の縁とリールの上端のちょうど真ん中**へ置く
@@ -944,55 +974,49 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           （地から決めていた `fg` は使わない。面が変わったのだから）。
           ★この帯は素通し（`pointerEvents: none`）。指を受けるのはキーだけ ――
           空いている所で指を吸うと、その下のダイヤルが回せなくなる。 */}
+      {/* ★★★**器は「下の段」そのもの**（2026-09-13・第97巡）。キーは flex で
+          積まずに、**穴の中心の x へ絶対配置する** ―― 第96巡は
+          「ラベル → キー」を縦に積んでいたので、ラベルの高さの誤り（12 と書いて
+          実際は 7）がそのまま**キーの縦位置のずれ**になっていた。
+          ★**中心を数で持つと、ずれようがない。** */}
       <div style={{
-        position: "absolute", left: deckLeft, top: labelBottom - KEY_LABEL_H,
-        width: deckW, height: KEY_LABEL_H + SPACE.xs + deckH,
+        position: "absolute", left: deckLeft, top: deckTop,
+        width: deckW, height: deckH,
         zIndex: 3, pointerEvents: "none",
       }}>
-        {/* 左の円 ＝ REC。★ラベルは段の上、キーは段の中で縦の中央。 */}
-        <div style={{
-          position: "absolute", left: 0, top: 0, width: knobD, height: "100%",
-          display: "flex", flexDirection: "column", alignItems: "center",
-          justifyContent: "flex-start", pointerEvents: "auto",
-        }}>
-          <TransportKey
-            label="REC" ring={ringRec} ringOff={ringIdle}
-            pressed={recording} enabled={!sending}
-            onPress={() => voice.toggle()}
-            fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff} deckH={deckH}
-          />
-        </div>
-        {/* 右のバー ＝ PAUSE / SEND / CANCEL。 */}
-        <div style={{
-          position: "absolute", left: barLeft - deckLeft, top: 0,
-          width: barW, height: "100%",
-          display: "flex", alignItems: "flex-start", justifyContent: "space-evenly",
-          pointerEvents: "auto",
-        }}>
-          {/* ★PAUSE。録音中だけ押せる。押すとその場で止まり、もう一度押すと
-              そのまま続きから録れる(MediaRecorder の pause/resume)。 */}
-          <TransportKey
-            label="PAUSE" lamp={acc.pause} bars
-            pressed={paused} enabled={recording}
-            onPress={voice.togglePause}
-            fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff} deckH={deckH}
-          />
-          <TransportKey
-            label="SEND" lamp={acc.send}
-            pressed={sending} enabled={review}
-            onPress={() => voice.send(trimRef.current)}
-            fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff} deckH={deckH}
-          />
-          {/* ★CANCEL はいつでも押せて、録音を捨てて最初の状態へ戻す。
-              オーバーレイでは、これがそのまま「元の画面へ戻る」になる
-              (右上の閉じるボタンは廃止した)。 */}
-          <TransportKey
-            label="CANCEL" cross lamp={acc.cancel}
-            pressed={false} enabled={!sending && !leaving}
-            onPress={onCancelKey}
-            fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff} deckH={deckH}
-          />
-        </div>
+        <TransportKey
+          label="REC" ring={ringRec} ringOff={ringIdle}
+          pressed={recording} enabled={!sending}
+          onPress={() => voice.toggle()}
+          fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+          cx={keyCx.rec} keyD={keyD} deckH={deckH}
+        />
+        {/* ★PAUSE。録音中だけ押せる。押すとその場で止まり、もう一度押すと
+            そのまま続きから録れる(MediaRecorder の pause/resume)。 */}
+        <TransportKey
+          label="PAUSE" lamp={acc.pause} bars
+          pressed={paused} enabled={recording}
+          onPress={voice.togglePause}
+          fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+          cx={keyCx.pause} keyD={keyD} deckH={deckH}
+        />
+        <TransportKey
+          label="SEND" lamp={acc.send}
+          pressed={sending} enabled={review}
+          onPress={() => voice.send(trimRef.current)}
+          fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+          cx={keyCx.send} keyD={keyD} deckH={deckH}
+        />
+        {/* ★CANCEL はいつでも押せて、録音を捨てて最初の状態へ戻す。
+            オーバーレイでは、これがそのまま「元の画面へ戻る」になる
+            (右上の閉じるボタンは廃止した)。 */}
+        <TransportKey
+          label="CANCEL" cross lamp={acc.cancel}
+          pressed={false} enabled={!sending && !leaving}
+          onPress={onCancelKey}
+          fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+          cx={keyCx.cancel} keyD={keyD} deckH={deckH}
+        />
       </div>
 
       {/* ★右上の閉じるボタンは廃止(2026-08-11)。オーバーレイを閉じるのは
@@ -1017,7 +1041,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
  * 4.7 以上出る ―― これが「アクセントカラーの点灯」を成立させている唯一の理由。
  * REC の輪だけは窓ではなく**面の縁**に沿う（ユーザー指定の見え方）。
  */
-function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enabled, onPress, fg, cap, well, socket, lampOff, deckH }: {
+function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enabled, onPress, fg, cap, well, socket, lampOff, cx, keyD, deckH }: {
   label: string;
   /** 窓の中で灯る色。★押せるときだけ灯る。 */
   lamp?: string;
@@ -1043,30 +1067,47 @@ function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enable
   socket: string;
   /** 消えているランプ。 */
   lampOff: string;
-  /** ★下の段（キーの穴）の高さ。キーはこの中で縦の中央へ置かれる。 */
+  /** ★★**穴の中心の x**（下の段の左端からの距離）。キーの円をここに同心で置く。 */
+  cx: number;
+  /** ★★**キーの円の直径**。呼ぶ側が `deckH − KEY_LIP × 2` で導く。 */
+  keyD: number;
+  /** ★下の段（キーの穴）の高さ。円の中心を `deckH / 2` へ置くために使う。 */
   deckH: number;
 }) {
   const [held, setHeld] = useState(false);
   // 沈んで見えるか。★**押せない**は含めない（それはランプが言う）。
   const down = pressed || held;
   const ink = enabled ? (lamp ?? fg) : lampOff;
+  const socketD = keyD * SOCKET_PER_KEY;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: SPACE.xs }}>
-      {/* ★★★**ラベルはキーの上**（2026-09-13・第96巡にユーザー確定）。段が薄く
-          なったので、キーとラベルの両方は段の中に入らない ―― 文字だけ段の外へ出す。
+    <>
+      {/* ★★★**ラベルは段の外・キーの上**（2026-09-13・第96巡にユーザー確定）。
+          段が薄いので、キーとラベルの両方は段の中に入らない ―― 文字だけ段の外へ出す。
+          ★★★**キーと同じ中心の x に絶対配置する**（第97巡）。積み上げをやめたので、
+          ラベルの高さが変わってもキーの縦位置は1pxも動かない。
           ★面は**青い本体**なので、色は呼ぶ側が面から導いて渡す（`fg`）。 */}
       <span style={{
+        position: "absolute", /* ★目盛りの外（穴の中心から置く＝図形の座標系） */ left: cx,
+        bottom: `calc(100% + ${SPACE.xs}px)`, transform: "translateX(-50%)", whiteSpace: "nowrap",
         fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps,
         color: fg, marginRight: `-${TRACK.caps}`, lineHeight: LEAD.flat,
       }}>{label}</span>
-      {/* ★★キーは**段の中で縦の中央**。段の高さは呼ぶ側が渡す（段の寸法は
-          アイコンの比から出るので、キーの側で持たない）。 */}
-      <div style={{ height: deckH, display: "flex", alignItems: "center" }}>
-      <div style={{ position: "relative", width: KEY_D, height: KEY_D + KEY_DEPTH }}>
+      {/* ★★★**円の光学的な中心を段の中心線へ置く**（2026-09-13・第97巡）。
+          箱の高さは `keyD + KEY_DEPTH`（下の `KEY_DEPTH` は沈むための溝）で、
+          **浮いているときの円は箱の上端から `keyD`** ―― だから箱の上を
+          `deckH/2 − keyD/2` に置けば、**待機の円がちょうど中心線に乗る**。
+          ★第96巡は箱ごと `alignItems: "center"` で中央に置いていたので、
+          溝のぶん **2px 上**（＋ラベルの誤りで 5px、合わせて 7px 上）へずれ、
+          **押しても一度も中心線を通らなかった**。 */}
+      <div style={{
+        position: "absolute", /* ★目盛りの外（穴の中心から置く＝図形の座標系） */ left: cx - keyD / 2,
+        /* ★目盛りの外（同上） */ top: deckH / 2 - keyD / 2,
+        width: keyD, height: keyD + KEY_DEPTH, pointerEvents: "auto",
+      }}>
         {/* キーが沈む「穴」。★キーより WELL_LIP だけ広く、四方に影が回る。 */}
         <div style={{
           position: "absolute", left: -WELL_LIP, bottom: -WELL_LIP,
-          width: KEY_D + WELL_LIP * 2, height: KEY_D + WELL_LIP * 2,
+          width: keyD + WELL_LIP * 2, height: keyD + WELL_LIP * 2,
           borderRadius: RADIUS.circle, background: well,
         }} />
         <button
@@ -1079,7 +1120,7 @@ function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enable
           aria-label={label}
           aria-pressed={pressed}
           style={{
-            position: "absolute", left: 0, bottom: 0, width: KEY_D, height: KEY_D,
+            position: "absolute", left: 0, bottom: 0, width: keyD, height: keyD,
             borderRadius: RADIUS.circle, border: "none", padding: 0,
             background: cap,
             transform: `translateY(${down ? 0 : -KEY_DEPTH}px)`,
@@ -1093,34 +1134,40 @@ function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enable
             // ★REC の赤い線は、**ボタンの丸い面の内側の縁に沿わせる**
             // (ユーザー指定)。待機は黒い輪、録音を始めると赤く光る。
             <span style={{
-              position: "absolute", /* ★目盛りの外（円の中の輪＝図形の座標系） */ inset: 4, borderRadius: RADIUS.circle,
+              position: "absolute", inset: SPACE.xs, borderRadius: RADIUS.circle,
               border: `1.5px solid ${pressed ? ring : ringOff}`,
               transition: "border-color var(--t-item) var(--ease-settle)",
             }} />
           ) : (
             // ★記号の窓。この中でだけ盤の色が読める。
             <span style={{
-              width: SOCKET_D, height: SOCKET_D, borderRadius: RADIUS.circle,
+              width: socketD, height: socketD, borderRadius: RADIUS.circle,
               background: socket, display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               {bars ? (
                 <span style={{ display: "flex", gap: SPACE.xs }}>
                   {[0, 1].map((i) => (
                     <span key={i} style={{
-                      /* ★目盛りの外（記号の線＝図形の座標系） */ width: 3, height: 11,
+                      /* ★目盛りの外（記号の線＝図形の座標系） */ width: keyD * BAR_W_PER_KEY, height: keyD * BAR_H_PER_KEY,
                       background: ink,
                       transition: "background var(--t-item) var(--ease-settle)",
                     }} />
                   ))}
                 </span>
               ) : cross ? (
-                <span style={{ position: "relative", width: 12, height: 12 }}>
-                  <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: ink, transform: "rotate(45deg)" }} />
-                  <span style={{ position: "absolute", /* ★目盛りの外（✕印の線＝図形の座標系） */ top: 5, left: 0, width: 12, height: 1.5, background: ink, transform: "rotate(-45deg)" }} />
+                <span style={{ position: "relative", width: keyD * CROSS_PER_KEY, height: keyD * CROSS_PER_KEY }}>
+                  {[45, -45].map((deg) => (
+                    <span key={deg} style={{
+                      position: "absolute", /* ★目盛りの外（✕印の2本の線の交点＝図形の座標系） */
+                      top: keyD * (CROSS_PER_KEY - CROSS_LINE_PER_KEY) / 2, left: 0,
+                      width: keyD * CROSS_PER_KEY, height: keyD * CROSS_LINE_PER_KEY,
+                      background: ink, transform: `rotate(${deg}deg)`,
+                    }} />
+                  ))}
                 </span>
               ) : (
                 <span style={{
-                  /* ★目盛りの外（ランプの丸＝図形の座標系） */ width: 8, height: 8, borderRadius: RADIUS.circle,
+                  /* ★目盛りの外（ランプの丸＝図形の座標系） */ width: keyD * LAMP_PER_KEY, height: keyD * LAMP_PER_KEY, borderRadius: RADIUS.circle,
                   background: ink,
                   transition: "background var(--t-item) var(--ease-settle)",
                 }} />
@@ -1129,8 +1176,7 @@ function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enable
           )}
         </button>
       </div>
-      </div>
-    </div>
+    </>
   );
 }
 

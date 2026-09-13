@@ -134,12 +134,44 @@ function roundedPoly(corners: readonly Pt[], r: number): Pt[] {
 }
 
 /**
+ * ★★★**点の列の外接箱を 0〜1 へ引き伸ばす**（2026-09-13・第97巡）。
+ *
+ * ★★★**なぜ要るか。** `clipPathUnits="objectBoundingBox"` は 0〜1 のパスを器の
+ *   寸法へ**そのまま掛ける**ので、**パスの外接箱が 0〜1 でないと、形ごとに
+ *   見えるベゼルが変わる**。第96巡の実測（器 276・指定ベゼル 32）――
+ *   四つ葉 80.5%（ベゼル **58.9**）／六角形 幅 97.2%（左右 **35.9**・上下 32）／
+ *   波打つ四角 **107.5%**（器をはみ出して**切れていた**）／トゲトゲ 100%（32）。
+ *   ユーザー指摘「図形が縦長」「四辺でばらばら」「ベゼルの太さと合っていない」は
+ *   **全部ここ1点から出ていた**。
+ * ★★**両軸を別々に伸ばす**（器は正方形なので歪まない。山の提案も 2r×2r）。
+ * ★★**形の性格の目盛り（`CLOVER_AMP` など）は触らない** ―― 正規化は最後の一手。
+ *   葉の深さや揺れの数を変えずに、四辺へ**届かせる**だけ。
+ */
+function fitBox(pts: Pt[]): Pt[] {
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const [x, y] of pts) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  const w = maxX - minX || 1;
+  const h = maxY - minY || 1;
+  return pts.map(([x, y]) => [(x - minX) / w, (y - minY) / h] as Pt);
+}
+
+/**
  * ★★★**形の正はこの点の列**（2026-09-13・第96巡）。
  * SVG のパス（札の `clip-path`）も canvas の輪郭（ホームの山）も**ここから導く**。
  * ★前は SVG の文字列しか返さなかったので、canvas から使えなかった。
  * **形を2度書かない**という約束を、技術をまたいでも守るための作り替え。
+ * ★★★**返す前に `fitBox` で外接箱を 0〜1 へ揃える**（第97巡）。ここを通るので
+ *   SVG の `clip-path` も canvas の輪郭も**同時に**四辺へ届く。
  */
 export function cardShapePoints(shape: CardShape): Pt[] {
+  return fitBox(rawShapePoints(shape));
+}
+
+/** 形そのもの（外接箱は揃っていない）。★呼ぶのは `cardShapePoints` だけ。 */
+function rawShapePoints(shape: CardShape): Pt[] {
   switch (shape) {
     // 弧 … 角に葉4つ、辺の真ん中に切れ込み4つ。輪郭が**全部円弧**（券の `arch`）。
     // ★★`-cos(4θ)` で山を**斜め（角）**へ置く。`+cos` だと十字になる（第94巡）。

@@ -310,7 +310,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
   // 実際のビューポート/ヘッダー/フッターの実寸とズレることがあり、
   // 本文がカードの外へそのままはみ出す不具合の一因になっていた。
   const arenaRef = useRef<HTMLDivElement>(null);
-  const [cardBox, setCardBox] = useState<{ w: number; h: number } | null>(null);
+  const [cardBox, setCardBox] = useState<{ w: number; h: number; lift: number } | null>(null);
   useEffect(() => {
     const el = arenaRef.current;
     if (!el) return;
@@ -325,7 +325,18 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
       //   あり、片方だけ直すと札が枠からはみ出す仕掛けになっていた。
       //   ★`ITEM_CARD_ASPECT` とは**別物**（あちらを変えてもここは動かない）。
       const w = Math.min(availW, CARD_MAX_W, availH * BRIEF_AR);
-      setCardBox({ w, h: w / BRIEF_AR });
+      const h = w / BRIEF_AR;
+      // ★★★**札を「画面の中心」へ寄せる**（2026-09-13・第97巡）。
+      //   枠の下にはフッターの予約枠（`GROWTH_FOOTER_SLOT`）が**常に居る**ので、
+      //   枠の中で中央に置くと、**画面の中では予約枠の半分だけ上へずれる**
+      //   （実測 … 列の上から札の上 45 ／ 札の下から列の下 103）。
+      //   ユーザー指摘「**下に変な隙間**」はこれ。
+      //   ★★★**予約枠そのものは消さない** ―― 育成カードが先頭へ昇格した瞬間に
+      //   札の実寸が変わる（本文の折り返しがガクッと動く）のを止めているのがこれ。
+      //   ★★★**札を縮めてまで中心へは寄せない** ―― 余っている高さの範囲でだけ
+      //   下げる。余りが無い（＝高さで頭打ちの）画面では札の大きさが最優先。
+      const slack = Math.max(0, (availH - h) / 2);
+      setCardBox({ w, h, lift: Math.min(slack, GROWTH_FOOTER_SLOT / 2) });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -710,7 +721,14 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
               hiddenにロックしているため、ここをvisibleにしても実際に
               ページがスクロール/横に伸びることはない。 */}
           <div ref={arenaRef} style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: `${SPACE.md}px 0` }}>
-            <main style={{ position: "relative", width: cardBox ? cardBox.w : "min(88vw, 340px)", height: cardBox ? cardBox.h : undefined, aspectRatio: cardBox ? undefined : BRIEF_CARD_ASPECT }}>
+            <main style={{
+              position: "relative",
+              width: cardBox ? cardBox.w : "min(88vw, 340px)",
+              height: cardBox ? cardBox.h : undefined,
+              aspectRatio: cardBox ? undefined : BRIEF_CARD_ASPECT,
+              /* ★下のフッターの予約枠のぶんだけ下げる（大きさは1pxも変えない）。 */
+              transform: cardBox ? `translateY(${cardBox.lift}px)` : undefined,
+            }}>
               {visibleCards.map(({ card, isTop }) => (
                 <div
                   key={card.id}

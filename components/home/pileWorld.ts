@@ -1,4 +1,5 @@
-import { INK, JOURNAL_FACE, LATIN, RUST, SHAPE_FACE, SWISS_XL, TASK_FACE } from "@/lib/constants";
+import { INK, JOURNAL_FACE, KIND_DOMAIN, LATIN, RUST, SHAPE_FACE, SWISS_XL, TASK_FACE } from "@/lib/constants";
+import { cardShapeOf, type CardShape } from "@/lib/cardShape";
 import { CASSETTE_ASPECT } from "@/lib/cassette";
 import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
 import { pad } from "@/lib/helpers";
@@ -52,7 +53,7 @@ const FIT_W = 0.52;
 const FIT_H = 0.28;
 /** ★提案の円の大きさ。**いちばん重いタスク × これ**（2026-09-08 に 1 → 1.6）。 */
 const OFFER_K = 1.6;
-/** 未読のトゲトゲの円。★12頂点・内半径 0.40（`docs/home-spec.md` §5-b）。 */
+/** 未読のトゲトゲの円。★12の尖り。★**谷は `ZIG_IN + 0.5 = 0.9`**（浅い刻み）。 */
 export const ZIG_N = 12;
 const ZIG_IN = 0.4;
 /** ★未読の数の図形。**数字を読ませる図形**なので、タスクより大きく取る。 */
@@ -84,9 +85,12 @@ const DROP_SCATTER = 200;
 const WORD_W = 0.84;
 
 /**
- * ★★★**トゲトゲの円の輪郭**（2026-09-09）。**絵と物理でここ1つを共有する。**
- * 前は絵がトゲトゲ・物理が**まん丸**で、①掴もうとしても円の当たり判定と
- * ずれる ②トゲが床に引っかからず**玉のように滑る**、の2つが起きていた。
+ * ★★★**未読の数のトゲトゲの輪郭（絵だけ）**（2026-09-09）。
+ * ★★**物理はこれではない** ―― `Bodies.polygon(ZIG_N, BADGE_R)` の**凸の12角形**
+ * （`poly-decomp` が無いので凹んだ形を体にできない。下の `badge` の注意書き）。
+ * 当たり判定はさらに別で、**半径の円**（`Pile.tsx`）。**3つは別物。**
+ * 前は絵がトゲトゲ・物理が**まん丸**で、①掴もうとしても当たり判定とずれる
+ * ②トゲが床に引っかからず**玉のように滑る**、の2つが起きていた。
  */
 export function zigVerts(r: number): { x: number; y: number }[] {
   return Array.from({ length: ZIG_N * 2 }, (_, i) => {
@@ -106,6 +110,14 @@ export interface Piece {
   id: string;
   body: Body;
   kind: "task" | "offer" | "badge" | "word" | "cassette";
+  /**
+   * ★★★**提案だけが持つ「ジャンルの形」**（2026-09-13・第96巡にユーザー指定
+   * 「ホームに落とす図形も、このマスクの形にします」）。BRIEF の札と**同じ写真が
+   * 同じ形**で出る。★★山に落ちる5種のうち**ジャンルを持てるのは提案だけ**
+   * （タスク・未読の数・カセット・文字の板は `ItemDomain` を持たない。持たせると
+   * 「形がジャンルを言う」約束が壊れて、同じ形が2つの意味を持つ）。
+   */
+  shape?: CardShape;
   /** 角丸の四角の外接箱（タスク）。円は `r`。 */
   w?: number; h?: number; r?: number;
   face: string;
@@ -285,7 +297,12 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
     //   （2026-09-08 ユーザー指定「提案の図形はもっと大きく」）。
     const area = weightArea(3) * OFFER_K;
     const r = Math.max(28, Math.sqrt((area * unit * unit) / Math.PI));
-    const body = m.Bodies.circle(0, 0, r, BODY);
+    // ★★★**まん丸をやめて12角形**（2026-09-13・第96巡に形を持たせたので）。
+    //   ★★`Bodies.fromVertices` に**凹んだ形をそのまま渡してはいけない** ――
+    //   `poly-decomp` を積んでいないので分解に失敗する（未読のトゲトゲで実測済み。
+    //   下の `badge` の注意書きを見よ）。**凸の12角形**なら SAT が正しく効き、
+    //   まん丸のように滑らず**角で止まる**。当たり判定は半径のまま。
+    const body = m.Bodies.polygon(0, 0, ZIG_N, r, BODY);
     m.Body.setMass(body, area * MASS_K);
     toss(body, it.id, r * 2);
     // ★★**焼き込まれた色を信じない**（帯の `cardFace` と同じ理由）。生成した夜の
@@ -295,6 +312,8 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
       id: it.id, body, kind: "offer", r,
       face, ink: bodyInkOn(face),
       photo: it.images?.[0], title: it.title,
+      // ★★**形は券の鋏痕から導く**（`lib/cardShape.ts`。BRIEF の札と同じ1か所）。
+      shape: cardShapeOf(KIND_DOMAIN[it.kind]),
       // ★写真が無い提案の顔＝**字面**（ブリーフのカードと同じ規則）。
       glyph: glyphOfKind(it.kind),
     });

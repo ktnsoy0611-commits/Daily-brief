@@ -6,7 +6,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { DIAL_TICK, DIAL_TICKS, DIAL_VIEW } from "@/lib/dial";
-import { CASSETTE_ASPECT, CASSETTE_DECK_W, CASSETTE_DECK_X, CASSETTE_R_PER_H, CASSETTE } from "@/lib/cassette";
+import { CASSETTE, CASSETTE_ASPECT, CASSETTE_DECK_H, CASSETTE_DECK_W, CASSETTE_DECK_X, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W } from "@/lib/cassette";
+import { PILE_INSET } from "@/lib/pileBox";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { pushGround } from "@/lib/ground";
@@ -77,23 +78,12 @@ const NOTCH = (15 * Math.PI) / 180;
 const TAP_SLOP = 0.05;
 /** 開始と終了が潰れないよう、最低これだけは残す。 */
 const MIN_SPAN = 0.04;
-/** ダイヤルの直径(器の幅に対する比)。画面をはみ出す大きさ。
- *  ★★2026-09-13・第95巡に **1.30 → 1.00**（ユーザー指定「**円を小さくして**、
- *  もう少し全体が図形のデザインと統一して見えるように」）。390px 幅で直径 507 → 390。 */
-const DIAL_RATIO = 1.00;
-/** ★砂時計の腰の幅(器の幅に対する比)。**これが「そのまま」であること**が
- *  波形の帯の置き場を決める(ユーザー指定「波形はそのまま」)。 */
-const DIAL_WAIST = 0.30;
-/** 中心のx(器の幅に対する比)。左右へ大きくはみ出す。
- *  ★★★**腰から導く**(2026-09-13・第95巡)。腰の幅は
- *  `器の幅 x (1 + 2*DIAL_CX - DIAL_RATIO)` なので、直径を変えたら中心も
- *  一緒に動かさないと腰が広がって砂時計の締まりが無くなる。
- *  **前はコメントで「一緒に動かすこと」と約束していただけだった**ので、
- *  式にして**別々に動かせなくした**。 */
-const DIAL_CX = (DIAL_RATIO - (1 - DIAL_WAIST)) / 2;
-/** ★波形の帯の中心を、円の中心からどれだけ上へ置くか。
- *  「真ん中の少し上」(ユーザー指定)。 */
-const WAVE_DY = -136;
+// ★★★**円の大きさも位置も、もうここには無い**（2026-09-13・第96巡）。
+//   ユーザー指摘「**円と四角は大きさや位置関係が、アイコンの図形と違いすぎる**」。
+//   → **録音画面は「アイコンを拡大して画面に嵌めた絵」**になり、リールの直径・
+//   中心間・中心の高さは**全部 `lib/cassette.ts` の比から導く**。
+//   ★第95巡の `DIAL_RATIO` / `DIAL_CX` / `DIAL_WAIST`（腰を式で縛る仕掛け）は
+//   **役目を終えたので消した** ―― 腰＝リールの隙間も、いまはアイコンの比が決める。
 /** 波形の帯の高さ。★止めても広げない(ユーザー指定)。 */
 const WAVE_H = 58;
 /** 録音中の帯は、円に**絶対に重ならない**幅までしか広げない。
@@ -108,14 +98,8 @@ const SPLIT_MS = 420;
  *  見張り**に使う(第95巡までは円の中心をここから決めていた)。
  *  Masthead の高さを変えたら測り直すこと(実測: top 16 + 高さ 68 = 84)。 */
 const BAND_TOP = 84;
-/** ★カセットの本体が、リール(円)の上へどれだけ出るか。★目盛りの外（部品の寸法）。 */
-const PLATE_PAD = SPACE.lg;
-/** ★リールと「下の段」(キーの穴)のあいだ。★目盛りの外（部品の寸法）。 */
-const DECK_GAP = SPACE.lg;
-/** ★下の段がキーの列を上下にどれだけ包むか。★目盛りの外（部品の寸法）。 */
-const DECK_LIP = SPACE.sm;
-/** ★キーの列をタブバーの上端からどれだけ浮かせるか。★目盛りの外（部品の寸法）。 */
-const KEY_ROW_GAP = SPACE.xl;
+/** ★本体の下の縁をタブバーの上端からどれだけ浮かせるか。 */
+const DECK_LIFT = SPACE.xl;
 /** ★キーのラベル1行の高さ（`TYPE.nano` × `LEAD.flat`）。★目盛りの外（部品の寸法）。 */
 const KEY_LABEL_H = 12;
 // ★縁の目盛りの本数と寸法は `lib/dial.ts`（ホームの山と共有）。
@@ -198,9 +182,10 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   //   第93巡に実測 … `rgba(44,38,39,0.38)` を面に合成すると**比 1.94 で消える**。
   //   ベタなら黒い円の上で紙色が **11.89** 出る。
   const tick = bodyInkOn(dial);
-  // ★★★**下の段（キーの穴）に載るラベルの色は、その面から導く**（第95巡）。
-  //   キーが地の上から墨のバーの上へ移ったので、地から決めていた `fg` では合わない。
-  const deckInk = bodyInkOn(INK);
+  // ★★★**ラベルは「青い本体」の上に載る**（2026-09-13・第96巡にラベルを段の外へ
+  //   出した）。★面から導く ―― 地から決めていた `fg` も、第95巡に墨の段から
+  //   決めていた `deckInk` も、もう面が違う。実測 … 青の上の墨は **7.12**。
+  const plateInk = bodyInkOn(JOURNAL_FACE);
 
   // ★★★第79巡から**キーまわりは画面で変わらない**（面が両方とも白なので、
   //   穴も窓もランプも1つで足りる）。分岐が減ったぶん、ズレようがない。
@@ -306,52 +291,64 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // ---- 円の配置 --------------------------------------------------------------
   const w = size.w || 390;
   const h = size.h || 620;
-  const RD = w * DIAL_RATIO;                 // 直径
 
-  // ---- カセットの本体と「下の段」（キーの穴） --------------------------------
-  // ★★★**組み立ての順が第94巡と逆になった**（2026-09-13・第95巡）。
-  //   前は「円 → 本体」だったが、いまは **「キーの列 → 下の段 → 本体 → 円」**。
-  //   ユーザー指定 ―― 「**ボタン類をバーに当てはめる**。その際ボタンの大きさや
-  //   形もバーに合わせて調整」「円の上下の中心は上へ動かしてよい」。
-  // ★★★**キーの列を動かさない**（`KEY_BOTTOM` は実機のタブバーの高さに追従する
-  //   `NAV_H` から来ている）。**下の段のほうがキーの列へ行く。**
-  //   ★`navHeightPx()` を使う ―― `.app-nav` の矩形は `NAV_H` と一致しない
+  // ---- カセット ── **アイコンを拡大して画面に嵌める** ------------------------
+  // ★★★**組み立ての向きが第95巡からまた変わった**（2026-09-13・第96巡）。
+  //   前は「キーの列 → 下の段 → 本体 → 円」と**下から積んで**いたので、
+  //   円と本体の比が**アイコンと似ても似つかなかった**（実測 … リールの直径 ÷
+  //   本体の高さ が、アイコン 0.457 に対して録音画面は 0.78）。
+  //   いまは **「下の段の幅 → 本体 → リール」**。本体から下は**全部アイコンの比**
+  //   （`lib/cassette.ts` の `CASSETTE_*_PER_*`）で、ここでは1つも数を持たない。
+  // ★★★**大きさを決めるのは「下の段が画面に収まること」の1つだけ** ――
+  //   段は**タブバーや山と同じ内寸**（左右 `SPACE.lg`）いっぱいに広げる。
+  //   本体は段の2倍の幅（アイコンで段は本体の半分）なので**必ず画面からはみ出す**
+  //   ＝ ユーザー指定「**画面外にはみ出している感じは維持**」が式から出る。
+  // ★`navHeightPx()` を使う ―― `.app-nav` の矩形は `NAV_H` と一致しない
   //   （Chromium 81px／実機 132px）。自分で測らない。
-  const keyRowH = KEY_D + KEY_DEPTH + SPACE.xs + KEY_LABEL_H;
-  const deckH = keyRowH + DECK_LIP * 2;
-  const deckBottom = h - navHeightPx() - KEY_ROW_GAP + DECK_LIP;
-  // 本体は「上の余白 ＋ リール ＋ 隙間 ＋ 下の段」を積んだ高さ。
-  // ★横の比だけアイコンから借りるので、**左右は画面の外へ出たまま**
-  //   （ユーザー確定「画面端から縁がはみ出ている今の感じを残して欲しい」）。
-  const plateH = PLATE_PAD + RD + DECK_GAP + deckH;
+  const deckWWant = Math.max(120, w - PILE_INSET * 2);
+  const bodyBottom = h - navHeightPx() - DECK_LIFT;
+  // ★★**上の見張り** … 本体が題（Masthead）に掛かるなら、そこまでで頭を押さえる。
+  const plateH = Math.min(
+    (deckWWant / (CASSETTE_DECK_W / CASSETTE.body.w)) / CASSETTE_ASPECT,
+    Math.max(200, bodyBottom - BAND_TOP),
+  );
   const plateW = plateH * CASSETTE_ASPECT;
-  // ★★**上の見張り** … 本体が題（Masthead）に掛からないこと。掛かるなら
-  //   下の段はそのままに、上の余白を詰める（円は動かさない）。
-  const plateTop = Math.max(BAND_TOP, deckBottom - plateH);
+  const plateTop = bodyBottom - plateH;
   const plateCx = w / 2;
-  // ★中心は**本体から導く**（帯の真ん中ではなくなった）。
-  const cy = plateTop + PLATE_PAD + RD / 2;
-  const cxL = -w * DIAL_CX;
-  const cxR = w * (1 + DIAL_CX);
-  // 下の段（左の円＝REC の穴／右のバー＝残り3つの穴）。アイコンの比で置く。
-  const deckW = (CASSETTE_DECK_W / CASSETTE.body.w) * plateW;
-  const deckLeft = plateCx - plateW / 2 + (CASSETTE_DECK_X / CASSETTE.body.w) * plateW;
-  const deckTop = deckBottom - deckH;
+
+  // リール（大きな円2つ）。★直径も中心もアイコンの比が決める。
+  const RD = plateH * CASSETTE_REEL_D_PER_H;
+  const cy = plateTop + plateH * CASSETTE_REEL_CY_PER_H;
+  const reelGap = plateW * CASSETTE_REEL_GAP_PER_W;
+  const cxL = plateCx - reelGap / 2;
+  const cxR = plateCx + reelGap / 2;
+
+  // 下の段（左の円＝REC の穴／右のバー＝残り3つの穴）。本体の下の縁に接する。
+  const deckH = plateH * (CASSETTE_DECK_H / CASSETTE.body.h);
+  const deckW = plateW * (CASSETTE_DECK_W / CASSETTE.body.w);
+  const deckLeft = plateCx - plateW / 2 + plateW * (CASSETTE_DECK_X / CASSETTE.body.w);
+  const deckTop = bodyBottom - deckH;
   const knobD = deckH;
-  const barLeft = deckLeft + knobD + ((CASSETTE.bar.x - (CASSETTE.knob.x + CASSETTE.knob.r)) / CASSETTE.body.w) * plateW;
+  const barLeft = deckLeft + knobD
+    + plateW * ((CASSETTE.bar.x - (CASSETTE.knob.x + CASSETTE.knob.r)) / CASSETTE.body.w);
   const barW = deckLeft + deckW - barLeft;
+  // ★★★**ラベルは段の外＝キーの上**（2026-09-13・第96巡にユーザー確定）。
+  //   段が薄くなったので、キー（42px）とラベルの両方は中に入らない。
+  //   リールの下端と段の上端のあいだへ置く（面は**青い本体**）。
+  const labelBottom = deckTop - SPACE.xs;
 
   // ---- 波形の帯の置き場 ------------------------------------------------------
-  // ★録音中の帯は「真ん中の少し上」に置き、**円に重ならない幅**までしか
-  // 広げない。円は中心が画面の外にあるので、外接矩形ではなく円の式で見ること。
-  // 中心から dy 離れた高さでの左右の隙間 = (cxR - cxL) - 2*sqrt(R^2 - dy^2)。
-  // 帯の上端/下端のうち、中心に近い方(=隙間が最小)で決まる。
-  const waveCy = cy + WAVE_DY;
+  // ★録音中の帯は**本体の上の縁とリールの上端のちょうど真ん中**へ置く
+  //   （2026-09-13・第96巡。前は円の中心から生の -136px だったが、リールが
+  //   小さくなったので、そのままではリールに掛かる）。
+  // ★幅は円の式から。中心から dy 離れた高さでの左右の隙間
+  //   = (cxR - cxL) - 2*sqrt(R^2 - dy^2)。帯の上端/下端のうち中心に近い方で決まる。
+  const waveCy = (plateTop + (cy - RD / 2)) / 2;
   const gapAt = (dy: number) => {
     const s = (RD / 2) * (RD / 2) - dy * dy;
     return (cxR - cxL) - 2 * (s > 0 ? Math.sqrt(s) : 0);
   };
-  const nearDy = Math.max(0, Math.abs(WAVE_DY) - WAVE_H / 2);
+  const nearDy = Math.max(0, Math.abs(waveCy - cy) - WAVE_H / 2);
   const waveW = Math.max(90, Math.min(w - 52, gapAt(nearDy) - 2 * WAVE_MARGIN));
   // 数字は帯の下、腰のところへ。
   const timeTop = waveCy + WAVE_H / 2 + 30;
@@ -948,26 +945,27 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           ★この帯は素通し（`pointerEvents: none`）。指を受けるのはキーだけ ――
           空いている所で指を吸うと、その下のダイヤルが回せなくなる。 */}
       <div style={{
-        position: "absolute", left: deckLeft, top: deckTop, width: deckW, height: deckH,
+        position: "absolute", left: deckLeft, top: labelBottom - KEY_LABEL_H,
+        width: deckW, height: KEY_LABEL_H + SPACE.xs + deckH,
         zIndex: 3, pointerEvents: "none",
       }}>
-        {/* 左の円 ＝ REC。 */}
+        {/* 左の円 ＝ REC。★ラベルは段の上、キーは段の中で縦の中央。 */}
         <div style={{
-          position: "absolute", left: 0, top: DECK_LIP,
-          width: knobD, height: keyRowH,
-          display: "flex", justifyContent: "center", pointerEvents: "auto",
+          position: "absolute", left: 0, top: 0, width: knobD, height: "100%",
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "flex-start", pointerEvents: "auto",
         }}>
           <TransportKey
             label="REC" ring={ringRec} ringOff={ringIdle}
             pressed={recording} enabled={!sending}
             onPress={() => voice.toggle()}
-            fg={deckInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+            fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff} deckH={deckH}
           />
         </div>
         {/* 右のバー ＝ PAUSE / SEND / CANCEL。 */}
         <div style={{
-          position: "absolute", left: barLeft - deckLeft, top: DECK_LIP,
-          width: barW, height: keyRowH,
+          position: "absolute", left: barLeft - deckLeft, top: 0,
+          width: barW, height: "100%",
           display: "flex", alignItems: "flex-start", justifyContent: "space-evenly",
           pointerEvents: "auto",
         }}>
@@ -977,13 +975,13 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             label="PAUSE" lamp={acc.pause} bars
             pressed={paused} enabled={recording}
             onPress={voice.togglePause}
-            fg={deckInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+            fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff} deckH={deckH}
           />
           <TransportKey
             label="SEND" lamp={acc.send}
             pressed={sending} enabled={review}
             onPress={() => voice.send(trimRef.current)}
-            fg={deckInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+            fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff} deckH={deckH}
           />
           {/* ★CANCEL はいつでも押せて、録音を捨てて最初の状態へ戻す。
               オーバーレイでは、これがそのまま「元の画面へ戻る」になる
@@ -992,7 +990,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             label="CANCEL" cross lamp={acc.cancel}
             pressed={false} enabled={!sending && !leaving}
             onPress={onCancelKey}
-            fg={deckInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
+            fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff} deckH={deckH}
           />
         </div>
       </div>
@@ -1019,7 +1017,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
  * 4.7 以上出る ―― これが「アクセントカラーの点灯」を成立させている唯一の理由。
  * REC の輪だけは窓ではなく**面の縁**に沿う（ユーザー指定の見え方）。
  */
-function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enabled, onPress, fg, cap, well, socket, lampOff }: {
+function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enabled, onPress, fg, cap, well, socket, lampOff, deckH }: {
   label: string;
   /** 窓の中で灯る色。★押せるときだけ灯る。 */
   lamp?: string;
@@ -1045,6 +1043,8 @@ function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enable
   socket: string;
   /** 消えているランプ。 */
   lampOff: string;
+  /** ★下の段（キーの穴）の高さ。キーはこの中で縦の中央へ置かれる。 */
+  deckH: number;
 }) {
   const [held, setHeld] = useState(false);
   // 沈んで見えるか。★**押せない**は含めない（それはランプが言う）。
@@ -1052,6 +1052,16 @@ function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enable
   const ink = enabled ? (lamp ?? fg) : lampOff;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: SPACE.xs }}>
+      {/* ★★★**ラベルはキーの上**（2026-09-13・第96巡にユーザー確定）。段が薄く
+          なったので、キーとラベルの両方は段の中に入らない ―― 文字だけ段の外へ出す。
+          ★面は**青い本体**なので、色は呼ぶ側が面から導いて渡す（`fg`）。 */}
+      <span style={{
+        fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps,
+        color: fg, marginRight: `-${TRACK.caps}`, lineHeight: LEAD.flat,
+      }}>{label}</span>
+      {/* ★★キーは**段の中で縦の中央**。段の高さは呼ぶ側が渡す（段の寸法は
+          アイコンの比から出るので、キーの側で持たない）。 */}
+      <div style={{ height: deckH, display: "flex", alignItems: "center" }}>
       <div style={{ position: "relative", width: KEY_D, height: KEY_D + KEY_DEPTH }}>
         {/* キーが沈む「穴」。★キーより WELL_LIP だけ広く、四方に影が回る。 */}
         <div style={{
@@ -1119,11 +1129,7 @@ function TransportKey({ label, lamp, ring, ringOff, cross, bars, pressed, enable
           )}
         </button>
       </div>
-      {/* ★ラベルは状態で色を変えない（それもグレーアウトの一種）。 */}
-      <span style={{
-        fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps,
-        color: fg, marginRight: `-${TRACK.caps}`,
-      }}>{label}</span>
+      </div>
     </div>
   );
 }

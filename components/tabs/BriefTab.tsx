@@ -8,7 +8,7 @@ import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "
 //   34px に固定されて左右が非対称になっていた）。
 import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
 import { appTitle } from "@/lib/apps";
-import { KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP } from "@/lib/constants";
+import { BRIEF_CARD_ASPECT, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import { BRIEF_POOL_CAP } from "@/lib/homeBand";
 import { accentOf } from "@/lib/appAccent";
@@ -130,7 +130,10 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
       // ★★**綴じ穴をやめたので左右が対称になった**（2026-09-13 ユーザー確定）。
       //   ★カードは「ページ最上位の器」ではなく部品なので、自分の内側の余白を持つ
       //   （`design.md` §2 の左右パディングの禁は器の入れ子の話）。
-      padding: SPACE.lg,
+      // ★★★**ベゼルは参照画像の実測に合わせた**（2026-09-13・第96巡）――
+      //   参照は **28px / カード幅 273 ＝ 10.3%**、`SPACE.lg` では **5.2%** で
+      //   **半分しかなかった**。`SPACE.xxl` は 340 幅で **9.4%**。
+      padding: CARD_PAD,
     }}>
       {/* ★この札だけの `<clipPath>`。**場所は取らない**（幅も高さも 0）。 */}
       <CardShapeDefs prefix={clipId} />
@@ -144,10 +147,12 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => isTop && onOpenBinder && onOpenBinder()}
         style={{
-          // ★★★**写真が余りを全部取る**（第94巡）―― 52% の決め打ちだと、
-          //   3:4 の札では文の下に**黄色い空白**が 300px 残った（実測）。
-          //   参照デザインも「写真が上を埋め、文は下に寄る」組み方。
-          flex: "1 1 auto", minHeight: 0, position: "relative", overflow: "hidden",
+          // ★★★**器は正方形**（2026-09-13・第96巡）。`clipPathUnits="objectBoundingBox"`
+          //   は 0〜1 のパスを**器の比へ引き伸ばす**ので、器が 308×275（比 1.12）
+          //   だと四つ葉とトゲトゲが**横に 12% 潰れて**いた（ユーザー指摘）。
+          //   ★★**参照画像の器を実測したら全部正方形だった**（218×218 / 218×217 /
+          //   188×188）。幅は「札の幅 − ベゼル×2」なので、**高さは自動で同じ値**。
+          flex: "0 0 auto", aspectRatio: "1 / 1", position: "relative", overflow: "hidden",
           // ★写真が無いときは紙色の面。**形は写真の有無によらず必ず見える**
           //   （形が分類を担うので、消えてはいけない）。
           background: PAPER,
@@ -167,7 +172,10 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
       </div>
       {/* ★★余白は**2値**（束の中は `xs`／束と束の間は `xl`）。`md` を使わない ――
           どこが束かが見えるようにするため（`design.md` §5-2）。 */}
-      <div style={{ flex: "0 0 auto", paddingTop: SPACE.xl, display: "flex", flexDirection: "column", gap: SPACE.xs }}>
+      {/* ★★文の塊が**余りを取る**（器が正方形で固定になったので逆転した）。
+          ★`overflow: hidden` … 題が2行になっても**器を押し出さない**。
+          本文が1行減るだけで、写真の正方形は絶対に崩れない。 */}
+      <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "hidden", paddingTop: SPACE.xl, display: "flex", flexDirection: "column", gap: SPACE.xs }}>
         {/* ★★★役は**3つだけ**（題・要約・操作）。階層は**大きさと太さ**で作り、
             色は使わない（面が色なので、無彩色の段を混ぜると濁る）。 */}
         <h2 style={{ margin: 0, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink }}>{card.title}</h2>
@@ -228,8 +236,8 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
           </a>
         )}
       </div>
-      <div style={{ position: "absolute", top: SPACE.lg, left: SPACE.lg, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>KEEP</div>
-      <div style={{ position: "absolute", top: SPACE.lg, right: SPACE.lg, transform: "rotate(12deg)", opacity: skipOpacity, border: `3px solid ${MUTED}`, color: MUTED, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>SKIP</div>
+      <div style={{ position: "absolute", top: CARD_PAD, left: CARD_PAD, transform: "rotate(-12deg)", opacity: keepOpacity, border: `3px solid ${BLUE}`, color: BLUE, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>KEEP</div>
+      <div style={{ position: "absolute", top: CARD_PAD, right: CARD_PAD, transform: "rotate(12deg)", opacity: skipOpacity, border: `3px solid ${MUTED}`, color: MUTED, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.display, letterSpacing: TRACK.caps, padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.md, background: "rgba(250,250,249,0.85)", pointerEvents: "none" }}>SKIP</div>
     </div>
   );
 }
@@ -262,6 +270,15 @@ function WaitingMark() {
 
 /** ★右下の黒い円（出典へ飛ぶ）の直径＝下の1列の高さ。★目盛りの外（部品の寸法）。 */
 const LINK_D = 44;
+/** 札の最大の幅（これ以上は広げない）。★目盛りの外（部品の寸法）。 */
+const CARD_MAX_W = 340;
+/** ★札の内側の余白（ベゼル）。参照画像の実測は幅の 10.3%、これは 9.4%。 */
+const CARD_PAD = SPACE.xxl;
+/** ★★★**札の比は数ではなく1つの割り算**（`BRIEF_CARD_ASPECT` ＝ 幅 ÷ 高さ）。 */
+const BRIEF_AR = (() => {
+  const [a, b] = BRIEF_CARD_ASPECT.split("/").map((n) => Number(n.trim()));
+  return a / b;
+})();
 
 // 育成カード用フッター(あとで/記録する)の高さぶんの予約枠。isGrowthを
 // 問わず常にこの高さを確保しておくことで、フッターの有無によって
@@ -299,12 +316,16 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
     if (!el) return;
     const measure = () => {
       const rect = el.getBoundingClientRect();
-      // 枠自身の上下パディング(10px×2)は余白として残す。
-      const availH = rect.height - 20;
+      // 枠自身の上下パディング（`SPACE.md` × 2）は余白として残す。
+      const availH = rect.height - SPACE.md * 2;
       const availW = rect.width;
       if (availW <= 0 || availH <= 0) return;
-      const w = Math.min(availW, 340, availH * 0.75);
-      setCardBox({ w, h: w * (4 / 3) });
+      // ★★★**比は `BRIEF_CARD_ASPECT` の1か所から導く**（2026-09-13・第96巡）。
+      //   前は `availH * 0.75` と `w * (4/3)` が**互いの逆数の生の数で2つ**書いて
+      //   あり、片方だけ直すと札が枠からはみ出す仕掛けになっていた。
+      //   ★`ITEM_CARD_ASPECT` とは**別物**（あちらを変えてもここは動かない）。
+      const w = Math.min(availW, CARD_MAX_W, availH * BRIEF_AR);
+      setCardBox({ w, h: w / BRIEF_AR });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -689,7 +710,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
               hiddenにロックしているため、ここをvisibleにしても実際に
               ページがスクロール/横に伸びることはない。 */}
           <div ref={arenaRef} style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: `${SPACE.md}px 0` }}>
-            <main style={{ position: "relative", width: cardBox ? cardBox.w : "min(88vw, 340px)", height: cardBox ? cardBox.h : undefined, aspectRatio: cardBox ? undefined : ITEM_CARD_ASPECT }}>
+            <main style={{ position: "relative", width: cardBox ? cardBox.w : "min(88vw, 340px)", height: cardBox ? cardBox.h : undefined, aspectRatio: cardBox ? undefined : BRIEF_CARD_ASPECT }}>
               {visibleCards.map(({ card, isTop }) => (
                 <div
                   key={card.id}

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import {
-  BG, INK, ITEM_CARD_ASPECT, LATIN, MUTED, PAPER, SANS, SECOND, TICKET_H_PER_W, navHeightPx,
+  BG, BRIEF_CARD_ASPECT, INK, LATIN, MUTED, PAPER, SANS, SECOND, TICKET_H_PER_W, navHeightPx,
 } from "@/lib/constants";
 import { TicketStage } from "@/components/explore/TicketStage";
 import { CardFace } from "@/components/tabs/BriefTab";
@@ -220,9 +220,10 @@ function CardBook() {
             fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
             lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: INK,
           }}>{s.jp}　{cardShapeOf(s.domain)}</span>
-          {/* ★寸法は**本番と同じ**（幅 `BOOK_W`／比 `ITEM_CARD_ASPECT`）。 */}
+          {/* ★寸法は**本番と同じ**（幅 `BOOK_W`／比 `BRIEF_CARD_ASPECT`）。
+              ★★`ITEM_CARD_ASPECT` ではない ―― 札だけ別の比（第96巡）。 */}
           <div data-card-shape={cardShapeOf(s.domain)} style={{
-            width: `${BOOK_W * 100}%`, aspectRatio: ITEM_CARD_ASPECT, overflow: "visible",
+            width: `${BOOK_W * 100}%`, aspectRatio: BRIEF_CARD_ASPECT, overflow: "visible",
           }}>
             <CardFace card={s.card} dx={0} isTop={false}
               checkinValue="" onCheckinChange={() => {}}

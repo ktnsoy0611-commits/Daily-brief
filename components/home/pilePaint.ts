@@ -1,6 +1,7 @@
 import { BAND_BEZEL, BD_GREY, LATIN, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { drawCassette } from "@/lib/cassette";
+import { traceCardShape } from "@/lib/cardShape";
 import { canvasFont, drawFitted, ensureGlyphs, fitText } from "@/lib/textFit";
 import { RADIUS, WEIGHT } from "@/lib/tokens";
 import { drawWordPlate } from "@/lib/wordPlate";
@@ -174,11 +175,19 @@ export function drawPile(
       //   ★ここは既に translate/rotate 済みなので、原点に置くだけ。
       if (p.plate) drawWordPlate(ctx, p.plate, 0, 0, 0, dpr);
     } else if (p.kind === "offer" && p.r) {
-      // ★★**写真の周りにベゼル**（2026-09-07 ユーザー指定）。円はその提案の色で、
-      //   写真は**一回り小さい円**に収まる ―― 色の輪が縁として残る。
-      ctx.beginPath();
-      ctx.arc(0, 0, p.r, 0, Math.PI * 2);
-      ctx.closePath();
+      // ★★**写真の周りにベゼル**（2026-09-07 ユーザー指定）。面はその提案の色で、
+      //   写真は**一回り小さい同じ形**に収まる ―― 色の輪が縁として残る。
+      // ★★★**形はジャンルが決める**（2026-09-13・第96巡にユーザー指定
+      //   「ホームに落とす図形も、このマスクの形にします」）。BRIEF の札と
+      //   **同じ写真が同じ形**で出る。出どころは `lib/cardShape.ts` の1か所。
+      //   ★★**外接箱は 2r × 2r の正方形**なので、札で起きた「横に潰れる」は
+      //     ここでは原理的に起きない。
+      const shape = p.shape;
+      const trace = (size: number) => {
+        if (shape) traceCardShape(ctx, shape, size);
+        else { ctx.beginPath(); ctx.arc(0, 0, size / 2, 0, Math.PI * 2); ctx.closePath(); }
+      };
+      trace(p.r * 2);
       ctx.fill();
       const im = p.photo ? photoOf(p.photo, p.r, dpr, onPhoto) : undefined;
       if (!im && p.glyph) {
@@ -195,9 +204,7 @@ export function drawPile(
       if (im) {
         const inner = Math.max(4, p.r - BAND_BEZEL);
         ctx.save();
-        ctx.beginPath();
-        ctx.arc(0, 0, inner, 0, Math.PI * 2);
-        ctx.closePath();
+        trace(inner * 2);
         ctx.clip();
         const s2 = Math.max((inner * 2) / im.naturalWidth, (inner * 2) / im.naturalHeight);
         const iw = im.naturalWidth * s2; const ih = im.naturalHeight * s2;

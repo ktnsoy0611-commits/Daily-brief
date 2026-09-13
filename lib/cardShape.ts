@@ -82,16 +82,21 @@ const STAR_N = 12;
 const STAR_IN = 0.82;
 /** 極座標で作る形の分割数（多いほど滑らか。パスの長さと引き換え）。 */
 const STEPS = 144;
+/** 角の丸みを何本の直線に割るか（`Q` を平らにする）。 */
+const ROUND_SEG = 6;
 
-/** 極座標の形を閉じた多角形のパスへ。`rad(θ)` は 0〜1 の半径（1 で器いっぱい）。 */
-function polar(rad: (t: number) => number, steps = STEPS): string {
-  const pts: string[] = [];
+/** 0〜1 の器の中の点。 */
+export type Pt = [number, number];
+
+/** 極座標の形を点の列へ。`rad(θ)` は 0〜1 の半径（1 で器いっぱい）。 */
+function polar(rad: (t: number) => number, steps = STEPS): Pt[] {
+  const pts: Pt[] = [];
   for (let i = 0; i < steps; i++) {
     const t = (i / steps) * Math.PI * 2 - Math.PI / 2;
     const r = rad(t) * 0.5;
-    pts.push(`${(0.5 + Math.cos(t) * r).toFixed(4)} ${(0.5 + Math.sin(t) * r).toFixed(4)}`);
+    pts.push([0.5 + Math.cos(t) * r, 0.5 + Math.sin(t) * r]);
   }
-  return `M${pts.join("L")}Z`;
+  return pts;
 }
 
 /** 超楕円（|x|^n + |y|^n = 1）の半径。n が大きいほど四角に近い。 */
@@ -99,31 +104,42 @@ const superR = (t: number, n: number): number =>
   1 / (Math.abs(Math.cos(t)) ** n + Math.abs(Math.sin(t)) ** n) ** (1 / n);
 
 /**
- * 角を丸めた多角形。★角ごとに**二次ベジェ1本**で落とす（`A` は
- * `objectBoundingBox` で器が正方形でないと歪むので使わない）。
+ * 角を丸めた多角形を**点の列**へ。★角は二次ベジェを `ROUND_SEG` に割って平らにする
+ * （`A` も `Q` も `objectBoundingBox` では器の比で歪むし、canvas と分かれる）。
  */
-function roundedPoly(pts: readonly (readonly [number, number])[], r: number): string {
-  const n = pts.length;
-  const out: string[] = [];
-  const at = (i: number) => pts[(i + n) % n];
-  const to = (a: readonly [number, number], b: readonly [number, number], d: number) => {
+function roundedPoly(corners: readonly Pt[], r: number): Pt[] {
+  const n = corners.length;
+  const out: Pt[] = [];
+  const at = (i: number) => corners[(i + n) % n];
+  const to = (a: Pt, b: Pt, d: number): Pt => {
     const dx = b[0] - a[0]; const dy = b[1] - a[1];
     const len = Math.hypot(dx, dy) || 1;
     const k = Math.min(d, len / 2) / len;
-    return [a[0] + dx * k, a[1] + dy * k] as const;
+    return [a[0] + dx * k, a[1] + dy * k];
   };
   for (let i = 0; i < n; i++) {
-    const p = at(i);
-    const a = to(p, at(i - 1), r);
-    const b = to(p, at(i + 1), r);
-    out.push(i === 0 ? `M${a[0].toFixed(4)} ${a[1].toFixed(4)}` : `L${a[0].toFixed(4)} ${a[1].toFixed(4)}`);
-    out.push(`Q${p[0].toFixed(4)} ${p[1].toFixed(4)} ${b[0].toFixed(4)} ${b[1].toFixed(4)}`);
+    const c = at(i);
+    const s0 = to(c, at(i - 1), r);
+    const s1 = to(c, at(i + 1), r);
+    out.push(s0);
+    for (let k = 1; k <= ROUND_SEG; k++) {
+      const u = k / ROUND_SEG; const v = 1 - u;
+      out.push([
+        v * v * s0[0] + 2 * v * u * c[0] + u * u * s1[0],
+        v * v * s0[1] + 2 * v * u * c[1] + u * u * s1[1],
+      ]);
+    }
   }
-  return `${out.join("")}Z`;
+  return out;
 }
 
-/** 0〜1 の器の中のパス。★`clipPathUnits="objectBoundingBox"` がそのまま読む。 */
-export function cardShapePath(shape: CardShape): string {
+/**
+ * ★★★**形の正はこの点の列**（2026-09-13・第96巡）。
+ * SVG のパス（札の `clip-path`）も canvas の輪郭（ホームの山）も**ここから導く**。
+ * ★前は SVG の文字列しか返さなかったので、canvas から使えなかった。
+ * **形を2度書かない**という約束を、技術をまたいでも守るための作り替え。
+ */
+export function cardShapePoints(shape: CardShape): Pt[] {
   switch (shape) {
     // 弧 … 角に葉4つ、辺の真ん中に切れ込み4つ。輪郭が**全部円弧**（券の `arch`）。
     // ★★`-cos(4θ)` で山を**斜め（角）**へ置く。`+cos` だと十字になる（第94巡）。
@@ -144,15 +160,38 @@ export function cardShapePath(shape: CardShape): string {
     default: {
       // ★尖りと谷を1つおきに置く。**極座標の関数では書けない**（同じ角度に
       //   2つの半径が要るのではなく、頂点の並びそのものが交互だから）。
-      const pts: string[] = [];
+      const pts: Pt[] = [];
       for (let i = 0; i < STAR_N * 2; i++) {
         const t = (i / (STAR_N * 2)) * Math.PI * 2 - Math.PI / 2;
         const r = (i % 2 === 0 ? 1 : STAR_IN) * 0.5;
-        pts.push(`${(0.5 + Math.cos(t) * r).toFixed(4)} ${(0.5 + Math.sin(t) * r).toFixed(4)}`);
+        pts.push([0.5 + Math.cos(t) * r, 0.5 + Math.sin(t) * r]);
       }
-      return `M${pts.join("L")}Z`;
+      return pts;
     }
   }
+}
+
+/** 0〜1 の器の中の SVG のパス。★`clipPathUnits="objectBoundingBox"` がそのまま読む。 */
+export function cardShapePath(shape: CardShape): string {
+  const pts = cardShapePoints(shape);
+  return `M${pts.map(([x, y]) => `${x.toFixed(4)} ${y.toFixed(4)}`).join("L")}Z`;
+}
+
+/**
+ * ★canvas に**中心が原点・外接箱が `size` 四方**の輪郭を引く（塗りも線も呼ぶ側）。
+ * ★★**必ず正方形で渡すこと** ―― 横長の箱に入れると、札で潰れていたのと
+ *   同じことが山でも起きる（山の提案は半径で作るので最初から正方形）。
+ */
+export function traceCardShape(
+  ctx: CanvasRenderingContext2D, shape: CardShape, size: number,
+): void {
+  const pts = cardShapePoints(shape);
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => {
+    const px = (x - 0.5) * size; const py = (y - 0.5) * size;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.closePath();
 }
 
 /**

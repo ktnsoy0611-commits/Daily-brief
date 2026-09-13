@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { TabGlyph } from "@/components/TabIcons";
 import { TaskRow } from "@/components/TaskRow";
 import type { AppDef } from "@/lib/apps";
-import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, NAV_PILL_PAD, PAPER, RUST, RUST_TINT, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, TAB_MARK, SECOND, TAB_ICON_OFF } from "@/lib/constants";
+import { BG, HAIRLINE, INK, MUTED, NAV_BOTTOM_GAP, NAV_CREATE_SLOT, NAV_PILL_PAD, NAV_ROW_MAX, PAPER, RUST, RUST_TINT, SANS, SOFT_SHADOW, SOFT_SHADOW_LG, TAB_MARK, SECOND, TAB_ICON_OFF } from "@/lib/constants";
 import { haptic, img, todayKey, todayLabel } from "@/lib/helpers";
 import type { AppState, PlanSelection, TabId } from "@/lib/types";
 
@@ -54,11 +54,11 @@ const FLICK = 0.45;
 const EDGE_W = 22;
 // シートの上端の掴み代(余白と日付しか無い範囲)。
 const TOP_GRAB_H = 46;
-// 本物のタブバー(AppShellのnav)の行の最大幅と、右の「書く」ボタンが
-// 占める幅(ボタン52 + gap 10)。モーフ用のピルを本物と同じ寸法にするために
-// 使う。AppShell側を変えたらここも必ず合わせること。
-const NAV_ROW_MAX = 420 - 32;
-const WRITE_SLOT = 62;
+// ★★★**本物のタブバーの行の寸法は `lib/constants.ts` の1か所**（2026-09-13・第101巡）。
+//   ★**それまでは `62`（ボタン52 + gap 10）と書き違えていた** ―― `AppShell` の
+//   実際の隙間は `SPACE.md`(12) なので、モーフ用のピルが本物より **2px 広かった**。
+//   「AppShell側を変えたらここも必ず合わせること」と書いてあっても合わないので、
+//   **同じ数を読ませる**ことにした。
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -334,7 +334,7 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
             「行の幅 −(書くボタン52 + gap 10)」。 */}
         <div className="dash-pill" style={{
           position: "relative", display: "flex", overflow: "hidden", flexShrink: 0,
-          width: `calc((100% - ${WRITE_SLOT}px) - var(--dash, 0) * (100% - ${WRITE_SLOT}px - ${HANDLE_W}px))`,
+          width: `calc((100% - ${NAV_CREATE_SLOT}px) - var(--dash, 0) * (100% - ${NAV_CREATE_SLOT}px - ${HANDLE_W}px))`,
           height: PILL_H_EXPR,
           background: "rgba(26,26,24,0.18)",
           borderRadius: RADIUS.pill,

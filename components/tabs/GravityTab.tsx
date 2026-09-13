@@ -7,13 +7,13 @@ import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { ymd } from "@/components/tasks/WhenSheet";
 import { haptic } from "@/lib/helpers";
-import { rectOf, stackOutline, type SolidSpec } from "@/lib/solid";
+import { PHYS_GAP, PHYS_VERTS, rectOf, stackOutline, type SolidSpec } from "@/lib/solid";
 import { clearSolidBitmaps, isDated, peekSolidBitmap, shapeBounds, shapeGlyphsReady, shapeRowsOf, solidBitmap, warmShapeGlyphs, wordBitmap, type SolidPaint, type SolidView } from "@/lib/solidPaint";
 import { onFontsReady } from "@/lib/textFit";
 import { GROUND_LIFT, PILE_INSET, floorYOf, pileBandBottom, pileWOf } from "@/lib/pileBox";
 import {
   FREE_PAD as PLATE_FREE_PAD, FREE_PAD_Y as PLATE_FREE_PAD_Y,
-  PLATE_PAD, PLATE_PAD_Y, SQUEEZE_MIN, WD_FULL,
+  PLATE_PAD, PLATE_PAD_Y, PLATE_TRACK, SQUEEZE_MIN, WD_FULL,
   drawWordPlate, inkBoxOf, makeWordBody, measureWordPlate, wordFontSize,
 } from "@/lib/wordPlate";
 import { demoTasks } from "@/lib/taskDemo";
@@ -74,10 +74,9 @@ const SCALE_MAX = 1.15;
  *  ★**左右の出どころは `lib/pileBox.ts`** — 壁も、湧く x も、`pileOf` に渡す幅も
  *  全部これを通す。★★ホームの山も**同じものを読む**（第91巡に切り出した）。 */
 const SCALE_EPS = 0.02;
-const PHYS_VERTS = 12;
-/** ★当たり判定を見た目より外側へ出す量(px)。図形どうしのあいだに髪の毛ほどの
- *  地色を残すため(第63巡にユーザー指定「ほんの 0.1 ミリくらい外側に」)。 */
-const HAIR = 1.5;
+// ★★★**`PHYS_VERTS` と `HAIR` は `lib/solid.ts` へ移した**（2026-09-13・第101巡）。
+//   ホームの山も文字の板も同じ規則で外側へ出すので、**数を3か所に置かない**。
+//   `HAIR`(1.5) は `PHYS_GAP`(1) になった（ユーザー指定「1ピクセルだけ外側に」）。
 const BAKE_BUDGET = 1;
 const GLYPH_BUDGET = 4;
 const CULL_PX = 30;
@@ -813,7 +812,10 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       for (let k = 0; k < flyRef.current.length; k += 1) {
         const f = flyRef.current[k]; const cu = flyCurRef.current[k];
         if (!cu || cu.o <= 0.01) continue;
-        const wb = wordBitmap(f.word, f.fs, f.sx, f.ink, f.fam, f.bw, f.bh, f.dx, f.dy, bakeDpr);
+        // ★★**`PLATE_TRACK` を渡すこと**（2026-09-13・第101巡に抜けていた）――
+        //   渡さないと**飛んでいく板だけ字間を詰めずに**描かれ、詰めた幅で焼いた
+        //   箱から横へ溢れる（`SUNDAY` で実測 +15px）。
+        const wb = wordBitmap(f.word, f.fs, f.sx, f.ink, f.fam, f.bw, f.bh, f.dx, f.dy, bakeDpr, PLATE_TRACK);
         ctx.save();
         ctx.globalAlpha = cu.o;
         ctx.translate(cu.x, cu.y);
@@ -2652,7 +2654,7 @@ function makeBody(
   const { w, h } = rectOf(paint.spec);
   const pw = w * unit; const ph = h * unit;
   let ox = 0; let oy = 0;
-  // ★★★当たり判定だけ**見た目より `HAIR` px 外側**にする(2026-08-26・第63巡に
+  // ★★★当たり判定だけ**見た目より `PHYS_GAP` px 外側**にする(2026-08-26・第63巡に
   //   ユーザー指定)。図形どうしが隣り合って止まったとき、色面が直に接していると
   //   境目が潰れて見える ― 髪の毛ほどの地色が挟まると、面の連なりが読める。
   //   ★絵は変えない(焼いた絵はそのまま)。ずらすのは物体だけ。
@@ -2667,7 +2669,7 @@ function makeBody(
   ox = -c.x; oy = -c.y;
   // ★`Body.scale` は**重心まわり**に拡大するので、`ox/oy`(重心と絵の中心の差)は
   //   そのまま使える。★質量は拡大で書き換わるので、`setMass` はこの**後**。
-  if (pw > 1 && ph > 1) M.Body.scale(body, 1 + (HAIR * 2) / pw, 1 + (HAIR * 2) / ph);
+  if (pw > 1 && ph > 1) M.Body.scale(body, 1 + (PHYS_GAP * 2) / pw, 1 + (PHYS_GAP * 2) / ph);
   M.Body.setMass(body, massOf(paint.spec) * MASS_K);
   return { body, ox, oy };
 }

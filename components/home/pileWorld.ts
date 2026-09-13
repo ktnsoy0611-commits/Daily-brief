@@ -1,12 +1,13 @@
 import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, RUST, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
-import { cardShapeOf, type CardShape } from "@/lib/cardShape";
+import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
 import { CASSETTE_ASPECT } from "@/lib/cassette";
 import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
 import { pad } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { glyphOfKind } from "@/lib/deckStyle";
-import { areaOf, specOf, weightArea } from "@/lib/taskSize";
-import { PILE_INSET, floorYOf } from "@/lib/pileBox";
+import { areaOf, rowsOf, specOf, weightArea } from "@/lib/taskSize";
+import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
+import { floorYOf, pileLeftOf, pileRightOf, pileSpanOf } from "@/lib/pileBox";
 import {
   WD_FULL, makeWordBody, measureWordPlate, wordFontSize, type WordPlate,
 } from "@/lib/wordPlate";
@@ -66,8 +67,11 @@ const BADGE_R = 44;
 const SPAWN_TILT = 0.5;      // 初期の傾き（±0.25 rad ≒ ±14°）
 const SPAWN_SPIN = 0.05;     // 初期の回り
 const SPAWN_VX = 1.2;        // 横の初速
-/** ★★★**山の器（左右の内寸と床）は `lib/pileBox.ts`**（第91巡）。 */
-const INSET = PILE_INSET;
+// ★★★**山の器（左右の内寸と床）は `lib/pileBox.ts`**（第91巡）。
+// ★★★**左右は別の数**（2026-09-13・第101巡にユーザー指摘「移動できる幅がまだ
+//   タブバーの横幅と合っていません」）―― 右は「作る」の丸のぶん内側へ入る。
+const L = pileLeftOf;
+const R = pileRightOf;
 /**
  * ★★★**落とす間隔は「時間」で取る**（2026-09-09。それまでは「高さ」で取っていた）。
  * 高さで取ると**山が大きいほど出どころが空の彼方へ行く** ―― 実測（器 573px）…
@@ -91,16 +95,14 @@ const WORD_W = 0.84;
  *   **共有**なので、下げると TASK 側も縮む。**ホームだけの上限をここに置く。**
  * ★★★**実測で較正した値**（WebKit・390×844。`wordFontSize` は
  *   `min(この上限, 64 × room / 最も広い語の幅)` で、ここでは**上限が効いている**）。
- *   ★塗りの箱（`WEDNESDAY`）… 第99巡 **300.7 × 52** → いま **192.7 × 44**。
- *     **縦が 0.85 倍**（＝ユーザーの「1割半」）。
- *   ★★★**承認された「72 → 61」ではこうならない** ―― 同じ巡で書体が Anton に
- *     なり、**キャップハイトが em に対して 24% 高い**（64px で 46 → 57）ので、
- *     61 だと縦は **54 ＝ 5% 大きく**なる。**数ではなく「1割半小さく」が指定**
- *     なので、縦が 0.85 倍になる上限を実測から解いた。
- *   ★横が 0.64 倍まで縮むのは、第99巡が**横を 63% に潰して room いっぱいへ
- *     伸ばしていた**から（`SQUEEZE_MIN` を撤回したので、もう伸ばさない）。
+ *   ★★★**第101巡に 49 → 61**（ユーザー指定「**サイズが小さくなりすぎです。
+ *     大きくしてください**」）。第100巡は「縦が 0.85 倍」を狙って 49 にしたが、
+ *     **横が 0.64 倍まで縮んだ**（第99巡が横を 63% に潰して room いっぱいへ
+ *     伸ばしていたぶん）ので、全体としては小さすぎた。
+ *   ★塗りの箱（`WEDNESDAY`）… 第99巡 300.7 × 52 → 第100巡 192.7 × 44 →
+ *     **いま 240 × 54**（ユーザー確定の中間）。
  */
-const PILE_WORD_MAX = 49;
+const PILE_WORD_MAX = 61;
 
 /**
  * ★★★**未読の数のトゲトゲの輪郭（絵だけ）**（2026-09-09）。
@@ -116,6 +118,36 @@ export function zigVerts(r: number): { x: number; y: number }[] {
     const rr = r * (i % 2 === 0 ? 1 : ZIG_IN + 0.5);
     return { x: Math.cos(a) * rr, y: Math.sin(a) * rr };
   });
+}
+
+/**
+ * ★★★**絵と同じ輪郭で体を作り、`PHYS_GAP` だけ外側へ出す**（2026-09-13・第101巡に
+ * ユーザー指定「**各図形と文字の当たり判定がおかしい**。図形も**表示されている
+ * 部分**に当たり判定を。その当たり判定は**1ピクセルだけ外側にオフセット**し、
+ * **図形同士が隣り合った時にもそれぞれの形がはっきり分かる**ように」）。
+ *
+ * ★★★**第100巡までホームの山だけ体が「矩形」だった** ―― GRAVITY と DRIFT は
+ *   第99巡から `stackOutline` を使っているのに、山は `Bodies.rectangle` のまま。
+ *   ピルの丸い端のぶん**絵より広い箱**で当たるので、隣り合うと**離れて見え**、
+ *   角では**重なって見えた**。
+ * ★★**頂点は原点へ揃えてから渡す** ―― `fromVertices` は**重心**を (x,y) に置くが、
+ *   絵は `body.position` を**箱の中心**として描く。間引きで重心がわずかに
+ *   ずれるので、渡す前に引いておく（ずれを持ち回らない）。
+ * ★★**くびれ・切れ込みは凸包に潰れる**（`poly-decomp` が無い）。**それでよい**
+ *   ―― GRAVITY で確定済みの判断で、山として引っ掛からないほうが正しい。
+ */
+function bodyFromOutline(
+  m: M, pts: { x: number; y: number }[], w: number, h: number, opts: object,
+): Body {
+  const step = Math.max(1, Math.ceil(pts.length / PHYS_VERTS));
+  const raw = pts.filter((_, k) => k % step === 0).map((q) => ({ x: q.x * w, y: q.y * h }));
+  const c = m.Vertices.centre(raw);
+  const verts = raw.map((q) => ({ x: q.x - c.x, y: q.y - c.y }));
+  const body = m.Bodies.fromVertices(0, 0, [verts], opts);
+  if (w > 1 && h > 1) {
+    m.Body.scale(body, 1 + (PHYS_GAP * 2) / w, 1 + (PHYS_GAP * 2) / h);
+  }
+  return body;
 }
 
 const frac = (s: string) => {
@@ -158,8 +190,10 @@ export interface Piece {
 }
 
 /**
- * ★★**壁は器の内側**（`GravityTab` の `PILE_INSET` と同じ）。器の縁ぴったりに
- * 置くと、出どころ（`INSET` の内側）と壁がずれて**壁際で押し合う**。
+ * ★★**壁は器の内側**（`lib/pileBox.ts`）。器の縁ぴったりに置くと、出どころ
+ * （内寸の内側）と壁がずれて**壁際で押し合う**。
+ * ★★★**左は `pileLeftOf()`・右は `pileRightOf()`** ―― 右はタブバーの**帯の
+ * 右端**（＝「作る」の丸の手前）。左右で違う数なので、対称の1つでは書けない。
  * ★★床は**タブバーの上から `GROUND_LIFT` 浮かせる**（`floorYOf`）。器は
  * `.bleed-x-b` で**画面の底まで**伸びているので、この式がそのまま正しい。
  */
@@ -167,8 +201,10 @@ export function makeWalls(m: M, bw: number, bh: number): Body[] {
   const floorY = floorYOf(bh);
   return [
     m.Bodies.rectangle(bw / 2, floorY + WALL_T / 2, bw + WALL_T * 2, WALL_T, { isStatic: true, friction: 0.6 }),
-    m.Bodies.rectangle(INSET - WALL_T / 2, bh / 2, WALL_T, bh * 3, { isStatic: true, friction: 0.4 }),
-    m.Bodies.rectangle(bw - INSET + WALL_T / 2, bh / 2, WALL_T, bh * 3, { isStatic: true, friction: 0.4 }),
+    // ★★**高さに下限を掛ける** ―― `bh` が 0 だと面積 0 の壁になり、重心が NaN に
+    //   なって**当たらない壁**が出来る（第101巡に踏んだ「図形が出なくなる」の一因）。
+    m.Bodies.rectangle(L() - WALL_T / 2, bh / 2, WALL_T, Math.max(1, bh) * 3, { isStatic: true, friction: 0.4 }),
+    m.Bodies.rectangle(R(bw) + WALL_T / 2, bh / 2, WALL_T, Math.max(1, bh) * 3, { isStatic: true, friction: 0.4 }),
   ];
 }
 
@@ -207,7 +243,7 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   //   山の総面積が跳ね上がる（実測 80%）。詰まった山は解けずに押し合って震える。
   // ★★字の大きさは**長いほう（曜日）で決めた1つの値**を両方に使う（第67巡）。
   const words = [`${today.getMonth() + 1}/${today.getDate()}`, WD_FULL[today.getDay()]];
-  const room = (w - INSET * 2) * WORD_W;
+  const room = pileSpanOf(w) * WORD_W;
   // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
   const wordFs = wordFontSize(words, room, DISPLAY, PILE_WORD_MAX);
   const plates = words.map((wd) => measureWordPlate(wd, wordFs, room, INK, DISPLAY));
@@ -241,9 +277,9 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   //   ばらつきを作り、傾きと回りは控えめに添える。
   const spawnX = (bw: number, r1: number) => {
     const half = bw / 2;
-    const lo = INSET + half + 4;
-    const hi = Math.max(lo, w - INSET - half - 4);
-    return Math.min(hi, Math.max(lo, INSET + (w - INSET * 2) * (0.08 + r1 * 0.84)));
+    const lo = L() + half + 4;
+    const hi = Math.max(lo, R(w) - half - 4);
+    return Math.min(hi, Math.max(lo, L() + pileSpanOf(w) * (0.08 + r1 * 0.84)));
   };
   let nth = 0;
   const toss = (body: Body, seed: string, bh: number) => {
@@ -281,7 +317,9 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
     const spec = specOf(t, today);
     const pw = Math.max(28, spec.w * unit);
     const ph = Math.max(24, spec.h * unit);
-    const body = m.Bodies.rectangle(0, 0, pw, ph, BODY);
+    // ★★**絵と同じ「ピルの積み」で当たる**（第101巡。GRAVITY／DRIFT と同じ形）。
+    const rows = clampRows(rowsOf(t.title));
+    const body = bodyFromOutline(m, stackOutline(rows, pw / ph), pw, ph, BODY);
     // ★★★**質量だけ与えて、回り慣性は触らない**（2026-09-09）。`setMass` は
     //   慣性も一緒に比例させるので、形と重さから正しい回りにくさが出る。
     m.Body.setMass(body, spec.area * MASS_K);
@@ -300,7 +338,8 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
     // ★★**体は四角**（円ではない）。当たり判定も `Pile.tsx` の四角の枝へ入る。
     const pw = Math.max(32, jW * unit);
     const ph = Math.max(24, jH * unit);
-    const body = m.Bodies.rectangle(0, 0, pw, ph, BODY);
+    // ★体は矩形（本体が矩形なので絵と合う）。★★**絵より `PHYS_GAP` 外側**（第101巡）。
+    const body = m.Bodies.rectangle(0, 0, pw + PHYS_GAP * 2, ph + PHYS_GAP * 2, BODY);
     m.Body.setMass(body, jArea * MASS_K);
     toss(body, "journal", ph);
     pieces.push({
@@ -321,7 +360,11 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
     //   `poly-decomp` を積んでいないので分解に失敗する（未読のトゲトゲで実測済み。
     //   下の `badge` の注意書きを見よ）。**凸の12角形**なら SAT が正しく効き、
     //   まん丸のように滑らず**角で止まる**。当たり判定は半径のまま。
-    const body = m.Bodies.polygon(0, 0, ZIG_N, r, BODY);
+    // ★★**絵と同じ札の形で当たる**（第101巡）。点の列は `lib/cardShape.ts` の1か所
+    //   （＝ SVG のマスクと canvas の輪郭と同じ出どころ）。**器は正方形 2r × 2r**。
+    const shape = cardShapeOf(KIND_DOMAIN[it.kind]);
+    const body = bodyFromOutline(
+      m, cardShapePoints(shape).map(([x, y]) => ({ x: x - 0.5, y: y - 0.5 })), r * 2, r * 2, BODY);
     m.Body.setMass(body, area * MASS_K);
     toss(body, it.id, r * 2);
     // ★★**焼き込まれた色を信じない**（帯の `cardFace` と同じ理由）。生成した夜の
@@ -332,7 +375,7 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
       face, ink: bodyInkOn(face),
       photo: it.images?.[0], title: it.title,
       // ★★**形は券の鋏痕から導く**（`lib/cardShape.ts`。BRIEF の札と同じ1か所）。
-      shape: cardShapeOf(KIND_DOMAIN[it.kind]),
+      shape,
       // ★写真が無い提案の顔＝**字面**（ブリーフのカードと同じ規則）。
       glyph: glyphOfKind(it.kind),
     });
@@ -344,7 +387,8 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
     //   `poly-decomp` を積んでいないので分解に失敗し、**凹んだ形を1つの凸形と
     //   して**扱う（実測 `parts=1` ＋ 警告）。**凸なら SAT が正しく効く。**
     //   ★まん丸に戻さないのは、玉のように滑らず**角で止まる**ため。
-    const body = m.Bodies.polygon(0, 0, ZIG_N, BADGE_R, BODY);
+    // ★★**絵より `PHYS_GAP` 外側**（第101巡）。形は凸の12角形のまま（上の注意書き）。
+    const body = m.Bodies.polygon(0, 0, ZIG_N, BADGE_R + PHYS_GAP, BODY);
     m.Body.setMass(body, weightArea(3) * MASS_K);
     toss(body, "unread", BADGE_R * 2);
     // ★★色は **EXPLORE の家族のメイン**（2026-09-09 ユーザー指定）。

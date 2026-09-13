@@ -1,7 +1,7 @@
 import { SIDE_KEYS } from "./types";
 import { MAX_ROWS, STACK_INK, type SolidSpec } from "./solid";
 // ★★箱の比は「字をどう詰めるか」から出る（`rowAspect`）。**数を2度書かない**。
-import { LINE_H, ROW_FILL } from "./textFit";
+import { LINE_H, ROW_FILL, ROW_SIDE } from "./textFit";
 import type { InboxCandidate, SideKey, Task, TaskWeight } from "./types";
 
 // ★タスク → 図形の寸法。**純粋関数だけ**。単体テストで検証する。
@@ -98,7 +98,7 @@ export function rowsOf(title: string): number {
  */
 export function rowAspect(title: string, rows: number): number {
   const per = Math.ceil(((title ?? "").trim().length || 1) / Math.max(1, rows));
-  return Math.max(ROW_AR, ROW_FILL * per + (1 - LINE_H * ROW_FILL));
+  return Math.max(ROW_AR, ROW_FILL * per + ROW_SIDE * (1 - LINE_H * ROW_FILL));
 }
 
 /** 縦横比(横 ÷ 縦)。★**1段の比 ÷ 段の数**。 */

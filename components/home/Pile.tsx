@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { haptic } from "@/lib/helpers";
-import { onFontsReady } from "@/lib/textFit";
+import { GATE_MS, onFontsReady } from "@/lib/textFit";
+import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
+import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
   DROP_EVERY_MS, GRAVITY_Y, buildPieces, makeWalls, type Piece,
@@ -66,6 +68,23 @@ const SETTLE_MS = 2500;
 const CALM_V = 0.35;
 const CALM_W = 0.03;
 
+/**
+ * ★★★**書体を頼んでから、締切つきで待つ**（2026-09-13・第101巡）。
+ *
+ * 第100巡までは `await document.fonts?.ready` だった。これは2つとも間違い ――
+ * ① **頼んでいないものは待たない** … canvas は読み込みを頼まないので、
+ *    Anton を頼まないまま「もう揃った」と返る（板が代替の書体で測られる）。
+ * ② **締切が無い** … 3つの列が絶えず `document.fonts.load()` を投げていて、
+ *    この Promise は**読み込み中になるたび差し替わる**。1つ止まれば永久に返らない。
+ *    その先に `setWorldGen`（＝山に中身を入れる唯一の引き金）しか無いので、
+ *    **山が永久に空**になる。
+ * → **頼む（`ensureWordFont`）＋ `GATE_MS` で必ず開ける**（`lib/textFit.ts` と同じ数）。
+ */
+const waitFonts = () => Promise.race([
+  ensureWordFont(DISPLAY),
+  new Promise((r) => setTimeout(r, GATE_MS)),
+]);
+
 export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
   tasks: Task[];
   offers: Item[];
@@ -97,6 +116,10 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
   const [measured, setMeasured] = useState(false);
   /** ★世界ができた合図（中身の effect はこれを待つ）。 */
   const [worldGen, setWorldGen] = useState(0);
+  /** ★★**山が空のまま取り残されたときに入れ直す合図**（第101巡）。 */
+  const [seedGen, setSeedGen] = useState(0);
+  /** ★板を組んだ時点で、板の書体が本当に届いていたか（第101巡）。 */
+  const plateFontRef = useRef(false);
   const [holding, setHolding] = useState(false);
   const dragRef = useRef<{ piece: Piece; x: number; y: number } | null>(null);
 
@@ -106,10 +129,18 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
     if (!box) return;
     const read = () => {
       const w = box.clientWidth; const h = box.clientHeight;
+      // ★★★**0 は書き込まない**（2026-09-13・第101巡）。**ユーザー報告
+      //   「何度か開いたら図形が出なくなりました」の直接の原因のひとつ。**
+      //   `kickViewport` は画面を開くたびに器を作り直すので、`clientHeight` が
+      //   一瞬 0 になる。0 のまま `makeWalls` が走ると ――
+      //   ① 左右の壁が `bh * 3 = 0` ＝ **面積 0 → 重心が NaN**（当たらない壁）
+      //   ② `floorYOf(0)` は**画面の上**（≒ -130）
+      //   図形は横へ逃げて二度と戻らない（中身を入れ直す道が無い）。
+      if (w <= 0 || h <= 0) return;
       // ★0.5px 未満のゆらぎは無視（`GravityTab` と同じ番人）。
       const same = Math.abs(w - sizeRef.current.w) < 0.5 && Math.abs(h - sizeRef.current.h) < 0.5;
       sizeRef.current = { w, h };
-      if (w > 0 && h > 0) setMeasured(true);
+      setMeasured(true);
       if (!same) onResizeRef.current?.(w, h);
     };
     read();
@@ -128,9 +159,17 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       const M = (await import("matter-js")).default ?? (await import("matter-js"));
       if (stop) return;
       // ★★★**書体が届くまで待つ**（2026-09-09）。日付の板は**実際に組んだ字を
-      //   測って**大きさを決めるので、Archivo が届く前に測ると**代替の書体の幅**で
+      //   測って**大きさを決めるので、届く前に測ると**代替の書体の幅**で
       //   決まってしまい、板が小さいまま出る（実測 155px／狙いは 236px）。
-      await document.fonts?.ready;
+      // ★★★**ただし門は時間で必ず開ける**（2026-09-13・第101巡）。
+      //   `document.fonts.ready` は**文書が読み込み中になるたび新しいものに
+      //   差し替わる**うえ、このアプリは3列から絶えず `document.fonts.load()` を
+      //   投げている。1つでも止まれば**この await は永久に返らない** ――
+      //   その先には `setWorldGen`（＝**山に中身を入れる唯一の引き金**）しか
+      //   無いので、**山が永久に空**になる。ユーザー報告「何度か開いたら図形が
+      //   出なくなりました」の直接の原因。
+      //   ★★これは `lib/textFit.ts` が `GATE_MS` で一度解決した罠。**同じ数を読む。**
+      await waitFonts();
       if (stop) return;
       matterRef.current = M;
 
@@ -156,10 +195,18 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       onResizeRef.current = (nw, nh) => {
         buildWalls(nw, nh);
         for (const p of piecesRef.current) M.Sleeping.set(p.body, false);
+        // ★★★**空だったら入れ直す**（2026-09-13・第101巡）。中身を入れるのは
+        //   `[sig, worldGen]` の effect だけで、`sig` は中身の署名なので
+        //   **一度入れ損なうと二度と入らない**（壁だけ作り直しても山は空のまま）。
+        //   ★**空のときにしか撃たない**ので、iOS が器の高さを絶えず動かしても
+        //   山は落ち直さない（第92巡の「震え続ける」を壊さない）。
+        if (piecesRef.current.length === 0) setSeedGen((n) => n + 1);
       };
 
-      const ctx = cv.getContext("2d");
-      if (!ctx) return;
+      // ★★★**`getContext` が返さなくても行き止まりにしない**（第101巡）。
+      //   ここで `return` すると `setWorldGen` に届かず**山が永久に空**になる
+      //   （iOS で canvas の総量が尽きたときに起こり得る）。毎フレーム取り直す。
+      let ctx = cv.getContext("2d");
 
       /** ★★★**実解像度は毎フレーム照合する**（`GravityTab` と同じ2行）。
        *  倍率も毎回読む ―― 端末の表示設定やウィンドウの移動で変わり得る。 */
@@ -206,6 +253,8 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
           const k = Math.min(1, GRAB_MAX / (Math.hypot(dx, dy) || 1));
           M.Body.setVelocity(b, { x: dx * GRAB_K * k, y: dy * GRAB_K * k });
         }
+        if (!ctx) ctx = cv.getContext("2d");
+        if (!ctx) { rafRef.current = requestAnimationFrame(loop); return; }
         const { w, h, dpr } = sync();
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         // ★★回した絵を貼るので、再標本化の質を上げる（`GravityTab` と同じ）。
@@ -244,6 +293,9 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
     const { w, h } = sizeRef.current;
     if (!M || !engine || w <= 0 || h <= 0) return;
     for (const p of piecesRef.current) M.Composite.remove(engine.world, p.body);
+    // ★★板を組む前に「板の書体が届いていたか」を控える（届いていなければ
+    //   `onFontsReady` が測り直しを撃つ）。
+    plateFontRef.current = wordFontReady(DISPLAY);
     const pieces = buildPieces(M, { tasks, offers, unread, today, journal }, w, h);
     piecesRef.current = pieces;
     dragRef.current = null;
@@ -252,13 +304,20 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       at: performance.now(), done: new Set(),
       settleAt: performance.now() + pieces.length * DROP_EVERY_MS + SETTLE_MS,
     };
-    // ★deps は**署名と世界の世代**だけ。`tasks` などの配列の同一性では見ない。
+    // ★deps は**署名と世界の世代と入れ直しの合図**だけ。配列の同一性では見ない。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig, worldGen]);
+  }, [sig, worldGen, seedGen]);
 
   // ★★書体が遅れて届いたら焼き直す（購読していなかったので、和文が代替書体の
   //   まま固まり得た）。★板は `lib/solidPaint.ts` の側のキャッシュに居る。
-  useEffect(() => onFontsReady(() => { clearPileBitmaps(); clearSolidBitmaps(); }), []);
+  useEffect(() => onFontsReady(() => {
+    clearPileBitmaps(); clearSolidBitmaps();
+    // ★★★**板の書体だけは「焼き直し」では足りない。測り直す**（第101巡）。
+    //   板の大きさは**実際に組んだ字を測って**決まるので、代替の書体で測った
+    //   板に本物を焼くと**箱から溢れる**（Anton は em に対して背が高い）。
+    //   ★**間に合わなかったときに1度だけ**撃つ（毎回だと山が落ち直して目に付く）。
+    if (!plateFontRef.current && wordFontReady(DISPLAY)) setSeedGen((n) => n + 1);
+  }), []);
 
   // ── 掴む ──────────────────────────────────────────────────
   /**

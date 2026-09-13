@@ -1,4 +1,4 @@
-import { NAV_H, navHeightPx } from "./constants";
+import { NAV_CREATE_SLOT, NAV_H, navHeightPx } from "./constants";
 import { SPACE } from "./tokens";
 
 // ★★★**山の器（壁と床）の寸法はここ1つ**（2026-09-11・第91巡）。
@@ -19,6 +19,22 @@ export const PILE_INSET = SPACE.lg;
 
 /** 山が使える幅（器の幅から左右の内寸を引いたもの）。 */
 export const pileWOf = (w: number) => Math.max(80, w - PILE_INSET * 2);
+
+// ★★★**タブバーの帯は左右対称ではない**（2026-09-13・第101巡にユーザー指摘
+//   「ホームの図形が**移動できる幅がまだタブバーの横幅と合っていません**」）。
+//   実測（390px 幅）… **帯（白いピル）は [16, 310]** ／「作る」の丸は [322, 374] ／
+//   **山の壁は [16, 374]** ―― 右がちょうど `NAV_CREATE_SLOT`(64) ぶん外に居た。
+//   ★★`PILE_INSET` は**左右対称の1つの数**なので、構造的にこれを表現できない。
+//   → **左右を別の関数**にする。★`PILE_INSET` はそのまま残す（`VoiceStudio` の
+//   段の幅は左右対称でなければならないので、あちらは触らない）。
+
+/** 山の左の内寸（＝タブバーの帯の左端）。 */
+export const pileLeftOf = () => PILE_INSET;
+/** 山の右の内寸（＝タブバーの**帯**の右端。「作る」の丸の下へは行かせない）。 */
+export const pileRightOf = (w: number) =>
+  Math.max(pileLeftOf() + 80, w - PILE_INSET - NAV_CREATE_SLOT);
+/** 山が使える幅（左右の内寸のあいだ）。 */
+export const pileSpanOf = (w: number) => pileRightOf(w) - pileLeftOf();
 
 /**
  * ★地面をタブバーの上端からどれだけ浮かせるか（2026-08-25・第57巡にユーザー確定

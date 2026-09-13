@@ -1,5 +1,6 @@
 import type { AppState, ItemDomain, ItemKind } from "./types";
 import { ACCENT_TEST, accentOf, accentSteps } from "./appAccent";
+import { SPACE } from "./tokens";
 
 export const STORAGE_KEY = "qol-app-state-v1";
 
@@ -374,6 +375,22 @@ export const BRIEF_CARD_ASPECT = "2 / 3";
 // 使う。開閉の途中でこの2つが入れ替わるので、必ず同じ値を見ること。
 export const TAB_MARK = 52;
 export const NAV_PILL_PAD = 6;
+
+/**
+ * ★★★**タブバーの行のうち「作る」の丸が取る幅**（2026-09-13・第101巡）。
+ * ＝ 丸の径 `TAB_MARK`(52) ＋ 行の隙間 `SPACE.md`(12) ＝ **64**。
+ *
+ * ★★**この数は3か所が必要としていて、どこも生で書いていた** ――
+ *   `AppShell`（行を組む）／`Dashboard`（モーフ用のピルを本物と同じ幅にする。
+ *   ★**62 と書き違えていた**）／`lib/pileBox.ts`（山の右の内寸）。
+ * ★★★**タブバーの帯は左右対称ではない** ―― 左は `SPACE.lg` だが、右は
+ *   `SPACE.lg + NAV_CREATE_SLOT`。**1つの対称な数では表現できない。**
+ */
+export const NAV_CREATE_SLOT = TAB_MARK + SPACE.md;
+
+/** タブバーの行の最大幅（列の `maxWidth` 420 から左右の `SPACE.lg` を引いたもの）。
+ *  ★`AppShell`（本物）と `Dashboard`（モーフ用のピル）が同じ数を読む。 */
+export const NAV_ROW_MAX = 420 - SPACE.lg * 2;
 
 /**
  * ★★**ホームの帯のピルの厚み**（2026-09-07）。★これは「余白」ではなく

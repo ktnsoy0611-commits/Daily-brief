@@ -1,5 +1,5 @@
 import type { Body } from "matter-js";
-import { canvasFont } from "./textFit";
+import { canvasFont, primaryFamily } from "./textFit";
 import { WORD_WEIGHT, trackedWidth, wordBitmap } from "./solidPaint";
 
 // ★★★**「文字そのものが図形」の板 ―― 作り方はここ1つ**（2026-09-10・第89巡）。
@@ -36,9 +36,13 @@ export const SQUEEZE_MIN = 0.88;
  *  安定な姿勢になり、短い辺で立ったまま止まりにくい。字はもともと横長なので、
  *  縦の遊びを削っても窮屈には見えない。
  *  ★★山の板は**「自由」より小さく**（第63巡にユーザー指摘「日付の図形の当たり判定が
- *  文字に対して少しだけ大きい」）。`8/26` のような短い語では 8/4 だと箱が目に見えて大きい。 */
-export const PLATE_PAD = 4;
-export const PLATE_PAD_Y = 2;
+ *  文字に対して少しだけ大きい」）。`8/26` のような短い語では 8/4 だと箱が目に見えて大きい。
+ *  ★★★**第101巡に 4/2 → 1/1**（ユーザー指定「**文字はしっかり文字が表示されている
+ *  部分に当たり判定があるように**。その当たり判定は**1ピクセルだけ外側にオフセット**」）。
+ *  ★★**`lib/solid.ts` の `PHYS_GAP`(1) と同じ役**（図形も板も、絵より 1px だけ外側）。
+ *  ★焼く箱はもう `PLATE_BLEED` から出るので、**遊びを削っても絵は切れない**。 */
+export const PLATE_PAD = 1;
+export const PLATE_PAD_Y = 1;
 /** 「自由」の板の遊び（TIMELINE 専用。★山より大きい）。 */
 export const FREE_PAD = 8;
 export const FREE_PAD_Y = 4;
@@ -50,12 +54,46 @@ export const FREE_PAD_Y = 4;
  * ★大きな欧文の規則どおり（`design.md` §1）。★★**ホームと TASK の両方**が
  * この部品を読むので、両方が同じだけ詰まる（ユーザー確定 2026-09-10）。
  */
-export const PLATE_TRACK = -0.06;   // ★目盛りの外（表示専用の巨大欧文。`TRACK` の
-//   いちばん狭い `tight`(-0.02em) では塊にならない ―― `SWISS_XL` とその行間 0.86 が
-//   段の外にあるのと同じ理由で、**この板だけ**の値。`design.md` §7 に併記する。
+export const PLATE_TRACK = -0.02;   // ＝ `TRACK.tight`（em）
+// ★★★**第101巡に -0.06 → -0.02**（ユーザー指定「落ちてくる曜日と日付の文字が
+//   **詰まりすぎている**のでもう少しだけ緩めて」）。書体が `DISPLAY`（Anton）に
+//   なり、**もともと詰まった書体**になったので、-0.06 は**二重に詰めていた**。
+// ★★これで `TRACK` の段（`tight` = -0.02em）に乗ったので、**もう目盛りの外ではない**。
 
 /** ★山へ落とす曜日は**綴りのまま**（第60巡にユーザー指定「曜日の英語」）。 */
 export const WD_FULL = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
+
+/**
+ * ★★★**板の書体を明示的に頼む**（2026-09-13・第101巡）。
+ *
+ * ★★★**canvas の `ctx.font` への代入は、書体の読み込みを頼まない。**
+ *   `next/font` は `preload: false` なので、**誰も `load()` しなければ Anton は
+ *   永久に来ない**。しかも `document.fonts.ready` は「**いま頼まれているもの**」
+ *   しか待たないので、頼んでいない状態では**即座に解決してしまう**。
+ *   → 代替の書体で板を測り、あとから本物が届いて**焼き直すと箱から溢れる**
+ *   （ユーザー報告「日付と曜日の文字の上下が見切れてしまっています」）。
+ *
+ * ★★**先頭の family だけを渡す**（`lib/textFit.ts` の `primaryFamily` の理由）。
+ *   スタックごと渡すと *Fallback* で即 resolve して本物を取りに行かない。
+ * ★頼む文字は**板に出る字だけ**（数字・スラッシュ・大文字）。
+ */
+const PLATE_CHARS = "0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+export function ensureWordFont(fam: string): Promise<unknown> {
+  if (typeof document === "undefined" || !document.fonts?.load) return Promise.resolve();
+  try {
+    return document.fonts.load(`${WORD_WEIGHT} 64px ${primaryFamily(fam)}`, PLATE_CHARS)
+      .catch(() => undefined);
+  } catch { return Promise.resolve(); }
+}
+
+/** ★その書体で**板の字が本当に描けるか**（＝本物の断片が届いているか）。
+ *  ★★遅れて届いたときに**測り直す**ための判定。`lib/textFit.ts` の
+ *  `checkFace` と同じ作法で、**先頭の family だけ**を見る。 */
+export function wordFontReady(fam: string): boolean {
+  if (typeof document === "undefined" || !document.fonts?.check) return true;
+  try { return document.fonts.check(`${WORD_WEIGHT} 64px ${primaryFamily(fam)}`, PLATE_CHARS); }
+  catch { return true; }
+}
 
 /** 測る用の canvas(使い回す)。 */
 let wordProbe: CanvasRenderingContext2D | null = null;

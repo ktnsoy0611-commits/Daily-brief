@@ -4,7 +4,7 @@ import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
+import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, MUTED, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { hubPath } from "@/lib/reelHub";
 import { CASSETTE, CASSETTE_ASPECT, CASSETTE_BOX_H_PER_H, CASSETTE_DECK_H, CASSETTE_DECK_W_PER_W, CASSETTE_DECK_X, CASSETTE_DECK_Y_PER_H, CASSETTE_KEY_LIP_PER_H, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W, CASSETTE_WAVE_CY_PER_D, CASSETTE_WAVE_H_PER_D, topRoundRadii } from "@/lib/cassette";
 import { PILE_INSET } from "@/lib/pileBox";
@@ -199,7 +199,11 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // ★★★**縁の目盛りは円の面から導く**（`bodyInkOn`）。**半透明にしないこと** ――
   //   第93巡に実測 … `rgba(44,38,39,0.38)` を面に合成すると**比 1.94 で消える**。
   //   ベタなら黒い円の上で紙色が **11.89** 出る。
-  const tick = bodyInkOn(dial);
+  // ★★★**リールの芯はグレー**（2026-09-13・第101巡にユーザー指定「円の中の線は
+  //   白ではなくグレーにしてあまり目立たないように」）。★★**ここだけ `bodyInkOn`
+  //   から外れる** ―― 芯は「面の上で読ませる文字」ではなく**控えめに在る部品**。
+  //   ★ホームの山のカセット（`pilePaint.ts`）と**同じ色**。
+  const tick = MUTED;
   // ★★★**ラベルは「青い本体」の上に載る**（2026-09-13・第96巡にラベルを段の外へ
   //   出した）。★面から導く ―― 地から決めていた `fg` も、第95巡に墨の段から
   //   決めていた `deckInk` も、もう面が違う。実測 … 青の上の墨は **7.12**。

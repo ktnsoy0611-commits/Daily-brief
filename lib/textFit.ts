@@ -120,7 +120,7 @@ function scheduleFlush(face?: number) {
  * つまりこれを間違えると、**和文のディスプレイ書体は一度も表示されない**
  * (2026-08-17に判明。それまでの「書体の違い」は太さと斜体の合成だけだった)。
  */
-function primaryFamily(family: string): string {
+export function primaryFamily(family: string): string {
   return resolveFamily(family).split(",")[0].trim();
 }
 
@@ -158,8 +158,11 @@ export function fontReady(face: number, text: string): boolean {
 // 頼んでから GATE_MS 過ぎたら、届いていなくても描く。混ざりは
 // 「届いた面を捨てて焼き直す」が引き受ける。
 // **「何も出ない」より「一度 fallback で出てから本物に差し替わる」**。
-/** 書体を待つ上限(ms)。 */
-const GATE_MS = 600;
+/** ★★★**書体を待つ上限(ms)。門は時間で必ず開ける。**
+ *  ★読み手は2つ … ここ（グリフの門）と **`components/home/Pile.tsx`（山の世界）**。
+ *  山も同じ罠を踏んでいた（`document.fonts.ready` を締切なしで待っていた）ので、
+ *  **同じ1つの数**を読ませる。 */
+export const GATE_MS = 600;
 /** その面を最初に頼んだ時刻。 */
 const askedAt = new Map<number, number>();
 
@@ -455,6 +458,20 @@ export const LINE_H = 1.02;
  */
 export const ROW_FILL = 0.62;
 
+/**
+ * ★★★**左右のベゼルは上下の何倍か**（2026-09-13・第101巡にユーザー指定
+ * 「ピル内の文字が、**ピルの左右の外形線に対して詰まりすぎ**ているので、少しだけ
+ * 文字の周囲とピルの外形の間の余白を開けて」）。
+ *
+ * ★第100巡は**四方が同じ px**（上下の余りをそのまま左右にも使った）。実測で
+ * 18字の題が 上15 下12 **左14 右14**（dpr 3 ＝ 約 5 CSS px）で、**丸い端に
+ * 字が寄って見えた** ―― ピルの左右は**角丸なので、字の角といちばん近づく**。
+ * ★★★**`lib/taskSize.ts` の `rowAspect` も同じ数を読む**ので、**箱が横に広がる
+ * だけで字は小さくならない**（読まないと、空けたぶん字が縮む）。
+ * ★目盛りの外（部品の内部の比）。
+ */
+export const ROW_SIDE = 2;
+
 /** その文字列を n 行に割る(文字数がなるべく揃うように)。 */
 export function splitLines(text: string, n: number): string[] {
   const chars = [...text];
@@ -513,14 +530,14 @@ export function layoutInRows(
   for (let pass = 0; pass < 8; pass++) {
     if (size < minPx) return null;
     const lh = size * LINE_H;
-    // ★★上下の余りの半分を**左右のベゼルにも使う**（四方が同じ px）。
+    // ★★上下の余りを**左右にも使う。ただし `ROW_SIDE` 倍**（第101巡）。
     const bezel = (pitch - lh) / 2;
     if (bezel <= 0) { size /= 1.06; continue; }
     // ★段で使える幅は**字の上端と下端の高さ**で測る（段の中心で測ると角丸に食い込む）。
     const maxWs = ys.map((cy) => {
       const a = halfWidth((cy - lh / 2) / boxH);
       const b = halfWidth((cy + lh / 2) / boxH);
-      return Math.max(1, Math.min(a, b) * 2 * boxW - bezel * 2);
+      return Math.max(1, Math.min(a, b) * 2 * boxW - bezel * 2 * ROW_SIDE);
     });
     let over = 1;
     for (let i = 0; i < k; i++) {

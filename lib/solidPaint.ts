@@ -372,6 +372,11 @@ export function solidBitmap(p: SolidPaint, unit = UNIT_PX, dpr = 1): SolidBitmap
   return made;
 }
 
+/** ★板を焼く箱の余り（字の大きさに対する割合。上下左右それぞれ半分ずつ）。
+ *  ★目盛りの外（画素の刻み）。★**生の px で持たないこと** ―― 大きい字ほど
+ *  効かなくなり、書体を替えた巡に必ず切れる。 */
+export const PLATE_BLEED = 0.16;
+
 /**
  * ★★**文字だけのブロック**(GRAVITY の日付・曜日、TIMELINE の「自由」)を焼く。
  * 2026-08-26・第63巡に `fillText` の直描きから移した。狙いは2つ:
@@ -384,12 +389,24 @@ export function wordBitmap(
   word: string, fs: number, sx: number, ink: string, fam: string,
   bw: number, bh: number, dx: number, dy: number, dpr = 1, track = 0,
 ): SolidBitmap {
-  const key = ["W", word, fs.toFixed(1), sx.toFixed(3), ink, fam, bw.toFixed(1), bh.toFixed(1), dpr.toFixed(2), track.toFixed(3)].join("|");
+  // ★★**鍵に `dx`/`dy` も入れる**（2026-09-13・第101巡）―― 入れないと、寸法が
+  //   同じで中心のずれだけ違う板が**ずれた絵を使い回す**。
+  const key = ["W", word, fs.toFixed(1), sx.toFixed(3), ink, fam, bw.toFixed(1), bh.toFixed(1),
+    dx.toFixed(2), dy.toFixed(2), dpr.toFixed(2), track.toFixed(3)].join("|");
   const hit = bmpCache.get(key);
   if (hit) { bmpCache.delete(key); bmpCache.set(key, hit); return hit; }
-  // ★はみ出し(斜体のハネ・丸め誤差)のぶんだけ箱を広げて焼く。描く側は中心を合わせる。
-  const w = Math.ceil(bw + 4);
-  const h = Math.ceil(bh + 4);
+  // ★★★**はみ出しの余りは「字の大きさに比例」させる**（2026-09-13・第101巡）。
+  //   第100巡までは**生の +4**（上下左右に 2px ずつ）だった。これは
+  //   **大きいほど効かなくなる** ―― fs 20 なら 10% だが fs 49 では 4% しかない。
+  //   ★★★**そこへ Anton が来て上下が切れた**（ユーザー報告「日付と曜日の文字の
+  //   上下が見切れてしまっています」）。呼ぶ側が渡す `bh` は**測ったときの書体**の
+  //   塗りの箱なので、**焼くときの書体のほうが背が高いと、その差ぶん溢れる**
+  //   （代替の書体 → Anton で em に対し最大 +27%）。
+  //   → `PLATE_BLEED`(0.16) ＝ 上下左右それぞれ `fs × 0.08`。
+  //   ★余りは透明なので、**貼る位置（中心）も見た目も変わらない**。
+  const bleed = Math.ceil(fs * PLATE_BLEED);
+  const w = Math.ceil(bw + bleed * 2);
+  const h = Math.ceil(bh + bleed * 2);
   const cv = document.createElement("canvas");
   cv.width = Math.max(2, Math.round(w * dpr));
   cv.height = Math.max(2, Math.round(h * dpr));

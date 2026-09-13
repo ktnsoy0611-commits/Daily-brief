@@ -7,7 +7,7 @@ import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer
 import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
 import { BD_GREY, MUTED, NAV_H, navHeightPx } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { rectOf, stackOutline } from "@/lib/solid";
+import { PHYS_GAP, PHYS_VERTS, rectOf, stackOutline } from "@/lib/solid";
 import { peekSolidBitmap, shapeBounds, shapeGlyphsReady, shapeRowsOf, solidBitmap, warmShapeGlyphs, type SolidPaint } from "@/lib/solidPaint";
 import { demoCandidates } from "@/lib/taskDemo";
 import { specOf } from "@/lib/taskSize";
@@ -624,9 +624,12 @@ function makeBody(
   const { w, h } = rectOf(paint.spec);
   // ★★段の数は絵と同じ出どころから（`shapeRowsOf`。第99巡）。くびれは凸包で潰れる。
   const src = stackOutline(shapeRowsOf(paint), w / h);
-  const step = Math.max(1, Math.ceil(src.length / 10));
+  const step = Math.max(1, Math.ceil(src.length / PHYS_VERTS));
   const verts = src.filter((_, k) => k % step === 0).map((q) => ({ x: q.x * w * unit, y: q.y * h * unit }));
   const body: Body = M.Bodies.fromVertices(x, y, [verts], opts);
+  // ★★**絵より `PHYS_GAP` 外側**（2026-09-13・第101巡。GRAVITY・ホームと同じ規則）。
+  const pw = w * unit; const ph = h * unit;
+  if (pw > 1 && ph > 1) M.Body.scale(body, 1 + (PHYS_GAP * 2) / pw, 1 + (PHYS_GAP * 2) / ph);
   const c = M.Vertices.centre(verts);
   return { body, ox: -c.x, oy: -c.y };
 }

@@ -1,6 +1,5 @@
-import { BAND_BEZEL, BD_GREY, DISPLAY, SANS } from "@/lib/constants";
+import { BAND_BEZEL, BD_GREY, DISPLAY, MUTED, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { bodyInkOn } from "@/lib/palette";
 import { CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
 import { traceCardShape } from "@/lib/cardShape";
 import { clampRows, halfWidthAtStack, stackOutline } from "@/lib/solid";
@@ -132,8 +131,11 @@ export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
   ctx.imageSmoothingQuality = "high";
   // ★原点を絵の中心へ（`drawCassette` は中心に描く）。
   ctx.translate(w / 2, h / 2);
-  // ★★芯（`lib/reelHub.ts`）は**リールの面から導く** ―― 黒い円の上の白。
-  drawCassette(ctx, pw, ph, p.face, p.ink, bodyInkOn(p.ink));
+  // ★★★**芯はグレー**（2026-09-13・第101巡にユーザー指定「円の中の線は白ではなく
+  //   グレーにしてあまり目立たないように」）。★★**ここだけ `bodyInkOn` から外れる**
+  //   ―― 芯は「面の上で読ませる文字」ではなく**控えめに在る部品**だから。
+  //   墨の円の上で比 4.3（白は 11.25）。
+  drawCassette(ctx, pw, ph, p.face, p.ink, MUTED);
   const made = { canvas: cv, w, h };
   if (bakeCache.size > 80) bakeCache.clear();
   bakeCache.set(key, made);
@@ -193,7 +195,7 @@ export function drawPile(
       //   同じ数を読む）。★合成の絵なので**焼いてから貼る**。
       const bmp = cassetteBitmap(p, dpr);
       if (bmp) ctx.drawImage(bmp.canvas, -bmp.w / 2, -bmp.h / 2, bmp.w, bmp.h);
-      else drawCassette(ctx, p.w, p.h, p.face, p.ink, bodyInkOn(p.ink));
+      else drawCassette(ctx, p.w, p.h, p.face, p.ink, MUTED);
     } else if (p.kind === "word") {
       // ★★文字の板は **GRAVITY と同じ焼いた絵**（`lib/wordPlate.ts`）。
       //   ★ここは既に translate/rotate 済みなので、原点に置くだけ。

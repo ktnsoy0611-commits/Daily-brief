@@ -27,7 +27,7 @@ import { TaskSpace } from "@/components/tasks/TaskSpace";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
-import { BD_GREY, CHARCOAL, INK, NAV_BOTTOM_GAP, NAV_H, NAV_PILL_PAD, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
+import { BD_GREY, CHARCOAL, INK, NAV_BOTTOM_GAP, NAV_CREATE_SLOT, NAV_H, NAV_PILL_PAD, NAV_ROW_MAX, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { kickViewport } from "@/lib/viewportKick";
@@ -308,7 +308,8 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             <div
               onPointerDown={onNavPointerDown}
               style={{
-                display: "flex", alignItems: "center", gap: SPACE.md, width: "100%", maxWidth: 420 - 32, pointerEvents: "auto",
+                /* ★隙間と右の丸は `NAV_CREATE_SLOT`（= TAB_MARK + SPACE.md）で1つ。 */
+                display: "flex", alignItems: "center", gap: NAV_CREATE_SLOT - TAB_MARK, width: "100%", maxWidth: NAV_ROW_MAX, pointerEvents: "auto",
                 touchAction: "none",
               }}
             >

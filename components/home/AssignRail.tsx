@@ -14,6 +14,12 @@ import { SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 //   `--ease-settle` は**距離の 80% を最初の 1/4 で使う**ので、画面の端から入って
 //   くる大きな面には使わない（`globals.css` の但し書き）。
 //
+// ★★★**この面は器の右外へ出る。包む器が `overflow: hidden` を持っていること**
+//   （2026-09-14・第103巡）。隠れている間ずっと `translateX(100%)` で 48px
+//   はみ出しているので、包まないと**列が横にスクロールできてしまう** ――
+//   実際に「指で横へ送ると ASSIGN が見える」と報告された。
+//   ★包む器は `components/tabs/HomeTab.tsx`（列の側にも `overflowX: "clip"`）。
+//
 // ★★★**当たり判定はこの要素で取らない。** 指の x が右の縁から `RAIL_NEAR` の
 //   内側に居るか、だけで決める（`lib/pullDrag.ts`）。`--t-in`(700ms) のあいだ
 //   この面は `transform` の途中なので、**矩形を測っても嘘になる**

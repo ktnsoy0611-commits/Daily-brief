@@ -7,10 +7,12 @@ import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
 import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
-  DROP_EVERY_MS, GRAVITY_Y, UNIT, buildPieces, makeWalls, type Piece,
+  DROP_EVERY_MS, GRAVITY_Y, UNIT, buildPieces, isLost, makeWalls, refitPile, respawn,
+  type Piece,
 } from "./pileWorld";
+import { floorYOf } from "@/lib/pileBox";
 import { clearPileBitmaps, drawGhost, drawPile } from "./pilePaint";
-import { RAIL_NEAR, pullBus } from "@/lib/pullDrag";
+import { RAIL_NEAR, ghostMotion, pullBus, stepGhost } from "@/lib/pullDrag";
 
 import type { Body, Engine } from "matter-js";
 import type { Item, TabId, Task } from "@/lib/types";
@@ -65,6 +67,19 @@ const GRAB_MAX = 34;
 const DPR_MAX = 3;
 /** 全部を落とし終えてから眠りを**考え始める**までの猶予。★目盛りの外（物理の場）。 */
 const SETTLE_MS = 2500;
+/**
+ * ★★★**床が動いていないか見に行く間隔**（2026-09-14・第103巡）。★目盛りの外（物理の場）。
+ *
+ * ★★★**床は器の寸法が変わらなくても動く。** `floorYOf` は `navHeightPx()` に
+ *   依存し、`NAV_H = calc(77px + NAV_BOTTOM_GAP)` の `NAV_BOTTOM_GAP` は
+ *   `env(safe-area-inset-bottom)` から出る ―― 実機では遅れて 0 → 34 になる。
+ *   このとき列の `paddingBottom: var(--nav-h)` と `.bleed-x-b` の
+ *   `margin-bottom: -nav-h` が**打ち消し合うので器の高さは 1px も動かず**、
+ *   `ResizeObserver` は撃たれない。**壁だけが古い床のまま取り残される。**
+ * ★`navHeightPx()` は probe の div を作って測るので毎フレームは重い。
+ *   **2秒に1度で十分**（床が動くのは向きを変えたときと起動直後だけ）。
+ */
+const FLOOR_CHECK_MS = 2000;
 /** 「もう止まっている」と見なす速さ。★目盛りの外（物理の場）。 */
 const CALM_V = 0.35;
 const CALM_W = 0.03;
@@ -125,6 +140,8 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
   const [seedGen, setSeedGen] = useState(0);
   /** ★板を組んだ時点で、板の書体が本当に届いていたか（第101巡）。 */
   const plateFontRef = useRef(false);
+  /** ★★中身を組んだときの床（＝そのとき図形の大きさを決めた高さ）。第103巡。 */
+  const builtFloorRef = useRef(0);
   /** ★山の一括の倍率（solid 座標 → px）。引き下ろしの行き先の大きさに要る。 */
   const unitRef = useRef(UNIT);
   /** ★指が右の縁の近くに居るか（毎フレームの state を避けて ref で持つ）。 */
@@ -191,10 +208,30 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
       engineRef.current = engine;
 
       let walls: Body[] = [];
+      /** ★★いま壁が置かれている床の y（**番人も毎フレームこれを読む**）。 */
+      let floorY = floorYOf(sizeRef.current.h);
       const buildWalls = (bw: number, bh: number) => {
         if (walls.length) M.Composite.remove(engine.world, walls);
         walls = makeWalls(M, bw, bh);
         M.Composite.add(engine.world, walls);
+        // ★★★**床が動いたぶんだけ山ごと動かす**（2026-09-14・第103巡）。
+        //   床の板は `WALL_T`(200px) と厚いので、床が上がった瞬間に図形は
+        //   **板の中**に入り、**いちばん浅い軸＝下へ**押し出されて抜ける
+        //   （ユーザー報告「図形が地面の下に落ちてしまう」）。横画面では床が
+        //   444px も上がるので、山は丸ごと板の下へ取り残されて**永遠に落ちる**
+        //   （同「横画面にして戻すと図形が消える」）。
+        //   ★**一緒に動かせば相対の位置が変わらない**＝積み上がった形も崩れない。
+        const next = floorYOf(bh);
+        refitPile(M, piecesRef.current.map((p) => p.body), bw, next - floorY);
+        floorY = next;
+        // ★★★**器が大きく変わったら、大きさを決め直す**（2026-09-14・第103巡）。
+        //   図形の大きさは**組んだときの床までの高さ**から決まる（`buildPieces` の
+        //   面積の予算）。横画面のように器が半分になると、山は**入り切らずに
+        //   押し合い、下の図形が床の板へめり込む**（実測 … 486px の器で 23px 沈んだ）。
+        //   ★★**落ち直しは起きない** ―― 組み直しは `prev` で**居場所を引き継ぐ**
+        //   ので、変わるのは大きさだけ。★小さな揺れでは撃たない（15% の閾値）。
+        const built = builtFloorRef.current;
+        if (built > 0 && Math.abs(next - built) > built * 0.15) setSeedGen((n) => n + 1);
       };
       buildWalls(sizeRef.current.w, sizeRef.current.h);
 
@@ -216,6 +253,10 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
       //   ここで `return` すると `setWorldGen` に届かず**山が永久に空**になる
       //   （iOS で canvas の総量が尽きたときに起こり得る）。毎フレーム取り直す。
       let ctx = cv.getContext("2d");
+      /** ★次に床を見に行く時刻（`FLOOR_CHECK_MS` ごと）。 */
+      let floorAt = performance.now() + FLOOR_CHECK_MS;
+      /** ★引き下ろしの幽霊のバネ（幽霊が消えたら捨てる）。 */
+      let motion = ghostMotion();
 
       /** ★★★**実解像度は毎フレーム照合する**（`GravityTab` と同じ2行）。
        *  倍率も毎回読む ―― 端末の表示設定やウィンドウの移動で変わり得る。 */
@@ -254,6 +295,27 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
         //   フレームが落ちた瞬間に刻みが伸びて**貫通・弾け・震え**が起きる
         //   ―― 「落ちる動作が不安定」の直接の原因だった（2026-09-07）。
         M.Engine.update(engine, 1000 / 60);
+        // ★★★**床が動いていないか、ときどき見に行く**（第103巡。上の `FLOOR_CHECK_MS`）。
+        //   器の寸法が変わらなくても床は動くので、`ResizeObserver` だけでは足りない。
+        if (now > floorAt) {
+          floorAt = now + FLOOR_CHECK_MS;
+          if (Math.abs(floorYOf(sizeRef.current.h) - floorY) > 0.5) {
+            buildWalls(sizeRef.current.w, sizeRef.current.h);
+          }
+        }
+        // ★★★**器の外へ出た図形を拾い直す**（第103巡。`GravityTab` の `recycle` と
+        //   同じ考え方 ―― **ホームの山にだけ、これが無かった**）。器に天井も底も
+        //   無いので、一度外へ出た図形は**二度と戻らない**。山が空にならない限り
+        //   入れ直しの番人（`seedGen`）も撃たないので、**消えたままになる**。
+        //   ★★**1フレームに1つだけ**戻す（まとめて戻すと、器が縮んだ瞬間に
+        //     山が一斉に跳ね上がって見える）。★掴んでいるものは放っておく。
+        const held = dragRef.current?.piece.body;
+        for (const p of piecesRef.current) {
+          if (p.body === held) continue;
+          if (!isLost(p.body, sizeRef.current.w, floorY)) continue;
+          respawn(M, p.body, sizeRef.current.w, p.id);
+          break;
+        }
         // 掴んでいる図形は、指の方へバネで寄せる（`GravityTab` と同じ作法）。
         const d = dragRef.current;
         if (d) {
@@ -271,8 +333,12 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
         ctx.clearRect(0, 0, w, h);
         drawPile(ctx, piecesRef.current, dpr, () => { /* 次のフレームで拾う */ });
         // ★★引き下ろしの幽霊は**山の上**に描く（掴んでいる間だけ在る）。
+        // ★★★**バネはここで回す**（第103巡）。`pointermove` の間隔は端末任せなので、
+        //   指のイベントで1歩ずつ進めると**同じ手つきでも手ざわりが変わる**。
+        //   物理と同じ固定の刻みで回せば `lib/spring.ts` の係数がそのまま効く。
         const g = pullBus.ghost;
-        if (g) drawGhost(ctx, g, dpr);
+        if (g) { stepGhost(motion, g); drawGhost(ctx, g, dpr); }
+        else if (motion.had) motion = ghostMotion();   // ★掴み直しは静止から始める
         rafRef.current = requestAnimationFrame(loop);
       };
       rafRef.current = requestAnimationFrame(loop);
@@ -304,21 +370,45 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
     const engine = engineRef.current;
     const { w, h } = sizeRef.current;
     if (!M || !engine || w <= 0 || h <= 0) return;
+    // ★★★**前の山の居場所を控えてから捨てる**（2026-09-14・第103巡にユーザー確定
+    //   「いつでも落ち直さない」）。**同じ id は落とし直さず、位置・角度・速度を
+    //   引き継ぐ** ―― 日付を1つ付けただけで山が丸ごと落ち直していた（第102巡の
+    //   未解決）。★体そのものは作り直すしかない（一括の倍率 `unit` は**全体の
+    //   面積の予算**から出るので、1つ増えれば全部の大きさが変わる）。
+    const prev = new Map(piecesRef.current.map((p) => [p.id, p.body]));
     for (const p of piecesRef.current) M.Composite.remove(engine.world, p.body);
     // ★★板を組む前に「板の書体が届いていたか」を控える（届いていなければ
     //   `onFontsReady` が測り直しを撃つ）。
     plateFontRef.current = wordFontReady(DISPLAY);
-    const { pieces, unit } = buildPieces(M, { tasks, offers, unread, today, journal }, w, h);
+    // ★★**引き下ろして指を離した所は1度だけ使って捨てる**（`lib/pullDrag.ts`）。
+    const landing = pullBus.landing;
+    pullBus.landing = null;
+    const { pieces, unit, dropped } = buildPieces(
+      M, { tasks, offers, unread, today, journal }, w, h, prev, landing);
     piecesRef.current = pieces;
+    // ★大きさを決めた高さを控える（器が大きく変わったら決め直すため）。
+    builtFloorRef.current = floorYOf(h);
     // ★★引き下ろしの行き先の大きさに要る（`lib/pullDrag.ts`）。
     unitRef.current = unit;
     pullBus.unit = unit;
     dragRef.current = null;
-    engine.enableSleeping = false;
-    releaseRef.current = {
-      at: performance.now(), done: new Set(),
-      settleAt: performance.now() + pieces.length * DROP_EVERY_MS + SETTLE_MS,
-    };
+    // ★★★**新しく落とすものが在るときだけ山を起こす**（第103巡）。全部据え置きなら
+    //   （＝題を直しただけ・未読の数が減っただけ）**山は静かなまま**でよい。
+    if (dropped) {
+      engine.enableSleeping = false;
+      releaseRef.current = {
+        at: performance.now(), done: new Set(),
+        settleAt: performance.now() + pieces.length * DROP_EVERY_MS + SETTLE_MS,
+      };
+    } else {
+      // ★据え置きは `releaseAt: 0` なので、次のフレームで全部が世界へ入る。
+      // ★★`done` は作り直す（体そのものは別のものになっている）。**猶予は引き継ぐ**
+      //   ―― 0 にすると眠りの門が二度と開かず、山が回り続ける。
+      releaseRef.current = {
+        at: performance.now(), done: new Set(),
+        settleAt: releaseRef.current.settleAt || performance.now() + SETTLE_MS,
+      };
+    }
     // ★deps は**署名と世界の世代と入れ直しの合図**だけ。配列の同一性では見ない。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, worldGen, seedGen]);

@@ -14,6 +14,7 @@ import {
 
 import type { Body, Engine } from "matter-js";
 import type { Item, TabId, Task } from "@/lib/types";
+import type { Landing } from "@/lib/pullDrag";
 
 // ★★★**山の「世界」**（2026-09-11・第92巡に `components/home/Pile.tsx` から分けた）。
 // 物理の値・器の壁・図形の作り方だけがここに居る。**画面と指の扱いは `Pile.tsx`、
@@ -43,6 +44,12 @@ export const UNIT = 64;
 const MASS_K = 1.6;
 const BODY = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
 const WALL_T = 200;
+/** ★左右の壁の最低の長さ（器が低くても図形が抜けない）。★目盛りの外（物理の場）。 */
+const WALL_MIN_H = 1200;
+/** ★床よりこれだけ下に中心が来たら「外へ出た」。★目盛りの外（物理の場）。 */
+const LOST_BELOW = 80;
+/** ★左右の壁よりこれだけ外に出たら「外へ出た」。★同上。 */
+const LOST_SIDE = 120;
 /** 山が器に占める割合。★目盛りの外（詰め込み具合）。
  *  ★★**帯が厚いほど山の取り分が減る**ので、帯の厚み（`BAND_H`）とセットで決める。
  *  ★2026-09-10 に **0.36** ―― 文字の板と未読の図形を予算に数えるようにしたぶん。 */
@@ -166,6 +173,33 @@ const frac = (s: string) => {
   return (Math.imul(h, 2654435761) >>> 0) / 4294967296;
 };
 
+/** 湧く x（器の内寸のどこへ落とすか）。★`buildPieces` と `respawn` が同じ式を読む。 */
+const spawnXOf = (w: number, bw: number, r1: number): number => {
+  const half = bw / 2;
+  const lo = INSET + half + 4;
+  const hi = Math.max(lo, w - INSET - half - 4);
+  return Math.min(hi, Math.max(lo, INSET + pileWOf(w) * (0.08 + r1 * 0.84)));
+};
+
+/**
+ * ★★★**器の上から落とす**（位置・傾き・初速）。**式はここ1つ**（2026-09-14・第103巡）
+ * ―― `buildPieces` の最初の落下と、**器の外へ出た図形を拾い直す番人**
+ * （`components/home/Pile.tsx`）が**同じ落ち方**をする。2度書くと片方だけ直る。
+ * ★`bh` は**絵の高さ**（体の外接箱ではない）。渡されなければ外接箱から取る。
+ */
+export function respawn(m: M, body: Body, w: number, seed: string, bh?: number): void {
+  const r1 = frac(seed); const r2 = frac(`${seed}y`); const r3 = frac(`${seed}a`);
+  const bw = body.bounds.max.x - body.bounds.min.x;
+  const up = (bh ?? body.bounds.max.y - body.bounds.min.y) / 2 + DROP_ABOVE + r2 * DROP_SCATTER;
+  m.Body.setPosition(body, { x: spawnXOf(w, bw, r1), y: -up });
+  m.Body.setAngle(body, (r3 - 0.5) * SPAWN_TILT);
+  // ★★**回りは形の大小で加減しない**（2026-09-09）。大きさで割ると、小さい
+  //   ものだけ空中で止まって見える。同じ初速を与えて、あとは形に任せる。
+  m.Body.setAngularVelocity(body, (r3 - 0.5) * SPAWN_SPIN);
+  m.Body.setVelocity(body, { x: (r1 - 0.5) * SPAWN_VX, y: 0 });
+  m.Sleeping.set(body, false);
+}
+
 export interface Piece {
   id: string;
   body: Body;
@@ -213,9 +247,53 @@ export function makeWalls(m: M, bw: number, bh: number): Body[] {
     m.Bodies.rectangle(bw / 2, floorY + WALL_T / 2, bw + WALL_T * 2, WALL_T, { isStatic: true, friction: 0.6 }),
     // ★★**高さに下限を掛ける** ―― `bh` が 0 だと面積 0 の壁になり、重心が NaN に
     //   なって**当たらない壁**が出来る（第101巡に踏んだ「図形が出なくなる」の一因）。
-    m.Bodies.rectangle(INSET - WALL_T / 2, bh / 2, WALL_T, Math.max(1, bh) * 3, { isStatic: true, friction: 0.4 }),
-    m.Bodies.rectangle(bw - INSET + WALL_T / 2, bh / 2, WALL_T, Math.max(1, bh) * 3, { isStatic: true, friction: 0.4 }),
+    // ★★★**下限は `WALL_MIN_H`（2026-09-14・第103巡）** ―― `bh` に比例させて
+    //   いたので、**横画面では器が低いぶん壁も短く**（250 × 3 ＝ 750）、
+    //   縦画面で積まれていた図形が**壁の下端より下に居て横から抜けた**。
+    //   壁は「器の高さ」ではなく「**図形が居得る範囲**」を覆うもの。
+    m.Bodies.rectangle(INSET - WALL_T / 2, bh / 2, WALL_T, Math.max(bh, WALL_MIN_H) * 3, { isStatic: true, friction: 0.4 }),
+    m.Bodies.rectangle(bw - INSET + WALL_T / 2, bh / 2, WALL_T, Math.max(bh, WALL_MIN_H) * 3, { isStatic: true, friction: 0.4 }),
   ];
+}
+
+/**
+ * ★★★**器が変わったら、山を新しい器へ「合わせ直す」**（2026-09-14・第103巡）。
+ *
+ * ★★★**ユーザー報告「図形が地面の下に落ちる」「横画面にして戻すと図形が消える」の
+ *   根治。** 器が縮むと床（`floorYOf`）は上がるが、**床の板は `WALL_T`(200px) と厚い**
+ *   ので、床が上がった瞬間に山の図形は**板の中**に入る ―― matter.js は
+ *   **いちばん浅い軸へ押し出す**ので、上面より下面が近ければ**下へ**抜ける。
+ *   横画面では床が 444px も上がるため、図形は**板より下に取り残されて永遠に落ちる**
+ *   （器に天井も底も無い）。戻しても山は空にならないので入れ直しの番人も撃たない。
+ * → **床が動いたぶんだけ山ごと動かす。** 図形と床の相対の位置が変わらないので、
+ *   **積み上がった形はそのまま**で、板の中に入ることも無い。
+ *   ★★**床が下がるときは動かさない**（そのぶん落ちればよい。そのほうが自然）。
+ * ★左右は**壁の内側へ押し戻す**（横画面の広い器で右に居た図形が、縦へ戻したとき
+ *   壁の外側に取り残されるのを防ぐ）。
+ */
+export function refitPile(m: M, bodies: Body[], bw: number, dFloor: number): void {
+  for (const b of bodies) {
+    const halfW = (b.bounds.max.x - b.bounds.min.x) / 2;
+    const lo = INSET + halfW;
+    const hi = Math.max(lo, bw - INSET - halfW);
+    const x = Math.min(hi, Math.max(lo, b.position.x));
+    const y = b.position.y + Math.min(0, dFloor);
+    if (x !== b.position.x || y !== b.position.y) {
+      m.Body.setPosition(b, { x, y });
+      m.Sleeping.set(b, false);
+    }
+  }
+}
+
+/**
+ * ★★★**器の外へ出てしまった体か**（2026-09-14・第103巡）。真なら上から落とし直す。
+ * ★`components/tabs/GravityTab.tsx` の `recycle`（下へ出た図形を畳む）と同じ考え方 ――
+ *   **ホームの山にだけ、これが無かった。**
+ */
+export function isLost(b: Body, bw: number, floorY: number): boolean {
+  const { x, y } = b.position;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return true;
+  return y > floorY + LOST_BELOW || x < -LOST_SIDE || x > bw + LOST_SIDE;
 }
 
 export interface PileContent {
@@ -242,9 +320,21 @@ export interface PileBuild {
    *  引いている最中の大きさと落ちたあとの大きさが食い違う）。
    */
   unit: number;
+  /**
+   * ★★**新しく落とすものが在ったか**（2026-09-14・第103巡）。**偽なら山は静かなまま**
+   *  なので、`Pile.tsx` は眠りを解かない（全部据え置きのときに山を起こさない）。
+   */
+  dropped: boolean;
 }
 
-export function buildPieces(m: M, c: PileContent, w: number, h: number): PileBuild {
+/**
+ * @param prev    前の山の体（id → Body）。**同じ id は落とし直さず居場所を引き継ぐ**。
+ * @param landing 引き下ろして指を離した所（1つだけ）。ここから落とす。
+ */
+export function buildPieces(
+  m: M, c: PileContent, w: number, h: number,
+  prev?: Map<string, Body>, landing?: Landing | null,
+): PileBuild {
   const { tasks, offers, unread, today, journal } = c;
 
   // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**（2026-09-09）。
@@ -295,25 +385,44 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): PileBui
   unit = Math.max(10, unit);
 
   const pieces: Piece[] = [];
-  // ★★落とし方は `GravityTab` と同じ ―― **どこへ・どの高さから落ちるか**で
-  //   ばらつきを作り、傾きと回りは控えめに添える。
-  const spawnX = (bw: number, r1: number) => {
-    const half = bw / 2;
-    const lo = INSET + half + 4;
-    const hi = Math.max(lo, w - INSET - half - 4);
-    return Math.min(hi, Math.max(lo, INSET + pileWOf(w) * (0.08 + r1 * 0.84)));
-  };
   let nth = 0;
-  const toss = (body: Body, seed: string, bh: number) => {
-    const r1 = frac(seed); const r2 = frac(`${seed}y`); const r3 = frac(`${seed}a`);
-    const up = bh / 2 + DROP_ABOVE + r2 * DROP_SCATTER;
+  /**
+   * ★★★**すでに山に居たものは落とし直さない**（2026-09-14・第103巡にユーザー確定
+   *   「いつでも落ち直さない」）。
+   *
+   * ★★★**体は作り直すしかない** ―― 一括の倍率 `unit` は**全体の面積の予算**から
+   *   出るので、1つ増えれば全部の大きさが変わる。落ち直して見えていたのは
+   *   「新しい体を**上から落とし直していた**」からで、そこだけをやめればよい。
+   *   **前の体の位置・角度・速度・回りをそのまま写す**と、山は1px も崩れない。
+   * ★**引き下ろして着地させたものは、上からではなく「指を離した所」から**落とす
+   *   （`landing`。`lib/pullDrag.ts` の `pullBus` 経由で `HomeTab` が置く）。
+   *
+   * @returns 新しく落としたか（偽＝前の居場所を引き継いだ）。
+   */
+  const toss = (body: Body, seed: string, bh: number): boolean => {
+    const keep = prev?.get(seed);
+    if (keep) {
+      m.Body.setPosition(body, { x: keep.position.x, y: keep.position.y });
+      m.Body.setAngle(body, keep.angle);
+      m.Body.setVelocity(body, keep.velocity);
+      m.Body.setAngularVelocity(body, keep.angularVelocity);
+      // ★据え置きは**すぐ世界へ入れる**（順番待ちの列に並ばせない）。
+      body.plugin = { ...(body.plugin ?? {}), releaseAt: 0 };
+      return false;
+    }
+    if (landing && landing.id === seed) {
+      m.Body.setPosition(body, { x: landing.x, y: landing.y });
+      m.Body.setAngle(body, landing.angle);
+      m.Body.setVelocity(body, { x: landing.vx, y: landing.vy });
+      m.Body.setAngularVelocity(body, 0);
+      body.plugin = { ...(body.plugin ?? {}), releaseAt: 0 };
+      return true;
+    }
+    // ★★落とし方は `GravityTab` と同じ ―― **どこへ・どの高さから落ちるか**で
+    //   ばらつきを作り、傾きと回りは控えめに添える。★式は `respawn` の1か所。
+    respawn(m, body, w, seed, bh);
     body.plugin = { ...(body.plugin ?? {}), releaseAt: nth++ * DROP_EVERY_MS };
-    m.Body.setPosition(body, { x: spawnX(body.bounds.max.x - body.bounds.min.x, r1), y: -up });
-    m.Body.setAngle(body, (r3 - 0.5) * SPAWN_TILT);
-    // ★★**回りは形の大小で加減しない**（2026-09-09）。大きさで割ると、小さい
-    //   ものだけ空中で止まって見える。同じ初速を与えて、あとは形に任せる。
-    m.Body.setAngularVelocity(body, (r3 - 0.5) * SPAWN_SPIN);
-    m.Body.setVelocity(body, { x: (r1 - 0.5) * SPAWN_VX, y: 0 });
+    return true;
   };
 
   // ★★★**その日の日付と曜日も一緒に落とす**（2026-09-07 ユーザー指定。
@@ -325,10 +434,13 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): PileBui
   //   **凸凹の上**へ着地して 59° 傾いた（実測。3回とも同じ）。
   plates.forEach((plate, i) => {
     const body = makeWordBody(m, plate, 0, 0);
-    toss(body, `word${i}`, plate.bh);
-    // ★初速の回りは与えない（傾くのは着地の弾みぶんだけ）。
-    m.Body.setAngle(body, (frac(`word${i}a`) - 0.5) * 0.16);
-    m.Body.setAngularVelocity(body, 0);
+    // ★★**据え置きなら傾きも引き継ぐ**（第103巡）。落としたときだけ整える ――
+    //   ここで上書きすると、前の山で寝ていた板が**起き上がって**見える。
+    if (toss(body, `word${i}`, plate.bh)) {
+      // ★初速の回りは与えない（傾くのは着地の弾みぶんだけ）。
+      m.Body.setAngle(body, (frac(`word${i}a`) - 0.5) * 0.16);
+      m.Body.setAngularVelocity(body, 0);
+    }
     pieces.push({
       id: `word${i}`, body, kind: "word", w: plate.bw, h: plate.bh,
       face: INK, ink: INK, title: plate.word, plate,
@@ -424,7 +536,7 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): PileBui
     });
   }
 
-  return { pieces, unit };
+  return { pieces, unit, dropped: nth > 0 || !!landing };
 }
 
 export type { Engine };

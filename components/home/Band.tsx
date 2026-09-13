@@ -7,7 +7,10 @@ import { img } from "@/lib/helpers";
 import { type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
-import { RAIL_NEAR, pullBus, pullFrame, type GhostSeed, type PullHost } from "@/lib/pullDrag";
+import {
+  RAIL_NEAR, pullBus, pullFrame,
+  type GhostSeed, type LandingAt, type PullHost,
+} from "@/lib/pullDrag";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
 //
@@ -78,9 +81,16 @@ function Pill({ item, row, pull, taken, onTake }: {
     setPressed(false);
     onTake(null);
     if (!pull) return;
+    // ★★★**離した所と勢いを控えてから幽霊を消す**（2026-09-14・第103巡）。
+    //   山はこの1つだけ**上からではなくここから**落とすので、手を離した瞬間と
+    //   落ち始めのあいだに継ぎ目が無い。★速さは `stepGhost` が書いた値
+    //   （**山のループが固定の刻みで測ったもの**）。
+    const gh = pullBus.ghost;
+    const at: LandingAt | null = gh
+      ? { x: gh.dx, y: gh.dy, vx: gh.vx, vy: gh.vy, angle: gh.angle } : null;
     pullBus.ghost = null;
     pull.rail(false);
-    if (g && commit && g.armed) pull.drop(item, g.rail);
+    if (g && commit && g.armed) pull.drop(item, g.rail, at);
   }, [item, pull, onTake]);
 
   const onDown = (e: React.PointerEvent) => {
@@ -112,12 +122,20 @@ function Pill({ item, row, pull, taken, onTake }: {
     g.armed = f.armed;
     // ★★**外れたら元のピルを消す**（幽霊と二重に見えないように）。
     if (f.armed !== taken) onTake(f.armed ? item.id : null);
+    // ★★**指のイベントが書くのは「目標」だけ** ―― 振れ・伸び・支点・速さは
+    //   山のループが `stepGhost` で作る（`lib/pullDrag.ts`）。前のフレームの値を
+    //   引き継いで、掴んでいる間の連なりを切らない。
+    const was = pullBus.ghost;
     pullBus.ghost = f.armed ? {
       kind: g.seed.kind, id: item.id, title: g.seed.title,
       cx: f.cx, cy: f.cy, w: f.w, h: f.h, t: f.t,
       rows: g.seed.rows, outlined: g.seed.outlined,
       face: g.seed.face, ink: g.seed.ink, faceIdx: g.seed.faceIdx,
       shape: g.seed.shape, photo: g.seed.photo, glyph: g.seed.glyph,
+      ax: was?.ax ?? 0, ay: was?.ay ?? 0, dx: was?.dx ?? f.cx, dy: was?.dy ?? f.cy,
+      angle: was?.angle ?? 0,
+      sx: was?.sx ?? 1, sy: was?.sy ?? 1,
+      stretchDir: was?.stretchDir ?? Math.PI / 2, vx: was?.vx ?? 0, vy: was?.vy ?? 0,
     } : null;
     const near = f.armed && e.clientX > window.innerWidth - RAIL_NEAR;
     if (near !== g.rail) { g.rail = near; pull.rail(near); }

@@ -178,7 +178,22 @@ function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLI
 export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number): void {
   const w = Math.max(8, g.w); const h = Math.max(8, g.h);
   ctx.save();
+  // ★★★**支点まわりに振って、速さの向きへ伸ばす**（2026-09-14・第103巡にユーザー確定
+  //   「指にぶら下がって揺れる」「引く速さで伸び縮みする」）。数は `lib/pullDrag.ts`
+  //   の `stepGhost` が作る ―― **ここは順番を守るだけ**。
+  //   ① 支点（＝指）へ行く → ② 振れで回す → ③ 支点から絵の中心へ下りる
+  //   → ④ 速さの向きへ回して伸ばし、戻す。
+  //   ★★**伸びの軸と振れの軸は別**なので、④ は③のあと（＝中心まわり）で掛ける。
+  //   ★★★**輪郭の作り方は1行も触らない**（`stackOutline` の `waist` の1本のまま）。
   ctx.translate(g.cx, g.cy);
+  ctx.rotate(g.angle);
+  ctx.translate(g.ax, g.ay);
+  // ★★`stretchDir` は**画面の向き**なので、振れのぶんを引いてから掛ける
+  //   （引かないと、振れた角度だけ伸びの軸まで一緒に回ってしまう）。
+  const sd = g.stretchDir - g.angle;
+  ctx.rotate(sd);
+  ctx.scale(g.sx, g.sy);
+  ctx.rotate(-sd);
   if (g.kind === "offer") {
     // ★提案は**札の形**へ。器は正方形（`lib/cardShape.ts` の約束）。
     const d = Math.max(w, h);

@@ -13,7 +13,7 @@ import { KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { bandRows, unreadCards, type BandItem } from "@/lib/homeBand";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
-import { pullBus, type GhostSeed, type PullHost } from "@/lib/pullDrag";
+import { pullBus, type GhostSeed, type LandingAt, type PullHost } from "@/lib/pullDrag";
 import { clampRows } from "@/lib/solid";
 import { rowsOf, specOf } from "@/lib/taskSize";
 import type { AppState, Item, Task, TabProps } from "@/lib/types";
@@ -113,11 +113,18 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     };
   }, [srcOf, day, today]);
 
-  /** ★日付を書き込む。**帯の段ごとに元が違う**ので、ここで1か所に集める。 */
-  const put = useCallback((it: BandItem, iso: string) => {
+  /**
+   * ★日付を書き込む。**帯の段ごとに元が違う**ので、ここで1か所に集める。
+   * ★★★`at` ＝ **指を離した所と勢い**（2026-09-14・第103巡）。山はその1つだけ
+   *   **上からではなくそこから**落とす。**新しいタスクの id はここで作る**ので、
+   *   `pullBus.landing` に id を結び付けられるのもここだけ。
+   */
+  const put = useCallback((it: BandItem, iso: string, at?: LandingAt | null) => {
     const next: AppState = structuredClone(appState);
     const id = it.id.slice(it.id.indexOf("-") + 1);
     const now = new Date().toISOString();
+    /** ★山で落ちてくる相手の id（段によって違う）。 */
+    let landOn = id;
     if (it.kind === "someday") {
       const t = next.tasks.find((x) => x.id === id);
       if (t) t.dueDate = iso;
@@ -126,8 +133,9 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       const c = (next.inbox ?? []).find((x) => x.id === id);
       if (!c) return;
       next.inbox = (next.inbox ?? []).filter((x) => x.id !== id);
+      landOn = `task-${Date.now()}`;
       next.tasks.unshift({
-        id: `task-${Date.now()}`, title: c.title, dueDate: iso,
+        id: landOn, title: c.title, dueDate: iso,
         endDate: c.endDate, dueTime: c.dueTime, endTime: c.endTime,
         weight: c.weight ?? 2, note: c.note, done: false, createdAt: now,
       } as Task);
@@ -137,8 +145,9 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       const sug = parent?.suggestions?.find((x) => x.id === id);
       if (!parent || !sug) return;
       parent.suggestions = (parent.suggestions ?? []).filter((x) => x.id !== id);
+      landOn = `task-${Date.now()}`;
       next.tasks.unshift({
-        id: `task-${Date.now()}`, title: sug.title, dueDate: iso,
+        id: landOn, title: sug.title, dueDate: iso,
         weight: 2, done: false, createdAt: now,
       } as Task);
     } else {
@@ -147,6 +156,9 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       if (!x) return;
       x.plannedFor = iso;
     }
+    // ★★**書き込む前に落とし所を置く**（`Pile` が次に山を組むとき1度だけ使う）。
+    //   ★あとの日へ回したものは山に落ちないので、置いても無害（使われない）。
+    pullBus.landing = at ? { ...at, id: landOn } : null;
     haptic(12);
     persist(next);
   }, [appState, persist]);
@@ -155,10 +167,12 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     box: boxRef,
     seed,
     rail: setRail,
-    drop: (it, onRail) => {
+    drop: (it, onRail, at) => {
       setRail(false);
-      if (!onRail) { put(it, day); return; }
+      if (!onRail) { put(it, day, at); return; }
       // ★右端で離した … カレンダーへ。**まだ何も書かない**（選んで初めて決まる）。
+      //   ★★**落とし所は持ち越さない** ―― カレンダーを開いている間に指は離れて
+      //   いるので、そこから落ちてくるのは嘘になる。ふつうに上から落とす。
       setAssign({
         title: it.text, accent: it.face,
         put: (iso) => { put(it, iso); setAssign(null); },
@@ -225,8 +239,17 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
         <div style={{ position: "absolute", left: 0, right: 0, top: 0, pointerEvents: "none" }}>
           <Band rows={rows} pull={pull} />
         </div>
-        {/* ★右端の ASSIGN の帯。掴んでいるあいだ、右の縁に近づくと出る。 */}
-        <AssignRail show={rail} />
+        {/* ★右端の ASSIGN の帯。掴んでいるあいだ、右の縁に近づくと出る。
+            ★★★**必ず `overflow: hidden` の器で包む**（2026-09-14・第103巡）。
+            帯は隠れている間ずっと `translateX(100%)` で**器の右外へ 48px 出ている**
+            ので、包まないと**列が横にスクロールできてしまい**、指で送ると
+            ASSIGN が見える（ユーザー報告）。★列の側にも `overflowX: "clip"` を
+            入れてあるが（`components/AppShell.tsx`）、**はみ出す側でも止める**。 */}
+        <div aria-hidden style={{
+          position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none",
+        }}>
+          <AssignRail show={rail} />
+        </div>
       </div>
       {assign && (
         <AssignSheet

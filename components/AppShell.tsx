@@ -152,6 +152,19 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
           <div data-tab-scroll-root style={{
             width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
             overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
+            // ★★★**横は決してスクロールさせない**（2026-09-14・第103巡）。
+            // CSS の規則で「片方が `visible` でもう片方がそうでないなら、`visible` は
+            // `auto` になる」ので、**`overflowY` だけ書くと横にもスクロールできる**。
+            // 第102巡の ASSIGN の帯（右端で `translateX(100%)`）が 48px はみ出した
+            // だけで、**列を指で横へ送れて帯が見えた**（ユーザー報告。タブバーは
+            // 列の外に浮いているので動かず、中身だけがずれた）。
+            // ★`hidden` ではなく **`clip`** ―― `hidden` はスクロール容器を作るので、
+            //   上の `scrollLocked` の切り替えと噛み合わせを増やす。`clip` は
+            //   容器を作らずに切るだけ。
+            // ★★これは**2本目の防波堤**。はみ出す面の側（`AssignRail`）も
+            //   `overflow: hidden` の器で包んである（`components/tabs/HomeTab.tsx`）。
+            //   第26巡に `scrollLeft` が 320 で固まった件と同じ趣旨の、構造の守り。
+            overflowX: "clip",
             // ★スクロール中に要素がサイズ変化(プランタブの地図の縮小など)しても、
             // ブラウザのスクロールアンカリングがscrollTopを勝手に補正して
             // 「グイッと引っ張られる」ジャンプを起こさないよう無効化する。

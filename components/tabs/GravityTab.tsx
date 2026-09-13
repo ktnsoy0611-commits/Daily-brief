@@ -7,8 +7,8 @@ import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { ymd } from "@/components/tasks/WhenSheet";
 import { haptic } from "@/lib/helpers";
-import { rectOf, sectionOutline, type SolidSpec } from "@/lib/solid";
-import { clearSolidBitmaps, isDated, peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, wordBitmap, type SolidPaint, type SolidView } from "@/lib/solidPaint";
+import { rectOf, stackOutline, type SolidSpec } from "@/lib/solid";
+import { clearSolidBitmaps, isDated, peekSolidBitmap, shapeBounds, shapeGlyphsReady, shapeRowsOf, solidBitmap, warmShapeGlyphs, wordBitmap, type SolidPaint, type SolidView } from "@/lib/solidPaint";
 import { onFontsReady } from "@/lib/textFit";
 import { GROUND_LIFT, PILE_INSET, floorYOf, pileBandBottom, pileWOf } from "@/lib/pileBox";
 import {
@@ -2642,26 +2642,25 @@ function makeBody(
   M: typeof import("matter-js"), paint: SolidPaint, x: number, y: number, unit: number,
 ): { body: Body; ox: number; oy: number } {
   const opts = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
-  const n = paint.spec.sides.length;
   const { w, h } = rectOf(paint.spec);
   const pw = w * unit; const ph = h * unit;
-  let body: Body; let ox = 0; let oy = 0;
+  let ox = 0; let oy = 0;
   // ★★★当たり判定だけ**見た目より `HAIR` px 外側**にする(2026-08-26・第63巡に
   //   ユーザー指定)。図形どうしが隣り合って止まったとき、色面が直に接していると
   //   境目が潰れて見える ― 髪の毛ほどの地色が挟まると、面の連なりが読める。
   //   ★絵は変えない(焼いた絵はそのまま)。ずらすのは物体だけ。
-  if (n === 1) body = M.Bodies.circle(x, y, pw / 2 + HAIR, opts);
-  else {
-    const src = sectionOutline(n);
-    const step = Math.max(1, Math.ceil(src.length / PHYS_VERTS));
-    const verts = src.filter((_, k) => k % step === 0).map((q) => ({ x: q.x * pw, y: q.y * ph }));
-    body = M.Bodies.fromVertices(x, y, [verts], opts);
-    const c = M.Vertices.centre(verts);
-    ox = -c.x; oy = -c.y;
-    // ★`Body.scale` は**重心まわり**に拡大するので、`ox/oy`(重心と絵の中心の差)は
-    //   そのまま使える。★質量は拡大で書き換わるので、`setMass` はこの**後**。
-    if (pw > 1 && ph > 1) M.Body.scale(body, 1 + (HAIR * 2) / pw, 1 + (HAIR * 2) / ph);
-  }
+  // ★★★**段の数は絵と同じ出どころから引く**（`shapeRowsOf`。第99巡）。
+  //   ★★**くびれは凸包で潰れる** ―― `poly-decomp` が無いので `fromVertices` は
+  //   凸包を取る。**それでよい**（くびれは浅く、引っ掛からないほうが山として正しい）。
+  const src = stackOutline(shapeRowsOf(paint), pw / ph);
+  const step = Math.max(1, Math.ceil(src.length / PHYS_VERTS));
+  const verts = src.filter((_, k) => k % step === 0).map((q) => ({ x: q.x * pw, y: q.y * ph }));
+  const body: Body = M.Bodies.fromVertices(x, y, [verts], opts);
+  const c = M.Vertices.centre(verts);
+  ox = -c.x; oy = -c.y;
+  // ★`Body.scale` は**重心まわり**に拡大するので、`ox/oy`(重心と絵の中心の差)は
+  //   そのまま使える。★質量は拡大で書き換わるので、`setMass` はこの**後**。
+  if (pw > 1 && ph > 1) M.Body.scale(body, 1 + (HAIR * 2) / pw, 1 + (HAIR * 2) / ph);
   M.Body.setMass(body, massOf(paint.spec) * MASS_K);
   return { body, ox, oy };
 }

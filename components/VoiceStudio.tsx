@@ -6,7 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { DIAL_TICK, DIAL_TICKS, DIAL_VIEW } from "@/lib/dial";
-import { CASSETTE, CASSETTE_ASPECT, CASSETTE_DECK_H, CASSETTE_DECK_W_PER_W, CASSETTE_DECK_X, CASSETTE_DECK_Y_PER_H, CASSETTE_KEY_LIP_PER_H, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W } from "@/lib/cassette";
+import { CASSETTE, CASSETTE_ASPECT, CASSETTE_BOX_H_PER_H, CASSETTE_DECK_H, CASSETTE_DECK_W_PER_W, CASSETTE_DECK_X, CASSETTE_DECK_Y_PER_H, CASSETTE_KEY_LIP_PER_H, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W } from "@/lib/cassette";
 import { PILE_INSET } from "@/lib/pileBox";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
@@ -335,7 +335,9 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // ★★**上の見張り** … 本体が題（Masthead）に掛かるなら、そこまでで頭を押さえる。
   const plateH = Math.min(
     (deckWWant / CASSETTE_DECK_W_PER_W) / CASSETTE_ASPECT,
-    Math.max(200, bodyBottom - BAND_TOP - SPACE.lg),
+    // ★★★**見張るのは本体ではなく「突起を含む外接箱」**（2026-09-13・第99巡）。
+    //   左上の突起は本体の上へ出るので、本体だけで測ると突起が題に掛かる。
+    Math.max(200, (bodyBottom - BAND_TOP - SPACE.lg) / CASSETTE_BOX_H_PER_H),
   );
   const plateW = plateH * CASSETTE_ASPECT;
   const plateTop = bodyBottom - plateH;
@@ -801,6 +803,27 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           }}
         />
       )}
+      {/* ★★★**左上の四角い突起2つ**（2026-09-13・第99巡にユーザー指定）。
+          **本体の上の縁から上へ出る**ので、高さの見張りは外接箱を見ている
+          （`CASSETTE_BOX_H_PER_H`）。★寸法も位置もアイコンの比から導く。 */}
+      {shown && CASSETTE.tabs.map((t, i) => (
+        <div
+          key={`tab-${i}-${enterKey}`}
+          className={leaving ? "vs-plate-out" : "vs-plate-in"}
+          aria-hidden
+          style={{
+            position: "absolute", zIndex: 0, pointerEvents: "none",
+            width: plateW * (t.w / CASSETTE.body.w),
+            height: plateH * (t.h / CASSETTE.body.h),
+            /* ★目盛りの外（図形の座標系＝アイコンの比） */
+            left: plateCx - plateW / 2 + plateW * ((t.x - CASSETTE.body.x) / CASSETTE.body.w),
+            /* ★目盛りの外（同上） */
+            top: plateTop + plateH * ((t.y - CASSETTE.body.y) / CASSETTE.body.h),
+            background: INK,
+            borderRadius: plateH * (t.r / CASSETTE.body.h),
+          }}
+        />
+      ))}
       {/* ★★★**下の段 ―― 左の円とバー**（2026-09-13・第95巡にユーザー指定
           「下のバーの部分を…全体の幅を変えず、**左側に円を置いて、その右に
           今のバーを置いて**もう少しレコーダーっぽく」）。

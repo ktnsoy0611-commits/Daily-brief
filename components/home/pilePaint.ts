@@ -1,9 +1,11 @@
 import { BAND_BEZEL, BD_GREY, LATIN, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { drawCassette } from "@/lib/cassette";
+import { CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
 import { traceCardShape } from "@/lib/cardShape";
+import { clampRows, stackOutline } from "@/lib/solid";
+import { rowsOf } from "@/lib/taskSize";
 import { canvasFont, drawFitted, ensureGlyphs, fitText } from "@/lib/textFit";
-import { RADIUS, WEIGHT } from "@/lib/tokens";
+import { WEIGHT } from "@/lib/tokens";
 import { drawWordPlate } from "@/lib/wordPlate";
 import { zigVerts, type Piece } from "./pileWorld";
 
@@ -52,13 +54,26 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   if (!ctx) return undefined;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingQuality = "high";
-  const r = Math.min(RADIUS.lg, pw / 2, ph / 2);
-  const path = () => {
+  // ★★★**形は `lib/solid.ts` の「ピルの積み」から引く**（2026-09-13・第99巡）。
+  //   山だけ角丸の四角を別に描いていたのをやめた ―― **同じタスクが画面によって
+  //   違う形**に見えていた（ユーザー確定で TASK アプリと山の両方を揃える）。
+  //   ★★**段の数は文字の行数**なので、**先に組んでから形を決める**。
+  ensureGlyphs(p.face_, p.title);
+  // ★★★**段の数は題の文字数から**（`rowsOf`。第99巡）。TASK アプリと**同じ関数**。
+  //   ★書体の到着で段数が変わらないよう、行数の実測ではなく純粋な関数から引く。
+  const rows = clampRows(rowsOf(p.title));
+  const fit = fitText(p.title, p.face_, pw * 0.82, ph * 0.7, rows);
+  const outline = stackOutline(rows, pw / ph);
+  const trace = (sw: number, sh: number) => {
     ctx.beginPath();
-    if (typeof ctx.roundRect === "function") ctx.roundRect(BAKE_PAD, BAKE_PAD, pw, ph, r);
-    else ctx.rect(BAKE_PAD, BAKE_PAD, pw, ph);
+    outline.forEach((q, i) => {
+      const x = BAKE_PAD + pw / 2 + q.x * sw;
+      const y = BAKE_PAD + ph / 2 + q.y * sh;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
     ctx.closePath();
   };
+  const path = () => trace(pw, ph);
   // ★★★**日付あり＝塗り／日付なし＝輪郭**（2026-09-12）。GRAVITY の図形
   //   （`lib/solidPaint.ts` の `paintShape`）と**同じ規則**を通す。
   path();
@@ -71,19 +86,12 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
     //   `lib/solidPaint.ts` の同じ箇所に書いた（実効 1.08 CSS 画素）。
     ctx.strokeStyle = p.face;
     ctx.lineWidth = EDGE;
-    ctx.beginPath();
-    const x0 = BAKE_PAD + EDGE / 2; const y0 = BAKE_PAD + EDGE / 2;
-    const iw = pw - EDGE; const ih = ph - EDGE;
-    if (typeof ctx.roundRect === "function") ctx.roundRect(x0, y0, iw, ih, Math.max(0, r - EDGE / 2));
-    else ctx.rect(x0, y0, iw, ih);
-    ctx.closePath();
+    trace(pw - EDGE, ph - EDGE);
     ctx.stroke();
   }
   ctx.save();
   path();
   ctx.clip();
-  ensureGlyphs(p.face_, p.title);
-  const fit = fitText(p.title, p.face_, pw * 0.82, ph * 0.7, 3);
   if (fit) drawFitted(ctx, fit, p.face_, w / 2, h / 2, p.ink, fit.size * dpr);
   ctx.restore();
   const made = { canvas: cv, w, h };
@@ -99,7 +107,11 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
 export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
   if (!p.w || !p.h) return undefined;
   const pw = Math.ceil(p.w); const ph = Math.ceil(p.h);
-  const w = pw + BAKE_PAD * 2; const h = ph + BAKE_PAD * 2;
+  // ★★★**左上の突起は本体の外へ出る**（第99巡）ので、焼き箱を**四方に広げる**。
+  //   `BAKE_PAD`(1) のままだと突起の頭が切れる（実機の山で切れていた）。
+  //   ★四方に同じだけ広げるので、**本体の中心は箱の中心のまま**＝貼る位置は変わらない。
+  const pad = Math.ceil(ph * CASSETTE_TAB_H_PER_H) + BAKE_PAD;
+  const w = pw + pad * 2; const h = ph + pad * 2;
   const key = ["cassette", w, h, p.face, p.ink, dpr.toFixed(2)].join("|");
   const hit = bakeCache.get(key);
   if (hit) return hit;
@@ -157,10 +169,13 @@ export function drawPile(
       const bmp = taskBitmap(p, dpr);
       if (bmp) ctx.drawImage(bmp.canvas, -bmp.w / 2, -bmp.h / 2, bmp.w, bmp.h);
       else {
-        const r = Math.min(RADIUS.lg, p.w / 2, p.h / 2);
+        // ★焼く前の代役。★**1段のピル**で描く（焼けたら段の数は文字が決める）。
         ctx.beginPath();
-        if (typeof ctx.roundRect === "function") ctx.roundRect(-p.w / 2, -p.h / 2, p.w, p.h, r);
-        else ctx.rect(-p.w / 2, -p.h / 2, p.w, p.h);
+        const pw = p.w; const ph = p.h;
+        stackOutline(1, pw / ph).forEach((q, i) => {
+          const x = q.x * pw; const y = q.y * ph;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
         ctx.closePath();
         ctx.fill();
       }

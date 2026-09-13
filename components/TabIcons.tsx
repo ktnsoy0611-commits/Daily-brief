@@ -156,6 +156,10 @@ function shapes(name: TabIconName, c: string) {
             fill={c} opacity={PALE}
           />
           <g fill={c}>
+            {/* ★左上の四角い突起2つ（第99巡）。本体の上の縁から上へ出る。 */}
+            {CASSETTE.tabs.map((t) => (
+              <rect key={t.x} x={t.x} y={t.y} width={t.w} height={t.h} rx={t.r} />
+            ))}
             {CASSETTE.reels.map((reel) => (
               <circle key={reel.x} cx={reel.x} cy={reel.y} r={CASSETTE.reelR} />
             ))}

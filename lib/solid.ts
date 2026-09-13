@@ -2,29 +2,46 @@ import type { SideKey } from "./types";
 
 // ★タスクの図形。**純粋関数だけ**。単体テストで検証する。
 //
-// ★3D は持たない(2026-08-13にユーザー確定)。
-// 「どちらのビューでも、アイソメではなく**各立面**を表示する。なのでシステム的に
-// 3Dである必要はない」という指定により、投影・陰影・凸包の類はすべて撤去した。
-// ★図形は**断面の形**(円 / 半円 / 三角 / 四角)ひとつ。ビューを切り替えても
-// 形は変わらず、**載る文字だけ**が変わる(2026-08-16にユーザー確定)。
+// ★3D は持たない(2026-08-13にユーザー確定)。投影・陰影・凸包の類は撤去済み。
 //
-//   ネームビュー … タスクの題が中央に載る
-//   タグビュー   … タグの英字が図形いっぱいに載る
+// ★★★**形は「ピルの積み」ひとつ**（2026-09-13・第99巡にユーザー指定
+//   「**ピルを積んだような形**にし、**行数によって段の数が変わる**ように。
+//   **最大3段**」）。参照画像の実測 … 399 × 392 の中に **3段**、1段 131
+//   （＝段は隙間なく接する）、上辺 277・くびれ 286・最大 399。
+//   → **幅の等しいピル（角丸＝段の高さ/2）を縦に積んだ union**。
+//
+// ★★★**「辺の数（1〜4）＝どれだけ埋まっているか」はやめた**（第99巡にユーザー確定）。
+//   円・半円・三角・四角の語彙は消えた。**復活させない。**
+//   いま図形が言うのは2つだけ ――
+//     ・**塗り／輪郭** … 日付があるか（`isDated`。`sides` はこのためだけに残る）
+//     ・**大きさ**     … 重要度（`area`）
+//   ★段の数が言うのは**題の行数**であって、埋まり具合ではない。
 //
 // 寸法の対応(lib/taskSize.ts):
 //   area  = **塗られる**面積 = 重要度(WEIGHT × 期限の切迫度)。
-//           大きさに効くのはこれだけ。形ごとの塗り率(inkRatio)で外接箱を
-//           広げるので、**形が違っても同じ重要度なら色の量が同じ**。
-//   w / h = 外接箱。**四角だけ**題の長さで横に伸び、円・半円・三角は
-//           その形の自然な比(1:1 / 2:1 / 1.155:1)を必ず保つ。
-//   sides = 埋まっている側面の数 → 形
+//           大きさに効くのはこれだけ。塗り率(STACK_INK)で外接箱を広げる。
+//   w / h = 外接箱。**1段の比 ÷ 段の数**(`ratioOf`)。1段なら横長、3段でほぼ正方形。
+//   rows  = 段の数(1..3)。**文字を組んでみて初めて決まる**ので `SolidSpec` には
+//           入れない ―― `lib/solidPaint.ts` の `plan()` が2段構えで解く。
 //   slabs = 残っている手順 → 何枚に割れるか(大きさには効かない)
 
-export const MIN_SIDES = 1;
-export const MAX_SIDES = 4;
+/** 段の数の上限（ユーザー確定）。 */
+export const MAX_ROWS = 3;
 
 /** 曲線をいくつの線分で近似するか。 */
 export const ARC_STEPS = 36;
+
+/**
+ * ★★★**ピルの積みが外接箱のうち何割を塗るか**。
+ * 1段が `w × rowH`・角丸 `rowH/2` のとき `1 − (rowH/w)(1 − π/4)`。
+ * 参照の 1段 3:1 なら 0.928、2:1 でも 0.893 ―― **段数でほとんど動かない**ので
+ * 定数で持つ。★これで「同じ重要度なら色の量が同じ」が保たれる。
+ */
+export const STACK_INK = 0.93;
+
+/** 段の数を 1..MAX_ROWS に丸める。 */
+export const clampRows = (n: number): number =>
+  Math.max(1, Math.min(MAX_ROWS, Math.round(n || 1)));
 
 /** スラブとスラブの間の切れ目。軸方向の長さに対する割合。 */
 export const SLIT = 0.055;
@@ -32,7 +49,8 @@ export const SLIT = 0.055;
 export interface Pt { x: number; y: number }
 
 export interface SolidSpec {
-  /** 埋まっている側面。SIDE_KEYS の順。先頭は必ず "title"。1〜4枚。 */
+  /** 埋まっている側面。★★★**もう形を選ばない**（第99巡）。
+   *  残しているのは **`isDated`（"due" が入っているか）** のためだけ。 */
   sides: SideKey[];
   /** ★**塗られる**面積(=重要度)。solid²。
    *  文字の大きさ・物理の重さ・LOD・間引きの基準はすべてここから引く。 */
@@ -44,151 +62,72 @@ export interface SolidSpec {
   slabs: number;
 }
 
-export const clampSides = (n: number): number =>
-  Math.max(MIN_SIDES, Math.min(MAX_SIDES, Math.round(n || 0)));
 
-/** 断面の形の名前(表示・テスト用)。 */
-export const sectionName = (n: number): string =>
-  ["円", "半円", "三角", "四角"][clampSides(n) - 1];
+// ── 形（ピルの積み） ──────────────────────────────────────────
+// ★時計回りの多角形（画面の座標。y は下向き）。段ごとの半円は ARC_STEPS/2 本の弦で。
 
-// ── 断面の形 ────────────────────────────────────────────────
-// 反時計回りの多角形。円と半円の弧は ARC_STEPS 本の弦で近似する。
-
-export function section(sides: number): Pt[] {
-  const n = clampSides(sides);
-  if (n === 1) {
-    // 円。
-    const pts: Pt[] = [];
-    for (let i = 0; i < ARC_STEPS; i++) {
-      const a = (2 * Math.PI * i) / ARC_STEPS;
-      pts.push({ x: Math.cos(a), y: Math.sin(a) });
-    }
-    return pts;
-  }
-  if (n === 2) {
-    // 半円。平らな面を下に、弧が上へふくらむ。
-    const pts: Pt[] = [{ x: 1, y: 0 }];
-    for (let i = 1; i <= ARC_STEPS; i++) {
-      const a = (Math.PI * i) / ARC_STEPS;
-      pts.push({ x: Math.cos(a), y: Math.sin(a) });
-    }
-    return pts;
-  }
-  // 正三角形・正方形。半径 1 の円に内接させる。
-  // 三角は頂点が上、四角は辺が水平になる向き。
-  const off = n === 3 ? Math.PI / 2 : Math.PI / 4;
+/**
+ * ★★★**ピルの積みの輪郭**を **縦横とも -0.5〜0.5 に正規化**して返す。
+ *
+ * 箱 `w × h`、段数 `rows`、`rowH = h / rows`、**角丸 `r = rowH / 2`（＝真のピル）**、
+ * 段は**隙間なく接する**。上辺 → 右側を段ごとの半円 → 下辺 → 左側を段ごとの半円。
+ *
+ * ★★`ar`（＝ `w / h`）が要る ―― `r` は**絶対寸法**（段の高さの半分）なので、
+ *   正規化した形は箱の比に依る（第98巡までの断面の輪郭には無かった引数）。
+ * ★呼ぶ側が `(w, h)` を掛ければ、外接箱はちょうど `w × h` になる。
+ */
+export function stackOutline(rows: number, ar: number): Pt[] {
+  const n = clampRows(rows);
+  // 正規化した座標系（幅 1・高さ 1）での段の高さと角丸。
+  const rowH = 1 / n;
+  // 角丸は**幅の単位**で測る（横は 1、縦は 1 なので、比を掛けて横へ直す）。
+  const rx = Math.min(rowH / 2 / ar, 0.5);
+  const ry = rowH / 2;
+  const half = Math.max(0, ARC_STEPS / 2);
   const pts: Pt[] = [];
+  // 上辺（左上の角の終わり → 右上の角の始まり）。
+  pts.push({ x: -0.5 + rx, y: -0.5 });
+  pts.push({ x: 0.5 - rx, y: -0.5 });
+  // 右側 … 段ごとに半円（上から下へ）。
   for (let i = 0; i < n; i++) {
-    const a = off + (2 * Math.PI * i) / n;
-    pts.push({ x: Math.cos(a), y: Math.sin(a) });
+    const cy = -0.5 + rowH * i + ry;
+    for (let k = 0; k <= half; k++) {
+      const a = -Math.PI / 2 + (Math.PI * k) / half;
+      pts.push({ x: 0.5 - rx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry });
+    }
+  }
+  // 下辺。
+  pts.push({ x: -0.5 + rx, y: 0.5 });
+  // 左側 … 段ごとに半円（下から上へ）。
+  for (let i = n - 1; i >= 0; i--) {
+    const cy = -0.5 + rowH * i + ry;
+    for (let k = 0; k <= half; k++) {
+      const a = Math.PI / 2 + (Math.PI * k) / half;
+      pts.push({ x: -0.5 + rx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry });
+    }
   }
   return pts;
 }
 
 /**
- * 断面の輪郭を **縦横とも -0.5〜0.5 に正規化**したもの。
- * 画面の座標(y は下向き)に合わせてある。
+ * ★その形の、**高さ y での半幅**（`stackOutline` と同じ -0.5〜0.5 の座標系。
+ * y は下向き）。文字を「形に合わせて折り返す」ために要る。
  *
- * ★縦横を**別々に**1へ揃えるのが要点。こうしておくと、呼び出し側が
- * `(w, h)` を掛けた結果の外接箱がちょうど `w × h` になり、
- * 「箱の面積 × 塗り率 = 塗られる面積」が形によらず成立する。
- * (以前は「長い方の辺だけ 1」に揃えていたため、半円は狙いの 1/2、
- *  三角は 0.87 の面積にしかならなかった。)
- * その形の本来の縦横比は naturalRatio() が別に持つ。
+ * ★段の中心でちょうど `0.5`（箱いっぱい）、縁へ向かって円で落ちる。
+ * ★★行は段の中心に置かれるので**ほぼ箱いっぱい使える** ―― それが
+ *   「ピルの中に1行」という見え方を作っている。
  */
-export function sectionOutline(sides: number): Pt[] {
-  const pts = section(sides);
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const p of pts) {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  }
-  const sx = 1 / (maxX - minX);
-  const sy = 1 / (maxY - minY);
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  return pts.map((p) => ({ x: (p.x - cx) * sx, y: -(p.y - cy) * sy }));
-}
-
-/**
- * その断面の形の中で、文字を置ける矩形(-0.5〜0.5 の座標系)。
- * 形ごとに手で決めた値。曲線や斜辺に文字が食い込まないところまで。
- */
-export function innerBox(sides: number): { x: number; y: number; w: number; h: number } {
-  // ★sectionOutline は**縦横とも -0.5〜0.5**。ここの値もその座標系で書く
-  // (以前は「長い方だけ 1」の座標系だったので、半円と三角の縦の値が違う)。
-  switch (clampSides(sides)) {
-    // 円: 内接する正方形(半径0.5 → 一辺 0.707)。
-    case 1: return { x: -0.35, y: -0.35, w: 0.70, h: 0.70 };
-    // 半円: 平らな辺が下(y=+0.5)。最大内接矩形は高さ・半幅とも r/√2 のとき
-    //   (正規化後 0.707 角)。★以前は 0.34 角と本来の半分以下しか取れておらず、
-    //   半円だけ文字が極端に小さくなっていた。
-    case 2: return { x: -0.35, y: -0.21, w: 0.70, h: 0.70 };
-    // 三角: 頂点が上。底辺に寄せた内接矩形。
-    case 3: return { x: -0.24, y: 0.0, w: 0.48, h: 0.473 };
-    // 四角。
-    default: return { x: -0.46, y: -0.43, w: 0.92, h: 0.86 };
-  }
-}
-
-/**
- * ★その断面の、**高さ y での半幅**(sectionOutline と同じ -0.5〜0.5 の座標系。
- * y は下向き)。文字を「形に合わせて折り返す」ために要る。
- *
- * innerBox(矩形1つ)では三角がどうしても不利になる — 外接箱の 23% しか
- * 取れず、四角(79%)に対して文字が半分以下になっていた(2026-08-16にユーザー
- * 指摘)。行ごとにここで幅を引けば、下の広いところは目一杯使える。
- */
-export function halfWidthAt(sides: number, y: number): number {
+export function halfWidthAtStack(rows: number, ar: number, y: number): number {
+  const n = clampRows(rows);
   const t = Math.max(-0.5, Math.min(0.5, y));
-  switch (clampSides(sides)) {
-    // 円。
-    case 1: return Math.sqrt(Math.max(0, 0.25 - t * t));
-    // 半円。平らな辺が下(y=+0.5)、弧が上。
-    case 2: return Math.sqrt(Math.max(0, 1 - (0.5 - t) * (0.5 - t))) / 2;
-    // 三角。頂点が上(y=-0.5)、底辺が下。
-    case 3: return (t + 0.5) / 2;
-    // 四角。
-    default: return 0.5;
-  }
-}
-
-/** 多角形の面積(符号なし)。 */
-export function areaOfPoly(pts: Pt[]): number {
-  let s = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % pts.length];
-    s += a.x * b.y - b.x * a.y;
-  }
-  return Math.abs(s) / 2;
-}
-
-/**
- * ★その形が外接箱のうち何割を塗るか。円/半円 0.78・三角 0.50・四角 1.00。
- * **同じ重要度なら形が違っても色の量が同じ**になるよう、外接箱の面積を
- * これで割って広げる(2026-08-16にユーザー確定)。
- * 定数を手で書かず section() から出すので、形を足しても勝手に追随する。
- */
-const inkCache = new Map<number, number>();
-export function inkRatio(sides: number): number {
-  const n = clampSides(sides);
-  const hit = inkCache.get(n);
-  if (hit !== undefined) return hit;
-  const o = sectionOutline(n);
-  const b = boundsOf(o);
-  const r = areaOfPoly(o) / ((b.maxX - b.minX) * (b.maxY - b.minY));
-  inkCache.set(n, r);
-  return r;
-}
-
-/** その形の**本来の**縦横比(横 ÷ 縦)。円=1、半円=2、三角≒1.155、四角=1。
- *  sectionOutline は縦横とも 1 に潰してあるので、比はここから取る。 */
-export function naturalRatio(sides: number): number {
-  const b = boundsOf(section(sides));
-  return (b.maxX - b.minX) / (b.maxY - b.minY);
+  const rowH = 1 / n;
+  const rx = Math.min(rowH / 2 / ar, 0.5);
+  const ry = rowH / 2;
+  // いる段（境界はどちらの段でも同じ値になるので端は丸めるだけ）。
+  const i = Math.max(0, Math.min(n - 1, Math.floor((t + 0.5) / rowH)));
+  const cy = -0.5 + rowH * i + ry;
+  const dy = Math.min(Math.abs(t - cy), ry);
+  return 0.5 - rx + Math.sqrt(Math.max(0, 1 - (dy / ry) * (dy / ry))) * rx;
 }
 
 // ── 立面 ────────────────────────────────────────────────────

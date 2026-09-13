@@ -1,5 +1,5 @@
 import { SIDE_KEYS } from "./types";
-import { inkRatio, naturalRatio, type SolidSpec } from "./solid";
+import { MAX_ROWS, STACK_INK, type SolidSpec } from "./solid";
 import type { InboxCandidate, SideKey, Task, TaskWeight } from "./types";
 
 // ★タスク → 図形の寸法。**純粋関数だけ**。単体テストで検証する。
@@ -8,9 +8,9 @@ import type { InboxCandidate, SideKey, Task, TaskWeight } from "./types";
 // 手順の数=長さ」は、大きさが何を表しているのか読めないので作り直した):
 //
 //   **塗られる面積 = 重要度** … WEIGHT(小/中/大) × 期限の倍率。これだけ。
-//     形ごとの塗り率(inkRatio)で外接箱を広げるので、三角でも四角でも
+//     ピルの積みの塗り率(STACK_INK)で外接箱を広げるので、段の数が違っても
 //     同じ重要度なら**色の量が同じ**になる。
-//   **縦横比** … **四角だけ**、題の長さのはしご(RATIOS)で横に伸びる。
+//   **縦横比** … **1段の比 ÷ 段の数**（`ratioOf`）。1段なら横長、3段でほぼ正方形。
 //     円 1:1・半円 2:1・三角 1.155:1 は**その形の比を必ず保つ**
 //     (2026-08-16にユーザー確定。歪ませない)。
 //   形 = 埋まっている側面の数(1..4)
@@ -53,34 +53,58 @@ export function areaOf(t: Partial<Task>, today: Date): number {
 }
 
 /**
- * ★縦横比(横 ÷ 縦)の**はしご**(2026-08-16にユーザー確定)。
+ * ★★★**箱の比は「段の数」から出る**（2026-09-13・第99巡）。
  *
- * 以前は 0.75〜3.2 の連続値だったため、ダミー16件のうち9件が 1.0〜2.4 に
- * 密集し、さらに4件が下限に・1件が上限に貼り付いて同じ形になっていた
- * (「形にメリハリがない」というユーザー指摘)。**必ずこの6段のどれか**に
- * スナップさせることで、縦長・正方形・帯 がはっきり見分けられるようにする。
+ * 形が「ピルの積み」1つになったので、比は**1段の比 ÷ 段の数**でなければ
+ * ならない ―― 1段なら横長、3段ならほぼ正方形。
+ * ★★★第98巡までの `ratioOf`（題が長いほど横長）は**向きが逆だった** ――
+ *   短い題は1段なので**横長**であるべきなのに、`RATIOS[0]`（1/2）で**縦長**に
+ *   なり、1段のピルが**楕円**に潰れていた（実機の山で確認）。
  *
- * 単純な整数比に揃えてあるのは、積んだときの収まりを良くするため。
+ * ★1段の比 3 は**参照画像の実測**（399 / 131 ＝ 3.05）。
  */
-export const RATIOS = [1 / 2, 3 / 4, 1, 3 / 2, 5 / 2, 4] as const;
+export const ROW_AR = 3;
 
-/** タイトルの文字数 → 比率の段。長い題ほど横長。 */
-export function ratioOf(title: string): number {
+/**
+ * 題の文字数 → **段の数**（1..3）。
+ * ★★**字の大きさは面積に比例し、箱の幅も面積の平方根に比例する**ので、
+ *   1段に入る文字数は**大きさによらず一定**。だから文字数だけで決めてよい。
+ * ★★実際に描く段の数は `lib/solidPaint.ts` の `plan()` が**組んでみて**決める。
+ *   ここは**箱の形をあらかじめその段数に合わせておく**ための見積もり。
+ */
+export function rowsOf(title: string): number {
   const n = (title ?? "").trim().length;
-  if (n <= 2) return RATIOS[0];   // 縦長
-  if (n <= 4) return RATIOS[1];   // やや縦長
-  if (n <= 6) return RATIOS[2];   // 正方形
-  if (n <= 9) return RATIOS[3];   // 横長
-  if (n <= 14) return RATIOS[4];  // 帯
-  return RATIOS[5];               // 細長い帯
+  if (n <= 5) return 1;
+  if (n <= 12) return 2;
+  return MAX_ROWS;
 }
 
-/** ★はしごで伸びるのは**四角だけ**(2026-08-16にユーザー確定)。
- *  円・半円・三角は伸ばさず、面積のぶんだけ単純に大きくなる。 */
-const STRETCHES = (sides: number) => sides === 4;
+/**
+ * ★**1段の比は「その行が何文字を抱えるか」で伸びる**（下限は `ROW_AR`）。
+ * 参照の1段は 399 × 131 で、字は段の高さの約 0.62 倍 ―― つまり **1行 約4.9字**。
+ * だから **1字あたり 0.62** を掛ければ、字の大きさを保ったまま行が伸びる。
+ * ★★これが無いと、**長い題 × 低い重要度**の図形で字が入らずに**文字が消える**
+ *   （3段が上限なので、段を増やして逃げられない）。
+ */
+const CHARS_AR = 0.62;
+export function rowAspect(title: string, rows: number): number {
+  const per = Math.ceil(((title ?? "").trim().length || 1) / Math.max(1, rows));
+  return Math.max(ROW_AR, per * CHARS_AR);
+}
+
+/** 縦横比(横 ÷ 縦)。★**1段の比 ÷ 段の数**。 */
+export function ratioOf(title: string): number {
+  const rows = rowsOf(title);
+  return rowAspect(title, rows) / rows;
+}
+
+// ★★★**伸びるのは全部**（2026-09-13・第99巡）。形が「ピルの積み」1つになり、
+//   守るべき「その形の自然な比」が無くなったので、`STRETCHES`（四角だけ伸ばす）と
+//   `naturalRatio` は消えた。**箱の比は題の長さ（`ratioOf`）だけが決める。**
 
 /** 埋まっている側面。先頭は必ず title(必須なので常に埋まっている扱い)。
- *  ★2番目は **dueDate**(2026-08-16確定。自由文の when は廃止)。 */
+ *  ★2番目は **dueDate**(2026-08-16確定。自由文の when は廃止)。
+ *  ★★★**もう形を選ばない**（第99巡）。使うのは `isDated`（"due" が入っているか）だけ。 */
 export function sidesOf(t: Partial<Task> | Partial<InboxCandidate>): SideKey[] {
   const has = (v: string | undefined) => (v ?? "").trim() !== "";
   const src = t as Record<string, string | undefined>;
@@ -102,14 +126,11 @@ export const slabsOf = (t: Pick<Task, "subtasks">): number =>
 export function specOf(t: Partial<Task> & { title: string }, today = new Date()): SolidSpec {
   const area = areaOf(t, today);
   const sides = sidesOf(t);
-  const n = sides.length;
-  // ★**塗られる**面積を重要度に揃える。形ごとの塗り率で外接箱を広げるので、
-  // 三角でも四角でも同じ重要度なら色の量が同じになる。
-  const boxArea = area / inkRatio(n);
-  // ★幅に上限を置かないこと。以前は LEN_MAX 4.0 で頭打ちにして余りを高さへ
-  // 回していたため、本来 2:1 の半円が 1.06:1 のドームに潰れていた。
-  // 画面に収める役目は GravityTab の一括スケールが持っている。
-  const r = STRETCHES(n) ? ratioOf(t.title) : naturalRatio(n);
+  // ★**塗られる**面積を重要度に揃える。ピルの積みの塗り率で外接箱を広げるので、
+  // 段の数が違っても同じ重要度なら色の量が同じになる。
+  const boxArea = area / STACK_INK;
+  // ★幅に上限を置かないこと。画面に収める役目は GravityTab の一括スケールが持つ。
+  const r = ratioOf(t.title);
   const w = Math.sqrt(boxArea * r);
   return {
     sides,

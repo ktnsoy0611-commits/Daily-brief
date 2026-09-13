@@ -7,8 +7,8 @@ import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer
 import { aimTargets, DropTargets, fireTarget, targetAt, type DropTarget } from "@/components/tasks/DropTargets";
 import { BD_GREY, MUTED, NAV_H, navHeightPx } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
-import { rectOf, sectionOutline } from "@/lib/solid";
-import { peekSolidBitmap, shapeBounds, shapeGlyphsReady, solidBitmap, warmShapeGlyphs, type SolidPaint } from "@/lib/solidPaint";
+import { rectOf, stackOutline } from "@/lib/solid";
+import { peekSolidBitmap, shapeBounds, shapeGlyphsReady, shapeRowsOf, solidBitmap, warmShapeGlyphs, type SolidPaint } from "@/lib/solidPaint";
 import { demoCandidates } from "@/lib/taskDemo";
 import { specOf } from "@/lib/taskSize";
 import { TYPE, WEIGHT } from "@/lib/tokens";
@@ -621,21 +621,12 @@ function makeBody(
   M: typeof import("matter-js"), paint: SolidPaint, x: number, y: number, unit: number,
 ): { body: Body; ox: number; oy: number } {
   const opts = { restitution: 0.5, friction: 0, frictionAir: DRIFT_AIR, frictionStatic: 0 };
-  const n = paint.spec.sides.length;
   const { w, h } = rectOf(paint.spec);
-  let body: Body;
-  let ox = 0;
-  let oy = 0;
-  if (n === 1) {
-    body = M.Bodies.circle(x, y, (w * unit) / 2, opts);
-  } else {
-    const src = sectionOutline(n);
-    const step = Math.max(1, Math.ceil(src.length / 10));
-    const verts = src.filter((_, k) => k % step === 0).map((q) => ({ x: q.x * w * unit, y: q.y * h * unit }));
-    body = M.Bodies.fromVertices(x, y, [verts], opts);
-    const c = M.Vertices.centre(verts);
-    ox = -c.x;
-    oy = -c.y;
-  }
-  return { body, ox, oy };
+  // ★★段の数は絵と同じ出どころから（`shapeRowsOf`。第99巡）。くびれは凸包で潰れる。
+  const src = stackOutline(shapeRowsOf(paint), w / h);
+  const step = Math.max(1, Math.ceil(src.length / 10));
+  const verts = src.filter((_, k) => k % step === 0).map((q) => ({ x: q.x * w * unit, y: q.y * h * unit }));
+  const body: Body = M.Bodies.fromVertices(x, y, [verts], opts);
+  const c = M.Vertices.centre(verts);
+  return { body, ox: -c.x, oy: -c.y };
 }

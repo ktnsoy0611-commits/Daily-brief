@@ -1,6 +1,6 @@
 import { FONT_FACES } from "./constants";
 import type { FontFace } from "./constants";
-import { clampSides, halfWidthAt } from "./solid";
+
 
 // ★図形の上に載せる文字。
 //
@@ -486,16 +486,18 @@ export function fitText(text: string, face: number, w: number, h: number, maxLin
  * 行ごとに使える幅を断面の輪郭から引くので、三角のように上が狭い形でも
  * 下の広いところを目一杯使える。
  *
- * 矩形1つ(innerBox)で収めていた頃は、三角が外接箱の 23% しか使えず
+ * 矩形1つで収めていた頃は、狭い形が外接箱の 23% しか使えず
  * (四角は 79%)、同じ面積でも三角だけ文字が半分以下になっていた。
  *
- * @param sides 断面の形(1..4)
+ * @param halfWidth その高さ(-0.5〜0.5)での**半幅**（0〜0.5）を返す関数。
+ *   ★★★**形を知らなくてよくなった**（第99巡）―― 呼ぶ側が profile を渡す。
+ *   ピルの積みは段数と箱の比で profile が変わるので、数では渡せない。
  * @param boxW  外接箱の幅(px) / @param boxH 外接箱の高さ(px)
  * @returns 収まった結果 ＋ ブロックの中心 y(図形の中心からの px)。
  *          minPx を割るほど縮めないと入らないなら null。
  */
 export function layoutInShape(
-  text: string, face: number, sides: number,
+  text: string, face: number, halfWidth: (t: number) => number,
   boxW: number, boxH: number,
   basePx: number, maxLines = 3, minPx = 7,
 ): (FitResult & { cy: number }) | null {
@@ -506,13 +508,10 @@ export function layoutInShape(
   // 輪郭へ文字が触れないための余白(幅の比・高さの比)。
   const INSET = 0.9;
   const PAD_Y = 0.05;
-  // ★三角だけ**下寄せ**。頂点の側は幅が0に近く、中央に置くと入らない。
-  const bottomUp = clampSides(sides) === 3;
-
   /** その行(中心 y・高さ lh)で使える幅(px)。**狭い方の端**で測る。 */
   const widthOfLine = (cy: number, lh: number): number => {
-    const a = halfWidthAt(sides, (cy - lh / 2) / boxH);
-    const b = halfWidthAt(sides, (cy + lh / 2) / boxH);
+    const a = halfWidth((cy - lh / 2) / boxH);
+    const b = halfWidth((cy + lh / 2) / boxH);
     return Math.min(a, b) * 2 * boxW * INSET;
   };
 
@@ -528,7 +527,7 @@ export function layoutInShape(
     for (let k = 1; k <= maxLines; k++) {
       const block = k * lh;
       if (block > limit) break;
-      const top = bottomUp ? boxH * (0.5 - PAD_Y) - block : -block / 2;
+      const top = -block / 2;
       const maxWs = Array.from({ length: k }, (_, i) => widthOfLine(top + lh * (i + 0.5), lh));
       if (maxWs.some((w) => w < size * 0.9)) continue; // その行に1文字も入らない
       const lines = wrapPerLine(chars, widths, maxWs.map((w) => (w * GLYPH_PX) / size), k);

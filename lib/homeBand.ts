@@ -1,8 +1,9 @@
 import type { AppState, BriefCard } from "./types";
 import { ACCENT_TEST } from "./appAccent";
-import { genreOfKind } from "./deckStyle";
+import { genreOfKind, glyphOfKind } from "./deckStyle";
 import { colorOfKind } from "./palette";
 import { TASK_FACE } from "./constants";
+import { pickTodayItems } from "./todayPick";
 
 // ★★★**帯に何が並ぶかを決める唯一の場所**（2026-09-07・ホームの帯）。
 //
@@ -11,7 +12,7 @@ import { TASK_FACE } from "./constants";
 // | # | 種類 | 出どころ | 面の色 |
 // |---|---|---|---|
 // | 1 | 今日入った、おすすめの提案 | その日のデッキの未読カード | **そのカードの色**（Explore と同じ） |
-// | 2 | 今日行くのがおすすめの提案 | ★これから作る生成 | 同上 |
+// | 2 | 今日行くのがおすすめの提案 | ストック（`items`）を `lib/todayPick.ts` が選ぶ | 同上 |
 // | 3 | JOURNAL から抽出されたタスクの候補 | `inbox`（Cowork が声・日記から作る） | **そのタグの色**（TASK と同じ） |
 // | 4 | フォローアップのタスクの候補 | `Task.suggestions`（`lib/taskSuggest.ts`） | **親タスクのタグの色** |
 // | 5 | 期日を割り当てていないタスク | `tasks`（期日なし） | **そのタグの色** |
@@ -176,10 +177,25 @@ export function bandItems(state: AppState): BandItem[] {
   }
 
   // 2 今日行くのがおすすめの提案。
-  // ★★★**まだ出どころが無い**（2026-09-07）。「今日行くべき」を選ぶ生成は
-  //   これから作る（段取りの最後）。それまでこの種類は 0 件のまま。
+  // ★★★**ストックの中から「今日これから行ける」もの**（2026-09-13・第99巡に
+  //   ユーザー指定「その日の分を読み終わっても、**ストックしてあって今日行くのが
+  //   おすすめのもの**を出しておいて。**夜に美術館**は現実的でないので…」）。
+  //   ★★**選び方は `lib/todayPick.ts` の1か所**（`kind` ごとの時間帯の表）。
+  //     ★これは**営業時間そのものではなく近似**である ―― `Item` に営業時間が
+  //     1つも無いため。理由と限界は `todayPick.ts` の頭に書いた。
+  //   ★★**`offer` の後ろに積む** ―― 上限（`BAND_LIMIT`）は上から詰めるので、
+  //     未読の提案が残っているうちは出ない。ユーザーの言葉「**その日の分を
+  //     読み終わっても**」が、そのまま順番になっている。
   //   ★ここに `magazine`（自分でバインドした今日の予定）を流し込まないこと ――
   //   それは「AI のおすすめ」ではなく「自分で決めたもの」で、意味が違う。
+  for (const it of pickTodayItems(state.items ?? [])) {
+    out.push({
+      id: `today-${it.id}`, kind: "today", text: it.title,
+      // ★★焼き込まれた `it.color` は信じない（`cardFace` と同じ理由）。
+      face: colorOfKind(it.kind), photo: it.images?.[0], glyph: glyphOfKind(it.kind),
+      genre: genreOfKind(it.kind),
+    });
+  }
 
   // 3 JOURNAL のデータから抽出されたタスクの候補。
   for (const c of state.inbox ?? []) {

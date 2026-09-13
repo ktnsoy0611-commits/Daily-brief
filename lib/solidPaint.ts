@@ -1,7 +1,8 @@
 import {
-  boundsOf, rectOf, sectionOutline, slabRects,
+  boundsOf, clampRows, halfWidthAtStack, rectOf, slabRects, stackOutline,
   type Pt, type SolidSpec,
 } from "./solid";
+import { rowsOf } from "./taskSize";
 import { BD_GREY, SHAPE_FACE, TASK_FACE } from "./constants";
 import { bodyInkOn } from "./palette";
 import { canvasFont, drawFitted, ensureGlyphs, fitText, layoutInShape, missingGlyphs, textDrawable, warmGlyphs } from "./textFit";
@@ -111,10 +112,10 @@ export function paintShape(
   const dated = isDated(p.spec);
   const ground = p.ground ?? BD_GREY;
   const { w, h } = rectOf(p.spec);
-  const n = p.spec.sides.length;
-  const outline = sectionOutline(n);
   const wpx = w * unit;
   const hpx = h * unit;
+  // ★★★**段の数は題の文字数から**（第99巡。`shapeRows`）。ビューにも書体にもよらない。
+  const outline = stackOutline(shapeRowsOf(p), wpx / hpx);
   // LOD の判定はその形の**代表寸法**で行う(平たい帯だけ不利にならないように)。
   const s = Math.sqrt(p.spec.area) * unit;
 
@@ -193,7 +194,7 @@ export function paintShape(
 interface TextPlan {
   text: string; face: number; ink: string;
   fit: NonNullable<ReturnType<typeof fitText>>;
-  /** innerBox の中心(正規化座標)。 */
+  /** 文字の塊の中心(正規化座標)。 */
   cx: number; cy: number;
   /** 実際に描かれる文字の高さ(CSS px)。 */
   size: number;
@@ -217,7 +218,6 @@ function textPlanOf(p: SolidPaint, unit: number): TextPlan | null {
 
 function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   if (p.view === "none") return null;          // ★文字なし(ALIGN)
-  const n = p.spec.sides.length;
   const s = Math.sqrt(p.spec.area) * unit;
   if (s < LOD_NO_TEXT) return null;
   const { w, h } = rectOf(p.spec);
@@ -234,12 +234,19 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   // textDrawable が時間で門を開ける。
   if (!textDrawable(face, p.title)) return null;
   // ★タイトルは「最低 TITLE_MIN、図形が大きければ面積に比例して大きく」。
-  // ★**形に合わせて折り返す**(2026-08-16にユーザー指摘)。矩形1つだと
-  // 三角だけ極端に小さくなる。
+  const base = Math.min(TITLE_MAX, Math.max(TITLE_MIN, TITLE_K * s));
+  // ★★★**段の数は `rowsOf(title)`（純粋な関数）から引く**（2026-09-13・第99巡）。
+  //   ★★★**書体の到着やビューや `unit` に依存させないこと** ―― 依存させると
+  //   ① ALIGN（`view: "none"`）と山で**同じタスクの形が変わる**
+  //   ② 書体が遅れて届いた瞬間に**絵だけ段数が変わり、物理の当たり判定とずれる**
+  //     （物体は1度しか作らない）。
+  //   `rowsOf` は文字数のはしごで、**箱の比（`ratioOf` ＝ 1段の比 ÷ 段の数）も
+  //   同じ関数から出ている**ので、行数と段数は必ず噛み合う。
+  const rows = shapeRowsOf(p);
+  const ar = wpx / hpx;
   const fit = layoutInShape(
-    p.title, face, n, wpx, hpx,
-    Math.min(TITLE_MAX, Math.max(TITLE_MIN, TITLE_K * s)),
-    s < LOD_ONE_LINE ? 1 : 3,
+    p.title, face, (t) => halfWidthAtStack(rows, ar, t), wpx, hpx, base,
+    s < LOD_ONE_LINE ? 1 : rows,
   );
   if (!fit) return null;
   return {
@@ -267,10 +274,21 @@ export function shapeGlyphsReady(p: SolidPaint, unit: number, dpr: number): bool
 }
 
 /** その絵が占める範囲(solid 座標)。ビットマップの大きさを決めるのに使う。
- *  ★ビューによらず同じ(形が変わらないので)。 */
+ *  ★ビューによらず同じ(形が変わらないので)。
+ *  ★★**段の数によらない** ―― `stackOutline` は常に ±0.5 に正規化されている。 */
 export function shapeBounds(p: SolidPaint) {
   const { w, h } = rectOf(p.spec);
-  return boundsOf(sectionOutline(p.spec.sides.length).map((q) => ({ x: q.x * w, y: q.y * h })));
+  return boundsOf(stackOutline(1, w / h).map((q) => ({ x: q.x * w, y: q.y * h })));
+}
+
+/**
+ * ★★★**その図形が何段になるか**（1..3）。**題の文字数が決める**（`rowsOf`）。
+ * 物理の頂点を作る側（GRAVITY / DRIFT）も**ここから引く** ―― 絵と当たり判定で
+ * 形を2度決めない。
+ * ★★**ビュー・書体・`unit` によらない**（理由は `computeTextPlan` のコメント）。
+ */
+export function shapeRowsOf(p: SolidPaint): number {
+  return clampRows(rowsOf(p.title));
 }
 
 // ── 図形まるごとのビットマップ ──────────────────────────────

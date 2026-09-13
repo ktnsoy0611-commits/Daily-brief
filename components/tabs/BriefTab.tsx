@@ -1,7 +1,7 @@
 "use client";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { ExternalLink, Flag, Sprout } from "lucide-react";
+import { BookOpen, ExternalLink, Flag, Sprout } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "react";
 // ★`HOLE_CLEAR`/`PunchHoles` は**成長カードだけ**が使う（第94巡に提案カードからは
 //   綴じ穴を外した。ユーザー確定 ―― 参照デザインに穴が無く、穴の逃げで左の余白が
@@ -178,7 +178,13 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
       <div style={{ flex: "1 1 auto", minHeight: 0, overflow: "hidden", paddingTop: SPACE.xl, display: "flex", flexDirection: "column", gap: SPACE.xs }}>
         {/* ★★★役は**3つだけ**（題・要約・操作）。階層は**大きさと太さ**で作り、
             色は使わない（面が色なので、無彩色の段を混ぜると濁る）。 */}
-        <h2 style={{ margin: 0, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink }}>{card.title}</h2>
+        {/* ★★★**題も2行で頭打ち**（2026-09-13・第98巡）。第97巡までは無制限で、
+            英語の見出しがそのまま入ると**4行になって本文を押し出していた**
+            （ユーザー指摘「題が長すぎて入り切っていない」。実機のスクリーン
+            ショットで本文が1行も見えていなかった）。
+            ★生成の側でも `lib/briefPipeline.ts` が全角30字に刈り込む。**両方要る**
+            ―― モデルは約束を外すことがあるし、器は器で守らないといけない。 */}
+        <h2 style={{ margin: 0, maxHeight: `calc(${LEAD.snug}em * 2)`, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{card.title}</h2>
         {/* paddingRightはisTopに関わらず常に一定にしている。以前はisTop&&
             onFlagの時だけ26pxを足していたため、peekだったカードがtopに
             切り替わる瞬間にpaddingが0→26へ非連続にジャンプし、transform
@@ -189,7 +195,12 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
             クランプされずカードの外(角丸の下)へそのまま溢れて見える
             不具合があった。flexに頼らず、行の高さから算出した固定の
             maxHeightで確実に頭打ちにする。 */}
-        <p style={{ margin: 0, maxHeight: "calc(1.7em * 3)", fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: ink, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{card.body}</p>
+        {/* ★★★**本文は2行**（2026-09-13・第98巡に 3行から）。ベゼルが 24 になり
+            題が2行まで伸びるので、**3行では高さの帳尻が合わない**
+            （24＋器310＋24＋題52＋4＋本文66＋4＋列44＋24 ＝ 552 > 札の高さ 537）。
+            **半端に切れた行を出さない**ほうを取った。全文は `detail`（タップして
+            読む）に残っている。 */}
+        <p style={{ margin: 0, maxHeight: `calc(${LEAD.body}em * 2)`, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, letterSpacing: TRACK.normal, color: ink, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{card.body}</p>
       </div>
       {/* ★★★**操作は下の1列に集める**（第94巡）。
           ★★★**列の高さは `LINK_D` で固定** ―― 中身が `isTop` で増減しても
@@ -198,15 +209,32 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
           ★★アイコンは `BinderModal` の出典ボタンと**同じ `ExternalLink`**
             （同じ意味に同じ絵。新しい語彙を作らない）。
           ★★`onPointerDown` を止めないとスワイプ（KEEP/SKIP）と喧嘩する。 */}
+      {/* ★★★**3つとも同じ 44px の円**（2026-09-13・第98巡にユーザー確定）。
+          第97巡までは 旗＝13px の裸のアイコン／記事を読む＝黒いピル／出典＝44px の
+          黒い円 と**3つとも違う形**で、しかも**左端と右端に離れて**座っていた
+          （ユーザー指摘「下の2つのボタンの位置が不自然」「全く統一されていない」）。
+          ★★**言い分けは「塗り／輪郭」1本**（`design.md` の図形と同じ語彙）――
+          **輪郭 ＝ この札について言う（旗）／塗り ＝ 外か別の画面へ行く**。
+          ★★**左へ寄せて `SPACE.sm` で並べる**（間に穴を空けない）。 */}
       <div style={{ flex: "0 0 auto", height: LINK_D, marginTop: SPACE.xs, display: "flex", alignItems: "center", gap: SPACE.sm }}>
         {isTop && onFlag && (
           <button
             onClick={(e) => { e.stopPropagation(); onFlag(); }}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label="この情報の質をフィードバック"
-            style={{ background: "none", border: "none", cursor: "pointer", padding: SPACE.sm, lineHeight: 0 }}
+            aria-pressed={flagged}
+            style={{
+              width: LINK_D, height: LINK_D, borderRadius: RADIUS.circle,
+              /* ★立てると「輪郭 → 塗り」へ（状態を形で言う。色を足さない）。 */
+              background: flagged ? RUST : "transparent",
+              border: flagged ? "none" : `1.5px solid ${ink}`,
+              color: flagged ? PAPER : ink,
+              cursor: "pointer", padding: 0, flex: "0 0 auto",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "background var(--t-item) var(--ease-settle)",
+            }}
           >
-            <Flag size={13} strokeWidth={2} color={flagged ? RUST : ink} fill={flagged ? RUST : "none"} opacity={flagged ? 1 : 0.45} />
+            <Flag size={16} strokeWidth={2.2} fill={flagged ? PAPER : "none"} />
           </button>
         )}
         {/* 情報カード(新着記事)は、タップすると記事の半分要約を全画面で読める。
@@ -215,10 +243,16 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
           <button
             onClick={(e) => { e.stopPropagation(); onRead(); }}
             onPointerDown={(e) => e.stopPropagation()}
-            style={{ background: INK, color: PAPER, border: "none", cursor: "pointer", borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px`, fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal }}
-          >記事を読む →</button>
+            aria-label="記事を読む"
+            style={{
+              width: LINK_D, height: LINK_D, borderRadius: RADIUS.circle,
+              background: INK, color: PAPER, border: "none", cursor: "pointer", padding: 0,
+              display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+            }}
+          >
+            <BookOpen size={16} strokeWidth={2.2} />
+          </button>
         )}
-        <span style={{ flex: 1 }} />
         {/* ★`sourceUrl` が無いカードには**出さない**（空の円を置かない）。 */}
         {card.sourceUrl && (
           <a
@@ -268,12 +302,19 @@ function WaitingMark() {
 // （2026-09-11）。以前はここに 30、夜間の生成に 40 と**2つあってずれていた**ので、
 // ホームの数字（41）とこのデッキの枚数（30）が食い違っていた。**出どころは1つ。**
 
-/** ★右下の黒い円（出典へ飛ぶ）の直径＝下の1列の高さ。★目盛りの外（部品の寸法）。 */
+/** ★下の1列の円の直径＝列の高さ。**3つとも同じ**（旗・記事を読む・出典）。
+ *  ★目盛りの外（部品の寸法）。 */
 const LINK_D = 44;
-/** 札の最大の幅（これ以上は広げない）。★目盛りの外（部品の寸法）。 */
-const CARD_MAX_W = 340;
-/** ★札の内側の余白（ベゼル）。参照画像の実測は幅の 10.3%、これは 9.4%。 */
-const CARD_PAD = SPACE.xxl;
+/** 札の最大の幅。★目盛りの外（板のための頭打ち）。
+ *  ★★携帯では**枠の実寸**（タブの列の内寸 ＝ 画面 − `SPACE.lg`×2 ＝ 358）が
+ *  必ず勝つので、この値は板でしか効かない（2026-09-13・第98巡に 340 から上げた。
+ *  ユーザー指摘「**画像が小さすぎます**」）。 */
+const CARD_MAX_W = 420;
+/** ★札の内側の余白（ベゼル）。★★★参照画像の実測は**幅の 9.4%**（25/267）で
+ *  `SPACE.xxl` と同じだったが、**画面に対して写真が小さく見える**という
+ *  ユーザー指摘により `SPACE.xl` へ（2026-09-13・第98巡。358 幅で 6.7%）。
+ *  ★幅 340→358 と合わせて、写真の器は 276 → **310**（面積 +26%）。 */
+const CARD_PAD = SPACE.xl;
 /** ★★★**札の比は数ではなく1つの割り算**（`BRIEF_CARD_ASPECT` ＝ 幅 ÷ 高さ）。 */
 const BRIEF_AR = (() => {
   const [a, b] = BRIEF_CARD_ASPECT.split("/").map((n) => Number(n.trim()));

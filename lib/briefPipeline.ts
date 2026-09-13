@@ -521,7 +521,7 @@ ${DOMAIN_KIND_TABLE}
 
 # 出力契約
 下記フィールドのJSON配列のみを出力する。候補が無い場合は [] を出力する。
-name / summary（1〜3文。本文の事実に基づく内容の要約。固有名・日時・場所などの具体を最低1つ含める。プロファイルとの合致理由やユーザーへの言及・勧誘は書かない） / relevance（0〜100の整数） / kind（"place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。商品・アイテムは "thing"） / inLivingArea（任意。所在地の記述がある場合のみ、それが<生活圏>内かどうか） / venue（任意） / area（任意） / start（任意,ISO8601） / end（任意,ISO8601） / price（任意） / sourceUrl / sourceWishId（任意。願望リストのいずれかに直接応える場合のみ、その願いの行頭にある識別子） / goalId（任意。上記ゴールの達成に直接役立つ場合のみ、その目標の行頭にある識別子）`;
+name（その事物の名前。**全角30文字・半角60文字以内**。元の見出しがこれを超える場合は、**固有名と主題だけを残して刈り込む**（修飾句・副題・記号を落とす）。体言止め。句点を打たない） / summary（1〜3文。本文の事実に基づく内容の要約。固有名・日時・場所などの具体を最低1つ含める。プロファイルとの合致理由やユーザーへの言及・勧誘は書かない） / relevance（0〜100の整数） / kind（"place" | "exhibition" | "live" | "activity" | "food" | "movie" | "book" | "album" | "info" | "thing"。商品・アイテムは "thing"） / inLivingArea（任意。所在地の記述がある場合のみ、それが<生活圏>内かどうか） / venue（任意） / area（任意） / start（任意,ISO8601） / end（任意,ISO8601） / price（任意） / sourceUrl / sourceWishId（任意。願望リストのいずれかに直接応える場合のみ、その願いの行頭にある識別子） / goalId（任意。上記ゴールの達成に直接役立つ場合のみ、その目標の行頭にある識別子）`;
 
 const SYSTEM_ENRICH_BODY = `あなたは情報編成パイプラインの本文詳細化モジュールです。既に選ばれたカードごとに、その事物の個別ページ本文を読み、カードの本文(body)と詳細(detail)を書きます。
 

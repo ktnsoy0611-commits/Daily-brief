@@ -6,7 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { DIAL_TICK, DIAL_TICKS, DIAL_VIEW } from "@/lib/dial";
-import { CASSETTE, CASSETTE_ASPECT, CASSETTE_DECK_H, CASSETTE_DECK_W, CASSETTE_DECK_X, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W } from "@/lib/cassette";
+import { CASSETTE, CASSETTE_ASPECT, CASSETTE_DECK_H, CASSETTE_DECK_W_PER_W, CASSETTE_DECK_X, CASSETTE_DECK_Y_PER_H, CASSETTE_KEY_LIP_PER_H, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W } from "@/lib/cassette";
 import { PILE_INSET } from "@/lib/pileBox";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
@@ -108,13 +108,12 @@ const DECK_LIFT = SPACE.xl;
 //   → いまラベルは**キーと同じ中心の x へ絶対配置**（`bottom: calc(100% + …)`）なので、
 //   **ラベルの高さを誰も知らなくていい**。知らなければ食い違えない。
 // ★縁の目盛りの本数と寸法は `lib/dial.ts`（ホームの山と共有）。
-/** ★★★**キーが下の段（穴）の中に空ける黒い縁**（2026-09-13・第97巡）。
- *  ★★**キーの径はここから導く** … `KEY_D = deckH − KEY_LIP × 2`。
- *  第96巡は `KEY_D = 42` という**生の数**で、段の高さ（アイコンの比から出る 67）と
- *  何の関係も無かった ―― ユーザー指摘「バーとボタンの幅とか高さが全く合っていない」。
- *  ★★**この1つの値が四方に回る** … バーの上下の縁・バーの端の丸のまわり・
- *  REC の穴のまわりが**全部同じ 8**。 */
-const KEY_LIP = SPACE.sm;
+// ★★★**キーが段の中に空ける黒い縁（`KEY_LIP`）も、径も、`lib/cassette.ts` から
+//   導く**（2026-09-13・第98巡）。第97巡は `SPACE.sm`（生の 8）だったが、
+//   **バーの幅がキーの数から決まるようになった**ので、縁も同じ式の中に居ないと
+//   3つのキーがバーに収まらない（`CASSETTE_KEY_LIP_PER_H` ＝ 段の高さの 1/8）。
+//   ★★**この1つの値が四方に回る** … バーの上下の縁・バーの端の丸のまわり・
+//   REC の穴のまわりが全部同じ値になる。
 /** キーが沈む深さ。★出っ張り(depth)ぶん浮いて見える。 */
 const KEY_DEPTH = 4;
 /** ★★キーの中の部品は**すべてキーの径に対する割合**（2026-09-13・第97巡）。
@@ -318,18 +317,25 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   //   本体の高さ が、アイコン 0.457 に対して録音画面は 0.78）。
   //   いまは **「下の段の幅 → 本体 → リール」**。本体から下は**全部アイコンの比**
   //   （`lib/cassette.ts` の `CASSETTE_*_PER_*`）で、ここでは1つも数を持たない。
-  // ★★★**大きさを決めるのは「下の段が画面に収まること」の1つだけ** ――
-  //   段は**タブバーや山と同じ内寸**（左右 `SPACE.lg`）いっぱいに広げる。
-  //   本体は段の2倍の幅（アイコンで段は本体の半分）なので**必ず画面からはみ出す**
-  //   ＝ ユーザー指定「**画面外にはみ出している感じは維持**」が式から出る。
+  // ★★★**大きさは2つの見張りの小さいほうで決まる** ――
+  //   ① 下の段が画面に収まること（左右 `SPACE.lg`）
+  //   ② 本体が**題の `SPACE.lg` 下**から始まること
+  //   ★★★**第98巡に段が痩せた**（本体幅の 50% → **38.3%**。キー3つが詰まる幅に
+  //   なったため）ので、**②が勝つ**ようになった。その結果 ――
+  //   ・本体は**題のすぐ下から始まる**（ユーザー指摘「全体的に下によりすぎ」が消える）
+  //   ・段は**画面の端まで届かない**（ユーザー指摘「四角に対する穴の大きさが違う」。
+  //     第97巡は段が 358px ＝ 画面いっぱいで、アイコンの「四角の中の小さな機構」に
+  //     見えなかった）
+  //   ・本体は段の 2.6 倍の幅なので**やはり画面からはみ出す**
+  //     ＝ ユーザー指定「**画面外にはみ出している感じは維持**」は保たれる。
   // ★`navHeightPx()` を使う ―― `.app-nav` の矩形は `NAV_H` と一致しない
   //   （Chromium 81px／実機 132px）。自分で測らない。
   const deckWWant = Math.max(120, w - PILE_INSET * 2);
   const bodyBottom = h - navHeightPx() - DECK_LIFT;
   // ★★**上の見張り** … 本体が題（Masthead）に掛かるなら、そこまでで頭を押さえる。
   const plateH = Math.min(
-    (deckWWant / (CASSETTE_DECK_W / CASSETTE.body.w)) / CASSETTE_ASPECT,
-    Math.max(200, bodyBottom - BAND_TOP),
+    (deckWWant / CASSETTE_DECK_W_PER_W) / CASSETTE_ASPECT,
+    Math.max(200, bodyBottom - BAND_TOP - SPACE.lg),
   );
   const plateW = plateH * CASSETTE_ASPECT;
   const plateTop = bodyBottom - plateH;
@@ -342,22 +348,29 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   const cxL = plateCx - reelGap / 2;
   const cxR = plateCx + reelGap / 2;
 
-  // 下の段（左の円＝REC の穴／右のバー＝残り3つの穴）。本体の下の縁に接する。
+  // 下の段（左の円＝REC の穴／右のバー＝残り3つの穴）。
+  // ★★★**本体の下の縁には接していない**（2026-09-13・第98巡にユーザー指定
+  //   「**バーは図形の端に余白をとってください**」）。段の高さぶん浮いている。
+  //   だから `bodyBottom − deckH` ではなく**比から置く**。
   const deckH = plateH * (CASSETTE_DECK_H / CASSETTE.body.h);
-  const deckW = plateW * (CASSETTE_DECK_W / CASSETTE.body.w);
+  const deckW = plateW * CASSETTE_DECK_W_PER_W;
   const deckLeft = plateCx - plateW / 2 + plateW * (CASSETTE_DECK_X / CASSETTE.body.w);
-  const deckTop = bodyBottom - deckH;
+  const deckTop = plateTop + plateH * CASSETTE_DECK_Y_PER_H;
+  const keyLip = deckH * CASSETTE_KEY_LIP_PER_H;
   const knobD = deckH;
   const barLeft = deckLeft + knobD
     + plateW * ((CASSETTE.bar.x - (CASSETTE.knob.x + CASSETTE.knob.r)) / CASSETTE.body.w);
   const barW = deckLeft + deckW - barLeft;
   // ★★★**キーの径は段の高さから導く**（2026-09-13・第97巡）。四方の黒い縁が
-  //   `KEY_LIP` で揃う（上下＝段の縁、左右＝バーの端の丸）。生の 42 は捨てた。
-  const keyD = Math.max(24, deckH - KEY_LIP * 2);
+  //   `keyLip` で揃う（上下＝段の縁、左右＝バーの端の丸）。生の 42 は捨てた。
+  const keyD = Math.max(24, deckH - keyLip * 2);
   // ★★★**3つのキーはバーの「端の丸」と「中心」に同心で置く**（第97巡）。
   //   `space-evenly` をやめた理由 ―― 端の余白が 28.8 になり、上下の 8 と揃わず、
   //   バーの丸い端とキーの丸が**別の中心**を持ってしまう（ユーザー指摘
   //   「ボタンの位置がバーの線とアラインされていない」）。
+  //   ★★★**バーの幅が `2.75 × deckH` になった**（第98巡）ので、端の丸と同心に
+  //   置くだけで**3つの隔がちょうど `keyLip`** になる ―― ユーザー指摘
+  //   「ボタンとボタンの間隔を取りすぎ。もっと詰めて」（実測の隔 33.6 → 約 10）。
   //   ★バーの角丸は `deckH/2` なので、端の丸の中心は端から `deckH/2`。
   const barX = barLeft - deckLeft;
   const keyCx = {
@@ -380,8 +393,12 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   };
   const nearDy = Math.max(0, Math.abs(waveCy - cy) - WAVE_H / 2);
   const waveW = Math.max(90, Math.min(w - 52, gapAt(nearDy) - 2 * WAVE_MARGIN));
-  // 数字は帯の下、腰のところへ。
-  const timeTop = waveCy + WAVE_H / 2 + 30;
+  // ★★★**数字はリールの下の隙間へ**（2026-09-13・第98巡）。リールが上がり本体が
+  //   伸びたので、上の隙間（本体の上の縁〜リールの上端）は**帯だけで埋まる**。
+  //   上下の隙間は**どちらも本体の高さの 1.6/14** なので、**帯は上・数字は下**に
+  //   置くと左右対称ならぬ上下対称になる（カセットデッキのカウンタの位置）。
+  const timeH = TYPE.head * LEAD.flat;   // ★数字1行の高さ（下の `<div>` と同じ組み）
+  const timeTop = (cy + RD / 2 + deckTop) / 2 - timeH / 2;
 
   // ---- 波形を描く ------------------------------------------------------------
   const draw = useCallback(() => {

@@ -67,41 +67,96 @@ export const cardShapeOf = (domain: ItemDomain): CardShape =>
 // ★ここから下はすべて **0〜1 の器の中の座標**（★目盛りの外＝図形の座標系）。
 //   `clipPathUnits="objectBoundingBox"` なので、器の比に合わせて縦横へ伸びる。
 
-/** 四つ葉 … 切れ込みの深さ。★0.3 では十字になって字面がはみ出た（第94巡に実測）。 */
-const CLOVER_AMP = 0.14;
-/** 波打つ四角 … 四角らしさ（大きいほど角が立つ）と、縁の揺れの深さ・数。 */
-const WAVE_N = 7;
-const WAVE_AMP = 0.075;
-const WAVE_LOBES = 8;
+// ★★★**形は「円をつないだ形」で作る**（2026-09-13・第98巡）。
+//
+// ★★★ユーザー指摘「**添付した画像の形はないです。よくみてください。そして円を
+//   組み合わせた形でもないし気持ちが悪いです**」。参照（Google Labs）の札を
+//   切り出して**半径の profile を測った**ところ、3つとも**円の集まりの外縁**だった ――
+//
+//   | 参照 | 形 | 実測（谷 ÷ 峰） |
+//   |---|---|---|
+//   | Google Vids ／ /Code | スカラップ四角 | **0.743**（辺の中点は 0.772・角が峰） |
+//   | MusicFX | ロゼット（**12山**） | **0.924**（浅い。円のふちの膨らみ） |
+//   | GenChess | クアトレフォイル | **0.717**（角が峰・辺が谷） |
+//
+// ★★★**第97巡までの `wave` は超楕円 × cos(8θ)** ＝ 極座標の正弦波だった。
+//   角では振幅が √2 倍に伸び、**山が辺に揃わない**（1辺あたり2山しかない）。
+//   だから参照のどれにも似ず、うねりが不揃いに見えていた。
+//   ★★**正弦波で円に似せない。円を置いて、その外縁をなぞる。**
+
+/** 極座標で作る形の分割数（多いほど滑らか。パスの長さと引き換え）。 */
+const STEPS = 288;
+/** 角の丸みを何本の直線に割るか（`Q` を平らにする）。 */
+const ROUND_SEG = 6;
 /** 六角形 … 上辺・下辺が左右からどれだけ入るか（0.5 で菱形）。 */
 const HEX_IN = 0.22;
 /** 六角形の角の丸み（0〜1 の器での半径）。 */
 const HEX_R = 0.07;
-/** トゲトゲ … 尖りの数と、谷の深さ（外の半径に対する割合）。 */
-const STAR_N = 12;
-const STAR_IN = 0.82;
-/** 極座標で作る形の分割数（多いほど滑らか。パスの長さと引き換え）。 */
-const STEPS = 144;
-/** 角の丸みを何本の直線に割るか（`Q` を平らにする）。 */
-const ROUND_SEG = 6;
 
-/** 0〜1 の器の中の点。 */
-export type Pt = [number, number];
+/** 円1つ（中心は**形の中心が原点**。半径ともに 0〜1 の器の目盛り）。 */
+type Circle = { x: number; y: number; r: number };
 
-/** 極座標の形を点の列へ。`rad(θ)` は 0〜1 の半径（1 で器いっぱい）。 */
-function polar(rad: (t: number) => number, steps = STEPS): Pt[] {
+/**
+ * ★★★**円の集まりの「外側の縁」を極座標でなぞる**（＝円の和）。
+ * 各 θ で「その向きの光線が交わる、いちばん遠い点」を取る。
+ * ★★この置き方ではどの形も**中心から見て星形**（どの向きにも縁が1つ）なので、
+ *   極座標で厳密に描ける。**凹みの中へ光線が2度入ることが無い。**
+ */
+function unionOfCircles(cs: readonly Circle[], steps = STEPS): Pt[] {
   const pts: Pt[] = [];
   for (let i = 0; i < steps; i++) {
     const t = (i / steps) * Math.PI * 2 - Math.PI / 2;
-    const r = rad(t) * 0.5;
-    pts.push([0.5 + Math.cos(t) * r, 0.5 + Math.sin(t) * r]);
+    const dx = Math.cos(t); const dy = Math.sin(t);
+    let far = 0;
+    for (const c of cs) {
+      // 原点から向き (dx,dy) の光線と円の交点。b は中心への射影、√d2 は半弦。
+      const b = c.x * dx + c.y * dy;
+      const d2 = c.r * c.r - (c.x * c.x + c.y * c.y - b * b);
+      if (d2 <= 0) continue;
+      const hit = b + Math.sqrt(d2);
+      if (hit > far) far = hit;
+    }
+    pts.push([0.5 + dx * far, 0.5 + dy * far]);
   }
   return pts;
 }
 
-/** 超楕円（|x|^n + |y|^n = 1）の半径。n が大きいほど四角に近い。 */
-const superR = (t: number, n: number): number =>
-  1 / (Math.abs(Math.cos(t)) ** n + Math.abs(Math.sin(t)) ** n) ** (1 / n);
+/** 円を N 個、半径 `d` の円周に等間隔で置く（最初の1つは**真上**）。 */
+function ring(n: number, d: number, r: number): Circle[] {
+  return Array.from({ length: n }, (_, i) => {
+    const t = (i / n) * Math.PI * 2 - Math.PI / 2;
+    return { x: Math.cos(t) * d, y: Math.sin(t) * d, r };
+  });
+}
+
+// ── 形ごとの円の置き方（★数はすべて参照の実測から逆算した。目で振っていない） ──
+
+/** スカラップ四角 … 半辺 `s` の正方形の周に**1辺4個（四隅を含む）＝16個**。
+ *  ★**1辺3個では辺の中点が谷になる**（実測 上 0.723）。参照は上が **0.772** ＝
+ *  **辺の中点が膨らみの峰**なので、1辺に置く数は**偶数ではなく4個**が正しい。 */
+const SCALLOP_S = 0.27;
+/** ★半径 0.42s は「谷 ÷ 峰 ＝ 0.743」（参照の実測）から解いた値。接する 0.25s では
+ *  0.620 で深すぎ、**円どうしが少し重なる**のが参照の見え方。 */
+const SCALLOP_R = SCALLOP_S * 0.42;
+/** クアトレフォイル … 四隅の円の中心までの距離。 */
+const QUATREFOIL_A = 0.1746;
+/** ★半径 1.45a は「谷 ÷ 峰 ＝ 0.717」（参照の実測）から解いた値。 */
+const QUATREFOIL_R = QUATREFOIL_A * 1.45;
+/** ロゼット … 中心の円の半径（＝谷の深さ）と、ふちの膨らみ12個。 */
+const ROSETTE_S = 0.462;
+const ROSETTE_N = 12;
+/** ★峰 ＝ 1.082s（実測 0.924 の逆数）。膨らみを**幅広く浅く**するため、
+ *  中心を内側（0.782s）に置いて半径を大きく（0.30s）取る。 */
+const ROSETTE_D = ROSETTE_S * 0.782;
+const ROSETTE_R = ROSETTE_S * 0.30;
+
+/** 0〜1 の器の中の点。 */
+export type Pt = [number, number];
+
+// ★★★**`polar` と `superR`（極座標の正弦波）は第98巡に消した。復活させない。**
+//   「超楕円 × cos(Nθ)」で円の並びに似せようとしたのが第94〜97巡で、
+//   **角では振幅が √2 倍に伸び、山が辺に揃わない**ので参照のどれにも似なかった。
+//   円の並びが要るなら `unionOfCircles` を使う。
 
 /**
  * 角を丸めた多角形を**点の列**へ。★角は二次ベジェを `ROUND_SEG` に割って平らにする
@@ -173,33 +228,44 @@ export function cardShapePoints(shape: CardShape): Pt[] {
 /** 形そのもの（外接箱は揃っていない）。★呼ぶのは `cardShapePoints` だけ。 */
 function rawShapePoints(shape: CardShape): Pt[] {
   switch (shape) {
-    // 弧 … 角に葉4つ、辺の真ん中に切れ込み4つ。輪郭が**全部円弧**（券の `arch`）。
-    // ★★`-cos(4θ)` で山を**斜め（角）**へ置く。`+cos` だと十字になる（第94巡）。
+    // 弧 … **四隅の大きな円4つ**。辺が内側へ弧を描く（券の `arch`／参照 GenChess）。
     case "clover":
-      return polar((t) => 1 - CLOVER_AMP - CLOVER_AMP * Math.cos(4 * t));
+      return unionOfCircles([
+        { x: -QUATREFOIL_A, y: -QUATREFOIL_A, r: QUATREFOIL_R },
+        { x: QUATREFOIL_A, y: -QUATREFOIL_A, r: QUATREFOIL_R },
+        { x: QUATREFOIL_A, y: QUATREFOIL_A, r: QUATREFOIL_R },
+        { x: -QUATREFOIL_A, y: QUATREFOIL_A, r: QUATREFOIL_R },
+      ]);
     // 斜め … 左右が尖り上下が平ら。**直線の斜め4本**が鋏痕の性格（券の `trapezoid`）。
+    // ★これだけ円ではない ―― 参照（GenType／Illuminate）が直線の多角形だから。
     case "hexagon":
       return roundedPoly([
         [0, 0.5], [HEX_IN, 0], [1 - HEX_IN, 0],
         [1, 0.5], [1 - HEX_IN, 1], [HEX_IN, 1],
       ], HEX_R);
-    // 直角 … 基本は四角（超楕円）で、縁だけが揺れる（券の `square`）。
-    case "wave":
-      return polar((t) => superR(t, WAVE_N) * (1 + WAVE_AMP * Math.cos(WAVE_LOBES * t)));
-    // 切れ込み … 尖りのあいだに切れ込み（券の `fork`）。★谷を深くしすぎない
-    //   ―― 第94巡に四つ葉で踏んだ（字面が形からはみ出す）。
-    case "starburst":
-    default: {
-      // ★尖りと谷を1つおきに置く。**極座標の関数では書けない**（同じ角度に
-      //   2つの半径が要るのではなく、頂点の並びそのものが交互だから）。
-      const pts: Pt[] = [];
-      for (let i = 0; i < STAR_N * 2; i++) {
-        const t = (i / (STAR_N * 2)) * Math.PI * 2 - Math.PI / 2;
-        const r = (i % 2 === 0 ? 1 : STAR_IN) * 0.5;
-        pts.push([0.5 + Math.cos(t) * r, 0.5 + Math.sin(t) * r]);
+    // 直角 … **四角のふちに同じ円が並ぶ**（券の `square`／参照 Vids・/Code）。
+    // ★1辺に4個（四隅を含む）＝16個。隣どうしの中心は `s/2` 離れ、半径 0.42s で
+    //   少し重なる ―― 接する 0.25s だと谷が深すぎる（0.620 対 参照 0.743）。
+    case "wave": {
+      const s = SCALLOP_S; const step = s / 2;
+      const cs: Circle[] = [];
+      for (let k = 0; k < 4; k++) {
+        const x = -s + step * k; // 上辺（左から）
+        cs.push({ x, y: -s, r: SCALLOP_R });
+        cs.push({ x: s, y: x, r: SCALLOP_R });   // 右辺（上から）
+        cs.push({ x: -x, y: s, r: SCALLOP_R });  // 下辺（右から）
+        cs.push({ x: -s, y: -x, r: SCALLOP_R }); // 左辺（下から）
       }
-      return pts;
+      return unionOfCircles(cs);
     }
+    // 切れ込み … **円のふちに膨らみ12個**（券の `fork`／参照 MusicFX）。
+    // ★中心の円が谷を作る。**尖った星にしない** ―― 参照の谷は 0.924 と浅い。
+    case "starburst":
+    default:
+      return unionOfCircles([
+        { x: 0, y: 0, r: ROSETTE_S },
+        ...ring(ROSETTE_N, ROSETTE_D, ROSETTE_R),
+      ]);
   }
 }
 

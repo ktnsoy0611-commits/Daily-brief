@@ -848,7 +848,14 @@ export function AppShell() {
     // ようにするため)。タイトル等をスナップショットしておくので、後でItem
     // 自体が消えてもログの表示は壊れない。
     const boundItems: typeof next.bindLog[number]["items"] = [];
-    selection.itemIds.forEach((id) => {
+    // ★★★**今日に割り当てた提案も一緒に綴じる**（2026-09-14・第102巡にユーザー確定
+    //   「**割り当てて実行することでログに残る**」）。ホームで引き下ろすと
+    //   `Item.plannedFor` が入るので、**その場で選んだもの**と同じ扱いにする。
+    //   ★★**綴じ方は1行も変えていない** ―― `done` ＋ `doneAt` ＋ `bindLog` のまま。
+    const planned = (next.items ?? [])
+      .filter((x) => x.plannedFor === todayKey() && x.status !== "done")
+      .map((x) => x.id);
+    [...new Set([...selection.itemIds, ...planned])].forEach((id) => {
       const item = next.items.find((x) => x.id === id);
       if (item && item.status !== "done") {
         item.status = "done";

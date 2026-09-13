@@ -58,6 +58,18 @@ export interface Item {
   doneAt?: string;
   // 会期末・予約締切・上映終了など。過ぎたら自動失効する。
   expiresAt?: string;
+  /**
+   * ★★★**「この日に行く」と決めた日**（`YYYY-MM-DD`。2026-09-14・第102巡）。
+   *
+   * ★★**`Task.dueDate` とまったく同じ形**にしてある ―― ホームの山は
+   *   タスクを `dueDate <= 今日`、提案を `plannedFor <= 今日` で拾うので、
+   *   **四角と円が同じ式で並ぶ**。
+   * ★★★**実行とログはここを見ない**（`doneAt` が正のまま）。だから
+   *   「今日を終える」→ `bindLog` → アーカイブ → my-brain は**1行も変わっていない**。
+   * ★これが入るまで「その日の予定」を持てるのは `AppState.magazine` だけで、
+   *   **1日ぶんしか持てず、しかも書き込む場所がもう無かった**（第102巡に判明）。
+   */
+  plannedFor?: string;
   // 予算・価格の目安(自由文)。
   price?: string;
   images?: string[];

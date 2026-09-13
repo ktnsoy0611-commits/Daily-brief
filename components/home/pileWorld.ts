@@ -7,7 +7,7 @@ import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { glyphOfKind } from "@/lib/deckStyle";
 import { areaOf, rowsOf, specOf, weightArea } from "@/lib/taskSize";
 import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
-import { floorYOf, pileLeftOf, pileRightOf, pileSpanOf } from "@/lib/pileBox";
+import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
 import {
   WD_FULL, makeWordBody, measureWordPlate, wordFontSize, type WordPlate,
 } from "@/lib/wordPlate";
@@ -38,7 +38,8 @@ type M = typeof import("matter-js");
 
 // ── 物理（★`GravityTab` と同じ値。目盛りの外＝物理の場） ──────────────
 export const GRAVITY_Y = 1.4;
-const UNIT = 64;
+/** 一括の倍率の上限（solid 座標 → px）。★引き下ろしの初期値にも使う。 */
+export const UNIT = 64;
 const MASS_K = 1.6;
 const BODY = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
 const WALL_T = 200;
@@ -52,8 +53,22 @@ const FILL = 0.36;
  *  抑える ―― 0.68 では1行に1枚しか載らず、山ではなく**塔**になった（第90巡に実測）。 */
 const FIT_W = 0.52;
 const FIT_H = 0.28;
+
+/**
+ * ★★★**1つの図形が器に対して取ってよい上限で倍率を抑える**（`buildPieces` と同じ式）。
+ * 引き下ろしの行き先の大きさにも要る（第102巡）―― まだ山に居ないものは
+ * `buildPieces` の `unit` の計算に**入っていない**ので、抑えないと器より大きく出る。
+ */
+export function fitUnit(unit: number, sw: number, sh: number, bw: number, bh: number): number {
+  const usableH = Math.max(120, floorYOf(bh));
+  return Math.max(10, Math.min(unit,
+    (bw * FIT_W) / Math.max(1, sw), (usableH * FIT_H) / Math.max(1, sh)));
+}
 /** ★提案の円の大きさ。**いちばん重いタスク × これ**（2026-09-08 に 1 → 1.6）。 */
 const OFFER_K = 1.6;
+/** ★提案の半径（px）。★引き下ろしの行き先の大きさにも要るので **export**（第102巡）。 */
+export const offerRadiusOf = (unit: number): number =>
+  Math.max(28, Math.sqrt((weightArea(3) * OFFER_K * unit * unit) / Math.PI));
 /** 未読のトゲトゲの円。★12の尖り。★**谷は `ZIG_IN + 0.5 = 0.9`**（浅い刻み）。 */
 export const ZIG_N = 12;
 const ZIG_IN = 0.4;
@@ -67,11 +82,9 @@ const BADGE_R = 44;
 const SPAWN_TILT = 0.5;      // 初期の傾き（±0.25 rad ≒ ±14°）
 const SPAWN_SPIN = 0.05;     // 初期の回り
 const SPAWN_VX = 1.2;        // 横の初速
-// ★★★**山の器（左右の内寸と床）は `lib/pileBox.ts`**（第91巡）。
-// ★★★**左右は別の数**（2026-09-13・第101巡にユーザー指摘「移動できる幅がまだ
-//   タブバーの横幅と合っていません」）―― 右は「作る」の丸のぶん内側へ入る。
-const L = pileLeftOf;
-const R = pileRightOf;
+/** ★★★**山の器（左右の内寸と床）は `lib/pileBox.ts`**（第91巡）。
+ *  ★★**左右は対称**（第102巡に戻した。理由は `lib/pileBox.ts` の頭）。 */
+const INSET = PILE_INSET;
 /**
  * ★★★**落とす間隔は「時間」で取る**（2026-09-09。それまでは「高さ」で取っていた）。
  * 高さで取ると**山が大きいほど出どころが空の彼方へ行く** ―― 実測（器 573px）…
@@ -88,21 +101,18 @@ const DROP_SCATTER = 200;
 /** 板の字を組む幅（山の**内寸**に対する割合）。★GRAVITY は 0.66、ホームは大きめ。 */
 const WORD_W = 0.84;
 /**
- * ★★★**ホームの日付・曜日の大きさの上限**（2026-09-13・第100巡にユーザー指定
- * 「ホーム画面の**日付と曜日をもう少し小さく**してください」→ **1割半**）。
+ * ★★★**ホームの日付・曜日の大きさの上限**。
  *
  * ★★★**`SWISS_XL`(72) を下げてはいけない** ―― あれは TIMELINE の巨大な曜日と
- *   **共有**なので、下げると TASK 側も縮む。**ホームだけの上限をここに置く。**
- * ★★★**実測で較正した値**（WebKit・390×844。`wordFontSize` は
- *   `min(この上限, 64 × room / 最も広い語の幅)` で、ここでは**上限が効いている**）。
- *   ★★★**第101巡に 49 → 61**（ユーザー指定「**サイズが小さくなりすぎです。
- *     大きくしてください**」）。第100巡は「縦が 0.85 倍」を狙って 49 にしたが、
- *     **横が 0.64 倍まで縮んだ**（第99巡が横を 63% に潰して room いっぱいへ
- *     伸ばしていたぶん）ので、全体としては小さすぎた。
- *   ★塗りの箱（`WEDNESDAY`）… 第99巡 300.7 × 52 → 第100巡 192.7 × 44 →
- *     **いま 240 × 54**（ユーザー確定の中間）。
+ *   **共有**なので、下げると TASK 側も縮む。**ホームだけの上限をここに置く**
+ *   （いまはたまたま同じ値だが、**別の摘み**。片方だけ動かせるように残す）。
+ * ★★塗りの箱（`WEDNESDAY`・WebKit 390 幅）の移り変わり …
+ *   第99巡 300.7×52（Archivo を横 63% に潰していた）→ 第100巡 192.7×44（49）→
+ *   第101巡 240×54（61）→ **いま 283×64（72）**。
+ *   ★第100巡に「縦が 0.85 倍」を狙って 49 にしたら**横が 0.64 倍まで縮み**、
+ *   2度「小さすぎる」と差し戻された。**縦だけを見て決めないこと。**
  */
-const PILE_WORD_MAX = 61;
+const PILE_WORD_MAX = 72;
 
 /**
  * ★★★**未読の数のトゲトゲの輪郭（絵だけ）**（2026-09-09）。
@@ -192,8 +202,8 @@ export interface Piece {
 /**
  * ★★**壁は器の内側**（`lib/pileBox.ts`）。器の縁ぴったりに置くと、出どころ
  * （内寸の内側）と壁がずれて**壁際で押し合う**。
- * ★★★**左は `pileLeftOf()`・右は `pileRightOf()`** ―― 右はタブバーの**帯の
- * 右端**（＝「作る」の丸の手前）。左右で違う数なので、対称の1つでは書けない。
+ * ★★★**左右は対称**（`PILE_INSET`）―― タブバーは**右下の丸まで含めて**
+ * `[SPACE.lg, w − SPACE.lg]` なので、揃えるべきセーフエリアはこれ1つ。
  * ★★床は**タブバーの上から `GROUND_LIFT` 浮かせる**（`floorYOf`）。器は
  * `.bleed-x-b` で**画面の底まで**伸びているので、この式がそのまま正しい。
  */
@@ -203,8 +213,8 @@ export function makeWalls(m: M, bw: number, bh: number): Body[] {
     m.Bodies.rectangle(bw / 2, floorY + WALL_T / 2, bw + WALL_T * 2, WALL_T, { isStatic: true, friction: 0.6 }),
     // ★★**高さに下限を掛ける** ―― `bh` が 0 だと面積 0 の壁になり、重心が NaN に
     //   なって**当たらない壁**が出来る（第101巡に踏んだ「図形が出なくなる」の一因）。
-    m.Bodies.rectangle(L() - WALL_T / 2, bh / 2, WALL_T, Math.max(1, bh) * 3, { isStatic: true, friction: 0.4 }),
-    m.Bodies.rectangle(R(bw) + WALL_T / 2, bh / 2, WALL_T, Math.max(1, bh) * 3, { isStatic: true, friction: 0.4 }),
+    m.Bodies.rectangle(INSET - WALL_T / 2, bh / 2, WALL_T, Math.max(1, bh) * 3, { isStatic: true, friction: 0.4 }),
+    m.Bodies.rectangle(bw - INSET + WALL_T / 2, bh / 2, WALL_T, Math.max(1, bh) * 3, { isStatic: true, friction: 0.4 }),
   ];
 }
 
@@ -222,7 +232,19 @@ export interface PileContent {
  * ループが**時間をずらして1つずつ**やる。まとめて入れると全部が同時に落ち始め、
  * 順番を作るために出どころを空の彼方まで持ち上げる羽目になる）。
  */
-export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[] {
+export interface PileBuild {
+  pieces: Piece[];
+  /**
+   * ★★★**一括の倍率**（solid 座標 → px）。**引き下ろしの行き先の大きさ**を知るのに要る
+   *  （2026-09-14・第102巡）。帯のピルを引くと、そのタスクが山で持つ寸法
+   *  **`specOf(t, today).w × unit`** へ向かって形が変わる。
+   *  ★★★**ここでしか計算していない値なので、返して渡す**（2か所で計算すると、
+   *  引いている最中の大きさと落ちたあとの大きさが食い違う）。
+   */
+  unit: number;
+}
+
+export function buildPieces(m: M, c: PileContent, w: number, h: number): PileBuild {
   const { tasks, offers, unread, today, journal } = c;
 
   // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**（2026-09-09）。
@@ -243,7 +265,7 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   //   山の総面積が跳ね上がる（実測 80%）。詰まった山は解けずに押し合って震える。
   // ★★字の大きさは**長いほう（曜日）で決めた1つの値**を両方に使う（第67巡）。
   const words = [`${today.getMonth() + 1}/${today.getDate()}`, WD_FULL[today.getDay()]];
-  const room = pileSpanOf(w) * WORD_W;
+  const room = pileWOf(w) * WORD_W;
   // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
   const wordFs = wordFontSize(words, room, DISPLAY, PILE_WORD_MAX);
   const plates = words.map((wd) => measureWordPlate(wd, wordFs, room, INK, DISPLAY));
@@ -277,9 +299,9 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
   //   ばらつきを作り、傾きと回りは控えめに添える。
   const spawnX = (bw: number, r1: number) => {
     const half = bw / 2;
-    const lo = L() + half + 4;
-    const hi = Math.max(lo, R(w) - half - 4);
-    return Math.min(hi, Math.max(lo, L() + pileSpanOf(w) * (0.08 + r1 * 0.84)));
+    const lo = INSET + half + 4;
+    const hi = Math.max(lo, w - INSET - half - 4);
+    return Math.min(hi, Math.max(lo, INSET + pileWOf(w) * (0.08 + r1 * 0.84)));
   };
   let nth = 0;
   const toss = (body: Body, seed: string, bh: number) => {
@@ -354,7 +376,7 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
     // ★★提案は重さを持たないので、**いちばん重いタスクと同じ**として置く
     //   （2026-09-08 ユーザー指定「提案の図形はもっと大きく」）。
     const area = weightArea(3) * OFFER_K;
-    const r = Math.max(28, Math.sqrt((area * unit * unit) / Math.PI));
+    const r = offerRadiusOf(unit);
     // ★★★**まん丸をやめて12角形**（2026-09-13・第96巡に形を持たせたので）。
     //   ★★`Bodies.fromVertices` に**凹んだ形をそのまま渡してはいけない** ――
     //   `poly-decomp` を積んでいないので分解に失敗する（未読のトゲトゲで実測済み。
@@ -402,7 +424,7 @@ export function buildPieces(m: M, c: PileContent, w: number, h: number): Piece[]
     });
   }
 
-  return pieces;
+  return { pieces, unit };
 }
 
 export type { Engine };

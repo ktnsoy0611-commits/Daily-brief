@@ -1,5 +1,5 @@
 import { AREA_COORDS, AREA_FALLBACK, AREA_LATLNG, AUTO_THRESHOLD, BRIEF_RETENTION_DAYS, INTEREST_RULES, KEEP_MAX_AGE_DAYS, KIND_DOMAIN } from "./constants";
-import type { AppState, BriefState, Item, ItemDomain, ItemOrigin, Wish } from "./types";
+import type { BriefState, Item, ItemDomain, ItemOrigin, Wish } from "./types";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -202,11 +202,9 @@ export function detectInterests(wishes: Wish[], items: Item[]): { label: string;
 // 「バインド！」のどちらからも同じ組み立てロジックを使うための純粋関数
 // (状態の書き換えはせず、次のAppStateを返すだけ)。場所の有無を問わず、
 // 選ばれたItemはすべてplannedになる(以前は場所のKeepだけがplannedになり、
-// 作品側は状態が変わらないという非対称があった)。
-export function buildMagazine(state: AppState, itemIds: string[]): AppState {
-  const next = structuredClone(state);
-  next.items.forEach((i) => { if (i.status === "planned") i.status = "candidate"; });
-  next.items.forEach((i) => { if (itemIds.includes(i.id)) i.status = "planned"; });
-  next.magazine = { dateKey: todayKey(), decidedAt: new Date().toISOString(), itemIds: [...itemIds] };
-  return next;
-}
+// ★★★**`buildMagazine` は第102巡に削除した。復活させない。**
+//   「その日の予定」は **`Item.plannedFor`**（`lib/types.ts`）が持つ ―― `magazine` は
+//   **1日ぶんしか持てない**うえ、**呼び手が 0 件**で（アプリからは誰も書かなかった）
+//   ホームの山の提案の円は**常に 0 個**だった。
+//   ★`AppState.magazine` と `ItemStatus` の `"planned"` は、起動時の後片付けと
+//   永続化の移行に絡むので**まだ残っている**。次の巡で消すこと。

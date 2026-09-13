@@ -177,7 +177,8 @@
   上スワイプで**カメラが地上の GRAVITY へ**。★★**場は自分の寸法だけで決める**
   （画面の座標を測らない。列が動くとずれる。第61巡に根治）。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
-  `WhenSheet`（日程。**ここだけキーボードを閉じる**）/ `ComposerToolbar` /
+  `WhenSheet`（日程。**ここだけキーボードを閉じる**。★★盤は `components/DateGrid.tsx`）/
+  `ComposerToolbar` /
   `ComposerFields`（重要度・テキスト。★第93巡にタグの列を廃止）/ `Popover` /
   `TimeRange`（時刻。タイムラインで範囲を選ぶ）/
   `SolidCanvas` /
@@ -185,6 +186,9 @@
   タスクの追加は`CreateMenu`（タブバー右端の輪）からのみ（第36巡に＋を撤去）。
   `TaskAddButton.tsx`は動作確認用の`DemoSeedButton`だけが残っている。
 - `lib/solid.ts` `lib/solidPaint.ts` `lib/textFit.ts` `lib/taskSize.ts` — 図形・描画・寸法。
+  ★★★**`stackOutline(rows, ar, waist)` の `waist` が「ピル ⇄ 図形」の変形**（第102巡）。
+  0 ＝ 1段（帯のピルそのもの）／1 ＝ n 段。**半幅を lerp するだけなので点の数が変わらず、
+  再標本化が要らない**。★`waist = 1` は既存の呼び手と同じ点の列を返す（実測 差 3.5e-9）。
   ★★★**形は「ピルの積み」1つ**（第99巡）。幅の等しいピル（角丸＝段の高さ/2）を
   縦に積む。**段の数は題の文字数**（`rowsOf`。最大3段）。箱の比は**1段の比 ÷ 段の数**。
   ★★★**「辺の数（1〜4）＝埋まり具合」はやめた。復活させない**（円・半円・三角・
@@ -245,6 +249,13 @@
 - `components/Button.tsx` — **押せる面はここだけ**。`Button`（離上で走る／variant・size）と
   `Press`（入力画面専用。押した瞬間に走る）。
 - `components/common.tsx` — `PosterCard` / `Masthead` / `SectionLabel`。
+- ★★★`components/DateGrid.tsx` — **月カレンダーの盤はここ1つ**（第102巡に `WhenSheet`
+  から持ち上げた）。タスクの入力画面（`WhenSheet`）と**日付を割り当てる画面**
+  （`components/home/AssignSheet.tsx`）が同じものを読む。**2か所に書くと、次に画素を
+  直す人が片方しか直さない。** ★早押しは**今日・明日・来週**（第102巡に「今週末」→「来週」）。
+  ★★ここには**4つの実機の不具合を生き延びた作り**が入っている（3か月を横に並べて送る／
+  軸の固定 8px ／戻り跳ねの1フレーム対策／隣の月は触るまで作らない／1マスに丸と札は
+  2つまで）。**素朴に書き直すと全部戻る。**
 - `components/GeoType.tsx` — 幾何アルファベット。`components/TabIcons.tsx` — 面で描いたアイコン。
 - `components/BottomSheet.tsx` / `PlanSelectionBar.tsx` / `PlanGenerateSheet.tsx` / `AddWishSheet.tsx` / `SignInGate.tsx` / `LeafletMap.tsx` / `Binder.tsx`（ゴールのみ）。
 
@@ -308,6 +319,21 @@
   ★★★**山の器は `.bleed-x-b`**（左右 ＋ **下**）。下を出さないと、タブの器の
   `paddingBottom: var(--nav-h)` と `floorYOf` で**タブバーの高さが二重に引かれる**。
   ★★**画面の細かさは端末そのまま**（`min(3, dpr)`。2 で止めると実機で 1.5倍に伸びる）。
+- ★★★**帯のピルを引いて日付を割り当てる**（第102巡にユーザー指定。仕様の正は
+  `docs/home-spec.md` §6）… `lib/pullDrag.ts`（**手つきの算数と `pullBus`**）／
+  `components/home/AssignRail.tsx`（**右端の黒い ASSIGN の帯**）／
+  `components/home/AssignSheet.tsx`（**日付を割り当てるカレンダー**。地は墨）。
+  ★★★**摘みは4つだけ** … `PULL_ARM`(56) / `PULL_RESIST`(0.42) / `MORPH_SPAN`(160) /
+  `PULL_GIVE`(1.6)。**進みは時間ではなく指が引いた距離**なので、曲線4本は使わない。
+  ★★★**毎フレームの値は `pullBus`（module のただ1つの入れ物）**。ref を props で
+  回すと React Compiler の `react-hooks/immutability` が**拒否する**。
+  ★★★**絵は山の canvas に描く**（`pilePaint.drawGhost`）。新しい canvas を足さない
+  ―― 同じ座標系・同じ dpr・同じ焼き方なので**離した瞬間の継ぎ目が無い**。
+  ★★★**`Body.setVelocity` は眠った体を起こさない** ―― 山の図形が長押しで動かない
+  のはこれ。掴んだときと動かしている間に `M.Sleeping.set(body, false)`（実測 …
+  起こさないと 0.0px／起こすと 156.7px）。
+  ★★**帯のピルは2周ぶん DOM に居る**ので、掴んだ id を `Band` に持たせて**両方**隠す。
+  ★★**「7本の柱」（`home-spec` の旧 K1）はやめた。復活させない。**
 - ★★★`lib/cassette.ts` — **カセット（JOURNAL の顔）の寸法はここ1つ**（第94巡）。
   同じ形を**3つの技術**が描く … タブのアイコン（**SVG**）／ホームの山（**canvas**。
   `drawCassette`）／録音画面の青い本体（**DOM**）。塗り分けは**四角＝青／
@@ -367,11 +393,11 @@
 - ★★★`lib/pileBox.ts` — **山の器（左右の内寸と床）はここ1つ**（第91巡）。
   GRAVITY とホームが同じものを読む。床は `floorYOf`。
   ★ホームの山は `.bleed-x-b` で列のパディングの外へ出す。
-  ★★★**左右は対称ではない**（第101巡）… `pileLeftOf()` は `SPACE.lg`、
-  **`pileRightOf(w)` は「作る」の丸のぶん内側**（`NAV_CREATE_SLOT` ＝ 64。
-  `lib/constants.ts` の1か所。`AppShell` と `Dashboard` も同じ数を読む）。
-  **タブバーの帯は [16, 310]** なので、対称の1つでは表現できなかった。
-  ★`PILE_INSET` は残す（`VoiceStudio` の段は左右対称でなければならない）。
+  ★★★**左右は対称。セーフエリアは全画面で同じ `SPACE.lg`**（第102巡にユーザー確定）。
+  **タブバーは右下の「作る」の丸まで含めて** `[SPACE.lg, w − SPACE.lg]` ―― 帯（白い
+  ピル）の右端 310 に合わせてはいけない。**第101巡に右を寄せたのは誤り。もう振らない**
+  （`pileLeftOf`/`pileRightOf`/`pileSpanOf` は削除した。**復活させない**）。
+  ★`NAV_CREATE_SLOT`(64) は**行の寸法**として残る（`AppShell` と `Dashboard` が読む）。
 - ★★★`lib/wordPlate.ts` — **「文字そのものが図形」の板の作り方はここ1つ**（第89巡）。
   GRAVITY の日付・曜日／TIMELINE の「自由」／**ホームの山の日付・曜日**が同じ関数を読む。
   canvas に焼いて貼り（`wordBitmap`）、**当たり判定は塗りの実測**（`inkBoxOf`）、
@@ -379,7 +405,9 @@
   ★**DOM で組み直さないこと** ―― 板だけが物理と別の座標系に居ると、板まわりだけ
   挙動が違う（第84〜88巡はこれで何度も壊れた）。
 - `lib/spring.ts` — **canvas の図形だけの動きの土台（バネ＝減衰振動）**。係数は4つ。
-  CSS の transition には使わない。
+  CSS の transition には使わない。★★**ゴムの手ざわり `rubber(raw, max)` もここ1つ**
+  （第102巡に `GravityTab` の `rubberRise` から持ち上げた）。閾値で傾き 1 ＝**継ぎ目が
+  無い**。引き下ろしと TIMELINE の伸びが**同じ1本**を読む。
 - `lib/scroll.ts` — **スクロールの語彙はここだけ**（指の 1:1 ＋投げ＋減衰＋最寄りへ吸着）。
   強さを触るのは `SCROLL_GAIN` と `FLICK_K` の2つだけ。いまは ALIGN の縦送りが使う。
 - `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋の丸の場所）**。

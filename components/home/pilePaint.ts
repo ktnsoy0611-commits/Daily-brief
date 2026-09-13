@@ -9,6 +9,7 @@ import { WEIGHT } from "@/lib/tokens";
 import { drawWordPlate } from "@/lib/wordPlate";
 import { WORD_WEIGHT } from "@/lib/solidPaint";
 import { zigVerts, type Piece } from "./pileWorld";
+import type { Ghost } from "@/lib/pullDrag";
 
 // ★★★**山の焼き方と描き方**（2026-09-11・第92巡に `Pile.tsx` から分けた）。
 //
@@ -163,6 +164,69 @@ function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLI
   el.src = img(url, px, px);
   photoCache.set(key, el);
   return undefined;
+}
+
+/**
+ * ★★★**引き下ろしの「幽霊」を1枚描く**（2026-09-14・第102巡）。
+ *
+ * ★★**焼かない**（毎フレーム寸法が変わるので、焼くとキャッシュを食い潰す）。
+ *   文字はグリフのアトラス経由なので、直に描いても1図形ぶんで済む。
+ * ★★★**山と同じ canvas・同じ座標系・同じ形の出どころ**に描く ―― だから
+ *   指を離した瞬間に物体へ渡しても**継ぎ目が出ない**。
+ * ★形は `stackOutline(rows, ar, waist)`（タスク）か `traceCardShape`（提案）。
+ */
+export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number): void {
+  const w = Math.max(8, g.w); const h = Math.max(8, g.h);
+  ctx.save();
+  ctx.translate(g.cx, g.cy);
+  if (g.kind === "offer") {
+    // ★提案は**札の形**へ。器は正方形（`lib/cardShape.ts` の約束）。
+    const d = Math.max(w, h);
+    ctx.fillStyle = g.face;
+    if (g.shape && g.t > 0.5) traceCardShape(ctx, g.shape, d);
+    else { ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h / 2); ctx.closePath(); }
+    ctx.fill();
+    if (g.glyph) {
+      ctx.fillStyle = g.ink;
+      ctx.font = canvasFont(WEIGHT.bold, Math.min(w, h) * 0.5, SANS);
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(g.glyph, 0, 0);
+    }
+    ctx.restore();
+    return;
+  }
+  // ★★タスクは**ピルの積み**。`t` が「くびれの深さ」をそのまま送る。
+  ensureGlyphs(g.faceIdx, g.title);
+  const outline = stackOutline(g.rows, w / h, g.t);
+  const trace = (sw: number, sh: number) => {
+    ctx.beginPath();
+    outline.forEach((q, i) => {
+      const x = q.x * sw; const y = q.y * sh;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+  };
+  trace(w, h);
+  ctx.fillStyle = g.outlined ? BD_GREY : g.face;
+  ctx.fill();
+  if (g.outlined) {
+    ctx.strokeStyle = g.face;
+    ctx.lineWidth = EDGE;
+    trace(w - EDGE, h - EDGE);
+    ctx.stroke();
+  }
+  const fit = layoutInRows(
+    g.title, g.faceIdx, g.rows, w, h,
+    (y) => halfWidthAtStack(g.rows, w / h, y, g.t), h / g.rows,
+  );
+  if (fit) {
+    ctx.save();
+    trace(w, h);
+    ctx.clip();
+    drawFitted(ctx, fit, g.faceIdx, 0, 0, g.ink, fit.size * dpr);
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 /** 山を1フレームぶん描く。★`ctx` は**呼ぶ側が `setTransform(dpr,…)` 済み**。 */

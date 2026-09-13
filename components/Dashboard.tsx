@@ -181,10 +181,18 @@ export function Dashboard({ appState, selection, app, tab, onDrag, onSettle, onT
     window.addEventListener("pointercancel", up);
   };
 
-  const entries = selection.itemIds
+  const today = todayKey();
+  // ★★★**今日に割り当てた提案も「今日のもの」**（2026-09-14・第102巡）。
+  //   ホームで引き下ろすと `Item.plannedFor` が入る ―― **その場で選んだもの**と
+  //   同じ扱いにしないと、締めの丸が押せず**ログにも残らない**。
+  //   ★★`AppShell` の `finishDay` も同じ union を綴じる（片方だけ直さない）。
+  const entries = [...new Set([
+    ...selection.itemIds,
+    ...(appState.items ?? [])
+      .filter((x) => x.plannedFor === today && x.status !== "done").map((x) => x.id),
+  ])]
     .map((id) => appState.items.find((x) => x.id === id))
     .filter((x): x is NonNullable<typeof x> => !!x);
-  const today = todayKey();
   const todaysTasks = (appState.tasks ?? []).filter((t) => t.dueDate === today);
   const canFinish = entries.length > 0 || todaysTasks.length > 0;
 

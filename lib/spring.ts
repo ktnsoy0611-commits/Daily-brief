@@ -47,3 +47,19 @@ export const D_TRAVEL = 0.19;
 /** 定位置へ吸い付くとき(行き過ぎない)。 */
 export const K_SETTLE = 0.020;
 export const D_SETTLE = 0.28;
+
+/**
+ * ★★★**ゴムの手ざわり**（2026-09-14・第102巡に `components/tabs/GravityTab.tsx` の
+ * `rubberRise` から持ち上げた。**同じ手ざわりを2か所に書かない**）。
+ *
+ * `1` までは素直に、**`1` を超えたぶんは重く**なって `max` へ漸近する。
+ * ★★**閾値 `1` で傾きが 1**（＝継ぎ目が無い）。ここが肝で、比を掛けるだけの
+ *   「重くする」だと指が閾値をまたぐ瞬間に**カクッと段差**が出る。
+ * ★目盛りの外（指の手ざわり）。
+ */
+export function rubber(raw: number, max: number): number {
+  if (raw <= 1) return Math.max(0, raw);
+  const over = raw - 1;
+  const room = Math.max(1e-6, max - 1);
+  return 1 + (room * over) / (over + room);
+}

@@ -92,34 +92,38 @@ export interface SolidSpec {
  *   正規化した形は箱の比に依る（第98巡までの断面の輪郭には無かった引数）。
  * ★呼ぶ側が `(w, h)` を掛ければ、外接箱はちょうど `w × h` になる。
  */
-export function stackOutline(rows: number, ar: number): Pt[] {
+export function stackOutline(rows: number, ar: number, waist = 1): Pt[] {
   const n = clampRows(rows);
   // 正規化した座標系（幅 1・高さ 1）での段の高さと角丸。
   const rowH = 1 / n;
-  // 角丸は**幅の単位**で測る（横は 1、縦は 1 なので、比を掛けて横へ直す）。
-  const rx = Math.min(rowH / 2 / ar, 0.5);
   const ry = rowH / 2;
   const half = Math.max(0, ARC_STEPS / 2);
+  // ★★**点の y は段ごとの半円から取り、x は `halfWidthAtStack` から引く。**
+  //   こうしておくと `waist` を混ぜても**点の数も y の並びも変わらない**ので、
+  //   ピル（1段）と積み（n段）のあいだを**再標本化せずに**補間できる（第102巡）。
+  const hw = (y: number) => halfWidthAtStack(n, ar, y, waist);
   const pts: Pt[] = [];
   // 上辺（左上の角の終わり → 右上の角の始まり）。
-  pts.push({ x: -0.5 + rx, y: -0.5 });
-  pts.push({ x: 0.5 - rx, y: -0.5 });
+  pts.push({ x: -hw(-0.5), y: -0.5 });
+  pts.push({ x: hw(-0.5), y: -0.5 });
   // 右側 … 段ごとに半円（上から下へ）。
   for (let i = 0; i < n; i++) {
     const cy = -0.5 + rowH * i + ry;
     for (let k = 0; k <= half; k++) {
       const a = -Math.PI / 2 + (Math.PI * k) / half;
-      pts.push({ x: 0.5 - rx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry });
+      const y = cy + Math.sin(a) * ry;
+      pts.push({ x: hw(y), y });
     }
   }
   // 下辺。
-  pts.push({ x: -0.5 + rx, y: 0.5 });
+  pts.push({ x: -hw(0.5), y: 0.5 });
   // 左側 … 段ごとに半円（下から上へ）。
   for (let i = n - 1; i >= 0; i--) {
     const cy = -0.5 + rowH * i + ry;
     for (let k = 0; k <= half; k++) {
       const a = Math.PI / 2 + (Math.PI * k) / half;
-      pts.push({ x: -0.5 + rx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry });
+      const y = cy + Math.sin(a) * ry;
+      pts.push({ x: -hw(y), y });
     }
   }
   return pts;
@@ -133,8 +137,20 @@ export function stackOutline(rows: number, ar: number): Pt[] {
  * ★★行は段の中心に置かれるので**ほぼ箱いっぱい使える** ―― それが
  *   「ピルの中に1行」という見え方を作っている。
  */
-export function halfWidthAtStack(rows: number, ar: number, y: number): number {
+export function halfWidthAtStack(rows: number, ar: number, y: number, waist = 1): number {
   const n = clampRows(rows);
+  const full = rowHalfWidth(n, ar, y);
+  if (waist >= 1 || n === 1) return full;
+  // ★★★**`waist` は「くびれの深さ」**（2026-09-14・第102巡）。
+  //   0 ＝ **段が1つ＝ただのピル**（帯のピルの形そのもの）／1 ＝ n 段の積み。
+  //   ★★帯のピルを引き下ろすと図形へ変わる、あの連続変形のための1つの摘み。
+  //   **新しい形を足していない** ―― 同じ式の段数を混ぜているだけ。
+  const pill = rowHalfWidth(1, ar, y);
+  return pill + (full - pill) * Math.max(0, waist);
+}
+
+/** 段数 `n` の積みの、高さ `y` での半幅（`waist` を混ぜる前の素の値）。 */
+function rowHalfWidth(n: number, ar: number, y: number): number {
   const t = Math.max(-0.5, Math.min(0.5, y));
   const rowH = 1 / n;
   const rx = Math.min(rowH / 2 / ar, 0.5);

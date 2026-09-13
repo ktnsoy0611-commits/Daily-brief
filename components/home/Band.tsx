@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { groundOf } from "@/components/AppBackdrop";
 import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
+import { RAIL_NEAR, pullBus, pullFrame, type GhostSeed, type PullHost } from "@/lib/pullDrag";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
 //
@@ -39,7 +40,12 @@ const HEIGHT: Record<Row, number> = { 0: BAND_H.photo, 1: BAND_H.plain };
  * ★★**丸はピルの中に収める**（縁とのあいだに `SPACE.sm` の縁取り）。高さいっぱいに
  *   すると、丸とピルの輪郭が接して「はめ込んだ」ではなく「はみ出した」に見える。
  */
-function Pill({ item, row }: { item: BandItem; row: Row }) {
+function Pill({ item, row, pull, taken, onTake }: {
+  item: BandItem; row: Row; pull?: PullHost;
+  /** ★★**同じ中身は2周ぶん DOM に居る**ので、隠すのは id で決める。 */
+  taken: boolean;
+  onTake: (id: string | null) => void;
+}) {
   const face = item.face;
   // ★★★**線と文字だけのピル**（2026-09-09 ユーザー指定）。すでに登録してある
   //   タスクは「もう自分のもの」なので、**塗らずに輪郭だけ**にする ―― 塗りの
@@ -57,10 +63,85 @@ function Pill({ item, row }: { item: BandItem; row: Row }) {
   const photo = head ? item.photo : undefined;
   // ★丸の直径 ＝ ピルの高さ − 縁取り2つぶん。
   const dia = h - BAND_BEZEL * 2;
+  // ── 引き下ろし（2026-09-14・第102巡） ───────────────────────
+  // ★★★**触る → ゴム → 外れて図形へ**。算数は `lib/pullDrag.ts`、絵は山の canvas。
+  //   ここが持つのは**指の記録**と**掴んだピルを隠すこと**だけ。
+  const [pressed, setPressed] = useState(false);
+  const grab = useRef<{
+    id: number; sx: number; sy: number; bx: number; by: number;
+    w0: number; h0: number; seed: GhostSeed; armed: boolean; rail: boolean;
+  } | null>(null);
+
+  const end = useCallback((commit: boolean) => {
+    const g = grab.current;
+    grab.current = null;
+    setPressed(false);
+    onTake(null);
+    if (!pull) return;
+    pullBus.ghost = null;
+    pull.rail(false);
+    if (g && commit && g.armed) pull.drop(item, g.rail);
+  }, [item, pull, onTake]);
+
+  const onDown = (e: React.PointerEvent) => {
+    setPressed(true);
+    if (!pull) return;
+    const seed = pull.seed(item);
+    const box = pull.box.current;
+    if (!seed || !box) return;
+    const br = box.getBoundingClientRect();
+    const pr = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    grab.current = {
+      id: e.pointerId, sx: e.clientX - br.left, sy: e.clientY - br.top,
+      bx: pr.x + pr.width / 2 - br.left, by: pr.y + pr.height / 2 - br.top,
+      w0: pr.width, h0: pr.height, seed, armed: false, rail: false,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+
+  const onMove = (e: React.PointerEvent) => {
+    const g = grab.current;
+    if (!g || !pull) return;
+    const box = pull.box.current;
+    if (!box) return;
+    const br = box.getBoundingClientRect();
+    const f = pullFrame(
+      e.clientX - br.left, e.clientY - br.top, g.sx, g.sy,
+      g.bx, g.by, g.w0, g.h0, g.seed.w, g.seed.h,
+    );
+    g.armed = f.armed;
+    // ★★**外れたら元のピルを消す**（幽霊と二重に見えないように）。
+    if (f.armed !== taken) onTake(f.armed ? item.id : null);
+    pullBus.ghost = f.armed ? {
+      kind: g.seed.kind, id: item.id, title: g.seed.title,
+      cx: f.cx, cy: f.cy, w: f.w, h: f.h, t: f.t,
+      rows: g.seed.rows, outlined: g.seed.outlined,
+      face: g.seed.face, ink: g.seed.ink, faceIdx: g.seed.faceIdx,
+      shape: g.seed.shape, photo: g.seed.photo, glyph: g.seed.glyph,
+    } : null;
+    const near = f.armed && e.clientX > window.innerWidth - RAIL_NEAR;
+    if (near !== g.rail) { g.rail = near; pull.rail(near); }
+  };
+
   return (
-    <div style={{
+    <div
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={() => end(true)}
+      onPointerCancel={() => end(false)}
+      style={{
       display: "flex", alignItems: "center", gap: SPACE.md, flexShrink: 0,
       height: h, borderRadius: RADIUS.pill,
+      // ★★引き下ろしのため、**縦も横もこちらで受ける**（段の `pan-y` を上書き）。
+      touchAction: pull ? "none" : undefined,
+      // ★★★**触ると少し沈む**（2026-09-14 ユーザー指定「少し柔らかいような感触」）。
+      //   `design.md` … **押下だけが非対称**（即座に沈み、ゆっくり戻る）。
+      transform: pressed ? "scale(0.97)" : "scale(1)",
+      transition: pressed
+        ? "transform var(--t-press) var(--ease-press)"
+        : "transform var(--t-item) var(--ease-settle)",
+      // ★外れたら元のピルは消す（幽霊が山の canvas に居る）。
+      visibility: taken ? "hidden" : undefined,
       // ★地と同じ色で塗る（透過させない）。★色の持ち主は `groundOf` の1か所。
       background: outline ? groundOf("home") : face,
       // ★輪郭は `Button` の secondary と同じ引き方（押せるものの縁）。
@@ -111,7 +192,10 @@ function Pill({ item, row }: { item: BandItem; row: Row }) {
  * 作ると周と周のあいだにも隙間が1つ入り、1周ぶん送っても**隙間の半分だけずれる**。
  * だから隙間は周の内側だけが持ち、**末尾にも同じ幅の隙間**を置く。
  */
-function BandRow({ row, items }: { row: Row; items: BandItem[] }) {
+function BandRow({ row, items, pull, taken, onTake }: {
+  row: Row; items: BandItem[]; pull?: PullHost;
+  taken: string | null; onTake: (id: string | null) => void;
+}) {
   const trackRef = useRef<HTMLDivElement>(null);
   const animRef = useRef<Animation | null>(null);
 
@@ -174,7 +258,10 @@ function BandRow({ row, items }: { row: Row; items: BandItem[] }) {
       <div ref={trackRef} className="band-track">
         {[0, 1].map((lap) => (
           <div key={lap} aria-hidden={lap === 1 || undefined} style={{ display: "flex", gap: SPACE.sm }}>
-            {items.map((it) => <Pill key={`${lap}-${it.id}`} item={it} row={row} />)}
+            {items.map((it) => (
+              <Pill key={`${lap}-${it.id}`} item={it} row={row} pull={pull}
+                taken={taken === it.id} onTake={onTake} />
+            ))}
             {/* ★周の末尾の隙間。**器の左右のパディングにしない**（左右のパディングを
                 持ってよいのはページ最上位の器だけ）。これは継ぎ目そのもの。 */}
             <div style={{ width: SPACE.sm, flexShrink: 0 }} />
@@ -186,11 +273,14 @@ function BandRow({ row, items }: { row: Row; items: BandItem[] }) {
 }
 
 /** 帯（★2段）。上＝提案／下＝タスク系（塗り＝まだ提案／線＝登録済み）。 */
-export function Band({ rows }: { rows: [BandItem[], BandItem[]] }) {
+export function Band({ rows, pull }: { rows: [BandItem[], BandItem[]]; pull?: PullHost }) {
+  // ★★**引いている最中のピルは、2周ぶんとも消す**（幽霊と二重に見えないように）。
+  //   ★掴むたびに1度だけ動くので、毎フレームの再描画にはならない。
+  const [taken, setTaken] = useState<string | null>(null);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
-      <BandRow row={0} items={rows[0]} />
-      <BandRow row={1} items={rows[1]} />
+      <BandRow row={0} items={rows[0]} pull={pull} taken={taken} onTake={setTaken} />
+      <BandRow row={1} items={rows[1]} pull={pull} taken={taken} onTake={setTaken} />
     </div>
   );
 }

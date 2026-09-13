@@ -21,7 +21,7 @@ import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
 import { BD_GREY, DISPLAY, INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL, SECOND, TASK_FACE } from "@/lib/constants";
 import { ms, T_IN, T_ITEM, T_OUT } from "@/lib/motion";
 import { flick, flickStep, flickThrow, type Flick } from "@/lib/scroll";
-import { D_SETTLE, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring } from "@/lib/spring";
+import { D_SETTLE, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring, rubber } from "@/lib/spring";
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT } from "@/lib/tokens";
 import type { AppState, TabProps, Task } from "@/lib/types";
 
@@ -416,15 +416,9 @@ const monthDayOf = (dateKey: string) => {
   return `${m}/${d}`;
 };
 
-/** ★指の引き上げ。1 までは素直に、**1 を超えたぶんは重く**なって `TL_STRETCH` で
- *  頭打ち(ゴムを引く手ざわり)。 */
-function rubberRise(raw: number): number {
-  if (raw <= 1) return Math.max(0, raw);
-  const over = raw - 1;
-  const room = TL_STRETCH - 1;
-  // 1 の所で傾き 1(＝継ぎ目が無い)、引くほど重くなって TL_STRETCH へ漸近する。
-  return 1 + (room * over) / (over + room);
-}
+// ★★`rubberRise` は `lib/spring.ts` の **`rubber(raw, max)`** へ移した（第102巡）。
+//   帯のピルを引く手つきが同じ手ざわりを要るので、**2か所に書かない**。
+const rubberRise = (raw: number): number => rubber(raw, TL_STRETCH);
 
 /**
  * ★★★出ていく緩急は**加速しっぱなし**(2026-08-26・第64巡にユーザー指定

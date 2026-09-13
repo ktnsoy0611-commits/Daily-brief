@@ -7,9 +7,10 @@ import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
 import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
-  DROP_EVERY_MS, GRAVITY_Y, buildPieces, makeWalls, type Piece,
+  DROP_EVERY_MS, GRAVITY_Y, UNIT, buildPieces, makeWalls, type Piece,
 } from "./pileWorld";
-import { clearPileBitmaps, drawPile } from "./pilePaint";
+import { clearPileBitmaps, drawGhost, drawPile } from "./pilePaint";
+import { RAIL_NEAR, pullBus } from "@/lib/pullDrag";
 
 import type { Body, Engine } from "matter-js";
 import type { Item, TabId, Task } from "@/lib/types";
@@ -85,7 +86,7 @@ const waitFonts = () => Promise.race([
   new Promise((r) => setTimeout(r, GATE_MS)),
 ]);
 
-export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
+export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, onAssign }: {
   tasks: Task[];
   offers: Item[];
   unread: number;
@@ -94,6 +95,10 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
   journal: boolean;
   /** ★図形を**軽く押した**ときの行き先。長押しは掴むほうなので走らない。 */
   onOpen: (tab: TabId) => void;
+  /** ★右端の ASSIGN の帯を出すか消すか。 */
+  onRail?: (on: boolean) => void;
+  /** ★掴んだ図形を右端の ASSIGN の帯で離したとき（日付を付け直す）。 */
+  onAssign?: (piece: Piece) => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -120,6 +125,10 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
   const [seedGen, setSeedGen] = useState(0);
   /** ★板を組んだ時点で、板の書体が本当に届いていたか（第101巡）。 */
   const plateFontRef = useRef(false);
+  /** ★山の一括の倍率（solid 座標 → px）。引き下ろしの行き先の大きさに要る。 */
+  const unitRef = useRef(UNIT);
+  /** ★指が右の縁の近くに居るか（毎フレームの state を避けて ref で持つ）。 */
+  const railRef = useRef(false);
   const [holding, setHolding] = useState(false);
   const dragRef = useRef<{ piece: Piece; x: number; y: number } | null>(null);
 
@@ -261,6 +270,9 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
         ctx.imageSmoothingQuality = "high";
         ctx.clearRect(0, 0, w, h);
         drawPile(ctx, piecesRef.current, dpr, () => { /* 次のフレームで拾う */ });
+        // ★★引き下ろしの幽霊は**山の上**に描く（掴んでいる間だけ在る）。
+        const g = pullBus.ghost;
+        if (g) drawGhost(ctx, g, dpr);
         rafRef.current = requestAnimationFrame(loop);
       };
       rafRef.current = requestAnimationFrame(loop);
@@ -296,8 +308,11 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
     // ★★板を組む前に「板の書体が届いていたか」を控える（届いていなければ
     //   `onFontsReady` が測り直しを撃つ）。
     plateFontRef.current = wordFontReady(DISPLAY);
-    const pieces = buildPieces(M, { tasks, offers, unread, today, journal }, w, h);
+    const { pieces, unit } = buildPieces(M, { tasks, offers, unread, today, journal }, w, h);
     piecesRef.current = pieces;
+    // ★★引き下ろしの行き先の大きさに要る（`lib/pullDrag.ts`）。
+    unitRef.current = unit;
+    pullBus.unit = unit;
     dragRef.current = null;
     engine.enableSleeping = false;
     releaseRef.current = {
@@ -375,7 +390,19 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       const box = boxRef.current;
       if (!box) return;
       const r = box.getBoundingClientRect();
-      dragRef.current = { piece: p, x: e.clientX - r.left, y: e.clientY - r.top };
+      // ★掴む位置は `press.current` から取る（`e` は 150ms 前の合成イベント）。
+      //   ★掴む前に `TAP_MOVE`(8px) を超えたら press は消えるので、ずれは高々 8px。
+      const pr = press.current;
+      const cx = pr?.x ?? e.clientX; const cy = pr?.y ?? e.clientY;
+      dragRef.current = { piece: p, x: cx - r.left, y: cy - r.top };
+      // ★★★**眠っている体を起こす**（2026-09-14・第102巡。ユーザー指摘
+      //   「**ホームの図形も触れれるように**」の正体）。山は落ち着くと
+      //   `engine.enableSleeping = true` になるが（下の落ち着きの判定）、
+      //   **`Body.setVelocity` は眠った体を起こさない** ―― だから
+      //   **落ち着いた山の図形は長押ししても1px も動かなかった**。
+      //   ★GRAVITY は掴んだときに起こしている（`GravityTab` の move）。
+      const M = matterRef.current;
+      if (M) M.Sleeping.set(p.body, false);
       setHolding(true);
     }, HOLD_MS);
     press.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer };
@@ -393,6 +420,13 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
       }
       return;
     }
+    // ★★掴んでいる間も**眠らせない**（支えが転がって消えても止まらないように）。
+    const M = matterRef.current;
+    if (M) M.Sleeping.set(dragRef.current.piece.body, false);
+    // ★★★**右の縁に近づいたら ASSIGN の帯**（帯のピルとまったく同じ手つき）。
+    //   ★当たり判定は**指の x だけ**で取る（面は `transform` の途中で嘘をつく）。
+    const near = e.clientX > window.innerWidth - RAIL_NEAR;
+    if (near !== railRef.current) { railRef.current = near; onRail?.(near); }
     const box = boxRef.current;
     if (!box) return;
     const r = box.getBoundingClientRect();
@@ -413,6 +447,12 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen }: {
     const dragged = dragRef.current;
     dragRef.current = null;
     setHolding(false);
+    if (railRef.current) {
+      railRef.current = false;
+      onRail?.(false);
+      // ★★掴んだものを右端で離した＝**日付を付け直す**（ユーザー確定）。
+      if (dragged) { haptic(10); onAssign?.(dragged.piece); return; }
+    }
     if (dragged || !pr) return;
     if (Math.hypot(e.clientX - pr.x, e.clientY - pr.y) > TAP_MOVE) return;
     const p = pickAt(e.clientX, e.clientY);

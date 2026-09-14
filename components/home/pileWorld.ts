@@ -46,12 +46,12 @@ const BODY = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionA
 const WALL_T = 200;
 /** ★左右の壁の最低の長さ（器が低くても図形が抜けない）。★目盛りの外（物理の場）。 */
 const WALL_MIN_H = 1200;
-/** ★床よりこれだけ下に中心が来たら「沈んだ」＝静かに床へ戻す。★目盛りの外（物理の場）。 */
-const SUNK_BELOW = 8;
 /** ★床よりこれだけ下まで行ったら「もう戻れない」＝上から落とし直す。★同上。 */
 const LOST_BELOW = 900;
 /** ★左右の壁よりこれだけ外に出たら「外へ出た」。★同上。 */
 const LOST_SIDE = 120;
+/** ★当たり判定の頂点どうしがこれより近ければ1つに畳む（px）。★目盛りの外（物理の場）。 */
+const VERT_MIN = 2;
 /** 山が器に占める割合。★目盛りの外（詰め込み具合）。
  *  ★★**帯が厚いほど山の取り分が減る**ので、帯の厚み（`BAND_H`）とセットで決める。
  *  ★2026-09-10 に **0.36** ―― 文字の板と未読の図形を予算に数えるようにしたぶん。 */
@@ -158,42 +158,92 @@ export function zigVerts(r: number): { x: number; y: number }[] {
 function bodyFromOutline(
   m: M, pts: { x: number; y: number }[], w: number, h: number, opts: object,
 ): Body {
-  const full = pts.map((q) => ({ x: q.x * w, y: q.y * h }));
-  // ★★★**左右上下のいちばん端は必ず残す**（2026-09-14・第104巡にユーザー指摘
-  //   「**図形のピルの左右のところの当たり判定がおかしい**」）。
-  //   添字の等間隔で間引くと、**1段のピルのいちばん幅の広い点（41点中の 11番）が
-  //   ちょうど落ちる** ―― 実測で体の幅が絵の **98.1〜99.5%** しかなかった。
-  //   ★端を先に押さえてから残りを等間隔で埋めるので、**幅と高さは必ず絵と同じ**。
-  const keep = new Set<number>();
-  let xi = 0; let xa = 0; let yi = 0; let ya = 0;
-  full.forEach((q, k) => {
-    if (q.x < full[xi].x) xi = k;
-    if (q.x > full[xa].x) xa = k;
-    if (q.y < full[yi].y) yi = k;
-    if (q.y > full[ya].y) ya = k;
-  });
-  [xi, xa, yi, ya].forEach((k) => keep.add(k));
-  const step = Math.max(1, Math.ceil(full.length / PHYS_VERTS));
-  full.forEach((_, k) => { if (k % step === 0) keep.add(k); });
-  const raw = [...keep].sort((a, b) => a - b).map((k) => full[k]);
-  // ★★★**左右に折り返して対称にする**（2026-09-14・第104巡）。
-  //   `fromVertices` は**面積重心**を `(x, y)` へ置くが、`pilePaint.drawPile` は
-  //   **外接箱の中心**を `body.position` に描く。**輪郭そのものは左右対称**
-  //   （ピルの積みも札の形も）なので**本来この2つは一致する**が、間引きが
-  //   左右で非対称になると**重心だけがずれる** ―― 実測で 3段の図形が幅の
-  //   **2.7%** ずれていた（＝絵と当たり判定が食い違う）。
-  //   ★★**折り返した点を足してから凸包を取れば、対称性は式が保証する**
-  //   （`poly-decomp` が無いので `fromVertices` は凸包を取る。★対称な点の集合の
-  //   凸包は対称）。**手で中心を補正しない。**
-  const bx = (Math.min(...raw.map((q) => q.x)) + Math.max(...raw.map((q) => q.x))) / 2;
-  const by = (Math.min(...raw.map((q) => q.y)) + Math.max(...raw.map((q) => q.y))) / 2;
-  const half = raw.map((q) => ({ x: q.x - bx, y: q.y - by }));
-  const verts = [...half, ...half.map((q) => ({ x: -q.x, y: q.y }))];
-  const body = m.Bodies.fromVertices(0, 0, [verts], opts);
+  const P = pts.map((q) => ({ x: q.x * w, y: q.y * h }));
+  // ★外接箱の中心を原点へ（`pilePaint.drawPile` が絵の中心を `body.position` に描く）。
+  const xs = P.map((q) => q.x); const ys = P.map((q) => q.y);
+  const bx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const by = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const C = P.map((q) => ({ x: q.x - bx, y: q.y - by }));
+  const body = m.Bodies.fromVertices(0, 0, [radialVerts(C, PHYS_VERTS)], opts);
   if (w > 1 && h > 1) {
     m.Body.scale(body, 1 + (PHYS_GAP * 2) / w, 1 + (PHYS_GAP * 2) / h);
   }
   return body;
+}
+
+/**
+ * ★★★**原点から角 `th` の光線と、閉じた輪郭との「いちばん遠い」交点**。
+ * ★輪郭は原点について星形（どの向きにも縁が1つ）なので、これで必ず縁が取れる。
+ */
+function rayHit(C: { x: number; y: number }[], th: number): { x: number; y: number } | null {
+  const dx = Math.cos(th); const dy = Math.sin(th);
+  let best = -1;
+  for (let i = 0; i < C.length; i++) {
+    const a = C[i]; const b = C[(i + 1) % C.length];
+    const ex = b.x - a.x; const ey = b.y - a.y;
+    const den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = (a.x * ey - a.y * ex) / den;
+    const u = (a.x * dy - a.y * dx) / den;
+    if (t >= 0 && u >= -1e-9 && u <= 1 + 1e-9 && t > best) best = t;
+  }
+  return best < 0 ? null : { x: dx * best, y: dy * best };
+}
+
+/**
+ * ★★★**当たり判定の多角形は「等角に測り直す」**（2026-09-14・第105巡）。
+ *
+ * ★★★**第104巡の「添字で間引いて左右へ折り返す」は重すぎた** ―― 折り返した点は
+ *   元の点と重ならないので**細かい辺が大量に生まれ**、SAT の費用
+ *   （＝**軸の本数 × 頂点数**）が**1段のピルで 16倍**になった。
+ *   **接触の対が一気に増える着地の瞬間**に効いて、フレームが落ちた
+ *   （ユーザー報告「図形が地面にぶつかった時フレームレートが急に低下する」）。
+ *
+ * → **外接箱の中心から `n` 本の光線を等角に飛ばし、交点を頂点にする**
+ *   （`lib/cardShape.ts` と同じ極座標の作法）。
+ *   ★★**`n` が偶数なら左右の対称性は式が保証する** ―― 角 `θ` の相手が必ず
+ *     `π − θ` に居るので、**折り返して倍にする必要が無い**。
+ *     対称なら**重心と外接箱の中心が一致する**（`fromVertices` は重心を
+ *     `body.position` に置き、絵は外接箱の中心に描く。ここがずれると絵と体が食い違う）。
+ *   ★★★**輪郭のいちばん外の点は別に足す** ―― **2段の積みは真ん中がくびれ**なので、
+ *     角 0 の光線は**いちばん広い点を通らない**（実測で幅が 0.93 倍になった）。
+ *     外の点も左右対称な集合なので、足しても対称は崩れない。
+ *
+ * ★実測（費用＝軸×頂点。第103巡 → 第104巡 → いま）… 1段 ar3 で 66 → 288 → **18**、
+ *   2段 ar1.5 で 81 → 280 → **72**、3段 ar1 で 64 → 176 → **50**（6件）。
+ *   ★**第104巡の 2.2〜16.0 倍軽い。**
+ * ★★**体÷絵は6件とも縦横 1.0000、重心のずれは 6件とも 0.0000px**
+ *   （第103巡は絵より 0.98 倍しか無く、重心が最大 1.76px ずれていた）。
+ */
+function radialVerts(C: { x: number; y: number }[], n: number): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  for (let k = 0; k < n; k++) {
+    const q = rayHit(C, (Math.PI * 2 * k) / n);
+    if (q) out.push(q);
+  }
+  const mx = Math.max(...C.map((q) => Math.abs(q.x)));
+  const my = Math.max(...C.map((q) => Math.abs(q.y)));
+  for (const q of C) {
+    if (Math.abs(Math.abs(q.x) - mx) < 1e-6 || Math.abs(Math.abs(q.y) - my) < 1e-6) out.push(q);
+  }
+  // ★★★**必ず角度の順に並べてから渡す**（2026-09-14・第105巡）。
+  //   ★★★**並べ忘れると多角形が自己交差し、SAT が「当たっていない」と答える**
+  //     ―― 実測で、小さい図形1つが**床をすり抜けて落ち続け、衝突の対が 0 のまま**
+  //     だった（矩形の体に替えると 10個全部が眠った）。**ここが今回いちばん怖い罠。**
+  //   ★`Bodies.fromVertices` は凸なら `clockwiseSort`、凹なら凸包を取る ―― どちらも
+  //     並べ直してくれる**はず**だが、**交差した列は「凸」と誤判定され得る**ので、
+  //     **渡す前にこちらで並べる**。
+  // ★★**近すぎる点は捨てる**（当たり判定の費用は**軸の本数 × 頂点数**。同じ所に
+  //   2点あると、辺が1本増えるだけで形は変わらない）。
+  out.sort((a, b) => Math.atan2(a.y, a.x) - Math.atan2(b.y, b.x));
+  const keep: { x: number; y: number }[] = [];
+  for (const q of out) {
+    const last = keep[keep.length - 1];
+    if (!last || Math.hypot(q.x - last.x, q.y - last.y) > VERT_MIN) keep.push(q);
+  }
+  if (keep.length > 2 && Math.hypot(keep[0].x - keep[keep.length - 1].x,
+    keep[0].y - keep[keep.length - 1].y) <= VERT_MIN) keep.pop();
+  return keep.length >= 3 ? keep : out;
 }
 
 const frac = (s: string) => {
@@ -343,8 +393,15 @@ export function isLost(b: Body, bw: number, floorY: number): boolean {
  * @returns 戻したか。
  */
 export function sink(m: M, b: Body, floorY: number): boolean {
+  // ★★★**体まるごとが床より下に居るときだけ**（2026-09-14・第105巡）。
+  //   第104巡は「下の縁が床より 8px 下」で撃っていたが、**それは押し合いの
+  //   ふつうのめり込みでも起きる** ―― 番人が持ち上げる → ソルバが押し戻す、の
+  //   **無限の綱引き**になり、その1つが**永久に眠らない**。すると山全体の眠りが
+  //   解禁されず、**canvas も毎フレーム塗り続ける**（＝着地でフレームが落ちて戻らない）。
+  //   実測 … 7件の山で、小さい図形1つに **毎秒8〜9回・永久に**発火していた。
+  //   ★**少しでも床に掛かっていれば放っておく。** 休んでいる体は必ず掛かっている。
+  if (b.bounds.min.y <= floorY) return false;
   const half = (b.bounds.max.y - b.bounds.min.y) / 2;
-  if (b.position.y + half <= floorY + SUNK_BELOW) return false;
   m.Body.setPosition(b, { x: b.position.x, y: floorY - half });
   m.Body.setVelocity(b, { x: b.velocity.x, y: Math.min(0, b.velocity.y) });
   m.Sleeping.set(b, false);

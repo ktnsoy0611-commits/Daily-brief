@@ -9,6 +9,7 @@ import { WEIGHT } from "@/lib/tokens";
 import { drawWordPlate } from "@/lib/wordPlate";
 import { WORD_WEIGHT } from "@/lib/solidPaint";
 import { zigVerts, type Piece } from "./pileWorld";
+import { drawPillGhost } from "./pillGhost";
 import type { Ghost } from "@/lib/pullDrag";
 
 // ★★★**山の焼き方と描き方**（2026-09-11・第92巡に `Pile.tsx` から分けた）。
@@ -176,16 +177,22 @@ function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLI
  * ★形は `stackOutline(rows, ar, waist)`（タスク）か `traceCardShape`（提案）。
  */
 export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number): void {
+  // ★★★**弾ける前は「帯のピルの写し取り」**（2026-09-14・第105巡）。絵の作り方が
+  //   まるごと違う（版面をなぞる ／ 形を組む）ので、**ファイルごと分けてある**。
+  if (g.phase === "pill") {
+    drawPillGhost(ctx, g);
+    return;
+  }
   const w = Math.max(8, g.w); const h = Math.max(8, g.h);
   ctx.save();
   // ★★★**支点まわりに振って、速さの向きへ伸ばす**（2026-09-14・第103巡にユーザー確定
   //   「指にぶら下がって揺れる」「引く速さで伸び縮みする」）。数は `lib/pullDrag.ts`
   //   の `stepGhost` が作る ―― **ここは順番を守るだけ**。
-  //   ① 支点（＝指）へ行く → ② 振れで回す → ③ 支点から絵の中心へ下りる
+  //   ① 支点（＝指へ**バネで追いつく**点）へ行く → ② 振れで回す → ③ 絵の中心へ下りる
   //   → ④ 速さの向きへ回して伸ばし、戻す。
   //   ★★**伸びの軸と振れの軸は別**なので、④ は③のあと（＝中心まわり）で掛ける。
   //   ★★★**輪郭の作り方は1行も触らない**（`stackOutline` の `waist` の1本のまま）。
-  ctx.translate(g.cx, g.cy);
+  ctx.translate(g.hx, g.hy);
   ctx.rotate(g.angle);
   ctx.translate(g.ax, g.ay);
   // ★★`stretchDir` は**画面の向き**なので、振れのぶんを引いてから掛ける

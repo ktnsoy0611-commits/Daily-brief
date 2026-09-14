@@ -68,6 +68,12 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   //   絵は山の canvas（`pilePaint.drawGhost`）、**決めごとはここ**。
   const boxRef = useRef<HTMLDivElement>(null);
   const [rail, setRail] = useState(false);
+  /**
+   * ★★★**引いているあいだ、山の canvas を帯の上へ上げる**（2026-09-14・第105巡）。
+   * 写し取ったピルは山の canvas に描かれるので、上げないと**下の段のピルの後ろへ
+   * 潜る**。★1ジェスチャに1回しか変わらないので、毎フレームの描き直しにならない。
+   */
+  const [lift, setLift] = useState(false);
   /** 右端の ASSIGN で離したもの（＝カレンダーを開く相手）。 */
   const [assign, setAssign] = useState<{ title: string; accent: string; value?: string;
     put: (iso: string) => void } | null>(null);
@@ -167,6 +173,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     box: boxRef,
     seed,
     rail: setRail,
+    lift: setLift,
     drop: (it, onRail, at) => {
       setRail(false);
       if (!onRail) { put(it, day, at); return; }
@@ -230,7 +237,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
         {/* 山。★器は名前の下の**残り全部**（左右は画面いっぱい）。 */}
         <Pile
           tasks={pileTasks} offers={pileOffers} unread={unread} today={today}
-          journal={journal} onOpen={goTab}
+          journal={journal} onOpen={goTab} above={lift}
           onRail={setRail} onAssign={assignPiece}
         />
         {/* 帯（2段）。★器の左右のパディングの外へ出る（`.bleed-x`）ので、

@@ -85,13 +85,27 @@ const FLOOR_CHECK_MS = 2000;
 /** 「もう止まっている」と見なす速さ。★目盛りの外（物理の場）。 */
 const CALM_V = 0.35;
 const CALM_W = 0.03;
+/** ★絵がこのフレーム数だけ動かなければ「止まった」と見なす。★目盛りの外（物理の場）。 */
+const STILL_FRAMES = 30;
+/** ★これ未満の動きは**塗り直さない**（px）。★実機の倍率 3 で 1デバイス画素より細かい。 */
+const REST_EPS = 0.25;
+/**
+ * ★★★**1フレームでこれ未満しか動かない状態が続いたら、眠りを許す**（px）。
+ * ★★**塗る判定（`REST_EPS`）より緩い** ―― 詰まった山は落ち着いても**永久に微振動する**
+ * ので、厳しくすると**眠りが二度と解禁されず、matter が毎フレーム全部を解き続ける**
+ * （実測 … 7件の山で、落ち着いたあとも 12秒に 160回 塗っていた）。
+ * ★落下中は1フレームで十数 px 動くので、これで飛んでいるものを眠らせることは無い。
+ */
+const SLEEP_EPS = 2;
+/** ★角度を px へ直す目安（この長さの腕の先がどれだけ動くか）。★目盛りの外（絵の寸法）。 */
+const REST_ANG = 120;
 /**
  * ★★★**物理の1歩（ms）と、1フレームに進めてよい上限の歩数**（2026-09-14・第104巡）。
  * ★目盛りの外（物理の場）。**`GravityTab` と同じ 1000/60。**
  * ★★歩数を実時間から決めるので、**60Hz でも 120Hz でも同じ速さで落ちる**。
  */
 const STEP_MS = 1000 / 60;
-const MAX_STEPS = 3;
+const MAX_STEPS = 2;
 
 /**
  * ★★★**書体を頼んでから、締切つきで待つ**（2026-09-13・第101巡）。
@@ -110,7 +124,9 @@ const waitFonts = () => Promise.race([
   new Promise((r) => setTimeout(r, GATE_MS)),
 ]);
 
-export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, onAssign }: {
+export function Pile({
+  tasks, offers, unread, today, journal, onOpen, above, onRail, onAssign,
+}: {
   tasks: Task[];
   offers: Item[];
   unread: number;
@@ -119,6 +135,11 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
   journal: boolean;
   /** ★図形を**軽く押した**ときの行き先。長押しは掴むほうなので走らない。 */
   onOpen: (tab: TabId) => void;
+  /**
+   * ★★**帯の上へ上げるか**（2026-09-14・第105巡）。引き下ろしの写し取ったピルは
+   * この canvas に描かれるので、引いているあいだだけ帯より前へ出す。
+   */
+  above?: boolean;
   /** ★右端の ASSIGN の帯を出すか消すか。 */
   onRail?: (on: boolean) => void;
   /** ★掴んだ図形を右端の ASSIGN の帯で離したとき（日付を付け直す）。 */
@@ -151,6 +172,12 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
   const plateFontRef = useRef(false);
   /** ★★中身を組んだときの床（＝そのとき図形の大きさを決めた高さ）。第103巡。 */
   const builtFloorRef = useRef(0);
+  /**
+   * ★★★**次のフレームで必ず描き直す**（2026-09-14・第105巡）。
+   * 山は**絵が変わらないフレームでは canvas に触らない**ので、**絵は同じでも
+   * 中身が変わったとき**（焼き直し・写真の到着・器の作り直し）はここで頼む。
+   */
+  const dirtyRef = useRef(true);
   /** ★山の一括の倍率（solid 座標 → px）。引き下ろしの行き先の大きさに要る。 */
   const unitRef = useRef(UNIT);
   /** ★指が右の縁の近くに居るか（毎フレームの state を避けて ref で持つ）。 */
@@ -241,6 +268,7 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
         //   ので、変わるのは大きさだけ。★小さな揺れでは撃たない（15% の閾値）。
         const built = builtFloorRef.current;
         if (built > 0 && Math.abs(next - built) > built * 0.15) setSeedGen((n) => n + 1);
+        dirtyRef.current = true;
       };
       buildWalls(sizeRef.current.w, sizeRef.current.h);
 
@@ -269,6 +297,13 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
       /** ★物理へまだ渡していない実時間（`STEP_MS` 単位で消費する）。 */
       let acc = 0;
       let last = performance.now();
+      /** ★**最後に描いたときの**位置と角度（x, y, angle の並び）。 */
+      let drawn: number[] = [];
+      /** ★最後に描いた絵から動いていないフレーム数（＝絵が止まっている長さ）。 */
+      let still = 0;
+      /** ★**前のフレーム**の位置と角度（眠りを許してよいかの判定だけに使う）。 */
+      let prev: number[] = [];
+
 
       /** ★★★**実解像度は毎フレーム照合する**（`GravityTab` と同じ2行）。
        *  倍率も毎回読む ―― 端末の表示設定やウィンドウの移動で変わり得る。 */
@@ -299,8 +334,15 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
         //   matter.js は支えていた物体が転がって居なくなっても眠っている物体を
         //   起こさないので、**宙に浮いたまま固まる**（第90巡に踏んだ形）。
         //   ★床を下げて落ちる距離が伸びたぶん、時間の見積もりはもう当たらない。
+        // ★★★**「動いていない」は絵で判定する**（2026-09-14・第105巡）。速さの条件
+        //   （全員が同時に `CALM_V` を下回る）は、**山が詰まっていると永久に満たされない**
+        //   ―― 実測で**絵は完全に止まっているのに眠りが解禁されず**、matter が毎フレーム
+        //   全部を解き続け、canvas も塗り続けていた。
+        //   → **署名が `STILL_FRAMES` 続けて同じなら「止まった」**（＝画素で止まっている）。
+        //   ★速さの条件は**残す**（早く静かになった日はそちらが先に効く）。
         if (!engine.enableSleeping && rel.settleAt > 0 && now > rel.settleAt
-          && piecesRef.current.every((p) => p.body.speed < CALM_V && p.body.angularSpeed < CALM_W)) {
+          && (still >= STILL_FRAMES
+            || piecesRef.current.every((p) => p.body.speed < CALM_V && p.body.angularSpeed < CALM_W))) {
           engine.enableSleeping = true;
         }
         // ★★★**刻みは固定。ただし歩数は実時間で決める**（2026-09-14・第104巡）。
@@ -361,19 +403,72 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
         }
         if (!ctx) ctx = cv.getContext("2d");
         if (!ctx) { rafRef.current = requestAnimationFrame(loop); return; }
-        const { w, h, dpr } = sync();
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        // ★★回した絵を貼るので、再標本化の質を上げる（`GravityTab` と同じ）。
-        ctx.imageSmoothingQuality = "high";
-        ctx.clearRect(0, 0, w, h);
-        drawPile(ctx, piecesRef.current, dpr, () => { /* 次のフレームで拾う */ });
-        // ★★引き下ろしの幽霊は**山の上**に描く（掴んでいる間だけ在る）。
-        // ★★★**バネはここで回す**（第103巡）。`pointermove` の間隔は端末任せなので、
-        //   指のイベントで1歩ずつ進めると**同じ手つきでも手ざわりが変わる**。
-        //   物理と同じ固定の刻みで回せば `lib/spring.ts` の係数がそのまま効く。
+        // ★★★**絵が変わらないなら canvas に触らない**（2026-09-14・第105巡）。
+        //
+        // ★★★**ユーザー報告「図形が地面にぶつかった時フレームレートが急に低下する」の
+        //   正体はこれ。** 山は**落ち着いたあとも毎フレーム全面を消して描き直して**
+        //   いた ―― 器は 390×844、実機の倍率は 3 なので **1170×2532 ＝ 約300万画素**を
+        //   毎フレーム塗り直して GPU へ送っていた。**落ち切って全部の図形が画面に
+        //   載った時点でその負荷が最大になり、以後ずっと続く**（＝着地で落ちて戻らない）。
+        // ★★★**実測（Chromium・CPU 6倍遅・dpr 3）** … 落下中 p50 113ms ／
+        //   落ち着いたあと p50 120ms ―― **動いていないほうが重い**。
+        //   CPU の profile でも **94.9% が `(program)`（＝ラスタライズと GPU 送り）**で、
+        //   物理も描画の JS も合わせて 5% 未満。**軽くすべきは計算ではなく「塗る回数」。**
+        // → **図形の位置・角度・幽霊の有無で署名を作り、変わったときだけ描く。**
+        //   ★消さなければ canvas は**前の絵を保ったまま**なので、見た目は 1px も変わらない。
+        //   ★★**器の作り直し・焼き直し・写真の到着では必ず描く**（`dirty`）。
+        // ★★★**「前のフレーム」ではなく「最後に描いた絵」と比べる**（第105巡）。
+        //   ★★matter の山は**落ち着いても永久に微振動する**（詰まった物体が押し合う）。
+        //     前のフレームと比べると**毎フレーム違う**ので、いつまでも塗り直してしまう
+        //     ―― 実測で 18秒後と 22秒後の絵は画素まで同一なのに、12秒で 145回 塗っていた。
+        //   ★**最後に描いた絵と比べれば**、±0.2px の揺れは `REST_EPS` の中に収まって
+        //     **一度も塗らない**。ゆっくり流れているものは差が積もるので**ちゃんと塗る**。
+        const now2 = piecesRef.current;
+        let drift = now2.length * 3 === drawn.length ? 0 : Infinity;
+        for (let i = 0; i < now2.length && drift < Infinity; i++) {
+          const b = now2[i].body;
+          drift = Math.max(drift,
+            Math.abs(b.position.x - drawn[i * 3]),
+            Math.abs(b.position.y - drawn[i * 3 + 1]),
+            Math.abs(b.angle - drawn[i * 3 + 2]) * REST_ANG);
+        }
         const g = pullBus.ghost;
-        if (g) { stepGhost(motion, g); drawGhost(ctx, g, dpr); }
+        // ★★引き下ろしの幽霊はバネで動き続けるので、居るあいだは毎フレーム描く。
+        if (g) stepGhost(motion, g);
         else if (motion.had) motion = ghostMotion();   // ★掴み直しは静止から始める
+        // ★★★**眠りの判定は「前のフレームからどれだけ動いたか」で別に測る**（第105巡）。
+        //   塗るかどうかは**最後に描いた絵**との差（`REST_EPS` 0.25px）で見るが、
+        //   **眠りを許すかどうかはそれでは決められない** ―― 塗らないでいると
+        //   `drawn` が古くなり、差はいくらでも積もるから。
+        let step = prev.length === now2.length * 3 ? 0 : Infinity;
+        for (let i = 0; i < now2.length && step < Infinity; i++) {
+          const b = now2[i].body;
+          step = Math.max(step, Math.abs(b.position.x - prev[i * 3]),
+            Math.abs(b.position.y - prev[i * 3 + 1]),
+            Math.abs(b.angle - prev[i * 3 + 2]) * REST_ANG);
+        }
+        still = step < SLEEP_EPS ? still + 1 : 0;
+        prev = [];
+        for (const p of now2) prev.push(p.body.position.x, p.body.position.y, p.body.angle);
+        if (dirtyRef.current || g || drift >= REST_EPS) {
+          drawn = [];
+          for (const p of now2) drawn.push(p.body.position.x, p.body.position.y, p.body.angle);
+          dirtyRef.current = false;
+          const { w, h, dpr } = sync();
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          // ★★回した絵を貼るので、再標本化の質を上げる（`GravityTab` と同じ）。
+          ctx.imageSmoothingQuality = "high";
+          ctx.clearRect(0, 0, w, h);
+          drawPile(ctx, piecesRef.current, dpr, () => { dirtyRef.current = true; });
+          // ★★引き下ろしの幽霊は**山の上**に描く（掴んでいる間だけ在る）。
+          if (g) drawGhost(ctx, g, dpr);
+        } else {
+          // ★絵は描かないが、器が伸び縮みしていたら実解像度だけは合わせておく
+          //   （`sync` は寸法が変わると canvas を作り直す＝中身が消えるので `dirty`）。
+          const before = cv.width;
+          sync();
+          if (cv.width !== before) dirtyRef.current = true;
+        }
         rafRef.current = requestAnimationFrame(loop);
       };
       rafRef.current = requestAnimationFrame(loop);
@@ -452,6 +547,7 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
   //   まま固まり得た）。★板は `lib/solidPaint.ts` の側のキャッシュに居る。
   useEffect(() => onFontsReady(() => {
     clearPileBitmaps(); clearSolidBitmaps();
+    dirtyRef.current = true;   // ★焼き直したので、絵が同じでも描き直す
     // ★★★**板の書体だけは「焼き直し」では足りない。測り直す**（第101巡）。
     //   板の大きさは**実際に組んだ字を測って**決まるので、代替の書体で測った
     //   板に本物を焼くと**箱から溢れる**（Anton は em に対して背が高い）。
@@ -601,7 +697,12 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
     <div
       ref={boxRef}
       data-pile
-      style={{ position: "absolute", inset: 0, touchAction: holding ? "none" : "pan-x" }}
+      style={{
+        position: "absolute", inset: 0, touchAction: holding ? "none" : "pan-x",
+        // ★★★**引いているあいだだけ帯の上へ**（2026-09-14・第105巡）。写し取った
+        //   ピルはこの canvas に描かれるので、上げないと**下の段のピルの後ろへ潜る**。
+        zIndex: above ? 1 : undefined,
+      }}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}

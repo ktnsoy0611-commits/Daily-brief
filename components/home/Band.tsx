@@ -8,8 +8,8 @@ import { type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
-  RAIL_NEAR, SNAP_POP, STEP_POP, pullBus, pullFrame, pullTaut, shownRows,
-  type GhostSeed, type LandingAt, type PullHost,
+  PILL_EDGE, PILL_PRESS, RAIL_NEAR, SNAP_POP, STEP_POP, pullBus, pullFrame, shownRows,
+  type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
 import { haptic } from "@/lib/helpers";
 
@@ -68,34 +68,27 @@ function Pill({ item, row, pull, taken, onTake }: {
   // ★丸の直径 ＝ ピルの高さ − 縁取り2つぶん。
   const dia = h - BAND_BEZEL * 2;
   // ── 引き下ろし（2026-09-14・第102巡） ───────────────────────
-  // ★★★**触る → ゴム → 外れて図形へ**。算数は `lib/pullDrag.ts`、絵は山の canvas。
-  //   ここが持つのは**指の記録**と**掴んだピルを隠すこと**だけ。
+  // ★★★**触る → 輪ゴム → ばちん → 図形へ**。算数は `lib/pullDrag.ts`、
+  //   絵は山の canvas（`components/home/pillGhost.ts` と `pilePaint.ts`）。
+  //   ★★★**ここが持つのは「指の記録」と「写し取る見た目」だけ。**
+  //     曲げも伸びもこのファイルでは一切やらない（第104巡の `scaleY` は消した
+  //     ―― DOM は `.band-row` の `overflow: hidden` の外へ垂れられない）。
   const [pressed, setPressed] = useState(false);
-  /** ★★引いている間、ピルを**直に**伸ばす（毎フレームの state を避ける）。 */
-  const pillRef = useRef<HTMLDivElement>(null);
   const grab = useRef<{
     id: number; sx: number; sy: number; bx: number; by: number;
-    w0: number; h0: number; seed: GhostSeed; armed: boolean; rail: boolean;
+    w0: number; h0: number; seed: GhostSeed; look: PillLook;
+    armed: boolean; rail: boolean; live: boolean;
     /** ★いま何段まで生えているか（増えた瞬間に弾ませる）。 */
     shown: number;
   } | null>(null);
-
-  /** ★伸びを解いて、React が書いた `transform` へ戻す。 */
-  const slack = useCallback(() => {
-    const el = pillRef.current;
-    if (!el) return;
-    el.style.transform = "";
-    el.style.transformOrigin = "";
-    el.style.transition = "";
-  }, []);
 
   const end = useCallback((commit: boolean) => {
     const g = grab.current;
     grab.current = null;
     setPressed(false);
     onTake(null);
-    slack();
     if (!pull) return;
+    if (g?.live) pull.lift(false);
     // ★★★**離した所と勢いを控えてから幽霊を消す**（2026-09-14・第103巡）。
     //   山はこの1つだけ**上からではなくここから**落とすので、手を離した瞬間と
     //   落ち始めのあいだに継ぎ目が無い。★速さは `stepGhost` が書いた値
@@ -106,7 +99,7 @@ function Pill({ item, row, pull, taken, onTake }: {
     pullBus.ghost = null;
     pull.rail(false);
     if (g && commit && g.armed) pull.drop(item, g.rail, at);
-  }, [item, pull, onTake, slack]);
+  }, [item, pull, onTake]);
 
   const onDown = (e: React.PointerEvent) => {
     setPressed(true);
@@ -115,11 +108,26 @@ function Pill({ item, row, pull, taken, onTake }: {
     const box = pull.box.current;
     if (!seed || !box) return;
     const br = box.getBoundingClientRect();
+    // ★★**押下の縮みが当たる前に測る**（`setPressed` の描き直しはこのあと）。
+    //   ＝ここで取れるのは**版面の寸法**で、縮みは写し取る側が同じ数から掛ける。
     const pr = (e.currentTarget as HTMLElement).getBoundingClientRect();
     grab.current = {
       id: e.pointerId, sx: e.clientX - br.left, sy: e.clientY - br.top,
       bx: pr.x + pr.width / 2 - br.left, by: pr.y + pr.height / 2 - br.top,
-      w0: pr.width, h0: pr.height, seed, armed: false, rail: false, shown: 1,
+      w0: pr.width, h0: pr.height, seed,
+      // ★★★**見た目を写し取る**（2026-09-14・第105巡）。**色と余白と書体は
+      //   このピルが描くのに使ったものそのまま** ―― 数を二重に持たない。
+      look: {
+        w: pr.width, h: pr.height, press: PILL_PRESS,
+        face, ink, outlined: outline, ground: groundOf("home"),
+        text: item.text, textSize: head ? TYPE.lead : TYPE.body,
+        genre: head ? item.genre : undefined,
+        // ★★**線のぶんだけ中身が内へ寄る**（`border` は余白の外側に積まれる）。
+        dia, gap: SPACE.md,
+        padL: (outline ? PILL_EDGE : 0) + (photo ? BAND_BEZEL : SPACE.xl),
+        padR: (outline ? PILL_EDGE : 0) + SPACE.xl,
+      },
+      armed: false, rail: false, live: false, shown: 1,
     };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
   };
@@ -130,28 +138,54 @@ function Pill({ item, row, pull, taken, onTake }: {
     const box = pull.box.current;
     if (!box) return;
     const br = box.getBoundingClientRect();
-    const f = pullFrame(
-      e.clientX - br.left, e.clientY - br.top, g.sx, g.sy,
+    const frame = () => pullFrame(
+      e.clientX - br.left, e.clientY - br.top, g.sy,
       g.bx, g.by, g.w0, g.h0, g.seed.w, g.seed.h,
     );
-    // ★★★**弾ける前は「帯のピルそのもの」が縦に伸びる**（2026-09-14・第104巡に
-    //   ユーザー確定「引っ張っている部分が**ゴムが引っ張られているように伸びて**」）。
-    //   ★**上の縁を留めて下へ**伸ばす ―― ピルごと下へ動かすと、ただの移動に見える。
-    //   ★横はわずかに絞る（ゴムは伸びれば細くなる）。
-    const el = pillRef.current;
-    if (el && !f.armed) {
-      const k = pullTaut(e.clientY - br.top - g.sy, g.h0);
-      el.style.transformOrigin = "top";
-      el.style.transition = "none";
-      el.style.transform = `scaleY(${k.toFixed(4)}) scaleX(${(1 - (k - 1) * 0.22).toFixed(4)})`;
+    let f = frame();
+    // ★★★**1px でも下へ引いたら、そこから先は canvas の写し取り**
+    //   （2026-09-14・第105巡にユーザー確定「**触った瞬間に canvas へ写し取る**」）。
+    //   ★**ただのタップでは切り替えない**（ちらつかせない）。
+    //   ★★山の canvas を帯の上へ上げる ―― 上げないと、上の段から引いたピルが
+    //     **下の段のピルの後ろへ潜る**。★1ジェスチャに1回だけ。
+    const live = f.pulled >= 1;
+    if (live !== g.live) {
+      g.live = live;
+      pull.lift(live);
+      // ★★★**写し取る矩形は「写し取る瞬間」に測り直す**（2026-09-14・第105巡）。
+      //   掴んだ瞬間は帯がまだ流れていて（止まるのは段の `onPointerDown` ―― こちらの
+      //   あとに走る）、**測った位置と実際に描かれている位置が 1.2px ずれていた**
+      //   （実測。字の左端が 3 デバイス画素ずれる）。止まったあとに測れば 0 になる。
+      //   ★★**`offsetWidth` は版面の寸法**（押下の縮みが乗らない）。中心は
+      //     `getBoundingClientRect` ―― 中心を原点に縮むので**縮みでは動かない**。
+      if (live) {
+        const el = e.currentTarget as HTMLElement;
+        const pr = el.getBoundingClientRect();
+        // ★★**いま沈んでいる倍率で割り戻す**（`getComputedStyle` の行列から読む）。
+        //   `offsetWidth` は整数へ丸まるので使えない ―― 0.02px 足りないだけで
+        //   題が1文字ぶん切り詰められた。★中心は縮みでは動かない（原点が中心）。
+        const t = getComputedStyle(el).transform;
+        const k = t && t !== "none" ? new DOMMatrixReadOnly(t).a || 1 : 1;
+        g.bx = pr.x + pr.width / 2 - br.left;
+        g.by = pr.y + pr.height / 2 - br.top;
+        g.w0 = pr.width / k; g.h0 = pr.height / k;
+        // ★★★**写真は帯の `<img>` そのものを渡す**（URL を渡して取り直さない）。
+        //   ★★落ちた（`onError` で `display: none`）・まだ届いていないときは出さない
+        //     ―― DOM も出していないので、出すと**実際には無い丸が1つ増えて見える**。
+        const im = el.querySelector("img");
+        g.look = {
+          ...g.look, w: g.w0, h: g.h0, press: k,
+          photo: im && im.style.display !== "none" && im.complete && im.naturalWidth > 0
+            ? im : undefined,
+        };
+        f = frame();               // ★測り直した矩形で組み直す（1フレームずらさない）
+      }
     }
-    // ★★★**ばちん**（弾けた瞬間）… 伸びを解いてピルを消し、幽霊を指へ出し、
-    //   バネへ勢いを1発入れて手ごたえを返す。
-    if (f.armed && !g.armed) { slack(); haptic(12); pullBus.pop = SNAP_POP; }
+    if (live !== taken) onTake(live ? item.id : null);
+    // ★★★**ばちん**（弾けた瞬間）… バネへ勢いを1発入れて手ごたえを返す。
+    if (f.armed && !g.armed) { haptic(12); pullBus.pop = SNAP_POP; }
     if (!f.armed && g.armed) g.shown = 1;
     g.armed = f.armed;
-    // ★★**外れたら元のピルを消す**（幽霊と二重に見えないように）。
-    if (f.armed !== taken) onTake(f.armed ? item.id : null);
     // ★★★**段が1つ増えた瞬間に弾む**（同ユーザー確定「**段が増える瞬間弾んだり**」）。
     const shown = f.armed ? shownRows(f.t, g.seed.rows) : 1;
     if (shown !== g.shown) { if (shown > g.shown) pullBus.pop = STEP_POP; g.shown = shown; }
@@ -159,9 +193,14 @@ function Pill({ item, row, pull, taken, onTake }: {
     //   山のループが `stepGhost` で作る（`lib/pullDrag.ts`）。前のフレームの値を
     //   引き継いで、掴んでいる間の連なりを切らない。
     const was = pullBus.ghost;
-    pullBus.ghost = f.armed ? {
+    pullBus.ghost = live ? {
+      phase: f.armed ? "solid" : "pill",
       kind: g.seed.kind, id: item.id, title: g.seed.title,
       cx: f.cx, cy: f.cy, w: f.w, h: f.h, t: f.t,
+      // ★★**支点は前のフレームから引き継ぐ** ―― 弾けた瞬間、バネはここから
+      //   走り出す（＝**ピルが居た所から指へ**）。引き継がないと左上から飛んでくる。
+      hx: was?.hx ?? f.cx, hy: was?.hy ?? f.cy,
+      bend: f.bend, gx: g.sx - g.bx, look: g.look,
       rows: g.seed.rows, outlined: g.seed.outlined,
       face: g.seed.face, ink: g.seed.ink, faceIdx: g.seed.faceIdx,
       shape: g.seed.shape, photo: g.seed.photo, glyph: g.seed.glyph,
@@ -177,7 +216,6 @@ function Pill({ item, row, pull, taken, onTake }: {
 
   return (
     <div
-      ref={pillRef}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={() => end(true)}
@@ -189,7 +227,8 @@ function Pill({ item, row, pull, taken, onTake }: {
       touchAction: pull ? "none" : undefined,
       // ★★★**触ると少し沈む**（2026-09-14 ユーザー指定「少し柔らかいような感触」）。
       //   `design.md` … **押下だけが非対称**（即座に沈み、ゆっくり戻る）。
-      transform: pressed ? "scale(0.97)" : "scale(1)",
+      // ★★縮みの数は `lib/pullDrag.ts`（写し取る canvas が**同じ数**を読む）。
+      transform: pressed ? `scale(${PILL_PRESS})` : "scale(1)",
       transition: pressed
         ? "transform var(--t-press) var(--ease-press)"
         : "transform var(--t-item) var(--ease-settle)",
@@ -198,7 +237,7 @@ function Pill({ item, row, pull, taken, onTake }: {
       // ★地と同じ色で塗る（透過させない）。★色の持ち主は `groundOf` の1か所。
       background: outline ? groundOf("home") : face,
       // ★輪郭は `Button` の secondary と同じ引き方（押せるものの縁）。
-      border: outline ? `1px solid ${face}` : "none",
+      border: outline ? `${PILL_EDGE}px solid ${face}` : "none",
       // ★丸があるときは、左の余白を縁取りぶんだけにする（丸が余白を持つ）。
       padding: photo ? `0 ${SPACE.xl}px 0 ${BAND_BEZEL}px` : `0 ${SPACE.xl}px`,
       maxWidth: "84vw",

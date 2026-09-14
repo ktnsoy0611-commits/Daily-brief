@@ -8,7 +8,7 @@ import { type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
-  PILL_EDGE, PILL_PRESS, RAIL_NEAR, SNAP_POP, STEP_POP, pullBus, pullFrame, shownRows,
+  PILL_EDGE, PILL_PRESS, RAIL_NEAR, SNAP_POP, pullBus, pullFrame,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
 import { haptic } from "@/lib/helpers";
@@ -78,10 +78,23 @@ function Pill({ item, row, pull, taken, onTake }: {
     id: number; sx: number; sy: number; bx: number; by: number;
     w0: number; h0: number; seed: GhostSeed; look: PillLook;
     armed: boolean; rail: boolean; live: boolean;
-    /** ★いま何段まで生えているか（増えた瞬間に弾ませる）。 */
-    shown: number;
   } | null>(null);
 
+  /**
+   * ★★★**幽霊の後始末はここ1つ。そして「必ず走る」ようにしてある**
+   * （2026-09-15・第106巡。ユーザー報告「**戻したら元のピルが残り続けて増殖する**」）。
+   *
+   * ★★★**`pullBus.ghost` を消し忘れると2つのことが同時に起きる** ――
+   *   ① 山の canvas が**帯の位置にピルを描き続ける**（＝残り続ける「元のピル」）。
+   *   ② `Pile` の塗る条件が `... || g || ...` なので、**約300万画素を 120Hz で
+   *      塗り続ける**（＝フレームレートが落ちたまま戻らない）。
+   * ★★**第105巡までは `onPointerUp`/`onPointerCancel` の1本道しか無かった。**
+   *   だが `onTake` は**捕捉している当の要素へ `visibility: hidden` を当てる**ので、
+   *   WebKit で捕捉が外れると `pointerup` は別の要素へ行く。掴んだまま札が
+   *   消えれば（背後の同期で `rows` が変われば）unmount して誰も呼ばない。
+   *   → **3重にする**（`lostpointercapture` ／ unmount ／ `window` の `pointerup`）。
+   * ★★**二度走っても無害**（`grab.current` を先に奪う）。
+   */
   const end = useCallback((commit: boolean) => {
     const g = grab.current;
     grab.current = null;
@@ -93,13 +106,33 @@ function Pill({ item, row, pull, taken, onTake }: {
     //   山はこの1つだけ**上からではなくここから**落とすので、手を離した瞬間と
     //   落ち始めのあいだに継ぎ目が無い。★速さは `stepGhost` が書いた値
     //   （**山のループが固定の刻みで測ったもの**）。
-    const gh = pullBus.ghost;
+    // ★★**消してよいのは自分の指が出した幽霊だけ**（`owner`）。
+    const gh = pullBus.ghost && g && pullBus.ghost.owner === g.id ? pullBus.ghost : null;
     const at: LandingAt | null = gh
       ? { x: gh.dx, y: gh.dy, vx: gh.vx, vy: gh.vy, angle: gh.angle } : null;
-    pullBus.ghost = null;
+    if (gh) pullBus.ghost = null;
     pull.rail(false);
     if (g && commit && g.armed) pull.drop(item, g.rail, at);
   }, [item, pull, onTake]);
+
+  // ★★★**最後の砦**（2026-09-15・第106巡）。`window` で指が離れたのを拾う ――
+  //   捕捉が外れても、要素が消えても、**指が離れれば必ずここへ来る**。
+  //   ★掴んだときだけ張り、1度で外れる（`once`）。
+  const endRef = useRef(end);
+  endRef.current = end;
+  const guard = useCallback((id: number) => {
+    const off = (e: PointerEvent) => {
+      if (e.pointerId !== id) return;
+      window.removeEventListener("pointerup", off);
+      window.removeEventListener("pointercancel", off);
+      if (grab.current) endRef.current(false);
+    };
+    window.addEventListener("pointerup", off);
+    window.addEventListener("pointercancel", off);
+  }, []);
+
+  // ★★**掴んだまま消えたら片づける**（背後の同期で札が入れ替わると unmount する）。
+  useEffect(() => () => { if (grab.current) endRef.current(false); }, []);
 
   const onDown = (e: React.PointerEvent) => {
     setPressed(true);
@@ -127,9 +160,10 @@ function Pill({ item, row, pull, taken, onTake }: {
         padL: (outline ? PILL_EDGE : 0) + (photo ? BAND_BEZEL : SPACE.xl),
         padR: (outline ? PILL_EDGE : 0) + SPACE.xl,
       },
-      armed: false, rail: false, live: false, shown: 1,
+      armed: false, rail: false, live: false,
     };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    guard(e.pointerId);
   };
 
   const onMove = (e: React.PointerEvent) => {
@@ -139,8 +173,7 @@ function Pill({ item, row, pull, taken, onTake }: {
     if (!box) return;
     const br = box.getBoundingClientRect();
     const frame = () => pullFrame(
-      e.clientX - br.left, e.clientY - br.top, g.sy,
-      g.bx, g.by, g.w0, g.h0, g.seed.w, g.seed.h,
+      e.clientX - br.left, e.clientY - br.top, g.sy, g.bx, g.by,
     );
     let f = frame();
     // ★★★**1px でも下へ引いたら、そこから先は canvas の写し取り**
@@ -184,19 +217,20 @@ function Pill({ item, row, pull, taken, onTake }: {
     if (live !== taken) onTake(live ? item.id : null);
     // ★★★**ばちん**（弾けた瞬間）… バネへ勢いを1発入れて手ごたえを返す。
     if (f.armed && !g.armed) { haptic(12); pullBus.pop = SNAP_POP; }
-    if (!f.armed && g.armed) g.shown = 1;
     g.armed = f.armed;
-    // ★★★**段が1つ増えた瞬間に弾む**（同ユーザー確定「**段が増える瞬間弾んだり**」）。
-    const shown = f.armed ? shownRows(f.t, g.seed.rows) : 1;
-    if (shown !== g.shown) { if (shown > g.shown) pullBus.pop = STEP_POP; g.shown = shown; }
+    // ★★★**段が生えるのは「時間」の仕事**（2026-09-15・第106巡）。ここは
+    //   **行き先（`tTo`）を言うだけ** ―― 進めるのも弾ませるのも `stepGhost`。
     // ★★**指のイベントが書くのは「目標」だけ** ―― 振れ・伸び・支点・速さは
     //   山のループが `stepGhost` で作る（`lib/pullDrag.ts`）。前のフレームの値を
     //   引き継いで、掴んでいる間の連なりを切らない。
     const was = pullBus.ghost;
     pullBus.ghost = live ? {
-      phase: f.armed ? "solid" : "pill",
-      kind: g.seed.kind, id: item.id, title: g.seed.title,
-      cx: f.cx, cy: f.cy, w: f.w, h: f.h, t: f.t,
+      kind: g.seed.kind, id: item.id, owner: g.id, title: g.seed.title,
+      cx: f.cx, cy: f.cy,
+      // ★★変形の両端と行き先。**弾けたら 1 へ向かって時間で進む。**
+      w0: g.w0, h0: g.h0, w1: g.seed.w, h1: g.seed.h,
+      tTo: f.armed ? 1 : 0,
+      w: was?.w ?? g.w0, h: was?.h ?? g.h0, t: was?.t ?? 0,
       // ★★**支点は前のフレームから引き継ぐ** ―― 弾けた瞬間、バネはここから
       //   走り出す（＝**ピルが居た所から指へ**）。引き継がないと左上から飛んでくる。
       hx: was?.hx ?? f.cx, hy: was?.hy ?? f.cy,
@@ -208,7 +242,7 @@ function Pill({ item, row, pull, taken, onTake }: {
       angle: was?.angle ?? 0,
       sx: was?.sx ?? 1, sy: was?.sy ?? 1,
       stretchDir: was?.stretchDir ?? Math.PI / 2, vx: was?.vx ?? 0, vy: was?.vy ?? 0,
-      shown, pop: was?.pop ?? 0,
+      shown: was?.shown ?? 1, pop: was?.pop ?? 0,
     } : null;
     const near = f.armed && e.clientX > window.innerWidth - RAIL_NEAR;
     if (near !== g.rail) { g.rail = near; pull.rail(near); }
@@ -220,6 +254,7 @@ function Pill({ item, row, pull, taken, onTake }: {
       onPointerMove={onMove}
       onPointerUp={() => end(true)}
       onPointerCancel={() => end(false)}
+      onLostPointerCapture={() => { if (grab.current) end(false); }}
       style={{
       display: "flex", alignItems: "center", gap: SPACE.md, flexShrink: 0,
       height: h, borderRadius: RADIUS.pill,
@@ -233,7 +268,12 @@ function Pill({ item, row, pull, taken, onTake }: {
         ? "transform var(--t-press) var(--ease-press)"
         : "transform var(--t-item) var(--ease-settle)",
       // ★外れたら元のピルは消す（幽霊が山の canvas に居る）。
-      visibility: taken ? "hidden" : undefined,
+      // ★★★**`visibility` ではなく `opacity` で消す**（2026-09-15・第106巡）。
+      //   `visibility: hidden` は**当たり判定から外れる**ので、WebKit では
+      //   **捕捉している当の要素を消した瞬間に捕捉が外れ得る** ―― そうなると
+      //   `pointerup` が別の要素へ行き、後始末が走らずに**幽霊が残る**。
+      //   `opacity: 0` は当たり判定も捕捉もそのままで、見た目だけ消える。
+      opacity: taken ? 0 : 1,
       // ★地と同じ色で塗る（透過させない）。★色の持ち主は `groundOf` の1か所。
       background: outline ? groundOf("home") : face,
       // ★輪郭は `Button` の secondary と同じ引き方（押せるものの縁）。

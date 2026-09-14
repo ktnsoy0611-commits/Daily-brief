@@ -13,8 +13,10 @@ import {
 import { floorYOf } from "@/lib/pileBox";
 import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
-import { clearPileBitmaps, drawGhost, drawPile } from "./pilePaint";
-import { RAIL_NEAR, ghostMotion, pullBus, stepGhost } from "@/lib/pullDrag";
+import { clearPileBitmaps, drawBoxOf, drawGhost, drawPile } from "./pilePaint";
+import {
+  RAIL_NEAR, ghostMotion, pullBus, stepGhost, type Ghost, type PillLook,
+} from "@/lib/pullDrag";
 
 import type { Body, Engine } from "matter-js";
 import type { Item, TabId, Task } from "@/lib/types";
@@ -107,6 +109,38 @@ const REST_ANG = 120;
 const STEP_MS = 1000 / 60;
 const MAX_STEPS = 2;
 
+/** ★幽霊の箱の余白（振れ・伸び・弾みのぶん）。★目盛りの外（絵の寸法）。 */
+const GHOST_PAD = 24;
+
+/** ★★接触を解く回数（matter の既定は 6）。★目盛りの外（物理の場）。 */
+const POS_ITER = 10;
+
+/**
+ * ★★★**帯へ戻すときの幽霊を作る**（2026-09-15・第106巡）。
+ *
+ * ★★★**引き出しの幽霊とまったく同じ形**で、`t` の向きだけが逆
+ *   （引き出し … 0 → 1 ／ 戻す … 1 → 0）。**語彙を1つも増やさない。**
+ * ★`w0/h0` ＝ 帯でのピル、`w1/h1` ＝ 山での図形。`t` が2つを混ぜる。
+ */
+function homeGhost(p: Piece, look: PillLook, owner: number): Ghost {
+  const x = p.body.position.x; const y = p.body.position.y;
+  const d = p.r ? p.r * 2 : 0;
+  return {
+    home: true, owner, kind: p.kind === "offer" ? "offer" : "task",
+    id: p.id, title: p.title ?? "",
+    cx: x, cy: y, hx: x, hy: y, w: p.w ?? d, h: p.h ?? d,
+    t: 1, tTo: 0,
+    w0: look.w, h0: look.h, w1: p.w ?? d, h1: p.h ?? d,
+    bend: 0, gx: 0, look,
+    rows: clampRows(rowsOf(p.title ?? "")), outlined: !!p.outlined,
+    face: p.face, ink: p.ink, faceIdx: p.face_ ?? 0,
+    shape: p.shape, photo: p.photo, glyph: p.glyph,
+    ax: 0, ay: 0, dx: x, dy: y, angle: p.body.angle,
+    sx: 1, sy: 1, stretchDir: Math.PI / 2, vx: 0, vy: 0,
+    shown: clampRows(rowsOf(p.title ?? "")), pop: 0,
+  };
+}
+
 /**
  * ★★★**書体を頼んでから、締切つきで待つ**（2026-09-13・第101巡）。
  *
@@ -126,6 +160,7 @@ const waitFonts = () => Promise.race([
 
 export function Pile({
   tasks, offers, unread, today, journal, onOpen, above, onRail, onAssign,
+  bandBottom, pillOf, onUnassign,
 }: {
   tasks: Task[];
   offers: Item[];
@@ -144,6 +179,15 @@ export function Pile({
   onRail?: (on: boolean) => void;
   /** ★掴んだ図形を右端の ASSIGN の帯で離したとき（日付を付け直す）。 */
   onAssign?: (piece: Piece) => void;
+  /**
+   * ★★★**帯の下端**（器の座標）。ここより上へ運べば「帯へ戻す」（2026-09-15・第106巡）。
+   * ★帯そのものの高さは `components/tabs/HomeTab.tsx` が測る（山は帯を知らない）。
+   */
+  bandBottom?: () => number;
+  /** ★その図形が帯へ戻ったときのピルの顔（`HomeTab` が帯の規則から組み立てる）。 */
+  pillOf?: (piece: Piece) => PillLook | null;
+  /** ★掴んだ図形を帯の上で離したとき（**日付を消して帯へ戻す**）。 */
+  onUnassign?: (piece: Piece) => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -184,6 +228,8 @@ export function Pile({
   const railRef = useRef(false);
   const [holding, setHolding] = useState(false);
   const dragRef = useRef<{ piece: Piece; x: number; y: number } | null>(null);
+  /** ★いま帯の上に居るか（出入りの瞬間だけ動く）。 */
+  const homeRef = useRef(false);
 
   // ── 器を測る（★observer はこの1つだけ） ──────────────────────
   useEffect(() => {
@@ -241,6 +287,13 @@ export function Pile({
       //   **宙に浮いたまま固まる**。落とし終えてから眠りを許す（`settleAt`）。
       const engine = M.Engine.create({ enableSleeping: false });
       engine.gravity.y = GRAVITY_Y;
+      // ★★★**押し戻しの回数を上げる**（2026-09-15・第106巡。ユーザー報告
+      //   「**図形同士がぶつかる時にがくがく震える**」）。
+      //   ★★既定は 6 回。厚さ `WALL_T`(200) の床の上で、重い文字の板を含む山が
+      //     押し合うと**収束しきらず、落ち着いたあとも微振動が残る** ―― だから
+      //     `still` が `STILL_FRAMES` に届かず、**眠りにも入らず塗り続ける**。
+      //   ★体は多くても14個なので、回数を上げても費用はごくわずか。
+      engine.positionIterations = POS_ITER;
       engineRef.current = engine;
 
       let walls: Body[] = [];
@@ -292,17 +345,25 @@ export function Pile({
       let ctx = cv.getContext("2d");
       /** ★次に床を見に行く時刻（`FLOOR_CHECK_MS` ごと）。 */
       let floorAt = performance.now() + FLOOR_CHECK_MS;
+      /** ★最後に描いた図形の箱（4つ×n）。**消し残しを防ぐために前の箱も消す**。 */
+      let drawnBox: number[] = [];
+      /** ★最後に描いた幽霊の箱。居なくなった1フレームだけ消しに使う。 */
+      let ghostBox: [number, number, number, number] | null = null;
+      /** ★最後に描いた幽霊の姿（dx, dy, angle, w, sx, pop）。塗り直すかの判定に使う。 */
+      let gDrawn: number[] | null = null;
+      /** ★写真が届いたときの合図。**毎フレーム作らない**（第106巡）。 */
+      const onPhoto = () => { dirtyRef.current = true; };
       /** ★引き下ろしの幽霊のバネ（幽霊が消えたら捨てる）。 */
       let motion = ghostMotion();
       /** ★物理へまだ渡していない実時間（`STEP_MS` 単位で消費する）。 */
       let acc = 0;
       let last = performance.now();
       /** ★**最後に描いたときの**位置と角度（x, y, angle の並び）。 */
-      let drawn: number[] = [];
+      const drawn: number[] = [];
       /** ★最後に描いた絵から動いていないフレーム数（＝絵が止まっている長さ）。 */
       let still = 0;
       /** ★**前のフレーム**の位置と角度（眠りを許してよいかの判定だけに使う）。 */
-      let prev: number[] = [];
+      const prev: number[] = [];
 
 
       /** ★★★**実解像度は毎フレーム照合する**（`GravityTab` と同じ2行）。
@@ -363,7 +424,22 @@ export function Pile({
         //     何百歩ぶんを一気に走らせない ―― 走らせると山が吹き飛ぶ）。
         acc = Math.min(acc + (now - last), STEP_MS * MAX_STEPS);
         last = now;
-        while (acc >= STEP_MS) { M.Engine.update(engine, STEP_MS); acc -= STEP_MS; }
+        // ★★★**幽霊のバネと変形も、物理とまったく同じ固定の刻みで進める**
+        //   （2026-09-15・第106巡）。★★第105巡までは**1フレームに1回**呼んで
+        //   いたので、**120Hz の実機ではバネも変形も2倍速**だった（同じ手つきでも
+        //   端末によって手ざわりが違う）。ここへ入れれば、60Hz でも 120Hz でも同じ。
+        const gh = pullBus.ghost;
+        // ★★**帯へ戻す幽霊は、掴んでいる体そのものに付いて動く**（指のバネは
+        //   体がすでに持っているので、二重に掛けない）。
+        if (gh?.home) {
+          const b = dragRef.current?.piece.body;
+          if (b) { gh.cx = b.position.x; gh.cy = b.position.y; gh.angle = b.angle; }
+        }
+        while (acc >= STEP_MS) {
+          M.Engine.update(engine, STEP_MS);
+          if (gh) stepGhost(motion, gh);
+          acc -= STEP_MS;
+        }
         // ★★★**床が動いていないか、ときどき見に行く**（第103巡。上の `FLOOR_CHECK_MS`）。
         //   器の寸法が変わらなくても床は動くので、`ResizeObserver` だけでは足りない。
         if (now > floorAt) {
@@ -432,10 +508,20 @@ export function Pile({
             Math.abs(b.position.y - drawn[i * 3 + 1]),
             Math.abs(b.angle - drawn[i * 3 + 2]) * REST_ANG);
         }
-        const g = pullBus.ghost;
-        // ★★引き下ろしの幽霊はバネで動き続けるので、居るあいだは毎フレーム描く。
-        if (g) stepGhost(motion, g);
-        else if (motion.had) motion = ghostMotion();   // ★掴み直しは静止から始める
+        const g = gh;
+        // ★★★**幽霊が「動いたとき」だけ塗る**（2026-09-15・第106巡）。
+        //   ★★第105巡までは「幽霊が居れば毎フレーム全面」だったので、引いている
+        //     あいだじゅう 120Hz で約300万画素を塗っていた。**刻みが進まなかった
+        //     フレームは絵も変わらない**ので、塗る必要が無い。
+        if (!g && motion.had) motion = ghostMotion();   // ★掴み直しは静止から始める
+        const gMoved = g
+          ? !gDrawn || Math.abs(g.dx - gDrawn[0]) >= REST_EPS
+            || Math.abs(g.dy - gDrawn[1]) >= REST_EPS
+            || Math.abs(g.angle - gDrawn[2]) * REST_ANG >= REST_EPS
+            || Math.abs(g.w - gDrawn[3]) >= REST_EPS
+            || Math.abs(g.sx - gDrawn[4]) * REST_ANG >= REST_EPS
+            || Math.abs(g.pop - gDrawn[5]) * REST_ANG >= REST_EPS
+          : !!gDrawn;
         // ★★★**眠りの判定は「前のフレームからどれだけ動いたか」で別に測る**（第105巡）。
         //   塗るかどうかは**最後に描いた絵**との差（`REST_EPS` 0.25px）で見るが、
         //   **眠りを許すかどうかはそれでは決められない** ―― 塗らないでいると
@@ -448,20 +534,116 @@ export function Pile({
             Math.abs(b.angle - prev[i * 3 + 2]) * REST_ANG);
         }
         still = step < SLEEP_EPS ? still + 1 : 0;
-        prev = [];
-        for (const p of now2) prev.push(p.body.position.x, p.body.position.y, p.body.angle);
-        if (dirtyRef.current || g || drift >= REST_EPS) {
-          drawn = [];
-          for (const p of now2) drawn.push(p.body.position.x, p.body.position.y, p.body.angle);
+        // ★★**配列は使い回す**（2026-09-15・第106巡）。120Hz では「毎フレーム
+        //   新しい配列を作って 3n 回 push する」だけで無視できない量になる。
+        prev.length = now2.length * 3;
+        for (let i = 0; i < now2.length; i++) {
+          const b = now2[i].body;
+          prev[i * 3] = b.position.x; prev[i * 3 + 1] = b.position.y; prev[i * 3 + 2] = b.angle;
+        }
+        if (dirtyRef.current || gMoved || drift >= REST_EPS) {
+          // ★★★**塗るのは「変わった矩形」だけ**（2026-09-15・第106巡）。
+          //   ★★これまでは**1つでも動けば約300万画素を全部**消して描き直していた
+          //     ―― 実測で、落下の3秒は**毎回きっかり画面の 100%**、3秒で 35M画素。
+          //     落ち着いたあとに1つだけ転がっているときも全面だった。
+          //   ★★**「いま居る所」と「最後に描いた所」の両方**を足す ―― 片方だけだと
+          //     動いたあとに**前の絵が消え残る**。
+          //   ★`dirtyRef`（器の作り直し・焼き直し・写真の到着）と**数が変わったとき**
+          //     だけ全面。★幽霊が居るあいだも、幽霊の箱を足すだけで済む。
+          const full = dirtyRef.current || now2.length * 4 !== drawnBox.length;
+          let bx0 = Infinity; let by0 = Infinity; let bx1 = -Infinity; let by1 = -Infinity;
+          // ★★★**箱は1つにまとめず、1つずつ持つ**（2026-09-15・第106巡）。
+          //   落下中は**画面じゅうに散らばって全部が動く**ので、外接箱を1つに
+          //   まとめると結局ほぼ全面になる。**散らばった小さい箱の合計**なら、
+          //   同じ動きでも塗る画素はずっと少ない。★まとめた箱は「どの図形を
+          //   描くか」の粗い判定にだけ使う。
+          const boxes: number[] = [];
+          const add = (x0: number, y0: number, x1: number, y1: number) => {
+            if (x0 < bx0) bx0 = x0; if (y0 < by0) by0 = y0;
+            if (x1 > bx1) bx1 = x1; if (y1 > by1) by1 = y1;
+            boxes.push(x0, y0, x1, y1);
+          };
+          const nextBox: number[] = [];
+          for (let i = 0; i < now2.length; i++) {
+            const p = now2[i];
+            const nb = drawBoxOf(p);
+            nextBox.push(nb.x0, nb.y0, nb.x1, nb.y1);
+            if (full) continue;
+            const b = p.body;
+            const moved = Math.abs(b.position.x - drawn[i * 3]) >= REST_EPS
+              || Math.abs(b.position.y - drawn[i * 3 + 1]) >= REST_EPS
+              || Math.abs(b.angle - drawn[i * 3 + 2]) * REST_ANG >= REST_EPS;
+            if (!moved) continue;
+            const ox0 = drawnBox[i * 4]; const oy0 = drawnBox[i * 4 + 1];
+            const ox1 = drawnBox[i * 4 + 2]; const oy1 = drawnBox[i * 4 + 3];
+            // ★★**前の箱と重なっていれば1つに畳む**（ゆっくり動くものは毎フレーム
+            //   ほとんど重なるので、畳まないと同じ画素を2度消すことになる）。
+            if (ox0 < nb.x1 && ox1 > nb.x0 && oy0 < nb.y1 && oy1 > nb.y0) {
+              add(Math.min(nb.x0, ox0), Math.min(nb.y0, oy0),
+                Math.max(nb.x1, ox1), Math.max(nb.y1, oy1));
+            } else {
+              add(nb.x0, nb.y0, nb.x1, nb.y1);
+              add(ox0, oy0, ox1, oy1);
+            }
+          }
+          // ★★幽霊は振れも伸びも弾みもするので、**中心から外接円で広めに**取る
+          //   （数え落とすと軌跡が残る）。★前のフレームの箱も足す。
+          if (g) {
+            const gr = Math.hypot(Math.max(g.w, g.h), Math.max(g.w, g.h)) * 0.9 + GHOST_PAD;
+            add(g.dx - gr, g.dy - gr, g.dx + gr, g.dy + gr);
+            if (ghostBox) add(ghostBox[0], ghostBox[1], ghostBox[2], ghostBox[3]);
+            ghostBox = [g.dx - gr, g.dy - gr, g.dx + gr, g.dy + gr];
+            gDrawn = [g.dx, g.dy, g.angle, g.w, g.sx, g.pop];
+          } else if (ghostBox) {
+            add(ghostBox[0], ghostBox[1], ghostBox[2], ghostBox[3]);
+            ghostBox = null;
+            gDrawn = null;
+          }
+          drawn.length = now2.length * 3;
+          for (let i = 0; i < now2.length; i++) {
+            const b = now2[i].body;
+            drawn[i * 3] = b.position.x; drawn[i * 3 + 1] = b.position.y; drawn[i * 3 + 2] = b.angle;
+          }
+          drawnBox = nextBox;
           dirtyRef.current = false;
           const { w, h, dpr } = sync();
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
           // ★★回した絵を貼るので、再標本化の質を上げる（`GravityTab` と同じ）。
           ctx.imageSmoothingQuality = "high";
-          ctx.clearRect(0, 0, w, h);
-          drawPile(ctx, piecesRef.current, dpr, () => { dirtyRef.current = true; });
-          // ★★引き下ろしの幽霊は**山の上**に描く（掴んでいる間だけ在る）。
-          if (g) drawGhost(ctx, g, dpr);
+          const hide = g?.home ? g.id : null;   // ★逆再生の間は本体を描かない
+          if (full || bx1 <= bx0 || by1 <= by0) {
+            ctx.clearRect(0, 0, w, h);
+            drawPile(ctx, now2, dpr, onPhoto, null, hide);
+            if (g) drawGhost(ctx, g, dpr);
+          } else {
+            const box = {
+              x0: Math.max(0, Math.floor(bx0)), y0: Math.max(0, Math.floor(by0)),
+              x1: Math.min(w, Math.ceil(bx1)), y1: Math.min(h, Math.ceil(by1)),
+            };
+            ctx.save();
+            ctx.beginPath();
+            for (let i = 0; i < boxes.length; i += 4) {
+              const x0 = Math.max(0, Math.floor(boxes[i]));
+              const y0 = Math.max(0, Math.floor(boxes[i + 1]));
+              const x1 = Math.min(w, Math.ceil(boxes[i + 2]));
+              const y1 = Math.min(h, Math.ceil(boxes[i + 3]));
+              if (x1 <= x0 || y1 <= y0) continue;
+              ctx.rect(x0, y0, x1 - x0, y1 - y0);
+            }
+            ctx.clip();
+            for (let i = 0; i < boxes.length; i += 4) {
+              const x0 = Math.max(0, Math.floor(boxes[i]));
+              const y0 = Math.max(0, Math.floor(boxes[i + 1]));
+              const x1 = Math.min(w, Math.ceil(boxes[i + 2]));
+              const y1 = Math.min(h, Math.ceil(boxes[i + 3]));
+              if (x1 <= x0 || y1 <= y0) continue;
+              ctx.clearRect(x0, y0, x1 - x0, y1 - y0);
+            }
+            drawPile(ctx, now2, dpr, onPhoto, box, hide);
+            // ★★引き下ろしの幽霊は**山の上**に描く（掴んでいる間だけ在る）。
+            if (g) drawGhost(ctx, g, dpr);
+            ctx.restore();
+          }
         } else {
           // ★絵は描かないが、器が伸び縮みしていたら実解像度だけは合わせておく
           //   （`sync` は寸法が変わると canvas を作り直す＝中身が消えるので `dirty`）。
@@ -666,6 +848,25 @@ export function Pile({
     const r = box.getBoundingClientRect();
     dragRef.current.x = e.clientX - r.left;
     dragRef.current.y = e.clientY - r.top;
+    // ★★★**帯まで運んだら、引き出しの逆再生が始まる**（2026-09-15・第106巡に
+    //   ユーザー指定「**間違えて落としたピルをもう一度掴んで上の段に入れると戻る**」）。
+    //   ★★**`tTo` を 0 にするだけ** ―― 段が 3→2→1 と畳まれ、寸法がピルへ縮む。
+    //     帯から出せば `tTo` が 1 へ戻り、また膨らむ（**往復できる**）。
+    //   ★1ジェスチャの中で何度でも出入りするので、**幽霊は作り直さず行き先だけ**変える。
+    //   ★★**届く範囲は右端の ASSIGN と同じ `RAIL_NEAR`** ―― 帯は1段だと 44px しか
+    //     無く、指の真下に図形の中心が在るので、帯そのものへ入れるのは難しい。
+    //     **縁から 72px で反応する**という決まりを両方の縁で1つにする。
+    const bandY = bandBottom?.() ?? 0;
+    const inBand = bandY > 0 && dragRef.current.y < bandY + RAIL_NEAR;
+    if (inBand !== homeRef.current) {
+      homeRef.current = inBand;
+      if (inBand) {
+        const look = pillOf?.(dragRef.current.piece);
+        if (look) pullBus.ghost = homeGhost(dragRef.current.piece, look, e.pointerId);
+      }
+      const gh = pullBus.ghost;
+      if (gh && gh.home) gh.tTo = inBand ? 0 : 1;
+    }
   };
 
   // ★★★**口とブラックホールは置かない**（2026-09-09 ユーザー指定で削除）。
@@ -681,6 +882,16 @@ export function Pile({
     const dragged = dragRef.current;
     dragRef.current = null;
     setHolding(false);
+    // ★★**帯へ戻す幽霊は、指を離したら必ず消える**（`Band` と同じ約束）。
+    if (pullBus.ghost?.home) pullBus.ghost = null;
+    // ★★★**帯の上で離した＝日付を消して帯へ戻す**（2026-09-15・第106巡）。
+    //   ★幽霊はここで消す ―― 次のフレームには帯に本物のピルが並ぶ。
+    const wasHome = homeRef.current;
+    homeRef.current = false;
+    if (wasHome) {
+      pullBus.ghost = null;
+      if (dragged) { haptic(10); onUnassign?.(dragged.piece); return; }
+    }
     if (railRef.current) {
       railRef.current = false;
       onRail?.(false);

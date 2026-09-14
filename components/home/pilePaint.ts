@@ -179,7 +179,7 @@ function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLI
 export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number): void {
   // ★★★**弾ける前は「帯のピルの写し取り」**（2026-09-14・第105巡）。絵の作り方が
   //   まるごと違う（版面をなぞる ／ 形を組む）ので、**ファイルごと分けてある**。
-  if (g.phase === "pill") {
+  if (g.t <= 0 && g.look) {
     drawPillGhost(ctx, g);
     return;
   }
@@ -261,11 +261,48 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
   ctx.restore();
 }
 
-/** 山を1フレームぶん描く。★`ctx` は**呼ぶ側が `setTransform(dpr,…)` 済み**。 */
+/** 塗る矩形（器の座標）。★`null` は「全面」。 */
+export interface Box { x0: number; y0: number; x1: number; y1: number }
+
+/**
+ * ★★★**その図形が塗りうる範囲**（2026-09-15・第106巡）。
+ *
+ * ★★**回るので、外接円で押さえる**（`hypot(w,h)/2`）―― 角度ごとに正しい箱を
+ *   出そうとすると、**焼き箱の余白・カセットの突起・板のにじみ**を全部数える
+ *   ことになり、**1つ数え落とすとそこだけ塗り残る**。円なら一発で安全。
+ * ★`PAINT_PAD` は焼き箱の余白と線の太さのぶん。★目盛りの外（絵の寸法）。
+ */
+const PAINT_PAD = 4;
+
+export function drawBoxOf(p: Piece): Box {
+  const { x, y } = p.body.position;
+  let r: number;
+  if (p.r) r = p.r;
+  else if (p.w && p.h) r = Math.hypot(p.w, p.h) / 2;
+  else {
+    const b = p.body.bounds;
+    r = Math.hypot(b.max.x - b.min.x, b.max.y - b.min.y) / 2;
+  }
+  // ★★カセットだけは**突起が本体の外へ出る**ので、焼き箱と同じだけ広げる。
+  if (p.kind === "cassette" && p.h) r += p.h * CASSETTE_TAB_H_PER_H;
+  r += PAINT_PAD;
+  return { x0: x - r, y0: y - r, x1: x + r, y1: y + r };
+}
+
+export const boxHits = (a: Box, b: Box): boolean =>
+  a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+
+/**
+ * 山を1フレームぶん描く。★`ctx` は**呼ぶ側が `setTransform(dpr,…)` 済み**。
+ * ★★`clip` を渡すと、**その矩形に掛からない図形は飛ばす**（第106巡）。
+ */
 export function drawPile(
   ctx: CanvasRenderingContext2D, pieces: Piece[], dpr: number, onPhoto: () => void,
+  clip?: Box | null, skip?: string | null,
 ) {
   for (const p of pieces) {
+    if (skip && p.id === skip) continue;
+    if (clip && !boxHits(clip, drawBoxOf(p))) continue;
     const b = p.body;
     ctx.save();
     ctx.translate(b.position.x, b.position.y);

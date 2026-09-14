@@ -487,8 +487,20 @@ export const NAV_H = `calc(77px + ${NAV_BOTTOM_GAP})`;
  * 潜った)。★`--nav-h` は `[data-app-shell]` に立っているので、そこから読む
  * (`document.documentElement` は祖先なので常に空になる)。
  */
-export function navHeightPx(): number {
-  if (typeof window === "undefined") return 96;
+/**
+ * ★★★**測った値を憶える**（2026-09-15・第106巡）。
+ *
+ * ★★★**この関数は `document.body` に要素を足して矩形を読むので、呼ぶたびに
+ *   「全文書のレイアウトを強制」する。** それを `components/home/Pile.tsx` の
+ *   `requestAnimationFrame` のループが**2秒に1度**呼んでいたので、**2秒に1度
+ *   必ず1フレーム飛んでいた**（実機の「がくがく」の一因）。
+ * ★★**変わるのは端末が向きを変えたときと安全域が動いたときだけ**なので、
+ *   その合図でだけ測り直せばよい。★合図は1度だけ張る（呼び手は5か所ある）。
+ */
+let navPx = 0;
+let navWatching = false;
+
+function measureNav(): number {
   const shell = document.querySelector("[data-app-shell]") ?? document.documentElement;
   const v = getComputedStyle(shell).getPropertyValue("--nav-h").trim();
   if (!v) return 96;
@@ -498,6 +510,19 @@ export function navHeightPx(): number {
   const px = probe.getBoundingClientRect().height;
   probe.remove();
   return px || 96;
+}
+
+export function navHeightPx(): number {
+  if (typeof window === "undefined") return 96;
+  if (!navWatching) {
+    navWatching = true;
+    const stale = () => { navPx = 0; };
+    window.addEventListener("resize", stale);
+    window.addEventListener("orientationchange", stale);
+    window.visualViewport?.addEventListener("resize", stale);
+  }
+  if (!navPx) navPx = measureNav();
+  return navPx;
 }
 
 export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";

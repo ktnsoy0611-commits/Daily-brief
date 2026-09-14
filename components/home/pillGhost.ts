@@ -18,6 +18,11 @@ import { BEND_TOP, PILL_EDGE, bendAt, type Ghost, type PillLook } from "@/lib/pu
 // ★★★**曲げ方は `bendAt` の1本だけ**（`lib/pullDrag.ts`）。輪郭も題も写真の丸も
 //   **同じ式**で沈むので、**中身が形の外へはみ出すことが原理的に起こらない**。
 
+/** 字間（`TRACK` は em の文字列）。★対応していない環境では素の字間で描く。 */
+const track = (ctx: CanvasRenderingContext2D, v: string) => {
+  if ("letterSpacing" in ctx) (ctx as { letterSpacing: string }).letterSpacing = v;
+};
+
 /** 端の丸を何本の線分で描くか。★目盛りの外（絵の刻み）。 */
 const CAP_STEPS = 16;
 /** 上下の直線を何本の線分で割るか。★曲げるので直線のままでは折れない。 */
@@ -29,6 +34,34 @@ const EDGE_STEPS = 24;
  */
 const weightAt = (y: number, h: number): number =>
   BEND_TOP + (1 - BEND_TOP) * (y / h + 0.5);
+
+/**
+ * ★★★**帯に無いピルの幅を出す**（2026-09-15・第106巡）。
+ * 山の図形を**帯へ戻す**ときは、写し取る元の DOM がまだ無いので**組み立てる**。
+ * ★★**内訳は `drawPillGhost` が描くのとまったく同じ順**（余白・丸・隙間・題）
+ *   ―― ここを別に書くと、戻ったピルだけ幅が合わない。
+ * ★上限は帯のピルと同じ `84vw`（`components/home/Band.tsx` の `maxWidth`）。
+ */
+export function pillWidth(L: Omit<PillLook, "w">, screenW: number): number {
+  const cv = document.createElement("canvas");
+  const ctx = cv.getContext("2d");
+  let text = 0;
+  if (ctx) {
+    ctx.font = canvasFont(WEIGHT.bold, L.textSize, SANS);
+    track(ctx, TRACK.normal);
+    text = ctx.measureText(L.text).width;
+    if (L.genre) {
+      ctx.font = canvasFont(WEIGHT.bold, TYPE.nano, SANS);
+      track(ctx, TRACK.wide);
+      text = Math.max(text, ctx.measureText(L.genre).width);
+    }
+  }
+  const w = L.padL + (L.photo ? L.dia + L.gap : 0) + Math.ceil(text) + L.padR;
+  return Math.min(w, screenW * PILL_MAX_VW);
+}
+
+/** ★帯のピルの幅の上限（`Band` の `maxWidth: "84vw"` と同じ数）。★目盛りの外（絵の寸法）。 */
+const PILL_MAX_VW = 0.84;
 
 /** ピルの輪郭を、垂れたぶんだけ下げながらなぞる（原点＝ピルの中心）。 */
 function tracePill(
@@ -60,11 +93,6 @@ function tracePill(
   pts.forEach((q, i) => { if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y); });
   ctx.closePath();
 }
-
-/** 字間（`TRACK` は em の文字列）。★対応していない環境では素の字間で描く。 */
-const track = (ctx: CanvasRenderingContext2D, v: string) => {
-  if ("letterSpacing" in ctx) (ctx as { letterSpacing: string }).letterSpacing = v;
-};
 
 /**
  * ★★★**写し取ったピルを1枚描く**（`ctx` は呼ぶ側が `setTransform(dpr,…)` 済み）。

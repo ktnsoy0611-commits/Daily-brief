@@ -1,6 +1,8 @@
 import type { RefObject } from "react";
 import type { CardShape } from "./cardShape";
+import { BAND_H } from "./constants";
 import type { BandItem } from "./homeBand";
+import { T_ITEM, ms } from "./motion";
 import { D_CATCH, D_SWING, K_CATCH, K_SWING, rubber, spring, springTo, type Spring } from "./spring";
 
 // ★★★**帯のピルを引き下ろす手つきの「算数」はここ1つ**（2026-09-14・第102巡）。
@@ -59,16 +61,16 @@ export interface PillLook {
 
 /** 引き下ろしの1つの「幽霊」（＝指に付いてくる、まだ物体でないもの）。 */
 export interface Ghost {
-  /**
-   * ★★★**いまどちらの姿か**（2026-09-14・第105巡）。
-   * `pill` … **帯のピルの写し取り**。両端は帯に残り、掴んだ一点だけが垂れる。
-   * `solid` … 弾けたあと。山での図形（ピルの積み／札の形）。
-   */
-  phase: "pill" | "solid";
   /** 何になるか。タスクは**ピルの積み**、提案は**札の形**へ変わる。 */
   kind: "task" | "offer";
   /** 帯のピルの id（`lib/homeBand.ts` の `BandItem.id` そのまま）。 */
   id: string;
+  /**
+   * ★★★**この幽霊を出している指**（`pointerId`）。2026-09-15・第106巡。
+   * ★★**片づけるのは自分の指のときだけ** ―― 2本目の指が別の札に触れて離すと、
+   *   まだ引いている1本目の幽霊を消してしまう。
+   */
+  owner: number;
   title: string;
   /** ★**指そのもの**（器の座標）。`solid` のあいだ、支点はここへ**バネで**追いつく。 */
   cx: number; cy: number;
@@ -76,14 +78,26 @@ export interface Ghost {
   w: number; h: number;
   /** ★★**支点**（＝実際に絵が吊られている点）。`pill` のあいだは**ピルの中心**。 */
   hx: number; hy: number;
-  /** ★`pill` のあいだ … 掴んだ点が垂れている量（px）。 */
+  /**
+   * ★`t === 0` のあいだ … 掴んだ点が垂れている量（px）。
+   * ★★★**どちらの姿で描くかは `t` が決める**（2026-09-15・第106巡に `phase` を廃止）
+   *   ―― `t === 0` ならピル、そうでなければ図形。**2つ持つと必ず食い違う。**
+   */
   bend: number;
-  /** ★`pill` のあいだ … 掴んだ x（ピルの中心から見た相対）。 */
+  /** ★ピルのあいだ … 掴んだ x（ピルの中心から見た相対）。 */
   gx: number;
-  /** ★`pill` のあいだ … 写し取った見た目。 */
+  /** ★ピルの顔（帯から写し取ったもの／帯へ戻すときは組み立てたもの）。 */
   look?: PillLook;
-  /** 0〜1。0 ＝ ピルのまま／1 ＝ 山での形。 */
+  /**
+   * 0〜1。0 ＝ ピルのまま／1 ＝ 山での形。
+   * ★★★**指の距離ではなく時間で進む**（2026-09-15・第106巡）。`stepGhost` が
+   *   `tTo` へ向かって `MORPH_STEPS` かけて動かす。**帯は書かない。**
+   */
   t: number;
+  /** ★行き先（1 ＝ 図形へ／0 ＝ ピルへ戻る）。**帯へ戻すときは 0 を入れる。** */
+  tTo: number;
+  /** ★変形の両端の寸法（`t` がこの2つを混ぜる）。 */
+  w0: number; h0: number; w1: number; h1: number;
   /** タスクの段の数（`rowsOf`）。 */
   rows: number;
   /** 日付が無い＝輪郭だけ（帯の下の段と同じ見え方）。 */
@@ -121,6 +135,13 @@ export interface Ghost {
   shown: number;
   /** ★弾み（0 を中心に行き過ぎて戻る。描く側は `1 + pop` を全体に掛ける）。 */
   pop: number;
+  /**
+   * ★★★**山から帯へ戻している最中**（2026-09-15・第106巡にユーザー指定
+   * 「**間違えて落としたピルをもう一度掴んで上の段に入れると戻る**」）。
+   * ★★**引き出しの逆再生**なので、`tTo` を 0 にするだけで形は畳まれる。
+   *   ここが真のときは**ピルの姿でも指に付いて動く**（帯に留まらない）。
+   */
+  home?: boolean;
 }
 
 /**
@@ -172,12 +193,30 @@ export const pullBus: PullBus = { ghost: null, unit: 64, landing: null, pop: 0 }
 // ★★★**最初の抵抗が強すぎた**（同指摘）―― 第103巡は **56px を指の 42%** しか
 //   動かさなかったので、**引き始めが死んでいた**。**24px を 75%** へ。
 
-/** ここまではゴム。**ここを越えると弾ける**距離（px）。★目盛りの外（手ざわり）。 */
-export const PULL_ARM = 24;
+/**
+ * ここまではゴム。**ここを越えると弾ける**距離（px）。
+ * ★★★**ピル1つぶんの高さ**（2026-09-15・第106巡にユーザー確定。ユーザー指摘
+ *   「**引っ張られている瞬間が短すぎてあんまり感じられない**」）。
+ *   24 → **44**。**「ピル1つぶん引いたら離れる」と式で言える**ので生の数字にしない。
+ * ★垂れの上限は `PULL_ARM × PULL_GIVE × PULL_RESIST` ＝ **52.8px**（第105巡は 28.8）。
+ *   **ピルの高さより深く垂れる**ので、ゴムが伸びているのがはっきり見える。
+ * ★目盛りの外（手ざわり）。
+ */
+export const PULL_ARM = BAND_H.plain;
 /** ゴムの間、指の何割だけ動くか。★目盛りの外（手ざわり）。 */
 export const PULL_RESIST = 0.75;
-/** 弾けてから、**段が全部生えるまで**に要る距離（px）。★目盛りの外（手ざわり）。 */
-export const MORPH_SPAN = 90;
+/**
+ * ★★★**弾けてから図形になりきるまでの時間**（2026-09-15・第106巡にユーザー確定）。
+ *
+ * ユーザー指摘「**段の形になるのが距離によって変わってるのは不自然。離れたら
+ * ぽこぽこって感じで、時間でアニメーションするようにしてもいい**」。
+ * ★★★**第105巡までは `MORPH_SPAN`(90px) ＝ 指の距離**だった。**削除した。復活させない。**
+ * ★`lib/motion.ts` の `T_ITEM`(0.42s) をそのまま使う ―― **弾けたあとは「時間」の
+ *   話になる**ので、ここだけは曲線4本・時間の4分割の側に戻る。
+ * ★3段なら **0 / 140 / 280ms** で「ぽこ・ぽこ・ぽこ」。
+ * ★★**進めるのは山のループの固定の刻み**なので、歩数で持つ（60Hz でも 120Hz でも同じ）。
+ */
+export const MORPH_STEPS = Math.round(ms(T_ITEM) / (1000 / 60));
 /** ゴムの伸びしろ（`PULL_ARM` の何倍まで）。★目盛りの外（手ざわり）。 */
 export const PULL_GIVE = 1.6;
 /**
@@ -233,9 +272,7 @@ const smooth = (t: number): number => {
 };
 
 export interface PullFrame {
-  /** 変形の進み 0〜1。 */ t: number;
   /** 器の座標での中心（`armed` なら指、まだなら**ピルの中心のまま**）。 */ cx: number; cy: number;
-  /** いまの寸法。 */ w: number; h: number;
   /** ゴムを抜けて指に付いているか（＝離したら日付が付く段階か）。 */ armed: boolean;
   /** 下へ引いた量（px）。★**1px でも引いたら写し取りに切り替える**。 */ pulled: number;
   /** ★`armed` の前 … 掴んだ点が垂れている量（px）。 */ bend: number;
@@ -247,8 +284,6 @@ export interface PullFrame {
  * @param fx,fy   いまの指（器の座標）
  * @param sy      掴んだ瞬間の指の y（器の座標）
  * @param bx,by   掴んだピルの中心（器の座標）
- * @param w0,h0   掴んだピルの寸法
- * @param w1,h1   山での寸法（`specOf` × `unit`）
  *
  * ★★★**弾ける前はピルは1px も動かない**（2026-09-14・第105巡にユーザー確定
  *   「**両端は帯に残る**」）。動くのは**掴んだ一点の垂れ**（`bend`）だけで、
@@ -258,13 +293,11 @@ export interface PullFrame {
  *   「変わりながら吸い付く」が1つの数から出る。
  */
 export function pullFrame(
-  fx: number, fy: number, sy: number,
-  bx: number, by: number, w0: number, h0: number, w1: number, h1: number,
+  fx: number, fy: number, sy: number, bx: number, by: number,
 ): PullFrame {
   const dy = fy - sy;
   // ★下へ引いたぶんだけを見る（上へ戻せば 0 に近づく）。
   const pulled = Math.max(0, dy);
-  const t = smooth((pulled - PULL_ARM) / MORPH_SPAN);
   // ★★**垂れる量は `rubber`**（閾値で傾き 1 ＝ 継ぎ目が無い）。上限は
   //   `PULL_ARM × PULL_GIVE × PULL_RESIST` ＝ 28.8px で、**式から出る**
   //   （生の上限を別に置かない）。★横へ引いたぶんは見ない ―― 輪ゴムは
@@ -272,7 +305,6 @@ export function pullFrame(
   const give = rubber(pulled / PULL_ARM, PULL_GIVE) * PULL_ARM * PULL_RESIST;
   const armed = pulled > PULL_ARM;
   return {
-    t,
     // ★★★**弾けたら目標は指そのもの**（2026-09-14・第104巡にユーザー確定
     //   「**ばちんという感じで弾けて指に吸い付く**」）。★第105巡から、ここへ
     //   **飛ばずにバネで追いつく**（`stepGhost` の `catchX`/`catchY`）。
@@ -281,8 +313,6 @@ export function pullFrame(
     //   引き出し**に見える。動くのは**掴んだ一点だけ**（`bend`）。
     cx: armed ? fx : bx,
     cy: armed ? fy : by,
-    w: w0 + (w1 - w0) * t,
-    h: h0 + (h1 - h0) * t,
     armed,
     pulled,
     bend: give,
@@ -330,6 +360,8 @@ export interface GhostMotion {
   dir: number;
   /** ★★**弾み**（「ばちん」と「段が増えた」で勢いを入れ、0 へ戻る）。 */
   pop: Spring;
+  /** ★★いま何段まで生えているか（増えた瞬間だけ弾ませるため憶えておく）。 */
+  shown: number;
   /**
    * ★★★**追いつき**（2026-09-14・第105巡）。弾けた所から**指へ寄っていく支点**。
    * ★★**弾けた瞬間に「弾ける前の支点」で種を蒔く**（`caught`）―― 種を蒔かないと
@@ -340,7 +372,7 @@ export interface GhostMotion {
 
 export const ghostMotion = (): GhostMotion => ({
   px: 0, py: 0, had: false, swing: spring(), pull: spring(), dir: Math.PI / 2,
-  pop: spring(), catchX: spring(), catchY: spring(), caught: false,
+  pop: spring(), catchX: spring(), catchY: spring(), caught: false, shown: 1,
 });
 
 /** −1〜1 へ滑らかに丸める（頭打ちで角が立たない）。 */
@@ -364,10 +396,46 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   const vy = mo.had ? g.cy - mo.py : 0;
   mo.px = g.cx; mo.py = g.cy; mo.had = true;
 
-  // ★★★**弾ける前は帯のピルの写し取り**（2026-09-14・第105巡にユーザー確定
+  // ★★★**変形は「時間」で進む**（2026-09-15・第106巡にユーザー確定）。
+  //   ★★**指の距離では進めない** ―― 第105巡までは `MORPH_SPAN`(90px) で、
+  //     「どこまで引いたか」で段の数が変わっていた（ユーザー「**不自然**」）。
+  //   ★★**`tTo` を 0 にすればそのまま逆再生**になる（帯へ戻すときに使う）。
+  //   ★この関数は**山のループの固定の刻み**（`STEP_MS`）で呼ばれるので、
+  //     60Hz でも 120Hz でも同じ速さで変形する。
+  const d = 1 / MORPH_STEPS;
+  g.t = g.tTo > g.t ? Math.min(g.tTo, g.t + d) : Math.max(g.tTo, g.t - d);
+  // ★両端で傾き 0 の曲線を通す（＝着いたところで静かに止まる）。
+  const morph = smooth(g.t);
+  g.w = g.w0 + (g.w1 - g.w0) * morph;
+  g.h = g.h0 + (g.h1 - g.h0) * morph;
+  // ★★★**段は「ぽこ」と1つずつ生える**（増えた瞬間だけ弾む）。
+  //   ★減るとき（帯へ戻すとき）は弾ませない ―― 畳むのは静かなほうが正しい。
+  const shown = shownRows(morph, g.rows);
+  if (shown !== mo.shown) {
+    if (shown > mo.shown) pullBus.pop = STEP_POP;
+    mo.shown = shown;
+  }
+  g.shown = shown;
+
+  // ★★★**帯へ戻すときは、掴んでいる体がもう指に付いている**（2026-09-15・第106巡）。
+  //   ★★だから振れも伸びも追いつきのバネも掛けない ―― **二重に掛けると、絵だけが
+  //     体から離れて泳ぐ**。ここでするのは「形を畳む」ことと「起き上がる」ことだけ。
+  //   ★★**角度は `t` に連れて 0 へ**（帯のピルは真っ直ぐ立っている）。転がっていた
+  //     図形が**ピルに戻りながら向きを正す**ので、吸い込まれるように見える。
+  if (g.home) {
+    g.angle *= morph;
+    g.ax = 0; g.ay = 0; g.dx = g.cx; g.dy = g.cy;
+    g.sx = 1; g.sy = 1; g.vx = 0; g.vy = 0;
+    if (pullBus.pop !== 0) pullBus.pop = 0;
+    g.pop = 0;
+    return;
+  }
+
+  // ★★★**ピルの姿のあいだは帯の写し取り**（2026-09-14・第105巡にユーザー確定
   //   「**両端は帯に残る**」）。ピルは動かず、**掴んだ一点だけが垂れる**ので、
   //   振れも伸び縮みもぶら下がりも**まだ起きない**。★支点はピルの中心そのもの。
-  if (g.phase === "pill") {
+  //   ★★**帯へ戻すときはここへ来ない**（指に付いて運ばれている最中なので）。
+  if (g.t <= 0 && !g.home) {
     mo.caught = false;
     g.hx = g.cx; g.hy = g.cy;
     g.ax = 0; g.ay = 0; g.dx = g.cx; g.dy = g.cy;

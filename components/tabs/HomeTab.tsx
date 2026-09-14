@@ -6,16 +6,23 @@ import { AssignRail } from "@/components/home/AssignRail";
 import { AssignSheet } from "@/components/home/AssignSheet";
 import { Band } from "@/components/home/Band";
 import { Pile } from "@/components/home/Pile";
+import { pillWidth } from "@/components/home/pillGhost";
 import { fitUnit, offerRadiusOf, type Piece } from "@/components/home/pileWorld";
+import { groundOf } from "@/components/AppBackdrop";
 import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
-import { KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
+import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { bandRows, unreadCards, type BandItem } from "@/lib/homeBand";
+import { genreOfKind } from "@/lib/deckStyle";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
-import { pullBus, type GhostSeed, type LandingAt, type PullHost } from "@/lib/pullDrag";
+import {
+  PILL_EDGE, pullBus,
+  type GhostSeed, type LandingAt, type PillLook, type PullHost,
+} from "@/lib/pullDrag";
 import { clampRows } from "@/lib/solid";
 import { rowsOf, specOf } from "@/lib/taskSize";
+import { SPACE, TYPE } from "@/lib/tokens";
 import type { AppState, Item, Task, TabProps } from "@/lib/types";
 
 // ★★★**ホーム**（2026-09-07）。起動して最初に見る画面で、3アプリの**玄関**。
@@ -187,6 +194,62 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     },
   }), [seed, put, day]);
 
+  /**
+   * ★★★**山の図形を帯へ戻すときのピルの顔**（2026-09-15・第106巡にユーザー指定
+   * 「**間違えて落としたピルをもう一度掴んで上の段に入れると戻る**」）。
+   *
+   * ★★**帯の規則をそのまま読む** ―― 段（`BAND_ROW`）・塗りか輪郭か（`isOutlined`）・
+   *   字の大きさ・余白は `components/home/Band.tsx` と同じトークンから引く。
+   *   **幅だけは実測**（`pillWidth`。帯にまだ無いピルなので写し取る元が無い）。
+   */
+  const pillOf = useCallback((p: Piece): PillLook | null => {
+    if (p.kind !== "task" && p.kind !== "offer") return null;   // ★板・カセット・未読は戻せない
+    const item = p.kind === "offer"
+      ? (appState.items ?? []).find((x) => x.id === p.id) : undefined;
+    const head = p.kind === "offer";
+    const face = head ? p.face : TASK_FACE;
+    // ★★戻った先は**日付の無いもの**なので、下の段＝輪郭／上の段＝塗り。
+    const outlined = !head;
+    const base = {
+      h: head ? BAND_H.photo : BAND_H.plain, press: 1,
+      face, ink: outlined ? face : bodyInkOn(face),
+      outlined, ground: groundOf("home"),
+      text: p.title ?? "", textSize: head ? TYPE.lead : TYPE.body,
+      genre: head && item ? genreOfKind(item.kind) : undefined,
+      photo: undefined, dia: BAND_H.photo - BAND_BEZEL * 2, gap: SPACE.md,
+      padL: (outlined ? PILL_EDGE : 0) + SPACE.xl,
+      padR: (outlined ? PILL_EDGE : 0) + SPACE.xl,
+    };
+    return { ...base, w: pillWidth(base, window.innerWidth) };
+  }, [appState.items]);
+
+  /** ★帯の下端（器の座標）。★**山は帯を知らない**ので、ここで測って渡す。 */
+  const bandRef = useRef<HTMLDivElement>(null);
+  const bandBottom = useCallback(() => {
+    const band = bandRef.current?.getBoundingClientRect();
+    const box = boxRef.current?.getBoundingClientRect();
+    return band && box ? band.bottom - box.top : 0;
+  }, []);
+
+  /**
+   * ★★★**帯の上で離した＝日付を消して帯へ戻す**（同ユーザー指定）。
+   * ★★**規則は1本だけ** … タスクは `dueDate` を、提案は `plannedFor` を消す。
+   *   声の候補やフォローアップから生まれたタスクも**ただの「日付なしタスク」**に
+   *   戻る（元の候補には戻さない ―― 戻す先がもう無いし、**帯の下の段に出るので
+   *   結果は同じ**）。
+   */
+  const unassign = useCallback((p: Piece) => {
+    const next: AppState = structuredClone(appState);
+    const t = next.tasks.find((x) => x.id === p.id);
+    if (t) { delete t.dueDate; delete t.endDate; }
+    const i = (next.items ?? []).find((x) => x.id === p.id);
+    if (i) delete i.plannedFor;
+    if (!t && !i) return;
+    haptic(12);
+    persist(next);
+    showToast("帯へ戻しました");
+  }, [appState, persist, showToast]);
+
   /** ★山の図形を右端で離したとき（日付を**付け直す**。ユーザー確定）。 */
   const assignPiece = useCallback((p: Piece) => {
     setRail(false);
@@ -239,11 +302,13 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
           tasks={pileTasks} offers={pileOffers} unread={unread} today={today}
           journal={journal} onOpen={goTab} above={lift}
           onRail={setRail} onAssign={assignPiece}
+          bandBottom={bandBottom} pillOf={pillOf} onUnassign={unassign}
         />
         {/* 帯（2段）。★器の左右のパディングの外へ出る（`.bleed-x`）ので、
             左右とも画面の外へ切れる ＝「まだ続きがある」を形で言う。
             ★触れるのはピルだけ（`pointerEvents`）―― 帯の余白で山の操作を殺さない。 */}
-        <div style={{ position: "absolute", left: 0, right: 0, top: 0, pointerEvents: "none" }}>
+        <div ref={bandRef}
+          style={{ position: "absolute", left: 0, right: 0, top: 0, pointerEvents: "none" }}>
           <Band rows={rows} pull={pull} />
         </div>
         {/* ★右端の ASSIGN の帯。掴んでいるあいだ、右の縁に近づくと出る。

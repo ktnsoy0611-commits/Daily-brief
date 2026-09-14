@@ -194,6 +194,10 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
   ctx.rotate(sd);
   ctx.scale(g.sx, g.sy);
   ctx.rotate(-sd);
+  // ★★★**弾み**（2026-09-14・第104巡）… 「ばちん」と「段が増えた」の瞬間に
+  //   `lib/pullDrag.ts` のバネへ入れた勢いが、ここで**全体の大きさ**に出る。
+  //   ★行き過ぎるバネなので、**膨らんでから縮んで戻る**。
+  if (g.pop !== 0) ctx.scale(1 + g.pop, 1 + g.pop);
   if (g.kind === "offer") {
     // ★提案は**札の形**へ。器は正方形（`lib/cardShape.ts` の約束）。
     const d = Math.max(w, h);
@@ -210,9 +214,15 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
     ctx.restore();
     return;
   }
-  // ★★タスクは**ピルの積み**。`t` が「くびれの深さ」をそのまま送る。
+  // ★★★**タスクは「段が1つずつ生える」**（2026-09-14・第104巡にユーザー確定
+  //   「**段が増える瞬間弾んだり**」）。第103巡は `waist` で**滑らかにくびれさせて**
+  //   いたが、それが「**普通すぎる**」の正体だった。**いま生えている段の数
+  //   （`g.shown`）でそのまま描く** ―― 形の語彙は `stackOutline` の1本のまま。
+  //   ★★`waist` は**残す**（`halfWidthAtStack` を文字の折り返しが読む）。
+  //     使い方だけ「連続」から「離散」へ変えた。
   ensureGlyphs(g.faceIdx, g.title);
-  const outline = stackOutline(g.rows, w / h, g.t);
+  const rows = Math.max(1, Math.min(g.rows, Math.round(g.shown)));
+  const outline = stackOutline(rows, w / h);
   const trace = (sw: number, sh: number) => {
     ctx.beginPath();
     outline.forEach((q, i) => {
@@ -231,8 +241,8 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
     ctx.stroke();
   }
   const fit = layoutInRows(
-    g.title, g.faceIdx, g.rows, w, h,
-    (y) => halfWidthAtStack(g.rows, w / h, y, g.t), h / g.rows,
+    g.title, g.faceIdx, rows, w, h,
+    (y) => halfWidthAtStack(rows, w / h, y), h / rows,
   );
   if (fit) {
     ctx.save();

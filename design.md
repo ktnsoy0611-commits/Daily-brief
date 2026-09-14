@@ -624,15 +624,15 @@ grep -rn 'px \${SPACE.hair}px' components app --include=*.tsx
 
 | 種類 | 具体例 |
 |---|---|
-| **matter.js の力と場** | 初速・`frictionAir`・アトラクタの係数・`TAP_MOVE`(8px)。★山の器の番人 … `WALL_MIN_H`(1200) / `LOST_BELOW`(80) / `LOST_SIDE`(120) / `THROW_MAX`(18) / `FLOOR_CHECK_MS`(2000) |
+| **matter.js の力と場** | 初速・`frictionAir`・アトラクタの係数・`TAP_MOVE`(8px)。★山の器の番人 … `WALL_MIN_H`(1200) / `SUNK_BELOW`(8) / `LOST_BELOW`(900) / `LOST_SIDE`(120) / `THROW_MAX`(18) / `FLOOR_CHECK_MS`(2000)。★★**刻みと歩数** … `STEP_MS`(1000/60) / `MAX_STEPS`(3)（第104巡。**`requestAnimationFrame` ごとに1歩だと 120Hz の実機で物理が2倍速になる**） |
 | **ALIGN / TIMELINE の寸法** | `ALIGN_MAX_W/H`・`PITCH_TIGHT/SPREAD`・`ARC_APEX_X`・`ARC_SWING`・`ROW_H`。★互いに縛り合っている（`H × 0.75 ≤ PITCH` を割ると図形が重なる）ので**一つだけ動かせない** |
 | **canvas の描画座標** | `SolidCanvas` / `GeoType` / `lib/solidPaint.ts` / `lib/paperTexture.ts` / `lib/spring.ts` のバネ係数（**3組 … 運ぶ・吸い付く・揺れる**。増やさない） |
 | **図形そのものの寸法** | 綴じ穴の直径・装飾図形の `-height/2`（縦の中央合わせ）・アイコン内部の `gap`・✕印の2本の線の交点 |
 | **グリフの焼き段と線の太さ** | `lib/textFit.ts` の `BUCKETS`(32/64/96/144/192)、輪郭線の `EDGE`(1)、リールの芯の比（`lib/reelHub.ts` の `HUB`）。★**画素の刻み**なので、4の倍数へ丸めると字が拡大されるか線が太る |
 | **表示専用の巨大欧文** | `SWISS_XL`(72)／ホームの上限 `PILE_WORD_MAX`(72)／その行間 `0.86`／**焼く箱の余り `PLATE_BLEED`(0.16)**（★**生の px で持たない** ―― 大きい字ほど効かなくなり、書体を替えた巡に必ず切れる）／**段の中の字の取り分 `ROW_FILL`(0.62) と左右の倍率 `ROW_SIDE`(2)**（`lib/textFit.ts`。ベゼルはここから四方へ回る） |
-| **引き下ろしの手ざわり** | `PULL_ARM`(56) / `PULL_RESIST`(0.42) / `MORPH_SPAN`(160) / `PULL_GIVE`(1.6) / `RAIL_NEAR`(72) / **`HANG_T`(0.6)・`SWING_MAX`(0.38)・`STRETCH_MAX`(0.22)**（`lib/pullDrag.ts`）。★★**進みは時間ではなく指が引いた距離**なので、曲線4本・時間の4分割は使えない（あれは時間の語彙）。ゴムの式は `rubber()`（`lib/spring.ts`。**GravityTab の TIMELINE と同じ1本**）。★★ぶら下がりと伸び縮みは **`K_SWING`/`D_SWING`**（周期 ≒ 30フレーム・減衰比 ≒ 0.3。`K_TRAVEL` では**減衰が強すぎて揺れて見えない** ―― 実測で行き過ぎが 3%）|
+| **引き下ろしの手ざわり** | `PULL_ARM`(24) / `PULL_RESIST`(0.75) / `MORPH_SPAN`(90) / `PULL_GIVE`(1.6) / `RAIL_NEAR`(72) / **`PULL_TAUT`(0.6)・`SNAP_POP`(0.10)・`STEP_POP`(0.055)**（第104巡の「ゴム → ばちん → 段が弾む」）/ `HANG_T`(0.6)・`SWING_MAX`(0.38)・`STRETCH_MAX`(0.22)（`lib/pullDrag.ts`）。★★**進みは時間ではなく指が引いた距離**なので、曲線4本・時間の4分割は使えない（あれは時間の語彙）。ゴムの式は `rubber()`（`lib/spring.ts`。**GravityTab の TIMELINE と同じ1本**）。★★ぶら下がりと伸び縮みは **`K_SWING`/`D_SWING`**（周期 ≒ 30フレーム・減衰比 ≒ 0.3。`K_TRAVEL` では**減衰が強すぎて揺れて見えない** ―― 実測で行き過ぎが 3%）|
 | **ピル ⇄ 図形の変形** | `stackOutline(rows, ar, waist)` の `waist`（0〜1。`lib/solid.ts`）。★**段の半幅を1段と n 段で lerp するだけ**なので点の数が変わらず、再標本化が要らない |
-| **物理の当たり判定** | **絵より外へ出す量 `PHYS_GAP`(1px)**（`lib/solid.ts`。文字の板は `PLATE_PAD`／`PLATE_PAD_Y` も 1）／間引く頂点の数 `PHYS_VERTS`(12) |
+| **物理の当たり判定** | **絵より外へ出す量 `PHYS_GAP`(1px)**（`lib/solid.ts`。文字の板は `PLATE_PAD`／`PLATE_PAD_Y` も 1）／間引く頂点の数 `PHYS_VERTS`(20)。★★**上下左右の極値は必ず残す ＋ 左右へ折り返してから凸包**（第104巡。添字の等間隔だけだと**ピルのいちばん幅の広い点が落ちて**体が絵より 2% 細くなり、重心が箱の中心から 2.7% ずれた） |
 | **端末が決める値** | `env(safe-area-inset-*)` を含む式（`TAB_PAD_TOP` / `NAV_BOTTOM_GAP` / `NAV_H` / `NAV_OFFSET`） |
 | **外部APIの引数** | Leaflet の `fitBounds({ padding: [40,40] })` |
 | **マスク** | `#000` は「色」ではなく「不透明」の意味 |

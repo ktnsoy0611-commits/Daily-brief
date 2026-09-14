@@ -8,9 +8,10 @@ import { type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
-  RAIL_NEAR, pullBus, pullFrame,
+  RAIL_NEAR, SNAP_POP, STEP_POP, pullBus, pullFrame, pullTaut, shownRows,
   type GhostSeed, type LandingAt, type PullHost,
 } from "@/lib/pullDrag";
+import { haptic } from "@/lib/helpers";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
 //
@@ -70,16 +71,30 @@ function Pill({ item, row, pull, taken, onTake }: {
   // ★★★**触る → ゴム → 外れて図形へ**。算数は `lib/pullDrag.ts`、絵は山の canvas。
   //   ここが持つのは**指の記録**と**掴んだピルを隠すこと**だけ。
   const [pressed, setPressed] = useState(false);
+  /** ★★引いている間、ピルを**直に**伸ばす（毎フレームの state を避ける）。 */
+  const pillRef = useRef<HTMLDivElement>(null);
   const grab = useRef<{
     id: number; sx: number; sy: number; bx: number; by: number;
     w0: number; h0: number; seed: GhostSeed; armed: boolean; rail: boolean;
+    /** ★いま何段まで生えているか（増えた瞬間に弾ませる）。 */
+    shown: number;
   } | null>(null);
+
+  /** ★伸びを解いて、React が書いた `transform` へ戻す。 */
+  const slack = useCallback(() => {
+    const el = pillRef.current;
+    if (!el) return;
+    el.style.transform = "";
+    el.style.transformOrigin = "";
+    el.style.transition = "";
+  }, []);
 
   const end = useCallback((commit: boolean) => {
     const g = grab.current;
     grab.current = null;
     setPressed(false);
     onTake(null);
+    slack();
     if (!pull) return;
     // ★★★**離した所と勢いを控えてから幽霊を消す**（2026-09-14・第103巡）。
     //   山はこの1つだけ**上からではなくここから**落とすので、手を離した瞬間と
@@ -91,7 +106,7 @@ function Pill({ item, row, pull, taken, onTake }: {
     pullBus.ghost = null;
     pull.rail(false);
     if (g && commit && g.armed) pull.drop(item, g.rail, at);
-  }, [item, pull, onTake]);
+  }, [item, pull, onTake, slack]);
 
   const onDown = (e: React.PointerEvent) => {
     setPressed(true);
@@ -104,7 +119,7 @@ function Pill({ item, row, pull, taken, onTake }: {
     grab.current = {
       id: e.pointerId, sx: e.clientX - br.left, sy: e.clientY - br.top,
       bx: pr.x + pr.width / 2 - br.left, by: pr.y + pr.height / 2 - br.top,
-      w0: pr.width, h0: pr.height, seed, armed: false, rail: false,
+      w0: pr.width, h0: pr.height, seed, armed: false, rail: false, shown: 1,
     };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
   };
@@ -119,9 +134,27 @@ function Pill({ item, row, pull, taken, onTake }: {
       e.clientX - br.left, e.clientY - br.top, g.sx, g.sy,
       g.bx, g.by, g.w0, g.h0, g.seed.w, g.seed.h,
     );
+    // ★★★**弾ける前は「帯のピルそのもの」が縦に伸びる**（2026-09-14・第104巡に
+    //   ユーザー確定「引っ張っている部分が**ゴムが引っ張られているように伸びて**」）。
+    //   ★**上の縁を留めて下へ**伸ばす ―― ピルごと下へ動かすと、ただの移動に見える。
+    //   ★横はわずかに絞る（ゴムは伸びれば細くなる）。
+    const el = pillRef.current;
+    if (el && !f.armed) {
+      const k = pullTaut(e.clientY - br.top - g.sy, g.h0);
+      el.style.transformOrigin = "top";
+      el.style.transition = "none";
+      el.style.transform = `scaleY(${k.toFixed(4)}) scaleX(${(1 - (k - 1) * 0.22).toFixed(4)})`;
+    }
+    // ★★★**ばちん**（弾けた瞬間）… 伸びを解いてピルを消し、幽霊を指へ出し、
+    //   バネへ勢いを1発入れて手ごたえを返す。
+    if (f.armed && !g.armed) { slack(); haptic(12); pullBus.pop = SNAP_POP; }
+    if (!f.armed && g.armed) g.shown = 1;
     g.armed = f.armed;
     // ★★**外れたら元のピルを消す**（幽霊と二重に見えないように）。
     if (f.armed !== taken) onTake(f.armed ? item.id : null);
+    // ★★★**段が1つ増えた瞬間に弾む**（同ユーザー確定「**段が増える瞬間弾んだり**」）。
+    const shown = f.armed ? shownRows(f.t, g.seed.rows) : 1;
+    if (shown !== g.shown) { if (shown > g.shown) pullBus.pop = STEP_POP; g.shown = shown; }
     // ★★**指のイベントが書くのは「目標」だけ** ―― 振れ・伸び・支点・速さは
     //   山のループが `stepGhost` で作る（`lib/pullDrag.ts`）。前のフレームの値を
     //   引き継いで、掴んでいる間の連なりを切らない。
@@ -136,6 +169,7 @@ function Pill({ item, row, pull, taken, onTake }: {
       angle: was?.angle ?? 0,
       sx: was?.sx ?? 1, sy: was?.sy ?? 1,
       stretchDir: was?.stretchDir ?? Math.PI / 2, vx: was?.vx ?? 0, vy: was?.vy ?? 0,
+      shown, pop: was?.pop ?? 0,
     } : null;
     const near = f.armed && e.clientX > window.innerWidth - RAIL_NEAR;
     if (near !== g.rail) { g.rail = near; pull.rail(near); }
@@ -143,6 +177,7 @@ function Pill({ item, row, pull, taken, onTake }: {
 
   return (
     <div
+      ref={pillRef}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={() => end(true)}

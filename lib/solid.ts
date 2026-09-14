@@ -32,7 +32,7 @@ export const MAX_ROWS = 3;
 export const ARC_STEPS = 36;
 
 /** 物理の体を作るときに間引く頂点の数。★`fromVertices` は点が多いほど重い。 */
-export const PHYS_VERTS = 12;
+export const PHYS_VERTS = 20;
 
 /**
  * ★★★**当たり判定を絵より何 px 外側へ出すか**（2026-09-13・第101巡にユーザー確定

@@ -7,10 +7,12 @@ import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
 import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
-  DROP_EVERY_MS, GRAVITY_Y, UNIT, buildPieces, isLost, makeWalls, refitPile, respawn,
+  DROP_EVERY_MS, GRAVITY_Y, UNIT, buildPieces, isLost, makeWalls, refitPile, respawn, sink,
   type Piece,
 } from "./pileWorld";
 import { floorYOf } from "@/lib/pileBox";
+import { clampRows, halfWidthAtStack } from "@/lib/solid";
+import { rowsOf } from "@/lib/taskSize";
 import { clearPileBitmaps, drawGhost, drawPile } from "./pilePaint";
 import { RAIL_NEAR, ghostMotion, pullBus, stepGhost } from "@/lib/pullDrag";
 
@@ -83,6 +85,13 @@ const FLOOR_CHECK_MS = 2000;
 /** 「もう止まっている」と見なす速さ。★目盛りの外（物理の場）。 */
 const CALM_V = 0.35;
 const CALM_W = 0.03;
+/**
+ * ★★★**物理の1歩（ms）と、1フレームに進めてよい上限の歩数**（2026-09-14・第104巡）。
+ * ★目盛りの外（物理の場）。**`GravityTab` と同じ 1000/60。**
+ * ★★歩数を実時間から決めるので、**60Hz でも 120Hz でも同じ速さで落ちる**。
+ */
+const STEP_MS = 1000 / 60;
+const MAX_STEPS = 3;
 
 /**
  * ★★★**書体を頼んでから、締切つきで待つ**（2026-09-13・第101巡）。
@@ -257,6 +266,9 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
       let floorAt = performance.now() + FLOOR_CHECK_MS;
       /** ★引き下ろしの幽霊のバネ（幽霊が消えたら捨てる）。 */
       let motion = ghostMotion();
+      /** ★物理へまだ渡していない実時間（`STEP_MS` 単位で消費する）。 */
+      let acc = 0;
+      let last = performance.now();
 
       /** ★★★**実解像度は毎フレーム照合する**（`GravityTab` と同じ2行）。
        *  倍率も毎回読む ―― 端末の表示設定やウィンドウの移動で変わり得る。 */
@@ -291,10 +303,25 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
           && piecesRef.current.every((p) => p.body.speed < CALM_V && p.body.angularSpeed < CALM_W)) {
           engine.enableSleeping = true;
         }
-        // ★★★**刻みは固定**（`GravityTab` と同じ 1000/60）。実時間の差分を渡すと、
-        //   フレームが落ちた瞬間に刻みが伸びて**貫通・弾け・震え**が起きる
-        //   ―― 「落ちる動作が不安定」の直接の原因だった（2026-09-07）。
-        M.Engine.update(engine, 1000 / 60);
+        // ★★★**刻みは固定。ただし歩数は実時間で決める**（2026-09-14・第104巡）。
+        //
+        //   ★刻みを固定にするのは正しい（2026-09-07）―― 実時間の差分をそのまま
+        //     渡すと、フレームが落ちた瞬間に刻みが伸びて**貫通・弾け・震え**が起きる。
+        //   ★★★**ところが「1フレームに1歩」は間違いだった。** 実機（iPhone の
+        //     ProMotion）は **120fps** なので、`requestAnimationFrame` ごとに1歩
+        //     進めると**1秒に 120 歩＝物理が2倍速で走る**。落ちる速さも衝突の
+        //     速さも2倍になり、**めり込みの深さもおよそ2倍**になる ―― 重い板が
+        //     軽い図形を床の板（`WALL_T` 200px）の中心線より下まで押し込み、
+        //     **下から吐き出されて落ちていく**。ユーザー報告「図形が何度も
+        //     すり抜けて落ちてしまいます」の**いちばん大きな原因**。
+        //   ★★★**Chromium も Playwright の WebKit も 60fps なので、この環境では
+        //     絶対に再現しない。** 「実機でだけ起きる」の正体がこれ。
+        //   → **実時間を貯めて、`STEP_MS` の整数歩だけ進める。**
+        //     ★1フレームの上限は `MAX_STEPS`（画面を離れて戻ったときに、貯まった
+        //     何百歩ぶんを一気に走らせない ―― 走らせると山が吹き飛ぶ）。
+        acc = Math.min(acc + (now - last), STEP_MS * MAX_STEPS);
+        last = now;
+        while (acc >= STEP_MS) { M.Engine.update(engine, STEP_MS); acc -= STEP_MS; }
         // ★★★**床が動いていないか、ときどき見に行く**（第103巡。上の `FLOOR_CHECK_MS`）。
         //   器の寸法が変わらなくても床は動くので、`ResizeObserver` だけでは足りない。
         if (now > floorAt) {
@@ -303,13 +330,21 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
             buildWalls(sizeRef.current.w, sizeRef.current.h);
           }
         }
-        // ★★★**器の外へ出た図形を拾い直す**（第103巡。`GravityTab` の `recycle` と
-        //   同じ考え方 ―― **ホームの山にだけ、これが無かった**）。器に天井も底も
-        //   無いので、一度外へ出た図形は**二度と戻らない**。山が空にならない限り
-        //   入れ直しの番人（`seedGen`）も撃たないので、**消えたままになる**。
-        //   ★★**1フレームに1つだけ**戻す（まとめて戻すと、器が縮んだ瞬間に
-        //     山が一斉に跳ね上がって見える）。★掴んでいるものは放っておく。
+        // ★★★**床の番人は2段**（2026-09-14・第104巡）。
+        //   ★★**① 沈んだだけ → その場で床の上へ静かに戻す**（`sink`）。
+        //     第103巡は 80px 沈んだら**上から落とし直して**いたので、沈む原因が
+        //     残っているかぎり **沈む → 降る → また沈む**を繰り返し、ユーザーには
+        //     「**何度も上から降ってくる**」と見えた。**見えない直し方が正しい。**
+        //     ★こちらは**全部**に掛ける（1つずつだと、まとめて沈んだとき追いつかない）。
+        //   ★★**② 本当に器の外 → 上から落とし直す**（`respawn`）。こちらは実際に
+        //     もう戻れないので上から落とすのが正しい。★**1フレームに1つだけ**
+        //     （まとめて戻すと山が一斉に跳ね上がって見える）。
+        //   ★掴んでいるものは放っておく。
         const held = dragRef.current?.piece.body;
+        for (const p of piecesRef.current) {
+          if (p.body === held) continue;
+          sink(M, p.body, floorY);
+        }
         for (const p of piecesRef.current) {
           if (p.body === held) continue;
           if (!isLost(p.body, sizeRef.current.w, floorY)) continue;
@@ -456,11 +491,24 @@ export function Pile({ tasks, offers, unread, today, journal, onOpen, onRail, on
       if ((p.kind === "offer" || p.kind === "badge") && p.r) {
         inside = d <= p.r + TOUCH_SLOP;
       } else {
-        // ★回っている四角は、**体の向きへ座標を戻してから**箱で見る。
+        // ★回っている図形は、**体の向きへ座標を戻してから**見る。
         const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
         const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
-        inside = Math.abs(lx) <= (p.w ?? 0) / 2 + TOUCH_SLOP
-              && Math.abs(ly) <= (p.h ?? 0) / 2 + TOUCH_SLOP;
+        const pw = p.w ?? 0; const ph = p.h ?? 0;
+        inside = Math.abs(ly) <= ph / 2 + TOUCH_SLOP;
+        // ★★★**タスクは「絵と同じ輪郭」で見る**（2026-09-14・第104巡にユーザー指摘
+        //   「**図形のピルの左右のところの当たり判定がおかしい**」）。
+        //   第101巡に**物理の体**は `stackOutline` の輪郭へ直したが、**指で触る
+        //   判定だけ外接箱のまま**だった ―― ピルは左右が丸いので、
+        //   **何も描かれていない左右の角が触れてしまう**。
+        //   ★★**式は `halfWidthAtStack`**（絵と物理と同じ1か所。`lib/solid.ts`）。
+        //   ★カセットは本当に四角なので、そのまま箱で見る（下の枝）。
+        if (inside && p.kind === "task" && pw > 0 && ph > 0) {
+          const hw = halfWidthAtStack(clampRows(rowsOf(p.title ?? "")), pw / ph, ly / ph);
+          inside = Math.abs(lx) <= hw * pw + TOUCH_SLOP;
+        } else {
+          inside = inside && Math.abs(lx) <= pw / 2 + TOUCH_SLOP;
+        }
       }
       if (inside && d < bestD) { best = p; bestD = d; }
     }

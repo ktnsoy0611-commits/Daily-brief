@@ -5,7 +5,7 @@ import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
 import { pad } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { glyphOfKind } from "@/lib/deckStyle";
-import { areaOf, rowsOf, specOf, weightArea } from "@/lib/taskSize";
+import { areaOf, massOf, rowsOf, specOf, weightArea } from "@/lib/taskSize";
 import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
 import {
@@ -46,8 +46,10 @@ const BODY = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionA
 const WALL_T = 200;
 /** ★左右の壁の最低の長さ（器が低くても図形が抜けない）。★目盛りの外（物理の場）。 */
 const WALL_MIN_H = 1200;
-/** ★床よりこれだけ下に中心が来たら「外へ出た」。★目盛りの外（物理の場）。 */
-const LOST_BELOW = 80;
+/** ★床よりこれだけ下に中心が来たら「沈んだ」＝静かに床へ戻す。★目盛りの外（物理の場）。 */
+const SUNK_BELOW = 8;
+/** ★床よりこれだけ下まで行ったら「もう戻れない」＝上から落とし直す。★同上。 */
+const LOST_BELOW = 900;
 /** ★左右の壁よりこれだけ外に出たら「外へ出た」。★同上。 */
 const LOST_SIDE = 120;
 /** 山が器に占める割合。★目盛りの外（詰め込み具合）。
@@ -156,10 +158,37 @@ export function zigVerts(r: number): { x: number; y: number }[] {
 function bodyFromOutline(
   m: M, pts: { x: number; y: number }[], w: number, h: number, opts: object,
 ): Body {
-  const step = Math.max(1, Math.ceil(pts.length / PHYS_VERTS));
-  const raw = pts.filter((_, k) => k % step === 0).map((q) => ({ x: q.x * w, y: q.y * h }));
-  const c = m.Vertices.centre(raw);
-  const verts = raw.map((q) => ({ x: q.x - c.x, y: q.y - c.y }));
+  const full = pts.map((q) => ({ x: q.x * w, y: q.y * h }));
+  // ★★★**左右上下のいちばん端は必ず残す**（2026-09-14・第104巡にユーザー指摘
+  //   「**図形のピルの左右のところの当たり判定がおかしい**」）。
+  //   添字の等間隔で間引くと、**1段のピルのいちばん幅の広い点（41点中の 11番）が
+  //   ちょうど落ちる** ―― 実測で体の幅が絵の **98.1〜99.5%** しかなかった。
+  //   ★端を先に押さえてから残りを等間隔で埋めるので、**幅と高さは必ず絵と同じ**。
+  const keep = new Set<number>();
+  let xi = 0; let xa = 0; let yi = 0; let ya = 0;
+  full.forEach((q, k) => {
+    if (q.x < full[xi].x) xi = k;
+    if (q.x > full[xa].x) xa = k;
+    if (q.y < full[yi].y) yi = k;
+    if (q.y > full[ya].y) ya = k;
+  });
+  [xi, xa, yi, ya].forEach((k) => keep.add(k));
+  const step = Math.max(1, Math.ceil(full.length / PHYS_VERTS));
+  full.forEach((_, k) => { if (k % step === 0) keep.add(k); });
+  const raw = [...keep].sort((a, b) => a - b).map((k) => full[k]);
+  // ★★★**左右に折り返して対称にする**（2026-09-14・第104巡）。
+  //   `fromVertices` は**面積重心**を `(x, y)` へ置くが、`pilePaint.drawPile` は
+  //   **外接箱の中心**を `body.position` に描く。**輪郭そのものは左右対称**
+  //   （ピルの積みも札の形も）なので**本来この2つは一致する**が、間引きが
+  //   左右で非対称になると**重心だけがずれる** ―― 実測で 3段の図形が幅の
+  //   **2.7%** ずれていた（＝絵と当たり判定が食い違う）。
+  //   ★★**折り返した点を足してから凸包を取れば、対称性は式が保証する**
+  //   （`poly-decomp` が無いので `fromVertices` は凸包を取る。★対称な点の集合の
+  //   凸包は対称）。**手で中心を補正しない。**
+  const bx = (Math.min(...raw.map((q) => q.x)) + Math.max(...raw.map((q) => q.x))) / 2;
+  const by = (Math.min(...raw.map((q) => q.y)) + Math.max(...raw.map((q) => q.y))) / 2;
+  const half = raw.map((q) => ({ x: q.x - bx, y: q.y - by }));
+  const verts = [...half, ...half.map((q) => ({ x: -q.x, y: q.y }))];
   const body = m.Bodies.fromVertices(0, 0, [verts], opts);
   if (w > 1 && h > 1) {
     m.Body.scale(body, 1 + (PHYS_GAP * 2) / w, 1 + (PHYS_GAP * 2) / h);
@@ -286,14 +315,40 @@ export function refitPile(m: M, bodies: Body[], bw: number, dFloor: number): voi
 }
 
 /**
- * ★★★**器の外へ出てしまった体か**（2026-09-14・第103巡）。真なら上から落とし直す。
+ * ★★★**器の外へ出てしまった体か**（2026-09-14・第103巡）。真なら**上から落とし直す**。
  * ★`components/tabs/GravityTab.tsx` の `recycle`（下へ出た図形を畳む）と同じ考え方 ――
  *   **ホームの山にだけ、これが無かった。**
+ *
+ * ★★★**「沈んだだけ」はここに入れない**（2026-09-14・第104巡）。第103巡は床の
+ *   80px 下で上から落とし直していたので、沈む原因が残っているかぎり
+ *   **沈む → 上から降る → また沈む**を繰り返し、ユーザーには
+ *   「**図形が何度も上から降ってくる**」と見えた。**沈んだだけなら `sink` で
+ *   静かに戻す**（下）。ここが真になるのは**本当にもう戻れないとき**だけ。
  */
 export function isLost(b: Body, bw: number, floorY: number): boolean {
   const { x, y } = b.position;
   if (!Number.isFinite(x) || !Number.isFinite(y)) return true;
   return y > floorY + LOST_BELOW || x < -LOST_SIDE || x > bw + LOST_SIDE;
+}
+
+/**
+ * ★★★**床より下へ沈んだ体を、その場で床の上へ静かに戻す**（2026-09-14・第104巡）。
+ *
+ * ★★床の板は `WALL_T`(200px) と厚いので、**中心線より下まで沈むと下から
+ *   吐き出される**（matter.js は**いちばん浅い軸**へ押し出す）。沈む原因
+ *   （120Hz の2倍速・重すぎる板）は別に潰したが、**最後の砦としてここで止める**
+ *   ―― 物理の都合で 1px でも下へ抜けたら、あとは落ちるだけで二度と戻らない。
+ * ★★**上から落とし直さない**（目に見える＝「雨」になる）。**その場で持ち上げて、
+ *   下向きの速さだけ捨てる** ―― 横へ滑る勢いは残すので、山の崩れ方は変わらない。
+ * @returns 戻したか。
+ */
+export function sink(m: M, b: Body, floorY: number): boolean {
+  const half = (b.bounds.max.y - b.bounds.min.y) / 2;
+  if (b.position.y + half <= floorY + SUNK_BELOW) return false;
+  m.Body.setPosition(b, { x: b.position.x, y: floorY - half });
+  m.Body.setVelocity(b, { x: b.velocity.x, y: Math.min(0, b.velocity.y) });
+  m.Sleeping.set(b, false);
+  return true;
 }
 
 export interface PileContent {
@@ -434,6 +489,18 @@ export function buildPieces(
   //   **凸凹の上**へ着地して 59° 傾いた（実測。3回とも同じ）。
   plates.forEach((plate, i) => {
     const body = makeWordBody(m, plate, 0, 0);
+    // ★★★**板にも `setMass` を呼ぶ**（2026-09-14・第104巡。**第103巡まで忘れていた**）。
+    //   呼ばないと質量は matter の既定の密度（0.001 × **px²**）になり、
+    //   **他の全部（`area`＝solid² の目盛り）と桁が違う**。
+    //   実測の見積り … `MONDAY`(283×64) の板 **18.1** 対 タスクの図形 **12.7** ――
+    //   **板のほうが重い**。重い板は軽い図形を床の板（`WALL_T` 200px）の中へ
+    //   押し込み、**中心線を越えると下から吐き出されて落ちていく**
+    //   （ユーザー報告「図形が何度もすり抜けて落ちてしまいます」）。
+    //   ★★★**しかも板の重さは `fs²` で効く** ―― `PILE_WORD_MAX` を 49 → 61 → 72 と
+    //   上げた2巡で板は 2.2倍重くなった。**症状が出はじめた時期と一致する。**
+    //   ★★`components/tabs/GravityTab.tsx` は**同じ板に同じ式で呼んでいる**
+    //   （`massOf(specOf({ title: word })) * MASS_K`）。**片方だけ直さない。**
+    m.Body.setMass(body, massOf(specOf({ title: plate.word })) * MASS_K);
     // ★★**据え置きなら傾きも引き継ぐ**（第103巡）。落としたときだけ整える ――
     //   ここで上書きすると、前の山で寝ていた板が**起き上がって**見える。
     if (toss(body, `word${i}`, plate.bh)) {

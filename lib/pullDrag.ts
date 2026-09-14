@@ -58,6 +58,14 @@ export interface Ghost {
   stretchDir: number;
   /** ★いまの速さ（px/フレーム）。**離した瞬間にそのまま物理へ渡す**（`Landing`）。 */
   vx: number; vy: number;
+  /**
+   * ★★★**いま描かれている段の数**（1〜`rows`）。**滑らかにくびれさせない**
+   * （2026-09-14・第104巡にユーザー確定「**段が増える瞬間弾んだり**」）―― 第103巡の
+   * `waist` の連続変形が「**普通すぎる**」の正体だった。**カクン、カクンと生える。**
+   */
+  shown: number;
+  /** ★弾み（0 を中心に行き過ぎて戻る。描く側は `1 + pop` を全体に掛ける）。 */
+  pop: number;
 }
 
 /**
@@ -83,6 +91,12 @@ export interface PullBus {
   ghost: Ghost | null;
   /** 山の一括の倍率（solid 座標 → px）。`Pile` が `buildPieces` から書き込む。 */
   unit: number;
+  /**
+   * ★★★**弾みの注文**（2026-09-14・第104巡）。`Band` が「ばちん」や「段が増えた」の
+   * 瞬間にここへ勢いを置き、**山のループが1度だけ受け取って 0 に戻す**。
+   * ★★バネを回すのは山のループなので、**帯から直接バネを触らせない**。
+   */
+  pop: number;
   /** ★指を離した所（次の1回だけ使って捨てる）。 */
   landing: Landing | null;
 }
@@ -93,16 +107,30 @@ export interface PullBus {
  * **毎フレームの書き込みが React の描画と関わらない**（`Band` が書き `Pile` が読む）。
  * ★★**画面が消えたら `ghost` を `null` に戻すこと**（掴んだまま列を替えられる）。
  */
-export const pullBus: PullBus = { ghost: null, unit: 64, landing: null };
+export const pullBus: PullBus = { ghost: null, unit: 64, landing: null, pop: 0 };
 
-/** ここまではゴム。指が引いても**一部しか動かない**距離（px）。★目盛りの外（手ざわり）。 */
-export const PULL_ARM = 56;
+// ★★★**手つきは「ゴム → ばちん → 段が弾む」**（2026-09-14・第104巡にユーザー確定）。
+//
+// > **段が増える瞬間弾んだり**、引っ張る時に**引っ張っている部分がゴムが引っ張られて
+// > いるように伸びて、ばちんという感じで弾けて指に吸い付く**。
+//
+// ★★★**最初の抵抗が強すぎた**（同指摘）―― 第103巡は **56px を指の 42%** しか
+//   動かさなかったので、**引き始めが死んでいた**。**24px を 75%** へ。
+
+/** ここまではゴム。**ここを越えると弾ける**距離（px）。★目盛りの外（手ざわり）。 */
+export const PULL_ARM = 24;
 /** ゴムの間、指の何割だけ動くか。★目盛りの外（手ざわり）。 */
-export const PULL_RESIST = 0.42;
-/** ゴムを越えてから、**図形になりきるまで**に要る距離（px）。★目盛りの外（手ざわり）。 */
-export const MORPH_SPAN = 160;
+export const PULL_RESIST = 0.75;
+/** 弾けてから、**段が全部生えるまで**に要る距離（px）。★目盛りの外（手ざわり）。 */
+export const MORPH_SPAN = 90;
 /** ゴムの伸びしろ（`PULL_ARM` の何倍まで）。★目盛りの外（手ざわり）。 */
 export const PULL_GIVE = 1.6;
+/** ★★帯のピルが縦に伸びてよい上限（1 ＋ これ 倍）。★目盛りの外（手ざわり）。 */
+export const PULL_TAUT = 0.6;
+/** ★★★**ばちん**の勢い（弾けた瞬間にバネへ入れる初速）。★目盛りの外（手ざわり）。 */
+export const SNAP_POP = 0.10;
+/** ★★段が1つ増えた瞬間の弾み。★同上（ばちんより小さい）。 */
+export const STEP_POP = 0.055;
 
 /** 0〜1 を滑らかに（両端で傾き 0）。★距離で送るので時間の曲線は使わない。 */
 const smooth = (t: number): number => {
@@ -142,16 +170,34 @@ export function pullFrame(
   const give = rubber(pulled / PULL_ARM, PULL_GIVE) * PULL_ARM * PULL_RESIST;
   const gx = bx + (fx - sx) * PULL_RESIST;
   const gy = by + give;
+  const armed = pulled > PULL_ARM;
   return {
     t,
-    // ★`t` が 1 に近づくほど**指そのもの**へ（吸い付き）。
-    cx: gx + (fx - gx) * t,
-    cy: gy + (fy - gy) * t,
+    // ★★★**弾けたら指そのもの**（2026-09-14・第104巡にユーザー確定
+    //   「**ばちんという感じで弾けて指に吸い付く**」）。第103巡は `t` で
+    //   じわじわ寄せていたので、**弾けた手ごたえが出なかった**。
+    //   ★弾ける前は帯のピル自身が伸びるので、幽霊はまだ出さない（`Band`）。
+    cx: armed ? fx : gx,
+    cy: armed ? fy : gy,
     w: w0 + (w1 - w0) * t,
     h: h0 + (h1 - h0) * t,
-    armed: pulled > PULL_ARM,
+    armed,
   };
 }
+
+/**
+ * ★★★**帯のピルが縦にどれだけ伸びているか**（2026-09-14・第104巡）。
+ * 「引っ張っている部分がゴムが引っ張られているように伸びて」＝**ピルそのものが
+ * 伸びる**（ピルごと下へ動くのではない）。**上の縁を留めて下へ伸ばす。**
+ * @param pulled 下へ引いた量（px）  @param h0 ピルの高さ（px）
+ * @returns 縦の倍率（1 〜 1 + `PULL_TAUT`）。
+ */
+export const pullTaut = (pulled: number, h0: number): number =>
+  1 + Math.min(PULL_TAUT, Math.max(0, pulled) * PULL_RESIST / Math.max(1, h0));
+
+/** ★いま何段まで生えているか（1 〜 `rows`）。★**段は連続ではなく飛ぶ。** */
+export const shownRows = (t: number, rows: number): number =>
+  Math.max(1, Math.min(rows, 1 + Math.floor(t * rows)));
 
 /** 右の縁から何 px で ASSIGN の帯が出るか。★目盛りの外（手ざわり）。 */
 export const RAIL_NEAR = 72;
@@ -188,10 +234,13 @@ export interface GhostMotion {
   pull: Spring;
   /** 伸びる向き（rad）。★**速さの向き**なので、バネではなく直に持つ。 */
   dir: number;
+  /** ★★**弾み**（「ばちん」と「段が増えた」で勢いを入れ、0 へ戻る）。 */
+  pop: Spring;
 }
 
 export const ghostMotion = (): GhostMotion => ({
   px: 0, py: 0, had: false, swing: spring(), pull: spring(), dir: Math.PI / 2,
+  pop: spring(),
 });
 
 /** −1〜1 へ滑らかに丸める（頭打ちで角が立たない）。 */
@@ -236,6 +285,12 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   //   （0 に近い速さの向きは雑音なので、拾うと図形が小刻みに回る）。
   const sp = Math.hypot(vx, vy);
   if (sp > 0.5) mo.dir = Math.atan2(vy, vx);
+  // ★★★**弾み**（第104巡）… `pullBus.pop` に置かれた勢いを**1度だけ**受け取って
+  //   バネへ入れ、あとは 0 へ戻す。行き過ぎるバネなので**ばちんと弾けて戻る**。
+  if (pullBus.pop !== 0) { mo.pop.v += pullBus.pop; pullBus.pop = 0; }
+  springTo(mo.pop, 0, K_SWING, D_SWING);
+  g.pop = mo.pop.p;
+
   springTo(mo.pull, soft(sp, STRETCH_V) * STRETCH_MAX, K_SWING, D_SWING);
   // ★★**縮みも許す**（ユーザー確定は「伸び**縮み**」）。バネが行き過ぎるので、
   //   止めた瞬間に**伸びたぶんの反対**へ一度潰れてから戻る ＝ 弾力のある物体。

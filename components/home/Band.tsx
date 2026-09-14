@@ -8,7 +8,7 @@ import { type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
-  PILL_EDGE, PILL_PRESS, RAIL_NEAR, SNAP_POP, pullBus, pullFrame,
+  PILL_EDGE, PILL_PRESS, RAIL_NEAR, pullBus, pullFrame,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
 import { haptic } from "@/lib/helpers";
@@ -216,7 +216,7 @@ function Pill({ item, row, pull, taken, onTake }: {
     }
     if (live !== taken) onTake(live ? item.id : null);
     // ★★★**ばちん**（弾けた瞬間）… バネへ勢いを1発入れて手ごたえを返す。
-    if (f.armed && !g.armed) { haptic(12); pullBus.pop = SNAP_POP; }
+    if (f.armed && !g.armed) haptic(12);
     g.armed = f.armed;
     // ★★★**段が生えるのは「時間」の仕事**（2026-09-15・第106巡）。ここは
     //   **行き先（`tTo`）を言うだけ** ―― 進めるのも弾ませるのも `stepGhost`。
@@ -242,7 +242,7 @@ function Pill({ item, row, pull, taken, onTake }: {
       angle: was?.angle ?? 0,
       sx: was?.sx ?? 1, sy: was?.sy ?? 1,
       stretchDir: was?.stretchDir ?? Math.PI / 2, vx: was?.vx ?? 0, vy: was?.vy ?? 0,
-      shown: was?.shown ?? 1, pop: was?.pop ?? 0,
+      waist: was?.waist ?? 0,
     } : null;
     const near = f.armed && e.clientX > window.innerWidth - RAIL_NEAR;
     if (near !== g.rail) { g.rail = near; pull.rail(near); }

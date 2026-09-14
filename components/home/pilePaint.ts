@@ -201,10 +201,10 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
   ctx.rotate(sd);
   ctx.scale(g.sx, g.sy);
   ctx.rotate(-sd);
-  // ★★★**弾み**（2026-09-14・第104巡）… 「ばちん」と「段が増えた」の瞬間に
-  //   `lib/pullDrag.ts` のバネへ入れた勢いが、ここで**全体の大きさ**に出る。
-  //   ★行き過ぎるバネなので、**膨らんでから縮んで戻る**。
-  if (g.pop !== 0) ctx.scale(1 + g.pop, 1 + g.pop);
+  // ★★★**弾みのバネは第107巡に削除した。復活させない。**
+  //   ★変形そのものがばね（`stepGhost` の `mo.morph`）になったので、**上から
+  //     もう1本 掛けると 1秒以上ぐらつく**（実測 … 面積が 1.2秒 揺れ続けた）。
+  //   **一発 ＝ ばね1本。**
   if (g.kind === "offer") {
     // ★提案は**札の形**へ。器は正方形（`lib/cardShape.ts` の約束）。
     const d = Math.max(w, h);
@@ -221,15 +221,14 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
     ctx.restore();
     return;
   }
-  // ★★★**タスクは「段が1つずつ生える」**（2026-09-14・第104巡にユーザー確定
-  //   「**段が増える瞬間弾んだり**」）。第103巡は `waist` で**滑らかにくびれさせて**
-  //   いたが、それが「**普通すぎる**」の正体だった。**いま生えている段の数
-  //   （`g.shown`）でそのまま描く** ―― 形の語彙は `stackOutline` の1本のまま。
-  //   ★★`waist` は**残す**（`halfWidthAtStack` を文字の折り返しが読む）。
-  //     使い方だけ「連続」から「離散」へ変えた。
+  // ★★★**くびれが一息に開く**（2026-09-16・第107巡にユーザー確定「**一発で・
+  //   気持ちよく・スムーズに・ユニークに**」）。段の数は**最初から最後まで `g.rows`**
+  //   で、変わるのは **`waist`（くびれの深さ）だけ** ―― 形の語彙は
+  //   `stackOutline` の1本のまま。
+  //   ★★★**第104〜106巡の「段が1つずつ生える」はやめた。復活させない。**
   ensureGlyphs(g.faceIdx, g.title);
-  const rows = Math.max(1, Math.min(g.rows, Math.round(g.shown)));
-  const outline = stackOutline(rows, w / h);
+  const rows = g.rows;
+  const outline = stackOutline(rows, w / h, g.waist);
   const trace = (sw: number, sh: number) => {
     ctx.beginPath();
     outline.forEach((q, i) => {
@@ -247,18 +246,40 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
     trace(w - EDGE, h - EDGE);
     ctx.stroke();
   }
-  const fit = layoutInRows(
-    g.title, g.faceIdx, rows, w, h,
-    (y) => halfWidthAtStack(rows, w / h, y), h / rows,
-  );
+  // ★★★**字は「行き先の割り付け」1つを、箱の縮みに合わせて等倍で縮める**
+  //   （2026-09-16・第107巡）。★★**毎フレーム割り付け直さない** ―― 幅が変わるたび
+  //   行の折れ方が変わって**字が跳ねる**し、`layoutInRows` は重い。
+  //   ★等倍（`min`）なので**字が潰れない**。箱に収まりきらないぶんは `clip` が切る。
+  const fit = ghostFit(g);
   if (fit) {
+    const k = Math.min(w / Math.max(1, g.w1), h / Math.max(1, g.h1));
     ctx.save();
     trace(w, h);
     ctx.clip();
-    drawFitted(ctx, fit, g.faceIdx, 0, 0, g.ink, fit.size * dpr);
+    ctx.scale(k, k);
+    drawFitted(ctx, fit, g.faceIdx, 0, 0, g.ink, fit.size * dpr * k);
     ctx.restore();
   }
   ctx.restore();
+}
+
+/**
+ * ★★**幽霊の字の割り付けを憶える**（2026-09-16・第107巡）。
+ * 行き先（`w1`/`h1`/`rows`/題）は**1ジェスチャのあいだ変わらない**ので、
+ * 1つ憶えておけば毎フレームの組み直しが要らない。
+ */
+let fitKey = "";
+let fitVal: ReturnType<typeof layoutInRows> = null;
+
+function ghostFit(g: Ghost) {
+  const key = [g.title, g.faceIdx, g.rows, Math.round(g.w1), Math.round(g.h1)].join("|");
+  if (key === fitKey) return fitVal;
+  fitKey = key;
+  fitVal = layoutInRows(
+    g.title, g.faceIdx, g.rows, g.w1, g.h1,
+    (y) => halfWidthAtStack(g.rows, g.w1 / g.h1, y), g.h1 / g.rows,
+  );
+  return fitVal;
 }
 
 /** 塗る矩形（器の座標）。★`null` は「全面」。 */

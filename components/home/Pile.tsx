@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { haptic } from "@/lib/helpers";
 import { GATE_MS, onFontsReady } from "@/lib/textFit";
 import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
@@ -15,7 +15,7 @@ import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { clearPileBitmaps, drawBoxOf, drawGhost, drawPile } from "./pilePaint";
 import {
-  RAIL_NEAR, ghostMotion, pullBus, stepGhost, type Ghost, type PillLook,
+  RAIL_NEAR, ghostKey, ghostMotion, pullBus, stepGhost, type Ghost, type PillLook,
 } from "@/lib/pullDrag";
 
 import type { Body, Engine } from "matter-js";
@@ -47,9 +47,11 @@ import type { Item, TabId, Task } from "@/lib/types";
 //       1度だけ。中身は `[sig, worldGen]` で**図形だけ**を差し替える。
 //       中身の側に `await` が無いので、**競合しようがない**。
 //
-//  3. ★★**画面の細かさが端末の 2/3 しか使われていなかった**（`Math.min(2, dpr)`）。
-//     → 実機の倍率（3）をそのまま使う。★`lib/textFit.ts` の焼き段に 192 を足して
-//       あるので、大きな題が**拡大されて滲む**ことも無い。
+//  3. **画面の細かさ**を `Math.min(2, dpr)` から 3 へ上げた。
+//     ★★★**これは第107巡に取り消した。** 実機（dpr 3）で **2.77M画素**を毎フレーム
+//       塗ることになり、**GRAVITY（dpr 2 で 1.09M）の 2.5倍**の費用になっていた
+//       ―― ユーザーが何度も言っていた「**GRAVITY では落ちない**」の答えがこれ。
+//       **`DPR_MAX` は 2。GRAVITY と揃える**（下の `DPR_MAX` の説明を読むこと）。
 //
 // ★★書体が遅れて届いたら**焼き直す**（`onFontsReady`）。和文の Web フォントは
 //   unicode-range で 100 以上に分かれて届くので、`document.fonts.ready` の
@@ -64,11 +66,21 @@ const TOUCH_SLOP = 10;
 const GRAB_K = 0.34;
 const GRAB_MAX = 34;
 /**
- * ★★★**画面の細かさの上限**。★目盛りの外（絵の寸法）。
- * 実機（iPhone）は 3。2 で頭打ちにすると **1.5倍に引き伸ばされて**貼られる。
- * ★これ以上（4 以上の端末）は面積が倍々になるので、3 で止める。
+ * ★★★**画面の細かさの上限 ＝ 2。`GravityTab` と同じ**（2026-09-16・第107巡）。
+ *
+ * ★★★**ユーザーの手がかり「GRAVITY ではフレームが落ちない」の答えがこれだった。**
+ *   `components/tabs/GravityTab.tsx` と `components/tasks/SolidCanvas.tsx` は
+ *   ずっと `Math.min(devicePixelRatio, 2)` で、**ホームの山だけが 3** だった。
+ *   実機（dpr 3）の実画素 … GRAVITY **1.09M** 対 ホーム **2.77M ＝ 2.5倍**。
+ *   落下中は毎フレーム塗るので、**そのまま 2.5倍の費用**になる。
+ *
+ * ★★★**「2 で止めると 1.5倍に引き伸ばされる」は当時の実装のバグの記録**であって、
+ *   2 が悪いのではない ―― **1.5 は 3 ÷ 2 そのもの**で、**実解像度を 2 で作りながら
+ *   `setTransform` には 3 を渡していた**ことの動かぬ証拠。いまの `sync()` は
+ *   **同じ値を返して同じ値を使う**ので、この道は塞がっている。
+ *   ★★**同じ値を2か所から取らないこと。** それが唯一の再発の道。
  */
-const DPR_MAX = 3;
+const DPR_MAX = 2;
 /** 全部を落とし終えてから眠りを**考え始める**までの猶予。★目盛りの外（物理の場）。 */
 const SETTLE_MS = 2500;
 /**
@@ -116,6 +128,13 @@ const GHOST_PAD = 24;
 const POS_ITER = 10;
 
 /**
+ * ★`ghostKey` の中で**無次元の値**（角度・倍率・進み）が並ぶ位置。
+ * 比べるときだけ `REST_ANG` を掛けて px に直す。★目盛りの外（絵の寸法）。
+ * ★★**`lib/pullDrag.ts` の `ghostKey` の並びと対**。片方を直したら両方。
+ */
+const GHOST_UNITLESS = new Set([2, 5, 6, 7, 8, 9]);
+
+/**
  * ★★★**帯へ戻すときの幽霊を作る**（2026-09-15・第106巡）。
  *
  * ★★★**引き出しの幽霊とまったく同じ形**で、`t` の向きだけが逆
@@ -137,7 +156,7 @@ function homeGhost(p: Piece, look: PillLook, owner: number): Ghost {
     shape: p.shape, photo: p.photo, glyph: p.glyph,
     ax: 0, ay: 0, dx: x, dy: y, angle: p.body.angle,
     sx: 1, sy: 1, stretchDir: Math.PI / 2, vx: 0, vy: 0,
-    shown: clampRows(rowsOf(p.title ?? "")), pop: 0,
+    waist: 1,
   };
 }
 
@@ -228,6 +247,18 @@ export function Pile({
   const railRef = useRef(false);
   const [holding, setHolding] = useState(false);
   const dragRef = useRef<{ piece: Piece; x: number; y: number } | null>(null);
+  /**
+   * ★★★**ループが回っているか／回す本体**（2026-09-16・第107巡。`GravityTab` と
+   * 同じ名前・同じ形）。**読む人が1つの作りだけ覚えればよい**ようにしてある。
+   */
+  const runningRef = useRef(false);
+  const loopRef = useRef<() => void>(() => {});
+  /** ★★**絵が変わり得るときは必ずこれを呼ぶ**（止まっていたら回し直す）。 */
+  const wake = useCallback(() => {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    rafRef.current = requestAnimationFrame(() => loopRef.current());
+  }, []);
   /** ★いま帯の上に居るか（出入りの瞬間だけ動く）。 */
   const homeRef = useRef(false);
 
@@ -322,6 +353,7 @@ export function Pile({
         const built = builtFloorRef.current;
         if (built > 0 && Math.abs(next - built) > built * 0.15) setSeedGen((n) => n + 1);
         dirtyRef.current = true;
+        wake();
       };
       buildWalls(sizeRef.current.w, sizeRef.current.h);
 
@@ -352,7 +384,7 @@ export function Pile({
       /** ★最後に描いた幽霊の姿（dx, dy, angle, w, sx, pop）。塗り直すかの判定に使う。 */
       let gDrawn: number[] | null = null;
       /** ★写真が届いたときの合図。**毎フレーム作らない**（第106巡）。 */
-      const onPhoto = () => { dirtyRef.current = true; };
+      const onPhoto = () => { dirtyRef.current = true; wake(); };
       /** ★引き下ろしの幽霊のバネ（幽霊が消えたら捨てる）。 */
       let motion = ghostMotion();
       /** ★物理へまだ渡していない実時間（`STEP_MS` 単位で消費する）。 */
@@ -514,14 +546,23 @@ export function Pile({
         //     あいだじゅう 120Hz で約300万画素を塗っていた。**刻みが進まなかった
         //     フレームは絵も変わらない**ので、塗る必要が無い。
         if (!g && motion.had) motion = ghostMotion();   // ★掴み直しは静止から始める
-        const gMoved = g
-          ? !gDrawn || Math.abs(g.dx - gDrawn[0]) >= REST_EPS
-            || Math.abs(g.dy - gDrawn[1]) >= REST_EPS
-            || Math.abs(g.angle - gDrawn[2]) * REST_ANG >= REST_EPS
-            || Math.abs(g.w - gDrawn[3]) >= REST_EPS
-            || Math.abs(g.sx - gDrawn[4]) * REST_ANG >= REST_EPS
-            || Math.abs(g.pop - gDrawn[5]) * REST_ANG >= REST_EPS
-          : !!gDrawn;
+        // ★★★**比べるのは `ghostKey` が返す「絵に効く値」全部**（第107巡）。
+        //   ★★★第106巡はここに手で6つ並べていて、**`bend` を入れ忘れた** ――
+        //     弾ける前は他の5つが全部動かないので、**ゴムが1フレーム目で固まった**。
+        //     **並べるのをやめて、描く側と同じ1か所から取る。**
+        //   ★角度と倍率は px に直して比べる（`REST_ANG` の腕の先の動き）。
+        let gMoved = false;
+        if (g) {
+          const k = ghostKey(g);
+          if (!gDrawn || gDrawn.length !== k.length) gMoved = true;
+          else {
+            for (let i = 0; i < k.length; i++) {
+              // ★0〜1 の無次元の値（倍率・角度・進み）は腕の長さを掛けて px にする。
+              const px = GHOST_UNITLESS.has(i) ? REST_ANG : 1;
+              if (Math.abs(k[i] - gDrawn[i]) * px >= REST_EPS) { gMoved = true; break; }
+            }
+          }
+        } else if (gDrawn) gMoved = true;
         // ★★★**眠りの判定は「前のフレームからどれだけ動いたか」で別に測る**（第105巡）。
         //   塗るかどうかは**最後に描いた絵**との差（`REST_EPS` 0.25px）で見るが、
         //   **眠りを許すかどうかはそれでは決められない** ―― 塗らないでいると
@@ -593,7 +634,7 @@ export function Pile({
             add(g.dx - gr, g.dy - gr, g.dx + gr, g.dy + gr);
             if (ghostBox) add(ghostBox[0], ghostBox[1], ghostBox[2], ghostBox[3]);
             ghostBox = [g.dx - gr, g.dy - gr, g.dx + gr, g.dy + gr];
-            gDrawn = [g.dx, g.dy, g.angle, g.w, g.sx, g.pop];
+            gDrawn = ghostKey(g);
           } else if (ghostBox) {
             add(ghostBox[0], ghostBox[1], ghostBox[2], ghostBox[3]);
             ghostBox = null;
@@ -651,8 +692,24 @@ export function Pile({
           sync();
           if (cv.width !== before) dirtyRef.current = true;
         }
+        // ★★★**動きが無ければループを止める**（2026-09-16・第107巡。`GravityTab` と
+        //   同じ作り）。★★第106巡までは**無条件で次のフレームを頼んでいた**ので、
+        //   ホームに居るあいだ**ずっと毎秒120回**メインスレッドが起き、落ち着いた
+        //   山の上で 4本の O(n) の走査・`devicePixelRatio` の読み出し・
+        //   `Engine.update` を回し続けていた。**落ち着いていてもタダではない。**
+        //   ★起こすのは `wake()`（山の組み直し・器の変化・焼き直し・写真の到着・
+        //     指が触れた・幽霊が出た）。**1つでも取りこぼすと絵が止まる**ので、
+        //     **`dirtyRef` を立てる所は必ず `wake()` も呼ぶ**。
+        if (!g && !dragRef.current && !dirtyRef.current && still >= STILL_FRAMES
+          && now >= releaseRef.current.settleAt
+          && now2.every((p) => p.body.isSleeping)) {
+          runningRef.current = false;
+          return;
+        }
         rafRef.current = requestAnimationFrame(loop);
       };
+      loopRef.current = loop;
+      runningRef.current = true;
       rafRef.current = requestAnimationFrame(loop);
       if (!stop) setWorldGen((n) => n + 1);
     })();
@@ -665,7 +722,7 @@ export function Pile({
       engineRef.current = null;
       matterRef.current = null;
     };
-  }, [measured]);
+  }, [measured, wake]);
 
   // ── 中身（図形）。★世界はそのまま、図形だけ差し替える ─────────────
   // ★★★**組み直す合図は「中身」だけ**（2026-09-10）。配列の同一性で見ていた
@@ -704,6 +761,8 @@ export function Pile({
     unitRef.current = unit;
     pullBus.unit = unit;
     dragRef.current = null;
+    dirtyRef.current = true;
+    wake();                              // ★中身が入れ替わったので必ず回す
     // ★★★**新しく落とすものが在るときだけ山を起こす**（第103巡）。全部据え置きなら
     //   （＝題を直しただけ・未読の数が減っただけ）**山は静かなまま**でよい。
     if (dropped) {
@@ -725,17 +784,23 @@ export function Pile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, worldGen, seedGen]);
 
+  // ★★★**帯からピルを引き始めたら回し始める**（2026-09-16・第107巡）。
+  //   ★★山が眠って**ループが止まっている**あいだに帯を触られると、`pullBus.ghost`
+  //     が出ても**誰も塗らない**。`above`（＝`HomeTab` の `lift`）は
+  //     **1ジェスチャに1回だけ**変わるので、これを合図にする。
+  useEffect(() => { if (above) wake(); }, [above, wake]);
+
   // ★★書体が遅れて届いたら焼き直す（購読していなかったので、和文が代替書体の
   //   まま固まり得た）。★板は `lib/solidPaint.ts` の側のキャッシュに居る。
   useEffect(() => onFontsReady(() => {
     clearPileBitmaps(); clearSolidBitmaps();
-    dirtyRef.current = true;   // ★焼き直したので、絵が同じでも描き直す
+    dirtyRef.current = true; wake();   // ★焼き直したので、絵が同じでも描き直す
     // ★★★**板の書体だけは「焼き直し」では足りない。測り直す**（第101巡）。
     //   板の大きさは**実際に組んだ字を測って**決まるので、代替の書体で測った
     //   板に本物を焼くと**箱から溢れる**（Anton は em に対して背が高い）。
     //   ★**間に合わなかったときに1度だけ**撃つ（毎回だと山が落ち直して目に付く）。
     if (!plateFontRef.current && wordFontReady(DISPLAY)) setSeedGen((n) => n + 1);
-  }), []);
+  }), [wake]);
 
   // ── 掴む ──────────────────────────────────────────────────
   /**
@@ -823,6 +888,7 @@ export function Pile({
     }, HOLD_MS);
     press.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer };
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    wake();                              // ★掴むかもしれないので回し始める
   };
 
   const onMove = (e: React.PointerEvent) => {
@@ -882,6 +948,7 @@ export function Pile({
     const dragged = dragRef.current;
     dragRef.current = null;
     setHolding(false);
+    wake();                              // ★離したあとの落ち着きも見せる
     // ★★**帯へ戻す幽霊は、指を離したら必ず消える**（`Band` と同じ約束）。
     if (pullBus.ghost?.home) pullBus.ghost = null;
     // ★★★**帯の上で離した＝日付を消して帯へ戻す**（2026-09-15・第106巡）。

@@ -2,7 +2,6 @@ import type { RefObject } from "react";
 import type { CardShape } from "./cardShape";
 import { BAND_H } from "./constants";
 import type { BandItem } from "./homeBand";
-import { T_ITEM, ms } from "./motion";
 import { D_CATCH, D_SWING, K_CATCH, K_SWING, rubber, spring, springTo, type Spring } from "./spring";
 
 // ★★★**帯のピルを引き下ろす手つきの「算数」はここ1つ**（2026-09-14・第102巡）。
@@ -128,13 +127,15 @@ export interface Ghost {
   /** ★いまの速さ（px/フレーム）。**離した瞬間にそのまま物理へ渡す**（`Landing`）。 */
   vx: number; vy: number;
   /**
-   * ★★★**いま描かれている段の数**（1〜`rows`）。**滑らかにくびれさせない**
-   * （2026-09-14・第104巡にユーザー確定「**段が増える瞬間弾んだり**」）―― 第103巡の
-   * `waist` の連続変形が「**普通すぎる**」の正体だった。**カクン、カクンと生える。**
+   * ★★★**くびれの深さ 0〜1**（2026-09-16・第107巡）。0 ＝ 1段のピル／1 ＝ n段の積み。
+   *
+   * ★★★**「段がカクン、カクンと生える」（第104〜106巡）はやめた。復活させない。**
+   *   ユーザー「**取ったあとのぽこぽこも気持ちよくない。一発で・気持ちよく・
+   *   スムーズに・ユニークに**」。→ **ばね1本で一息に開く**（`stepGhost`）。
+   * ★★第103巡に連続変形が「普通すぎる」と差し戻されたのは**指の距離で線形に
+   *   動かしていた**からで、**ばねで一息に開けば別物になる**。
    */
-  shown: number;
-  /** ★弾み（0 を中心に行き過ぎて戻る。描く側は `1 + pop` を全体に掛ける）。 */
-  pop: number;
+  waist: number;
   /**
    * ★★★**山から帯へ戻している最中**（2026-09-15・第106巡にユーザー指定
    * 「**間違えて落としたピルをもう一度掴んで上の段に入れると戻る**」）。
@@ -162,17 +163,31 @@ export interface LandingAt {
   angle: number;
 }
 
+/**
+ * ★★★**幽霊の「絵に効く値」だけを取り出す**（2026-09-16・第107巡）。
+ *
+ * ★★★**なぜ要るか** ―― 山は「幽霊が動いたときだけ塗る」ので、**比べる値を1つ
+ *   足し忘れると、その値だけで変わる絵は永久に塗り直されない**。第106巡に
+ *   `bend` を入れ忘れ、**引き下ろしのゴムが1フレーム目で固まった**
+ *   （ユーザー「**少し曲がるのは見えるが、そこから全く動かない**」）。
+ *   ★弾ける前は `dx/dy/angle/w/sx` が**全部動かない**（ピルは帯に残るのだから）
+ *   ので、**動いているのは `bend` だけ**だった。
+ * ★★**描く側が読む値は、全部ここに並べる。** 足すときは**この配列にも足す**
+ *   ―― 1か所なので、忘れたら絵が固まってすぐ気づく。
+ * ★★`t` は `waist` と別に要る ―― **`t <= 0` かどうかで「ピルの顔」と「図形」が
+ *   入れ替わる**（`pilePaint.drawGhost`）。`waist` は 0 で頭打ちなので、
+ *   **`t` が 0 をまたぐのを見逃す。**
+ */
+export function ghostKey(g: Ghost): number[] {
+  return [g.dx, g.dy, g.angle, g.w, g.h, g.sx, g.sy, g.stretchDir,
+    g.waist, g.t, g.bend, g.gx, g.ax, g.ay];
+}
+
 /** ★★帯と山をつなぐ**1本の線**。React の state を毎フレーム動かさない。 */
 export interface PullBus {
   ghost: Ghost | null;
   /** 山の一括の倍率（solid 座標 → px）。`Pile` が `buildPieces` から書き込む。 */
   unit: number;
-  /**
-   * ★★★**弾みの注文**（2026-09-14・第104巡）。`Band` が「ばちん」や「段が増えた」の
-   * 瞬間にここへ勢いを置き、**山のループが1度だけ受け取って 0 に戻す**。
-   * ★★バネを回すのは山のループなので、**帯から直接バネを触らせない**。
-   */
-  pop: number;
   /** ★指を離した所（次の1回だけ使って捨てる）。 */
   landing: Landing | null;
 }
@@ -183,7 +198,7 @@ export interface PullBus {
  * **毎フレームの書き込みが React の描画と関わらない**（`Band` が書き `Pile` が読む）。
  * ★★**画面が消えたら `ghost` を `null` に戻すこと**（掴んだまま列を替えられる）。
  */
-export const pullBus: PullBus = { ghost: null, unit: 64, landing: null, pop: 0 };
+export const pullBus: PullBus = { ghost: null, unit: 64, landing: null };
 
 // ★★★**手つきは「ゴム → ばちん → 段が弾む」**（2026-09-14・第104巡にユーザー確定）。
 //
@@ -203,20 +218,25 @@ export const pullBus: PullBus = { ghost: null, unit: 64, landing: null, pop: 0 }
  * ★目盛りの外（手ざわり）。
  */
 export const PULL_ARM = BAND_H.plain;
-/** ゴムの間、指の何割だけ動くか。★目盛りの外（手ざわり）。 */
-export const PULL_RESIST = 0.75;
 /**
- * ★★★**弾けてから図形になりきるまでの時間**（2026-09-15・第106巡にユーザー確定）。
- *
- * ユーザー指摘「**段の形になるのが距離によって変わってるのは不自然。離れたら
- * ぽこぽこって感じで、時間でアニメーションするようにしてもいい**」。
- * ★★★**第105巡までは `MORPH_SPAN`(90px) ＝ 指の距離**だった。**削除した。復活させない。**
- * ★`lib/motion.ts` の `T_ITEM`(0.42s) をそのまま使う ―― **弾けたあとは「時間」の
- *   話になる**ので、ここだけは曲線4本・時間の4分割の側に戻る。
- * ★3段なら **0 / 140 / 280ms** で「ぽこ・ぽこ・ぽこ」。
- * ★★**進めるのは山のループの固定の刻み**なので、歩数で持つ（60Hz でも 120Hz でも同じ）。
+ * ゴムの間、指の何割だけ動くか。★目盛りの外（手ざわり）。
+ * ★★★**1.0 ＝ 指とぴったり同じだけ垂れる**（2026-09-16・第107巡にユーザー確定。
+ *   指摘「**全然引っ張れない／全くインタラクティブな UI になっていません**」）。
+ *   ★**重さは `rubber()` が閾値の先でだけ付ける** ―― 引き始めから割り引くと、
+ *   「指に付いていない」としか感じられない。
  */
-export const MORPH_STEPS = Math.round(ms(T_ITEM) / (1000 / 60));
+export const PULL_RESIST = 1.0;
+/**
+ * ★★★**変形は「ばね一発」**（2026-09-16・第107巡にユーザー確定）。
+ *
+ * ユーザー指摘「**取ったあとのぽこぽこも気持ちよくない。1段のピルから数段のピルへ、
+ * 一発で・気持ちよく・スムーズに・ユニークに**」。
+ * ★★★**`MORPH_SPAN`（指の距離・第105巡）も `MORPH_STEPS`（線形の時計・第106巡）も
+ *   `shownRows`（段の階段）も削除した。復活させない。**
+ * ★**ばねは `lib/spring.ts` の `K_CATCH`/`D_CATCH` をそのまま使う**（係数を増やさない）。
+ *   周期12フレーム・減衰比 0.5 ＝ **16% 行き過ぎてから収まる** ―― くびれが
+ *   **最終より一度深く入ってから戻る**ので、「ぱんと開いて落ち着く」に見える。
+ */
 /** ゴムの伸びしろ（`PULL_ARM` の何倍まで）。★目盛りの外（手ざわり）。 */
 export const PULL_GIVE = 1.6;
 /**
@@ -238,10 +258,6 @@ export const PILL_PRESS = 0.97;
  * （実測で字の左端が 2 デバイス画素ずれた）。★目盛りの外（絵の寸法）。
  */
 export const PILL_EDGE = 1;
-/** ★★★**ばちん**の勢い（弾けた瞬間にバネへ入れる初速）。★目盛りの外（手ざわり）。 */
-export const SNAP_POP = 0.10;
-/** ★★段が1つ増えた瞬間の弾み。★同上（ばちんより小さい）。 */
-export const STEP_POP = 0.055;
 
 /**
  * ★★★**掴んだ一点だけが垂れる山**（2026-09-14・第105巡にユーザー確定
@@ -264,12 +280,6 @@ export function bendAt(
   const c = Math.cos((Math.PI / 2) * u);
   return give * c * c * w;
 }
-
-/** 0〜1 を滑らかに（両端で傾き 0）。★距離で送るので時間の曲線は使わない。 */
-const smooth = (t: number): number => {
-  const u = Math.max(0, Math.min(1, t));
-  return u * u * (3 - 2 * u);
-};
 
 export interface PullFrame {
   /** 器の座標での中心（`armed` なら指、まだなら**ピルの中心のまま**）。 */ cx: number; cy: number;
@@ -319,10 +329,6 @@ export function pullFrame(
   };
 }
 
-/** ★いま何段まで生えているか（1 〜 `rows`）。★**段は連続ではなく飛ぶ。** */
-export const shownRows = (t: number, rows: number): number =>
-  Math.max(1, Math.min(rows, 1 + Math.floor(t * rows)));
-
 /** 右の縁から何 px で ASSIGN の帯が出るか。★目盛りの外（手ざわり）。 */
 export const RAIL_NEAR = 72;
 
@@ -358,10 +364,8 @@ export interface GhostMotion {
   pull: Spring;
   /** 伸びる向き（rad）。★**速さの向き**なので、バネではなく直に持つ。 */
   dir: number;
-  /** ★★**弾み**（「ばちん」と「段が増えた」で勢いを入れ、0 へ戻る）。 */
-  pop: Spring;
-  /** ★★いま何段まで生えているか（増えた瞬間だけ弾ませるため憶えておく）。 */
-  shown: number;
+  /** ★★★**変形のばね**（0 → 1 へ一息で開き、行き過ぎてから収まる）。 */
+  morph: Spring;
   /**
    * ★★★**追いつき**（2026-09-14・第105巡）。弾けた所から**指へ寄っていく支点**。
    * ★★**弾けた瞬間に「弾ける前の支点」で種を蒔く**（`caught`）―― 種を蒔かないと
@@ -372,7 +376,7 @@ export interface GhostMotion {
 
 export const ghostMotion = (): GhostMotion => ({
   px: 0, py: 0, had: false, swing: spring(), pull: spring(), dir: Math.PI / 2,
-  pop: spring(), catchX: spring(), catchY: spring(), caught: false, shown: 1,
+  catchX: spring(), catchY: spring(), caught: false, morph: spring(),
 });
 
 /** −1〜1 へ滑らかに丸める（頭打ちで角が立たない）。 */
@@ -402,20 +406,15 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   //   ★★**`tTo` を 0 にすればそのまま逆再生**になる（帯へ戻すときに使う）。
   //   ★この関数は**山のループの固定の刻み**（`STEP_MS`）で呼ばれるので、
   //     60Hz でも 120Hz でも同じ速さで変形する。
-  const d = 1 / MORPH_STEPS;
-  g.t = g.tTo > g.t ? Math.min(g.tTo, g.t + d) : Math.max(g.tTo, g.t - d);
-  // ★両端で傾き 0 の曲線を通す（＝着いたところで静かに止まる）。
-  const morph = smooth(g.t);
-  g.w = g.w0 + (g.w1 - g.w0) * morph;
-  g.h = g.h0 + (g.h1 - g.h0) * morph;
-  // ★★★**段は「ぽこ」と1つずつ生える**（増えた瞬間だけ弾む）。
-  //   ★減るとき（帯へ戻すとき）は弾ませない ―― 畳むのは静かなほうが正しい。
-  const shown = shownRows(morph, g.rows);
-  if (shown !== mo.shown) {
-    if (shown > mo.shown) pullBus.pop = STEP_POP;
-    mo.shown = shown;
-  }
-  g.shown = shown;
+  // ★★★**ばね1本で一息に開く**（2026-09-16・第107巡）。行き過ぎてから収まるので、
+  //   **くびれが最終より一度深く入って戻る＝ぱんと開く**。
+  //   ★★`tTo` を 0 にすれば**そのまま逆再生**（帯へ戻すときに使う）。
+  springTo(mo.morph, g.tTo, K_CATCH, D_CATCH);
+  g.t = mo.morph.p;
+  g.w = g.w0 + (g.w1 - g.w0) * g.t;
+  g.h = g.h0 + (g.h1 - g.h0) * g.t;
+  // ★くびれは 0〜1 に収める（形の式はその外を知らない）。行き過ぎは**箱**に出る。
+  g.waist = Math.max(0, Math.min(1, g.t));
 
   // ★★★**帯へ戻すときは、掴んでいる体がもう指に付いている**（2026-09-15・第106巡）。
   //   ★★だから振れも伸びも追いつきのバネも掛けない ―― **二重に掛けると、絵だけが
@@ -423,11 +422,9 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   //   ★★**角度は `t` に連れて 0 へ**（帯のピルは真っ直ぐ立っている）。転がっていた
   //     図形が**ピルに戻りながら向きを正す**ので、吸い込まれるように見える。
   if (g.home) {
-    g.angle *= morph;
+    g.angle *= g.waist;
     g.ax = 0; g.ay = 0; g.dx = g.cx; g.dy = g.cy;
     g.sx = 1; g.sy = 1; g.vx = 0; g.vy = 0;
-    if (pullBus.pop !== 0) pullBus.pop = 0;
-    g.pop = 0;
     return;
   }
 
@@ -439,7 +436,7 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
     mo.caught = false;
     g.hx = g.cx; g.hy = g.cy;
     g.ax = 0; g.ay = 0; g.dx = g.cx; g.dy = g.cy;
-    g.angle = 0; g.sx = 1; g.sy = 1; g.pop = 0;
+    g.angle = 0; g.sx = 1; g.sy = 1;
     g.vx = 0; g.vy = 0;
     // ★弾みの注文は捨てずに残す（弾けた最初のフレームで受け取る）。
     return;
@@ -480,12 +477,6 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   //   （0 に近い速さの向きは雑音なので、拾うと図形が小刻みに回る）。
   const sp = Math.hypot(vx, vy);
   if (sp > 0.5) mo.dir = Math.atan2(vy, vx);
-  // ★★★**弾み**（第104巡）… `pullBus.pop` に置かれた勢いを**1度だけ**受け取って
-  //   バネへ入れ、あとは 0 へ戻す。行き過ぎるバネなので**ばちんと弾けて戻る**。
-  if (pullBus.pop !== 0) { mo.pop.v += pullBus.pop; pullBus.pop = 0; }
-  springTo(mo.pop, 0, K_SWING, D_SWING);
-  g.pop = mo.pop.p;
-
   springTo(mo.pull, soft(sp, STRETCH_V) * STRETCH_MAX, K_SWING, D_SWING);
   // ★★**縮みも許す**（ユーザー確定は「伸び**縮み**」）。バネが行き過ぎるので、
   //   止めた瞬間に**伸びたぶんの反対**へ一度潰れてから戻る ＝ 弾力のある物体。

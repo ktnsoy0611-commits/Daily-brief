@@ -243,6 +243,8 @@ function Pill({ item, row, pull, taken, onTake }: {
       sx: was?.sx ?? 1, sy: was?.sy ?? 1,
       stretchDir: was?.stretchDir ?? Math.PI / 2, vx: was?.vx ?? 0, vy: was?.vy ?? 0,
       waist: was?.waist ?? 0,
+      // ★★掛け金も引き継ぐ（弾ける前は必ずピル。★`stepGhost` だけが書き換える）。
+      pill: was?.pill ?? true,
     } : null;
     const near = f.armed && e.clientX > window.innerWidth - RAIL_NEAR;
     if (near !== g.rail) { g.rail = near; pull.rail(near); }

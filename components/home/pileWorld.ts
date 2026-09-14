@@ -158,13 +158,35 @@ export function zigVerts(r: number): { x: number; y: number }[] {
 function bodyFromOutline(
   m: M, pts: { x: number; y: number }[], w: number, h: number, opts: object,
 ): Body {
-  const P = pts.map((q) => ({ x: q.x * w, y: q.y * h }));
-  // ★外接箱の中心を原点へ（`pilePaint.drawPile` が絵の中心を `body.position` に描く）。
-  const xs = P.map((q) => q.x); const ys = P.map((q) => q.y);
-  const bx = (Math.min(...xs) + Math.max(...xs)) / 2;
-  const by = (Math.min(...ys) + Math.max(...ys)) / 2;
-  const C = P.map((q) => ({ x: q.x - bx, y: q.y - by }));
-  const body = m.Bodies.fromVertices(0, 0, [radialVerts(C, PHYS_VERTS)], opts);
+  // ★★★**光線は「正規化した空間」で飛ばし、そのあと w/h を掛ける**
+  //   （2026-09-16・第108巡）。
+  //
+  // ★★★**px の空間で等角に飛ばすと、横長の形は縁の点が足りなくなる** ――
+  //   3:1 のピルだと 12本のうち大半が**長い上下の辺**に当たり（そこは直線なので
+  //   凸包が捨てる）、**肝心の丸い端に 1〜2点しか残らない**。
+  //   実測（180×60 の1段）… 頂点が **6個**まで潰れ、**体は絵より 10% 小さかった**
+  //   （＝第101巡の「1ピクセルだけ外側」の約束が破れている）。端が1枚の平らな面に
+  //   なるので、**角が面に乗る置き方**＝ゆらゆら揺れ続ける接触ができる。
+  // ★★**正規化の空間ではどの形もほぼ円**なので、光線は縁を均等に拾う。
+  //   実測（9形）… 体÷絵 **0.90〜1.02 → 0.96〜1.02**、180×60 の頂点 **6 → 16**。
+  // ★★**大きさに依らなくなる**のも効く ―― `VERT_MIN` は px の閾値なので、
+  //   px の空間だと**同じ形でも大きさで頂点の数が変わっていた**（実測 … 同じ1段の
+  //   ピルが 180×60 で 6個、130×34 で 16個）。正規化すれば**形だけで決まる**。
+  // ★★**左右の対称は保たれる**（縦横に拡大するだけ）ので、**重心と外接箱の中心は
+  //   一致したまま**（実測 9形とも ずれ 0.0000px）。`pilePaint.drawPile` は絵の
+  //   中心を `body.position` に描くので、ここがずれると絵と体が食い違う。
+  //   ★参考 … `GravityTab` の「順番どおりの間引き」をそのまま持ってくると、
+  //     **重心が最大 2.87px ずれる**（あちらは `ox/oy` を別に持ち回っている）。
+  //     **借りないのが正しい。**
+  /** 正規化の物差し（px の `VERT_MIN` がここでは「1%」の意味になる）。 */
+  const REF = 100;
+  const N = pts.map((q) => ({ x: q.x * REF, y: q.y * REF }));
+  const nx = N.map((q) => q.x); const ny = N.map((q) => q.y);
+  const cx = (Math.min(...nx) + Math.max(...nx)) / 2;
+  const cy = (Math.min(...ny) + Math.max(...ny)) / 2;
+  const C = radialVerts(N.map((q) => ({ x: q.x - cx, y: q.y - cy })), PHYS_VERTS)
+    .map((q) => ({ x: (q.x / REF) * w, y: (q.y / REF) * h }));
+  const body = m.Bodies.fromVertices(0, 0, [C], opts);
   if (w > 1 && h > 1) {
     m.Body.scale(body, 1 + (PHYS_GAP * 2) / w, 1 + (PHYS_GAP * 2) / h);
   }

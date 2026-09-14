@@ -179,7 +179,10 @@ function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLI
 export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number): void {
   // ★★★**弾ける前は「帯のピルの写し取り」**（2026-09-14・第105巡）。絵の作り方が
   //   まるごと違う（版面をなぞる ／ 形を組む）ので、**ファイルごと分けてある**。
-  if (g.t <= 0 && g.look) {
+  // ★★★**姿は掛け金（`g.pill`）が決める。`t` で分岐しない**（2026-09-16・第108巡）
+  //   ―― 変形のばねは 0 を挟んで行き過ぎるので、**生の比較だと必ず点滅する**
+  //   （`lib/pullDrag.ts` の `Ghost.pill` に理由）。
+  if (g.pill && g.look) {
     drawPillGhost(ctx, g);
     return;
   }

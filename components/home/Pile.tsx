@@ -7,7 +7,7 @@ import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
 import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
-  DROP_EVERY_MS, GRAVITY_Y, UNIT, buildPieces, isLost, makeWalls, refitPile, respawn, sink,
+  GRAVITY_Y, UNIT, buildPieces, isLost, makeWalls, refitPile, respawn, sink,
   type Piece,
 } from "./pileWorld";
 import { floorYOf } from "@/lib/pileBox";
@@ -15,7 +15,7 @@ import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { clearPileBitmaps, drawBoxOf, drawGhost, drawPile } from "./pilePaint";
 import {
-  RAIL_NEAR, ghostKey, ghostMotion, pullBus, stepGhost, type Ghost, type PillLook,
+  RAIL_HYST, RAIL_NEAR, ghostKey, ghostMotion, pullBus, stepGhost, type Ghost, type PillLook,
 } from "@/lib/pullDrag";
 
 import type { Body, Engine } from "matter-js";
@@ -81,8 +81,6 @@ const GRAB_MAX = 34;
  *   ★★**同じ値を2か所から取らないこと。** それが唯一の再発の道。
  */
 const DPR_MAX = 2;
-/** 全部を落とし終えてから眠りを**考え始める**までの猶予。★目盛りの外（物理の場）。 */
-const SETTLE_MS = 2500;
 /**
  * ★★★**床が動いていないか見に行く間隔**（2026-09-14・第103巡）。★目盛りの外（物理の場）。
  *
@@ -96,21 +94,8 @@ const SETTLE_MS = 2500;
  *   **2秒に1度で十分**（床が動くのは向きを変えたときと起動直後だけ）。
  */
 const FLOOR_CHECK_MS = 2000;
-/** 「もう止まっている」と見なす速さ。★目盛りの外（物理の場）。 */
-const CALM_V = 0.35;
-const CALM_W = 0.03;
-/** ★絵がこのフレーム数だけ動かなければ「止まった」と見なす。★目盛りの外（物理の場）。 */
-const STILL_FRAMES = 30;
 /** ★これ未満の動きは**塗り直さない**（px）。★実機の倍率 3 で 1デバイス画素より細かい。 */
 const REST_EPS = 0.25;
-/**
- * ★★★**1フレームでこれ未満しか動かない状態が続いたら、眠りを許す**（px）。
- * ★★**塗る判定（`REST_EPS`）より緩い** ―― 詰まった山は落ち着いても**永久に微振動する**
- * ので、厳しくすると**眠りが二度と解禁されず、matter が毎フレーム全部を解き続ける**
- * （実測 … 7件の山で、落ち着いたあとも 12秒に 160回 塗っていた）。
- * ★落下中は1フレームで十数 px 動くので、これで飛んでいるものを眠らせることは無い。
- */
-const SLEEP_EPS = 2;
 /** ★角度を px へ直す目安（この長さの腕の先がどれだけ動くか）。★目盛りの外（絵の寸法）。 */
 const REST_ANG = 120;
 /**
@@ -124,15 +109,12 @@ const MAX_STEPS = 2;
 /** ★幽霊の箱の余白（振れ・伸び・弾みのぶん）。★目盛りの外（絵の寸法）。 */
 const GHOST_PAD = 24;
 
-/** ★★接触を解く回数（matter の既定は 6）。★目盛りの外（物理の場）。 */
-const POS_ITER = 10;
-
 /**
  * ★`ghostKey` の中で**無次元の値**（角度・倍率・進み）が並ぶ位置。
  * 比べるときだけ `REST_ANG` を掛けて px に直す。★目盛りの外（絵の寸法）。
  * ★★**`lib/pullDrag.ts` の `ghostKey` の並びと対**。片方を直したら両方。
  */
-const GHOST_UNITLESS = new Set([2, 5, 6, 7, 8, 9]);
+const GHOST_UNITLESS = new Set([4, 7, 8, 9, 10, 11, 16]);
 
 /**
  * ★★★**帯へ戻すときの幽霊を作る**（2026-09-15・第106巡）。
@@ -157,6 +139,8 @@ function homeGhost(p: Piece, look: PillLook, owner: number): Ghost {
     ax: 0, ay: 0, dx: x, dy: y, angle: p.body.angle,
     sx: 1, sy: 1, stretchDir: Math.PI / 2, vx: 0, vy: 0,
     waist: 1,
+    // ★山から始めるので、出だしは**図形の姿**。畳み終えたら `stepGhost` が倒す。
+    pill: false,
   };
 }
 
@@ -222,8 +206,8 @@ export function Pile({
    *  **observer を2つ付けない**（付けると先に走ったほうが番人を黙らせる）。 */
   const onResizeRef = useRef<((w: number, h: number) => void) | null>(null);
   /** 落とし始めの時刻と、もう世界へ入れた図形。★中身を差し替えるたびに作り直す。 */
-  const releaseRef = useRef<{ at: number; done: Set<string>; settleAt: number }>(
-    { at: 0, done: new Set(), settleAt: 0 },
+  const releaseRef = useRef<{ at: number; done: Set<string> }>(
+    { at: 0, done: new Set() },
   );
   /** 最初に測れたら1度だけ真になる（世界を組む合図）。以後は動かさない。 */
   const [measured, setMeasured] = useState(false);
@@ -312,19 +296,34 @@ export function Pile({
       if (stop) return;
       matterRef.current = M;
 
-      // ★★★**落ちているあいだは眠らせない**（2026-09-10）。matter.js は、支えて
-      //   いた物体が転がって**居なくなっても、眠っている物体を起こさない**
-      //   （起きるのは新しい衝突が起きたときだけ）。落下中に眠りに入ると、
-      //   **宙に浮いたまま固まる**。落とし終えてから眠りを許す（`settleAt`）。
-      const engine = M.Engine.create({ enableSleeping: false });
+      // ★★★**最初から眠りを許す。`GravityTab` とまったく同じ**（2026-09-16・第108巡）。
+      //
+      // ★★★**5巡ぶん直らなかった「ガクガクブルブル震えて止まらない」の根本原因は
+      //   ここだった。** matter.js で詰まった山の微振動を殺しているのは
+      //   `enableSleeping` ただ1つ ―― 眠った体は**ソルバの反復から外れる**ので、
+      //   **揺れ得る自由度そのものが消える**。GRAVITY はフレーム1から眠りが有効で、
+      //   各体が `sleepThreshold`（60歩＝1秒）静かなら**個別に**凍る。
+      // ★★★**ホームだけ眠りを切って始め、「大域の門」が開くまで許していなかった**
+      //   （`settleAt` 2500ms ＋ `STILL_FRAMES` 30 ／ or 全員が `CALM_V` 未満）。
+      //   門は**全体の最大値**で測るので、**1つでもゆっくり転がっていれば開かない**。
+      //   詰まった山の微振動の `speed` はちょうど 0.3〜0.5 に居座るため、
+      //   **門が永久に開かない＝誰も凍らない＝永久に震える**ことがあった。
+      //   ★実測（Chromium・CPU 6倍遅）… 門つきで**全員が眠るまで 11.2 秒**。
+      //     GRAVITY は `enableSleeping: true`／`positionIterations: 6`（実測）。
+      // ★★★**門を切った当時の心配（落下中に眠って宙に浮く）は別の1行で消える**
+      //   ―― 落下中に世界が変わるのは**新しい体が入ってくる瞬間だけ**なので、
+      //   **入れたフレームで全員を起こす**（下の `Composite.add` の所）。
+      // ★★★**`SETTLE_MS`/`CALM_V`/`CALM_W`/`STILL_FRAMES`/`SLEEP_EPS`/`settleAt`/
+      //   `still`/`prev` は第108巡に削除した。復活させない。**
+      const engine = M.Engine.create({ enableSleeping: true });
       engine.gravity.y = GRAVITY_Y;
-      // ★★★**押し戻しの回数を上げる**（2026-09-15・第106巡。ユーザー報告
-      //   「**図形同士がぶつかる時にがくがく震える**」）。
-      //   ★★既定は 6 回。厚さ `WALL_T`(200) の床の上で、重い文字の板を含む山が
-      //     押し合うと**収束しきらず、落ち着いたあとも微振動が残る** ―― だから
-      //     `still` が `STILL_FRAMES` に届かず、**眠りにも入らず塗り続ける**。
-      //   ★体は多くても14個なので、回数を上げても費用はごくわずか。
-      engine.positionIterations = POS_ITER;
+      // ★★★**`positionIterations` は既定の 6 のまま**（2026-09-16・第108巡）。
+      //   ★★★**第106巡に 10 へ上げたのは逆効果だった。戻さない。**
+      //     matter は `positionDamping = clamp(20 / positionIterations, 0, 1)` なので、
+      //     **6 でも 10 でも減衰は 1 にクランプされる** ―― 柔らかくはならず、
+      //     `_positionDampen`(0.9) の**全力の緩和を4回余計に回すだけ**。しかも
+      //     `_positionWarming`(0.8) で前フレームの押し戻しが持ち越されるので、
+      //     過補正が**振動として持続する**。**GRAVITY は 6 で震えていない。**
       engineRef.current = engine;
 
       let walls: Body[] = [];
@@ -392,10 +391,6 @@ export function Pile({
       let last = performance.now();
       /** ★**最後に描いたときの**位置と角度（x, y, angle の並び）。 */
       const drawn: number[] = [];
-      /** ★最後に描いた絵から動いていないフレーム数（＝絵が止まっている長さ）。 */
-      let still = 0;
-      /** ★**前のフレーム**の位置と角度（眠りを許してよいかの判定だけに使う）。 */
-      const prev: number[] = [];
 
 
       /** ★★★**実解像度は毎フレーム照合する**（`GravityTab` と同じ2行）。
@@ -421,22 +416,12 @@ export function Pile({
           if (now - rel.at < at) continue;
           rel.done.add(p.id);
           M.Composite.add(engine.world, p.body);
-        }
-        // ★★★**眠りを許すのは「時間」ではなく「みんな止まったら」**（第92巡）。
-        //   時間だけで決めると、**まだ落ちている最中に眠りが解禁**される ――
-        //   matter.js は支えていた物体が転がって居なくなっても眠っている物体を
-        //   起こさないので、**宙に浮いたまま固まる**（第90巡に踏んだ形）。
-        //   ★床を下げて落ちる距離が伸びたぶん、時間の見積もりはもう当たらない。
-        // ★★★**「動いていない」は絵で判定する**（2026-09-14・第105巡）。速さの条件
-        //   （全員が同時に `CALM_V` を下回る）は、**山が詰まっていると永久に満たされない**
-        //   ―― 実測で**絵は完全に止まっているのに眠りが解禁されず**、matter が毎フレーム
-        //   全部を解き続け、canvas も塗り続けていた。
-        //   → **署名が `STILL_FRAMES` 続けて同じなら「止まった」**（＝画素で止まっている）。
-        //   ★速さの条件は**残す**（早く静かになった日はそちらが先に効く）。
-        if (!engine.enableSleeping && rel.settleAt > 0 && now > rel.settleAt
-          && (still >= STILL_FRAMES
-            || piecesRef.current.every((p) => p.body.speed < CALM_V && p.body.angularSpeed < CALM_W))) {
-          engine.enableSleeping = true;
+          // ★★★**入れたフレームで全員を起こす**（2026-09-16・第108巡）。
+          //   ★★matter は「支えていた物体が転がって居なくなった」では眠った体を
+          //     起こさない（起きるのは**新しい衝突**のときだけ）。落下中に世界が
+          //     変わるのは**ここだけ**なので、**この1行が大域の門の代わり**になる。
+          //   ★体は多くても14個・入れる瞬間だけなので、費用は無い。
+          for (const q of piecesRef.current) M.Sleeping.set(q.body, false);
         }
         // ★★★**刻みは固定。ただし歩数は実時間で決める**（2026-09-14・第104巡）。
         //
@@ -563,25 +548,10 @@ export function Pile({
             }
           }
         } else if (gDrawn) gMoved = true;
-        // ★★★**眠りの判定は「前のフレームからどれだけ動いたか」で別に測る**（第105巡）。
-        //   塗るかどうかは**最後に描いた絵**との差（`REST_EPS` 0.25px）で見るが、
-        //   **眠りを許すかどうかはそれでは決められない** ―― 塗らないでいると
-        //   `drawn` が古くなり、差はいくらでも積もるから。
-        let step = prev.length === now2.length * 3 ? 0 : Infinity;
-        for (let i = 0; i < now2.length && step < Infinity; i++) {
-          const b = now2[i].body;
-          step = Math.max(step, Math.abs(b.position.x - prev[i * 3]),
-            Math.abs(b.position.y - prev[i * 3 + 1]),
-            Math.abs(b.angle - prev[i * 3 + 2]) * REST_ANG);
-        }
-        still = step < SLEEP_EPS ? still + 1 : 0;
-        // ★★**配列は使い回す**（2026-09-15・第106巡）。120Hz では「毎フレーム
-        //   新しい配列を作って 3n 回 push する」だけで無視できない量になる。
-        prev.length = now2.length * 3;
-        for (let i = 0; i < now2.length; i++) {
-          const b = now2[i].body;
-          prev[i * 3] = b.position.x; prev[i * 3 + 1] = b.position.y; prev[i * 3 + 2] = b.angle;
-        }
+        // ★★★**「止まったか」は matter に任せる**（2026-09-16・第108巡）。
+        //   第105〜107巡はここで**前のフレームとの差を自分で測って**眠りの門に
+        //   使っていたが、門ごと削除したので**この走査も要らない**（毎フレームの
+        //   O(n) がもう1本減る）。眠りは matter が体ごとに判定する。
         if (dirtyRef.current || gMoved || drift >= REST_EPS) {
           // ★★★**塗るのは「変わった矩形」だけ**（2026-09-15・第106巡）。
           //   ★★これまでは**1つでも動けば約300万画素を全部**消して描き直していた
@@ -700,9 +670,8 @@ export function Pile({
         //   ★起こすのは `wake()`（山の組み直し・器の変化・焼き直し・写真の到着・
         //     指が触れた・幽霊が出た）。**1つでも取りこぼすと絵が止まる**ので、
         //     **`dirtyRef` を立てる所は必ず `wake()` も呼ぶ**。
-        if (!g && !dragRef.current && !dirtyRef.current && still >= STILL_FRAMES
-          && now >= releaseRef.current.settleAt
-          && now2.every((p) => p.body.isSleeping)) {
+        if (!g && !dragRef.current && !dirtyRef.current
+          && now2.length > 0 && now2.every((p) => p.body.isSleeping)) {
           runningRef.current = false;
           return;
         }
@@ -752,7 +721,7 @@ export function Pile({
     // ★★**引き下ろして指を離した所は1度だけ使って捨てる**（`lib/pullDrag.ts`）。
     const landing = pullBus.landing;
     pullBus.landing = null;
-    const { pieces, unit, dropped } = buildPieces(
+    const { pieces, unit } = buildPieces(
       M, { tasks, offers, unread, today, journal }, w, h, prev, landing);
     piecesRef.current = pieces;
     // ★大きさを決めた高さを控える（器が大きく変わったら決め直すため）。
@@ -763,23 +732,12 @@ export function Pile({
     dragRef.current = null;
     dirtyRef.current = true;
     wake();                              // ★中身が入れ替わったので必ず回す
-    // ★★★**新しく落とすものが在るときだけ山を起こす**（第103巡）。全部据え置きなら
-    //   （＝題を直しただけ・未読の数が減っただけ）**山は静かなまま**でよい。
-    if (dropped) {
-      engine.enableSleeping = false;
-      releaseRef.current = {
-        at: performance.now(), done: new Set(),
-        settleAt: performance.now() + pieces.length * DROP_EVERY_MS + SETTLE_MS,
-      };
-    } else {
-      // ★据え置きは `releaseAt: 0` なので、次のフレームで全部が世界へ入る。
-      // ★★`done` は作り直す（体そのものは別のものになっている）。**猶予は引き継ぐ**
-      //   ―― 0 にすると眠りの門が二度と開かず、山が回り続ける。
-      releaseRef.current = {
-        at: performance.now(), done: new Set(),
-        settleAt: releaseRef.current.settleAt || performance.now() + SETTLE_MS,
-      };
-    }
+    // ★★★**眠りは切らない**（2026-09-16・第108巡）。落ちてくるものは
+    //   `respawn` が `Sleeping.set(false)` で起こし、世界へ入るフレームで
+    //   **山の全員も起きる**（上の `Composite.add` の所）。**猶予は要らない。**
+    // ★据え置きは `releaseAt: 0` なので、次のフレームで全部が世界へ入る。
+    // ★★`done` は作り直す（体そのものは別のものになっている）。
+    releaseRef.current = { at: performance.now(), done: new Set() };
     // ★deps は**署名と世界の世代と入れ直しの合図**だけ。配列の同一性では見ない。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, worldGen, seedGen]);
@@ -884,6 +842,14 @@ export function Pile({
       //   ★GRAVITY は掴んだときに起こしている（`GravityTab` の move）。
       const M = matterRef.current;
       if (M) M.Sleeping.set(p.body, false);
+      // ★★★**掴んだら必ず起こす**（2026-09-16・第108巡）。
+      //   ★★★**`onDown` の `wake()` では足りない** ―― 長押しは `HOLD_MS`(150ms)
+      //     後に**タイマーの中で**掴むので、そのあいだに山が全部眠ると
+      //     **ループは自分で止まる**（第107巡に入れた停止条件）。止まったあとに
+      //     `dragRef` を立てても**誰も見に来ない＝図形が1px も動かない**。
+      //   ★★第108巡に眠りが速くなった（門を消した）ので、**ここを忘れると
+      //     「落ち着いた山は掴めない」**になる。実測でそうなった。
+      wake();
       setHolding(true);
     }, HOLD_MS);
     press.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer };
@@ -907,7 +873,10 @@ export function Pile({
     if (M) M.Sleeping.set(dragRef.current.piece.body, false);
     // ★★★**右の縁に近づいたら ASSIGN の帯**（帯のピルとまったく同じ手つき）。
     //   ★当たり判定は**指の x だけ**で取る（面は `transform` の途中で嘘をつく）。
-    const near = e.clientX > window.innerWidth - RAIL_NEAR;
+    // ★★★**境目には遊びを持たせる**（2026-09-16・第108巡。`RAIL_HYST`）
+    //   ―― 1本の線だと、指がその上に居るあいだ毎フレーム反転する。
+    const near = e.clientX > window.innerWidth - RAIL_NEAR
+      - (railRef.current ? RAIL_HYST : 0);
     if (near !== railRef.current) { railRef.current = near; onRail?.(near); }
     const box = boxRef.current;
     if (!box) return;
@@ -922,8 +891,13 @@ export function Pile({
     //   ★★**届く範囲は右端の ASSIGN と同じ `RAIL_NEAR`** ―― 帯は1段だと 44px しか
     //     無く、指の真下に図形の中心が在るので、帯そのものへ入れるのは難しい。
     //     **縁から 72px で反応する**という決まりを両方の縁で1つにする。
+    //   ★★★**ここも境目に遊びを持たせる**（2026-09-16・第108巡。`RAIL_HYST`）
+    //     ―― 入るのは `RAIL_NEAR`、出るのは `RAIL_NEAR + RAIL_HYST`。1本の線だと
+    //     指がその上に居るあいだ `tTo` が 1 と 0 を往復し、**形がぶるぶる震える**
+    //     （ユーザー報告「動作がやっぱり不安定」）。
     const bandY = bandBottom?.() ?? 0;
-    const inBand = bandY > 0 && dragRef.current.y < bandY + RAIL_NEAR;
+    const inBand = bandY > 0 && dragRef.current.y
+      < bandY + RAIL_NEAR + (homeRef.current ? RAIL_HYST : 0);
     if (inBand !== homeRef.current) {
       homeRef.current = inBand;
       if (inBand) {

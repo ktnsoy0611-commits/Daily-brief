@@ -79,6 +79,11 @@ export function pickTodayItems(items: Item[], now = new Date()): Item[] {
   const scored: { it: Item; rank: number }[] = [];
   for (const it of items) {
     if (it.status !== "candidate") continue;
+    // ★★★**もう予定に入れたものは出さない**（2026-09-15・第110巡）。
+    //   帯からピルを引き下ろすと `HomeTab.put` が `plannedFor` を書くが、
+    //   ここが見ていなかったので**引き下ろしても帯に残り続けていた**
+    //   （ユーザー報告「上の段のピルが消えない」）。
+    if (it.plannedFor) continue;
     if (isExpiredItem(it)) continue;
     if (!isGoable(it)) continue;
     const slots = KIND_HOURS[it.kind] ?? [];

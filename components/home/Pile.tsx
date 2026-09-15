@@ -7,16 +7,17 @@ import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
 import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
-  GRAVITY_Y, UNIT, buildPieces, clearOverlap, isLost, makeWalls, refitPile, respawn, sink,
-  type Piece,
+  GRAVITY_Y, MASS_K, UNIT, buildPieces, clearOverlap, ghostBodyOf, isLost, makeWalls,
+  refitPile, respawn, sink, type Piece,
 } from "./pileWorld";
 import { floorYOf } from "@/lib/pileBox";
-import { bandKnockAt } from "./bandMotion";
+import { bandAim } from "./bandMotion";
 import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { clearPileBitmaps, drawBoxOf, drawGhost, drawPile } from "./pilePaint";
 import {
-  PULL_ARM, RAIL_HYST, RAIL_NEAR, ghostKey, ghostMotion, pullBus, stepGhost, type Ghost, type PillLook,
+  PULL_ARM, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey, ghostMotion, pullBus,
+  stepGhost, type Ghost, type PillLook,
 } from "@/lib/pullDrag";
 
 import type { Body, Engine } from "matter-js";
@@ -111,6 +112,16 @@ const MAX_STEPS = 2;
 const GHOST_PAD = 24;
 
 /**
+ * ★★★**代理の体を手放すまでの締切**（ms。2026-09-15・第110巡）。
+ * 指を離してから本番の体が world へ入るまでの窓（`drop` → `put` → `persist` →
+ * React の1コミット → `buildPieces` → 次の rAF）を跨ぐだけの長さ。
+ * ★★**これが無いと片づかない道がある** … カレンダー経由（`put` は次の画面へ回る）、
+ *   `put` の早期 return、閾値に届かずに離した ―― どれも**着地が来ない**。
+ * ★目盛りの外（物理の場の後始末）。
+ */
+const HANDOFF_MS = 300;
+
+/**
  * ★`ghostKey` の中で**無次元の値**（角度・倍率・進み）が並ぶ位置。
  * 比べるときだけ `REST_ANG` を掛けて px に直す。★目盛りの外（絵の寸法）。
  * ★★**`lib/pullDrag.ts` の `ghostKey` の並びと対**。片方を直したら両方。
@@ -135,6 +146,8 @@ function homeGhost(p: Piece, look: PillLook, owner: number): Ghost {
     w0: look.w, h0: look.h, w1: p.w ?? d, h1: p.h ?? d,
     bend: 0, gx: 0, look,
     rows: clampRows(rowsOf(p.title ?? "")), outlined: !!p.outlined,
+    // ★戻す幽霊は**山に居る本物**なので、重さはその体からそのまま引く。
+    area: p.body.mass / MASS_K,
     face: p.face, ink: p.ink, faceIdx: p.face_ ?? 0,
     shape: p.shape, photo: p.photo, glyph: p.glyph,
     ax: 0, ay: 0, dx: x, dy: y, angle: p.body.angle,
@@ -164,7 +177,7 @@ const waitFonts = () => Promise.race([
 
 export function Pile({
   tasks, offers, unread, today, journal, onOpen, above, onRail, onAssign,
-  bandBottom, pillOf, onUnassign,
+  bandBottom, pillOf, onUnassign, bandRowAt,
 }: {
   tasks: Task[];
   offers: Item[];
@@ -192,6 +205,12 @@ export function Pile({
   pillOf?: (piece: Piece) => PillLook | null;
   /** ★掴んだ図形を帯の上で離したとき（**日付を消して帯へ戻す**）。 */
   onUnassign?: (piece: Piece) => void;
+  /**
+   * ★★★**その図形が戻る段と、その段の中心**（器の座標。2026-09-15・第110巡）。
+   * ★**空の段は描かれない**ので「上が row0・下が row1」と決め打ちできない ――
+   *   `HomeTab` が `.band-row` を実測して返す。
+   */
+  bandRowAt?: (piece: Piece) => { row: 0 | 1; cy: number } | null;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -228,6 +247,24 @@ export function Pile({
   const dirtyRef = useRef(true);
   /** ★山の一括の倍率（solid 座標 → px）。引き下ろしの行き先の大きさに要る。 */
   const unitRef = useRef(UNIT);
+  /** ★倍率を決め直してよい世代（`worldGen:seedGen`）。同じ世代なら据え置く。 */
+  const holdGenRef = useRef("");
+  /**
+   * ★★★**引き下ろしている図形の「代理の体」**（2026-09-15・第110巡）。
+   * 設計は `components/home/pileWorld.ts` の `ghostBodyOf` と、下の `syncProxy`。
+   * ★★★**`piecesRef` には混ぜない** ―― ループの走査・`drawnBox` の添字・
+   *   全面塗りの判定（`length * 4`）・停止条件（`every(isSleeping)`）・
+   *   番人（`sink`/`isLost`）が**全部「長さと順番が安定している」前提**で、
+   *   代理は眠らないので混ぜると**ループが二度と止まらない**し、
+   *   `isLost` が**掴んでいる図形を画面の上へ飛ばす**。
+   */
+  const proxyRef = useRef<{
+    body: Body; id: string; owner: number; inertia: number;
+    /** `"held"` ＝ 指が持っている／`"handoff"` ＝ 離したが本番がまだ来ていない。 */
+    state: "held" | "handoff"; since: number;
+  } | null>(null);
+  /** ★★本番が落ちてきたときに代理を消すための、着地する相手の id。 */
+  const landedRef = useRef<string | null>(null);
   /** ★指が右の縁の近くに居るか（毎フレームの state を避けて ref で持つ）。 */
   const railRef = useRef(false);
   const [holding, setHolding] = useState(false);
@@ -246,6 +283,81 @@ export function Pile({
   }, []);
   /** ★いま帯の上に居るか（出入りの瞬間だけ動く）。 */
   const homeRef = useRef(false);
+
+  /**
+   * ★★★**代理の体を world から外す**（2026-09-15・第110巡）。
+   * ★**片づけの口は1つ**（照合・着地・世界の後始末が同じ1本を読む）。
+   */
+  const dropProxy = useCallback((M: typeof import("matter-js"), engine: Engine) => {
+    const px = proxyRef.current;
+    if (!px) return;
+    proxyRef.current = null;
+    M.Composite.remove(engine.world, px.body);
+    // ★★寄りかかっていた隣を起こす（支えが消えたことを matter は自分で気づかない）。
+    for (const q of piecesRef.current) M.Sleeping.set(q.body, false);
+  }, []);
+
+  /**
+   * ★★★**代理の体を「条件」で毎フレーム照合する**（2026-09-15・第110巡にユーザー
+   * 指定「**引き出して掴んでいる図形に当たり判定がない。付けてください**」）。
+   *
+   * > 代理が在るべき ⟺ 幽霊が在る **かつ** 帯へ戻す最中ではない **かつ** ピルの姿でない
+   *
+   * ★★★**出来事（`armed`）を掛け金にしない** ―― `armed` には遊びが無いので、
+   *   指が閾値の上で止まると**毎 pointermove で体が生まれては消える**。
+   *   `g.pill` は第108〜109巡に入れた遊びを**既に持っている**うえ、
+   *   **`drawGhost` が分岐しているのと同じ掛け金**なので、**体の有無と絵の姿が
+   *   同じフレームで変わる**（ピルの写しに山の体が付く瞬間が原理的に無い）。
+   * ★★★**鍵は `(id, owner)`** ―― `Band.onMove` は pointermove ごとに幽霊の
+   *   オブジェクトを作り直すので、**同一性では見ない**。
+   * ★★**取り消しの道は数えなくてよい** ―― `pointercancel`・捕捉外れ・unmount・
+   *   窓の `pointerup`・タブ切り替えは**全部 `pullBus.ghost = null` に落ちる**ので、
+   *   次のフレームで自然に消える。**明示するのは受け渡しと締切だけ。**
+   */
+  const syncProxy = useCallback((
+    M: typeof import("matter-js"), engine: Engine, g: Ghost | null, now: number,
+  ): Body | null => {
+    const px = proxyRef.current;
+    const want = g && !g.home && !g.pill;
+    if (px) {
+      // ★★★**離したあとも、本番が来るまでは残す**（受け渡し）。消すと、
+      //   寄りかかっていた隣が1〜2フレーム崩れ、そのあと本番が `clearOverlap` で
+      //   持ち上げられて**ぽんと跳ねる**。★穴を正しい大きさで開けたまま待つ。
+      if (!want || px.id !== (g?.id ?? "") || px.owner !== (g?.owner ?? -1)) {
+        if (px.state === "held") {
+          px.state = "handoff"; px.since = now;
+          // ★サーボを止めるので、慣性は本物へ戻す（以後はただの図形として落ちる）。
+          M.Body.setInertia(px.body, px.inertia);
+        }
+        // ★★★**締切は必須**（任意ではない）―― カレンダー経由・`put` の早期 return・
+        //   閾値未満での離上は**着地が来ない**ので、これだけが片づける。
+        if (now - px.since > HANDOFF_MS) dropProxy(M, engine);
+        return null;
+      }
+      return px.body;
+    }
+    if (!want || !g) return null;
+    // ★★★**形と大きさは変形の行き先から1度だけ**（`g.w/g.h` は 37% 行き過ぎる
+    //   ばねで動き続けるので、追いかけると体が脈打って山を押し広げては戻す）。
+    let made: { body: Body; inertia: number };
+    try {
+      made = ghostBodyOf(M, g, g.w1, g.h1);
+    } catch { return null; }              // ★作れなければ黙って今までどおり（絵だけ）
+    const body = made.body;
+    M.Body.setPosition(body, { x: g.dx, y: g.dy });
+    M.Body.setAngle(body, g.angle);
+    M.Body.setVelocity(body, { x: 0, y: 0 });
+    M.Body.setAngularVelocity(body, 0);
+    M.Sleeping.set(body, false);
+    // ★★★**作るときに `clearOverlap` を掛けない** ―― 真上へ持ち上げるので、
+    //   「ばちん」の瞬間に**指から figure が飛び上がる**。重なりはサーボが次の歩で解く。
+    M.Composite.add(engine.world, body);
+    for (const q of piecesRef.current) M.Sleeping.set(q.body, false);
+    proxyRef.current = {
+      body, id: g.id, owner: g.owner, inertia: made.inertia, state: "held", since: now,
+    };
+    return body;
+  }, [dropProxy]);
 
   // ── 器を測る（★observer はこの1つだけ） ──────────────────────
   useEffect(() => {
@@ -416,6 +528,16 @@ export function Pile({
           const at = (p.body.plugin as { releaseAt?: number } | undefined)?.releaseAt ?? 0;
           if (now - rel.at < at) continue;
           rel.done.add(p.id);
+          // ★★★**着地する1枚の直前に、代理の体を消す**（2026-09-15・第110巡）。
+          //   ★★★**`clearOverlap` は world の全部を見る** ―― 本番は `landing` の
+          //     位置（＝代理とほぼ完全に重なる所）に生まれるので、代理が居ると
+          //     **1体ぶん真上へ持ち上げられて落ちる**。`landing` が消したはずの
+          //     跳ねが、そのまま戻る。**この2行の順番が仕様。**
+          //   ★あいだに `Engine.update` は走らないので、隣は穴を1フレームも見ない。
+          if (landedRef.current === p.id) {
+            landedRef.current = null;
+            dropProxy(M, engine);
+          }
           // ★★★**入れる直前に、すでに居る体との重なりを解く**（2026-09-15・第109巡）。
           //   ★★★**「順番を時間で作る」だけでは位置を分けていなかった** ――
           //     `DROP_EVERY_MS`(60ms) で落ちる距離は **2.5px**、散らばりの幅は
@@ -456,6 +578,8 @@ export function Pile({
         //   いたので、**120Hz の実機ではバネも変形も2倍速**だった（同じ手つきでも
         //   端末によって手ざわりが違う）。ここへ入れれば、60Hz でも 120Hz でも同じ。
         const gh = pullBus.ghost;
+        // ★★★**代理の体を照合する**（2026-09-15・第110巡。作る／消す／受け渡す）。
+        const px = syncProxy(M, engine, gh, now);
         // ★★**帯へ戻す幽霊は、掴んでいる体そのものに付いて動く**（指のバネは
         //   体がすでに持っているので、二重に掛けない）。
         if (gh?.home) {
@@ -463,8 +587,33 @@ export function Pile({
           if (b) { gh.cx = b.position.x; gh.cy = b.position.y; gh.angle = b.angle; }
         }
         while (acc >= STEP_MS) {
+          // ★★★**サーボは「歩」の中**（2026-09-15・第110巡）。rAF ごとにすると
+          //   120Hz の実機で2倍速になる（第104巡・第106巡で2度踏んだ）。
+          if (px && gh) {
+            // ★★★**`setVelocity` は眠った体を起こさない**（第106巡）。
+            //   1秒静止してから動かすと付いてこなくなるので、**毎歩**起こす。
+            M.Sleeping.set(px, false);
+            // ★★**角度の持ち主は振れのばね1つ**（慣性は無限なので接触では回らない）。
+            M.Body.setAngle(px, gh.angle);
+            M.Body.setAngularVelocity(px, 0);
+            // ★★★**利得は 1**（＝「衝突を尊重する瞬間移動」）。何にも当たって
+            //   いなければ体は望んだ所へ丸ごと動き、当たっていればソルバが削る。
+            //   ★★**`GRAB_K`/`GRAB_MAX` を使わない** ―― あれは柔らかいサーボで、
+            //     追いつきのばねに重ねると**2極のフィルタ**になる（＝「硬い」）。
+            //   ★頭打ちは `THROW_MAX`（「これを超えると壁を貫通する」の1つの数）。
+            const arm = armOffset(gh.ax, gh.ay, gh.angle);
+            const dx = motion.catchX.p + arm.x - px.position.x;
+            const dy = motion.catchY.p + arm.y - px.position.y;
+            const k = Math.min(1, THROW_MAX / (Math.hypot(dx, dy) || 1));
+            M.Body.setVelocity(px, { x: dx * k, y: dy * k });
+          }
           M.Engine.update(engine, STEP_MS);
-          if (gh) stepGhost(motion, gh);
+          // ★★★**絵は体そのもの**（`pin`）。渡さないと「壁で止まる」が絵に出ない。
+          if (gh) {
+            stepGhost(motion, gh, px && !gh.home
+              ? { x: px.position.x, y: px.position.y, vx: px.velocity.x, vy: px.velocity.y }
+              : null);
+          }
           acc -= STEP_MS;
         }
         // ★★★**床が動いていないか、ときどき見に行く**（第103巡。上の `FLOOR_CHECK_MS`）。
@@ -681,7 +830,11 @@ export function Pile({
         //   ★起こすのは `wake()`（山の組み直し・器の変化・焼き直し・写真の到着・
         //     指が触れた・幽霊が出た）。**1つでも取りこぼすと絵が止まる**ので、
         //     **`dirtyRef` を立てる所は必ず `wake()` も呼ぶ**。
-        if (!g && !dragRef.current && !dirtyRef.current
+        // ★★★**代理の体が居るあいだは止めない**（2026-09-15・第110巡）。
+        //   受け渡しの窓では幽霊も `dragRef` も無く、山は眠っている ―― ここで
+        //   止めると**代理を消せる唯一のコードも止まる**＝山の中に**見えない体が
+        //   永久に刺さる**。
+        if (!g && !dragRef.current && !dirtyRef.current && !proxyRef.current
           && now2.length > 0 && now2.every((p) => p.body.isSleeping)) {
           runningRef.current = false;
           return;
@@ -699,10 +852,14 @@ export function Pile({
       cancelAnimationFrame(rafRef.current);
       onResizeRef.current = null;
       piecesRef.current = [];
+      // ★★代理の体も手放す（世界ごと捨てるので除くまでもないが、**残っていると
+      //   次の世界が「もう持っている」と思い込む**）。
+      proxyRef.current = null;
+      landedRef.current = null;
       engineRef.current = null;
       matterRef.current = null;
     };
-  }, [measured, wake]);
+  }, [measured, wake, syncProxy, dropProxy]);   // ★後ろ2つは `useCallback([])` で不変
 
   // ── 中身（図形）。★世界はそのまま、図形だけ差し替える ─────────────
   // ★★★**組み直す合図は「中身」だけ**（2026-09-10）。配列の同一性で見ていた
@@ -732,8 +889,20 @@ export function Pile({
     // ★★**引き下ろして指を離した所は1度だけ使って捨てる**（`lib/pullDrag.ts`）。
     const landing = pullBus.landing;
     pullBus.landing = null;
+    // ★★**着地する相手の id を控える**（代理の体を消すのはこの1枚が入る直前）。
+    //   ★★★**幽霊の id とは違う** ―― `HomeTab.put` は候補やフォローアップから
+    //     **新しい `task-${Date.now()}` を発行する**ので、`g.id` では当たらない。
+    if (landing) landedRef.current = landing.id;
+    // ★★★**中身が変わっただけなら倍率は据え置く**（2026-09-15・第110巡）。
+    //   理由は `pileWorld.ts` の `buildPieces` の `hold` に書いた（1枚増えると
+    //   全員が別の大きさで作り直され、山が丸ごと浮く＝「画面が一気に変わる」）。
+    //   ★決め直すのは**世界を作り直したとき**（`worldGen`）と**器が 15% 以上
+    //   変わったとき**（`seedGen`）だけ ―― どちらもこの鍵が変わる。
+    const gen = `${worldGen}:${seedGen}`;
+    const hold = holdGenRef.current === gen ? unitRef.current : 0;
+    holdGenRef.current = gen;
     const { pieces, unit } = buildPieces(
-      M, { tasks, offers, unread, today, journal }, w, h, prev, landing);
+      M, { tasks, offers, unread, today, journal }, w, h, prev, landing, hold);
     piecesRef.current = pieces;
     // ★大きさを決めた高さを控える（器が大きく変わったら決め直すため）。
     builtFloorRef.current = floorYOf(h);
@@ -927,10 +1096,18 @@ export function Pile({
     if (gh0 && gh0.home) {
       const caught = bandY > 0 && dragRef.current.y
         < bandY + PULL_ARM + (gh0.aim ? RAIL_HYST : 0);
-      // ★★着地点は**帯の下の段の中心・指の x**（`PULL_ARM` ＝ 段の高さ）。
+      // ★★★**着地点はその図形が入る段の中心・指の x**（2026-09-15・第110巡）。
+      //   ★★**「下の段」と決め打ちしない** ―― 空の段は描かれないので、
+      //     提案しか無い日は下の段そのものが存在しない（`bandRowAt` が実測して返す）。
+      const slot = bandRowAt?.(dragRef.current.piece);
       gh0.aim = caught
-        ? { x: dragRef.current.x, y: bandY - PULL_ARM / 2 } : null;
+        ? { x: dragRef.current.x, y: slot?.cy ?? bandY - PULL_ARM / 2 } : null;
       gh0.tTo = caught ? 0 : 1;
+      // ★★★**挿し口を帯へ伝える**（第110巡。ユーザー確定「挿し口が指に付いてくる」）。
+      //   ★★**`x` は画面の座標**（帯は矩形で引くので器の座標と混ぜてはいけない）。
+      //   ★`w` は**戻ったときのピルの幅そのもの**（`pillOf` が `pillWidth()` で出す）。
+      bandAim(caught && slot
+        ? { row: slot.row, x: e.clientX, w: gh0.look?.w ?? gh0.w1 } : null);
     }
   };
 
@@ -941,6 +1118,9 @@ export function Pile({
   //   `TAP_MOVE` より動かさずに離したときだけ。**掴んだあとは走らない**
   //   ―― 運んで戻しただけで画面が飛ぶのは事故になる。
   const onUp = (e: React.PointerEvent) => {
+    // ★★★**挿し口は指が離れたら必ず消す**（第110巡）。消し忘れると帯が
+    //   **隙間を開けたまま毎フレーム回り続ける**（幽霊の寿命と同じ轍）。
+    bandAim(null);
     const pr = press.current;
     if (pr) window.clearTimeout(pr.timer);
     press.current = null;
@@ -958,11 +1138,12 @@ export function Pile({
       pullBus.ghost = null;
       if (dragged) {
         haptic(10);
-        // ★★★**入れた所の左右のピルを弾く**（2026-09-15・第109巡にユーザー指定
-        //   「**左右それぞれに弾き飛ばされて、戻ってきてバウンドする**」）。
-        //   ★**画面の x** で引く（ピルの居場所は流れの `transform` が決めていて、
-        //   React 側は知らない）。式は `components/home/bandMotion.ts`。
-        bandKnockAt(e.clientX);
+        // ★★★**弾きは「隙間を閉じる」に畳んだ**（2026-09-15・第110巡）。
+        //   第109巡の `bandKnockAt` は**塗ったあとに跳ねるだけ**で、
+        //   ユーザー報告「**ホバリングしている状態では何も起きない**」の原因だった。
+        //   いまは近づけている最中に左右が `±w/2` 開いて待っているので、
+        //   **挿し口を外せば行き先 0 へ向かって行き過ぎつつ閉じる**＝バウンド。
+        //   ★★閉じるのは段の rAF（`bandBus.aim` が消えたフレーム）。
         onUnassign?.(dragged.piece);
         return;
       }

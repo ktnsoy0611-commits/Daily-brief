@@ -113,6 +113,8 @@ export interface Ghost {
   w0: number; h0: number; w1: number; h1: number;
   /** タスクの段の数（`rowsOf`）。 */
   rows: number;
+  /** ★山での面積（solid²）。**代理の体の重さ**（`GhostSeed.area` の注釈）。 */
+  area: number;
   /** 日付が無い＝輪郭だけ（帯の下の段と同じ見え方）。 */
   outlined: boolean;
   face: string;
@@ -308,6 +310,16 @@ export function bendAt(
   return give * c * c * w;
 }
 
+/**
+ * ★★★**支点から絵の中心までのずれ**（振れで回したもの）。2026-09-15・第110巡。
+ * ★★**`stepGhost`（絵）と `Pile`（代理の体のサーボ）が同じ1本を読む** ――
+ *   回転の2行を書き写すと、いつか片方だけ直る。
+ */
+export function armOffset(ax: number, ay: number, angle: number): { x: number; y: number } {
+  const c = Math.cos(angle); const s = Math.sin(angle);
+  return { x: ax * c - ay * s, y: ax * s + ay * c };
+}
+
 export interface PullFrame {
   /** 器の座標での中心（`armed` なら指、まだなら**ピルの中心のまま**）。 */ cx: number; cy: number;
   /** ゴムを抜けて指に付いているか（＝離したら日付が付く段階か）。 */ armed: boolean;
@@ -424,8 +436,14 @@ export const ghostMotion = (): GhostMotion => ({
 /** −1〜1 へ滑らかに丸める（頭打ちで角が立たない）。 */
 const soft = (v: number, at: number): number => Math.tanh(v / Math.max(1e-6, at));
 
+/**
+ * ★★★**代理の体が実際に居る所**（2026-09-15・第110巡）。`components/home/Pile.tsx`
+ * が `Engine.update` の直後に読んで渡す。**絵はこれをそのまま写す。**
+ */
+export interface Pin { x: number; y: number; vx: number; vy: number }
+
 /** 投げの上限（px/フレーム）。★これを超えると壁を貫通する。★目盛りの外（物理の場）。 */
-const THROW_MAX = 18;
+export const THROW_MAX = 18;
 const clampV = (v: number): number => Math.max(-THROW_MAX, Math.min(THROW_MAX, v));
 
 /**
@@ -435,8 +453,16 @@ const clampV = (v: number): number => Math.max(-THROW_MAX, Math.min(THROW_MAX, v
  *   振れの目標は**指の横の速さ**から。★`K_TRAVEL`/`D_TRAVEL` は**わずかに行き過ぎる**
  *   ので、指を止めると**揺り返して**から静かに戻る ＝ 重いものを摘まんでいる感触。
  * ★★**伸び縮みは第109巡に削除した**（ユーザー確定「図形自体は柔らかくしなくて良い」）。
+ *
+ * @param pin ★★★**代理の体が実際に居る所**（2026-09-15・第110巡）。在るときは
+ *   **絵は体そのもの**になり、バネは**行き先を言うだけ**になる（壁・床・山が
+ *   削った結果を、バネの位置に**繋ぎ直す**）。★★★**`Ghost` の欄にしない** ――
+ *   `Band.onMove` は pointermove ごとに幽霊のオブジェクトを作り直すので、
+ *   **物理の歩と歩のあいだに来た pointermove で黙って落ちる**。
+ *   ★**`null`／未指定の道は残す**（弾けた直後の数フレーム・`fromVertices` の
+ *   失敗・matter がまだ読み込まれていない・`Pile` が消えた最中）。
  */
-export function stepGhost(mo: GhostMotion, g: Ghost): void {
+export function stepGhost(mo: GhostMotion, g: Ghost, pin?: Pin | null): void {
 
   // ★★★**変形は「時間」で進む**（2026-09-15・第106巡にユーザー確定）。
   //   ★★**指の距離では進めない** ―― 第105巡までは `MORPH_SPAN`(90px) で、
@@ -527,7 +553,20 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   //   「**一気に指の方に全体が滑らかにアニメーションしながら吸い付いて揺れる**」）。
   //   第104巡は支点を指へ**瞬間移動**させていたので、滑らかでも揺れてもいなかった。
   //   ★`K_CATCH` は 16% 行き過ぎるので、**指を追い越してから戻る**＝吸い付く。
-  if (!mo.caught) {
+  if (pin) {
+    // ★★★**バネの位置を、体が実際に居る所へ繋ぎ直す**（2026-09-15・第110巡）。
+    //   ★★**速さ（`v`）は残す** ―― バネの慣性と行き過ぎ（＝第105巡の「指を
+    //     追い越してから戻る」手ざわり）は `v` が持っているので、そこは触らない。
+    //   ★★★**繋ぎ直さないと「巻き上がり」が起きる** ―― 壁に押し付けているあいだ
+    //     バネは壁の向こうの指を追って**どこまでも伸びる**ので、指を戻したときに
+    //     伸びたぶんだけ**遅れて動き出す**（＝「壁に貼り付く」に見える）。
+    //   ★何にも当たっていなければ、体は望んだ所へ丸ごと動いているので**恒等**。
+    //     ＝**フィルタを2枚重ねていない**（これが「硬くならない」理由）。
+    const arm0 = armOffset(g.ax, g.ay, g.angle);
+    mo.caught = true;
+    mo.catchX.p = pin.x - arm0.x;
+    mo.catchY.p = pin.y - arm0.y;
+  } else if (!mo.caught) {
     mo.caught = true;
     mo.catchX.p = g.hx; mo.catchX.v = 0;
     mo.catchY.p = g.hy; mo.catchY.v = 0;
@@ -555,11 +594,25 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   //   ★支点の速さ（`catchX/Y.v`）は**差分を取らずに正確**で、指を止めれば
   //     自然に 0 へ落ちる。**目盛り `SWING_V` は支点の速さに合わせて測り直した。**
   //   ★★**符号は負**（＝遅れる）。指を右へ動かせば、ぶら下がったものは**左へ残る**。
-  springTo(mo.swing, -soft(mo.catchX.v, SWING_V) * SWING_MAX * hang, K_SWING, D_SWING);
+  //   ★★★**代理の体が在るなら、振れるのは「体の速さ」**（2026-09-15・第110巡）
+  //     ―― 壁に押し付けているあいだ体は止まっているので、**揺れも止まる**。
+  //     バネの速さで振ると、動かないものが揺れ続けて嘘になる。
+  springTo(mo.swing, -soft(pin ? pin.vx : mo.catchX.v, SWING_V) * SWING_MAX * hang,
+    K_SWING, D_SWING);
   g.angle = mo.swing.p;
-  const ca = Math.cos(g.angle); const sa = Math.sin(g.angle);
-  g.dx = g.hx + g.ax * ca - g.ay * sa;
-  g.dy = g.hy + g.ax * sa + g.ay * ca;
+  const arm = armOffset(g.ax, g.ay, g.angle);
+  if (pin) {
+    // ★★★**絵は体そのもの**（2026-09-15・第110巡）。体は**絵の中心**に居るので
+    //   （＝`dx`/`dy`。支点ではない ―― `ay` は `h/2` まで育つので、支点に置くと
+    //   **絵の下半分に当たり判定が無くなる**）、支点は逆算で出す。
+    //   ★★これをしないと「壁で止まる」「山を押しのけて止まる」が**絵に出ない**。
+    g.dx = pin.x; g.dy = pin.y;
+    g.hx = g.dx - arm.x; g.hy = g.dy - arm.y;
+    g.vx = clampV(pin.vx); g.vy = clampV(pin.vy);
+  } else {
+    g.dx = g.hx + arm.x;
+    g.dy = g.hy + arm.y;
+  }
 
   // ★★★**図形そのものは伸び縮みさせない**（2026-09-15・第109巡にユーザー確定
   //   「**図形に変換された後は、図形自体は柔らかくしなくて良い**」）。
@@ -581,6 +634,14 @@ export interface GhostSeed {
   faceIdx: number;
   /** 山での寸法（px）。 */
   w: number; h: number;
+  /**
+   * ★★★**山での面積**（solid²。2026-09-15・第110巡）。**代理の体の重さ**に使う。
+   * ★★★**`w * h / unit²` から出してはいけない** ―― `specOf` が返す箱は
+   *   `area / STACK_INK` なので**定数倍ずれる**。密度が揃っていないと
+   *   「位置のソルバ（質量を見ない）と速度のソルバ（質量で重み付け）が毎歩
+   *   食い違う」＝第109巡に潰した震えが戻る。**`buildPieces` と同じ数を渡す。**
+   */
+  area: number;
   shape?: CardShape;
   photo?: string;
   glyph?: string;

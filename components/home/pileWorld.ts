@@ -41,7 +41,7 @@ type M = typeof import("matter-js");
 export const GRAVITY_Y = 1.4;
 /** 一括の倍率の上限（solid 座標 → px）。★引き下ろしの初期値にも使う。 */
 export const UNIT = 64;
-const MASS_K = 1.6;
+export const MASS_K = 1.6;
 const BODY = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
 const WALL_T = 200;
 /** ★左右の壁の最低の長さ（器が低くても図形が抜けない）。★目盛りの外（物理の場）。 */
@@ -75,9 +75,14 @@ export function fitUnit(unit: number, sw: number, sh: number, bw: number, bh: nu
 }
 /** ★提案の円の大きさ。**いちばん重いタスク × これ**（2026-09-08 に 1 → 1.6）。 */
 const OFFER_K = 1.6;
+/**
+ * ★★★**提案の面積**（solid²。2026-09-15・第110巡に名前を付けた）。
+ * ★**`HomeTab.seed` も代理の体もここを読む** ―― 重さの目盛りは1つ。
+ */
+export const OFFER_AREA = weightArea(3) * OFFER_K;
 /** ★提案の半径（px）。★引き下ろしの行き先の大きさにも要るので **export**（第102巡）。 */
 export const offerRadiusOf = (unit: number): number =>
-  Math.max(28, Math.sqrt((weightArea(3) * OFFER_K * unit * unit) / Math.PI));
+  Math.max(28, Math.sqrt((OFFER_AREA * unit * unit) / Math.PI));
 /** 未読のトゲトゲの円。★12の尖り。★**谷は `ZIG_IN + 0.5 = 0.9`**（浅い刻み）。 */
 export const ZIG_N = 12;
 const ZIG_IN = 0.4;
@@ -464,10 +469,18 @@ export interface PileBuild {
 /**
  * @param prev    前の山の体（id → Body）。**同じ id は落とし直さず居場所を引き継ぐ**。
  * @param landing 引き下ろして指を離した所（1つだけ）。ここから落とす。
+ * @param hold    ★★★**前の倍率。渡されたら決め直さない**（2026-09-15・第110巡）。
+ *   `unit` は**全体の面積の予算 ÷ 件数**なので、**1枚増えれば全員が別の大きさで
+ *   作り直される**。位置は `prev` から丸写しなので、**大きくなった図形は隣へ
+ *   めり込み、`clearOverlap` が真上へ持ち上げて山ごと浮き**、小さくなった図形は
+ *   宙に浮く ―― ユーザー報告「**離した瞬間に画面が一気に変わる**」の正体。
+ *   ★**着地した1枚も、幽霊は古い倍率・体は新しい倍率**なので大きさが飛んでいた。
+ *   ★★決め直すのは**世界を作るとき**（＝タブを開いたとき）と**器が 15% 以上
+ *   変わったとき**（`seedGen`）だけ。＝ユーザー確定「次に開いた時などに調整する」。
  */
 export function buildPieces(
   m: M, c: PileContent, w: number, h: number,
-  prev?: Map<string, Body>, landing?: Landing | null,
+  prev?: Map<string, Body>, landing?: Landing | null, hold?: number,
 ): PileBuild {
   const { tasks, offers, unread, today, journal } = c;
 
@@ -498,7 +511,7 @@ export function buildPieces(
   const usableH = Math.max(120, floorYOf(h));
   const areas = [
     ...tasks.map((t) => areaOf(t, today)),
-    ...offers.map(() => weightArea(3) * OFFER_K),
+    ...offers.map(() => OFFER_AREA),
     ...(jArea > 0 ? [jArea] : []),
   ];
   const total = areas.reduce((a, b) => a + b, 0) || 1;
@@ -507,16 +520,21 @@ export function buildPieces(
   const budget = Math.max(w * usableH * FILL * 0.25, w * usableH * FILL - fixed);
   // ★★★**下限で予算を破らない**。以前は 16 を床にしていたので、件数が多い日は
   //   予算を無視して大きいまま出て、器に入り切らなかった。
-  let unit = Math.min(UNIT, Math.sqrt(budget / total));
   // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。
   //   1枚だけ縮めない ―― 図形どうしの大きさの比がそのまま重要度なので。
+  //   ★★★**この頭打ちは予算とは別に出す**（第110巡）―― 据え置きのときも
+  //   **これだけは必ず効かせる**（＝器に入らない倍率は据え置かない）。
+  let cap = UNIT;
   for (const sp of [
     ...tasks.map((t) => specOf(t, today)),
     ...(jW > 0 ? [{ w: jW, h: jH }] : []),
   ]) {
-    unit = Math.min(unit, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
+    cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
   }
-  unit = Math.max(10, unit);
+  // ★★★**据え置きが渡されていれば、予算からは決め直さない**（第110巡。上の注釈）。
+  //   **安全網は `cap` の1つだけ** ―― それ以外では 1px も動かさない。
+  const raw = hold && hold > 0 ? hold : Math.min(UNIT, Math.sqrt(budget / total));
+  const unit = Math.max(10, Math.min(raw, cap));
 
   const pieces: Piece[] = [];
   let nth = 0;
@@ -639,7 +657,7 @@ export function buildPieces(
   offers.forEach((it) => {
     // ★★提案は重さを持たないので、**いちばん重いタスクと同じ**として置く
     //   （2026-09-08 ユーザー指定「提案の図形はもっと大きく」）。
-    const area = weightArea(3) * OFFER_K;
+    const area = OFFER_AREA;
     const r = offerRadiusOf(unit);
     // ★★★**まん丸をやめて12角形**（2026-09-13・第96巡に形を持たせたので）。
     //   ★★`Bodies.fromVertices` に**凹んだ形をそのまま渡してはいけない** ――
@@ -728,4 +746,32 @@ export function clearOverlap(m: M, body: Body, live: Body[]): void {
     if (lift <= 0) return;
     m.Body.setPosition(body, { x: body.position.x, y: body.position.y - lift });
   }
+}
+
+/**
+ * ★★★**引き下ろしている図形の「代理の体」**（2026-09-15・第110巡にユーザー指定
+ * 「**図形を引き出して掴んでいるのですが、それに当たり判定がないです**」／確定
+ * 「**山の図形を押しのける ＋ 壁と床にも当たる**」）。
+ *
+ * ★★★**形も重さも `buildPieces` と同じ1本から出す** ―― 2か所に書くと、
+ *   `unit` を据え置いて「幽霊と本番の大きさを揃えた」意味が消える。
+ * ★★★**大きさは変形の行き先（`w1`/`h1`）で1度だけ作る** ―― `g.w`/`g.h` は
+ *   変形のばね（`K_SWING`。37% 行き過ぎる）で動き続けるので、追いかけると
+ *   **体が脈打って山を押し広げては戻す**（第104巡の頂点爆発と同じ重さも付く）。
+ * ★★★**回り慣性は無限**（`setMass` が慣性を書き換えるので**そのあとに**呼ぶ）――
+ *   角度の持ち主は**振れのばね1つ**。摘ままれているものが接触で回らないのは
+ *   物理としても正しい。**元の慣性は返り値で返す**（離したら戻す）。
+ */
+export function ghostBodyOf(
+  m: M, g: { kind: "task" | "offer"; rows: number; shape?: CardShape; area: number },
+  w: number, h: number,
+): { body: Body; inertia: number } {
+  const pts = g.kind === "offer" && g.shape
+    ? cardShapePoints(g.shape).map(([x, y]) => ({ x: x - 0.5, y: y - 0.5 }))
+    : stackOutline(clampRows(g.rows), w / h);
+  const body = bodyFromOutline(m, pts, w, h, BODY);
+  m.Body.setMass(body, g.area * MASS_K);
+  const inertia = body.inertia;
+  m.Body.setInertia(body, Infinity);
+  return { body, inertia };
 }

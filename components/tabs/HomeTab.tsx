@@ -7,7 +7,7 @@ import { AssignSheet } from "@/components/home/AssignSheet";
 import { Band } from "@/components/home/Band";
 import { Pile } from "@/components/home/Pile";
 import { pillWidth } from "@/components/home/pillGhost";
-import { fitUnit, offerRadiusOf, type Piece } from "@/components/home/pileWorld";
+import { OFFER_AREA, fitUnit, offerRadiusOf, type Piece } from "@/components/home/pileWorld";
 import { groundOf } from "@/components/AppBackdrop";
 import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
@@ -107,6 +107,9 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       return {
         kind: "offer", title: it.text, rows: 1, outlined: false,
         face, ink: bodyInkOn(face), faceIdx: SHAPE_FACE, w: d, h: d,
+        // ★★**`buildPieces` の提案とまったく同じ数**（`weightArea(3) * OFFER_K`）。
+        //   ★代理の体の重さに使う ―― 山と密度が違うと2つのソルバが喧嘩する。
+        area: OFFER_AREA,
         shape: kind ? cardShapeOf(KIND_DOMAIN[kind]) : undefined,
         photo: it.photo, glyph: it.glyph,
       };
@@ -123,6 +126,8 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       //   山での姿なので、ここで塗りへ切り替わるのが正しい。
       outlined: false, face: TASK_FACE, ink: bodyInkOn(TASK_FACE), faceIdx: SHAPE_FACE,
       w: Math.max(28, spec.w * u), h: Math.max(24, spec.h * u),
+      // ★★**`buildPieces` のタスクとまったく同じ数**（`spec.area`）。上の注釈。
+      area: spec.area,
     };
   }, [srcOf, day, today]);
 
@@ -232,6 +237,22 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   }, []);
 
   /**
+   * ★★★**その図形が戻る段と、その段の中心**（器の座標。2026-09-15・第110巡）。
+   * ★★★**「上が row0・下が row1」と決め打ちできない** ―― `BandRow` は
+   *   `if (!items.length) return null` で**空の段を描かない**ので、提案しか
+   *   無い日は下の段そのものが DOM に存在しない。**実測して返す。**
+   * ★段の分け方は `unassign` と同じ切り分け（提案＝上／タスク＝下）。
+   */
+  const bandRowAt = useCallback((p: Piece) => {
+    const row: 0 | 1 = p.kind === "offer" ? 0 : 1;
+    const box = boxRef.current?.getBoundingClientRect();
+    const el = bandRef.current?.querySelector<HTMLElement>(`[data-band-row="${row}"]`);
+    if (!box || !el) return null;
+    const r = el.getBoundingClientRect();
+    return { row, cy: r.top + r.height / 2 - box.top };
+  }, []);
+
+  /**
    * ★★★**帯の上で離した＝日付を消して帯へ戻す**（同ユーザー指定）。
    * ★★**規則は1本だけ** … タスクは `dueDate` を、提案は `plannedFor` を消す。
    *   声の候補やフォローアップから生まれたタスクも**ただの「日付なしタスク」**に
@@ -303,6 +324,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
           journal={journal} onOpen={goTab} above={lift}
           onRail={setRail} onAssign={assignPiece}
           bandBottom={bandBottom} pillOf={pillOf} onUnassign={unassign}
+          bandRowAt={bandRowAt}
         />
         {/* 帯（2段）。★器の左右のパディングの外へ出る（`.bleed-x`）ので、
             左右とも画面の外へ切れる ＝「まだ続きがある」を形で言う。

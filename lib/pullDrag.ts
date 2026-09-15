@@ -2,7 +2,10 @@ import type { RefObject } from "react";
 import type { CardShape } from "./cardShape";
 import { BAND_H } from "./constants";
 import type { BandItem } from "./homeBand";
-import { D_CATCH, D_SWING, K_CATCH, K_SWING, rubber, spring, springTo, type Spring } from "./spring";
+import {
+  D_CATCH, D_SETTLE, D_SWING, K_CATCH, K_SETTLE, K_SWING,
+  rubber, settled, spring, springTo, type Spring,
+} from "./spring";
 
 // ★★★**帯のピルを引き下ろす手つきの「算数」はここ1つ**（2026-09-14・第102巡）。
 //
@@ -154,6 +157,17 @@ export interface Ghost {
    *   ここが真のときは**ピルの姿でも指に付いて動く**（帯に留まらない）。
    */
   home?: boolean;
+  /**
+   * ★★★**帯の中の「着地点」**（2026-09-15・第109巡にユーザー指定
+   * 「**かなり帯の位置に近づいたら滑らかに帯に吸い付いていく**」／距離は
+   * **ピル1つぶん `PULL_ARM`(44px)**）。
+   *
+   * ★★**入るまでは支点＝体**（＝指にぴったり追従する。ユーザー「**戻す時は
+   *   指に基本的には追従して**」）。入った瞬間から**指を離れて**ここへ
+   *   `K_SETTLE`（行き過ぎない）で寄り、同時に `tTo = 0` でピルへ畳まれる。
+   * ★`components/home/Pile.tsx` が入れる（帯の段の中心・指の x）。
+   */
+  aim?: { x: number; y: number } | null;
 }
 
 /**
@@ -374,25 +388,24 @@ export const PILL_EXIT = 0.2;
 
 /** 支点が中心から上の縁へ移りきる `t`。★目盛りの外（手ざわり）。 */
 export const HANG_T = 0.6;
-/** 振れの上限（rad ≒ 22°）。★目盛りの外（手ざわり）。 */
-export const SWING_MAX = 0.38;
-/** 振れが上限に届く指の速さ（px/フレーム）。★同上。 */
+/**
+ * 振れの上限（rad ≒ 17°）。★目盛りの外（手ざわり）。
+ * ★★★**バネが 36% 行き過ぎる**ので、速く振ると**実測で片側 21°**まで出る
+ *   （2026-09-15・第109巡。0.38 のままだと 27° で、ユーザー指定の
+ *   「**やりすぎることなく**」を越えた）。
+ */
+export const SWING_MAX = 0.30;
+/**
+ * 振れが上限に届く速さ（px/フレーム）。★目盛りの外（手ざわり）。
+ * ★★★**見るのは「指」ではなく「支点そのものの速さ」**（第109巡。`stepGhost`）。
+ *   指を止めても**絵がまだ飛んでいるあいだは振れ続ける**のが狙い。
+ * ★実測 … 180px を 6歩で振ると支点は 30px/フレーム ＝ `tanh(1.67)` で 93% 出る。
+ */
 const SWING_V = 18;
-/** 伸びの上限（1 ＋ これ が長いほうの倍率）。★目盛りの外（手ざわり）。 */
-export const STRETCH_MAX = 0.22;
-/** 伸びが上限に届く指の速さ（px/フレーム）。★同上。 */
-const STRETCH_V = 34;
 
 /** 幽霊のバネ（3本）。★`Pile.tsx` が1つだけ持ち、幽霊が消えたら捨てる。 */
 export interface GhostMotion {
-  /** 前のフレームの中心（速さを出すため）。 */
-  px: number; py: number;
-  had: boolean;
   swing: Spring;
-  /** 伸びの量（0〜`STRETCH_MAX`）。 */
-  pull: Spring;
-  /** 伸びる向き（rad）。★**速さの向き**なので、バネではなく直に持つ。 */
-  dir: number;
   /** ★★★**変形のばね**（0 → 1 へ一息で開き、行き過ぎてから収まる）。 */
   morph: Spring;
   /**
@@ -404,7 +417,7 @@ export interface GhostMotion {
 }
 
 export const ghostMotion = (): GhostMotion => ({
-  px: 0, py: 0, had: false, swing: spring(), pull: spring(), dir: Math.PI / 2,
+  swing: spring(),
   catchX: spring(), catchY: spring(), caught: false, morph: spring(),
 });
 
@@ -421,13 +434,9 @@ const clampV = (v: number): number => Math.max(-THROW_MAX, Math.min(THROW_MAX, v
  * ・**ぶら下がり** … 支点は `t` に連れて**中心 → 上の縁**へ移る（`HANG_T` で移りきる）。
  *   振れの目標は**指の横の速さ**から。★`K_TRAVEL`/`D_TRAVEL` は**わずかに行き過ぎる**
  *   ので、指を止めると**揺り返して**から静かに戻る ＝ 重いものを摘まんでいる感触。
- * ・**伸び縮み** … 速さの**向き**へ伸びる。★**積を 1 に保つ**（`sx·sy = 1`）ので、
- *   伸びても**大きさは変わって見えない** ―― 変わると「育った」に見えてしまう。
+ * ★★**伸び縮みは第109巡に削除した**（ユーザー確定「図形自体は柔らかくしなくて良い」）。
  */
 export function stepGhost(mo: GhostMotion, g: Ghost): void {
-  const vx = mo.had ? g.cx - mo.px : 0;
-  const vy = mo.had ? g.cy - mo.py : 0;
-  mo.px = g.cx; mo.py = g.cy; mo.had = true;
 
   // ★★★**変形は「時間」で進む**（2026-09-15・第106巡にユーザー確定）。
   //   ★★**指の距離では進めない** ―― 第105巡までは `MORPH_SPAN`(90px) で、
@@ -438,16 +447,27 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   // ★★★**ばね1本で一息に開く**（2026-09-16・第107巡）。行き過ぎてから収まるので、
   //   **くびれが最終より一度深く入って戻る＝ぱんと開く**。
   //   ★★`tTo` を 0 にすれば**そのまま逆再生**（帯へ戻すときに使う）。
-  springTo(mo.morph, g.tTo, K_CATCH, D_CATCH);
+  // ★★★**変形と吸い付きは別のばね**（2026-09-15・第109巡にユーザー指定
+  //   「**変形する時に物理演算が働いているような柔らかさ**」）。
+  //   ★★★第108巡までは `K_CATCH` が**両方**を回していたので、
+  //     **変形を柔らかくすると吸い付きまで鈍る**という縛りがあった。
+  //   ★変形は **`K_SWING`/`D_SWING`**（周期30フレーム・減衰比 0.3）＝
+  //     **はっきり行き過ぎてから戻る** ―― ピルが図形へ**一度開きすぎて落ち着く**。
+  //   ★吸い付き（`catchX/Y`）は `K_CATCH` のまま速い。**係数は4組のまま。**
+  springTo(mo.morph, g.tTo, K_SWING, D_SWING);
   g.t = mo.morph.p;
   g.w = g.w0 + (g.w1 - g.w0) * g.t;
   g.h = g.h0 + (g.h1 - g.h0) * g.t;
   // ★くびれは 0〜1 に収める（形の式はその外を知らない）。行き過ぎは**箱**に出る。
   g.waist = Math.max(0, Math.min(1, g.t));
-  // ★★★**姿の掛け金**（2026-09-16・第108巡。`Ghost.pill` の説明を参照）。
-  //   **落ちるのは 0、戻るのは `PILL_EXIT`。** ばねが 0 を跨いでも姿は変わらない。
-  if (g.t <= 0) g.pill = true;
-  else if (g.t >= PILL_EXIT) g.pill = false;
+  // ★★★**姿の掛け金は「意図」で持つ**（2026-09-15・第109巡）。
+  //   ★★★**ばねの値で分けてはいけない** ―― 第108巡は `t >= PILL_EXIT(0.2)` で
+  //     図形へ移していたが、それは**`K_CATCH` の1歩目が 0.274 だから**成立して
+  //     いただけで、**変形のばねを柔らかくした瞬間に1歩目が 0.2 に届かず、
+  //     スナップが黙って消える**。★行き先（`tTo`）で分ければ係数に依らない。
+  //   ★畳み終わり（`tTo` 0 でばねが静止）でだけピルの顔へ戻る。
+  if (g.tTo >= 1) g.pill = false;
+  else if (settled(mo.morph, 0)) g.pill = true;
 
   // ★★★**帯へ戻すときは、掴んでいる体がもう指に付いている**（2026-09-15・第106巡）。
   //   ★★だから振れも伸びも追いつきのバネも掛けない ―― **二重に掛けると、絵だけが
@@ -456,6 +476,24 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   //     図形が**ピルに戻りながら向きを正す**ので、吸い込まれるように見える。
   if (g.home) {
     g.angle *= g.waist;
+    // ★★★**帯へ「吸い付く」のは、かなり近づいてから**（2026-09-15・第109巡に
+    //   ユーザー確定「**基本は指に追従し、かなり帯に近づいたら滑らかに吸い付く**」
+    //   ／ 距離は**ピル1つぶん `PULL_ARM`(44px)**）。
+    //   ★★★第108巡までは `RAIL_NEAR`(72px) を跨いだ瞬間にその場で畳んでいたので、
+    //     ユーザー報告「**少し帯に近づけると急に指から離れて戻っていく**」になった。
+    //   ★`aim` が入るまでは**支点＝体**（＝指にぴったり付いてくる。下と同じ）。
+    //   ★`K_SETTLE` は**行き過ぎない** ―― 帯へ吸い込むのに跳ね返りは要らない。
+    if (g.aim) {
+      springTo(mo.catchX, g.aim.x, K_SETTLE, D_SETTLE);
+      springTo(mo.catchY, g.aim.y, K_SETTLE, D_SETTLE);
+      g.hx = mo.catchX.p; g.hy = mo.catchY.p;
+      g.ax = 0; g.ay = 0; g.dx = g.hx; g.dy = g.hy;
+      g.sx = 1; g.sy = 1; g.vx = 0; g.vy = 0;
+      return;
+    }
+    // ★捕まえる前は、次に捕まえたときバネが体から走り出せるよう種を蒔いておく。
+    mo.catchX.p = g.cx; mo.catchX.v = 0;
+    mo.catchY.p = g.cy; mo.catchY.v = 0;
     // ★★★**支点も毎フレーム体へ置く**（2026-09-16・第108巡）。
     //   ★★★**絵は `hx`/`hy` に描かれる**（`components/home/pilePaint.ts` の
     //     `ctx.translate(g.hx, g.hy)` と `components/home/pillGhost.ts` の同じ行）。
@@ -508,27 +546,28 @@ export function stepGhost(mo: GhostMotion, g: Ghost): void {
   const hang = Math.min(1, g.t / HANG_T);
   g.ax = 0;
   g.ay = (g.h / 2) * hang;
-  // ★★★**振れは指の動きに「遅れる」**（符号が負）。指を右へ動かせば、ぶら下がった
-  //   ものは**左へ残る** ―― 正のままだと先回りして、引きずられている感じが出ない。
-  springTo(mo.swing, -soft(vx, SWING_V) * SWING_MAX * hang, K_SWING, D_SWING);
+  // ★★★**振れは「絵そのものの速さ」で振る**（2026-09-15・第109巡にユーザー指定
+  //   「**左右に振った時に、それに合わせて物理演算が働いているように、掴んでいる
+  //   ところを支点に揺れる**」）。
+  //   ★★★**第108巡までは「指の速さ」で振っていた** ―― だから**指を止めた瞬間に、
+  //     絵がまだ飛んでいる最中でも振れの目標が 0 になって**、いちばん揺れてほしい
+  //     ところで止まっていた（＝「硬い」の一因）。
+  //   ★支点の速さ（`catchX/Y.v`）は**差分を取らずに正確**で、指を止めれば
+  //     自然に 0 へ落ちる。**目盛り `SWING_V` は支点の速さに合わせて測り直した。**
+  //   ★★**符号は負**（＝遅れる）。指を右へ動かせば、ぶら下がったものは**左へ残る**。
+  springTo(mo.swing, -soft(mo.catchX.v, SWING_V) * SWING_MAX * hang, K_SWING, D_SWING);
   g.angle = mo.swing.p;
   const ca = Math.cos(g.angle); const sa = Math.sin(g.angle);
   g.dx = g.hx + g.ax * ca - g.ay * sa;
   g.dy = g.hy + g.ax * sa + g.ay * ca;
 
-  // ★伸び … 速さの大きさで量、速さの向きで軸。止まっている間は向きを変えない
-  //   （0 に近い速さの向きは雑音なので、拾うと図形が小刻みに回る）。
-  const sp = Math.hypot(vx, vy);
-  if (sp > 0.5) mo.dir = Math.atan2(vy, vx);
-  springTo(mo.pull, soft(sp, STRETCH_V) * STRETCH_MAX, K_SWING, D_SWING);
-  // ★★**縮みも許す**（ユーザー確定は「伸び**縮み**」）。バネが行き過ぎるので、
-  //   止めた瞬間に**伸びたぶんの反対**へ一度潰れてから戻る ＝ 弾力のある物体。
-  //   ★潰れは伸びの半分まで（潰れ過ぎると別の形に見える）。
-  const e = Math.max(-STRETCH_MAX / 2, Math.min(STRETCH_MAX, mo.pull.p));
-  g.sx = 1 + e;
-  g.sy = 1 / (1 + e);
-  // ★伸びの軸は**振れとは別**なので、描く側で `dir` ぶん回してから伸ばす。
-  g.stretchDir = mo.dir;
+  // ★★★**図形そのものは伸び縮みさせない**（2026-09-15・第109巡にユーザー確定
+  //   「**図形に変換された後は、図形自体は柔らかくしなくて良い**」）。
+  //   ★★★**第103巡の「引く速さで伸び縮みする」を、この指示で上書きした。**
+  //     `STRETCH_MAX` / `mo.pull` / `mo.dir` / `stretchDir` の層は削除。
+  //     **柔らかさは「変形の途中」と「支点まわりの振れ」の2つだけが持つ。**
+  g.sx = 1; g.sy = 1;
+  g.stretchDir = 0;
 }
 
 /** そのピルが**山で持つ姿**（大きさと見え方）。`HomeTab` が作る。 */

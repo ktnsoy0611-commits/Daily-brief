@@ -12,6 +12,7 @@ import {
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
 import { haptic } from "@/lib/helpers";
+import { bandBump, bandBus, bandStop, stepBandMotion } from "./bandMotion";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
 //
@@ -44,11 +45,13 @@ const HEIGHT: Record<Row, number> = { 0: BAND_H.photo, 1: BAND_H.plain };
  * ★★**丸はピルの中に収める**（縁とのあいだに `SPACE.sm` の縁取り）。高さいっぱいに
  *   すると、丸とピルの輪郭が接して「はめ込んだ」ではなく「はみ出した」に見える。
  */
-function Pill({ item, row, pull, taken, onTake }: {
+function Pill({ item, row, pull, taken, onTake, onFlow }: {
   item: BandItem; row: Row; pull?: PullHost;
   /** ★★**同じ中身は2周ぶん DOM に居る**ので、隠すのは id で決める。 */
   taken: boolean;
   onTake: (id: string | null) => void;
+  /** ★段の流れを止める／戻す（`animRef` は段が持っているので預ける）。 */
+  onFlow: (on: boolean) => void;
 }) {
   const face = item.face;
   // ★★★**線と文字だけのピル**（2026-09-09 ユーザー指定）。すでに登録してある
@@ -112,8 +115,13 @@ function Pill({ item, row, pull, taken, onTake }: {
       ? { x: gh.dx, y: gh.dy, vx: gh.vx, vy: gh.vy, angle: gh.angle } : null;
     if (gh) pullBus.ghost = null;
     pull.rail(false);
+    // ★★★**段の流れを必ず戻す**（2026-09-15・第109巡）。段を止めているのは
+    //   `.band-row` の `onPointerDown`（`pause()`）で、戻すのは同じ段の
+    //   `onPointerUp`/`onPointerCancel` しか無かった ―― **捕捉が外れると
+    //   そこへ来ないので、段が止まったままになり得た**。後始末はここ1つ。
+    onFlow(true);
     if (g && commit && g.armed) pull.drop(item, g.rail, at);
-  }, [item, pull, onTake]);
+  }, [item, pull, onTake, onFlow]);
 
   // ★★★**最後の砦**（2026-09-15・第106巡）。`window` で指が離れたのを拾う ――
   //   捕捉が外れても、要素が消えても、**指が離れれば必ずここへ来る**。
@@ -252,6 +260,7 @@ function Pill({ item, row, pull, taken, onTake }: {
 
   return (
     <div
+      data-pill-id={item.id}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={() => end(true)}
@@ -265,7 +274,11 @@ function Pill({ item, row, pull, taken, onTake }: {
       // ★★★**触ると少し沈む**（2026-09-14 ユーザー指定「少し柔らかいような感触」）。
       //   `design.md` … **押下だけが非対称**（即座に沈み、ゆっくり戻る）。
       // ★★縮みの数は `lib/pullDrag.ts`（写し取る canvas が**同じ数**を読む）。
-      transform: pressed ? `scale(${PILL_PRESS})` : "scale(1)",
+      // ★★★**ずれと押下の縮みを1つの `transform` に合成する**（第109巡）。
+      //   ずれ（`--nudge`）は `components/home/bandMotion.ts` の rAF が書く。
+      transform: pressed
+        ? `translateX(var(--nudge, 0px)) scale(${PILL_PRESS})`
+        : "translateX(var(--nudge, 0px)) scale(1)",
       transition: pressed
         ? "transform var(--t-press) var(--ease-press)"
         : "transform var(--t-item) var(--ease-settle)",
@@ -332,10 +345,30 @@ function BandRow({ row, items, pull, taken, onTake }: {
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const animRef = useRef<Animation | null>(null);
+  const shiftRef = useRef<HTMLDivElement>(null);
+  /** ★組み直しをまたいで持ち越す、1周のどこまで進んだか（0〜1）。 */
+  const phaseRef = useRef(0);
+  /** ★★いまの位相を控える。**`cancel()` する前に必ず呼ぶ**（上の `build()` の注意書き）。 */
+  const snapPhase = useCallback(() => {
+    const a = animRef.current;
+    const d = a?.effect ? (a.effect.getTiming().duration as number) || 0 : 0;
+    if (!a || d <= 0) return;
+    phaseRef.current = ((((a.currentTime as number) ?? 0) / d) % 1 + 1) % 1;
+  }, []);
 
   const build = useCallback(() => {
     const track = trackRef.current;
     if (!track) return;
+    // ★★★**位相を引き継ぐ**（2026-09-15・第109巡）。
+    //   ★★★**`cancel()` は `translateX(0)` へ戻す** ―― つまり組み直すたびに
+    //     **帯が先頭へ飛んでいた**（実測 … ピルを1枚抜くと 8000ms → 283ms）。
+    //   ★★★**控えるのは `build()` の中ではなく `snapPhase()`** ―― React は
+    //     **効果のクリーンアップを新しい効果の本体より先に走らせる**ので、
+    //     `build()` に入った時点では `animRef.current` はもう `null` にされている。
+    //     **控える場所を間違えると、引き継いだつもりで 0 を書く。**
+    //   ★**進んだ割合**で持ち越す（1周の幅も時間も組み直しで変わるので、
+    //     生の `currentTime` ではなく 0〜1 の位相にする）。
+    snapPhase();
     animRef.current?.cancel();
     animRef.current = null;
     if (typeof track.animate !== "function") return;
@@ -357,7 +390,7 @@ function BandRow({ row, items, pull, taken, onTake }: {
     const perScreen = Number.isFinite(n) ? (v.endsWith("ms") ? n : n * 1000) : 26000;
     const duration = (lap / screen) * perScreen;
 
-    animRef.current = track.animate(
+    const anim = track.animate(
       [{ transform: "translateX(0)" }, { transform: `translateX(${-lap}px)` }],
       {
         duration, iterations: Infinity, easing: "linear",
@@ -365,7 +398,101 @@ function BandRow({ row, items, pull, taken, onTake }: {
         direction: row === 1 ? "reverse" : "normal",
       },
     );
+    // ★★組み直す前に居た所から続ける（上の `phase`）。
+    anim.currentTime = phaseRef.current * duration;
+    animRef.current = anim;
+  }, [row, snapPhase]);
+
+  // ★★★**組み直す引き金は「中身の署名」**（2026-09-15・第109巡）。
+  //   ★★★`items` は `HomeTab` の `useMemo(() => bandRows(appState), [appState])` が
+  //     返す配列で、**`appState` に何か書かれるたび新しい同一性**になる（中身が
+  //     1つも変わっていなくても）。それを deps に置いていたので、**背後の同期や
+  //     無関係なタブの操作のたびに帯が組み直されていた**。
+  //   ★1周の幅に効くものだけ並べる（id・題・写真の有無）。
+  const sig = items.map((it) => `${it.id}|${it.text}|${it.photo ? 1 : 0}`).join("\u0001");
+
+  /**
+   * ★★★**段の流れを止める／戻す**（2026-09-15・第109巡）。
+   * ★★止めるときは**慣性を1発**入れる（`bandStop`）―― ユーザー指定
+   *   「**少し行きすぎてから戻って止まる**」。
+   * ★★★**後始末の口は1つ**（`Pill.end()` からも呼ぶ）。第108巡までは
+   *   `.band-row` の `onPointerUp` しか戻す道が無く、**捕捉が外れると段が
+   *   止まったまま**になり得た。
+   */
+  const flow = useCallback((on: boolean) => {
+    const a = animRef.current;
+    if (!a) return;
+    if (on) { a.play(); return; }
+    if (a.playState === "paused") return;    // ★二度入れない
+    a.pause();
+    // ★★`bandStop` は `bandBus.wakers` 経由で段のループを起こす（直に呼ばない）。
+    bandStop(row);
   }, [row]);
+
+  /**
+   * ★★★**ずれのバネを回す rAF のループ**（2026-09-15・第109巡）。
+   * ★★**動いているあいだだけ回す**（`stepBandMotion` が偽を返したら止める）。
+   *   山のループ（`components/home/Pile.tsx`）とまったく同じ作法。
+   * ★★★**絵は `transform` だけ**。ピルは**2周ぶん DOM に居る**ので、
+   *   `data-pill-id` で引いて**両方に同じ値**を書く（周ごとにずれない）。
+   */
+  const rafRef = useRef(0);
+  const runRef = useRef(false);
+  const wake = useCallback(() => {
+    if (runRef.current) return;
+    runRef.current = true;
+    const tick = () => {
+      const live = stepBandMotion();
+      const shift = shiftRef.current;
+      if (shift) shift.style.transform = `translateX(${bandBus.off[row].p.toFixed(2)}px)`;
+      const track = trackRef.current;
+      if (track) {
+        for (const el of track.querySelectorAll<HTMLElement>("[data-pill-id]")) {
+          const s = bandBus.nudge.get(el.dataset.pillId ?? "");
+          el.style.setProperty("--nudge", `${(s?.p ?? 0).toFixed(2)}px`);
+        }
+      }
+      if (!live) { runRef.current = false; return; }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  }, [row]);
+  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
+  // ★★**他の段や山から注文が入ったらすぐ起こす**（`bandBus.wakers` に預ける）。
+  useEffect(() => {
+    bandBus.wakers.add(wake);
+    return () => { bandBus.wakers.delete(wake); };
+  }, [wake]);
+
+  /**
+   * ★★★**④b ピルが1つ抜けたら、後ろが追突して詰まる**（2026-09-15・第109巡に
+   * ユーザー指定）。★**抜けた所より後ろ**の id を近い順に渡す。
+   * ★★隙間の幅は**抜けたピルの実測**（`prevW`）。測れなければピル1つぶんの高さ。
+   */
+  const prevIds = useRef<string[]>([]);
+  const prevW = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    const now = items.map((it) => it.id);
+    const was = prevIds.current;
+    prevIds.current = now;
+    // ★幅の控えは毎回取り直す（次に抜けたとき隙間の幅に使う）。
+    const track = trackRef.current;
+    if (track) {
+      const m = new Map<string, number>();
+      for (const el of track.querySelectorAll<HTMLElement>("[data-pill-id]")) {
+        const id = el.dataset.pillId;
+        if (id && !m.has(id)) m.set(id, el.getBoundingClientRect().width);
+      }
+      if (m.size) prevW.current = m;
+    }
+    if (!was.length) return;
+    const gone = was.filter((id) => !now.includes(id));
+    if (gone.length !== 1) return;            // ★1つ抜けたときだけ（並べ替えは黙って通す）
+    const at = was.indexOf(gone[0]);
+    const behind = was.slice(at + 1).filter((id) => now.includes(id));
+    bandBump(row, behind, (prevW.current.get(gone[0]) ?? BAND_H.plain) + SPACE.sm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig, row]);
 
   useEffect(() => {
     build();
@@ -374,8 +501,13 @@ function BandRow({ row, items, pull, taken, onTake }: {
     // ★幅が変わったら組み直す（写真が遅れて届く・端末が回る）。
     const ro = new ResizeObserver(() => build());
     ro.observe(track);
-    return () => { ro.disconnect(); animRef.current?.cancel(); animRef.current = null; };
-  }, [build, items]);
+    return () => {
+      ro.disconnect();
+      // ★★**消す前に位相を控える**（React はクリーンアップを先に走らせる）。
+      snapPhase();
+      animRef.current?.cancel(); animRef.current = null;
+    };
+  }, [build, sig, snapPhase]);
 
   if (!items.length) return null;   // ★空の段は消す（無いものを説明しない）
 
@@ -385,22 +517,28 @@ function BandRow({ row, items, pull, taken, onTake }: {
       // ★★帯は山の上に重ねてある。**触れるのはこの段だけ**（外側の器は透かす）。
       style={{ height: HEIGHT[row], touchAction: "pan-y", pointerEvents: "auto" }}
       // ★指が触れている間だけ止める。離しても**位置は戻さない**。
-      onPointerDown={() => animRef.current?.pause()}
-      onPointerUp={() => animRef.current?.play()}
-      onPointerCancel={() => animRef.current?.play()}
+      onPointerDown={() => flow(false)}
+      onPointerUp={() => flow(true)}
+      onPointerCancel={() => flow(true)}
     >
+      {/* ★★★**ずれはここが持つ**（2026-09-15・第109巡）。`.band-track` の
+          `transform` は**流れの WAAPI が占有している**（インラインの style は
+          効かない）ので、**1枚外に重ねる**。★`display: block` で幅は段のまま
+          なので、`build()` が測る `track.parentElement` の幅も変わらない。 */}
+      <div ref={shiftRef} className="band-shift">
       <div ref={trackRef} className="band-track">
         {[0, 1].map((lap) => (
           <div key={lap} aria-hidden={lap === 1 || undefined} style={{ display: "flex", gap: SPACE.sm }}>
             {items.map((it) => (
               <Pill key={`${lap}-${it.id}`} item={it} row={row} pull={pull}
-                taken={taken === it.id} onTake={onTake} />
+                taken={taken === it.id} onTake={onTake} onFlow={flow} />
             ))}
             {/* ★周の末尾の隙間。**器の左右のパディングにしない**（左右のパディングを
                 持ってよいのはページ最上位の器だけ）。これは継ぎ目そのもの。 */}
             <div style={{ width: SPACE.sm, flexShrink: 0 }} />
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

@@ -7,15 +7,16 @@ import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
 import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
-  GRAVITY_Y, UNIT, buildPieces, isLost, makeWalls, refitPile, respawn, sink,
+  GRAVITY_Y, UNIT, buildPieces, clearOverlap, isLost, makeWalls, refitPile, respawn, sink,
   type Piece,
 } from "./pileWorld";
 import { floorYOf } from "@/lib/pileBox";
+import { bandKnockAt } from "./bandMotion";
 import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { clearPileBitmaps, drawBoxOf, drawGhost, drawPile } from "./pilePaint";
 import {
-  RAIL_HYST, RAIL_NEAR, ghostKey, ghostMotion, pullBus, stepGhost, type Ghost, type PillLook,
+  PULL_ARM, RAIL_HYST, RAIL_NEAR, ghostKey, ghostMotion, pullBus, stepGhost, type Ghost, type PillLook,
 } from "@/lib/pullDrag";
 
 import type { Body, Engine } from "matter-js";
@@ -415,6 +416,15 @@ export function Pile({
           const at = (p.body.plugin as { releaseAt?: number } | undefined)?.releaseAt ?? 0;
           if (now - rel.at < at) continue;
           rel.done.add(p.id);
+          // ★★★**入れる直前に、すでに居る体との重なりを解く**（2026-09-15・第109巡）。
+          //   ★★★**「順番を時間で作る」だけでは位置を分けていなかった** ――
+          //     `DROP_EVERY_MS`(60ms) で落ちる距離は **2.5px**、散らばりの幅は
+          //     **200px**（79倍）。実測で **16組が最大 82px めり込んだ状態**で
+          //     world に入っていた（`GravityTab` の幾何のはしごなら 0 組）。
+          //     めり込んだ体は位置ソルバに叩き出されて弾け、隣を押す ――
+          //     ユーザー報告「**落ちてきてぶつかった時にめり込んで震える**」の正体。
+          //   ★理由と式は `components/home/pileWorld.ts` の `clearOverlap`。
+          clearOverlap(M, p.body, M.Composite.allBodies(engine.world));
           M.Composite.add(engine.world, p.body);
           // ★★★**入れたフレームで全員を起こす**（2026-09-16・第108巡）。
           //   ★★matter は「支えていた物体が転がって居なくなった」では眠った体を
@@ -530,7 +540,8 @@ export function Pile({
         //   ★★第105巡までは「幽霊が居れば毎フレーム全面」だったので、引いている
         //     あいだじゅう 120Hz で約300万画素を塗っていた。**刻みが進まなかった
         //     フレームは絵も変わらない**ので、塗る必要が無い。
-        if (!g && motion.had) motion = ghostMotion();   // ★掴み直しは静止から始める
+        // ★掴み直しは静止から始める（前の手つきのバネを持ち越さない）。
+        if (!g && motion.caught) motion = ghostMotion();
         // ★★★**比べるのは `ghostKey` が返す「絵に効く値」全部**（第107巡）。
         //   ★★★第106巡はここに手で6つ並べていて、**`bend` を入れ忘れた** ――
         //     弾ける前は他の5つが全部動かないので、**ゴムが1フレーム目で固まった**。
@@ -904,8 +915,22 @@ export function Pile({
         const look = pillOf?.(dragRef.current.piece);
         if (look) pullBus.ghost = homeGhost(dragRef.current.piece, look, e.pointerId);
       }
-      const gh = pullBus.ghost;
-      if (gh && gh.home) gh.tTo = inBand ? 0 : 1;
+    }
+    // ★★★**戻りは2段** … **遠いあいだは指にぴったり追従**し、**ピル1つぶん
+    //   （`PULL_ARM` 44px）まで近づいたら指を離れて帯へ吸い付く**
+    //   （2026-09-15・第109巡にユーザー確定）。
+    //   ★★★**第108巡までは1段だった** ―― `RAIL_NEAR`(72px) を跨いだ瞬間に
+    //     その場で畳んでいたので、ユーザー報告「**少し帯に近づけると急に指から
+    //     離れて戻っていく**」「**ただの逆再生**」になっていた。
+    //   ★境目の遊びは `RAIL_HYST`（第108巡。1本の線だと毎フレーム反転する）。
+    const gh0 = pullBus.ghost;
+    if (gh0 && gh0.home) {
+      const caught = bandY > 0 && dragRef.current.y
+        < bandY + PULL_ARM + (gh0.aim ? RAIL_HYST : 0);
+      // ★★着地点は**帯の下の段の中心・指の x**（`PULL_ARM` ＝ 段の高さ）。
+      gh0.aim = caught
+        ? { x: dragRef.current.x, y: bandY - PULL_ARM / 2 } : null;
+      gh0.tTo = caught ? 0 : 1;
     }
   };
 
@@ -931,7 +956,16 @@ export function Pile({
     homeRef.current = false;
     if (wasHome) {
       pullBus.ghost = null;
-      if (dragged) { haptic(10); onUnassign?.(dragged.piece); return; }
+      if (dragged) {
+        haptic(10);
+        // ★★★**入れた所の左右のピルを弾く**（2026-09-15・第109巡にユーザー指定
+        //   「**左右それぞれに弾き飛ばされて、戻ってきてバウンドする**」）。
+        //   ★**画面の x** で引く（ピルの居場所は流れの `transform` が決めていて、
+        //   React 側は知らない）。式は `components/home/bandMotion.ts`。
+        bandKnockAt(e.clientX);
+        onUnassign?.(dragged.piece);
+        return;
+      }
     }
     if (railRef.current) {
       railRef.current = false;

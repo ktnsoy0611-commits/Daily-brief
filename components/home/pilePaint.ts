@@ -198,12 +198,9 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
   ctx.translate(g.hx, g.hy);
   ctx.rotate(g.angle);
   ctx.translate(g.ax, g.ay);
-  // ★★`stretchDir` は**画面の向き**なので、振れのぶんを引いてから掛ける
-  //   （引かないと、振れた角度だけ伸びの軸まで一緒に回ってしまう）。
-  const sd = g.stretchDir - g.angle;
-  ctx.rotate(sd);
-  ctx.scale(g.sx, g.sy);
-  ctx.rotate(-sd);
+  // ★★★**伸び縮みの層は第109巡に削除した**（ユーザー確定「**図形自体は柔らかく
+  //   しなくて良い**」）。柔らかさは**変形の途中**（`waist`／箱の行き過ぎ）と
+  //   **支点まわりの振れ**（`angle`）の2つだけが持つ。**復活させない。**
   // ★★★**弾みのバネは第107巡に削除した。復活させない。**
   //   ★変形そのものがばね（`stepGhost` の `mo.morph`）になったので、**上から
   //     もう1本 掛けると 1秒以上ぐらつく**（実測 … 面積が 1.2秒 揺れ続けた）。

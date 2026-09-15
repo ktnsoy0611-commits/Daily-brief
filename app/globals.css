@@ -939,3 +939,10 @@ button:active {
 @media (prefers-reduced-motion: reduce) {
   .band-track { transform: none !important; }
 }
+
+/* ★★★帯の「ずれ」の層（2026-09-15・第109巡）。`.band-track` の transform は
+   流れの Web Animations API が占有しているので、慣性・追突・弾きのずれは
+   **1枚外**が持つ。数は `components/home/bandMotion.ts`。 */
+.band-shift {
+  will-change: transform;
+}

@@ -5,7 +5,7 @@ import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
 import { pad } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { glyphOfKind } from "@/lib/deckStyle";
-import { areaOf, massOf, rowsOf, specOf, weightArea } from "@/lib/taskSize";
+import { areaOf, rowsOf, specOf, weightArea } from "@/lib/taskSize";
 import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
 import {
@@ -568,18 +568,24 @@ export function buildPieces(
   //   **凸凹の上**へ着地して 59° 傾いた（実測。3回とも同じ）。
   plates.forEach((plate, i) => {
     const body = makeWordBody(m, plate, 0, 0);
-    // ★★★**板にも `setMass` を呼ぶ**（2026-09-14・第104巡。**第103巡まで忘れていた**）。
-    //   呼ばないと質量は matter の既定の密度（0.001 × **px²**）になり、
-    //   **他の全部（`area`＝solid² の目盛り）と桁が違う**。
-    //   実測の見積り … `MONDAY`(283×64) の板 **18.1** 対 タスクの図形 **12.7** ――
-    //   **板のほうが重い**。重い板は軽い図形を床の板（`WALL_T` 200px）の中へ
-    //   押し込み、**中心線を越えると下から吐き出されて落ちていく**
-    //   （ユーザー報告「図形が何度もすり抜けて落ちてしまいます」）。
-    //   ★★★**しかも板の重さは `fs²` で効く** ―― `PILE_WORD_MAX` を 49 → 61 → 72 と
-    //   上げた2巡で板は 2.2倍重くなった。**症状が出はじめた時期と一致する。**
-    //   ★★`components/tabs/GravityTab.tsx` は**同じ板に同じ式で呼んでいる**
-    //   （`massOf(specOf({ title: word })) * MASS_K`）。**片方だけ直さない。**
-    m.Body.setMass(body, massOf(specOf({ title: plate.word })) * MASS_K);
+    // ★★★**板の重さも「実際の箱」から出す＝全部の体を同じ密度にする**
+    //   （2026-09-15・第109巡）。
+    //
+    // ★★★**第104巡の「板にも `setMass` を呼ぶ」は、直しすぎだった。**
+    //   呼んだ式が `massOf(specOf({ title: word })) * MASS_K` で、`specOf` に
+    //   **重要度も期日も渡していない**ので、**板の実際の大きさと無関係な定数**
+    //   （`3.6 × 0.55 × 1.6 = 3.168`）になっていた。板の箱は 283×64px、
+    //   `unit ≈ 30.4` なので本来 **19.6 solid²** 相当＝約 31。**10倍 軽い。**
+    // ★★★**そして `GravityTab` は板に `setMass` を呼んでいない**（`makeWordBody` は
+    //   `setInertia` だけ）。**「GravityTab は呼んでいた」という第104巡の記録は誤り。**
+    //   あちらは matter の既定の密度（0.001 × px²）のままなので**密度の幅は 1.6倍**、
+    //   ホームだけ「修正」で **9.5倍**に広げてしまっていた。
+    // ★★★**密度がばらつくと2つのソルバが毎ステップ食い違う** ―― matter の
+    //   **位置ソルバは質量を見ない**（`positionDampen / totalContacts` で等分）が、
+    //   **速度ソルバは見る**（`inverseMass` で配分）。10倍 軽い大きな板が重い図形の
+    //   下に入ると、押し戻しと跳ね返しが噛み合わずに**震えの燃料**になる。
+    // → **箱の面積 ÷ unit² を solid² とみなして、タスクとまったく同じ式へ通す。**
+    m.Body.setMass(body, (plate.bw * plate.bh) / (unit * unit) * MASS_K);
     // ★★**据え置きなら傾きも引き継ぐ**（第103巡）。落としたときだけ整える ――
     //   ここで上書きすると、前の山で寝ていた板が**起き上がって**見える。
     if (toss(body, `word${i}`, plate.bh)) {
@@ -686,3 +692,40 @@ export function buildPieces(
 }
 
 export type { Engine };
+
+/**
+ * ★★★**世界へ入れる直前に、すでに居る体との重なりを解く**（2026-09-15・第109巡）。
+ *
+ * ★★★**「落とす順を時間で作る」だけでは、1px も引き離せていなかった。**
+ *   `respawn` は**器のすぐ上**（`DROP_ABOVE` ＋ 0〜`DROP_SCATTER`）から落とす設計で、
+ *   順番は `DROP_EVERY_MS`(60ms) ずつ遅らせて world へ入れることで作っている。
+ *   ところが **60ms のあいだに落ちる距離は 2.5px** しかなく、**散らばりの幅は 200px**
+ *   ＝ **79倍**。つまり**時間差は順番を作るだけで、位置を分けていない**。
+ *   ★実測（実際の id をハッシュへ通し、**投入の瞬間**で判定）…
+ *     **16 組が最大 82px めり込んだ状態で world に入っていた。**
+ *   82px めり込んだ体は位置ソルバに叩き出されて弾け、隣を押し、
+ *   **「落ちてきてぶつかった時に、めり込んで震える」そのもの**になる。
+ *   ★★`GravityTab` は `i × (110 + …)` の**幾何のはしご**で落とすので **0 組**。
+ *     ★**はしごへ替えると 2500px 上から降ってきて絵が変わる**ので替えない。
+ *     **出どころはそのまま、入れる瞬間だけ持ち上げる。**
+ * ★★**上へ逃がす**（横へ逃がすと壁と `spawnXOf` の散らばりを壊す）。
+ * ★体は多くても14個・入れる瞬間だけなので、費用は無い。
+ */
+export function clearOverlap(m: M, body: Body, live: Body[]): void {
+  // ★★重なりが解けるまで繰り返す（持ち上げた先に別の体が居ることがある）。
+  //   ★回数は体の数で頭打ち（必ず終わる）。
+  for (let pass = 0; pass <= live.length; pass++) {
+    let lift = 0;
+    for (const o of live) {
+      if (o === body || o.isStatic) continue;
+      const a = body.bounds; const b = o.bounds;
+      // ★横が掛かっていなければ、縦がどれだけ重なっていても当たらない。
+      if (a.max.x <= b.min.x || a.min.x >= b.max.x) continue;
+      if (a.max.y <= b.min.y || a.min.y >= b.max.y) continue;
+      // ★**自分の下端を相手の上端より上へ**。`PHYS_GAP` ぶんの隙間を足す。
+      lift = Math.max(lift, a.max.y - b.min.y + PHYS_GAP * 2);
+    }
+    if (lift <= 0) return;
+    m.Body.setPosition(body, { x: body.position.x, y: body.position.y - lift });
+  }
+}

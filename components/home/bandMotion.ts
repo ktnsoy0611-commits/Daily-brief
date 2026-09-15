@@ -1,4 +1,4 @@
-import { D_SWING, K_SWING, spring, springTo, type Spring } from "@/lib/spring";
+import { D_SETTLE, D_SWING, K_SETTLE, K_SWING, spring, springTo, type Spring } from "@/lib/spring";
 import { SPACE } from "@/lib/tokens";
 
 // ★★★**帯の「物理っぽい動き」はここ1つ**（2026-09-15・第109巡にユーザー指定、
@@ -32,8 +32,11 @@ import { SPACE } from "@/lib/tokens";
 //   `transform` には**押下の縮みと 420ms の transition** が同居しているので、
 //   毎フレームの書き込みと CSS の補間が二重に効く。包みは幅を持たないので
 //   **1周の幅は 1px も動かない**。
-// ★★**バネは `lib/spring.ts` の `K_SWING`/`D_SWING` 1組だけ**（周期30フレーム・
-//   減衰比 0.3 ＝ はっきり行き過ぎて戻る）。**新しい係数も曲線も作らない。**
+// ★★★**バネは2つの役に分ける**（2026-09-15・第111巡にユーザー確定
+//   「**跳ね返り（バウンド）は全部やめる／再開のときだけ軽い慣性**」）:
+//   **帯ぜんたいの一発**（止まる慣性・再開の慣性）だけ `K_SWING`（行き過ぎる）、
+//   **ピルごとのずれ**（穴・隙間・受け渡し）は `K_SETTLE`（**行き過ぎない**）。
+//   **新しい係数も曲線も作らない**（4組のまま）。
 //   ★`lib/spring.ts` は「canvas の座標系の話」と書いてあるが、**帯の環境の動きは
 //   すでに `linear` で曲線4本の対象外**（`Band.tsx` の頭）。同じ例外に揃える。
 
@@ -87,11 +90,17 @@ export const bandBus = {
   /** ★★段の rAF を起こす口（`Band.tsx` が段ごとに登録する）。 */
   wakers: new Set<() => void>(),
   /**
-   * ★★★**挿し口**（第110巡）。図形を帯へ近づけているあいだ、`Pile` が毎フレーム
-   * 書く。**`x` は画面の座標**（帯のピルの矩形と同じ土俵。器の座標と混ぜない）。
-   * `w` は挿し込まれるピルの幅。段の rAF がこれを読んで左右へ押し開ける。
+   * ★★★**挿し口**（第110巡 → **第111巡に index へ**）。図形を帯へ近づけている
+   * あいだ、`Pile` が書く。
+   *
+   * ★★★**`at` は「本当に入る場所」の index**（ユーザー確定 2026-09-15）。
+   *   ★★第110巡は**指の画面 x** で開けていたが、**挿し込み位置は `bandRows` の順
+   *     （＝タスク一覧の並び）で決まる**ので、**指と一致しようがない** ――
+   *     ユーザー報告「**位置がずれています**」の正体。
+   *   ★index は落とす前に計算できる（`lib/homeBand.ts` の `somedaySlotOf`）。
+   * ★`w` は挿し込まれるピルの幅。
    */
-  aim: null as { row: 0 | 1; x: number; w: number } | null,
+  aim: null as { row: 0 | 1; at: number; w: number } | null,
 };
 
 function off(): Off {
@@ -116,18 +125,32 @@ export function bandStop(row: 0 | 1): void {
 }
 
 /**
+ * ★★★**流れが再開する合図**（2026-09-15・第111巡にユーザー確定
+ * 「**引き抜いたらスクロールが再開する／再開のときだけ軽い慣性**」）。
+ *
+ * ★★★**流れの速さでは再開が見えない** ―― 帯は 26秒で画面1枚＝**0.25px/フレーム**。
+ *   1秒眺めても 15px しか進まないので、「また動き出した」ことは**速さでは
+ *   絶対に分からない**。**見えるのは一発の慣性だけ**なので、それを必ず撃つ。
+ * ★向きは流れと同じ（`bandStop` の裏返し）。
+ */
+export function bandResume(row: 0 | 1): void {
+  kick(bandBus.off[row], row === 0 ? -BUMP_KICK : BUMP_KICK);
+}
+
+/**
  * ★★★**① 穴を閉じる**（2026-09-15・第110巡。ユーザー指定「**完全にピルを引き抜いた
  * 瞬間に、後ろのものが動き始めて、先にあるピルに追突して、またスクロールが始まる**」）。
  *
  * ★★★**呼ぶのは「弾けた瞬間」** ―― まだ `items` には居るので**席は空いたまま**で、
  *   そこへ後ろが詰める動きが**本当に見える**。`items` から消えたあとに呼ぶと、
  *   レイアウトはもう詰み終わっている（第109巡の `bandBump` の誤り）。
+ * ★★★**慣性の一発は `bandResume` が別に撃つ** ―― 引き抜いたのが**段の最後の
+ *   ピル**だと `ids` が空になるので、ここに混ぜると**再開ごと落ちる**
+ *   （第110巡はこれで「スクロールが再開しない」と報告された）。
  * @param ids 空いた所より**後ろ**のピルの id（近い順）
  * @param gap 空いた幅（＝抜けたピルの幅 ＋ 隙間）
  */
-export function bandHole(row: 0 | 1, ids: string[], gap: number): void {
-  // ★★帯ぜんたいに一発（＝流れが再開する合図。段の側で `flow(true)` も撃つ）。
-  kick(bandBus.off[row], row === 0 ? -BUMP_KICK : BUMP_KICK);
+export function bandHole(ids: string[], gap: number): void {
   ids.forEach((id, i) => {
     const s = nudgeOf(id);
     s.hole = -gap;                    // ★★**全員が同じだけ左へ詰める**（減衰させない）
@@ -165,14 +188,20 @@ export function bandHoleCommit(ids: string[], gap: number): void {
  * ★★★**② 隙間を開ける**（2026-09-15・第110巡。ユーザー確定「**挿し口が指に
  * 付いてくる**」）。段の rAF が毎フレーム呼ぶ。
  *
- * @param mid  挿し口の**画面の x**
- * @param w    挿し込まれるピルの幅
- * @param at   id → そのピルの**画面の中心 x**
- * @returns    隙間を当てた id（次のフレームに消すため段が控える）
+ * ★★★**開けるのは「片側」だけ**（2026-09-15・第111巡）。挿し口より**後ろを
+ *   丸ごと `+w`** 押す。
+ *   ★★★**第110巡の「左へ −w/2・右へ +w/2」は重なりを生む** ―― 受け渡しのときに
+ *     **両側とも −w/2 になり、左右のピルが新しいピルの上へ乗る**
+ *     （ユーザー報告「**どこかに重なってしまっている**」）。
+ *   ★★★**片側なら継ぎ目でも辻褄が合う** ―― 2周とも同じ index に同じ幅の隙間が
+ *     1つずつ開き、lap1 の尻（`+w`）と lap2 の頭（`0`）のあいだにも同じ隙間が
+ *     1つできる。**1周のどこにも重なりが生まれない。**
+ *   ★受け渡しは `p -= w` で**画面の位置が 1px も動かない**＝完全に連続。
+ * @param ids 挿し口より**後ろ**のピルの id
+ * @param w   挿し込まれるピルの幅（＋隙間）
  */
-export function bandGap(at: Map<string, number>, mid: number, w: number): void {
-  const half = w / 2;
-  for (const [id, cx] of at) nudgeOf(id).gap = cx < mid ? -half : half;
+export function bandGap(ids: string[], w: number): void {
+  for (const id of ids) nudgeOf(id).gap = w;
 }
 
 /**
@@ -181,7 +210,7 @@ export function bandGap(at: Map<string, number>, mid: number, w: number): void {
  *   あるので、**起こさないと誰も隙間を開けない**（第110巡に実測 … `--nudge` が
  *   1つも書かれず 0/5 件）。**注文には必ず `wake()` が要る。**
  */
-export function bandAim(aim: { row: 0 | 1; x: number; w: number } | null): void {
+export function bandAim(aim: { row: 0 | 1; at: number; w: number } | null): void {
   const was = bandBus.aim;
   bandBus.aim = aim;
   if (aim || was) wake();
@@ -244,17 +273,21 @@ function stepOnce(): boolean {
   for (const s of bandBus.off) {
     if (advance(s, K_SWING, D_SWING, NUDGE_MAX)) live = true;
   }
-  // ★★★**ピルごとのずれも `K_SWING`**（穴・隙間・受け渡し）。
-  //   ★★★**頭打ちを掛けてはいけない**（2026-09-15・第110巡に実測で判明）――
-  //     受け渡しは `p` を**ピル1枚ぶん**（実測 201px）動かすのに、`NUDGE_MAX`(24)
-  //     で切っていたので**8割が消えていた**（穴の「最大 134px」も、バネの
-  //     行き過ぎではなく**頭打ちの値そのもの**だった）。バネは必ず行き先へ
-  //     収束するので、**縛る必要がそもそも無い。**
-  //   ★★★**`K_CATCH` にしてはいけない**（同じく実測）―― 4フレームで着くので、
-  //     200px の移動が**66ms の瞬間移動**になる（実測 … 1フレームで 232px 飛ぶ）。
-  //     `K_SWING` は周期30フレームなので、**同じ 200px が「詰めて弾む」動きに見える**。
+  // ★★★**ピルごとのずれは `K_SETTLE`＝行き過ぎない**（2026-09-15・第111巡に
+  //   ユーザー確定「**跳ね返り（バウンド）は全部やめる**」）。
+  //   ★★★第110巡は `K_SWING`（36% 行き過ぎ）で、しかも頭打ちを外したので、
+  //     **ピル1枚ぶんの 36%（40px 超）も行き過ぎていた** ―― ユーザー報告
+  //     「**左右の揺れが強すぎる**」「**下から入れたのに左右に揺れるのがおかしい**」。
+  //   ★★★**`K_CATCH` にはしない**（第110巡に実測）―― 4フレームで着くので、
+  //     200px の移動が**66ms の瞬間移動**になる（1フレームで 232px 飛んだ）。
+  //     `K_SETTLE` は**行き過ぎずに、時間をかけて**行き先へ収まる。
+  //   ★★★**頭打ちを掛けてはいけない**（同じく実測）―― 穴も隙間も `p` を
+  //     **ピル1枚ぶん**（実測 201px）動かすのに、`NUDGE_MAX`(24) で切ると
+  //     **8割が消える**（第110巡の「穴の最大 134px」は、バネの行き過ぎではなく
+  //     **頭打ちの値そのもの**だった）。バネは必ず行き先へ収束するので、
+  //     **縛る必要がそもそも無い。**
   for (const [id, s] of bandBus.nudge) {
-    if (advance(s, K_SWING, D_SWING, 0)) live = true;
+    if (advance(s, K_SETTLE, D_SETTLE, 0)) live = true;
     // ★★**捨ててよいのは行き先が 0 のときだけ**（開いたまま静止する隙間を消さない）。
     else if (s.hole === 0 && s.gap === 0) bandBus.nudge.delete(id);
   }

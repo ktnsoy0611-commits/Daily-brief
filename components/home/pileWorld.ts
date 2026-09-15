@@ -337,6 +337,16 @@ export interface Piece {
   plate?: WordPlate;
   /** ★★**押すと行き先がある図形**（未読の数＝ブリーフ／ジャーナル＝レコード）。 */
   nav?: TabId;
+  /**
+   * ★★★**この巡で新しく湧いたか**（2026-09-15・第111巡）。
+   * ★★★**`clearOverlap` を掛けてよいのはこれが真のものだけ** ―― あれは
+   *   「器のすぐ上から湧いた体どうしを離す」ための道具で、**AABB で見て真上へ
+   *   持ち上げる**。落ち着いた山は**傾いた図形どうしの AABB が必ず重なっている**
+   *   ので、据え置きの体に掛けると**「AABB が1つも重ならない縦の塔」へ積み直され**、
+   *   そこから落ち直す ―― ユーザー報告「**離すとリセットが入って落とし直しが
+   *   発生する**」の正体。★着地の1枚（`landing`）にも掛けない。
+   */
+  fresh?: boolean;
 }
 
 /**
@@ -467,7 +477,11 @@ export interface PileBuild {
 }
 
 /**
- * @param prev    前の山の体（id → Body）。**同じ id は落とし直さず居場所を引き継ぐ**。
+ * @param prev    前の山（id → `Piece`）。**同じ id は落とし直さず居場所を引き継ぐ**。
+ *   ★★★**寸法まで同じなら、体そのものを使い回す**（2026-09-15・第111巡）――
+ *   `unit` が据え置きなら同じ id は**1点の違いも無い体**になるので、作り直すのは
+ *   純粋な無駄。**作り直すと `Composite` から出し入れすることになり、接触も眠りも
+ *   切れて、山が落ち直す。**
  * @param landing 引き下ろして指を離した所（1つだけ）。ここから落とす。
  * @param hold    ★★★**前の倍率。渡されたら決め直さない**（2026-09-15・第110巡）。
  *   `unit` は**全体の面積の予算 ÷ 件数**なので、**1枚増えれば全員が別の大きさで
@@ -480,7 +494,7 @@ export interface PileBuild {
  */
 export function buildPieces(
   m: M, c: PileContent, w: number, h: number,
-  prev?: Map<string, Body>, landing?: Landing | null, hold?: number,
+  prev?: Map<string, Piece>, landing?: Landing | null, hold?: number,
 ): PileBuild {
   const { tasks, offers, unread, today, journal } = c;
 
@@ -539,6 +553,27 @@ export function buildPieces(
   const pieces: Piece[] = [];
   let nth = 0;
   /**
+   * ★★★**寸法まで同じ体は使い回す**（2026-09-15・第111巡）。
+   *
+   * ★★★**作り直すと「落とし直し」が起きる** ―― 作り直せば `Composite` から
+   *   出して入れ直すことになり、**接触も眠りも切れる**うえ、入れ直しの
+   *   `clearOverlap` が**落ち着いた山を縦の塔へ積み直す**（`Piece.fresh` の注釈）。
+   * ★★`unit` が据え置き（`hold`）なら、同じ id は**1点の違いも無い体**になる。
+   *   だから**形の署名が一致したら、前の体をそのまま返す**。
+   * ★★★**着地する1枚は使い回さない** ―― 「新しく置く」ことがその意味なので、
+   *   万一 id が被っても新しく作る。
+   * ★署名は `body.plugin.sig` に焼く（別の表を持ち回らない）。
+   */
+  const same = (seed: string, sig: string): Body | null => {
+    if (landing && landing.id === seed) return null;
+    const b = prev?.get(seed)?.body;
+    if (!b) return null;
+    return (b.plugin as { sig?: string } | undefined)?.sig === sig ? b : null;
+  };
+  const stamp = (body: Body, sig: string): void => {
+    body.plugin = { ...(body.plugin ?? {}), sig };
+  };
+  /**
    * ★★★**すでに山に居たものは落とし直さない**（2026-09-14・第103巡にユーザー確定
    *   「いつでも落ち直さない」）。
    *
@@ -552,7 +587,7 @@ export function buildPieces(
    * @returns 新しく落としたか（偽＝前の居場所を引き継いだ）。
    */
   const toss = (body: Body, seed: string, bh: number): boolean => {
-    const keep = prev?.get(seed);
+    const keep = prev?.get(seed)?.body;
     if (keep) {
       m.Body.setPosition(body, { x: keep.position.x, y: keep.position.y });
       m.Body.setAngle(body, keep.angle);
@@ -585,7 +620,10 @@ export function buildPieces(
   // ★★★**いちばん先に落とす**（2026-09-09）。最後に落とすと、板は山の
   //   **凸凹の上**へ着地して 59° 傾いた（実測。3回とも同じ）。
   plates.forEach((plate, i) => {
-    const body = makeWordBody(m, plate, 0, 0);
+    const sig = `word|${plate.bw.toFixed(2)}|${plate.bh.toFixed(2)}|${plate.word}`;
+    let fresh = false;
+    const kept = same(`word${i}`, sig);
+    const body = kept ?? makeWordBody(m, plate, 0, 0);
     // ★★★**板の重さも「実際の箱」から出す＝全部の体を同じ密度にする**
     //   （2026-09-15・第109巡）。
     //
@@ -603,17 +641,22 @@ export function buildPieces(
     //   **速度ソルバは見る**（`inverseMass` で配分）。10倍 軽い大きな板が重い図形の
     //   下に入ると、押し戻しと跳ね返しが噛み合わずに**震えの燃料**になる。
     // → **箱の面積 ÷ unit² を solid² とみなして、タスクとまったく同じ式へ通す。**
-    m.Body.setMass(body, (plate.bw * plate.bh) / (unit * unit) * MASS_K);
-    // ★★**据え置きなら傾きも引き継ぐ**（第103巡）。落としたときだけ整える ――
-    //   ここで上書きすると、前の山で寝ていた板が**起き上がって**見える。
-    if (toss(body, `word${i}`, plate.bh)) {
-      // ★初速の回りは与えない（傾くのは着地の弾みぶんだけ）。
-      m.Body.setAngle(body, (frac(`word${i}a`) - 0.5) * 0.16);
-      m.Body.setAngularVelocity(body, 0);
+    // ★★**使い回した体は何も触らない**（質量も居場所も前のまま＝いま正しい）。
+    if (!kept) {
+      m.Body.setMass(body, (plate.bw * plate.bh) / (unit * unit) * MASS_K);
+      // ★★**据え置きなら傾きも引き継ぐ**（第103巡）。落としたときだけ整える ――
+      //   ここで上書きすると、前の山で寝ていた板が**起き上がって**見える。
+      if (toss(body, `word${i}`, plate.bh)) {
+        // ★初速の回りは与えない（傾くのは着地の弾みぶんだけ）。
+        m.Body.setAngle(body, (frac(`word${i}a`) - 0.5) * 0.16);
+        m.Body.setAngularVelocity(body, 0);
+        fresh = true;
+      }
+      stamp(body, sig);
     }
     pieces.push({
       id: `word${i}`, body, kind: "word", w: plate.bw, h: plate.bh,
-      face: INK, ink: INK, title: plate.word, plate,
+      face: INK, ink: INK, title: plate.word, plate, fresh,
     });
   });
 
@@ -623,17 +666,23 @@ export function buildPieces(
     const ph = Math.max(24, spec.h * unit);
     // ★★**絵と同じ「ピルの積み」で当たる**（第101巡。GRAVITY／DRIFT と同じ形）。
     const rows = clampRows(rowsOf(t.title));
-    const body = bodyFromOutline(m, stackOutline(rows, pw / ph), pw, ph, BODY);
-    // ★★★**質量だけ与えて、回り慣性は触らない**（2026-09-09）。`setMass` は
-    //   慣性も一緒に比例させるので、形と重さから正しい回りにくさが出る。
-    m.Body.setMass(body, spec.area * MASS_K);
-    toss(body, t.id, ph);
+    const sig = `task|${pw.toFixed(2)}|${ph.toFixed(2)}|${rows}`;
+    const kept = same(t.id, sig);
+    const body = kept ?? bodyFromOutline(m, stackOutline(rows, pw / ph), pw, ph, BODY);
+    let fresh = false;
+    if (!kept) {
+      // ★★★**質量だけ与えて、回り慣性は触らない**（2026-09-09）。`setMass` は
+      //   慣性も一緒に比例させるので、形と重さから正しい回りにくさが出る。
+      m.Body.setMass(body, spec.area * MASS_K);
+      fresh = toss(body, t.id, ph);
+      stamp(body, sig);
+    }
     // ★★**日付が無ければ輪郭**（塗り／輪郭の1軸。字も縁と同じ色になる）。
     const outlined = !(t.dueDate ?? "").trim();
     pieces.push({
       id: t.id, body, kind: "task", w: pw, h: ph,
       face: TASK_FACE, ink: outlined ? TASK_FACE : bodyInkOn(TASK_FACE),
-      title: t.title, face_: SHAPE_FACE, outlined,
+      title: t.title, face_: SHAPE_FACE, outlined, fresh,
     });
   });
 
@@ -642,12 +691,19 @@ export function buildPieces(
     // ★★**体は四角**（円ではない）。当たり判定も `Pile.tsx` の四角の枝へ入る。
     const pw = Math.max(32, jW * unit);
     const ph = Math.max(24, jH * unit);
+    const sig = `cassette|${pw.toFixed(2)}|${ph.toFixed(2)}`;
+    const kept = same("journal", sig);
     // ★体は矩形（本体が矩形なので絵と合う）。★★**絵より `PHYS_GAP` 外側**（第101巡）。
-    const body = m.Bodies.rectangle(0, 0, pw + PHYS_GAP * 2, ph + PHYS_GAP * 2, BODY);
-    m.Body.setMass(body, jArea * MASS_K);
-    toss(body, "journal", ph);
+    const body = kept
+      ?? m.Bodies.rectangle(0, 0, pw + PHYS_GAP * 2, ph + PHYS_GAP * 2, BODY);
+    let fresh = false;
+    if (!kept) {
+      m.Body.setMass(body, jArea * MASS_K);
+      fresh = toss(body, "journal", ph);
+      stamp(body, sig);
+    }
     pieces.push({
-      id: "journal", body, kind: "cassette", w: pw, h: ph,
+      id: "journal", body, kind: "cassette", w: pw, h: ph, fresh,
       // ★**本体の面が青／リールと帯が黒**（タブのアイコンの塗り分け）。
       face: JOURNAL_FACE, ink: INK,
       nav: "journal-record",
@@ -667,15 +723,21 @@ export function buildPieces(
     // ★★**絵と同じ札の形で当たる**（第101巡）。点の列は `lib/cardShape.ts` の1か所
     //   （＝ SVG のマスクと canvas の輪郭と同じ出どころ）。**器は正方形 2r × 2r**。
     const shape = cardShapeOf(KIND_DOMAIN[it.kind]);
-    const body = bodyFromOutline(
+    const sig = `offer|${r.toFixed(2)}|${shape}`;
+    const kept = same(it.id, sig);
+    const body = kept ?? bodyFromOutline(
       m, cardShapePoints(shape).map(([x, y]) => ({ x: x - 0.5, y: y - 0.5 })), r * 2, r * 2, BODY);
-    m.Body.setMass(body, area * MASS_K);
-    toss(body, it.id, r * 2);
+    let fresh = false;
+    if (!kept) {
+      m.Body.setMass(body, area * MASS_K);
+      fresh = toss(body, it.id, r * 2);
+      stamp(body, sig);
+    }
     // ★★**焼き込まれた色を信じない**（帯の `cardFace` と同じ理由）。生成した夜の
     //   パレットが残っているので、**いま生きている表から引き直す**。
     const face = ACCENT_TEST ? colorOfKind(it.kind) : (it.color ?? colorOfKind(it.kind));
     pieces.push({
-      id: it.id, body, kind: "offer", r,
+      id: it.id, body, kind: "offer", r, fresh,
       face, ink: bodyInkOn(face),
       photo: it.images?.[0], title: it.title,
       // ★★**形は券の鋏痕から導く**（`lib/cardShape.ts`。BRIEF の札と同じ1か所）。
@@ -692,14 +754,20 @@ export function buildPieces(
     //   して**扱う（実測 `parts=1` ＋ 警告）。**凸なら SAT が正しく効く。**
     //   ★まん丸に戻さないのは、玉のように滑らず**角で止まる**ため。
     // ★★**絵より `PHYS_GAP` 外側**（第101巡）。形は凸の12角形のまま（上の注意書き）。
-    const body = m.Bodies.polygon(0, 0, ZIG_N, BADGE_R + PHYS_GAP, BODY);
-    m.Body.setMass(body, weightArea(3) * MASS_K);
-    toss(body, "unread", BADGE_R * 2);
+    const sig = `badge|${unread}`;
+    const kept = same("unread", sig);
+    const body = kept ?? m.Bodies.polygon(0, 0, ZIG_N, BADGE_R + PHYS_GAP, BODY);
+    let fresh = false;
+    if (!kept) {
+      m.Body.setMass(body, weightArea(3) * MASS_K);
+      fresh = toss(body, "unread", BADGE_R * 2);
+      stamp(body, sig);
+    }
     // ★★色は **EXPLORE の家族のメイン**（2026-09-09 ユーザー指定）。
     //   数えているのが Explore の未読なので、**行き先と同じ色**を着る。
     const face = ACCENT_TEST ? accentOf("life").main : RUST;
     pieces.push({
-      id: "unread", body, kind: "badge", r: BADGE_R,
+      id: "unread", body, kind: "badge", r: BADGE_R, fresh,
       face, ink: bodyInkOn(face), count: unread,
       // ★押すと EXPLORE のブリーフへ（そこで実際に読める）。
       nav: "brief",

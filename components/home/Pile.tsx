@@ -11,6 +11,7 @@ import {
   refitPile, respawn, sink, type Piece,
 } from "./pileWorld";
 import { floorYOf } from "@/lib/pileBox";
+import { SPACE } from "@/lib/tokens";
 import { bandAim } from "./bandMotion";
 import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
@@ -107,6 +108,9 @@ const REST_ANG = 120;
  */
 const STEP_MS = 1000 / 60;
 const MAX_STEPS = 2;
+
+/** ★帯のピルどうしの隙間（`components/home/Band.tsx` の `gap: SPACE.sm`）。 */
+const BAND_GAP = SPACE.sm;
 
 /** ★幽霊の箱の余白（振れ・伸び・弾みのぶん）。★目盛りの外（絵の寸法）。 */
 const GHOST_PAD = 24;
@@ -210,7 +214,7 @@ export function Pile({
    * ★**空の段は描かれない**ので「上が row0・下が row1」と決め打ちできない ――
    *   `HomeTab` が `.band-row` を実測して返す。
    */
-  bandRowAt?: (piece: Piece) => { row: 0 | 1; cy: number } | null;
+  bandRowAt?: (piece: Piece) => { row: 0 | 1; cy: number; at: number } | null;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -546,7 +550,11 @@ export function Pile({
           //     めり込んだ体は位置ソルバに叩き出されて弾け、隣を押す ――
           //     ユーザー報告「**落ちてきてぶつかった時にめり込んで震える**」の正体。
           //   ★理由と式は `components/home/pileWorld.ts` の `clearOverlap`。
-          clearOverlap(M, p.body, M.Composite.allBodies(engine.world));
+          // ★★★**掛けてよいのは「新しく湧いた体」だけ**（2026-09-15・第111巡）。
+          //   `clearOverlap` は **AABB で見て真上へ持ち上げる**ので、落ち着いた山
+          //   （傾いた図形どうしの AABB は必ず重なる）に掛けると**縦の塔へ積み直す**。
+          //   ★**着地の1枚にも掛けない** ―― 指を離した所がそのまま正しい。
+          if (p.fresh) clearOverlap(M, p.body, M.Composite.allBodies(engine.world));
           M.Composite.add(engine.world, p.body);
           // ★★★**入れたフレームで全員を起こす**（2026-09-16・第108巡）。
           //   ★★matter は「支えていた物体が転がって居なくなった」では眠った体を
@@ -881,8 +889,7 @@ export function Pile({
     //   引き継ぐ** ―― 日付を1つ付けただけで山が丸ごと落ち直していた（第102巡の
     //   未解決）。★体そのものは作り直すしかない（一括の倍率 `unit` は**全体の
     //   面積の予算**から出るので、1つ増えれば全部の大きさが変わる）。
-    const prev = new Map(piecesRef.current.map((p) => [p.id, p.body]));
-    for (const p of piecesRef.current) M.Composite.remove(engine.world, p.body);
+    const prev = new Map(piecesRef.current.map((p) => [p.id, p]));
     // ★★板を組む前に「板の書体が届いていたか」を控える（届いていなければ
     //   `onFontsReady` が測り直しを撃つ）。
     plateFontRef.current = wordFontReady(DISPLAY);
@@ -903,6 +910,20 @@ export function Pile({
     holdGenRef.current = gen;
     const { pieces, unit } = buildPieces(
       M, { tasks, offers, unread, today, journal }, w, h, prev, landing, hold);
+    // ★★★**使い回した体は world から出さない**（2026-09-15・第111巡）。
+    //   ★★★**出して入れ直すと、接触も眠りも切れて山が落ち直す** ―― しかも
+    //     入れ直しの `clearOverlap` が**落ち着いた山を縦の塔へ積み直す**
+    //     （`pileWorld.ts` の `Piece.fresh` の注釈）。ユーザー報告
+    //     「**離すとリセットが入って落とし直しが発生する**」の正体。
+    //   ★**外すのは「もう居ない体」だけ**（体の同一性で見る ―― `unit` が
+    //     決め直されたときは同じ id でも別の体になっているので、正しく外れる）。
+    const stay = new Set(pieces.map((p) => p.body));
+    for (const p of piecesRef.current) {
+      if (!stay.has(p.body)) M.Composite.remove(engine.world, p.body);
+    }
+    // ★★**すでに world に居る体は、投入の列に並ばせない**（二重に入れない）。
+    const held = new Set<string>();
+    for (const p of pieces) if (prev.get(p.id)?.body === p.body) held.add(p.id);
     piecesRef.current = pieces;
     // ★大きさを決めた高さを控える（器が大きく変わったら決め直すため）。
     builtFloorRef.current = floorYOf(h);
@@ -917,7 +938,7 @@ export function Pile({
     //   **山の全員も起きる**（上の `Composite.add` の所）。**猶予は要らない。**
     // ★据え置きは `releaseAt: 0` なので、次のフレームで全部が世界へ入る。
     // ★★`done` は作り直す（体そのものは別のものになっている）。
-    releaseRef.current = { at: performance.now(), done: new Set() };
+    releaseRef.current = { at: performance.now(), done: held };
     // ★deps は**署名と世界の世代と入れ直しの合図**だけ。配列の同一性では見ない。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, worldGen, seedGen]);
@@ -1103,11 +1124,13 @@ export function Pile({
       gh0.aim = caught
         ? { x: dragRef.current.x, y: slot?.cy ?? bandY - PULL_ARM / 2 } : null;
       gh0.tTo = caught ? 0 : 1;
-      // ★★★**挿し口を帯へ伝える**（第110巡。ユーザー確定「挿し口が指に付いてくる」）。
-      //   ★★**`x` は画面の座標**（帯は矩形で引くので器の座標と混ぜてはいけない）。
+      // ★★★**挿し口を帯へ伝える**（第110巡 → **第111巡に index へ**）。
+      //   ★★★**指の位置では開けない**（ユーザー確定「**隙間は本当に入る場所に開く**」）
+      //     ―― 挿し込み位置は `bandRows` の順で決まるので、指とは一致しようがない。
+      //   ★`at < 0`（＝入る場所が分からない上の段）なら**開けない**。
       //   ★`w` は**戻ったときのピルの幅そのもの**（`pillOf` が `pillWidth()` で出す）。
-      bandAim(caught && slot
-        ? { row: slot.row, x: e.clientX, w: gh0.look?.w ?? gh0.w1 } : null);
+      bandAim(caught && slot && slot.at >= 0
+        ? { row: slot.row, at: slot.at, w: (gh0.look?.w ?? gh0.w1) + BAND_GAP } : null);
     }
   };
 

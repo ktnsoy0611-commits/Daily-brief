@@ -223,9 +223,46 @@ export function bandItems(state: AppState): BandItem[] {
   return out;
 }
 
-/** 2段ぶんに振り分け、段ごとに上限で切る。★空の段はそのまま空で返す（描く側が消す）。 */
-export function bandRows(state: AppState): [BandItem[], BandItem[]] {
+/**
+ * 2段ぶんに振り分け、段ごとに上限で切る。★空の段はそのまま空で返す（描く側が消す）。
+ *
+ * @param keepId ★★★**上限で切り落としてはいけない id**（2026-09-15・第111巡）。
+ *   ★★★**山から帯へ戻したタスクが「黙って消える」のを止めるためのもの。**
+ *     戻したタスクは `appState.tasks` での位置で並ぶ（`unassign` は `dueDate` を
+ *     消すだけで**並べ替えない**）ので、**9件目より後ろになると `slice` に
+ *     切り落とされる** ―― それでも画面には「帯へ戻しました」と出ていた。
+ *   ★★**並び順は 1つも変えない**（`tasks` の順は GRAVITY と共有している）。
+ *     **その id が入るところまで段を伸ばすだけ。**
+ *   ★帯は輪なので、**入ってさえいれば必ず流れてくる**（ユーザー確定
+ *     「**画面外に出たらいいように処理して**」）。
+ */
+export function bandRows(state: AppState, keepId?: string | null): [BandItem[], BandItem[]] {
   const rows: [BandItem[], BandItem[]] = [[], []];
   for (const it of bandItems(state)) rows[BAND_ROW[it.kind]].push(it);
-  return [rows[0].slice(0, BAND_LIMIT), rows[1].slice(0, BAND_LIMIT_TASKS)];
+  const cut = (list: BandItem[], lim: number) => {
+    const at = keepId ? list.findIndex((it) => it.id === keepId) : -1;
+    return list.slice(0, at >= lim ? at + 1 : lim);
+  };
+  return [cut(rows[0], BAND_LIMIT), cut(rows[1], BAND_LIMIT_TASKS)];
+}
+
+/**
+ * ★★★**そのタスクを帯へ戻したとき、下の段の何番目に入るか**（2026-09-15・第111巡）。
+ *
+ * ★★★**帯の並びの規則を知っているのはこのファイルだけ**なので、ここに置く
+ *   （`HomeTab` へ式を書き写すと、`bandItems` の順を変えた人が片方しか直さない）。
+ * ★上の `bandItems` の 3 → 4 → 5 の順そのまま … 日付なしの声の候補 ＋
+ *   未完了タスクのフォローアップの総数 ＋ **自分より前に居る「未完了かつ日付なし」**。
+ * ★★**落とす前に計算できる**（`unassign` は `inbox` も `done` も触らず、
+ *   タスクの位置も動かさないので、3つの項は落とす前後で変わらない）。
+ * @returns 入る index。そのタスクが見当たらなければ `-1`。
+ */
+export function somedaySlotOf(state: AppState, taskId: string): number {
+  const tasks = state.tasks ?? [];
+  const k = tasks.findIndex((t) => t.id === taskId);
+  if (k < 0) return -1;
+  const voice = (state.inbox ?? []).filter((c) => !c.dueDate).length;
+  const follow = tasks.reduce((n, t) => n + (t.done ? 0 : (t.suggestions?.length ?? 0)), 0);
+  const before = tasks.slice(0, k).filter((t) => !t.done && !t.dueDate).length;
+  return voice + follow + before;
 }

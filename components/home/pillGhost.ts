@@ -155,7 +155,6 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   const line = (s: string, cy: number, size: number, tr: string, alpha: number) => {
-    const dy = bendAt(x, gx, reach, give, weightAt(cy, h));
     ctx.font = canvasFont(WEIGHT.bold, size, SANS);
     track(ctx, tr);
     ctx.fillStyle = L.ink;
@@ -166,7 +165,20 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
       while (t.length > 1 && ctx.measureText(t).width > room) t = t.slice(0, -1);
       if (t !== s) t = `${t.slice(0, -1)}…`;
     }
-    ctx.fillText(t, x, cy + dy);
+    // ★★★**字も輪郭と同じ曲線に乗せる**（2026-09-15・第111巡にユーザー指摘
+    //   「**図形が曲がるのに文字がそのままなのが気になる**」）。
+    //   ★★★**第110巡までは「文字列の左端 1点」で測った垂れを行ごとに1回だけ
+    //     足していた** ―― だから**字は平行に下がるだけで、1px も曲がらなかった**。
+    //   ★★**1文字ずつ、自分の x で `bendAt` を読む**（`lib/wordPlate.ts` が
+    //     字間を1文字ずつ送るのと同じ作法）。**輪郭と同じ式・同じ重みを読む**ので、
+    //     字は面の中で**ぴったり同じだけ**垂れる。
+    //   ★★**送りは `measureText` の積み上げ**（`track()` の字間もそこに入っている）。
+    const wt = weightAt(cy, h);
+    let cx = x;
+    for (const ch of t) {
+      ctx.fillText(ch, cx, cy + bendAt(cx, gx, reach, give, wt));
+      cx += ctx.measureText(ch).width;
+    }
     ctx.globalAlpha = 1;
     track(ctx, "0");
   };

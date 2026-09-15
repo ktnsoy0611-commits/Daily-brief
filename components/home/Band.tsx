@@ -14,7 +14,7 @@ import {
 import { haptic } from "@/lib/helpers";
 import {
   bandBus, bandGap, bandGapClear, bandHole, bandHoleCommit, bandHoleRelease,
-  bandGapCommit, bandStop, stepBandMotion,
+  bandGapCommit, bandResume, bandStop, stepBandMotion,
 } from "./bandMotion";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
@@ -496,43 +496,42 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
   }, [row]);
   /** ★★いま隙間を当てている id（次のフレームに閉じるため控える）。 */
   const gapRef = useRef<Set<string>>(new Set());
-  /** ★この段で隙間を開けて待っていたか（挿し込まれたときだけ受け渡す）。 */
-  const aimedRef = useRef(false);
+  /**
+   * ★この段で開けて待っている隙間の幅（0 ＝ 開けていない）。
+   * ★★**受け渡しは「開けたのと同じ数」で戻す** ―― 実測し直すと 1px ずれる。
+   */
+  const aimedRef = useRef(0);
+  /** ★段のループが読む「いまの中身」（`wake` の同一性を変えないため ref で持つ）。 */
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const wake = useCallback(() => {
     if (runRef.current) return;
     runRef.current = true;
     const tick = () => {
-      const track = trackRef.current;
-      // ── ① 読む ──────────────────────────────────────────────
-      // ★★★**挿し口が指に付いてくる**（2026-09-15・第110巡にユーザー確定）。
-      //   ★★**矩形を読むのはここだけ**、書くのは下だけ ―― 読み書きを混ぜると
-      //     ピルの数だけレイアウトを強制する（`navHeightPx` の轍）。
-      //   ★★**ピルの居場所は流れの `transform` が決めている**ので、React 側は
-      //     知らない。`getBoundingClientRect` が唯一の正。
+      // ── ① 隙間を当てる ──────────────────────────────────────
+      // ★★★**隙間は「本当に入る場所」に開く**（2026-09-15・第111巡にユーザー確定）。
+      //   ★★★**第110巡は指の画面 x で開けていたが、挿し込み位置は `bandRows` の順
+      //     （＝タスク一覧の並び）で決まるので、一致しようがなかった**
+      //     ―― ユーザー報告「**位置がずれています**」の正体。
+      //   ★★**index で引くので、矩形を1つも読まない**（レイアウトの強制が消えた）。
+      //   ★★**開けるのは片側だけ**（挿し口より後ろを丸ごと `+w`）。理由は
+      //     `bandMotion.ts` の `bandGap`（両側 ±w/2 は受け渡しで重なる）。
       const aim = bandBus.aim;
-      if (track && aim && aim.row === row) {
-        const at = new Map<string, number>();
-        for (const el of track.querySelectorAll<HTMLElement>("[data-pill-id]")) {
-          const id = el.dataset.pillId;
-          if (!id) continue;
-          const r = el.getBoundingClientRect();
-          if (r.width <= 0) continue;
-          // ★2周ぶん居るので、**挿し口に近いほうの周**を採る。
-          const cx = r.x + r.width / 2;
-          const was = at.get(id);
-          if (was === undefined || Math.abs(cx - aim.x) < Math.abs(was - aim.x)) at.set(id, cx);
-        }
-        bandGap(at, aim.x, aim.w);
-        gapRef.current = new Set(at.keys());
-        aimedRef.current = true;         // ★挿し込まれたときの受け渡しの合図
+      // ★★**中身は ref から読む**（`wake` の同一性を変えない）―― 変えると、
+      //   走っている最中のループが**古い中身を掴んだまま**次のフレームを頼む。
+      const list = itemsRef.current;
+      if (aim && aim.row === row && aim.at < list.length) {
+        const ids = list.slice(aim.at).map((it) => it.id);
+        bandGap(ids, aim.w);
+        gapRef.current = new Set(ids);
+        aimedRef.current = aim.w;        // ★挿し込まれたときの受け渡しの合図
       } else if (gapRef.current.size) {
-        // ★離れた・別の段へ移った → 隙間を閉じる（行き先 0 ＝ 行き過ぎて戻る＝バウンド）。
+        // ★離れた・別の段へ移った → 隙間を閉じる（行き先 0 へ**行き過ぎずに**戻る）。
         bandGapClear(gapRef.current);
         gapRef.current = new Set();
       }
       // ── ② 進める ────────────────────────────────────────────
-      // ★★**指が挿し口に居るあいだは回し続ける** ―― バネが行き先で静止しても
-      //   次のフレームで隙間が動くので、ここで止めてはいけない。
+      // ★★**挿し口が出ているあいだは回し続ける**（次のフレームで index が変わり得る）。
       const live = stepBandMotion() || (!!bandBus.aim && bandBus.aim.row === row);
       // ── ③ 書く ──────────────────────────────────────────────
       paint();
@@ -568,16 +567,15 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     // ★★★**隙間の受け渡し**（2026-09-15・第110巡）。指で開けて待っていた所へ
     //   本当にピルが挿し込まれた瞬間、**後ろを押し出したぶんだけ左へ置き直す**
     //   ―― これをしないと、離した瞬間に帯が丸ごと飛ぶ（実測 79.7px／1フレーム）。
-    if (aimedRef.current && was.length) {
+    if (aimedRef.current > 0 && was.length) {
       const added = now.filter((id) => !was.includes(id));
       if (added.length === 1) {
         const at = now.indexOf(added[0]);
-        const el = trackRef.current
-          ?.querySelector<HTMLElement>(`[data-pill-id="${CSS.escape(added[0])}"]`);
-        const w = (el?.getBoundingClientRect().width || 0) + SPACE.sm;
-        if (w > SPACE.sm) { bandGapCommit(now.slice(at + 1), w); paint(); }
+        // ★★**開けたのと同じ数で戻す**（実測し直すと 1px ずれて、そのぶん飛ぶ）。
+        bandGapCommit(now.slice(at + 1), aimedRef.current);
+        paint();
       }
-      aimedRef.current = false;
+      aimedRef.current = 0;
     }
     const h = holeRef.current;
     // ① 控えている穴の主が `items` から消えた → **受け渡し**（レイアウトが詰む瞬間）。
@@ -594,6 +592,15 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     }
     // ③ 新しく弾けた → **まだ席が在るうちに**後ろを詰めさせる。
     if (!armed || holeRef.current || !has(armed)) return;
+    // ★★★**流れの再開と慣性の一発は、穴より先に・無条件で撃つ**
+    //   （2026-09-15・第111巡。ユーザー「**指を離す前でもスクロールが開始される
+    //   ようにしてほしい**」）。
+    //   ★★★**第110巡は「後ろにピルが無ければ return」の中に入れていた** ――
+    //     **引き抜いたのが段の最後のピルだと、再開ごと落ちていた**（段に1〜2枚
+    //     しか無い日は必ずこれ）。**穴が開くかどうかとは無関係の合図**なので分ける。
+    //   ★指はまだ触れているが、掴んでいるのは山の幽霊なので帯は動いてよい。
+    animRef.current?.play();
+    bandResume(row);
     const at = items.findIndex((it) => it.id === armed);
     const ids = items.slice(at + 1).map((it) => it.id);
     if (!ids.length) return;
@@ -602,10 +609,7 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     const el = track?.querySelector<HTMLElement>(`[data-pill-id="${CSS.escape(armed)}"]`);
     const w = (el?.getBoundingClientRect().width || BAND_H.plain) + SPACE.sm;
     holeRef.current = { id: armed, gap: w, ids };
-    bandHole(row, ids, w);
-    // ★★★**同じ瞬間に流れを再開する**（ユーザー「またスクロールが始まる」）。
-    //   ★指はまだ触れているが、掴んでいるのは山の幽霊なので帯は動いてよい。
-    animRef.current?.play();
+    bandHole(ids, w);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armed, sig, row, paint]);
 

@@ -12,7 +12,7 @@ import { groundOf } from "@/components/AppBackdrop";
 import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
-import { bandRows, unreadCards, type BandItem } from "@/lib/homeBand";
+import { bandRows, somedaySlotOf, unreadCards, type BandItem } from "@/lib/homeBand";
 import { genreOfKind } from "@/lib/deckStyle";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -39,7 +39,12 @@ import type { AppState, Item, Task, TabProps } from "@/lib/types";
 export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   const day = todayKey();
   const today = useMemo(() => new Date(), []);
-  const rows = useMemo(() => bandRows(appState), [appState]);
+  /**
+   * ★★★**山から帯へ戻した id は、段の上限で切り落とさない**（第111巡）。
+   *   理由は `lib/homeBand.ts` の `bandRows` の `keepId`（黙って消えていた）。
+   */
+  const [keepId, setKeepId] = useState<string | null>(null);
+  const rows = useMemo(() => bandRows(appState, keepId), [appState, keepId]);
   const unread = useMemo(() => unreadCards(appState).length, [appState]);
 
   // ★★山にいるのは**今日のものだけ**（ユーザー確定）。だから山は説明が要らない
@@ -249,8 +254,13 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     const el = bandRef.current?.querySelector<HTMLElement>(`[data-band-row="${row}"]`);
     if (!box || !el) return null;
     const r = el.getBoundingClientRect();
-    return { row, cy: r.top + r.height / 2 - box.top };
-  }, []);
+    // ★★★**「本当に入る場所」の index**（2026-09-15・第111巡にユーザー確定）。
+    //   ★式は `lib/homeBand.ts` の `somedaySlotOf`（帯の並びの規則の持ち主）。
+    //   ★提案（上の段）は戻す先が `today` の並びで、いまは計算できないので `-1`
+    //     ＝ **隙間を開けない**（嘘の場所に開けるより開けないほうがよい）。
+    const at = row === 1 ? somedaySlotOf(appState, p.id) : -1;
+    return { row, cy: r.top + r.height / 2 - box.top, at };
+  }, [appState]);
 
   /**
    * ★★★**帯の上で離した＝日付を消して帯へ戻す**（同ユーザー指定）。
@@ -266,6 +276,10 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     const i = (next.items ?? []).find((x) => x.id === p.id);
     if (i) delete i.plannedFor;
     if (!t && !i) return;
+    // ★★★**戻したものは段の上限で切られない**（第111巡。`bandRows` の `keepId`）。
+    //   ★★これが無いと、下の段が 9件 埋まっているとき**「帯へ戻しました」と出るのに
+    //     帯に現れない**（ユーザー報告「**どこかに消えてしまう**」）。
+    setKeepId(t ? `someday-${p.id}` : null);
     haptic(12);
     persist(next);
     showToast("帯へ戻しました");

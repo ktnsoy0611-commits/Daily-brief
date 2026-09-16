@@ -13,7 +13,7 @@ import {
 } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
-import type { Item, TabId, Task } from "@/lib/types";
+import type { Item, TabId, Task, TaskWeight } from "@/lib/types";
 import type { Landing } from "@/lib/pullDrag";
 
 // ★★★**山の「世界」**（2026-09-11・第92巡に `components/home/Pile.tsx` から分けた）。
@@ -127,6 +127,12 @@ const WORD_W = 0.84;
  *   2度「小さすぎる」と差し戻された。**縦だけを見て決めないこと。**
  */
 const PILE_WORD_MAX = 72;
+/**
+ * ★★★**ホームのタスクの大きさは1つ**（2026-09-16・第115巡にユーザー指定）。
+ * ★**真ん中の重要度**（`lib/taskSize.ts` の `weightArea` の既定と同じ）。
+ * ★目盛りの外（図形の寸法）。
+ */
+const HOME_WEIGHT: TaskWeight = 2;
 
 /**
  * ★★★**未読の数のトゲトゲの輪郭（絵だけ）**（2026-09-09）。
@@ -531,10 +537,26 @@ export function buildPieces(
   const plates = words.map(
     (wd) => measureWordPlate(wd, wordFs, room, PAPER, DISPLAY, undefined, undefined, INK));
 
+  /**
+   * ★★★**ホームの図形は、重要度でも切迫度でも大きさが変わらない**
+   * （2026-09-16・第115巡にユーザー指定「**ホームでは今日に割り当てられている
+   * タスクが集まっているから、重要度や優先度によって大きさが変わる機能はやめます**」）。
+   *
+   * ★★**`weight` と `dueDate` を固定して `specOf` に渡す** ―― `areaOf` は
+   *   `weightArea(weight) × urgencyScale(dueDate)` なので、両方を止めれば面積は1つ。
+   *   ★形（段の数・箱の比）は**題の文字数**から出るので、そちらは今までどおり違う。
+   * ★★★**`lib/taskSize.ts` は触らない** ―― TASK（GRAVITY）は重要度で大きさが
+   *   変わるまま。**変えるのはホームの読み方だけ。**
+   * ★★おまけに**焼くのが速くなる** ―― 大きさが1つなら字の大きさも1つなので、
+   *   焼いた字（`lib/textFit.ts` の `glyphCache`）が**全部の図形で使い回せる**。
+   */
+  const flat = (t: { title?: string }) =>
+    ({ title: t.title ?? "", weight: HOME_WEIGHT, dueDate: HOME_DUE });
+  const HOME_DUE = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
   // ★★★**予算は「図形が居られる高さ」で取る** ―― 器の高さ `h` ではなく**床まで**。
   const usableH = Math.max(120, floorYOf(h));
   const areas = [
-    ...tasks.map((t) => areaOf(t, today)),
+    ...tasks.map((t) => areaOf(flat(t), today)),
     ...offers.map(() => OFFER_AREA),
     ...(jArea > 0 ? [jArea] : []),
   ];
@@ -550,7 +572,7 @@ export function buildPieces(
   //   **これだけは必ず効かせる**（＝器に入らない倍率は据え置かない）。
   let cap = UNIT;
   for (const sp of [
-    ...tasks.map((t) => specOf(t, today)),
+    ...tasks.map((t) => specOf(flat(t), today)),
     ...(jW > 0 ? [{ w: jW, h: jH }] : []),
   ]) {
     cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
@@ -671,7 +693,7 @@ export function buildPieces(
   });
 
   tasks.forEach((t) => {
-    const spec = specOf(t, today);
+    const spec = specOf(flat(t), today);
     const pw = Math.max(28, spec.w * unit);
     const ph = Math.max(24, spec.h * unit);
     // ★★**絵と同じ「ピルの積み」で当たる**（第101巡。GRAVITY／DRIFT と同じ形）。

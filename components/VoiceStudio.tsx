@@ -291,10 +291,20 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
     if (appActive) setEnterKey((n) => n + 1);
   }, [appActive]);
 
+  // ★★★**見えていない間は寸法を測らない**（2026-09-16・第115巡）。
+  //   ★★★**`AppShell` はタブを全部載せたまま横へ送る**ので、ホームを見ている間も
+  //     JOURNAL の `RecordTab` はマウントされたまま生きている。`ResizeObserver` は
+  //     **どこかのレイアウトが変わるたびに鳴り**、`read()` の `clientWidth` が
+  //     **文書ぜんたいのレイアウトを強制**する ―― ホームの山が落ちてくる最中は
+  //     帯の器も canvas も毎フレーム動くので、**その強制が毎フレーム掛かる**。
+  //   ★★★実測（CPU×4・12体）… この関数だけで **524ms**（全体の 12.8%）。
+  //     「最初に図形が落ちてくる時に重い」の**いちばん大きな1つ**がこれだった。
+  //   ★見えていないあいだ寸法は変わらないので、**戻ってきたときに測り直せば足りる**
+  //     （`appActive` が真になった瞬間に `read()` が1度走る）。
   useLayoutEffect(() => {
     const el = boxRef.current;
     const cv = canvasRef.current;
-    if (!el || !cv) return;
+    if (!el || !cv || !appActive) return;
     const read = () => {
       // ★値が同じなら setState しない。ResizeObserver は波形の帯が広がる
       // 間ずっと発火するので、毎回新しいオブジェクトを入れると1フレームごとに
@@ -308,7 +318,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
     ro.observe(cv);
     read();
     return () => ro.disconnect();
-  }, []);
+  }, [appActive]);
 
   // ---- 円の配置 --------------------------------------------------------------
   const w = size.w || 390;

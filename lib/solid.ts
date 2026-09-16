@@ -102,35 +102,100 @@ export function stackOutline(rows: number, ar: number, waist = 1): Pt[] {
   const rowH = 1 / n;
   const ry = rowH / 2;
   const half = Math.max(0, ARC_STEPS / 2);
-  // ★★**点の y は段ごとの半円から取り、x は `halfWidthAtStack` から引く。**
+  // ★★**点の y は段ごとの半円から取り、x は `stackEdge` から引く。**
   //   こうしておくと `waist` を混ぜても**点の数も y の並びも変わらない**ので、
   //   ピル（1段）と積み（n段）のあいだを**再標本化せずに**補間できる（第102巡）。
-  const hw = (y: number) => halfWidthAtStack(n, ar, y, waist);
+  //   ★★★**折り返しの弧は2段ぶんの y にまたがる**（第115巡）が、**その2段の
+  //     標本を合わせればちょうどその範囲を覆う**ので、ここは1行も変わらない。
   const pts: Pt[] = [];
   // 上辺（左上の角の終わり → 右上の角の始まり）。
-  pts.push({ x: -hw(-0.5), y: -0.5 });
-  pts.push({ x: hw(-0.5), y: -0.5 });
+  pts.push({ x: stackEdge(n, ar, -0.5, -1, waist), y: -0.5 });
+  pts.push({ x: stackEdge(n, ar, -0.5, 1, waist), y: -0.5 });
   // 右側 … 段ごとに半円（上から下へ）。
   for (let i = 0; i < n; i++) {
     const cy = -0.5 + rowH * i + ry;
     for (let k = 0; k <= half; k++) {
       const a = -Math.PI / 2 + (Math.PI * k) / half;
       const y = cy + Math.sin(a) * ry;
-      pts.push({ x: hw(y), y });
+      pts.push({ x: stackEdge(n, ar, y, 1, waist), y });
     }
   }
   // 下辺。
-  pts.push({ x: -hw(0.5), y: 0.5 });
+  pts.push({ x: stackEdge(n, ar, 0.5, -1, waist), y: 0.5 });
   // 左側 … 段ごとに半円（下から上へ）。
   for (let i = n - 1; i >= 0; i--) {
     const cy = -0.5 + rowH * i + ry;
     for (let k = 0; k <= half; k++) {
       const a = Math.PI / 2 + (Math.PI * k) / half;
       const y = cy + Math.sin(a) * ry;
-      pts.push({ x: -hw(y), y });
+      pts.push({ x: stackEdge(n, ar, y, -1, waist), y });
     }
   }
   return pts;
+}
+
+/**
+ * ★★★**その側で、段 `i` と段 `i+1` が折り返しで繋がっているか**
+ * （2026-09-16・第115巡にユーザー指定「**一本の長いピルを S 字に折りたたんだ
+ * ような形に。例えば1段目と2段目の右側のところを、曲がって繋がっているような形**」）。
+ *
+ * ★**右で 0-1、左で 1-2、右で 2-3 …** と互い違いに折る ―― これが「S 字」。
+ */
+const foldsAt = (n: number, i: number, side: 1 | -1): boolean =>
+  i >= 0 && i < n - 1 && (side > 0 ? i % 2 === 0 : i % 2 === 1);
+
+/** その側に折り返しが1つでもあるか（＝その側がどこまで膨らむか）。 */
+const sideFolds = (n: number, side: 1 | -1): boolean =>
+  side > 0 ? n >= 2 : n >= 3;
+
+/**
+ * ★★★**その形の、高さ `y` での「左（`side=-1`）／右（`side=1`）の縁の x」**
+ * （`stackOutline` と同じ -0.5〜0.5 の座標系。y は下向き）。
+ *
+ * ★★★**形は「幅 `rowH` の帯を S 字に折りたたんだもの」**（第115巡）。
+ *   帯の中心線は各段の中心を走り、**折り返す側では半径 `rowH/2` で U ターン**する。
+ *   縁はその中心線から半分の厚みだけ外へ出るので:
+ *   ・**折り返し** … 中心が2段の境目・半径 **`rowH`** の半円（＝2段ぶんを1つの弧が覆う）。
+ *   ・**端（キャップ）** … 中心が段の中心・半径 **`rowH/2`** の半円（＝今までと同じ）。
+ * ★★**直線部の端は、その側のいちばん膨らむ弧が箱の縁に接するように置く**ので、
+ *   外接箱はきっちり `1 × 1` のまま（＝**大きさは変わらない**）。
+ * ★★★**左右で式が違う**（折り返しのある側だけ深く入る）ので、**半幅では書けない**。
+ *   だから `halfWidthAtStack` はこの関数から**内側の包絡**として導く。
+ */
+export function stackEdge(rows: number, ar: number, y: number, side: 1 | -1, waist = 1): number {
+  const n = clampRows(rows);
+  const full = edgeRaw(n, ar, y, side);
+  if (waist >= 1 || n === 1) return full;
+  // ★★★**`waist` は「くびれの深さ」**（2026-09-14・第102巡）。
+  //   0 ＝ **段が1つ＝ただのピル**（帯のピルの形そのもの）／1 ＝ n 段の S 字。
+  //   ★★帯のピルを引き下ろすと図形へ変わる、あの連続変形のための1つの摘み。
+  const pill = edgeRaw(1, ar, y, side);
+  return pill + (full - pill) * Math.max(0, waist);
+}
+
+/** 段数 `n` の S 字の、高さ `y` での縁（`waist` を混ぜる前の素の値）。 */
+function edgeRaw(n: number, ar: number, y: number, side: 1 | -1): number {
+  const t = Math.max(-0.5, Math.min(0.5, y));
+  const rowH = 1 / n;
+  /** 段の厚みの半分を、x の単位へ直したもの（＝キャップの半径）。 */
+  const u = Math.min(rowH / 2 / ar, 0.5);
+  /** その側のいちばん膨らむ弧の半径（折り返しがあれば倍）。 */
+  const deep = sideFolds(n, side) ? u * 2 : u;
+  /** 直線部の端（中心線の折り返し点／端点）。 */
+  const straight = Math.max(0, 0.5 - deep);
+  const i = Math.max(0, Math.min(n - 1, Math.floor((t + 0.5) / rowH)));
+  // この段のこちら側は、折り返しの弧に属するか（自分が上の段／下の段のどちらでも）。
+  const up = foldsAt(n, i, side);        // i と i+1 が繋がる（自分は上の段）
+  const down = foldsAt(n, i - 1, side);  // i-1 と i が繋がる（自分は下の段）
+  if (up || down) {
+    const j = up ? i : i - 1;            // 折り返しの上の段
+    const cy = -0.5 + rowH * (j + 1);    // 2段の境目
+    const dy = Math.min(Math.abs(t - cy), rowH);
+    return side * (straight + Math.sqrt(Math.max(0, 1 - (dy / rowH) ** 2)) * u * 2);
+  }
+  const cy = -0.5 + rowH * i + rowH / 2;
+  const dy = Math.min(Math.abs(t - cy), rowH / 2);
+  return side * (straight + Math.sqrt(Math.max(0, 1 - (dy / (rowH / 2)) ** 2)) * u);
 }
 
 /**
@@ -142,28 +207,12 @@ export function stackOutline(rows: number, ar: number, waist = 1): Pt[] {
  *   「ピルの中に1行」という見え方を作っている。
  */
 export function halfWidthAtStack(rows: number, ar: number, y: number, waist = 1): number {
-  const n = clampRows(rows);
-  const full = rowHalfWidth(n, ar, y);
-  if (waist >= 1 || n === 1) return full;
-  // ★★★**`waist` は「くびれの深さ」**（2026-09-14・第102巡）。
-  //   0 ＝ **段が1つ＝ただのピル**（帯のピルの形そのもの）／1 ＝ n 段の積み。
-  //   ★★帯のピルを引き下ろすと図形へ変わる、あの連続変形のための1つの摘み。
-  //   **新しい形を足していない** ―― 同じ式の段数を混ぜているだけ。
-  const pill = rowHalfWidth(1, ar, y);
-  return pill + (full - pill) * Math.max(0, waist);
-}
-
-/** 段数 `n` の積みの、高さ `y` での半幅（`waist` を混ぜる前の素の値）。 */
-function rowHalfWidth(n: number, ar: number, y: number): number {
-  const t = Math.max(-0.5, Math.min(0.5, y));
-  const rowH = 1 / n;
-  const rx = Math.min(rowH / 2 / ar, 0.5);
-  const ry = rowH / 2;
-  // いる段（境界はどちらの段でも同じ値になるので端は丸めるだけ）。
-  const i = Math.max(0, Math.min(n - 1, Math.floor((t + 0.5) / rowH)));
-  const cy = -0.5 + rowH * i + ry;
-  const dy = Math.min(Math.abs(t - cy), ry);
-  return 0.5 - rx + Math.sqrt(Math.max(0, 1 - (dy / ry) * (dy / ry))) * rx;
+  // ★★★**S 字は左右で膨らみ方が違う**（第115巡）ので、**内側の包絡**を返す。
+  //   ★文字も指の当たり判定も「どちら側にも収まる幅」で考えればよい ―― 折り返しで
+  //     深く膨らんだ側だけを使うと、**反対側の縁から字がはみ出す**。
+  const r = stackEdge(rows, ar, y, 1, waist);
+  const l = -stackEdge(rows, ar, y, -1, waist);
+  return Math.min(r, l);
 }
 
 // ── 立面 ────────────────────────────────────────────────────

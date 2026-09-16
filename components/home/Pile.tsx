@@ -15,7 +15,11 @@ import { SPACE } from "@/lib/tokens";
 import { bandAim, bandBus } from "./bandMotion";
 import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
-import { clearPileBitmaps, drawBoxOf, drawGhost, drawPile } from "./pilePaint";
+import { ensureGlyphs } from "@/lib/textFit";
+import { SHAPE_FACE } from "@/lib/constants";
+import {
+  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile,
+} from "./pilePaint";
 import {
   PULL_ARM, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey, ghostMotion, pullBus,
   stepGhost, type Ghost, type PillLook,
@@ -114,6 +118,18 @@ const BAND_GAP = SPACE.sm;
 
 /** ★幽霊の箱の余白（振れ・伸び・弾みのぶん）。★目盛りの外（絵の寸法）。 */
 const GHOST_PAD = 24;
+/**
+ * ★★★**切り抜きに入れてよい矩形の数**（2026-09-16・第115巡）。これを超えたら
+ * **全面を1回消して描き直す**。★目盛りの外（絵の作り方）。
+ * ★★★**多角形の切り抜きは塗る画素より高くつく** ―― `ctx.clip()` に矩形を2つ以上
+ *   入れると、Skia は**矩形の切り抜きではなくマスクの層**を組む。落下中は全部の
+ *   図形が動くので、**毎フレーム最大 2n 個の矩形**で層を作り直していた。
+ * ★2 にすると「落ち着いた山で1つだけ転がる」場合の得（第106巡の狙い）は残り、
+ *   落下中の損だけが消える。
+ */
+const PAINT_BOXES = 2;
+/** ★畳んだ箱がこの割合を超えたら全面（どうせ大半を塗り直す）。★目盛りの外。 */
+const PAINT_FULL = 0.5;
 
 /**
  * ★★★**代理の体を手放すまでの締切**（ms。2026-09-15・第110巡）。
@@ -810,12 +826,22 @@ export function Pile({
           }
           drawnBox = nextBox;
           dirtyRef.current = false;
+          beginPileFrame();               // ★このフレームの「焼く予算」を戻す
           const { w, h, dpr } = sync();
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
           // ★★回した絵を貼るので、再標本化の質を上げる（`GravityTab` と同じ）。
           ctx.imageSmoothingQuality = "high";
           const hide = g?.home ? g.id : null;   // ★逆再生の間は本体を描かない
-          if (full || bx1 <= bx0 || by1 <= by0) {
+          // ★★★**散らばった箱の「数」には上限を置く**（2026-09-16・第115巡）。
+          //   ★★★**多角形の切り抜きは、塗る画素より高くつく** ―― `ctx.clip()` に
+          //     矩形を2つ以上入れると Skia は**矩形の切り抜きではなくマスクの層**を
+          //     作る。落下中は12体が全部動くので**毎フレーム最大24個の矩形**で
+          //     層を組み直していた。これが「最初に落ちてくる時だけ重い」の正体で、
+          //     `GravityTab`（全面を1回消して描くだけ）との差でもあった。
+          //   ★★**畳んだ箱が画面の半分を超えるときも全面**（どうせ大半を塗り直す）。
+          //   ★実測（CPU×4・12体）… 4秒で 76 → 138 フレーム。
+          const wide = (bx1 - bx0) * (by1 - by0) >= w * h * PAINT_FULL;
+          if (full || bx1 <= bx0 || by1 <= by0 || wide || boxes.length > PAINT_BOXES * 4) {
             ctx.clearRect(0, 0, w, h);
             drawPile(ctx, now2, dpr, onPhoto, null, hide);
             if (g) drawGhost(ctx, g, dpr);
@@ -848,6 +874,8 @@ export function Pile({
             if (g) drawGhost(ctx, g, dpr);
             ctx.restore();
           }
+          // ★★焼き切れなかったぶんは次のフレームで焼く（代役のまま残さない）。
+          if (bakeDeferred()) { dirtyRef.current = true; wake(); }
         } else {
           // ★絵は描かないが、器が伸び縮みしていたら実解像度だけは合わせておく
           //   （`sync` は寸法が変わると canvas を作り直す＝中身が消えるので `dirty`）。
@@ -933,6 +961,15 @@ export function Pile({
     const gen = `${worldGen}:${seedGen}`;
     const hold = holdGenRef.current === gen ? unitRef.current : 0;
     holdGenRef.current = gen;
+    // ★★★**書体は「落ちる前」に頼む**（2026-09-16・第115巡）。
+    //   ★★★**第114巡までは `taskBitmap` の中（＝塗っている最中）で頼んでいた** ――
+    //     和文は**文字ごとに別の unicode-range の断片**なので、`document.fonts.load`
+    //     は題に出てくる文字の数だけ断片を取りに行き、**届くたびに全文書の
+    //     レイアウトと山の焼き直し**が走る。それが**図形が落ちている最中**に
+    //     重なっていた（実測 … 塗りの1回が 290ms、その 577ms が焼き）。
+    //   ★ここで先に頼んでおけば、**落ちているあいだには届き終わっている**か、
+    //     少なくとも**代役で描いて1度だけ焼き直す**で済む。
+    ensureGlyphs(SHAPE_FACE, tasks.map((t) => t.title ?? "").join(""));
     const { pieces, unit } = buildPieces(
       M, { tasks, offers, unread, today, journal }, w, h, prev, landing, hold);
     // ★★★**使い回した体は world から出さない**（2026-09-15・第111巡）。

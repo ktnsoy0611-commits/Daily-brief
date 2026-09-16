@@ -714,16 +714,52 @@ export function AppShell() {
   const mountApp = useCallback((id: AppId) => {
     setMountedApps((prev) => (prev.includes(id) ? prev : [...prev, id]));
   }, []);
-  // 初回描画が落ち着いた頃(アイドル)に残りのアプリを先読みしておく。指が
-  // 触れた時点では既に用意できているので、スワイプの出だしで止まらない。
+  // 初回描画が落ち着いた頃に残りのアプリを先読みしておく。指が触れた時点では
+  // 既に用意できているので、スワイプの出だしで止まらない。
+  //
+  // ★★★**「落ち着いてから、1つずつ」**（2026-09-16・第115巡）。
+  //   ★★★**第114巡までは `requestIdleCallback(..., {timeout:3000})` で2つを
+  //     一度に載せていた** ―― `timeout` は「暇が無くても必ず呼ぶ」締切なので、
+  //     **ホームの山が落ちている最中に必ず割り込む**。そこで EXPLORE の札の束と
+  //     TASK の matter の世界と JOURNAL の録音の画面が**同時に組み上がり**、
+  //     **全文書のレイアウトが 1回 400ms 超**（実測 … 348/516 個の再計算）。
+  //     これが「**最初に図形が落ちてくる時だけ重い**」の正体で、
+  //     **GRAVITY が軽いのは「最初の画面ではない」から**だった。
+  //   ★★**軽いフレームが続いたら落ち着いたとみなす**（`CALM_*`）。どれだけ
+  //     忙しくても `GIVE_UP_MS` で諦めて載せる（永久に載せないのは困る）。
+  //   ★★**1回に1つ**。2つ同時だと、結局そこで1つの大きな山ができる。
+  //   ★指が先に触れたら `mountApp` が即座に載せるので、待ちは体感に出ない。
   useEffect(() => {
     if (!appState) return;
-    const idle: (cb: () => void) => number = typeof window.requestIdleCallback === "function"
-      ? (cb) => window.requestIdleCallback(cb, { timeout: 3000 }) as unknown as number
-      : (cb) => window.setTimeout(cb, 1200);
-    const h = idle(() => setMountedApps(APPS.map((a) => a.id)));
-    return () => { if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(h); else window.clearTimeout(h); };
-  }, [appState]);
+    /** 軽いとみなすフレームの長さ（ms）と、続けて要る本数。★目盛りの外（手ざわり）。 */
+    const CALM_MS = 24;
+    const CALM_FRAMES = 20;
+    /**
+     * ★★**ここまでは何があっても載せない**（ms）。ホームの山が落ち終わるまで。
+     * ★★★**「軽いフレームが続いた」だけでは足りない** ―― 落とす順は 60ms ずつ
+     *   ずらしてあるので、**落ち始めの数百 ms は軽いフレームが並ぶ**。そこで
+     *   載せると、いちばん見てほしい所に 160ms の山ができる（実測）。
+     */
+    const MIN_MS = 2200;
+    /** どんなに忙しくても、ここまで待ったら載せる（ms）。 */
+    const GIVE_UP_MS = 6000;
+    const rest = APPS.map((a) => a.id);
+    let raf = 0; let calm = 0; let prev = 0;
+    const t0 = performance.now();
+    const tick = (t: number) => {
+      if (prev) calm = t - prev < CALM_MS ? calm + 1 : 0;
+      prev = t;
+      if ((t - t0 > MIN_MS && calm >= CALM_FRAMES) || t - t0 > GIVE_UP_MS) {
+        const next = rest.shift();
+        if (next) mountApp(next);
+        calm = 0;
+        if (!rest.length) return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [appState, mountApp]);
   const onNavPointerDown = useCallback((e: ReactPointerEvent) => {
     const COMMIT_RATIO = 0.18;   // 横: 画面幅のこの割合を超えたら隣へ送る
     const FLICK_PX_PER_MS = 0.5; // 短く速く払ったときは距離が足りなくても送る

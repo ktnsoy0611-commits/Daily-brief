@@ -42,6 +42,26 @@ const bakeCache = new Map<string, Baked>();
 /** 焼いた絵を全部捨てる（★**書体が遅れて届いたとき**に呼ぶ。次の frame で戻る）。 */
 export function clearPileBitmaps() { bakeCache.clear(); }
 
+/**
+ * ★★★**1フレームに焼いてよい枚数**（2026-09-16・第115巡）。
+ *
+ * ★★★**第114巡までは、最初の1フレームで全部焼いていた** ―― 12体なら
+ *   `layoutInRows` × 12 と、そこから呼ばれる `bakeGlyph`（1文字＝1枚の canvas）が
+ *   **150枚ぶん**、ぜんぶ同じフレームに入る。実測 … **山のループの1回が 520ms**
+ *   （CPU×4）。これが「**最初に図形が落ちてくる時だけ重い**」のいちばん大きな山で、
+ *   **`GravityTab` が軽いのは、そこへ来る頃には焼き上がっているから**だった。
+ * ★★**焼けていない figure には代役がある**（下の `drawPile` の `else` の枝＝
+ *   1段のピル）ので、**数フレーム遅れても絵は途切れない**。
+ * ★★**足りなければ呼んだ側が次のフレームを頼む**（`bakeDeferred()`）。
+ */
+const BAKE_PER_FRAME = 2;
+let bakeLeft = BAKE_PER_FRAME;
+let bakeSkipped = false;
+/** ★1フレームの焼く予算を戻す（`drawPile` の直前に呼ぶ）。 */
+export function beginPileFrame(): void { bakeLeft = BAKE_PER_FRAME; bakeSkipped = false; }
+/** ★このフレームで焼き切れなかったか（真なら次のフレームも塗り直す）。 */
+export function bakeDeferred(): boolean { return bakeSkipped; }
+
 /** タスク（角丸の四角）を1枚焼く。返る `w`/`h` は**余白を含む整数の箱**。 */
 export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   if (!p.w || !p.h || p.face_ === undefined || !p.title) return undefined;
@@ -50,6 +70,9 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   const key = [p.id, w, h, p.face, p.ink, p.face_, p.title, dpr.toFixed(2), p.outlined ? "o" : "-"].join("|");
   const hit = bakeCache.get(key);
   if (hit) return hit;
+  // ★★**1フレームの予算を使い切ったら、今回は代役で描く**（上の `BAKE_PER_FRAME`）。
+  if (bakeLeft <= 0) { bakeSkipped = true; return undefined; }
+  bakeLeft -= 1;
   const cv = document.createElement("canvas");
   cv.width = Math.max(2, Math.round(w * dpr));
   cv.height = Math.max(2, Math.round(h * dpr));
@@ -124,6 +147,9 @@ export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
   const key = ["cassette", w, h, p.face, p.ink, dpr.toFixed(2)].join("|");
   const hit = bakeCache.get(key);
   if (hit) return hit;
+  // ★★**1フレームの予算を使い切ったら、今回は代役で描く**（上の `BAKE_PER_FRAME`）。
+  if (bakeLeft <= 0) { bakeSkipped = true; return undefined; }
+  bakeLeft -= 1;
   const cv = document.createElement("canvas");
   cv.width = Math.max(2, Math.round(w * dpr));
   cv.height = Math.max(2, Math.round(h * dpr));

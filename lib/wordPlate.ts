@@ -62,6 +62,20 @@ export const PLATE_TRACK = -0.02;   // ＝ `TRACK.tight`（em）
 
 /** ★山へ落とす曜日は**綴りのまま**（第60巡にユーザー指定「曜日の英語」）。 */
 export const WD_FULL = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
+/**
+ * ★★★**3文字の曜日**（2026-09-16・第114巡にユーザー指定「**曜日は WED や TUE の
+ * ような感じに**」）。★いまホームの山だけが読む（TASK は `WD_FULL` のまま）。
+ */
+export const WD_SHORT = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
+
+/**
+ * ★★★**黒いピルの板の遊び**（2026-09-16・第114巡にユーザー指定「**どちらも
+ * 黒いピルに白の文字／ピルのサイズに対してそれぞれの文字が大きく入っている感じ**」）。
+ * ★★**字の高さに対する比で持つ**（生の px を置かない）―― 字の大きさが日によって
+ *   変わっても、ピルと字の関係が動かない。★目盛りの外（図形の寸法）。
+ */
+export const PILL_PAD = 0.46;
+export const PILL_PAD_Y = 0.24;
 
 /**
  * ★★★**板の書体を明示的に頼む**（2026-09-13・第101巡）。
@@ -157,21 +171,29 @@ export interface WordPlate {
   w: number; h: number;
   /** 物体の箱(塗り＋遊び)。 */
   bw: number; bh: number;
+  /**
+   * ★★★**黒いピルの面の色**（2026-09-16・第114巡。`undefined` ＝ 面を持たない
+   * 「文字そのものが図形」のまま）。★ホームの山だけが渡す（TASK は今までどおり）。
+   */
+  pill?: string;
 }
 
 /** 語 → 板の寸法。★`GravityTab.makeWordPiece` の前半そのまま。 */
 export function measureWordPlate(
   word: string, fs: number, room: number, ink: string, fam: string,
-  pad = PLATE_PAD, padY = PLATE_PAD_Y,
+  pad = PLATE_PAD, padY = PLATE_PAD_Y, pill?: string,
 ): WordPlate {
   const sx = wordSqueeze(word, fs, room, fam);
   const ink0 = inkBoxOf(word, fs, sx, fam);
+  // ★★**ピルのときは遊びを「字の高さの比」から出す**（上の `PILL_PAD`）。
+  const px = pill ? ink0.h * PILL_PAD : pad;
+  const py = pill ? ink0.h * PILL_PAD_Y : padY;
   return {
-    word, fs, sx, ink, fam,
+    word, fs, sx, ink, fam, pill,
     dx: ink0.dx, dy: ink0.dy,
     w: ink0.w, h: ink0.h,
-    bw: Math.max(8, ink0.w + pad * 2),
-    bh: Math.max(8, ink0.h + padY * 2),
+    bw: Math.max(8, ink0.w + px * 2),
+    bh: Math.max(8, ink0.h + py * 2),
   };
 }
 
@@ -201,6 +223,14 @@ export function drawWordPlate(
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
+  // ★★★**黒いピルの面**（2026-09-16・第114巡）。**角丸は高さの半分**＝
+  //   帯のピルとまったく同じ形なので、**同じものが同じ形で居続ける**。
+  if (plate.pill) {
+    ctx.beginPath();
+    ctx.roundRect(-plate.bw / 2, -plate.bh / 2, plate.bw, plate.bh, plate.bh / 2);
+    ctx.fillStyle = plate.pill;
+    ctx.fill();
+  }
   ctx.drawImage(wb.canvas, -wb.w / 2, -wb.h / 2, wb.w, wb.h);
   ctx.restore();
 }

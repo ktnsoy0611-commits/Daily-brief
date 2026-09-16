@@ -1,4 +1,4 @@
-import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, RUST, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
+import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, PAPER, RUST, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
 import { CASSETTE_ASPECT } from "@/lib/cassette";
 import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
@@ -9,7 +9,7 @@ import { areaOf, rowsOf, specOf, weightArea } from "@/lib/taskSize";
 import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
 import {
-  WD_FULL, makeWordBody, measureWordPlate, wordFontSize, type WordPlate,
+  WD_FULL, WD_SHORT, makeWordBody, measureWordPlate, wordFontSize, type WordPlate,
 } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
@@ -515,11 +515,21 @@ export function buildPieces(
   //   板は器の幅の `WORD_W` を取る**いちばん大きな塊**なので、予算に数えないと
   //   山の総面積が跳ね上がる（実測 80%）。詰まった山は解けずに押し合って震える。
   // ★★字の大きさは**長いほう（曜日）で決めた1つの値**を両方に使う（第67巡）。
-  const words = [`${today.getMonth() + 1}/${today.getDate()}`, WD_FULL[today.getDay()]];
+  // ★★★**日付は `9.15`・曜日は `WED`**（2026-09-16・第114巡にユーザー指定）。
+  //   ★★**どちらも黒いピルに白い文字**（面 ＝ `INK` ／ 字 ＝ `PAPER`）。
+  //     形は帯のピルとまったく同じ（角丸 ＝ 高さの半分）なので、**同じものが
+  //     同じ形で居続ける**。遊びの比は `lib/wordPlate.ts` の `PILL_PAD`。
+  //   ★★★**TASK（GRAVITY）の板は変えていない** ―― あちらは「文字そのものが
+  //     図形」のままで、ユーザーの指定はホームの山についてのもの。
+  const words = [`${today.getMonth() + 1}.${today.getDate()}`, WD_SHORT[today.getDay()]];
   const room = pileWOf(w) * WORD_W;
   // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
-  const wordFs = wordFontSize(words, room, DISPLAY, PILE_WORD_MAX);
-  const plates = words.map((wd) => measureWordPlate(wd, wordFs, room, INK, DISPLAY));
+  // ★★★**大きさの物差しは長いほうの綴り（`WD_FULL`）のまま**（ユーザー
+  //   「**サイズは今の文字くらいでよく**」）―― 3文字で測ると器いっぱいまで
+  //   太ってしまい、**今までの倍近い字**になる。物差しだけ据え置く。
+  const wordFs = wordFontSize([WD_FULL[today.getDay()]], room, DISPLAY, PILE_WORD_MAX);
+  const plates = words.map(
+    (wd) => measureWordPlate(wd, wordFs, room, PAPER, DISPLAY, undefined, undefined, INK));
 
   // ★★★**予算は「図形が居られる高さ」で取る** ―― 器の高さ `h` ではなく**床まで**。
   const usableH = Math.max(120, floorYOf(h));
@@ -656,7 +666,7 @@ export function buildPieces(
     }
     pieces.push({
       id: `word${i}`, body, kind: "word", w: plate.bw, h: plate.bh,
-      face: INK, ink: INK, title: plate.word, plate, fresh,
+      face: INK, ink: PAPER, title: plate.word, plate, fresh,
     });
   });
 

@@ -140,7 +140,7 @@ export const bandBus = {
    * ★離したときに `HomeTab` がこれを読んで、**その場所へ並べ替える**。
    * ★★**帯は輪なので index は 0〜n-1 で足りる**（「n 番目の後ろ」＝「0 番目の前」）。
    */
-  slot: null as { row: 0 | 1; at: number } | null,
+  slot: null as { row: 0 | 1; at: number; after: string } | null,
 };
 
 /** ★注文が入ったら**すぐ**段のループを起こす（間を置いて見に行かない）。 */
@@ -204,13 +204,16 @@ export function bandGapClear(row: 0 | 1): void {
  */
 export function bandGapDone(row: 0 | 1, at: number, id: string, pillW: number): void {
   const m = bandBus.rows[row];
+  // ★★**幅 0 ＝「畳んでいた席の幅を使え」**（引き抜いたピルを入れ直したとき）。
+  //   そのピルの DOM はいま幅 0 を書かれているので、測り直しては 0 になる。
+  const full0 = pillW || m.holeW;
   // ★★★**開ききる前に離されることがある**（指は待ってくれない）。そのときは
   //   **開いていたぶんの大きさから新しいピルが生える**ように畳み替える ――
   //   `pad + ピル` を `part` 倍した幅は**開いていた幅そのもの**なので、
   //   レイアウトが増えたぶんと帳尻が合う（＝1px も飛ばない）。
-  const full = m.open.to || BAND_PAD + pillW;
+  const full = m.open.to || BAND_PAD + full0;
   const part = Math.max(0, Math.min(1, m.open.p / full));
-  m.holeId = id; m.holeW = pillW;
+  m.holeId = id; m.holeW = full0;
   m.hole.p = 1 - part; m.hole.v = 0; m.hole.to = 0;
   // ★★閉じかけの器は、挿し込みで index が1つ後ろへずれる。
   if (m.shut.at >= at) m.shut.at += 1;

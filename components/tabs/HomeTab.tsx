@@ -12,7 +12,7 @@ import { groundOf } from "@/components/AppBackdrop";
 import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
-import { bandRows, reorderSomeday, unreadCards, type BandItem } from "@/lib/homeBand";
+import { bandRows, pinBand, unreadCards, type BandItem } from "@/lib/homeBand";
 import { genreOfKind } from "@/lib/deckStyle";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -186,11 +186,47 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     persist(next);
   }, [appState, persist]);
 
+  /** ★帯の下端（器の座標）。★**山は帯を知らない**ので、ここで測って渡す。 */
+  const bandRef = useRef<HTMLDivElement>(null);
+  const bandBottom = useCallback(() => {
+    const band = bandRef.current?.getBoundingClientRect();
+    const box = boxRef.current?.getBoundingClientRect();
+    return band && box ? band.bottom - box.top : 0;
+  }, []);
+
+  /**
+   * ★★★**その図形が戻る段と、その段の中心**（器の座標。2026-09-15・第110巡）。
+   * ★★★**「上が row0・下が row1」と決め打ちできない** ―― `BandRow` は
+   *   `if (!items.length) return null` で**空の段を描かない**ので、提案しか
+   *   無い日は下の段そのものが DOM に存在しない。**実測して返す。**
+   * ★段の分け方は `unassign` と同じ切り分け（提案＝上／タスク＝下）。
+   */
+  const rowCenter = useCallback((row: 0 | 1) => {
+    const box = boxRef.current?.getBoundingClientRect();
+    const el = bandRef.current?.querySelector<HTMLElement>(`[data-band-row="${row}"]`);
+    if (!box || !el) return null;
+    const r = el.getBoundingClientRect();
+    return r.top + r.height / 2 - box.top;
+  }, []);
+  /**
+   * ★★★**帯のその場所へ置く**（`after` の次。空文字なら段の先頭。第114巡）。
+   * ★引き抜いたピルを**別の場所へ入れ直す**ときの唯一の口 ―― 日付は付けない。
+   */
+  const pin = useCallback((bandId: string, after: string) => {
+    const next: AppState = structuredClone(appState);
+    pinBand(next, bandId, after);
+    haptic(10);
+    persist(next);
+  }, [appState, persist]);
+
   const pull: PullHost = useMemo(() => ({
     box: boxRef,
     seed,
     rail: setRail,
     lift: setLift,
+    bandBottom,
+    rowCenter,
+    pin,
     drop: (it, onRail, at) => {
       setRail(false);
       if (!onRail) { put(it, day, at); return; }
@@ -202,7 +238,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
         put: (iso) => { put(it, iso); setAssign(null); },
       });
     },
-  }), [seed, put, day]);
+  }), [seed, put, day, bandBottom, rowCenter, pin]);
 
   /**
    * ★★★**山の図形を帯へ戻すときのピルの顔**（2026-09-15・第106巡にユーザー指定
@@ -233,30 +269,6 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     return { ...base, w: pillWidth(base, window.innerWidth) };
   }, [appState.items]);
 
-  /** ★帯の下端（器の座標）。★**山は帯を知らない**ので、ここで測って渡す。 */
-  const bandRef = useRef<HTMLDivElement>(null);
-  const bandBottom = useCallback(() => {
-    const band = bandRef.current?.getBoundingClientRect();
-    const box = boxRef.current?.getBoundingClientRect();
-    return band && box ? band.bottom - box.top : 0;
-  }, []);
-
-  /**
-   * ★★★**その図形が戻る段と、その段の中心**（器の座標。2026-09-15・第110巡）。
-   * ★★★**「上が row0・下が row1」と決め打ちできない** ―― `BandRow` は
-   *   `if (!items.length) return null` で**空の段を描かない**ので、提案しか
-   *   無い日は下の段そのものが DOM に存在しない。**実測して返す。**
-   * ★段の分け方は `unassign` と同じ切り分け（提案＝上／タスク＝下）。
-   */
-  const bandRowAt = useCallback((p: Piece) => {
-    const row: 0 | 1 = p.kind === "offer" ? 0 : 1;
-    const box = boxRef.current?.getBoundingClientRect();
-    const el = bandRef.current?.querySelector<HTMLElement>(`[data-band-row="${row}"]`);
-    if (!box || !el) return null;
-    const r = el.getBoundingClientRect();
-    return { row, cy: r.top + r.height / 2 - box.top };
-  }, []);
-
   /**
    * ★★★**帯の上で離した＝日付を消して帯へ戻す**（同ユーザー指定）。
    * ★★**規則は1本だけ** … タスクは `dueDate` を、提案は `plannedFor` を消す。
@@ -264,25 +276,25 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
    *   戻る（元の候補には戻さない ―― 戻す先がもう無いし、**帯の下の段に出るので
    *   結果は同じ**）。
    */
-  const unassign = useCallback((p: Piece, at: number | null) => {
+  const unassign = useCallback((p: Piece, after: string | null) => {
     const next: AppState = structuredClone(appState);
     const t = next.tasks.find((x) => x.id === p.id);
     if (t) { delete t.dueDate; delete t.endDate; }
     const i = (next.items ?? []).find((x) => x.id === p.id);
     if (i) delete i.plannedFor;
     if (!t && !i) return;
-    // ★★★**離した所へ並べ替える**（2026-09-16・第112巡にユーザー確定
-    //   「**どんな時でも、任意のピルとピルの間に戻せるように。順番がいくら
-    //   入れ替わっても問題ない**」）。
-    //   ★★★**第111巡は逆だった** ―― 入る場所を並びが決めていたので、
-    //     **指をどこへ持っていっても同じ1か所にしか戻らなかった**。
-    //   ★★**指が指している index は段が出す**（`bandBus.slot`。ピルの居場所を
-    //     知っているのは段だけ）。**それを並びのほうへ写す。**
-    if (t && at !== null) reorderSomeday(next, t.id, at);
+    // ★★★**離した所へ留め金を打つ**（2026-09-16・第114巡。規則は `lib/homeBand.ts`）。
+    //   ★★★**第112巡は `tasks` の並びそのものを替えていた** ―― それだと
+    //     ① GRAVITY の山と ALIGN の一覧まで動き、② 声の候補とフォローアップは
+    //     持ち主が別なので**動かせず**、「任意のピルとピルの間」が作れなかった。
+    //   ★★**留め金は表示の並びだけ**を持つので、5種類すべてを置ける。
+    //   ★`after` ＝ その隙間の左どなりの id（空文字なら段の先頭）。
+    const bandId = t ? `someday-${p.id}` : `today-${p.id}`;
+    if (after !== null) pinBand(next, bandId, after);
     // ★★★**戻したものは段の上限で切られない**（第111巡。`bandRows` の `keepId`）。
     //   ★★これが無いと、下の段が 9件 埋まっているとき**「帯へ戻しました」と出るのに
     //     帯に現れない**（ユーザー報告「**どこかに消えてしまう**」）。
-    setKeepId(t ? `someday-${p.id}` : null);
+    setKeepId(bandId);
     haptic(12);
     persist(next);
     showToast("帯へ戻しました");
@@ -341,7 +353,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
           journal={journal} onOpen={goTab} above={lift}
           onRail={setRail} onAssign={assignPiece}
           bandBottom={bandBottom} pillOf={pillOf} onUnassign={unassign}
-          bandRowAt={bandRowAt}
+          rowCenter={rowCenter}
         />
         {/* 帯（2段）。★器の左右のパディングの外へ出る（`.bleed-x`）ので、
             左右とも画面の外へ切れる ＝「まだ続きがある」を形で言う。

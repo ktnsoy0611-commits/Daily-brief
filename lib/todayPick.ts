@@ -74,7 +74,9 @@ const daysLeft = (it: Item): number => {
  * 2. 同点なら**会期末が近い順**
  * 3. さらに同点なら **`addedAt` の新しい順**（ストックの並びと同じ）
  */
-export function pickTodayItems(items: Item[], now = new Date()): Item[] {
+export function pickTodayItems(
+  items: Item[], now = new Date(), force?: ReadonlySet<string>,
+): Item[] {
   const hour = now.getHours();
   const scored: { it: Item; rank: number }[] = [];
   for (const it of items) {
@@ -85,6 +87,14 @@ export function pickTodayItems(items: Item[], now = new Date()): Item[] {
     //   （ユーザー報告「上の段のピルが消えない」）。
     if (it.plannedFor) continue;
     if (isExpiredItem(it)) continue;
+    // ★★★**自分で帯へ置いたものは、時間帯で落とさない**（2026-09-16・第114巡）。
+    //   ★★山の図形を帯へ戻すと `plannedFor` が消えてストックへ返るが、その
+    //     `kind` が行き先でない（本・モノ）／もう閉まっている時間だと、
+    //     **ここで落とされて帯に現れない** ―― それでも画面には「帯へ戻しました」
+    //     と出ていた（ユーザー報告「**メッセージだけ出てどこかに消える**」）。
+    //   ★**指で置いたものを勝手に隠さない。** 表は「おすすめの並べ方」であって、
+    //     ユーザーの意思を却下する門ではない。
+    if (force?.has(it.id)) { scored.push({ it, rank: 0 }); continue; }
     if (!isGoable(it)) continue;
     const slots = KIND_HOURS[it.kind] ?? [];
     if (!slots.length) continue;

@@ -181,7 +181,7 @@ const waitFonts = () => Promise.race([
 
 export function Pile({
   tasks, offers, unread, today, journal, onOpen, above, onRail, onAssign,
-  bandBottom, pillOf, onUnassign, bandRowAt,
+  bandBottom, pillOf, onUnassign, rowCenter,
 }: {
   tasks: Task[];
   offers: Item[];
@@ -212,13 +212,13 @@ export function Pile({
    * @param at ★★★**指が指していた挿し口の index**（2026-09-16・第112巡）。
    *   `null` なら挿し口が出ていなかった＝並べ替えない。
    */
-  onUnassign?: (piece: Piece, at: number | null) => void;
+  onUnassign?: (piece: Piece, after: string | null) => void;
   /**
    * ★★★**その図形が戻る段と、その段の中心**（器の座標。2026-09-15・第110巡）。
    * ★**空の段は描かれない**ので「上が row0・下が row1」と決め打ちできない ――
    *   `HomeTab` が `.band-row` を実測して返す。
    */
-  bandRowAt?: (piece: Piece) => { row: 0 | 1; cy: number } | null;
+  rowCenter?: (row: 0 | 1) => number | null;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -1145,9 +1145,10 @@ export function Pile({
       // ★★★**着地点はその図形が入る段の中心・指の x**（2026-09-15・第110巡）。
       //   ★★**「下の段」と決め打ちしない** ―― 空の段は描かれないので、
       //     提案しか無い日は下の段そのものが存在しない（`bandRowAt` が実測して返す）。
-      const slot = bandRowAt?.(dragRef.current.piece);
+      const row: 0 | 1 = dragRef.current.piece.kind === "offer" ? 0 : 1;
+      const cy = rowCenter?.(row) ?? null;
       gh0.aim = caught
-        ? { x: dragRef.current.x, y: slot?.cy ?? bandY - PULL_ARM / 2 } : null;
+        ? { x: dragRef.current.x, y: cy ?? bandY - PULL_ARM / 2 } : null;
       gh0.tTo = caught ? 0 : 1;
       // ★★★**挿し口は「指が指している所」**（2026-09-16・第112巡にユーザー確定
       //   「**どんな時でも、任意のピルとピルの間に戻せるように**」）。
@@ -1156,8 +1157,8 @@ export function Pile({
       //   ★★**渡すのは画面の x だけ** ―― index へ直せるのは段だけ（ピルの居場所は
       //     流れの `transform` が決めていて React 側は知らない）。答えは `bandBus.slot`。
       //   ★`w` は**戻ったときのピルの幅そのもの**（`pillOf` が `pillWidth()` で出す）。
-      bandAim(caught && slot
-        ? { row: slot.row, x: e.clientX, w: (gh0.look?.w ?? gh0.w1) + BAND_GAP } : null);
+      bandAim(caught && cy !== null
+        ? { row, x: e.clientX, w: (gh0.look?.w ?? gh0.w1) + BAND_GAP } : null);
     }
   };
 
@@ -1171,7 +1172,9 @@ export function Pile({
     // ★★★**指が指していた挿し口は、消す前に控える**（2026-09-16・第112巡）。
     //   `bandAim(null)` は `bandBus.slot` も一緒に落とすので、**先に読む**。
     //   ★★**このジェスチャで実際に挿し口が出ていたときだけ**（前の巡の残りを拾わない）。
-    const slotAt = bandBus.aim ? bandBus.slot?.at ?? null : null;
+    //   ★★★**index ではなく「左どなりのピルの id」**（第114巡）―― 離した瞬間に
+    //     `items` は組み替わるので、index は指した場所を指し続けない。
+    const slotAt = bandBus.aim ? bandBus.slot?.after ?? "" : null;
     // ★★★**挿し口は指が離れたら必ず消す**（第110巡）。消し忘れると帯が
     //   **隙間を開けたまま毎フレーム回り続ける**（幽霊の寿命と同じ轍）。
     bandAim(null);
@@ -1223,7 +1226,11 @@ export function Pile({
         position: "absolute", inset: 0, touchAction: holding ? "none" : "pan-x",
         // ★★★**引いているあいだだけ帯の上へ**（2026-09-14・第105巡）。写し取った
         //   ピルはこの canvas に描かれるので、上げないと**下の段のピルの後ろへ潜る**。
-        zIndex: above ? 1 : undefined,
+        // ★★★**山の図形を掴んでいる間も上げる**（2026-09-16・第114巡）――
+        //   帯へ戻そうと近づけると、幽霊は**帯の裏へ回って消えて見えた**
+        //   （実測 … canvas には描かれているのに、画面には出ていない）。
+        //   ユーザー報告「**どこかに消えてしまう**」の、目に見える半分がこれ。
+        zIndex: above || holding ? 1 : undefined,
       }}
       onPointerDown={onDown}
       onPointerMove={onMove}

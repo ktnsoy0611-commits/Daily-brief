@@ -4,17 +4,17 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import { groundOf } from "@/components/AppBackdrop";
 import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { type BandItem, isOutlined } from "@/lib/homeBand";
+import { BAND_ROW, type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
-  PILL_EDGE, PILL_PRESS, RAIL_NEAR, pullBus, pullFrame,
+  PILL_EDGE, PILL_PRESS, PULL_ARM, RAIL_HYST, RAIL_NEAR, pullBus, pullFrame,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
 import { haptic } from "@/lib/helpers";
 import {
-  BAND_PAD, bandBus, bandGapAt, bandGapClear, bandGapDone, bandHole, bandHoleDone,
-  bandHoleRelease, bandResume, bandStop, stepBandMotion,
+  BAND_PAD, bandAim, bandBus, bandGapAt, bandGapClear, bandGapDone, bandHole,
+  bandHoleDone, bandHoleRelease, bandResume, bandStop, stepBandMotion,
 } from "./bandMotion";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
@@ -91,6 +91,8 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     id: number; sx: number; sy: number; bx: number; by: number;
     w0: number; h0: number; seed: GhostSeed; look: PillLook;
     armed: boolean; rail: boolean; live: boolean;
+    /** ★★いま帯の挿し口を狙っているか（第114巡）。 */
+    aim: boolean;
   } | null>(null);
 
   /**
@@ -113,6 +115,10 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     grab.current = null;
     setPressed(false);
     onTake(null);
+    // ★★★**指が指していた挿し口は、消す前に控える**（第114巡）。
+    //   `bandAim(null)` は `bandBus.slot` も一緒に落とすので、**先に読む**。
+    const into = g?.aim && bandBus.aim ? bandBus.slot?.after ?? "" : null;
+    bandAim(null);
     if (!pull) return;
     if (g?.live) pull.lift(false);
     // ★★★**離した所と勢いを控えてから幽霊を消す**（2026-09-14・第103巡）。
@@ -130,6 +136,10 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     //   `onPointerUp`/`onPointerCancel` しか無かった ―― **捕捉が外れると
     //   そこへ来ないので、段が止まったままになり得た**。後始末はここ1つ。
     onFlow(true);
+    // ★★★**帯の上で離した ＝ その場所へ入れ直す**（2026-09-16・第114巡）。
+    //   **日付は付けない**（山へは落とさない）。並びだけを憶える。
+    //   ★席は元に戻す（`onArm(null)`）―― 抜けた席が閉じたままにならないように。
+    if (into !== null && commit) { onArm(null); pull.pin(item.id, into); return; }
     const drop = !!(g && commit && g.armed);
     // ★★★**穴を閉じたままにするのは「本当に落とすとき」だけ**（第110巡）。
     //   落とすなら `items` から消えるので、受け渡しは段の照合が引き取る。
@@ -183,7 +193,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
         padL: (outline ? PILL_EDGE : 0) + (photo ? BAND_BEZEL : SPACE.xl),
         padR: (outline ? PILL_EDGE : 0) + SPACE.xl,
       },
-      armed: false, rail: false, live: false,
+      armed: false, rail: false, live: false, aim: false,
     };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     guard(e.pointerId);
@@ -196,7 +206,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     if (!box) return;
     const br = box.getBoundingClientRect();
     const frame = () => pullFrame(
-      e.clientX - br.left, e.clientY - br.top, g.sy, g.bx, g.by,
+      e.clientX - br.left, e.clientY - br.top, g.sy, g.bx, g.by, g.armed,
     );
     let f = frame();
     // ★★★**1px でも下へ引いたら、そこから先は canvas の写し取り**
@@ -250,13 +260,35 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     // ★★**指のイベントが書くのは「目標」だけ** ―― 振れ・伸び・支点・速さは
     //   山のループが `stepGhost` で作る（`lib/pullDrag.ts`）。前のフレームの値を
     //   引き継いで、掴んでいる間の連なりを切らない。
+    // ★★★**引き抜いたピルも、帯の「別の場所」へ入れ直せる**（2026-09-16・第114巡に
+    //   ユーザー指定「**引き出してそのまま別のところに入れようとしても元の場所に
+    //   瞬間移動したり戻ってしまいます**」）。
+    //   ★★★**第113巡まで、この道は存在しなかった** ―― 引き抜いたピルの指は
+    //     この要素が捕捉しているので `Pile.onMove` は1度も走らず、**帯への狙いを
+    //     出すコードがどこにも無かった**。だから戻せるのは元の席だけだった。
+    //   ★★**狙いの出し方は山と同じ1本**（`bandAim` ＋ `PullHost.bandBottom`/
+    //     `rowCenter`）。「どこから来たか」で手つきが変わってはいけない。
+    //   ★境目の遊びは `RAIL_HYST`（1本の線だと指がその上で毎フレーム反転する）。
+    const row = BAND_ROW[item.kind];
+    const bandY = pull.bandBottom();
+    const fy = e.clientY - br.top;
+    const back = f.armed && bandY > 0
+      && fy < bandY + PULL_ARM + (g.aim ? RAIL_HYST : 0);
+    const cy = back ? pull.rowCenter(row) : null;
+    g.aim = back && cy !== null;
+    bandAim(g.aim ? { row, x: e.clientX, w: g.w0 + SPACE.sm } : null);
     const was = pullBus.ghost;
     pullBus.ghost = live ? {
       kind: g.seed.kind, id: item.id, owner: g.id, title: g.seed.title,
       cx: f.cx, cy: f.cy,
       // ★★変形の両端と行き先。**弾けたら 1 へ向かって時間で進む。**
       w0: g.w0, h0: g.h0, w1: g.seed.w, h1: g.seed.h,
-      tTo: f.armed ? 1 : 0,
+      // ★★★**帯へ戻したいときは `tTo` を 0 へ**（山から戻すときとまったく同じ）。
+      tTo: g.aim ? 0 : (f.armed ? 1 : 0),
+      // ★★**帯を狙っているあいだは `home` の枝で動かす**（`stepGhost`）――
+      //   支点が指に付いて、段の中心へ `aim` で吸い付く。山から戻す道と同じ1本。
+      home: g.aim || undefined,
+      aim: g.aim && cy !== null ? { x: e.clientX - br.left, y: cy } : null,
       w: was?.w ?? g.w0, h: was?.h ?? g.h0, t: was?.t ?? 0,
       // ★★**支点は前のフレームから引き継ぐ** ―― 弾けた瞬間、バネはここから
       //   走り出す（＝**ピルが居た所から指へ**）。引き継がないと左上から飛んでくる。
@@ -558,6 +590,9 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
   itemsRef.current = items;
   /** ★★この段が「狙われているから」流れを止めているか（第112巡）。 */
   const heldRef = useRef(false);
+  /** ★★いま引き抜かれているピルの id（挿し口の隣に選ばないため）。 */
+  const armedRef = useRef<string | null>(armed);
+  armedRef.current = armed;
   /** ★★この段でいま挿し口を開けているか（受け渡しの合図）。 */
   const aimedRef = useRef(false);
   const wake = useCallback(() => {
@@ -603,7 +638,12 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
           if (i === m.shut.at) extra += m.shut.p;
           k += 1;
         }
-        bandBus.slot = { row, at };
+        // ★★★**挿し口は「左どなりのピルの id」で返す**（第114巡）。index だと
+        //   離した瞬間に `items` が組み替わって指した場所を指さなくなる。
+        //   ★★**引き抜いている当のピルは飛ばす**（自分の次に自分は置けない）。
+        let a = at - 1;
+        while (a >= 0 && list[a].id === armedRef.current) a -= 1;
+        bandBus.slot = { row, at, after: a >= 0 ? list[a].id : "" };
         // ★★★**狙われている段は流れを止める**（2026-09-16・第112巡）。
         //   ★★★**流れたままだと、指を止めていてもピルのほうが動いて挿し口が
         //     勝手に変わる**（実測 … 同じ x でも index が 3 → 1 へ飛んだ）。
@@ -659,18 +699,26 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     // ★★★**挿し口の受け渡し** … 開けて待っていた所へ本当にピルが挿し込まれた。
     //   レイアウトが増える幅（`pad + ピル`）は開けていた幅と厳密に同じなので、
     //   **掛け金を外して塗るだけ**。
-    if (aimedRef.current && was.length && now.length > was.length) {
+    // ★★★**入れ直し（並べ替え）も同じ受け渡しに乗せる**（2026-09-16・第114巡）。
+    //   引き抜いたピルを別の場所へ入れ直すと**件数は変わらない**ので、
+    //   「増えたか」だけを見ていると受け渡しが走らず、**畳んでいた席が古い所で
+    //   開き直し、新しい所の隙間が別に閉じる**＝1フレームで 139px 飛んだ（実測）。
+    const moved = now.find((id) => !was.includes(id))
+      ?? (holeRef.current && now.join("\u0001") !== was.join("\u0001")
+        ? holeRef.current : undefined);
+    if (aimedRef.current && was.length && moved) {
       // ★★★**`transform` の一様なずれを、流れの時計へ畳み替える**（第113巡）。
       //   挿し込まれるとレイアウトが `lead` ぶん右へ動き、`transform` の
       //   `lead` と「隙間の半分」はこのあと 0 になる ―― 畳み替えないと、
       //   **その瞬間に帯がピル1枚ぶん飛ぶ**（実測 72px）。
       holdRef.current += bandBus.rows[row].lead + bandBus.rows[row].open.p / 2;
-      const added = now.find((id) => !was.includes(id));
-      const el = added
-        ? trackRef.current?.querySelector<HTMLElement>(`[data-pill-id="${CSS.escape(added)}"]`)
-        : null;
-      bandGapDone(row, now.indexOf(added ?? ""),
-        added ?? "", el?.getBoundingClientRect().width ?? 0);
+      // ★★**新しく入ったピルは実測、入れ直したピルは「畳む前に測った幅」**
+      //   （いま DOM には幅 0 が書かれているので、測り直しては 0 になる）。
+      const el = moved === holeRef.current ? null
+        : trackRef.current?.querySelector<HTMLElement>(`[data-pill-id="${CSS.escape(moved)}"]`);
+      bandGapDone(row, now.indexOf(moved), moved, el?.getBoundingClientRect().width ?? 0);
+      // ★★席の掛け金は `bandGapDone` が引き取った（新しい場所で素の幅へ育つ）。
+      holeRef.current = null;
       aimedRef.current = false;
       paint();
     }

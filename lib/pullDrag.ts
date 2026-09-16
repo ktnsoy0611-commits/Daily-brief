@@ -342,7 +342,7 @@ export interface PullFrame {
  *   「変わりながら吸い付く」が1つの数から出る。
  */
 export function pullFrame(
-  fx: number, fy: number, sy: number, bx: number, by: number,
+  fx: number, fy: number, sy: number, bx: number, by: number, latched = false,
 ): PullFrame {
   const dy = fy - sy;
   // ★下へ引いたぶんだけを見る（上へ戻せば 0 に近づく）。
@@ -352,7 +352,15 @@ export function pullFrame(
   //   （生の上限を別に置かない）。★横へ引いたぶんは見ない ―― 輪ゴムは
   //   **指の下へ垂れる**のであって、横へは端が留めている。
   const give = rubber(pulled / PULL_ARM, PULL_GIVE) * PULL_ARM * PULL_RESIST;
-  const armed = pulled > PULL_ARM;
+  // ★★★**一度弾けたら、その指のあいだは弾けたまま**（2026-09-16・第114巡）。
+  //   ★★★**第113巡までは掛け金が無かった** ―― 指を上へ戻すと `pulled` が
+  //     `PULL_ARM` を下回って**弾けが取り消され、ピルが元の席へ瞬間移動して
+  //     戻っていた**（ユーザー報告「**別のところに入れようとしても元の場所に
+  //     瞬間移動したり戻ってしまいます**」）。
+  //   ★輪ゴムから**千切れた**ものが、指を戻したら勝手に繋がり直すのはおかしい。
+  //   ★取り消しの道は消えていない ―― **元の場所で離せば元に戻る**（帯への
+  //     入れ直しがその1本を兼ねる）。
+  const armed = latched || pulled > PULL_ARM;
   return {
     // ★★★**弾けたら目標は指そのもの**（2026-09-14・第104巡にユーザー確定
     //   「**ばちんという感じで弾けて指に吸い付く**」）。★第105巡から、ここへ
@@ -653,6 +661,19 @@ export interface PullHost {
   box: RefObject<HTMLDivElement | null>;
   /** そのピルが山で持つ姿。`null` なら引けない。 */
   seed: (item: BandItem) => GhostSeed | null;
+  /**
+   * ★★★**帯の下端**（器の座標。0 ＝ 帯が描かれていない。2026-09-16・第114巡）。
+   * ★★**山からでも帯からでも、同じ1本を読む** ―― 帯へ入れる手つきは
+   *   「どこから来たか」で変わってはいけない。
+   */
+  bandBottom: () => number;
+  /** ★その段の中心（器の座標）。`null` ＝ その段が描かれていない。 */
+  rowCenter: (row: 0 | 1) => number | null;
+  /**
+   * ★★★**帯のその場所へ置く**（`after` の次。空文字なら段の先頭）。
+   * ★引き抜いたピルを**別の場所へ入れ直す**ときに呼ぶ ―― 日付は付けない。
+   */
+  pin: (bandId: string, after: string) => void;
   /**
    * 離した。`onRail` なら右端の ASSIGN の帯の上。
    * ★`at` ＝ **指を離した所と勢い**（`pullBus.landing` に使う）。ゴムの途中で

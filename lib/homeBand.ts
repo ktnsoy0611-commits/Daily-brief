@@ -188,7 +188,12 @@ export function bandItems(state: AppState): BandItem[] {
   //     読み終わっても**」が、そのまま順番になっている。
   //   ★ここに `magazine`（自分でバインドした今日の予定）を流し込まないこと ――
   //   それは「AI のおすすめ」ではなく「自分で決めたもの」で、意味が違う。
-  for (const it of pickTodayItems(state.items ?? [])) {
+  // ★★**自分で帯へ置いたものは時間帯で落とさない**（`force`。第114巡）。
+  const kept = new Set<string>();
+  for (const p of state.bandPins ?? []) {
+    if (p.id.startsWith("today-")) kept.add(p.id.slice("today-".length));
+  }
+  for (const it of pickTodayItems(state.items ?? [], new Date(), kept)) {
     out.push({
       id: `today-${it.id}`, kind: "today", text: it.title,
       // ★★焼き込まれた `it.color` は信じない（`cardFace` と同じ理由）。
@@ -239,6 +244,11 @@ export function bandItems(state: AppState): BandItem[] {
 export function bandRows(state: AppState, keepId?: string | null): [BandItem[], BandItem[]] {
   const rows: [BandItem[], BandItem[]] = [[], []];
   for (const it of bandItems(state)) rows[BAND_ROW[it.kind]].push(it);
+  // ★★★**留め金を当てる**（下の `pinBand`）。**段ごと**に当てるので、
+  //   段をまたぐ留め金は自然に無効になる（相手が同じ段に居ない）。
+  const pins = state.bandPins ?? [];
+  rows[0] = applyPins(rows[0], pins);
+  rows[1] = applyPins(rows[1], pins);
   const cut = (list: BandItem[], lim: number) => {
     const at = keepId ? list.findIndex((it) => it.id === keepId) : -1;
     return list.slice(0, at >= lim ? at + 1 : lim);
@@ -247,46 +257,56 @@ export function bandRows(state: AppState, keepId?: string | null): [BandItem[], 
 }
 
 /**
- * ★★★**下の段の「someday の群」が始まる index**（`bandItems` の 3 → 4 → 5 の順）。
- * 日付なしの声の候補 ＋ 未完了タスクのフォローアップの総数。
- * ★★**帯の並びの規則を知っているのはこのファイルだけ**なので、ここに置く
- *   （`HomeTab` へ式を書き写すと、`bandItems` の順を変えた人が片方しか直さない）。
+ * ★★★**帯の並びの記憶＝「留め金」**（2026-09-16・第114巡にユーザー指定
+ * 「**どんな時でも、帯に近づけるとその場所で、ピルの列に間が空いて、図形を
+ * 入れ込めるようにしてください。これは絶対です**」）。
+ *
+ * 1つの留め金は「**この id は、この id の次に置く**」。`after` が空文字なら段の先頭。
+ *
+ * ★★★**なぜ「順番の配列」ではなく「留め金」なのか。**
+ *   帯の中身は毎日入れ替わる（提案が増え、タスクに日付が付いて消える）ので、
+ *   全件の並びを持つと**翌日にはほとんどが消えた id の列**になる。留め金なら、
+ *   隣が消えても**自然な位置へ戻るだけ**で壊れない。
+ * ★★★**なぜ `tasks` や `items` の並びを触らないのか**（第112巡はそうしていた）。
+ *   ① `tasks` の並びは GRAVITY の山・ALIGN の一覧と**共有**していて、帯を
+ *      並べ替えると**関係ない画面まで動く**。
+ *   ② 声の候補（`inbox`）とフォローアップ（`Task.suggestions`）は**持ち主が別**
+ *      なので、`tasks` を並べ替えても動かせない ―― つまり
+ *      **「任意のピルとピルの間」が原理的に作れなかった**。
+ *   留め金は**表示の並びだけ**を持つので、5種類すべてを、段をまたがずに置ける。
  */
-function somedayHead(state: AppState): number {
-  const tasks = state.tasks ?? [];
-  const voice = (state.inbox ?? []).filter((c) => !c.dueDate).length;
-  const follow = tasks.reduce((n, t) => n + (t.done ? 0 : (t.suggestions?.length ?? 0)), 0);
-  return voice + follow;
+export type BandPin = NonNullable<AppState["bandPins"]>[number];
+
+/** 留め金を当てて並べ替える（段ごと）。★**古い留め金から順に効く**。 */
+function applyPins(list: BandItem[], pins: readonly BandPin[]): BandItem[] {
+  const here = pins.filter((p) => list.some((it) => it.id === p.id));
+  if (!here.length) return list;
+  const held = new Set(here.map((p) => p.id));
+  const out = list.filter((it) => !held.has(it.id));
+  for (const p of here) {
+    const it = list.find((x) => x.id === p.id);
+    if (!it) continue;
+    if (!p.after) { out.unshift(it); continue; }
+    const k = out.findIndex((x) => x.id === p.after);
+    // ★★**隣が居なくなっていたら、自然な位置（末尾）へ戻す** ―― 留め金は
+    //   「約束」ではなく「覚え書き」。相手が消えたら黙って諦める。
+    out.splice(k < 0 ? out.length : k + 1, 0, it);
+  }
+  return out;
 }
 
 /**
- * ★★★**そのタスクが、下の段の `at` 番目に来るように `tasks` を並べ替える**
- * （2026-09-16・第112巡にユーザー確定「**どんな時でも、任意のピルとピルの間に
- * 戻せるように。順番がいくら入れ替わっても問題ない**」）。
- *
- * ★★★**第111巡は逆だった** ―― 入る場所を並びが決めていたので、**指をどこへ
- *   持っていっても同じ1か所にしか戻らなかった**。**指を正にして、並びのほうを写す。**
- * ★★**声の候補とフォローアップは動かせない**（`inbox` と `suggestions` が持ち主）
- *   ので、その群より前を指されたら **someday の先頭**に丸める。
+ * ★★★**そのピルを「`after` の次」に置くと憶える**（`after` が空なら段の先頭）。
  * ★★**`state` を直接書き換える**（呼ぶ側が `structuredClone` 済み）。
- *
- * @param at 下の段（`bandRows` の `rows[1]`）での index。
+ * ★★**帯に居なくなった留め金は捨てる**（溜めない）。
  */
-export function reorderSomeday(state: AppState, taskId: string, at: number): void {
-  const tasks = state.tasks ?? [];
-  const k = tasks.findIndex((t) => t.id === taskId);
-  if (k < 0) return;
-  const [moved] = tasks.splice(k, 1);
-  // ★★**someday の群の中での位置**（前の群のぶんを引く。負なら先頭へ）。
-  const pos = Math.max(0, at - somedayHead(state));
-  // ★★**`pos` 番目の「未完了かつ日付なし」の直前へ入れる**。
-  //   ★見つからなければ末尾（＝いちばん後ろを指された）。
-  let seen = 0; let insert = tasks.length;
-  for (let i = 0; i < tasks.length; i++) {
-    const q = tasks[i];
-    if (q.done || q.dueDate) continue;
-    if (seen === pos) { insert = i; break; }
-    seen++;
-  }
-  tasks.splice(insert, 0, moved);
+export function pinBand(state: AppState, id: string, after: string): void {
+  // ★★**先に自分の古い留め金を外す**（1つの id に留め金は1つ）。
+  const was = (state.bandPins ?? []).filter((p) => p.id !== id);
+  // ★★**いま帯に居るものだけ残す** ―― 相手（`after`）が消えた留め金も捨てる。
+  //   ★自分自身はこれから入るので、生きているかの判定から外す。
+  const live = new Set(bandItems(state).map((it) => it.id));
+  const kept = was.filter((p) => live.has(p.id) && (!p.after || live.has(p.after)));
+  kept.push({ id, after });
+  state.bandPins = kept;
 }

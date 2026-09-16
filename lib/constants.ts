@@ -674,8 +674,12 @@ export const TICKET_H_PER_W = 4 / 3;
 // ミシン目の穿孔。★彩度の高い紙の上に置くので、黒の薄めで足りる。
 export const TICKET_PERF = "rgba(26,26,24,0.34)";
 
-/** 2つの色を混ぜる(0=a, 1=b)。★金属の段を**地の色から**作るのに使う。 */
-function mixHex(a: string, b: string, t: number) {
+/**
+ * 2つの色を混ぜる(0=a, 1=b)。★金属の段を**地の色から**作るのに使う。
+ * ★★**混ぜる式はここ1つ**(2026-09-16・第113巡に `components/home/pillGhost.ts` の
+ *   「白抜き ⇄ 塗り」の渡りも読むようにした。2か所に書かない)。
+ */
+export function mixHex(a: string, b: string, t: number) {
   const at = (h: string, i: number) => parseInt(h.slice(i, i + 2), 16);
   const ch = (i: number) => Math.round(at(a, i) + (at(b, i) - at(a, i)) * t)
     .toString(16).padStart(2, "0");

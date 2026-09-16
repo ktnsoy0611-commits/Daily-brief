@@ -1,4 +1,4 @@
-import { SANS } from "@/lib/constants";
+import { SANS, mixHex } from "@/lib/constants";
 import { canvasFont } from "@/lib/textFit";
 import { LEAD, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import { BEND_TOP, PILL_EDGE, bendAt, type Ghost, type PillLook } from "@/lib/pullDrag";
@@ -104,6 +104,26 @@ function tracePill(
  *   一律に沈めると、**掴んだ所から遠い字が形の外へ出て切れる** ―― 形と同じ式を
  *   自分の位置で読めば、はみ出しは起こらない。
  */
+/**
+ * ★★★**「白抜き ⇄ 塗り」の途中のどこに居るか**（0 ＝ 輪郭だけ／1 ＝ 塗りだけ。
+ * 2026-09-16・第113巡にユーザー指定「**帯のピルは白抜きで、図形は塗りですが、
+ * これもアニメーションなく切り替わってしまいます**」）。
+ *
+ * ★★★**掛け金（`g.pill`）で切り替わっていた** ―― `t` が `PILL_EXIT`(0.2) を
+ *   跨いだ1フレームで、**輪郭の版面から塗りの図形へ絵ごと入れ替わる**。形は
+ *   `waist` で連続に変わっているのに、**面の塗り方だけが段差**になっていた。
+ * ★★★**両端は「帯のピルがどうか」と「山の図形がどうか」から導く** ――
+ *   決め打ちにすると、**日付の無い図形（山でも輪郭）を戻すときに勝手に塗られる**。
+ * ★★**同じ式を2つの絵が読む**（ピルの版面 `drawPillGhost` と図形 `drawGhost`）ので、
+ *   掛け金が跳ぶフレームでも**塗りの量は 1% も飛ばない**。
+ */
+export function inkMix(g: Ghost): number {
+  const from = g.look && !g.look.outlined ? 1 : 0;   // 帯のピルの側
+  const to = g.outlined ? 0 : 1;                     // 山の図形の側
+  const t = Math.max(0, Math.min(1, g.t));
+  return from + (to - from) * t;
+}
+
 export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
   const L: PillLook | undefined = g.look;
   if (!L) return;
@@ -114,15 +134,26 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
   ctx.translate(g.hx, g.hy);
   ctx.scale(L.press, L.press);
   // ── 面（塗り／輪郭＋地の色の中身）。★`components/home/Band.tsx` と同じ規則。
+  // ★★★**塗りは `inkMix` が決める**（上のコメント）。地を敷いてから面を重ね、
+  //   輪郭は残りぶんだけ引く ―― **どちらも「量」なので段差が出ない**。
+  const mix = inkMix(g);
   tracePill(ctx, w, h, gx, give);
-  ctx.fillStyle = L.outlined ? L.ground : L.face;
+  ctx.fillStyle = L.ground;
   ctx.fill();
-  if (L.outlined) {
+  if (mix > 0) {
+    ctx.globalAlpha = mix;
+    ctx.fillStyle = L.face;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (mix < 1) {
     // ★線は**内側に**引く（CSS の `border` と同じ。`pilePaint.ts` と同じ作法）。
+    ctx.globalAlpha = 1 - mix;
     ctx.strokeStyle = L.face;
     ctx.lineWidth = PILL_EDGE;
     tracePill(ctx, w - PILL_EDGE, h - PILL_EDGE, gx, give);
     ctx.stroke();
+    ctx.globalAlpha = 1;
   }
   ctx.save();
   tracePill(ctx, w, h, gx, give);
@@ -157,7 +188,9 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
   const line = (s: string, cy: number, size: number, tr: string, alpha: number) => {
     ctx.font = canvasFont(WEIGHT.bold, size, SANS);
     track(ctx, tr);
-    ctx.fillStyle = L.ink;
+    // ★★字の色も**面と同じ量で渡る**（輪郭のピルは面の色／塗りの面は
+    //   `bodyInkOn()` が導いた色。切り替えると面だけ渡って字が飛ぶ）。
+    ctx.fillStyle = mix <= 0 ? L.ink : mixHex(L.ink, g.ink, mix);
     ctx.globalAlpha = alpha;
     // ★DOM は `text-overflow: ellipsis`。canvas には無いので同じ幅で切る。
     let t = s;

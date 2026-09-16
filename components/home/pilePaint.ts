@@ -1,4 +1,4 @@
-import { BAND_BEZEL, BD_GREY, DISPLAY, MUTED, SANS } from "@/lib/constants";
+import { BAND_BEZEL, BD_GREY, DISPLAY, MUTED, SANS, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
 import { traceCardShape } from "@/lib/cardShape";
@@ -9,7 +9,7 @@ import { WEIGHT } from "@/lib/tokens";
 import { drawWordPlate } from "@/lib/wordPlate";
 import { WORD_WEIGHT } from "@/lib/solidPaint";
 import { zigVerts, type Piece } from "./pileWorld";
-import { drawPillGhost } from "./pillGhost";
+import { drawPillGhost, inkMix } from "./pillGhost";
 import type { Ghost } from "@/lib/pullDrag";
 
 // ★★★**山の焼き方と描き方**（2026-09-11・第92巡に `Pile.tsx` から分けた）。
@@ -237,14 +237,26 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
     });
     ctx.closePath();
   };
+  // ★★★**塗りは `inkMix` が決める**（2026-09-16・第113巡。式は `pillGhost.ts`）。
+  //   ピルの版面を描く枝と**同じ量**を読むので、掛け金（`g.pill`）が跳ぶ
+  //   フレームでも面の塗り方は 1% も飛ばない。
+  const mix = inkMix(g);
   trace(w, h);
-  ctx.fillStyle = g.outlined ? BD_GREY : g.face;
+  ctx.fillStyle = BD_GREY;
   ctx.fill();
-  if (g.outlined) {
+  if (mix > 0) {
+    ctx.globalAlpha = mix;
+    ctx.fillStyle = g.face;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (mix < 1) {
+    ctx.globalAlpha = 1 - mix;
     ctx.strokeStyle = g.face;
     ctx.lineWidth = EDGE;
     trace(w - EDGE, h - EDGE);
     ctx.stroke();
+    ctx.globalAlpha = 1;
   }
   // ★★★**字は「行き先の割り付け」1つを、箱の縮みに合わせて等倍で縮める**
   //   （2026-09-16・第107巡）。★★**毎フレーム割り付け直さない** ―― 幅が変わるたび
@@ -257,7 +269,9 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
     trace(w, h);
     ctx.clip();
     ctx.scale(k, k);
-    drawFitted(ctx, fit, g.faceIdx, 0, 0, g.ink, fit.size * dpr * k);
+    // ★★字も面と同じ量で渡す（`pillGhost.ts` の `line()` と対）。
+    const ink = mix >= 1 || !g.look ? g.ink : mixHex(g.look.ink, g.ink, mix);
+    drawFitted(ctx, fit, g.faceIdx, 0, 0, ink, fit.size * dpr * k);
     ctx.restore();
   }
   ctx.restore();

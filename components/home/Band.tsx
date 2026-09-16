@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { groundOf } from "@/components/AppBackdrop";
 import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
@@ -13,8 +13,8 @@ import {
 } from "@/lib/pullDrag";
 import { haptic } from "@/lib/helpers";
 import {
-  bandBus, bandGap, bandGapClear, bandHole, bandHoleCommit, bandHoleRelease,
-  bandGapCommit, bandResume, bandStop, stepBandMotion,
+  BAND_PAD, bandBus, bandGapAt, bandGapClear, bandGapDone, bandHole, bandHoleDone,
+  bandHoleRelease, bandResume, bandStop, stepBandMotion,
 } from "./bandMotion";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
@@ -376,7 +376,23 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
   const phaseRef = useRef(0);
   /** ★いま走っているアニメを組んだときの1周の幅（px）。★`snapPhase` が読む。 */
   const lapRef = useRef(0);
-  /** ★★いまの送りを控える。**`cancel()` する前に必ず呼ぶ**（上の `build()` の注意書き）。 */
+  /**
+   * ★★★**受け渡しでいったん `transform` が預かる、一様なずれ**（px。第113巡）。
+   *
+   * 挿し込まれた瞬間、`lead` と「隙間の半分」は**レイアウトのほうへ移る**ので
+   * `transform` からは消える。ところが**送り（流れの時計）を直せるのは
+   * `build()`＝passive effect** で、そこは**塗ったあと**に走る。
+   * → **その1フレームだけ帯が飛ぶ**（実測 72px）。
+   * だから**いったんここが預かり**、`build()` が送りへ畳んだ瞬間に手放す。
+   *
+   * ★★★**時計（`currentTime`）を直接ずらしてはいけない** ―― 1周ぶんで
+   *   折り返すので、**古い1周の幅で丸められた送りを、新しい1周の幅で
+   *   読み直す**ことになる（実測 … 770.5px が 70.4px になって 156px 飛んだ）。
+   *   **送りは px のまま、丸めずに持ち越す。**
+   */
+  const holdRef = useRef(0);
+
+  /** ★★いまの送りを控える。**`cancel()` する前に必ず呼ぶ**（下の `build()` の注意書き）。 */
   const snapPhase = useCallback(() => {
     const a = animRef.current;
     const d = a?.effect ? (a.effect.getTiming().duration as number) || 0 : 0;
@@ -391,6 +407,58 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     //   1周の幅が 416 → 617 になったとき、送りが -302.6 → -502.8px へ飛んだ。
     //   **持ち越すのは「どれだけ送ったか」（進み）であって、時計ではない。**
     phaseRef.current = (row === 1 ? 1 - ct : ct) * lap;
+  }, [row]);
+
+  /**
+   * ★★★**ずれを DOM へ書く**（2026-09-15・第110巡）。
+   * ★★★**受け渡し（`bandHoleCommit`/`bandGapCommit`）の直後にも呼ぶこと** ――
+   *   受け渡しが直すのは**module の数**だけで、DOM に載るのは次の rAF。
+   *   **レイアウトはもう変わっているので、そのあいだの1フレームだけ帯が飛ぶ**
+   *   （実測 … ピル1枚ぶん 186.5px）。`useLayoutEffect` の中で塗れば 0 になる。
+   */
+  const paint = useCallback(() => {
+    const m = bandBus.rows[row];
+    const track = trackRef.current;
+    const shift = shiftRef.current;
+    if (!track) {
+      if (shift) shift.style.transform = `translateX(${m.off.p.toFixed(2)}px)`;
+      return;
+    }
+    // ★★★**隙間はレイアウトそのもの**（2026-09-16・第113巡）。ピルとピルのあいだの
+    //   器（`.band-pad`）の幅を書き換える ―― **2周とも同じ列を描くので、
+    //   隙間も穴も自動的に2周ぶん・同じ index に生まれる**＝継ぎ目の辻褄が
+    //   原理的に合う。理由は `bandMotion.ts` の頭（`transform` では書けない）。
+    // ★★**畳んでいる席は、そのピルと直前の器を同じ比で縮める**（合計 ＝
+    //   レイアウトが失う幅とぴったり同じ）。
+    const shrink = m.holeId ? 1 - m.hole.p : 1;
+    let extra = 0; let lead = 0; let k = 0;
+    for (const el of track.querySelectorAll<HTMLElement>("[data-pad]")) {
+      const i = Number(el.dataset.pad);
+      // ★★★**指のそばの1枚より前で開いたぶんを控える**（`bandMotion.ts` の `lead`）。
+      if (k === m.pick) lead = extra;
+      let w = BAND_PAD;
+      if (i === m.open.at) { w += m.open.p; extra += m.open.p; }
+      if (i === m.shut.at) { w += m.shut.p; extra += m.shut.p; }
+      if (el.dataset.padFor === m.holeId) w *= shrink;
+      el.style.width = `${Math.max(0, w).toFixed(2)}px`;
+      k += 1;
+    }
+    m.lead = lead;
+    for (const el of track.querySelectorAll<HTMLElement>("[data-pill-id]")) {
+      el.style.width = el.dataset.pillId === m.holeId
+        ? `${Math.max(0, m.holeW * shrink).toFixed(2)}px` : "";
+    }
+    // ★★★**帯ぜんたいを `lead` だけ左へ戻す** ―― 戻さないと、指が指していた
+    //   境目が**1周目に開いた隙間に押されて画面の外へ逃げる**。
+    // ★★★**さらに隙間の半分だけ寄せる** ―― 器は**左の縁が動かないまま右へ
+    //   育つ**ので、寄せないと**指の右どなりに開く**。半分ずらせば
+    //   **指を中心に左右へ開く**＝入る所が指の下に見える。
+    // ★★どちらも一様なずれなので、挿し込まれた瞬間に**送り（位相）へ畳める**
+    //   （`carryRef`）。だから受け渡しで 1px も飛ばない。
+    if (shift) {
+      const px = m.off.p - lead - m.open.p / 2 - holdRef.current;
+      shift.style.transform = `translateX(${px.toFixed(2)}px)`;
+    }
   }, [row]);
 
   const build = useCallback(() => {
@@ -436,11 +504,18 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
       },
     );
     // ★★組み直す前に**同じ px だけ送った所**から続ける（上の `phaseRef`）。
+    // ★★★**預かっていたずれ（`holdRef`）はここで送りへ畳む**（上の注意書き）。
+    //   ★組めたときだけ手放す ―― 組めなければ `transform` が持ち続けるのが正。
+    phaseRef.current += holdRef.current;
+    holdRef.current = 0;
     const gone = (((phaseRef.current % lap) + lap) % lap) / lap;
     anim.currentTime = (row === 1 ? 1 - gone : gone) * duration;
     lapRef.current = lap;
     animRef.current = anim;
-  }, [row, snapPhase]);
+    // ★★**送りへ畳んだのと同じ瞬間に `transform` から外す**（別のフレームに
+    //   分かれると、そのあいだ二重に効く／二重に抜ける）。
+    paint();
+  }, [row, snapPhase, paint]);
 
   // ★★★**組み直す引き金は「中身の署名」**（2026-09-15・第109巡）。
   //   ★★★`items` は `HomeTab` の `useMemo(() => bandRows(appState), [appState])` が
@@ -477,35 +552,14 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
    */
   const rafRef = useRef(0);
   const runRef = useRef(false);
-  /**
-   * ★★★**ずれを DOM へ書く**（2026-09-15・第110巡）。
-   * ★★★**受け渡し（`bandHoleCommit`/`bandGapCommit`）の直後にも呼ぶこと** ――
-   *   受け渡しが直すのは**module の数**だけで、DOM に載るのは次の rAF。
-   *   **レイアウトはもう変わっているので、そのあいだの1フレームだけ帯が飛ぶ**
-   *   （実測 … ピル1枚ぶん 186.5px）。`useLayoutEffect` の中で塗れば 0 になる。
-   */
-  const paint = useCallback(() => {
-    const shift = shiftRef.current;
-    if (shift) shift.style.transform = `translateX(${bandBus.off[row].p.toFixed(2)}px)`;
-    const track = trackRef.current;
-    if (!track) return;
-    for (const el of track.querySelectorAll<HTMLElement>("[data-pill-id]")) {
-      const s = bandBus.nudge.get(el.dataset.pillId ?? "");
-      el.style.setProperty("--nudge", `${(s?.p ?? 0).toFixed(2)}px`);
-    }
-  }, [row]);
-  /** ★★いま隙間を当てている id（次のフレームに閉じるため控える）。 */
-  const gapRef = useRef<Set<string>>(new Set());
-  /**
-   * ★この段で開けて待っている隙間の幅（0 ＝ 開けていない）。
-   * ★★**受け渡しは「開けたのと同じ数」で戻す** ―― 実測し直すと 1px ずれる。
-   */
-  const aimedRef = useRef(0);
+
   /** ★段のループが読む「いまの中身」（`wake` の同一性を変えないため ref で持つ）。 */
   const itemsRef = useRef(items);
   itemsRef.current = items;
   /** ★★この段が「狙われているから」流れを止めているか（第112巡）。 */
   const heldRef = useRef(false);
+  /** ★★この段でいま挿し口を開けているか（受け渡しの合図）。 */
+  const aimedRef = useRef(false);
   const wake = useCallback(() => {
     if (runRef.current) return;
     runRef.current = true;
@@ -513,54 +567,55 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
       // ── ① 隙間を当てる ──────────────────────────────────────
       // ★★★**隙間は「指が指している所」に開く**（2026-09-16・第112巡にユーザー確定
       //   「**どんな時でも、任意のピルとピルの間に戻せるように。順番がいくら
-      //   入れ替わっても問題ない**」）。
-      //   ★★★**第111巡は「本当に入る場所」を1つに決めて渡していた**ので、
-      //     **そこ以外へ近づけても何も起きなかった**（＝「別の位置には絶対に
-      //     戻らない」「間を開けてくれない」）。**指のほうを正にして、並びを
-      //     あとから合わせる**（`HomeTab.unassign` が並べ替える）。
-      //   ★★**x → index はここでしかできない** ―― ピルの居場所は流れの
-      //     `transform` が決めていて React 側は知らない。**結果は `bandBus.slot`
-      //     へ返す**（離したときに `HomeTab` が読む）。
-      //   ★★**開けるのは片側だけ**（挿し口より後ろを丸ごと `+w`）。理由は
-      //     `bandMotion.ts` の `bandGap`（両側 ±w/2 は受け渡しで重なる）。
+      //   入れ替わっても問題ない**」）。**指のほうが正で、並びをあとから合わせる**
+      //   （`HomeTab.unassign` が `reorderSomeday` で並べ替える）。
+      // ★★★**境目は「器（`.band-pad`）の中心」で測る**（2026-09-16・第113巡）。
+      //   ★★第112巡は**ピルの中心を探して左右どちらかを足していた**ので、
+      //     ①「n 番目の後ろ」と「n+1 番目の前」が別の答えになり、
+      //     ② 開いた隙間そのものは見ていなかった。
+      //   ★★**開いた器の中心は指のすぐそば**なので、この測り方は**ひとりでに
+      //     安定する**（開くほど中心が指へ寄る＝行ったり来たりしない）。
+      // ★★**x → index はここでしかできない** ―― ピルの居場所は流れの
+      //   `transform` が決めていて React 側は知らない。**結果は `bandBus.slot` へ返す**。
       const aim = bandBus.aim;
+      const m = bandBus.rows[row];
       // ★★**中身は ref から読む**（`wake` の同一性を変えない）―― 変えると、
       //   走っている最中のループが**古い中身を掴んだまま**次のフレームを頼む。
       const list = itemsRef.current;
       const track = trackRef.current;
       if (aim && aim.row === row && track && list.length) {
-        // ★★**いちばん近いピルを探し、その左right どちらへ入れるかで index を決める**。
-        //   ★2周ぶん居るので、**周をまたいで「いちばん近い1枚」**を採る
-        //   （`i % list.length` が段の中での index）。
-        let best = -1; let bestD = Infinity; let bestMid = 0;
-        const els = track.querySelectorAll<HTMLElement>("[data-pill-id]");
-        els.forEach((el, i) => {
-          const r = el.getBoundingClientRect();
-          if (r.width <= 0) return;
-          const mid = r.x + r.width / 2;
-          const d = Math.abs(mid - aim.x);
-          if (d < bestD) { bestD = d; best = i % list.length; bestMid = mid; }
-        });
-        const at = best < 0 ? list.length
-          : Math.max(0, Math.min(list.length, best + (aim.x > bestMid ? 1 : 0)));
+        // ★★★**測るのは「まだ何も開いていなかったときの境目」**（第113巡）。
+        //   ★★★**開いた器の中心で測ってはいけない** ―― 器は**左の縁が動かない
+        //     まま右へ育つ**ので、**中心が指から逃げていく**。実測で、同じ指の
+        //     位置なのに index が 1 → 0 へ飛んだ（隙間が行ったり来たりする）。
+        //   ★開いているぶんを DOM の並び順に積んで引けば、**どれだけ開いていても
+        //     同じ答え**になる（＝指が動かないかぎり挿し口も動かない）。
+        let at = 0; let bestD = Infinity; let extra = 0; let pick = -1; let k = 0;
+        for (const el of track.querySelectorAll<HTMLElement>("[data-pad]")) {
+          const i = Number(el.dataset.pad);
+          // ★★★**`lead` を足し戻す** ―― `paint` が帯ぜんたいを `lead` だけ
+          //   左へ寄せているので、DOM の矩形はそのぶん左に居る。足し戻さないと
+          //   **境目が開くほど左へ流れて、挿し口が勝手にとなりへ移る**。
+          const d = Math.abs(el.getBoundingClientRect().x - extra + m.lead
+            + m.open.p / 2 + BAND_PAD / 2 - aim.x);
+          if (d < bestD) { bestD = d; at = i; pick = k; }
+          if (i === m.open.at) extra += m.open.p;
+          if (i === m.shut.at) extra += m.shut.p;
+          k += 1;
+        }
         bandBus.slot = { row, at };
         // ★★★**狙われている段は流れを止める**（2026-09-16・第112巡）。
         //   ★★★**流れたままだと、指を止めていてもピルのほうが動いて挿し口が
         //     勝手に変わる**（実測 … 同じ x でも index が 3 → 1 へ飛んだ）。
-        //   ★「掴むと止まる／離すと動く」はユーザーが残すと決めた動きなので、
-        //     **図形を近づけているあいだも同じ扱い**にする（`flow` が慣性も添える）。
+        //   ★★★**第113巡はもう1つ理由が増えた** ―― 隙間はレイアウトなので
+        //     **開いているあいだ1周の幅が変わる**。流れの WAAPI は組んだときの
+        //     1周の幅で送るので、**止めていないと継ぎ目がずれる**。
         if (!heldRef.current) { heldRef.current = true; flow(false); }
-        const ids = list.slice(at).map((it) => it.id);
-        bandGap(ids, aim.w);
-        // ★挿し口より前のピルは戻す（指が動いて境目を跨いだとき）。
-        const back = list.slice(0, at).map((it) => it.id).filter((id) => gapRef.current.has(id));
-        if (back.length) bandGapClear(back);
-        gapRef.current = new Set(ids);
-        aimedRef.current = aim.w;        // ★挿し込まれたときの受け渡しの合図
-      } else if (gapRef.current.size || heldRef.current) {
-        // ★離れた・別の段へ移った → 隙間を閉じる（行き先 0 へ**行き過ぎずに**戻る）。
-        if (gapRef.current.size) bandGapClear(gapRef.current);
-        gapRef.current = new Set();
+        bandGapAt(row, at, aim.w, pick);
+        aimedRef.current = true;
+      } else if (aimedRef.current || heldRef.current) {
+        // ★離れた・別の段へ移った → 隙間を閉じる。
+        if (aimedRef.current) { bandGapClear(row); aimedRef.current = false; }
         // ★★狙いが外れたら流れを戻す（上の `flow(false)` と対）。
         if (heldRef.current) { heldRef.current = false; flow(true); }
       }
@@ -582,68 +637,73 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
   }, [wake]);
 
   /**
-   * ★★★**① 帯の穴**（2026-09-15・第110巡にユーザー指定「**完全にピルを引き抜いた
-   * 瞬間に、後ろのものが動き始めて、先にあるピルに追突して、またスクロールが始まる**」）。
+   * ★★★**① 帯の席を畳む**（2026-09-15・第110巡にユーザー指定「**完全にピルを
+   * 引き抜いた瞬間に、後ろのものが動き始めて、またスクロールが始まる**」）。
    *
    * ★★★**出来事ではなく「照合」で書く** ―― 弾ける／弾けが外れる／`items` から
    *   消える、の3つが**同じコミットで起こり得る**（React はまとめる）ので、
    *   別々の effect に分けると順番が保証されない。**1本で状態を突き合わせる。**
-   * ★★★**`useLayoutEffect`** ―― 受け渡し（`p += gap`）は**塗る前**でなければ
-   *   1フレーム飛ぶ（passive effect は塗ったあと）。
+   * ★★★**`useLayoutEffect`** ―― 受け渡しは**塗る前**でなければ1フレーム飛ぶ
+   *   （passive effect は塗ったあと）。
+   * ★★★**受け渡しの計算はもう無い**（2026-09-16・第113巡）―― 隙間も席も
+   *   **レイアウトそのもの**なので、`items` が変わったフレームに**バネを 0 へ
+   *   落とすだけ**で画面は 1px も動かない（理由は `bandMotion.ts` の頭）。
    */
-  const holeRef = useRef<{ id: string; gap: number; ids: string[] } | null>(null);
+  const holeRef = useRef<string | null>(null);
   const prevIdsRef = useRef<string[]>([]);
   useLayoutEffect(() => {
     const has = (id: string) => items.some((it) => it.id === id);
     const now = items.map((it) => it.id);
     const was = prevIdsRef.current;
     prevIdsRef.current = now;
-    // ★★★**隙間の受け渡し**（2026-09-15・第110巡）。指で開けて待っていた所へ
-    //   本当にピルが挿し込まれた瞬間、**後ろを押し出したぶんだけ左へ置き直す**
-    //   ―― これをしないと、離した瞬間に帯が丸ごと飛ぶ（実測 79.7px／1フレーム）。
-    if (aimedRef.current > 0 && was.length) {
-      const added = now.filter((id) => !was.includes(id));
-      if (added.length === 1) {
-        const at = now.indexOf(added[0]);
-        // ★★**開けたのと同じ数で戻す**（実測し直すと 1px ずれて、そのぶん飛ぶ）。
-        bandGapCommit(now.slice(at + 1), aimedRef.current);
-        paint();
-      }
-      aimedRef.current = 0;
+    // ★★★**挿し口の受け渡し** … 開けて待っていた所へ本当にピルが挿し込まれた。
+    //   レイアウトが増える幅（`pad + ピル`）は開けていた幅と厳密に同じなので、
+    //   **掛け金を外して塗るだけ**。
+    if (aimedRef.current && was.length && now.length > was.length) {
+      // ★★★**`transform` の一様なずれを、流れの時計へ畳み替える**（第113巡）。
+      //   挿し込まれるとレイアウトが `lead` ぶん右へ動き、`transform` の
+      //   `lead` と「隙間の半分」はこのあと 0 になる ―― 畳み替えないと、
+      //   **その瞬間に帯がピル1枚ぶん飛ぶ**（実測 72px）。
+      holdRef.current += bandBus.rows[row].lead + bandBus.rows[row].open.p / 2;
+      const added = now.find((id) => !was.includes(id));
+      const el = added
+        ? trackRef.current?.querySelector<HTMLElement>(`[data-pill-id="${CSS.escape(added)}"]`)
+        : null;
+      bandGapDone(row, now.indexOf(added ?? ""),
+        added ?? "", el?.getBoundingClientRect().width ?? 0);
+      aimedRef.current = false;
+      paint();
     }
     const h = holeRef.current;
-    // ① 控えている穴の主が `items` から消えた → **受け渡し**（レイアウトが詰む瞬間）。
-    if (h && !has(h.id)) {
-      bandHoleCommit(h.ids, h.gap);
+    // ① 畳んでいた席の主が `items` から消えた → **受け渡し**（レイアウトが詰む瞬間）。
+    if (h && !has(h)) {
+      bandHoleDone(row);
       paint();                            // ★塗ってから返す（上の `paint` の注意書き）
       holeRef.current = null;
       return;
     }
-    // ② 弾けが外れた（引き戻した・取り消した）→ 穴を開け直す。
-    if (h && armed !== h.id) {
-      bandHoleRelease(h.ids);
+    // ② 弾けが外れた（引き戻した・取り消した）→ 席を戻す。
+    if (h && armed !== h) {
+      bandHoleRelease(row);
       holeRef.current = null;
     }
-    // ③ 新しく弾けた → **まだ席が在るうちに**後ろを詰めさせる。
+    // ③ 新しく弾けた → **まだ席が在るうちに**畳ませる。
     if (!armed || holeRef.current || !has(armed)) return;
-    // ★★★**流れの再開と慣性の一発は、穴より先に・無条件で撃つ**
+    // ★★★**流れの再開と慣性の一発は、席より先に・無条件で撃つ**
     //   （2026-09-15・第111巡。ユーザー「**指を離す前でもスクロールが開始される
     //   ようにしてほしい**」）。
     //   ★★★**第110巡は「後ろにピルが無ければ return」の中に入れていた** ――
     //     **引き抜いたのが段の最後のピルだと、再開ごと落ちていた**（段に1〜2枚
-    //     しか無い日は必ずこれ）。**穴が開くかどうかとは無関係の合図**なので分ける。
+    //     しか無い日は必ずこれ）。**席が畳まれるかとは無関係の合図**なので分ける。
     //   ★指はまだ触れているが、掴んでいるのは山の幽霊なので帯は動いてよい。
     animRef.current?.play();
     bandResume(row);
-    const at = items.findIndex((it) => it.id === armed);
-    const ids = items.slice(at + 1).map((it) => it.id);
-    if (!ids.length) return;
-    // ★★隙間の幅は**そのピルの実測**（`.band-slot` は押下の縮みを受けない）。
+    // ★★畳む幅は**そのピルの実測**（`.band-slot` は押下の縮みを受けない）。
+    //   ★★**畳んでいる最中は測り直さない**（自分が縮めた値を読んでしまう）。
     const track = trackRef.current;
     const el = track?.querySelector<HTMLElement>(`[data-pill-id="${CSS.escape(armed)}"]`);
-    const w = (el?.getBoundingClientRect().width || BAND_H.plain) + SPACE.sm;
-    holeRef.current = { id: armed, gap: w, ids };
-    bandHole(ids, w);
+    holeRef.current = armed;
+    bandHole(row, armed, el?.getBoundingClientRect().width || BAND_H.plain);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armed, sig, row, paint]);
 
@@ -652,7 +712,17 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     const track = trackRef.current;
     if (!track) return;
     // ★幅が変わったら組み直す（写真が遅れて届く・端末が回る）。
-    const ro = new ResizeObserver(() => build());
+    // ★★★**自分が開けている隙間では組み直さない**（2026-09-16・第113巡）――
+    //   隙間も穴も**レイアウトそのもの**なので、毎フレーム `ResizeObserver` が
+    //   鳴る。組み直すと `track.animate` が**新しく作られて走り出す**ので、
+    //   **止めていたはずの段が指の下で流れ始める**（実測 … `paused` のはずが
+    //   `running`、離したあとに 19px ずれた）。中身が変われば `sig` の effect が
+    //   組み直すので、ここで拾う必要はそもそも無い。
+    const ro = new ResizeObserver(() => {
+      const m = bandBus.rows[row];
+      if (m.open.at >= 0 || m.shut.at >= 0 || m.holeId) return;
+      build();
+    });
     ro.observe(track);
     return () => {
       ro.disconnect();
@@ -660,7 +730,7 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
       snapPhase();
       animRef.current?.cancel(); animRef.current = null;
     };
-  }, [build, sig, snapPhase]);
+  }, [build, sig, snapPhase, row]);
 
   if (!items.length) return null;   // ★空の段は消す（無いものを説明しない）
 
@@ -684,23 +754,27 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
       <div ref={shiftRef} className="band-shift">
       <div ref={trackRef} className="band-track">
         {[0, 1].map((lap) => (
-          <div key={lap} aria-hidden={lap === 1 || undefined} style={{ display: "flex", gap: SPACE.sm }}>
-            {items.map((it) => (
-              // ★★★**ずれの層**（2026-09-15・第110巡）。ピルの `transform` には
-              //   押下の縮みと 420ms の transition が居るので、**毎フレーム書く
-              //   ずれは1枚外へ出す**（ここには transition を付けない）。
-              //   ★★**包みは幅を持たない**（`display: contents` ではなく素の
-              //     ブロックだが、中身の寸法がそのまま幅になる）ので、
-              //     **1周の幅は 1px も動かない**＝継ぎ目の不変条件を壊さない。
-              <div key={`${lap}-${it.id}`} className="band-slot" data-pill-id={it.id}
-                style={{ flexShrink: 0, transform: "translateX(var(--nudge, 0px))" }}>
-                <Pill item={it} row={row} pull={pull}
-                  taken={taken === it.id} onTake={onTake} onArm={onArm} onFlow={flow} />
-              </div>
+          <div key={lap} aria-hidden={lap === 1 || undefined} style={{ display: "flex" }}>
+            {items.map((it, i) => (
+              <Fragment key={`${lap}-${it.id}`}>
+                {/* ★★★**ピルとピルのあいだの器**（2026-09-16・第113巡）。
+                    素の幅は `BAND_PAD` で、**挿し口はここが広がる**。
+                    ★★★**`gap` でも末尾の詰め物でもいけない** ―― 隙間を
+                      `transform` のずれで作ると**継ぎ目で必ず破綻する**
+                      （理由は `bandMotion.ts` の頭。実測 152px の飛び）。
+                    ★★**どのピルの前にも1つずつ在る**ので、周と周のあいだの
+                      間隔も周の内側と厳密に同じ（＝継ぎ目が存在しない）。 */}
+                <div className="band-pad" data-pad={i} data-pad-for={it.id}
+                  style={{ width: BAND_PAD, flexShrink: 0 }} />
+                {/* ★★包み。**畳むときはここの幅が縮む**（中のピルは透明なので
+                    はみ出しても見えない）。★`transform` は持たない。 */}
+                <div className="band-slot" data-pill-id={it.id}
+                  style={{ flexShrink: 0, overflow: "hidden" }}>
+                  <Pill item={it} row={row} pull={pull}
+                    taken={taken === it.id} onTake={onTake} onArm={onArm} onFlow={flow} />
+                </div>
+              </Fragment>
             ))}
-            {/* ★周の末尾の隙間。**器の左右のパディングにしない**（左右のパディングを
-                持ってよいのはページ最上位の器だけ）。これは継ぎ目そのもの。 */}
-            <div style={{ width: SPACE.sm, flexShrink: 0 }} />
           </div>
         ))}
       </div>

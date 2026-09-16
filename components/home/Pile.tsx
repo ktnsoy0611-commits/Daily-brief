@@ -12,7 +12,7 @@ import {
 } from "./pileWorld";
 import { floorYOf } from "@/lib/pileBox";
 import { SPACE } from "@/lib/tokens";
-import { bandAim } from "./bandMotion";
+import { bandAim, bandBus } from "./bandMotion";
 import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { clearPileBitmaps, drawBoxOf, drawGhost, drawPile } from "./pilePaint";
@@ -207,14 +207,18 @@ export function Pile({
   bandBottom?: () => number;
   /** ★その図形が帯へ戻ったときのピルの顔（`HomeTab` が帯の規則から組み立てる）。 */
   pillOf?: (piece: Piece) => PillLook | null;
-  /** ★掴んだ図形を帯の上で離したとき（**日付を消して帯へ戻す**）。 */
-  onUnassign?: (piece: Piece) => void;
+  /**
+   * ★掴んだ図形を帯の上で離したとき（**日付を消して帯へ戻す**）。
+   * @param at ★★★**指が指していた挿し口の index**（2026-09-16・第112巡）。
+   *   `null` なら挿し口が出ていなかった＝並べ替えない。
+   */
+  onUnassign?: (piece: Piece, at: number | null) => void;
   /**
    * ★★★**その図形が戻る段と、その段の中心**（器の座標。2026-09-15・第110巡）。
    * ★**空の段は描かれない**ので「上が row0・下が row1」と決め打ちできない ――
    *   `HomeTab` が `.band-row` を実測して返す。
    */
-  bandRowAt?: (piece: Piece) => { row: 0 | 1; cy: number; at: number } | null;
+  bandRowAt?: (piece: Piece) => { row: 0 | 1; cy: number } | null;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -272,7 +276,8 @@ export function Pile({
   /** ★指が右の縁の近くに居るか（毎フレームの state を避けて ref で持つ）。 */
   const railRef = useRef(false);
   const [holding, setHolding] = useState(false);
-  const dragRef = useRef<{ piece: Piece; x: number; y: number } | null>(null);
+  /** ★`angle` ＝ **掴んだときの角度**（運んでいるあいだ固定する。第112巡）。 */
+  const dragRef = useRef<{ piece: Piece; x: number; y: number; angle: number } | null>(null);
   /**
    * ★★★**ループが回っているか／回す本体**（2026-09-16・第107巡。`GravityTab` と
    * 同じ名前・同じ形）。**読む人が1つの作りだけ覚えればよい**ようにしてある。
@@ -614,6 +619,26 @@ export function Pile({
             const dy = motion.catchY.p + arm.y - px.position.y;
             const k = Math.min(1, THROW_MAX / (Math.hypot(dx, dy) || 1));
             M.Body.setVelocity(px, { x: dx * k, y: dy * k });
+          }
+          // ★★★**掴んでいる figure は回さない**（2026-09-16・第112巡にユーザー指摘
+          //   「**戻す時、図形が何回転もする。暴れないように**」）。
+          //   ★★★**`setVelocity` で引きずると、山や壁との接触が毎歩 回りを注ぎ込む**
+          //     ―― 回りには誰も蓋をしていなかったので、そのまま加速して何回転もした。
+          //     しかも絵は `gh.angle = b.angle` で体の角度をそのまま写すので、
+          //     **帯へ向かっているあいだじゅう回り続けて見えた**。
+          //   ★★**代理の体（引き下ろし）は最初から 0 にしてある**（上の `setAngularVelocity`）。
+          //     **掴んで運ぶ側だけが抜けていた**ので、同じ扱いに揃える。
+          //   ★★**毎歩 消す**（rAF ごとだと、1フレームに2歩進む実機で1歩ぶん残る）。
+          // ★★★**角度も掴んだときのまま留める** ―― 角速度を毎歩 0 にしても、
+          //   `Engine.update` が接触のたびに入れ直すので**残りが積もって漂う**
+          //   （実測 0.0234 rad/歩 ＝ 約 80°/秒。3秒運べば 240° 回る）。
+          //   **掴んでいるあいだは角度そのものを固定する**のがいちばん静か。
+          //   ★帯へ吸い込まれるときは `stepGhost` の `g.angle *= g.waist` が
+          //     **絵のほうを立て直す**ので、ここで回す必要はない。
+          const dr = dragRef.current;
+          if (dr) {
+            M.Body.setAngularVelocity(dr.piece.body, 0);
+            M.Body.setAngle(dr.piece.body, dr.angle);
           }
           M.Engine.update(engine, STEP_MS);
           // ★★★**絵は体そのもの**（`pin`）。渡さないと「壁で止まる」が絵に出ない。
@@ -1034,7 +1059,7 @@ export function Pile({
       //   ★掴む前に `TAP_MOVE`(8px) を超えたら press は消えるので、ずれは高々 8px。
       const pr = press.current;
       const cx = pr?.x ?? e.clientX; const cy = pr?.y ?? e.clientY;
-      dragRef.current = { piece: p, x: cx - r.left, y: cy - r.top };
+      dragRef.current = { piece: p, x: cx - r.left, y: cy - r.top, angle: p.body.angle };
       // ★★★**眠っている体を起こす**（2026-09-14・第102巡。ユーザー指摘
       //   「**ホームの図形も触れれるように**」の正体）。山は落ち着くと
       //   `engine.enableSleeping = true` になるが（下の落ち着きの判定）、
@@ -1124,13 +1149,15 @@ export function Pile({
       gh0.aim = caught
         ? { x: dragRef.current.x, y: slot?.cy ?? bandY - PULL_ARM / 2 } : null;
       gh0.tTo = caught ? 0 : 1;
-      // ★★★**挿し口を帯へ伝える**（第110巡 → **第111巡に index へ**）。
-      //   ★★★**指の位置では開けない**（ユーザー確定「**隙間は本当に入る場所に開く**」）
-      //     ―― 挿し込み位置は `bandRows` の順で決まるので、指とは一致しようがない。
-      //   ★`at < 0`（＝入る場所が分からない上の段）なら**開けない**。
+      // ★★★**挿し口は「指が指している所」**（2026-09-16・第112巡にユーザー確定
+      //   「**どんな時でも、任意のピルとピルの間に戻せるように**」）。
+      //   ★★★**第111巡は入る場所を1つに決めて渡していた**ので、**そこ以外へ
+      //     近づけても何も起きなかった**。**指を正にして、並びをあとから合わせる。**
+      //   ★★**渡すのは画面の x だけ** ―― index へ直せるのは段だけ（ピルの居場所は
+      //     流れの `transform` が決めていて React 側は知らない）。答えは `bandBus.slot`。
       //   ★`w` は**戻ったときのピルの幅そのもの**（`pillOf` が `pillWidth()` で出す）。
-      bandAim(caught && slot && slot.at >= 0
-        ? { row: slot.row, at: slot.at, w: (gh0.look?.w ?? gh0.w1) + BAND_GAP } : null);
+      bandAim(caught && slot
+        ? { row: slot.row, x: e.clientX, w: (gh0.look?.w ?? gh0.w1) + BAND_GAP } : null);
     }
   };
 
@@ -1141,6 +1168,10 @@ export function Pile({
   //   `TAP_MOVE` より動かさずに離したときだけ。**掴んだあとは走らない**
   //   ―― 運んで戻しただけで画面が飛ぶのは事故になる。
   const onUp = (e: React.PointerEvent) => {
+    // ★★★**指が指していた挿し口は、消す前に控える**（2026-09-16・第112巡）。
+    //   `bandAim(null)` は `bandBus.slot` も一緒に落とすので、**先に読む**。
+    //   ★★**このジェスチャで実際に挿し口が出ていたときだけ**（前の巡の残りを拾わない）。
+    const slotAt = bandBus.aim ? bandBus.slot?.at ?? null : null;
     // ★★★**挿し口は指が離れたら必ず消す**（第110巡）。消し忘れると帯が
     //   **隙間を開けたまま毎フレーム回り続ける**（幽霊の寿命と同じ轍）。
     bandAim(null);
@@ -1167,7 +1198,8 @@ export function Pile({
         //   いまは近づけている最中に左右が `±w/2` 開いて待っているので、
         //   **挿し口を外せば行き先 0 へ向かって行き過ぎつつ閉じる**＝バウンド。
         //   ★★閉じるのは段の rAF（`bandBus.aim` が消えたフレーム）。
-        onUnassign?.(dragged.piece);
+        // ★★★**離した所の index を渡す**（第112巡。並びのほうが指に合わせる）。
+        onUnassign?.(dragged.piece, slotAt);
         return;
       }
     }

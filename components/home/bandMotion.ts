@@ -90,17 +90,26 @@ export const bandBus = {
   /** ★★段の rAF を起こす口（`Band.tsx` が段ごとに登録する）。 */
   wakers: new Set<() => void>(),
   /**
-   * ★★★**挿し口**（第110巡 → **第111巡に index へ**）。図形を帯へ近づけている
-   * あいだ、`Pile` が書く。
+   * ★★★**挿し口**。図形を帯へ近づけているあいだ、`Pile` が毎フレーム書く。
    *
-   * ★★★**`at` は「本当に入る場所」の index**（ユーザー確定 2026-09-15）。
-   *   ★★第110巡は**指の画面 x** で開けていたが、**挿し込み位置は `bandRows` の順
-   *     （＝タスク一覧の並び）で決まる**ので、**指と一致しようがない** ――
-   *     ユーザー報告「**位置がずれています**」の正体。
-   *   ★index は落とす前に計算できる（`lib/homeBand.ts` の `somedaySlotOf`）。
-   * ★`w` は挿し込まれるピルの幅。
+   * ★★★**`x` は指の画面の座標**（2026-09-16・第112巡にユーザー確定
+   *   「**どんな時でも、任意のピルとピルの間に戻せるように。順番がいくら
+   *   入れ替わっても問題ない**」）。
+   *   ★★第111巡は**「本当に入る場所」の index**を固定で渡していたので、
+   *     **その1か所以外へは絶対に戻せなかった**（＝ユーザー報告
+   *     「**別の位置には絶対に戻らない**」「**間を開けてくれない**」）。
+   *   ★★★**入る場所を決めるのは指。並びのほうが指に合わせる**
+   *     （`HomeTab.unassign` がタスクの並びを組み替える）。
+   * ★`w` は挿し込まれるピルの幅（＋隙間）。
    */
-  aim: null as { row: 0 | 1; at: number; w: number } | null,
+  aim: null as { row: 0 | 1; x: number; w: number } | null,
+  /**
+   * ★★★**指がいま指している挿し口の index**（段の rAF が毎フレーム書く）。
+   * ★★**ピルの居場所を知っているのは段だけ**（流れの `transform` が決めていて
+   *   React 側は知らない）ので、**x → index の変換は段がやって、結果をここへ返す**。
+   * ★離したときに `HomeTab` がこれを読んで、**その場所へ並べ替える**。
+   */
+  slot: null as { row: 0 | 1; at: number } | null,
 };
 
 function off(): Off {
@@ -210,9 +219,10 @@ export function bandGap(ids: string[], w: number): void {
  *   あるので、**起こさないと誰も隙間を開けない**（第110巡に実測 … `--nudge` が
  *   1つも書かれず 0/5 件）。**注文には必ず `wake()` が要る。**
  */
-export function bandAim(aim: { row: 0 | 1; at: number; w: number } | null): void {
+export function bandAim(aim: { row: 0 | 1; x: number; w: number } | null): void {
   const was = bandBus.aim;
   bandBus.aim = aim;
+  if (!aim) bandBus.slot = null;
   if (aim || was) wake();
 }
 

@@ -247,22 +247,46 @@ export function bandRows(state: AppState, keepId?: string | null): [BandItem[], 
 }
 
 /**
- * ★★★**そのタスクを帯へ戻したとき、下の段の何番目に入るか**（2026-09-15・第111巡）。
- *
- * ★★★**帯の並びの規則を知っているのはこのファイルだけ**なので、ここに置く
+ * ★★★**下の段の「someday の群」が始まる index**（`bandItems` の 3 → 4 → 5 の順）。
+ * 日付なしの声の候補 ＋ 未完了タスクのフォローアップの総数。
+ * ★★**帯の並びの規則を知っているのはこのファイルだけ**なので、ここに置く
  *   （`HomeTab` へ式を書き写すと、`bandItems` の順を変えた人が片方しか直さない）。
- * ★上の `bandItems` の 3 → 4 → 5 の順そのまま … 日付なしの声の候補 ＋
- *   未完了タスクのフォローアップの総数 ＋ **自分より前に居る「未完了かつ日付なし」**。
- * ★★**落とす前に計算できる**（`unassign` は `inbox` も `done` も触らず、
- *   タスクの位置も動かさないので、3つの項は落とす前後で変わらない）。
- * @returns 入る index。そのタスクが見当たらなければ `-1`。
  */
-export function somedaySlotOf(state: AppState, taskId: string): number {
+function somedayHead(state: AppState): number {
   const tasks = state.tasks ?? [];
-  const k = tasks.findIndex((t) => t.id === taskId);
-  if (k < 0) return -1;
   const voice = (state.inbox ?? []).filter((c) => !c.dueDate).length;
   const follow = tasks.reduce((n, t) => n + (t.done ? 0 : (t.suggestions?.length ?? 0)), 0);
-  const before = tasks.slice(0, k).filter((t) => !t.done && !t.dueDate).length;
-  return voice + follow + before;
+  return voice + follow;
+}
+
+/**
+ * ★★★**そのタスクが、下の段の `at` 番目に来るように `tasks` を並べ替える**
+ * （2026-09-16・第112巡にユーザー確定「**どんな時でも、任意のピルとピルの間に
+ * 戻せるように。順番がいくら入れ替わっても問題ない**」）。
+ *
+ * ★★★**第111巡は逆だった** ―― 入る場所を並びが決めていたので、**指をどこへ
+ *   持っていっても同じ1か所にしか戻らなかった**。**指を正にして、並びのほうを写す。**
+ * ★★**声の候補とフォローアップは動かせない**（`inbox` と `suggestions` が持ち主）
+ *   ので、その群より前を指されたら **someday の先頭**に丸める。
+ * ★★**`state` を直接書き換える**（呼ぶ側が `structuredClone` 済み）。
+ *
+ * @param at 下の段（`bandRows` の `rows[1]`）での index。
+ */
+export function reorderSomeday(state: AppState, taskId: string, at: number): void {
+  const tasks = state.tasks ?? [];
+  const k = tasks.findIndex((t) => t.id === taskId);
+  if (k < 0) return;
+  const [moved] = tasks.splice(k, 1);
+  // ★★**someday の群の中での位置**（前の群のぶんを引く。負なら先頭へ）。
+  const pos = Math.max(0, at - somedayHead(state));
+  // ★★**`pos` 番目の「未完了かつ日付なし」の直前へ入れる**。
+  //   ★見つからなければ末尾（＝いちばん後ろを指された）。
+  let seen = 0; let insert = tasks.length;
+  for (let i = 0; i < tasks.length; i++) {
+    const q = tasks[i];
+    if (q.done || q.dueDate) continue;
+    if (seen === pos) { insert = i; break; }
+    seen++;
+  }
+  tasks.splice(insert, 0, moved);
 }

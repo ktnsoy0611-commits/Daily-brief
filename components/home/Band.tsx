@@ -504,31 +504,65 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
   /** ★段のループが読む「いまの中身」（`wake` の同一性を変えないため ref で持つ）。 */
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  /** ★★この段が「狙われているから」流れを止めているか（第112巡）。 */
+  const heldRef = useRef(false);
   const wake = useCallback(() => {
     if (runRef.current) return;
     runRef.current = true;
     const tick = () => {
       // ── ① 隙間を当てる ──────────────────────────────────────
-      // ★★★**隙間は「本当に入る場所」に開く**（2026-09-15・第111巡にユーザー確定）。
-      //   ★★★**第110巡は指の画面 x で開けていたが、挿し込み位置は `bandRows` の順
-      //     （＝タスク一覧の並び）で決まるので、一致しようがなかった**
-      //     ―― ユーザー報告「**位置がずれています**」の正体。
-      //   ★★**index で引くので、矩形を1つも読まない**（レイアウトの強制が消えた）。
+      // ★★★**隙間は「指が指している所」に開く**（2026-09-16・第112巡にユーザー確定
+      //   「**どんな時でも、任意のピルとピルの間に戻せるように。順番がいくら
+      //   入れ替わっても問題ない**」）。
+      //   ★★★**第111巡は「本当に入る場所」を1つに決めて渡していた**ので、
+      //     **そこ以外へ近づけても何も起きなかった**（＝「別の位置には絶対に
+      //     戻らない」「間を開けてくれない」）。**指のほうを正にして、並びを
+      //     あとから合わせる**（`HomeTab.unassign` が並べ替える）。
+      //   ★★**x → index はここでしかできない** ―― ピルの居場所は流れの
+      //     `transform` が決めていて React 側は知らない。**結果は `bandBus.slot`
+      //     へ返す**（離したときに `HomeTab` が読む）。
       //   ★★**開けるのは片側だけ**（挿し口より後ろを丸ごと `+w`）。理由は
       //     `bandMotion.ts` の `bandGap`（両側 ±w/2 は受け渡しで重なる）。
       const aim = bandBus.aim;
       // ★★**中身は ref から読む**（`wake` の同一性を変えない）―― 変えると、
       //   走っている最中のループが**古い中身を掴んだまま**次のフレームを頼む。
       const list = itemsRef.current;
-      if (aim && aim.row === row && aim.at < list.length) {
-        const ids = list.slice(aim.at).map((it) => it.id);
+      const track = trackRef.current;
+      if (aim && aim.row === row && track && list.length) {
+        // ★★**いちばん近いピルを探し、その左right どちらへ入れるかで index を決める**。
+        //   ★2周ぶん居るので、**周をまたいで「いちばん近い1枚」**を採る
+        //   （`i % list.length` が段の中での index）。
+        let best = -1; let bestD = Infinity; let bestMid = 0;
+        const els = track.querySelectorAll<HTMLElement>("[data-pill-id]");
+        els.forEach((el, i) => {
+          const r = el.getBoundingClientRect();
+          if (r.width <= 0) return;
+          const mid = r.x + r.width / 2;
+          const d = Math.abs(mid - aim.x);
+          if (d < bestD) { bestD = d; best = i % list.length; bestMid = mid; }
+        });
+        const at = best < 0 ? list.length
+          : Math.max(0, Math.min(list.length, best + (aim.x > bestMid ? 1 : 0)));
+        bandBus.slot = { row, at };
+        // ★★★**狙われている段は流れを止める**（2026-09-16・第112巡）。
+        //   ★★★**流れたままだと、指を止めていてもピルのほうが動いて挿し口が
+        //     勝手に変わる**（実測 … 同じ x でも index が 3 → 1 へ飛んだ）。
+        //   ★「掴むと止まる／離すと動く」はユーザーが残すと決めた動きなので、
+        //     **図形を近づけているあいだも同じ扱い**にする（`flow` が慣性も添える）。
+        if (!heldRef.current) { heldRef.current = true; flow(false); }
+        const ids = list.slice(at).map((it) => it.id);
         bandGap(ids, aim.w);
+        // ★挿し口より前のピルは戻す（指が動いて境目を跨いだとき）。
+        const back = list.slice(0, at).map((it) => it.id).filter((id) => gapRef.current.has(id));
+        if (back.length) bandGapClear(back);
         gapRef.current = new Set(ids);
         aimedRef.current = aim.w;        // ★挿し込まれたときの受け渡しの合図
-      } else if (gapRef.current.size) {
+      } else if (gapRef.current.size || heldRef.current) {
         // ★離れた・別の段へ移った → 隙間を閉じる（行き先 0 へ**行き過ぎずに**戻る）。
-        bandGapClear(gapRef.current);
+        if (gapRef.current.size) bandGapClear(gapRef.current);
         gapRef.current = new Set();
+        // ★★狙いが外れたら流れを戻す（上の `flow(false)` と対）。
+        if (heldRef.current) { heldRef.current = false; flow(true); }
       }
       // ── ② 進める ────────────────────────────────────────────
       // ★★**挿し口が出ているあいだは回し続ける**（次のフレームで index が変わり得る）。
@@ -539,7 +573,7 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
-  }, [row, paint]);
+  }, [row, paint, flow]);   // ★`flow` は `useCallback([row])` で不変
   useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
   // ★★**他の段や山から注文が入ったらすぐ起こす**（`bandBus.wakers` に預ける）。
   useEffect(() => {

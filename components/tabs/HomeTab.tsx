@@ -12,7 +12,7 @@ import { groundOf } from "@/components/AppBackdrop";
 import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
-import { bandRows, somedaySlotOf, unreadCards, type BandItem } from "@/lib/homeBand";
+import { bandRows, reorderSomeday, unreadCards, type BandItem } from "@/lib/homeBand";
 import { genreOfKind } from "@/lib/deckStyle";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -254,13 +254,8 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     const el = bandRef.current?.querySelector<HTMLElement>(`[data-band-row="${row}"]`);
     if (!box || !el) return null;
     const r = el.getBoundingClientRect();
-    // ★★★**「本当に入る場所」の index**（2026-09-15・第111巡にユーザー確定）。
-    //   ★式は `lib/homeBand.ts` の `somedaySlotOf`（帯の並びの規則の持ち主）。
-    //   ★提案（上の段）は戻す先が `today` の並びで、いまは計算できないので `-1`
-    //     ＝ **隙間を開けない**（嘘の場所に開けるより開けないほうがよい）。
-    const at = row === 1 ? somedaySlotOf(appState, p.id) : -1;
-    return { row, cy: r.top + r.height / 2 - box.top, at };
-  }, [appState]);
+    return { row, cy: r.top + r.height / 2 - box.top };
+  }, []);
 
   /**
    * ★★★**帯の上で離した＝日付を消して帯へ戻す**（同ユーザー指定）。
@@ -269,13 +264,21 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
    *   戻る（元の候補には戻さない ―― 戻す先がもう無いし、**帯の下の段に出るので
    *   結果は同じ**）。
    */
-  const unassign = useCallback((p: Piece) => {
+  const unassign = useCallback((p: Piece, at: number | null) => {
     const next: AppState = structuredClone(appState);
     const t = next.tasks.find((x) => x.id === p.id);
     if (t) { delete t.dueDate; delete t.endDate; }
     const i = (next.items ?? []).find((x) => x.id === p.id);
     if (i) delete i.plannedFor;
     if (!t && !i) return;
+    // ★★★**離した所へ並べ替える**（2026-09-16・第112巡にユーザー確定
+    //   「**どんな時でも、任意のピルとピルの間に戻せるように。順番がいくら
+    //   入れ替わっても問題ない**」）。
+    //   ★★★**第111巡は逆だった** ―― 入る場所を並びが決めていたので、
+    //     **指をどこへ持っていっても同じ1か所にしか戻らなかった**。
+    //   ★★**指が指している index は段が出す**（`bandBus.slot`。ピルの居場所を
+    //     知っているのは段だけ）。**それを並びのほうへ写す。**
+    if (t && at !== null) reorderSomeday(next, t.id, at);
     // ★★★**戻したものは段の上限で切られない**（第111巡。`bandRows` の `keepId`）。
     //   ★★これが無いと、下の段が 9件 埋まっているとき**「帯へ戻しました」と出るのに
     //     帯に現れない**（ユーザー報告「**どこかに消えてしまう**」）。

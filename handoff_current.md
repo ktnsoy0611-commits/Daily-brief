@@ -145,12 +145,6 @@ JOURNAL はラベンダーで別枠）、★★★**第118巡に手ざわりの4
 
 - ★★★**提案の生成は止まったまま**（裏の未読 41 枚が減らず `POOL_CAP`(40) に掛かる）。
 - ★★★**`GravityTab` は歩数も多角形も塗る箱も焼く予算も直していない**（山だけ）。
-- ★★★**帯の上の段の `offer` は引き下ろしても消えない**（第110巡に判明）。`BandItem.id` は
-  `offer-<card.id>` だが、そのカードは `generatedDecks` に居るだけで **`Item` が存在しない**
-  （KEEP して初めて `Item` が生まれ、同時に decision が付いて帯から消える）。つまり
-  `HomeTab.put` の `items.find` は**原理的に当たらず、何も書かずに return する**。
-  ★★**直すなら「引き下ろす ＝ KEEP ＋ `plannedFor`」**。**勝手にやらない。**
-  ★並べ替えは第114巡に通した。
 - ★**帯の並びは `bandPins`（留め金）**。`tasks` を触らないので GRAVITY/ALIGN は動かない。
 - ★**TASK（GRAVITY）はホームと揃えていない2つ** … 日付・曜日の板は「文字そのものが
   図形」／重要度で大きさが変わるまま（形だけ共通）。**確認していない。**
@@ -180,11 +174,10 @@ JOURNAL はラベンダーで別枠）、★★★**第118巡に手ざわりの4
 - ★★★**速さの3つ**（第115巡）… **先読みは落ち着いてから1つずつ**／**見えていない
   `VoiceStudio` は寸法を測らない**／**1フレーム 2枚まで焼く ＋ 書体は落ちる前に頼む**。
 - ★★★**代理の体**（`Pile.syncProxy`／`ghostBodyOf`）… **絵は体そのもの**／**体は絵の
-  中心**／**`piecesRef` に混ぜない**／**`clearOverlap` の前に消す**／**停止条件に入れる**／
-  **締切 `HANDOFF_MS`**。★★**山の倍率は中身が変わっても決め直さない**（`hold`）。
+  中心**／**`piecesRef` に混ぜない**／**`clearOverlap` の前に消す**／**締切 `HANDOFF_MS`**。
+  ★★**山の倍率は中身が変わっても決め直さない**（`hold`）。
 - ★★★**セーフエリアは全画面で `SPACE.lg`、左右対称**／**器が変わったときの4つ**
-  （`FLOOR_CHECK_MS`／`refitPile`／`sink`／`isLost`→`respawn`）／**器は `.bleed-x-b`**／
-  **ResizeObserver は1つ**。
+  （`FLOOR_CHECK_MS`／`refitPile`／`sink`／`isLost`→`respawn`）／**器は `.bleed-x-b`**。
 - ★★★**当たり判定の多角形は「軸の本数 × 頂点数」**（`PHYS_VERTS` 12・等角・偶数）／
   **投入の直前に `clearOverlap`**／**質量は全部同じ密度に**／**`atan2` で並べてから
   `fromVertices`**／**眠りは `GravityTab` と同じ**（`wake()` を忘れない）／**タスクの形は

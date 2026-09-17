@@ -174,17 +174,15 @@ JOURNAL はピンクで別枠）。**次は帯と山の中身、そして Explor
 - ★★★**白抜き ⇄ 塗りは `inkMix`（`pillGhost.ts`）の1か所**。掛け金で切り替えない。
 - ★★★**速さの3つ**（第115巡）… **先読みは落ち着いてから1つずつ**／**見えていない
   `VoiceStudio` は寸法を測らない**／**1フレーム 2枚まで焼く ＋ 書体は落ちる前に頼む**。
-- ★★★**掴んでいる図形の代理の体**（`Pile.syncProxy`／`pileWorld.ghostBodyOf`）…
-  **絵は体そのもの**／**体は絵の中心**／**`piecesRef` に混ぜない**／**`clearOverlap` の
-  前に消す**／**停止条件に入れる**／**締切 `HANDOFF_MS`**。★★**山の倍率は中身が
-  変わっても決め直さない**（`hold`）。
+- ★★★**代理の体**（`Pile.syncProxy`／`ghostBodyOf`）… **絵は体そのもの**／**体は絵の
+  中心**／**`piecesRef` に混ぜない**／**`clearOverlap` の前に消す**／**停止条件に入れる**／
+  **締切 `HANDOFF_MS`**。★★**山の倍率は中身が変わっても決め直さない**（`hold`）。
 - ★★★**セーフエリアは全画面で `SPACE.lg`、左右対称**／**器が変わったときの4つ**
   （`FLOOR_CHECK_MS`／`refitPile`／`sink`／`isLost`→`respawn`）／**器は `.bleed-x-b`**／
   **ResizeObserver は1つ**。
-- ★★★**当たり判定の多角形は「軸の本数 × 頂点数」**（`PHYS_VERTS` 12・等角・偶数。
-  **光線は正規化した空間で飛ばす**）／**投入の直前に `clearOverlap`**／**質量は全部
-  同じ密度に**／**`fromVertices` へ渡す前に `atan2` で並べる**／**眠りは `GravityTab`
-  と同じ**（`dirtyRef`/`dragRef` を立てる所では必ず `wake()`）／**タスクの形は
+- ★★★**当たり判定の多角形は「軸の本数 × 頂点数」**（`PHYS_VERTS` 12・等角・偶数）／
+  **投入の直前に `clearOverlap`**／**質量は全部同じ密度に**／**`atan2` で並べてから
+  `fromVertices`**／**眠りは `GravityTab` と同じ**（`wake()` を忘れない）／**タスクの形は
   `stackOutline`（**ピルの積み**）・段の数は `rowsOf(title)`・**ホームの大きさは
   `rowSpecOf`（`unit` ＝ 段の高さ）**・`waist` が「ピル ⇄ 図形」**／
   **塗り／輪郭は `paintShape` と `isDated`**（`pilePaint.ts` にも同じ分岐。**両方直す**）。

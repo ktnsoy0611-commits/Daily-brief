@@ -11,6 +11,7 @@ import { appTitle } from "@/lib/apps";
 import { BRIEF_CARD_ASPECT, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import { BRIEF_POOL_CAP } from "@/lib/homeBand";
+import { keepCard } from "@/lib/keepCard";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { cardShapeClip, cardShapeOf } from "@/lib/cardShape";
 import { CardShapeDefs } from "@/components/explore/CardShapeDefs";
@@ -610,48 +611,11 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
         }
       } else {
         brief.decisions[card.id] = dir;
-        if (dir === "keep") {
-          // KEEPは常にItemを1件作るだけ(以前は「作品なら直接records.media、
-          // それ以外はkeeps」という2経路の分岐があった)。種類はカード側の
-          // kind(省略時は"place")、場所の有無はareaの有無がそのまま決める。
-          // ウィッシュに応えたカードは origin:"wish" として紐付ける。まず
-          // sourceWishId(Geminiが返した願いのid・言い換えに強い)で照合し、
-          // 無い場合(旧デッキ)だけ従来の sourceWishTitle 文字一致にフォールバック。
-          // どちらも「まだ叶えていない(status:"stock")願い」に限る。
-          const wish =
-            (card.sourceWishId
-              ? next.wishes.find((w) => w.id === card.sourceWishId && w.status === "stock")
-              : undefined) ??
-            (card.sourceWishTitle
-              ? next.wishes.find((w) => w.title === card.sourceWishTitle && w.status === "stock")
-              : undefined);
-          const nowIso = new Date().toISOString();
-          // 情報カード(新着記事)は「提案」ではなく「読んで記録するもの」。KEEPしたら
-          // ストック(候補)には出さず、その日の日付バインダーへ done として直接入れる
-          // (別枠の流れ・ユーザー指定 HANDOFF §8.17)。detail に記事の半分要約が入って
-          // おり、アーカイブでもそのまま読める。
-          if (card.isInfo) {
-            next.items.push({
-              id: `brief-${ed}-${card.id}`, kind: card.kind ?? "info",
-              title: card.title, category: card.categoryJp, summary: card.body, detail: card.detail,
-              images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
-              status: "done", addedAt: nowIso, doneAt: nowIso, origin: "info",
-            });
-          } else {
-            next.items.push({
-              id: `brief-${ed}-${card.id}`, kind: card.kind ?? "place",
-              title: card.title, category: card.categoryJp, summary: card.body, detail: card.detail,
-              area: card.area && card.area !== "—" ? card.area : undefined,
-              lat: card.lat, lng: card.lng, placeId: card.placeId,
-              images: card.images, meta: card.meta, sourceUrl: card.sourceUrl, sourceLabel: card.sourceLabel, color: card.color,
-              status: "candidate", addedAt: nowIso, expiresAt: card.expiresAt,
-              origin: wish ? "wish" : "brief", sourceWishId: wish?.id,
-              // ゴール由来のカードは、どのゴールのためかを保持したままストックへ入る
-              // (実在するゴールに限る・§8.21)。
-              goalId: card.goalId && next.goals.some((g) => g.id === card.goalId) ? card.goalId : undefined,
-            });
-          }
-        }
+        // ★★★**KEEP の中身は `lib/keepCard.ts` の1か所**（2026-09-17・第118巡に
+        //   持ち上げた）。**ホームの帯から提案のピルを引き下ろす道**も同じことを
+        //   するので、式を2か所に持たない（理由はあのファイルの頭）。
+        //   ★`keepCard` は `decisions` も打つ（上の1行と同じ値を書くだけ）。
+        if (dir === "keep") keepCard(next, ed, card);
       }
 
       next.briefs[ed] = brief;

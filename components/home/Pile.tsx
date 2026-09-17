@@ -21,7 +21,7 @@ import {
   bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile,
 } from "./pilePaint";
 import {
-  PULL_ARM, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey, ghostMotion, pullBus,
+  PILL_HINT, PULL_ARM, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey, ghostMotion, pullBus,
   stepGhost, type Ghost, type PillLook,
 } from "@/lib/pullDrag";
 
@@ -970,8 +970,14 @@ export function Pile({
     //   ★ここで先に頼んでおけば、**落ちているあいだには届き終わっている**か、
     //     少なくとも**代役で描いて1度だけ焼き直す**で済む。
     ensureGlyphs(SHAPE_FACE, tasks.map((t) => t.title ?? "").join(""));
+    // ★★★**帯が覆っている高さを渡す**（2026-09-17・第118巡）。帯は山の器へ
+    //   重ねてあるので、そのぶんを「図形が居られる高さ」から引かないと、
+    //   **山が帯の裏へ伸びて指で触れなくなる**（`pileWorld` の `usableH` の注釈）。
+    //   ★ここは中身の effect（1度きり）なので、DOM を測ってよい ―― ループの
+    //     中から `bandBottom()` を呼ばないこと（レイアウトを強制する）。
     const { pieces, unit } = buildPieces(
-      M, { tasks, offers, unread, today, journal }, w, h, prev, landing, hold);
+      M, { tasks, offers, unread, today, journal }, w, h, prev, landing, hold,
+      bandBottom?.() ?? 0);
     // ★★★**使い回した体は world から出さない**（2026-09-15・第111巡）。
     //   ★★★**出して入れ直すと、接触も眠りも切れて山が落ち直す** ―― しかも
     //     入れ直しの `clearOverlap` が**落ち着いた山を縦の塔へ積み直す**
@@ -1168,12 +1174,10 @@ export function Pile({
         if (look) pullBus.ghost = homeGhost(dragRef.current.piece, look, e.pointerId);
       }
     }
-    // ★★★**戻りは2段** … **遠いあいだは指にぴったり追従**し、**ピル1つぶん
-    //   （`PULL_ARM` 44px）まで近づいたら指を離れて帯へ吸い付く**
-    //   （2026-09-15・第109巡にユーザー確定）。
-    //   ★★★**第108巡までは1段だった** ―― `RAIL_NEAR`(72px) を跨いだ瞬間に
-    //     その場で畳んでいたので、ユーザー報告「**少し帯に近づけると急に指から
-    //     離れて戻っていく**」「**ただの逆再生**」になっていた。
+    // ★★★**位置は最後まで指**（2026-09-17・第118巡にユーザー撤回）。
+    //   ここで決めるのは**「帯を狙っているか」だけ** ―― 絵の座標は一切動かさない。
+    //   ★★第109〜117巡は `PULL_ARM`(44px) 内で帯の段の中心へ吸い付けていたが、
+    //     ユーザー「**指を離していないのに横にしか動かなくなる**」で撤回した。
     //   ★境目の遊びは `RAIL_HYST`（第108巡。1本の線だと毎フレーム反転する）。
     const gh0 = pullBus.ghost;
     if (gh0 && gh0.home) {
@@ -1184,9 +1188,12 @@ export function Pile({
       //     提案しか無い日は下の段そのものが存在しない（`bandRowAt` が実測して返す）。
       const row: 0 | 1 = dragRef.current.piece.kind === "offer" ? 0 : 1;
       const cy = rowCenter?.(row) ?? null;
-      gh0.aim = caught
-        ? { x: dragRef.current.x, y: cy ?? bandY - PULL_ARM / 2 } : null;
-      gh0.tTo = caught ? 0 : 1;
+      // ★★★**`aim` は合図だけ。座標は渡さない**（2026-09-17・第118巡）。
+      //   位置は最後まで指 ―― 理由は `lib/pullDrag.ts` の `Ghost.aim` の注釈。
+      gh0.aim = caught;
+      // ★★**狙っているあいだは「少しだけピルへ寄る」**（`PILL_HINT`）。
+      //   0 まで畳むのは**離したとき**（`HomeTab.unassign` の先）。
+      gh0.tTo = caught ? PILL_HINT : 1;
       // ★★★**挿し口は「指が指している所」**（2026-09-16・第112巡にユーザー確定
       //   「**どんな時でも、任意のピルとピルの間に戻せるように**」）。
       //   ★★★**第111巡は入る場所を1つに決めて渡していた**ので、**そこ以外へ

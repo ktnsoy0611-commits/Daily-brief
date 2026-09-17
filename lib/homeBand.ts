@@ -1,4 +1,4 @@
-import type { AppState, BriefCard } from "./types";
+import type { AppState, BriefCard, ItemKind } from "./types";
 import { genreOfKind, glyphOfKind } from "./deckStyle";
 import { colorOfKind } from "./palette";
 import { TASK_FACE } from "./constants";
@@ -49,6 +49,13 @@ export interface BandItem {
   genre?: string;
   /** 4 だけが持つ。どのタスクへのフォローアップか。 */
   parentId?: string;
+  /**
+   * ★★**1・2 だけが持つ。`ItemKind`**（2026-09-17・第118巡）。
+   * ★★★**提案（`offer`）にはまだ `Item` が無い**ので、`HomeTab.srcOf` から
+   *   `kind` を引けない ―― 幽霊の**札の形**（`lib/cardShape.ts`）がそれで
+   *   決まるので、**帯の側から持たせる**。
+   */
+  itemKind?: ItemKind;
 }
 
 export type BandKind = "offer" | "today" | "voice" | "followup" | "someday";
@@ -128,6 +135,20 @@ const taskFace = (): string => TASK_FACE;
  * 片方を直したらもう片方も直すこと（同じものを2つの画面に出しているため）。
  */
 export function unreadCards(state: AppState): BriefCard[] {
+  return unreadEntries(state).map((e) => e.card);
+}
+
+/**
+ * ★★★**未読の提案を「元の号のキーごと」返す**（2026-09-17・第118巡）。
+ *
+ * ★★★**`ed`（号のキー）が要るのは KEEP のため** ―― 帯から提案のピルを
+ *   引き下ろすと `lib/keepCard.ts` で `Item` を作るが、その id は
+ *   `brief-<ed>-<card.id>` で、決定も `briefs[ed].decisions` へ打つ。
+ *   **`BriefCard` だけ返していたので `ed` が取れなかった**（＝ホーム側からは
+ *   KEEP できず、引き下ろしても何も起きずに消えていた）。
+ * ★`unreadCards` はこの薄い包み（既存の呼び手はそのまま）。
+ */
+export function unreadEntries(state: AppState): { ed: string; card: BriefCard }[] {
   const decks = state.generatedDecks ?? {};
   // ★決定は日ごとの `briefs[*]` に散っている。カード id は生成ごとに一意なので、
   //   全日ぶんをマージして引く（BriefTab の `allDecisions` と同じ）。
@@ -137,7 +158,7 @@ export function unreadCards(state: AppState): BriefCard[] {
   }
   const now = Date.now();
   const seen = new Set<string>();
-  const pool: BriefCard[] = [];
+  const pool: { ed: string; card: BriefCard }[] = [];
   // ★キー（"YYYY-MM-DD"）は文字列比較で新しい順に並ぶ。
   for (const ek of Object.keys(decks).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))) {
     for (const c of decks[ek] ?? []) {
@@ -149,7 +170,7 @@ export function unreadCards(state: AppState): BriefCard[] {
         const t = Date.parse(c.expiresAt);
         if (!Number.isNaN(t) && t < now) continue;    // 会期切れは出さない
       }
-      pool.push(c);
+      pool.push({ ed: ek, card: c });
       // ★★**新しい順に 15 枚で打ち切る**（`BRIEF_POOL_CAP`）。キーは
       //   "YYYY-MM-DD" の文字列比較で**新しい号から**回っているので、
       //   ここで止めれば残るのは**いちばん新しい 15 枚**になる。
@@ -166,7 +187,7 @@ export function bandItems(state: AppState): BandItem[] {
   // 1 今日入った、おすすめの提案。★色も写真も字面も、Explore のカードのまま。
   for (const c of unreadCards(state)) {
     out.push({
-      id: `offer-${c.id}`, kind: "offer", text: cardText(c),
+      id: `offer-${c.id}`, kind: "offer", text: cardText(c), itemKind: c.kind ?? "place",
       face: cardFace(c), photo: c.images?.[0], glyph: c.glyph,
       // ★★ジャンルも**いま生きている表から引く**（`c.category` は生成時の焼き込み）。
       genre: genreOfKind(c.kind ?? "info"),
@@ -192,7 +213,7 @@ export function bandItems(state: AppState): BandItem[] {
   }
   for (const it of pickTodayItems(state.items ?? [], new Date(), kept)) {
     out.push({
-      id: `today-${it.id}`, kind: "today", text: it.title,
+      id: `today-${it.id}`, kind: "today", text: it.title, itemKind: it.kind,
       // ★★焼き込まれた `it.color` は信じない（`cardFace` と同じ理由）。
       face: colorOfKind(it.kind), photo: it.images?.[0], glyph: glyphOfKind(it.kind),
       genre: genreOfKind(it.kind),

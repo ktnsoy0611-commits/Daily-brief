@@ -12,7 +12,8 @@ import { groundOf } from "@/components/AppBackdrop";
 import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
-import { bandRows, pinBand, unreadCards, type BandItem } from "@/lib/homeBand";
+import { bandRows, pinBand, unreadCards, unreadEntries, type BandItem } from "@/lib/homeBand";
+import { keepCard } from "@/lib/keepCard";
 import { genreOfKind } from "@/lib/deckStyle";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -105,8 +106,10 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     const bw = box?.width ?? 390; const bh = box?.height ?? 600;
     const unit = pullBus.unit;
     if (it.kind === "offer" || it.kind === "today") {
+      // ★★**提案（`offer`）にはまだ `Item` が無い**ので、`kind` は**帯が持っている
+      //   ほうを先に見る**（`BandItem.itemKind`。第118巡）。無いと札の形が付かない。
       const src = srcOf(it).item;
-      const kind = src?.kind;
+      const kind = it.itemKind ?? src?.kind;
       const d = Math.min(offerRadiusOf(unit) * 2, bw * 0.52);   // ★同じ頭打ち
       const face = kind ? colorOfKind(kind) : it.face;
       return {
@@ -173,6 +176,19 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
         id: landOn, title: sug.title, dueDate: iso,
         weight: 2, done: false, createdAt: now,
       } as Task);
+    } else if (it.kind === "offer") {
+      // ★★★**まだ読んでいない提案には `Item` がまだ無い**（2026-09-17・第118巡）。
+      //   `offer-<card.id>` の中身は `generatedDecks` に居るだけなので、
+      //   **`items.find` は原理的に当たらない** ―― 第117巡まではここで黙って
+      //   return しており、帯からは消えるのに何も増えなかった（ユーザー報告
+      //   「**ドラッグしてホームで離しても、追加されず消えてしまった**」）。
+      // ★★★**引き下ろす ＝ KEEP ＋ その日に行く**。KEEP の式は
+      //   `lib/keepCard.ts` の1か所（BriefTab と共有）。
+      const e = unreadEntries(next).find((x) => x.card.id === Number(id) || String(x.card.id) === id);
+      if (!e) return;
+      landOn = keepCard(next, e.ed, e.card);
+      const made = next.items.find((y) => y.id === landOn) as Item | undefined;
+      if (made) made.plannedFor = iso;
     } else {
       // ★★**提案は「その日に行く」だけ**（タスクにしない。ユーザー確定）。
       const x = (next.items ?? []).find((y) => y.id === id) as Item | undefined;

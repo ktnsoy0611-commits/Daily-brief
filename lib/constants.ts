@@ -145,6 +145,24 @@ export const CHARCOAL = "#383432";
 // 補助の文字色。以前は各所で "#9A988E" を直書きしていたものをここへ集約した。
 export const MUTED = "#8E8E88";
 
+/**
+ * ★★★**タスクの図形だけのグレー**（2026-09-17・第118巡にユーザー指定
+ * 「**タスクのグレーももっと薄いナチュラルな柔らかいグレーにしてください**」）。
+ *
+ * ★★★**「無彩色は5段で打ち止め」を承知で6段目を足している。** 理由は
+ *   **役が違う**から ―― 上の5段は**文字と面の階層**（`INK` → `CHARCOAL` →
+ *   `SECOND` → `MUTED` → `SURFACE`）で、どれも「その階層で読ませる」ための値。
+ *   こちらは**タスクの図形という1つの役の面の色**で、階層には属さない。
+ *   ★`MUTED`(#8E8E88) を薄めると**副文が AA を割る**ので、あちらは触れない。
+ * ★★実測 … 地（`BD_GREY` #FFFBF5）との比 **1.86**／**黒い字 7.76**。
+ *   ★`bodyInkOn()` は `INK` を返すので、**面に載る字は自動で黒**になる。
+ * ★★**暖色寄り**（地のクリームと同じ方向）にしてある ―― 冷たいグレーだと
+ *   クリームの地の上で「汚れ」に見える。ユーザー指定の「ナチュラル・柔らかい」。
+ * ★★**輪郭だけのピル（日付なし）の線は薄くなる**（1.86）。第117巡に字を黒へ
+ *   移してあるので、読めなくなるのは線だけ ―― ユーザー確定の上での選択。
+ */
+export const TASK_GREY = "#BFBBB2";
+
 /** ★★**面のためのグレー**（第80巡に復活）。カード・入力欄・カードの中の小区分。
  *  ★★★**半透明の重ねがけをやめるために在る** ―― 白の 6%/16% を重ねると、
  *  下に何が居るかで色が変わり、重ねる順で結果が動く。**不透明の1枚**なら動かない。
@@ -267,7 +285,7 @@ export const SCHEME = {
   life: PALETTE.verde,         // バショ(place)    ／肯定
   growth: PALETTE.rojo,        // タイケン(experience)
   wellness: PALETTE.amarillo,  // モノ(thing)
-  social: PALETTE.rosa,        // JOURNAL（★別枠。ドメイン4には使わない）
+  social: PALETTE.lila,        // JOURNAL（★別枠。ドメイン4には使わない）
   danger: PALETTE.rojo,        // 危険
 } as const;
 
@@ -281,7 +299,7 @@ export const SCHEME = {
  * ★★**輪郭だけのタスク（日付なし）も字は黒**（第117巡）―― `face` を字に使うと
  *   グレーの字が地の上で 3.2 になり、13px の本文が読めない。
  */
-export const TASK_FACE = MUTED;
+export const TASK_FACE = TASK_GREY;
 
 /**
  * ★★★**JOURNAL の顔の色 ＝ ピンク**（2026-09-17・第117巡にユーザー指定
@@ -307,7 +325,7 @@ export const JOURNAL_FACE = SCHEME.social;
 export const STUDIO_KEY = {
   pause: SCHEME.wellness,   // 黄   … 墨の窓の上で 9.07
   send: SCHEME.life,        // 緑   … 3.65（★大きな記号なので可。本文には使わない）
-  cancel: SCHEME.social,    // ピンク … 4.09
+  cancel: SCHEME.social,    // ラベンダー … 7.01（第118巡に JOURNAL がピンクから移った）
 } as const;
 
 // ★★**状態の色は3つだけ**（第73巡）。**分類の色から借りる**（専用の色を持たない）。

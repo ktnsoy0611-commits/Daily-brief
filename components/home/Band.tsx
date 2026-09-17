@@ -8,12 +8,13 @@ import { BAND_ROW, type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
-  PILL_EDGE, PILL_PRESS, PULL_ARM, RAIL_HYST, RAIL_NEAR, pullBus, pullFrame,
+  PILL_EDGE, PILL_HINT, PILL_PRESS, PULL_ARM, RAIL_HYST, RAIL_NEAR, pullBus, pullFrame,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
 import { haptic } from "@/lib/helpers";
 import {
-  BAND_PAD, bandAim, bandBus, bandGapAt, bandGapClear, bandGapDone, bandHole,
+  BAND_PAD, GAP_HYST, bandAim, bandBus, bandGapAt, bandGapClear, bandGapDone, bandHole,
+  bandSettling,
   bandHoleDone, bandHoleRelease, bandResume, bandStop, stepBandMotion,
 } from "./bandMotion";
 
@@ -129,8 +130,12 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     //   （**山のループが固定の刻みで測ったもの**）。
     // ★★**消してよいのは自分の指が出した幽霊だけ**（`owner`）。
     const gh = pullBus.ghost && g && pullBus.ghost.owner === g.id ? pullBus.ghost : null;
+    // ★★★**渡すのは「絵の中心」（`hx`/`hy`）。支点（`dx`/`dy`）ではない**
+    //   （2026-09-17・第118巡）。`pileWorld` は `landing.x/y` を**箱の中心**として
+    //   体を置くので、支点を渡すと**ぶら下がっていた腕の長さだけ絵が跳ぶ**。
+    //   ★理由と実測は `lib/pullDrag.ts` の `LandingAt` の注釈。
     const at: LandingAt | null = gh
-      ? { x: gh.dx, y: gh.dy, vx: gh.vx, vy: gh.vy, angle: gh.angle } : null;
+      ? { x: gh.hx, y: gh.hy, vx: gh.vx, vy: gh.vy, angle: gh.angle } : null;
     if (gh) pullBus.ghost = null;
     pull.rail(false);
     // ★★★**段の流れを必ず戻す**（2026-09-15・第109巡）。段を止めているのは
@@ -276,6 +281,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     const fy = e.clientY - br.top;
     const back = f.armed && bandY > 0
       && fy < bandY + PULL_ARM + (g.aim ? RAIL_HYST : 0);
+    // ★`rowCenter` は「その段が描かれているか」の確認にだけ使う（座標は渡さない）。
     const cy = back ? pull.rowCenter(row) : null;
     g.aim = back && cy !== null;
     bandAim(g.aim ? { row, x: e.clientX, w: g.w0 + SPACE.sm } : null);
@@ -285,12 +291,14 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
       cx: f.cx, cy: f.cy,
       // ★★変形の両端と行き先。**弾けたら 1 へ向かって時間で進む。**
       w0: g.w0, h0: g.h0, w1: g.seed.w, h1: g.seed.h,
-      // ★★★**帯へ戻したいときは `tTo` を 0 へ**（山から戻すときとまったく同じ）。
-      tTo: g.aim ? 0 : (f.armed ? 1 : 0),
+      // ★★★**狙っているあいだは「少しだけピルへ寄る」**（`PILL_HINT`。第118巡）。
+      //   0 まで畳むのは**離したとき**。★理由は `lib/pullDrag.ts` の `PILL_HINT`。
+      tTo: g.aim ? PILL_HINT : (f.armed ? 1 : 0),
       // ★★**帯を狙っているあいだは `home` の枝で動かす**（`stepGhost`）――
-      //   支点が指に付いて、段の中心へ `aim` で吸い付く。山から戻す道と同じ1本。
+      //   支点が指に付く。山から戻す道と同じ1本。
       home: g.aim || undefined,
-      aim: g.aim && cy !== null ? { x: e.clientX - br.left, y: cy } : null,
+      // ★★★**`aim` は合図だけ。座標は渡さない**（第118巡にユーザー撤回）。
+      aim: g.aim,
       w: was?.w ?? g.w0, h: was?.h ?? g.h0, t: was?.t ?? 0,
       // ★★**支点は前のフレームから引き継ぐ** ―― 弾けた瞬間、バネはここから
       //   走り出す（＝**ピルが居た所から指へ**）。引き継がないと左上から飛んでくる。
@@ -628,6 +636,9 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
         //   ★開いているぶんを DOM の並び順に積んで引けば、**どれだけ開いていても
         //     同じ答え**になる（＝指が動かないかぎり挿し口も動かない）。
         let at = 0; let bestD = Infinity; let extra = 0; let pick = -1; let k = 0;
+        // ★★★**いま開けている挿し口の「近さ」も一緒に測る**（第118巡）。
+        //   乗り換えの遊び（`GAP_HYST`）を当てるのに要る。
+        let curD = Infinity; let curPick = -1;
         for (const el of track.querySelectorAll<HTMLElement>("[data-pad]")) {
           const i = Number(el.dataset.pad);
           // ★★★**`lead` を足し戻す** ―― `paint` が帯ぜんたいを `lead` だけ
@@ -636,9 +647,22 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
           const d = Math.abs(el.getBoundingClientRect().x - extra + m.lead
             + m.open.p / 2 + BAND_PAD / 2 - aim.x);
           if (d < bestD) { bestD = d; at = i; pick = k; }
+          // ★★**同じ index の器は2周ぶん居る**ので、**指に近いほう**を採る。
+          if (i === m.open.at && d < curD) { curD = d; curPick = k; }
           if (i === m.open.at) extra += m.open.p;
           if (i === m.shut.at) extra += m.shut.p;
           k += 1;
+        }
+        // ★★★**乗り換えには「得」が要る**（2026-09-17・第118巡。真因は
+        //   `components/home/bandMotion.ts` の `GAP_HYST` の注釈）。
+        //   ★★① **`GAP_HYST` px 以上近くならなければ、いまの挿し口に留まる。**
+        //      遊びが無いと**毎フレーム隣へ飛び、そのたび隙間が 0 へ戻る**＝
+        //      「全然アニメーションしていない／ガクガク震える」。
+        //   ★★② **閉じかけが残っているあいだも留まる**（受け皿は1本しか無く、
+        //      上書きすると一度も閉じ切らない＝ピルが重なる）。
+        if (m.open.at >= 0 && at !== m.open.at
+          && (curD < bestD + GAP_HYST || bandSettling(row))) {
+          at = m.open.at; pick = curPick >= 0 ? curPick : pick;
         }
         // ★★★**挿し口は「左どなりのピルの id」で返す**（第114巡）。index だと
         //   離した瞬間に `items` が組み替わって指した場所を指さなくなる。

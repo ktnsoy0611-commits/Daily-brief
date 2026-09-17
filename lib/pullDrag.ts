@@ -3,7 +3,7 @@ import type { CardShape } from "./cardShape";
 import { BAND_H } from "./constants";
 import type { BandItem } from "./homeBand";
 import {
-  D_CATCH, D_SETTLE, D_SWING, K_CATCH, K_SETTLE, K_SWING,
+  D_CATCH, D_SWING, K_CATCH, K_SWING,
   rubber, settled, spring, springTo, type Spring,
 } from "./spring";
 
@@ -160,16 +160,22 @@ export interface Ghost {
    */
   home?: boolean;
   /**
-   * ★★★**帯の中の「着地点」**（2026-09-15・第109巡にユーザー指定
-   * 「**かなり帯の位置に近づいたら滑らかに帯に吸い付いていく**」／距離は
-   * **ピル1つぶん `PULL_ARM`(44px)**）。
+   * ★★★**帯を狙っているか**（2026-09-17・第118巡。**座標は持たない**）。
    *
-   * ★★**入るまでは支点＝体**（＝指にぴったり追従する。ユーザー「**戻す時は
-   *   指に基本的には追従して**」）。入った瞬間から**指を離れて**ここへ
-   *   `K_SETTLE`（行き過ぎない）で寄り、同時に `tTo = 0` でピルへ畳まれる。
-   * ★`components/home/Pile.tsx` が入れる（帯の段の中心・指の x）。
+   * ★★★**第109巡は「かなり近づいたら帯へ吸い付く」だった。第118巡に
+   *   ユーザーが撤回した**（「**まだ指を離していないのに強制的に帯の列に
+   *   吸い寄せられて横にしか動かなくなる動きが不自然なので、離すまでは指に
+   *   追従してほしい**」）。**復活させない。**
+   *   ★★当時は `{ x, y }` を持ち、`stepGhost` が `K_SETTLE` で `hx`/`hy` を
+   *     そこへ寄せていた。`y` は**段の中心の1本の線**なので、44px 内に入った
+   *     瞬間から**縦に動かしても絵が動かなくなる**＝報告そのもの。
+   * ★★★**いま残っている役は2つだけ** …
+   *   ① **`tTo` を `PILL_HINT` へ**（＝**形と塗りだけが少しピルへ寄る**。
+   *      ユーザー確定「隙間 ＋ 図形が少しだけピルに戻る」）
+   *   ② 帯側へ「狙っている」と伝える合図（`bandAim`）。
+   *   **位置は最後まで指**。
    */
-  aim?: { x: number; y: number } | null;
+  aim?: boolean;
 }
 
 /**
@@ -185,6 +191,18 @@ export interface Landing extends LandingAt {
 
 /** 落とし所（id はまだ決まっていない ―― 新しいタスクの id は `HomeTab` が作る）。 */
 export interface LandingAt {
+  /**
+   * ★★★**絵の中心**（`Ghost.hx`/`hy`）。**支点（`dx`/`dy`）ではない。**
+   *
+   * ★★★**第118巡にここで踏んだ** ―― `components/home/Band.tsx` が `gh.dx`/`gh.dy`
+   *   を渡していたので、`pileWorld` が**支点を絵の中心として**体を置き、
+   *   **離した瞬間に「ぶら下がっていた腕の長さ」だけ絵が跳んだ**
+   *   （ユーザー「**ピルから引き出した図形を離すとずれて瞬間移動する**」）。
+   *   ★★`armOffset(ax, ay, angle)` のぶん食い違い、**`ay` は図形の高さの半分まで
+   *     育つ**ので、ずれは最大で図形の半分。
+   * ★★★**第108巡の「幽霊の絵は `hx`/`hy` に描かれる」と同じ罠の裏返し。**
+   *   `dx`/`dy` を渡したくなったら、**まずこの注釈を読むこと。**
+   */
   x: number; y: number;
   vx: number; vy: number;
   angle: number;
@@ -395,6 +413,20 @@ export const RAIL_HYST = PULL_ARM / 2;
  */
 export const PILL_EXIT = 0.2;
 
+/**
+ * ★★★**帯を狙っているあいだ、形と塗りをどこまでピルへ寄せるか**
+ * （2026-09-17・第118巡にユーザー確定「**隙間 ＋ 図形が少しだけピルに戻る**」）。
+ *
+ * ★★★**0 にしてはいけない** ―― `Ghost.pill` の掛け金（上の `PILL_EXIT`(0.2)）が
+ *   立って、**指の下で図形が完全なピルの版面に化ける**。それは行き過ぎで、
+ *   しかも掛け金の境目で点滅する。**`PILL_EXIT` より上に置くこと。**
+ * ★★★**1 にもしない** ―― 「入るぞ」という合図が**隙間だけ**になってしまう。
+ * ★0.55 ＝ **半分より少しだけ図形寄り**。「少しだけ戻る」の見た目。
+ * ★★**離した瞬間にだけ `tTo = 0`**（＝帯に収まる）。
+ * ★目盛りの外（手ざわり）。
+ */
+export const PILL_HINT = 0.55;
+
 // ── ぶら下がりと伸び縮み（2026-09-14・第103巡にユーザー確定） ─────────────
 //
 // ★★★**ユーザーの指定は2つだけ** … 「**指にぶら下がって揺れる**」と
@@ -510,24 +542,13 @@ export function stepGhost(mo: GhostMotion, g: Ghost, pin?: Pin | null): void {
   //     図形が**ピルに戻りながら向きを正す**ので、吸い込まれるように見える。
   if (g.home) {
     g.angle *= g.waist;
-    // ★★★**帯へ「吸い付く」のは、かなり近づいてから**（2026-09-15・第109巡に
-    //   ユーザー確定「**基本は指に追従し、かなり帯に近づいたら滑らかに吸い付く**」
-    //   ／ 距離は**ピル1つぶん `PULL_ARM`(44px)**）。
-    //   ★★★第108巡までは `RAIL_NEAR`(72px) を跨いだ瞬間にその場で畳んでいたので、
-    //     ユーザー報告「**少し帯に近づけると急に指から離れて戻っていく**」になった。
-    //   ★`aim` が入るまでは**支点＝体**（＝指にぴったり付いてくる。下と同じ）。
-    //   ★`K_SETTLE` は**行き過ぎない** ―― 帯へ吸い込むのに跳ね返りは要らない。
-    if (g.aim) {
-      springTo(mo.catchX, g.aim.x, K_SETTLE, D_SETTLE);
-      springTo(mo.catchY, g.aim.y, K_SETTLE, D_SETTLE);
-      g.hx = mo.catchX.p; g.hy = mo.catchY.p;
-      g.ax = 0; g.ay = 0; g.dx = g.hx; g.dy = g.hy;
-      g.sx = 1; g.sy = 1; g.vx = 0; g.vy = 0;
-      return;
-    }
-    // ★捕まえる前は、次に捕まえたときバネが体から走り出せるよう種を蒔いておく。
-    mo.catchX.p = g.cx; mo.catchX.v = 0;
-    mo.catchY.p = g.cy; mo.catchY.v = 0;
+    // ★★★**位置は最後まで指**（2026-09-17・第118巡にユーザー撤回）。
+    //     第109〜117巡はここに `if (g.aim) { springTo(catchX/Y, aim.x/y, K_SETTLE) }`
+    //     が在り、**帯から 44px 内に入った瞬間に絵が段の中心線へ吸い付いて
+    //     縦に動かなくなっていた**（ユーザー「**強制的に帯の列に吸い寄せられて
+    //     横にしか動かなくなる**」）。**復活させない。**
+    //     ★★行き先を知らせるのは**帯に開く隙間**と**少しだけピルへ寄る形**
+    //       （`Ghost.aim` の注釈）。**位置で知らせない。**
     // ★★★**支点も毎フレーム体へ置く**（2026-09-16・第108巡）。
     //   ★★★**絵は `hx`/`hy` に描かれる**（`components/home/pilePaint.ts` の
     //     `ctx.translate(g.hx, g.hy)` と `components/home/pillGhost.ts` の同じ行）。
@@ -689,3 +710,4 @@ export interface PullHost {
    */
   lift: (on: boolean) => void;
 }
+

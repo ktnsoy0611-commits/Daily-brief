@@ -83,6 +83,26 @@ const OFFER_D = 3.2;
 /** ★カセットの高さ（段の高さの何倍か）。理由は `OFFER_D` と同じ。 */
 const CASSETTE_ROWS = 2.2;
 /**
+ * ★★★**混み具合で全体を縮める**（2026-09-17・第118巡にユーザー指定
+ * 「**図形が多すぎると操作しづらくなる（特にピルのあたりまで高さがくると
+ * 操作できなくなる）ので、全体のスケールを多さによって調整して、図形全部の
+ * スケールを一律で少しだけ小さくするなどの調整がかかるように**」）。
+ *
+ * ★★★**面積の予算だけでは足りない理由** ―― 予算は「器の何割を塗るか」なので、
+ *   件数が増えても**塗る面積の合計は変わらない**。ところが**傾いた図形は隙間を
+ *   多く作る**ので、件数が増えるほど**同じ面積でも山は高く積み上がる**。
+ * ★★★**`crowd` は「長さ」の倍率**（面積ではない）。`unit ∝ √予算` なので、
+ *   予算には `crowd²` を掛け、**日付と曜日の板の大きさには `crowd` をそのまま**
+ *   掛ける ―― こうして初めて**全部が一律に**縮む。
+ *   ★★**板だけ据え置くと、混むほど板が相対的に巨大になる**（第117巡の実機の写真）。
+ * ★目盛りの外（詰め込み具合）。
+ */
+const CROWD_N0 = 10;
+const CROWD_MIN = 0.85;
+/** ★落とす体の数 → 長さの倍率（1 以下）。 */
+const crowdOf = (n: number): number =>
+  Math.max(CROWD_MIN, Math.min(1, Math.sqrt(CROWD_N0 / Math.max(1, n))));
+/**
  * ★★★**提案の面積**（段の高さ²。2026-09-15・第110巡に名前を付けた）。
  * ★**`HomeTab.seed` も代理の体もここを読む** ―― 重さの目盛りは1つ。
  */
@@ -501,6 +521,7 @@ export interface PileBuild {
 export function buildPieces(
   m: M, c: PileContent, w: number, h: number,
   prev?: Map<string, Piece>, landing?: Landing | null, hold?: number,
+  bandH = 0,
 ): PileBuild {
   const { tasks, offers, unread, today, journal } = c;
 
@@ -526,8 +547,13 @@ export function buildPieces(
   //     同じ形で居続ける**。遊びの比は `lib/wordPlate.ts` の `PILL_PAD`。
   //   ★★★**TASK（GRAVITY）の板は変えていない** ―― あちらは「文字そのものが
   //     図形」のままで、ユーザーの指定はホームの山についてのもの。
+  // ★★★**混み具合の倍率は、板を測る前に出す**（第118巡）―― 板の大きさにも
+  //   同じ倍率を掛けるため（掛けないと、混むほど板だけが相対的に巨大になる）。
+  //   ★数えるのは**落とす体の全部**（タスク・提案・カセット・未読・板2枚）。
+  const crowd = crowdOf(
+    tasks.length + offers.length + (jH > 0 ? 1 : 0) + (unread > 0 ? 1 : 0) + 2);
   const words = [`${today.getMonth() + 1}.${today.getDate()}`, WD_SHORT[today.getDay()]];
-  const room = pileWOf(w) * WORD_W;
+  const room = pileWOf(w) * WORD_W * crowd;
   // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
   // ★★★**大きさの物差しは長いほうの綴り（`WD_FULL`）のまま**（ユーザー
   //   「**サイズは今の文字くらいでよく**」）―― 3文字で測ると器いっぱいまで
@@ -553,8 +579,15 @@ export function buildPieces(
    *   （`lib/textFit.ts` の `glyphCache`）が**全部の図形で使い回せる**。
    */
   const flat = (t: { title?: string }) => ({ title: t.title ?? "" });
-  // ★★★**予算は「図形が居られる高さ」で取る** ―― 器の高さ `h` ではなく**床まで**。
-  const usableH = Math.max(120, floorYOf(h));
+  // ★★★**予算は「図形が居られる高さ」で取る**（第118巡に**帯のぶんも引いた**）。
+  //
+  // ★★★**帯は山の器へ `position: absolute; top: 0` で重ねてある**
+  //   （`components/tabs/HomeTab.tsx`）。第117巡まではその帯状の面積まで
+  //   「図形が居られる場所」として数えていたので、件数が増えると**山が帯の裏へ
+  //   伸び**、そこは `pointerEvents` を帯に取られているため**指で触れなくなった**
+  //   ―― ユーザー報告「**特にピルのあたりまで高さがくると操作できなくなる**」。
+  // ★`bandH` は `Pile` が `bandBottom()`（DOM の実測）から渡す。0 なら今までどおり。
+  const usableH = Math.max(120, floorYOf(h) - bandH);
   const areas = [
     ...tasks.map((t) => rowSpecOf(flat(t)).area),
     ...offers.map(() => OFFER_AREA),
@@ -563,7 +596,9 @@ export function buildPieces(
   const total = areas.reduce((a, b) => a + b, 0) || 1;
   const fixed = plates.reduce((a, pl) => a + pl.w * pl.h, 0)
     + (unread > 0 ? Math.PI * BADGE_R * BADGE_R : 0);
-  const budget = Math.max(w * usableH * FILL * 0.25, w * usableH * FILL - fixed);
+  // ★★**`crowd` は「長さ」の倍率なので、面積の予算には2乗で効かせる**（第118巡）。
+  const room2 = w * usableH * FILL * crowd * crowd;
+  const budget = Math.max(room2 * 0.25, room2 - fixed);
   // ★★★**下限で予算を破らない**。以前は 16 を床にしていたので、件数が多い日は
   //   予算を無視して大きいまま出て、器に入り切らなかった。
   // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。

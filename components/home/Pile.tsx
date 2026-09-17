@@ -21,7 +21,8 @@ import {
   bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile,
 } from "./pilePaint";
 import {
-  PILL_HINT, PULL_ARM, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey, ghostMotion, pullBus,
+  BAND_CATCH, BAND_NEAR, PILL_HINT, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey,
+  ghostMotion, pullBus,
   stepGhost, type Ghost, type PillLook,
 } from "@/lib/pullDrag";
 
@@ -296,7 +297,13 @@ export function Pile({
   const railRef = useRef(false);
   const [holding, setHolding] = useState(false);
   /** ★`angle` ＝ **掴んだときの角度**（運んでいるあいだ固定する。第112巡）。 */
-  const dragRef = useRef<{ piece: Piece; x: number; y: number; angle: number } | null>(null);
+  /**
+   * ★`place` … **帯へ戻す／右端で日付を付け直す**が効く相手か（＝`pillOf` が
+   * 版面を返す相手か）。★★★**日付と曜日の板は運べるが、行き先は無い**
+   * （2026-09-18・第120巡。ユーザー「**日付もつかめるように**」）。
+   */
+  const dragRef = useRef<
+    { piece: Piece; x: number; y: number; angle: number; place: boolean } | null>(null);
   /**
    * ★★★**ループが回っているか／回す本体**（2026-09-16・第107巡。`GravityTab` と
    * 同じ名前・同じ形）。**読む人が1つの作りだけ覚えればよい**ようにしてある。
@@ -1042,7 +1049,15 @@ export function Pile({
    *   3. **指の太さぶんの余裕が無かった** ―― `TOUCH_SLOP` ぶん広げ、
    *      **当たった中でいちばん近いもの**を採る。
    * ★★★**トゲトゲの円も見る**（押すと行き先があるので、見ないと触れない）。
-   *   **見ないのは文字の板だけ。**
+   * ★★★**文字の板も見る**（2026-09-18・第120巡にユーザー指定「**日付も
+   *   つかめるように**」）。★★**ただし帯にも右端にも入らない**
+   *   （`dragRef.place`）―― 日付の板に割り当てる日付は無い。
+   * ★★★**板は「遊びなし」で勝つ**（＝見えているものが掴める）。
+   *   ★**板はいちばん最後に塗られる**ので、画面では必ずいちばん上に居る。
+   *     だから**板の内側を押したら板**、という以外は嘘になる。
+   *   ★★**`TOUCH_SLOP` を足さないのが肝** ―― 足すと、板は山でいちばん大きな
+   *     塊なので**まわりの図形を軒並み飲み込む**（実測 … 板の中心を押したのに
+   *     隣のタスクが掴まれ、板は 295px 置き去りになった）。縁のそばは下の図形へ譲る。
    */
   const pickAt = (cx: number, cy: number): Piece | null => {
     const box = boxRef.current;
@@ -1051,24 +1066,27 @@ export function Pile({
     const pt = { x: cx - r.left, y: cy - r.top };
     let best: Piece | null = null;
     let bestD = Infinity;
+    let plate: Piece | null = null;
+    let plateD = Infinity;
     for (const p of piecesRef.current) {
-      if (p.kind === "word") continue;   // ★文字の板は触れない（下の図形に譲る）
       const b = p.body;
       const dx = pt.x - b.position.x; const dy = pt.y - b.position.y;
       const d = Math.hypot(dx, dy);
+      // ★★板だけ遊びを 0 にする（上の注釈）。
+      const slop = p.kind === "word" ? 0 : TOUCH_SLOP;
       let inside: boolean;
       // ★★★**円で描くものは半径で見る**（忘れると押しても飛ばない）。
       //   ★★カセット（`cassette`）は**四角**なので下の枝（箱で見る）へ入る
       //     ―― 第94巡に円からカセットへ替えたとき、ここを直すのを忘れると
       //     四角い図形を円で当てることになる。
       if ((p.kind === "offer" || p.kind === "badge") && p.r) {
-        inside = d <= p.r + TOUCH_SLOP;
+        inside = d <= p.r + slop;
       } else {
         // ★回っている図形は、**体の向きへ座標を戻してから**見る。
         const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
         const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
         const pw = p.w ?? 0; const ph = p.h ?? 0;
-        inside = Math.abs(ly) <= ph / 2 + TOUCH_SLOP;
+        inside = Math.abs(ly) <= ph / 2 + slop;
         // ★★★**タスクは「絵と同じ輪郭」で見る**（2026-09-14・第104巡にユーザー指摘
         //   「**図形のピルの左右のところの当たり判定がおかしい**」）。
         //   第101巡に**物理の体**は `stackOutline` の輪郭へ直したが、**指で触る
@@ -1078,14 +1096,18 @@ export function Pile({
         //   ★カセットは本当に四角なので、そのまま箱で見る（下の枝）。
         if (inside && p.kind === "task" && pw > 0 && ph > 0) {
           const hw = halfWidthAtStack(clampRows(rowsOf(p.title ?? "")), pw / ph, ly / ph);
-          inside = Math.abs(lx) <= hw * pw + TOUCH_SLOP;
+          inside = Math.abs(lx) <= hw * pw + slop;
         } else {
-          inside = inside && Math.abs(lx) <= pw / 2 + TOUCH_SLOP;
+          inside = inside && Math.abs(lx) <= pw / 2 + slop;
         }
       }
-      if (inside && d < bestD) { best = p; bestD = d; }
+      if (!inside) continue;
+      // ★★板は「内側を押したら必ず板」（上の注釈）。ほかは今までどおり近い順。
+      if (p.kind === "word") {
+        if (d < plateD) { plate = p; plateD = d; }
+      } else if (d < bestD) { best = p; bestD = d; }
     }
-    return best;
+    return plate ?? best;
   };
 
   const press = useRef<{ id: number; x: number; y: number; timer: number } | null>(null);
@@ -1096,8 +1118,7 @@ export function Pile({
     if (press.current) return;
     const timer = window.setTimeout(() => {
       const p = pickAt(e.clientX, e.clientY);
-      // ★文字の板は掴めない（`GravityTab` と同じ）。
-      if (!p || p.kind === "word") return;
+      if (!p) return;
       const box = boxRef.current;
       if (!box) return;
       const r = box.getBoundingClientRect();
@@ -1105,7 +1126,12 @@ export function Pile({
       //   ★掴む前に `TAP_MOVE`(8px) を超えたら press は消えるので、ずれは高々 8px。
       const pr = press.current;
       const cx = pr?.x ?? e.clientX; const cy = pr?.y ?? e.clientY;
-      dragRef.current = { piece: p, x: cx - r.left, y: cy - r.top, angle: p.body.angle };
+      // ★★★**行き先が在るかは `pillOf` に聞く**（版面を作れる ＝ 帯へ戻せる）。
+      //   **掴んだ1回だけ**決める ―― 毎フレーム聞くと規則が2か所に分かれる。
+      dragRef.current = {
+        piece: p, x: cx - r.left, y: cy - r.top, angle: p.body.angle,
+        place: !!pillOf?.(p),
+      };
       // ★★★**眠っている体を起こす**（2026-09-14・第102巡。ユーザー指摘
       //   「**ホームの図形も触れれるように**」の正体）。山は落ち着くと
       //   `engine.enableSleeping = true` になるが（下の落ち着きの判定）、
@@ -1147,7 +1173,8 @@ export function Pile({
     //   ★当たり判定は**指の x だけ**で取る（面は `transform` の途中で嘘をつく）。
     // ★★★**境目には遊びを持たせる**（2026-09-16・第108巡。`RAIL_HYST`）
     //   ―― 1本の線だと、指がその上に居るあいだ毎フレーム反転する。
-    const near = e.clientX > window.innerWidth - RAIL_NEAR
+    // ★★★**行き先の無いもの（日付・曜日の板）では出さない**（第120巡）。
+    const near = dragRef.current.place && e.clientX > window.innerWidth - RAIL_NEAR
       - (railRef.current ? RAIL_HYST : 0);
     if (near !== railRef.current) { railRef.current = near; onRail?.(near); }
     const box = boxRef.current;
@@ -1160,16 +1187,16 @@ export function Pile({
     //   ★★**`tTo` を 0 にするだけ** ―― 段が 3→2→1 と畳まれ、寸法がピルへ縮む。
     //     帯から出せば `tTo` が 1 へ戻り、また膨らむ（**往復できる**）。
     //   ★1ジェスチャの中で何度でも出入りするので、**幽霊は作り直さず行き先だけ**変える。
-    //   ★★**届く範囲は右端の ASSIGN と同じ `RAIL_NEAR`** ―― 帯は1段だと 44px しか
-    //     無く、指の真下に図形の中心が在るので、帯そのものへ入れるのは難しい。
-    //     **縁から 72px で反応する**という決まりを両方の縁で1つにする。
+    //   ★★★**届く範囲は `BAND_NEAR`**（2026-09-18・第120巡に `RAIL_NEAR` から
+    //     独立させた。理由は `lib/pullDrag.ts` ―― 右端は寄せにいく／帯は通り道）。
     //   ★★★**ここも境目に遊びを持たせる**（2026-09-16・第108巡。`RAIL_HYST`）
-    //     ―― 入るのは `RAIL_NEAR`、出るのは `RAIL_NEAR + RAIL_HYST`。1本の線だと
+    //     ―― 入るのは `BAND_NEAR`、出るのは `BAND_NEAR + RAIL_HYST`。1本の線だと
     //     指がその上に居るあいだ `tTo` が 1 と 0 を往復し、**形がぶるぶる震える**
     //     （ユーザー報告「動作がやっぱり不安定」）。
+    //   ★★★**行き先の無いもの（日付・曜日の板）では入らない**（第120巡）。
     const bandY = bandBottom?.() ?? 0;
-    const inBand = bandY > 0 && dragRef.current.y
-      < bandY + RAIL_NEAR + (homeRef.current ? RAIL_HYST : 0);
+    const inBand = dragRef.current.place && bandY > 0 && dragRef.current.y
+      < bandY + BAND_NEAR + (homeRef.current ? RAIL_HYST : 0);
     if (inBand !== homeRef.current) {
       homeRef.current = inBand;
       if (inBand) {
@@ -1185,7 +1212,7 @@ export function Pile({
     const gh0 = pullBus.ghost;
     if (gh0 && gh0.home) {
       const caught = bandY > 0 && dragRef.current.y
-        < bandY + PULL_ARM + (gh0.aim ? RAIL_HYST : 0);
+        < bandY + BAND_CATCH + (gh0.aim ? RAIL_HYST : 0);
       // ★★★**着地点はその図形が入る段の中心・指の x**（2026-09-15・第110巡）。
       //   ★★**「下の段」と決め打ちしない** ―― 空の段は描かれないので、
       //     提案しか無い日は下の段そのものが存在しない（`bandRowAt` が実測して返す）。

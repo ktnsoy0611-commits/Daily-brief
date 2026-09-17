@@ -1,222 +1,256 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CardShapeDefs } from "@/components/explore/CardShapeDefs";
-import { INK, PAPER, SANS, SECOND } from "@/lib/constants";
-import { cardShapeClip, type CardShape } from "@/lib/cardShape";
+import { SANS } from "@/lib/constants";
+import type { CardShape } from "@/lib/cardShape";
+import { cardMorph } from "@/lib/cardMorph";
 import { img } from "@/lib/helpers";
-import { T_IN, ms } from "@/lib/motion";
+import { EASE_SETTLE, T_IN, T_OUT, easeAt, ms } from "@/lib/motion";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import type { BriefCard } from "@/lib/types";
 
-// ★★★**提案カードの詳細の画面**（2026-09-17・第119巡にユーザー指定）。
+// ★★★**提案カードの詳細の画面**（2026-09-17・第119巡／**第120巡に作り直し**）。
 //
-// > 「**Explore のカードの画面で、画像のところをタップすると、画像のマスクの形が
-// > 回転しながら拡大して、画像が画面全体のような画面アニメーションして遷移する
-// > 感じです。遷移した後の画面のイメージは、画像が大きく表示されていて、下の方が
-// > ブラーになっていてそこに詳細文が書かれていて、下にスクロールして全文を
-// > 読んでいける感じです**」
+// > 「**写真部分をタップすると、マスクの枠だけが回りながらアニメーションし、画像の
+// > 表示領域が大きくなっていきます。広がるのですが最終的に、画像の周りに色のついた
+// > ベゼルが残るようにし、画面的には画面全体そのジャンルのベタ塗りに、角丸の四角で
+// > マスクされた写真が画面上半分より大きいくらいに大きく表示され、下に詳細文が
+// > かかるような形です。（…）画像を大きくしすぎると粗が目立つのでそれの対策でも
+// > ある変更です**」
 //
-// ★★★**回るのは「マスク」だけ。写真は回らない**（ユーザーの言葉どおり
-//   「**画像のマスクの形が回転しながら拡大**」）。だから層を2枚にして、
-//   **外の器が回って育ち、中の写真は逆に回して逆にずらす** ―― こうすると
-//   写真は画面に貼り付いたまま、**形が「窓」として広がる**。
+// ★★★**第119巡の「画面いっぱいへ広げる」はやめた**（ユーザー撤回）。**復活させない。**
+//   ★理由は版面ではなく**素材** ―― 元の写真は `img()` 越しの 1000px 級なので、
+//     390×844 の実機（dpr 3）で全画面にすると**足りない**。ベゼルを残すと
+//     写真は 358×490 ＝ デバイス 1074×1470 で、いま取っている大きさと釣り合う。
 //
-// ★★★**育つのは `transform: scale` ではなく「幅と高さ」**（第119巡に踏んだ）。
-//   ★★**CSS は `scale` を線形に補間するので、`scale(1/s)` は途中で逆行列に
-//     ならない** ―― 外が 0.37 → 2.2、内が 2.72 → 0.45 と**別々に直線で**動くため、
-//     真ん中では積が **2.04**（＝写真が2倍に膨らむ）。実測して分かった。
-//   ★★★**回転と平行移動は足し算なので、途中でも厳密に打ち消し合う。**
-//     だから**その2つだけ**を打ち消しに使い、大きさは**レイアウト**で育てる。
-//     （固定配置の1枚だけなので、レイアウトの費用は無視できる。）
-//   ★★**打ち消しの順は逆**（外が `translate → rotate` なら内は `rotate⁻¹ → translate⁻¹`）。
-// ★★★**`clip-path` を使う**（CSS のマスクではない）。実機の WebKit で `mask-size`
-//   が効かない ―― 理由は `lib/cardShape.ts` の頭。
-// ★★★**器は正方形**（`objectBoundingBox` は器の比へ引き伸ばすので、長方形だと
-//   四つ葉とトゲトゲが潰れる）。
+// ★★★**変形は `lib/cardMorph.ts` の1か所**（札の形 → 角丸四角）。
+//   ★★**毎フレーム `d` を書く** ―― CSS の `clip-path` の補間には頼らない。
+//   ★★**曲線は `EASE_SETTLE`**（`lib/motion.ts` の `easeAt`）。**曲線を写経しない。**
+//   ★★**回るのは枠だけ。写真は回らない**（ユーザーの言葉どおり）。写真の器は
+//     出発の正方形から行き先の角丸四角へ**まっすぐ育つ**だけ。
+//
+// ★★★**着いたら「ただの角丸四角」に戻す**（`landed`）―― 最後のフレームの
+//   `clip-path` は行き先の角丸四角そのものなので、**`border-radius` の `<img>` と
+//   入れ替えても継ぎ目が出ない**。入れ替えたあとは**普通に流れる版面**なので、
+//   指で送れば写真ごと上へ抜ける（`position: fixed` のままだと写真だけ残る）。
+//
+// ★★★**`createPortal` で `document.body` 直下へ**（第119巡に踏んだ）――
+//   `AppShell` の列は `transform` で独立した重なりの文脈を作るので、
+//   タブの中に置くと `zIndex` をいくつにしてもタブバーの下に潜る。
+// ★★★**`--nav-h` を読まない**（列にしか無い。未定義の変数を `calc()` に入れると
+//   **`padding` の一括指定ごと無効になり四方が 0**）。
 //
 // ★★**本文は `BriefCard.detail`**（`lib/briefPipeline.ts` の `SYSTEM_ENRICH_BODY`
-//   が**スクレイピングした個別ページ本文から**書いている）。無い古いカードは
-//   `body` に落とす ―― **新しいパイプラインは要らない。**
+//   が**スクレイピングした個別ページ本文から**書いている）。無い古いカードは `body`。
 
-/** ★育ちきったときの倍率。**形の内側が画面を覆う**ところまで。★目盛りの外（画面の覆い）。 */
-const GROW = 2.2;
-/** ★回る角度（度）。**マスクだけが回る**。★目盛りの外（手つき）。 */
-const TURN = 96;
-/** ★写真が見えている高さ（画面に対する割合）。残りを文が覆う。★目盛りの外（版面）。 */
-const PHOTO_VH = 0.54;
-/** ★文の面の下の余り（画面の下端の安全域に足す）。★`SPACE.xxl` の2つぶん。 */
+/** ★写真のまわりに残る色のベゼル。★上と左右で同じ。 */
+const BEZEL = SPACE.lg;
+/** ★写真の高さ（画面に対する割合）。「上半分より大きいくらい」。★目盛りの外（版面）。 */
+const PHOTO_VH = 0.58;
+/** ★本文の下の余り（画面の下端の安全域に足す）。★`SPACE.xxl` の2つぶん。 */
 const FOOT = SPACE.xxl + SPACE.xxl;
 
-export function CardDetail({ card, shape, from, onClose }: {
+interface Box { x: number; y: number; w: number; h: number }
+
+export function CardDetail({ card, shape, face, from, onClose }: {
   card: BriefCard;
   shape: CardShape;
+  /** そのジャンルの色（画面いっぱいのベタ塗り ＝ 写真のベゼル）。 */
+  face: string;
   /** 押した写真の画面上の矩形（ここから育つ）。 */
-  from: { x: number; y: number; w: number; h: number };
+  from: Box;
   onClose: () => void;
 }) {
   const clipId = useId().replace(/:/g, "");
-  // ★★**2フレーム目から育てる** ―― 最初の描画で行き先の値を書くと、
-  //   ブラウザは差分を見つけられず**一瞬で飛ぶ**（transition が走らない）。
-  const [grown, setGrown] = useState(false);
-  const [text, setText] = useState(false);
+  const pathRef = useRef<SVGPathElement>(null);
+  const holeRef = useRef<HTMLDivElement>(null);
+  const bgRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef(0);
+  /** 変形が終わって、ただの角丸四角になったか。 */
+  const [landed, setLanded] = useState(false);
+  /** 閉じている最中（本文を先に消す）。 */
+  const [going, setGoing] = useState(false);
 
-  useEffect(() => {
-    const a = requestAnimationFrame(() => requestAnimationFrame(() => setGrown(true)));
-    // ★文は**形が画面を覆いきってから**出す（途中で出すと形の外にはみ出て見える）。
-    const t = setTimeout(() => setText(true), ms(T_IN));
-    return () => { cancelAnimationFrame(a); clearTimeout(t); };
-  }, []);
+  // ★★**行き先の矩形は1か所で出す**（絵も版面の空きも同じ数を読む）。
+  const vw = typeof window === "undefined" ? 0 : window.innerWidth;
+  const vh = typeof window === "undefined" ? 0 : window.innerHeight;
+  const to: Box = { x: BEZEL, y: BEZEL, w: vw - BEZEL * 2, h: Math.round(vh * PHOTO_VH) };
+  // ★★このジェスチャのあいだ動かない2つ（rAF の中から読むので ref で凍らせる）。
+  const toRef = useRef(to);
+  const fromRef = useRef(from);
 
-  // ★★**器の一辺は画面の長いほう**（正方形。理由は頭の注釈）。
-  const side = typeof window === "undefined" ? 0 : Math.max(window.innerWidth, window.innerHeight);
-  const cx = typeof window === "undefined" ? 0 : window.innerWidth / 2;
-  const cy = typeof window === "undefined" ? 0 : window.innerHeight / 2;
-  // 出発点 … 押した写真にぴったり重なる位置。
-  const tx = from.x + from.w / 2 - cx;
-  const ty = from.y + from.h / 2 - cy;
-  const rot = grown ? TURN : 0;
-  // ★育ちきったときの一辺。**形の内側が画面を覆う**ところまで。
-  const wide = side * GROW;
-  const w = grown ? wide : from.w;
-  const mx = grown ? 0 : tx;
-  const my = grown ? 0 : ty;
+  const ink = bodyInkOn(face);
   const body = (card.detail ?? "").trim() || card.body;
   const photo = card.images?.[0];
 
-  // ★★★**`document.body` の直下へ描く**（2026-09-17・第119巡）。
-  //   ★★★**タブの中に置くと、どれだけ `zIndex` を上げても nav の下に潜る** ――
-  //     `AppShell` の列は `transform` で横へ送っているので**独立した重なりの文脈**を
-  //     作り、その中の `zIndex` は外の nav（25）と比べられない（実測 … 70 でも下）。
-  //   ★`Dashboard` / `TaskComposer` / `CreateMenu` と同じ作法。
+  /**
+   * ★★★**開くのも閉じるのも同じ1本**（`dir` が向きだけ変える）。**2度書かない。**
+   * ★★**出発の正方形はいつも「押した写真」**。行き先 `box` だけが変わる ――
+   *   閉じるときは**いま画面に在る写真の矩形**（指で送ったあとでも繋がる）。
+   */
+  const run = useRef((dir: 1 | -1, box: Box, from0: Box, done: () => void) => {
+    const morph = cardMorph(shape,
+      { cx: from0.x + from0.w / 2, cy: from0.y + from0.h / 2, size: from0.w },
+      { cx: box.x + box.w / 2, cy: box.y + box.h / 2, w: box.w, h: box.h, r: RADIUS.sheet });
+    const span = ms(dir > 0 ? T_IN : T_OUT);
+    const draw = (p: number) => {
+      pathRef.current?.setAttribute("d", morph(p));
+      const hole = holeRef.current;
+      if (hole) {
+        // ★★写真の器は**回らずにまっすぐ育つ**（回るのは枠だけ）。
+        hole.style.left = `${from0.x + (box.x - from0.x) * p}px`;
+        hole.style.top = `${from0.y + (box.y - from0.y) * p}px`;
+        hole.style.width = `${from0.w + (box.w - from0.w) * p}px`;
+        hole.style.height = `${from0.h + (box.h - from0.h) * p}px`;
+      }
+      if (bgRef.current) bgRef.current.style.opacity = String(p);
+    };
+    // ★★★**最初のフレームを「今すぐ」書く**（2026-09-18・第120巡）――
+    //   閉じるときは**版面の写真を外した直後**なので、rAF を1つ待つと
+    //   **写真がどこにも無い1フレーム**が挟まって光る。
+    draw(dir > 0 ? 0 : 1);
+    const t0 = performance.now();
+    const step = (now: number) => {
+      const raw = Math.min(1, (now - t0) / span);
+      const e = easeAt(EASE_SETTLE, raw);
+      draw(dir > 0 ? e : 1 - e);
+      if (raw < 1) { rafRef.current = requestAnimationFrame(step); return; }
+      done();
+    };
+    rafRef.current = requestAnimationFrame(step);
+  });
+
+  useEffect(() => {
+    const go = run.current;
+    go(1, toRef.current, fromRef.current, () => setLanded(true));
+    return () => cancelAnimationFrame(rafRef.current);
+    // ★★**1回だけ**（行き先は画面の寸法、出発点は押した瞬間の矩形。どちらも
+    //   このジェスチャのあいだ動かないので、ref で凍らせている）。
+  }, []);
+
+  /** 閉じるときの行き先（＝いま画面に在る写真）。`useLayoutEffect` が走らせる。 */
+  const outRef = useRef<Box | null>(null);
+  const close = () => {
+    if (going) return;
+    // ★★**いま画面に在る写真から戻す**（送ったあとでも出発点が嘘にならない）。
+    const r = document.getElementById(`${clipId}-photo`)?.getBoundingClientRect();
+    outRef.current = r ? { x: r.x, y: r.y, w: r.width, h: r.height } : toRef.current;
+    setLanded(false);
+    setGoing(true);
+  };
+  // ★★★**「窓」が戻ったそのフレームのうちに描く**（`useLayoutEffect` ＝ 塗る前）。
+  useLayoutEffect(() => {
+    const box = outRef.current;
+    if (!going || !box) return;
+    run.current(-1, box, fromRef.current, onClose);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [going, onClose]);
+
+  const picture = (style: React.CSSProperties) => (photo ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={img(photo, 900, 1200)} alt="" style={{
+      width: "100%", height: "100%", objectFit: "cover", objectPosition: "center",
+      display: "block", ...style,
+    }} />
+  ) : (
+    <div style={{
+      width: "100%", height: "100%", display: "flex",
+      alignItems: "center", justifyContent: "center",
+      fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: "min(36vw, 160px)",
+      lineHeight: LEAD.flat, color: ink, opacity: 0.85, ...style,
+    }}>{card.glyph}</div>
+  ));
+
   const view = (
     <div
       role="dialog"
       aria-label={card.title}
       style={{
         // ★★**タブバーより手前**（`AppShell` の nav は 25、帯は 15、トーストは 50）。
-        //   全画面の面なので、下に何も残さない。★目盛りの外（重なりの順）。
-        position: "fixed", inset: 0, zIndex: 70, background: text ? INK : "transparent",
-        transition: `background var(--t-in) var(--ease-settle)`,
-        overflow: "hidden",
+        //   ★目盛りの外（重なりの順）。
+        position: "fixed", inset: 0, zIndex: 70, overflow: "hidden",
       }}
     >
-      <CardShapeDefs prefix={clipId} />
-      {/* ★★★**外の器 ―― 回って育つ「窓」**。`clip-path` はここに掛かる。 */}
-      <div
-        style={{
-          position: "absolute", left: "50%", top: "50%",
-          // ★★**器は正方形**（比が変わると四つ葉とトゲトゲが潰れる）。
-          width: w, height: w,
-          marginLeft: -w / 2, marginTop: -w / 2,   // ★目盛りの外（器の中央合わせ）
-          transform: `translate(${mx}px, ${my}px) rotate(${rot}deg)`,
-          transformOrigin: "center",
-          transition: `width var(--t-in) var(--ease-settle),`
-            + ` height var(--t-in) var(--ease-settle),`
-            + ` margin var(--t-in) var(--ease-settle),`
-            + ` transform var(--t-in) var(--ease-settle)`,
-          ...cardShapeClip(shape, clipId),
-        }}
-      >
-        {/* ★★★**中の写真 ―― 逆に回して逆に縮める**ので、画面に貼り付いたまま動かない。 */}
-        <div style={{
-          position: "absolute", left: "50%", top: "50%",
-          width: "100vw", height: "100vh", marginLeft: "-50vw", marginTop: "-50vh",
-          // ★★**外の逆**（順も逆）。回転と平行移動は足し算なので厳密に打ち消える。
-          transform: `rotate(${-rot}deg) translate(${-mx}px, ${-my}px)`,
-          transformOrigin: "center",
-          transition: `transform var(--t-in) var(--ease-settle)`,
-          background: PAPER,
-        }}>
-          {photo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={img(photo, 1000, 1400)} alt="" style={{
-              width: "100%", height: "100%", objectFit: "cover", objectPosition: "center",
-              display: "block",
-            }} />
-          ) : (
-            <div style={{
-              width: "100%", height: "100%", display: "flex",
-              alignItems: "center", justifyContent: "center",
-              fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: "min(40vw, 180px)",
-              lineHeight: LEAD.flat, color: INK, opacity: 0.9,
-            }}>{card.glyph}</div>
-          )}
-        </div>
-      </div>
+      {/* ★★★**画面いっぱいのベタ塗り**（そのジャンルの色）。変形と一緒に濃くなる。 */}
+      <div ref={bgRef} style={{
+        position: "absolute", inset: 0, background: face, opacity: 0,
+      }} />
 
-      {/* ★★★**文の面** ―― 写真の上に**下から**重なり、指で上へ送ると全文が読める。
-          ★★**ブラーは面の側が持つ**（写真に掛けない ―― 掛けると送るたびに
-          画面じゅうを塗り直すことになる）。 */}
+      {/* ★★★**変形している最中だけ在る「窓」**。着いたら下の版面へ譲る。 */}
+      {!landed && (
+        <>
+          <svg width="0" height="0" aria-hidden style={{ position: "absolute" }}>
+            <clipPath id={clipId} clipPathUnits="userSpaceOnUse"><path ref={pathRef} d="" /></clipPath>
+          </svg>
+          <div style={{
+            position: "fixed", inset: 0, pointerEvents: "none",
+            clipPath: `url(#${clipId})`, WebkitClipPath: `url(#${clipId})`,
+          }}>
+            <div ref={holeRef} style={{ position: "absolute", overflow: "hidden" }}>
+              {picture({})}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ★★★**着いたあとの版面** ―― 写真も本文も同じ流れに居るので、指で送れば
+          写真ごと上へ抜ける。★押すと閉じる。
+          ★★★**器そのものは透けさせない**（2026-09-18・第120巡）―― ここに
+            `opacity` を掛けると**写真まで一緒に透ける**ので、変形が終わった瞬間に
+            写真が地の色と混ざって見えた（実測 … 濃紺の空が地の緑に寄った）。
+            **薄れてよいのは本文だけ。写真は「入れ替わる」のであって現れない。** */}
       <div
-        onClick={onClose}
+        onClick={close}
         style={{
-          position: "absolute", inset: 0, overflowY: "auto", overflowX: "clip",
+          position: "absolute", inset: 0,
+          overflowY: landed && !going ? "auto" : "hidden", overflowX: "clip",
           WebkitOverflowScrolling: "touch",
-          opacity: text ? 1 : 0,
-          transition: `opacity var(--t-item) var(--ease-settle)`,
-          pointerEvents: text ? "auto" : "none",
+          pointerEvents: landed && !going ? "auto" : "none",
+          color: ink,
         }}
       >
-        {/* 写真を見せておくぶんの空き。★押すと閉じる。 */}
-        <div style={{ height: `${Math.round(PHOTO_VH * 100)}vh` }} />
         <div
-          onClick={(e) => e.stopPropagation()}
+          id={`${clipId}-photo`}
           style={{
-            minHeight: `${100 - Math.round(PHOTO_VH * 100)}vh`,
-            // ★★★**ぼかしが効かない環境でも読めること**（`backdrop-filter` は
-            //   実機の WebKit では効くが、**効かなくても本文が読めないと困る**）。
-            //   だから**膜そのものを 0.78 まで濃く**する ―― ぼかしは「良くなる」
-            //   ぶんであって、**読めるかどうかを預けない**。
-            //   実測 … 膜の上の紙色の字は、写真が最悪（真っ白）でも比 4.9。
-            background: "rgba(44,38,39,0.78)",   // ★目盛りの外（写真の上の膜。`INK` の 78%）
-            backdropFilter: "blur(22px)",        // ★目盛りの外（ぼかしの半径）
-            WebkitBackdropFilter: "blur(22px)",
-            borderTopLeftRadius: RADIUS.sheet, borderTopRightRadius: RADIUS.sheet,
-            // ★★★**`--nav-h` を読まないこと**（2026-09-17・第119巡に踏んだ）――
-            //   あれは `AppShell` の**列**に置かれていて、`document.body` 直下へ
-            //   出したこの面からは**見えない**。未定義の変数を `calc()` に入れると
-            //   **`padding` の一括指定ごと無効**になり、**四方が 0 になる**
-            //   （実測 … 本文が画面の左端に貼り付いた）。
-            //   ★この面はタブバーより手前なので、そもそも避ける相手が居ない。
-            //     下は**画面の下端の安全域**だけ見る。
-            //   ★左右は `--pad-x`（`app/layout.tsx` が `:root` に置く＝どこからでも見える）。
-            paddingTop: SPACE.xxl,
-            paddingLeft: "var(--pad-x)", paddingRight: "var(--pad-x)",
-            // ★目盛りの外（端末が決める値 ―― `env(safe-area-inset-bottom)`）。
-            paddingBottom: `calc(env(safe-area-inset-bottom) + ${FOOT}px)`,
-            color: PAPER,
+            position: "relative", marginLeft: to.x, marginTop: to.y,
+            width: to.w, height: to.h,
+            borderRadius: RADIUS.sheet, overflow: "hidden",
           }}
-        >
+        >{landed ? picture({}) : null}</div>
+        <div style={{
+          opacity: landed && !going ? 1 : 0,
+          transition: `opacity var(--t-item) var(--ease-settle)`,
+          paddingTop: SPACE.xl,
+          // ★左右は写真と同じベゼル（`--pad-x` ではなく、この画面の器の値）。
+          paddingLeft: BEZEL, paddingRight: BEZEL,
+          // ★目盛りの外（端末が決める値 ―― `env(safe-area-inset-bottom)`）。
+          paddingBottom: `calc(env(safe-area-inset-bottom) + ${FOOT}px)`,
+        }}>
           <div style={{
             fontFamily: SANS, fontSize: TYPE.micro, fontWeight: WEIGHT.bold,
             letterSpacing: TRACK.wide, lineHeight: LEAD.flat,
-            color: bodyInkOn(INK), opacity: 0.68, marginBottom: SPACE.sm,
+            opacity: 0.7, marginBottom: SPACE.sm,
           }}>{card.categoryJp ?? card.category}</div>
           <h2 style={{
             margin: `0 0 ${SPACE.lg}px`, fontFamily: SANS, fontWeight: WEIGHT.bold,
             fontSize: TYPE.display, lineHeight: LEAD.snug, letterSpacing: TRACK.normal,
-            color: PAPER,
           }}>{card.title}</h2>
           {body.split(/\n+/).filter(Boolean).map((line, i) => (
             <p key={i} style={{
               margin: `0 0 ${SPACE.lg}px`, fontFamily: SANS, fontSize: TYPE.body,
               fontWeight: WEIGHT.text, lineHeight: LEAD.body, letterSpacing: TRACK.normal,
-              color: PAPER, opacity: 0.92,
+              opacity: 0.92,
             }}>{line}</p>
           ))}
           {(card.meta ?? []).length > 0 && (
-            <div style={{
-              display: "flex", flexWrap: "wrap", gap: SPACE.sm, marginTop: SPACE.xl,
-            }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: SPACE.sm, marginTop: SPACE.xl }}>
               {card.meta!.map((m) => (
                 <span key={m} style={{
                   fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.text,
-                  lineHeight: LEAD.snug, letterSpacing: TRACK.normal,
-                  color: PAPER, opacity: 0.8,
-                  border: `1px solid rgba(250,250,249,0.28)`,   // ★目盛りの外（膜の上の縁）
+                  lineHeight: LEAD.snug, letterSpacing: TRACK.normal, opacity: 0.85,
+                  border: `1px solid currentColor`,
                   borderRadius: RADIUS.pill, padding: `${SPACE.xs}px ${SPACE.md}px`,
                 }}>{m}</span>
               ))}
@@ -224,17 +258,18 @@ export function CardDetail({ card, shape, from, onClose }: {
           )}
           {card.sourceUrl && (
             <a href={card.sourceUrl} target="_blank" rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
               style={{
                 display: "inline-block", marginTop: SPACE.xl,
                 fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
                 lineHeight: LEAD.snug, letterSpacing: TRACK.normal,
-                color: PAPER, textDecoration: "underline",
+                color: "inherit", textDecoration: "underline",
               }}>元の記事を開く{card.sourceLabel ? `（${card.sourceLabel}）` : ""}</a>
           )}
           <div style={{
             marginTop: SPACE.xxl, fontFamily: SANS, fontSize: TYPE.micro,
             fontWeight: WEIGHT.text, lineHeight: LEAD.snug, letterSpacing: TRACK.wide,
-            color: SECOND, opacity: 0.7,
+            opacity: 0.6,
           }}>画面のどこかを押すと戻ります</div>
         </div>
       </div>

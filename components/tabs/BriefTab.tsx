@@ -867,7 +867,10 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
         </main>
       )}
       {/* ★★★**写真を押して開く詳細の画面**（2026-09-17・第119巡）。
-          マスクの形が**回りながら育って**画面を覆い、そのまま本文の面が下から重なる。
+          ★★★**第120巡にユーザー指定で作り直した** …「**マスクの枠だけが回りながら
+          アニメーションし、画像の表示領域が大きくなっていく。最終的に画像の周りに
+          色のついたベゼルが残り、画面全体はそのジャンルのベタ塗り、角丸の四角で
+          マスクされた写真が画面上半分より大きいくらい、下に詳細文**」。
           ★★**第118巡までここは `BinderModal`（写真の一覧）だった** ―― 写真を押す
             指1本に2つの行き先は持たせられないので、詳細の画面へ譲った。
             ★`BinderModal` 自体はストックとプランがまだ使っている（`components/common.tsx`）。 */}
@@ -875,6 +878,9 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
         <CardDetail
           card={detail.card} from={detail.from}
           shape={cardShapeOf(KIND_DOMAIN[detail.card.kind ?? "place"] ?? "info")}
+          // ★★**面はカードとまったく同じ色**（`colorOfKind`）―― 押した札の色が
+          //   そのまま画面いっぱいへ広がるので、どこから来たかが色で分かる。
+          face={colorOfKind(detail.card.kind ?? "place")}
           onClose={() => setDetail(null)} />
       )}
       {readItem && (

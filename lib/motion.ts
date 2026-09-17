@@ -35,6 +35,34 @@ export const T_STEP = 0.05;
  */
 export const ms = (seconds: number) => Math.round(seconds * 1000);
 
+/**
+ * ★★★**曲線を JS で引く**（2026-09-18・第120巡）。★**数字は増えない** ――
+ * 上の `EASE_*` をそのまま読むだけ。
+ *
+ * ★★**要るのは「CSS に任せられない絵」だけ** ―― canvas や、毎フレーム
+ *   パスを組み直す遷移（`lib/cardMorph.ts`）。**CSS の transition では
+ *   ここを呼ばない**（あちらは `var(--ease-*)` を書く）。
+ * ★★★**曲線を写経しないこと** ―― 値を別の場所に書くと、`app/globals.css` の
+ *   `:root` と3か所目ができる。**引数で `EASE_SETTLE` を渡す。**
+ * ★ニュートン法。x(t) は単調なので4回で 1e-6 に入る（実測 最大誤差 2.4e-7）。
+ */
+export function easeAt(curve: readonly number[], x: number): number {
+  const t = Math.max(0, Math.min(1, x));
+  const [x1, y1, x2, y2] = curve;
+  const cx = 3 * x1; const bx = 3 * (x2 - x1) - cx; const ax = 1 - cx - bx;
+  const cy = 3 * y1; const by = 3 * (y2 - y1) - cy; const ay = 1 - cy - by;
+  const fx = (u: number) => ((ax * u + bx) * u + cx) * u;
+  const dx = (u: number) => (3 * ax * u + 2 * bx) * u + cx;
+  let u = t;
+  for (let i = 0; i < 5; i++) {
+    const e = fx(u) - t;
+    const d = dx(u);
+    if (Math.abs(e) < 1e-6 || Math.abs(d) < 1e-6) break;
+    u = Math.max(0, Math.min(1, u - e / d));
+  }
+  return ((ay * u + by) * u + cy) * u;
+}
+
 // ★★**共有要素(Framer Motion の `layoutId`)は撤去した**(2026-08-19・第27巡)。
 // `SURFACE_ID` / `SURFACE_IN` / `SURFACE_OUT` はもう無い。
 //

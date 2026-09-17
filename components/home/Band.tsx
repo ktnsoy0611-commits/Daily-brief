@@ -8,7 +8,8 @@ import { BAND_ROW, type BandItem, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
-  PILL_EDGE, PILL_HINT, PILL_PRESS, PULL_ARM, RAIL_HYST, RAIL_NEAR, pullBus, pullFrame,
+  BAND_CATCH, PILL_EDGE, PILL_HINT, PILL_PRESS, RAIL_HYST, RAIL_NEAR,
+  pullBus, pullFrame,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
 import { haptic } from "@/lib/helpers";
@@ -280,7 +281,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     const bandY = pull.bandBottom();
     const fy = e.clientY - br.top;
     const back = f.armed && bandY > 0
-      && fy < bandY + PULL_ARM + (g.aim ? RAIL_HYST : 0);
+      && fy < bandY + BAND_CATCH + (g.aim ? RAIL_HYST : 0);
     // ★`rowCenter` は「その段が描かれているか」の確認にだけ使う（座標は渡さない）。
     const cy = back ? pull.rowCenter(row) : null;
     g.aim = back && cy !== null;

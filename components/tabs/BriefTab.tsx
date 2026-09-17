@@ -6,11 +6,12 @@ import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "
 // ★`HOLE_CLEAR`/`PunchHoles` は**成長カードだけ**が使う（第94巡に提案カードからは
 //   綴じ穴を外した。ユーザー確定 ―― 参照デザインに穴が無く、穴の逃げで左の余白が
 //   34px に固定されて左右が非対称になっていた）。
-import { BinderModal, HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
+import { HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
 import { appTitle } from "@/lib/apps";
 import { BRIEF_CARD_ASPECT, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import { BRIEF_POOL_CAP } from "@/lib/homeBand";
+import { CardDetail } from "@/components/explore/CardDetail";
 import { keepCard } from "@/lib/keepCard";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { cardShapeClip, cardShapeOf } from "@/lib/cardShape";
@@ -26,7 +27,8 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
   card: DeckCard;
   dx: number;
   isTop: boolean;
-  onOpenBinder?: () => void;
+  /** ★写真を押した … **その写真の画面上の矩形**を渡す（詳細の画面がそこから育つ）。 */
+  onOpenBinder?: (from: { x: number; y: number; w: number; h: number }) => void;
   checkinValue: string;
   onCheckinChange: (v: string) => void;
   milestoneText: string;
@@ -148,7 +150,14 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
           無いので、器の比へそのまま伸びる。 */}
       <div
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => isTop && onOpenBinder && onOpenBinder()}
+        // ★★★**写真を押すと詳細の画面へ**（2026-09-17・第119巡にユーザー指定）。
+        //   **押した写真の矩形を渡す** ―― 詳細の画面は**そこから育つ**ので、
+        //   出発点を知らないと繋がって見えない（`components/explore/CardDetail.tsx`）。
+        onClick={(e) => {
+          if (!isTop || !onOpenBinder) return;
+          const r = e.currentTarget.getBoundingClientRect();
+          onOpenBinder({ x: r.x, y: r.y, w: r.width, h: r.height });
+        }}
         style={{
           // ★★★**器は正方形**（2026-09-13・第96巡）。`clipPathUnits="objectBoundingBox"`
           //   は 0〜1 のパスを**器の比へ引き伸ばす**ので、器が 308×275（比 1.12）
@@ -330,10 +339,24 @@ const BRIEF_AR = (() => {
 // 構造的に起こらないようにする。
 const GROWTH_FOOTER_SLOT = 58;
 
-export function BriefTab({ appState, persist, goTab }: TabProps) {
+export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }: TabProps) {
+  /**
+   * ★★★**ホームの山の「おすすめの提案」を押して来たときは、そのカードを先に出す**
+   * （2026-09-17・第119巡にユーザー指定「**タップするとExploreのそのカードに
+   * 飛べるようにしてください**」）。
+   * ★★**受け取ったらすぐ共有の合図を降ろし、こちらで憶える** ―― 降ろさないと、
+   *   そのカードを決めたあとも同じ id が残り、**BRIEF を開くたび効こうとする**。
+   *   ★憶えたほうは**決めればプールから消える**ので、そのとき自然に効かなくなる。
+   */
+  const [pinned, setPinned] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusCard) { setPinned(focusCard); clearFocusCard?.(); }
+  }, [focusCard, clearFocusCard]);
   const [drag, setDrag] = useState({ dx: 0, dy: 0, active: false });
   const [exit, setExit] = useState<"keep" | "skip" | null>(null);
-  const [binderItem, setBinderItem] = useState<BriefCard | null>(null);
+  /** ★★写真を押して開く**詳細の画面**（第119巡）。`from` ＝ 押した写真の矩形。 */
+  const [detail, setDetail] = useState<
+    { card: BriefCard; from: { x: number; y: number; w: number; h: number } } | null>(null);
   const [readItem, setReadItem] = useState<BriefCard | null>(null);
   const [checkinAnswer, setCheckinAnswer] = useState("");
   const [milestoneText, setMilestoneText] = useState("");
@@ -392,7 +415,11 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
   // ★「朝刊/夕刊」という区切りは廃止した(2026-08-03)。キーは日付だけで、
   // 1日に何度生成しても同じ日のデッキに積まれる。
   const editionKey = todayKey();
-  const decisions: Record<string, Decision> = (appState.briefs?.[editionKey]?.decisions as Record<string, Decision>) ?? {};
+  // ★★**`useMemo` で包む**（2026-09-17・第119巡）―― `?? {}` は毎回**新しい空の
+  //   オブジェクト**を作るので、これを読む `useMemo` が毎レンダー作り直される。
+  const decisions: Record<string, Decision> = useMemo(
+    () => (appState.briefs?.[editionKey]?.decisions as Record<string, Decision>) ?? {},
+    [appState.briefs, editionKey]);
   // ★未消化カードは日をまたいで貯まる。決定(keep/skip)・旗は日ごとの
   // briefs[*] に散って記録されるが、カードidは生成実行ごとにDate.nowベースで
   // 一意なので、全日ぶんをマージして引ける。
@@ -516,8 +543,18 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
       const growthCard: GrowthCard = { id: `${kind}-${g.id}`, type: kind, goalId: g.id, goalTitle: g.title };
       base.splice(3, 0, growthCard);
     }
+    // ★★★**指名されたカードを「次に出る1枚」の席へ動かす**（第119巡）。
+    //   ★★**先頭へ動かしてはいけない** ―― 出るのは `deck[index]` で、`index` は
+    //     **この画面に来てから決めた枚数**。0 とは限らないので、**いちばん前の
+    //     まだ決めていない席**（＝ちょうど `index` の位置）へ差し替える。
+    if (pinned) {
+      const at = base.findIndex((c) => String(c.id) === pinned);
+      const next = base.findIndex((c) => !(isGrowthCard(c) ? decisions[c.id] : allDecisions[c.id]));
+      if (at >= 0 && next >= 0 && at !== next) base.splice(next, 0, ...base.splice(at, 1));
+    }
     return base;
-  }, [dueCandidate, appState.generatedDecks, growthDecidedThisEdition]);
+  }, [dueCandidate, appState.generatedDecks, growthDecidedThisEdition,
+    pinned, decisions, allDecisions]);
 
   // ★★育成カードは**今日の号だけ**を見る(2026-08-26・第64巡)。育成カードの id は
   //   `checkin-<goalId>` で**日付を含まない＝日をまたいで同じ**なので、全号マージの
@@ -748,7 +785,7 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
                   }}
                 >
                   <CardFace card={card} dx={isTop ? drag.dx : 0} isTop={isTop}
-                    onOpenBinder={isTop ? () => setBinderItem(card as BriefCard) : undefined}
+                    onOpenBinder={isTop ? (from) => setDetail({ card: card as BriefCard, from }) : undefined}
                     checkinValue={isTop ? checkinAnswer : ""} onCheckinChange={isTop ? setCheckinAnswer : () => {}}
                     milestoneText={isTop ? milestoneText : ""} onMilestoneTextChange={isTop ? setMilestoneText : () => {}}
                     milestoneRating={isTop ? milestoneRating : null} onMilestoneRatingChange={isTop ? setMilestoneRating : () => {}}
@@ -829,7 +866,17 @@ export function BriefTab({ appState, persist, goTab }: TabProps) {
           </button>
         </main>
       )}
-      <BinderModal item={binderItem} onClose={() => setBinderItem(null)} />
+      {/* ★★★**写真を押して開く詳細の画面**（2026-09-17・第119巡）。
+          マスクの形が**回りながら育って**画面を覆い、そのまま本文の面が下から重なる。
+          ★★**第118巡までここは `BinderModal`（写真の一覧）だった** ―― 写真を押す
+            指1本に2つの行き先は持たせられないので、詳細の画面へ譲った。
+            ★`BinderModal` 自体はストックとプランがまだ使っている（`components/common.tsx`）。 */}
+      {detail && (
+        <CardDetail
+          card={detail.card} from={detail.from}
+          shape={cardShapeOf(KIND_DOMAIN[detail.card.kind ?? "place"] ?? "info")}
+          onClose={() => setDetail(null)} />
+      )}
       {readItem && (
         // 情報カードの「記事を読む」全画面ビュー。detail(記事の半分要約)を読む。
         // 生成時に作った要約なので、その場で取得せず即表示・オフラインでも読める。

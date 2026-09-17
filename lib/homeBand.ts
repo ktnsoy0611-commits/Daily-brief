@@ -107,15 +107,6 @@ export const BAND_LIMIT_TASKS = 9;
  */
 export const BRIEF_POOL_CAP = 15;
 
-const cardText = (c: BriefCard): string => c.title || c.trigger || c.category;
-/**
- * そのカードの色。
- * ★★★**`BriefCard.color` を信じてはいけない**（2026-09-09・実機で発覚）。
- *   `deckStyle` が**生成した夜のパレット**で色を焼き込んでいるので、配色を
- *   替えても**過去に生成された号は昔の色のまま**出てくる（展覧会が古いオレンジ
- *   のままだったのがこれ）。**いま生きている表から毎回引き直す。**
- */
-const cardFace = (c: BriefCard): string => colorOfKind(c.kind ?? "info");
 /**
  * タスク系のピルの色。★★**無彩色のグレー1色**（第117巡にユーザー指定）。
  * ★第93巡にタグを廃止したので、分岐そのものが消えた（`lib/constants.ts` の1か所）。
@@ -184,17 +175,16 @@ export function unreadEntries(state: AppState): { ed: string; card: BriefCard }[
 export function bandItems(state: AppState): BandItem[] {
   const out: BandItem[] = [];
 
-  // 1 今日入った、おすすめの提案。★色も写真も字面も、Explore のカードのまま。
-  for (const c of unreadCards(state)) {
-    out.push({
-      id: `offer-${c.id}`, kind: "offer", text: cardText(c), itemKind: c.kind ?? "place",
-      face: cardFace(c), photo: c.images?.[0], glyph: c.glyph,
-      // ★★ジャンルも**いま生きている表から引く**（`c.category` は生成時の焼き込み）。
-      genre: genreOfKind(c.kind ?? "info"),
-    });
-  }
+  // ★★★**まだ読んでいない提案は、もう帯に流さない**（2026-09-17・第119巡に
+  //   ユーザー指定「**提案の帯に流れるのは、すでにストックしてあるものの中で、
+  //   その時の時間とかで行けるものとかおすすめのものにします**」）。
+  //   → **未読のカードは「おすすめ3件」として山へ落ちる**（`lib/offerPick.ts`）。
+  //   ★★**`BandKind` の `"offer"` は型としては残している** ―― 山の
+  //     おすすめの図形を**帯へ運ぶと KEEP される**道（`HomeTab.put` の
+  //     `offer-` の枝 ＋ `lib/keepCard.ts`）が同じ id の作り方を使うため。
+  //     **`bandItems` がもう作らないだけ。**
 
-  // 2 今日行くのがおすすめの提案。
+  // 1 今日行くのがおすすめの提案。
   // ★★★**ストックの中から「今日これから行ける」もの**（2026-09-13・第99巡に
   //   ユーザー指定「その日の分を読み終わっても、**ストックしてあって今日行くのが
   //   おすすめのもの**を出しておいて。**夜に美術館**は現実的でないので…」）。

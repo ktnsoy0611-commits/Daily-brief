@@ -678,12 +678,19 @@ export function AppShell() {
     }).catch(() => {});
   }, [appState, persist]);
 
-  const goTab = useCallback((id: TabId) => {
+  /** ★★飛んだ先で開いておきたい提案のカード（第119巡。ホームの山から BRIEF へ）。 */
+  const [focusCard, setFocusCard] = useState<string | null>(null);
+  const clearFocusCard = useCallback(() => setFocusCard(null), []);
+
+  const goTab = useCallback((id: TabId, card?: string) => {
     // どのアプリのタブかは APPS の定義から引く(他アプリのタブを指定された
     // 場合はそのアプリごと切り替わる)。
     const owner = APPS.find((a) => a.tabs.some((t) => t.id === id));
     setAppId(owner?.id ?? "life");
     setTabByApp((prev) => ({ ...prev, [owner?.id ?? "life"]: id }));
+    // ★★**`undefined` で消さない** ―― 普通のタブ切り替えでも降ろしたいので、
+    //   **渡されなければ `null`**（＝「開いておきたいカードは無い」）。
+    setFocusCard(card ?? null);
   }, [setAppId]);
   // ★タブバーのジェスチャー。横に払えばアプリの切り替え、上へ引き上げれば
   // ダッシュボード。最初の10pxでどちらの軸かを決め、決まった軸だけを見る
@@ -1053,8 +1060,8 @@ export function AppShell() {
   // ストックタブ(ウィッシュの一覧がある場所)から開く。
   const openWishSheet = useCallback(() => { haptic(5); setAddingWish(true); }, []);
   const tabProps = useMemo(
-    () => (appState ? { appState, persist, showToast, goTab, selection, toggleItemSelection, addItemIds, setSelection, voice, openWishSheet } as TabProps : null),
-    [appState, persist, showToast, goTab, selection, toggleItemSelection, addItemIds, voice, openWishSheet],
+    () => (appState ? { appState, persist, showToast, goTab, selection, toggleItemSelection, addItemIds, setSelection, voice, openWishSheet, focusCard, clearFocusCard } as TabProps : null),
+    [appState, persist, showToast, goTab, selection, toggleItemSelection, addItemIds, voice, openWishSheet, focusCard, clearFocusCard],
   );
 
   // 認証ゲート(Supabase構成済みのときだけ)。未構成なら以下の2分岐は素通り。

@@ -11,7 +11,7 @@ import {
 } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
-import type { Item, TabId, Task } from "@/lib/types";
+import type { BriefCard, Item, ItemKind, TabId, Task } from "@/lib/types";
 import type { Landing } from "@/lib/pullDrag";
 
 // ★★★**山の「世界」**（2026-09-11・第92巡に `components/home/Pile.tsx` から分けた）。
@@ -364,6 +364,14 @@ export interface Piece {
   /** ★★**押すと行き先がある図形**（未読の数＝ブリーフ／ジャーナル＝レコード）。 */
   nav?: TabId;
   /**
+   * ★★★**おすすめの提案だけが持つ**（2026-09-17・第119巡）。
+   * `card` ＝ その `BriefCard.id`（**押すと Explore のそのカードへ飛ぶ**）／
+   * `ed` ＝ 元の号のキー（**帯へ運ぶと KEEP する**ので `lib/keepCard.ts` が要る）。
+   * ★★**まだ `Item` が無い**ので、`id` は `offer-<card.id>`（帯の id の作り方と同じ）。
+   */
+  card?: string;
+  ed?: string;
+  /**
    * ★★★**この巡で新しく湧いたか**（2026-09-15・第111巡）。
    * ★★★**`clearOverlap` を掛けてよいのはこれが真のものだけ** ―― あれは
    *   「器のすぐ上から湧いた体どうしを離す」ための道具で、**AABB で見て真上へ
@@ -474,6 +482,13 @@ export function sink(m: M, b: Body, floorY: number): boolean {
 export interface PileContent {
   tasks: Task[];
   offers: Item[];
+  /**
+   * ★★★**その日の「好みそうな」提案**（2026-09-17・第119巡にユーザー指定
+   * 「**Explore で溜まっている（もしくは新着の）もののうち最もおすすめなのを
+   * 3件ほど抽出し、ホームに落とす**」）。選び方は `lib/offerPick.ts`。
+   * ★**まだ KEEP していないカード**なので `Item` ではない。
+   */
+  picks: { ed: string; card: BriefCard }[];
   unread: number;
   today: Date;
   /** ★その日まだ声を録っていないか（真なら録音のダイヤルの円を落とす）。 */
@@ -523,7 +538,7 @@ export function buildPieces(
   prev?: Map<string, Piece>, landing?: Landing | null, hold?: number,
   bandH = 0,
 ): PileBuild {
-  const { tasks, offers, unread, today, journal } = c;
+  const { tasks, offers, picks, unread, today, journal } = c;
 
   // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**（2026-09-09）。
   // ★★★**形は JOURNAL のタブのアイコン（カセット）そのもの**（2026-09-13・第94巡に
@@ -551,7 +566,8 @@ export function buildPieces(
   //   同じ倍率を掛けるため（掛けないと、混むほど板だけが相対的に巨大になる）。
   //   ★数えるのは**落とす体の全部**（タスク・提案・カセット・未読・板2枚）。
   const crowd = crowdOf(
-    tasks.length + offers.length + (jH > 0 ? 1 : 0) + (unread > 0 ? 1 : 0) + 2);
+    tasks.length + offers.length + picks.length
+    + (jH > 0 ? 1 : 0) + (unread > 0 ? 1 : 0) + 2);
   const words = [`${today.getMonth() + 1}.${today.getDate()}`, WD_SHORT[today.getDay()]];
   const room = pileWOf(w) * WORD_W * crowd;
   // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
@@ -591,6 +607,7 @@ export function buildPieces(
   const areas = [
     ...tasks.map((t) => rowSpecOf(flat(t)).area),
     ...offers.map(() => OFFER_AREA),
+    ...picks.map(() => OFFER_AREA),
     ...(jArea > 0 ? [jArea] : []),
   ];
   const total = areas.reduce((a, b) => a + b, 0) || 1;
@@ -778,41 +795,54 @@ export function buildPieces(
     });
   }
 
-  offers.forEach((it) => {
-    // ★★提案は重さを持たないので、**いちばん重いタスクと同じ**として置く
-    //   （2026-09-08 ユーザー指定「提案の図形はもっと大きく」）。
+  /**
+   * ★★★**提案の円を1つ作る**（2026-09-17・第119巡にくくり出した）。
+   * ★★**ストックの `Item`（`plannedFor` が今日）と、まだ読んでいないおすすめの
+   *   `BriefCard`（`picks`）が同じ絵**なので、**形と色と大きさの式を2度書かない**。
+   * @param seed 体の使い回しの鍵（`Item.id` か `offer-<card.id>`）
+   */
+  const offerPiece = (
+    seed: string, kind: ItemKind, title: string, photo: string | undefined,
+    nav?: TabId, card?: string, ed?: string,
+  ) => {
     const area = OFFER_AREA;
     const r = offerRadiusOf(unit);
-    // ★★★**まん丸をやめて12角形**（2026-09-13・第96巡に形を持たせたので）。
-    //   ★★`Bodies.fromVertices` に**凹んだ形をそのまま渡してはいけない** ――
-    //   `poly-decomp` を積んでいないので分解に失敗する（未読のトゲトゲで実測済み。
-    //   下の `badge` の注意書きを見よ）。**凸の12角形**なら SAT が正しく効き、
-    //   まん丸のように滑らず**角で止まる**。当たり判定は半径のまま。
-    // ★★**絵と同じ札の形で当たる**（第101巡）。点の列は `lib/cardShape.ts` の1か所
-    //   （＝ SVG のマスクと canvas の輪郭と同じ出どころ）。**器は正方形 2r × 2r**。
-    const shape = cardShapeOf(KIND_DOMAIN[it.kind]);
+    const shape = cardShapeOf(KIND_DOMAIN[kind]);
     const sig = `offer|${r.toFixed(2)}|${shape}`;
-    const kept = same(it.id, sig);
+    const kept = same(seed, sig);
     const body = kept ?? bodyFromOutline(
       m, cardShapePoints(shape).map(([x, y]) => ({ x: x - 0.5, y: y - 0.5 })), r * 2, r * 2, BODY);
     let fresh = false;
     if (!kept) {
       m.Body.setMass(body, area * MASS_K);
-      fresh = toss(body, it.id, r * 2);
+      fresh = toss(body, seed, r * 2);
       stamp(body, sig);
     }
     // ★★**焼き込まれた色を信じない**（帯の `cardFace` と同じ理由）。生成した夜の
     //   パレットが残っているので、**いま生きている表から引き直す**。
-    const face = colorOfKind(it.kind);
+    const face = colorOfKind(kind);
     pieces.push({
-      id: it.id, body, kind: "offer", r, fresh,
+      id: seed, body, kind: "offer", r, fresh,
       face, ink: bodyInkOn(face),
-      photo: it.images?.[0], title: it.title,
+      photo, title,
       // ★★**形は券の鋏痕から導く**（`lib/cardShape.ts`。BRIEF の札と同じ1か所）。
       shape,
-      // ★写真が無い提案の顔＝**字面**（ブリーフのカードと同じ規則）。
-      glyph: glyphOfKind(it.kind),
+      glyph: photo ? undefined : glyphOfKind(kind),
+      nav, card, ed,
     });
+  };
+
+  // ★★★**おすすめの提案**（第119巡）。**押すと Explore のそのカードへ飛ぶ**ので
+  //   `nav` と `card` を持つ。★id は帯と同じ作り方（`offer-<card.id>`）。
+  picks.forEach(({ ed, card }) => {
+    offerPiece(`offer-${card.id}`, card.kind ?? "place", card.title,
+      card.images?.[0], "brief", String(card.id), ed);
+  });
+
+  // ★★★**すでにストックしてあって「今日行く」と決めた提案**（`Item.plannedFor`）。
+  //   ★絵も形も色も `offerPiece` が1か所で決める（おすすめと同じ見た目）。
+  offers.forEach((it) => {
+    offerPiece(it.id, it.kind, it.title, it.images?.[0]);
   });
 
   if (unread > 0) {

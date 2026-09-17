@@ -14,6 +14,7 @@ import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { bandRows, pinBand, unreadCards, unreadEntries, type BandItem } from "@/lib/homeBand";
 import { keepCard } from "@/lib/keepCard";
+import { pickOffers } from "@/lib/offerPick";
 import { genreOfKind } from "@/lib/deckStyle";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -65,6 +66,17 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       (i) => i.plannedFor && i.plannedFor <= day && i.status !== "done"),
     [appState.items, day],
   );
+  /**
+   * ★★★**その日の「好みそうな」提案を3件、山へ落とす**（2026-09-17・第119巡に
+   * ユーザー指定「**Explore で溜まっている（もしくは新着の）もののうち最も
+   * おすすめなのを3件ほど抽出し、ホームに落とす。タップするとExploreの
+   * そのカードに飛べるように**」）。
+   * ★選び方は `lib/offerPick.ts`（**AI は使わない**。理由はあのファイルの頭）。
+   * ★★**まだ KEEP していないカード**なので `Item` ではない ―― 山の中では
+   *   ストックの提案とまったく同じ絵で、**押すと Explore のそのカードへ飛ぶ**。
+   */
+  const picks = useMemo(() => pickOffers(appState).map(
+    ({ ed, card }) => ({ ed, card })), [appState]);
 
   // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も山に落とす**
   //   （2026-09-09 ユーザー指定）。録ってあれば出さない ―― 済んだことを
@@ -295,6 +307,20 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
    */
   const unassign = useCallback((p: Piece, after: string | null) => {
     const next: AppState = structuredClone(appState);
+    // ★★★**おすすめの提案を帯へ運んだら KEEP する**（2026-09-17・第119巡）。
+    //   まだ `Item` が無いカードなので、消す `plannedFor` も無い ―― 代わりに
+    //   **ストックへ入れる**（式は `lib/keepCard.ts` の1か所）。
+    //   ★★これで**山のおすすめは「押せば読む／帯へ運べば取っておく」**の2つを持つ。
+    const pick = p.card ? picks.find((x) => String(x.card.id) === p.card) : undefined;
+    if (pick) {
+      const made = keepCard(next, pick.ed, pick.card);
+      if (after !== null) pinBand(next, `today-${made}`, after);
+      setKeepId(`today-${made}`);
+      haptic(12);
+      persist(next);
+      showToast("ストックへ入れました");
+      return;
+    }
     const t = next.tasks.find((x) => x.id === p.id);
     if (t) { delete t.dueDate; delete t.endDate; }
     const i = (next.items ?? []).find((x) => x.id === p.id);
@@ -315,7 +341,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     haptic(12);
     persist(next);
     showToast("帯へ戻しました");
-  }, [appState, persist, showToast]);
+  }, [appState, persist, showToast, picks]);
 
   /** ★山の図形を右端で離したとき（日付を**付け直す**。ユーザー確定）。 */
   const assignPiece = useCallback((p: Piece) => {
@@ -366,7 +392,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       <div ref={boxRef} className="bleed-x-b" style={{ position: "relative", flex: 1, minHeight: 0 }}>
         {/* 山。★器は名前の下の**残り全部**（左右は画面いっぱい）。 */}
         <Pile
-          tasks={pileTasks} offers={pileOffers} unread={unread} today={today}
+          tasks={pileTasks} offers={pileOffers} picks={picks} unread={unread} today={today}
           journal={journal} onOpen={goTab} above={lift}
           onRail={setRail} onAssign={assignPiece}
           bandBottom={bandBottom} pillOf={pillOf} onUnassign={unassign}

@@ -567,7 +567,18 @@ export interface TabProps {
   voice: VoiceControls;
   persist: (next: AppState) => void;
   showToast: (msg: string) => void;
-  goTab: (tab: TabId) => void;
+  /**
+   * ★`card` … 飛んだ先で**開いておきたい提案のカードの id**（2026-09-17・第119巡）。
+   *   ホームの山の「おすすめの提案」を押したとき、BRIEF の**そのカードを一番上に出す**。
+   */
+  goTab: (tab: TabId, card?: string) => void;
+  /**
+   * ★★**いま開いておきたい提案のカードの id**（`goTab` で立ち、BRIEF が読む）。
+   * ★★**読んだら `clearFocusCard()` で降ろす** ―― 降ろさないと、そのカードを
+   *   決めたあとも同じ id が残り、次に BRIEF を開くたび効こうとする。
+   */
+  focusCard?: string | null;
+  clearFocusCard?: () => void;
   selection: PlanSelection;
   toggleItemSelection: (id: string) => void;
   addItemIds: (ids: string[]) => void;

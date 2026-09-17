@@ -26,7 +26,7 @@ import {
 } from "@/lib/pullDrag";
 
 import type { Body, Engine } from "matter-js";
-import type { Item, TabId, Task } from "@/lib/types";
+import type { BriefCard, Item, TabId, Task } from "@/lib/types";
 
 // ★★★**山**（2026-09-07）。**今日やると決めたもの**が積もる場所。
 // 物理と図形の作り方は `./pileWorld.ts`、焼き方と描き方は `./pilePaint.ts`。
@@ -196,17 +196,20 @@ const waitFonts = () => Promise.race([
 ]);
 
 export function Pile({
-  tasks, offers, unread, today, journal, onOpen, above, onRail, onAssign,
+  tasks, offers, picks, unread, today, journal, onOpen, above, onRail, onAssign,
   bandBottom, pillOf, onUnassign, rowCenter,
 }: {
   tasks: Task[];
   offers: Item[];
+  /** ★★その日の「好みそうな」提案（`lib/offerPick.ts`）。**押すと Explore へ飛ぶ**。 */
+  picks: { ed: string; card: BriefCard }[];
   unread: number;
   today: Date;
   /** ★その日まだ声を録っていないか（真なら録音のダイヤルの円を落とす）。 */
   journal: boolean;
   /** ★図形を**軽く押した**ときの行き先。長押しは掴むほうなので走らない。 */
-  onOpen: (tab: TabId) => void;
+  /** ★`card` ＝ 飛んだ先で**開いておきたいカードの id**（おすすめの図形だけが持つ）。 */
+  onOpen: (tab: TabId, card?: string) => void;
   /**
    * ★★**帯の上へ上げるか**（2026-09-14・第105巡）。引き下ろしの写し取ったピルは
    * この canvas に描かれるので、引いているあいだだけ帯より前へ出す。
@@ -976,7 +979,7 @@ export function Pile({
     //   ★ここは中身の effect（1度きり）なので、DOM を測ってよい ―― ループの
     //     中から `bandBottom()` を呼ばないこと（レイアウトを強制する）。
     const { pieces, unit } = buildPieces(
-      M, { tasks, offers, unread, today, journal }, w, h, prev, landing, hold,
+      M, { tasks, offers, picks, unread, today, journal }, w, h, prev, landing, hold,
       bandBottom?.() ?? 0);
     // ★★★**使い回した体は world から出さない**（2026-09-15・第111巡）。
     //   ★★★**出して入れ直すと、接触も眠りも切れて山が落ち直す** ―― しかも
@@ -1259,7 +1262,7 @@ export function Pile({
     if (dragged || !pr) return;
     if (Math.hypot(e.clientX - pr.x, e.clientY - pr.y) > TAP_MOVE) return;
     const p = pickAt(e.clientX, e.clientY);
-    if (p?.nav) { haptic(6); onOpen(p.nav); }
+    if (p?.nav) { haptic(6); onOpen(p.nav, p.card); }
   };
 
   return (

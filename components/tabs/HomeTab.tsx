@@ -21,7 +21,7 @@ import {
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
 import { clampRows } from "@/lib/solid";
-import { rowsOf, specOf } from "@/lib/taskSize";
+import { rowSpecOf, rowsOf } from "@/lib/taskSize";
 import { SPACE, TYPE } from "@/lib/tokens";
 import type { AppState, Item, Task, TabProps } from "@/lib/types";
 
@@ -112,16 +112,16 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       return {
         kind: "offer", title: it.text, rows: 1, outlined: false,
         face, ink: bodyInkOn(face), faceIdx: SHAPE_FACE, w: d, h: d,
-        // ★★**`buildPieces` の提案とまったく同じ数**（`weightArea(3) * OFFER_K`）。
+        // ★★**`buildPieces` の提案とまったく同じ数**（`OFFER_AREA`）。
         //   ★代理の体の重さに使う ―― 山と密度が違うと2つのソルバが喧嘩する。
         area: OFFER_AREA,
         shape: kind ? cardShapeOf(KIND_DOMAIN[kind]) : undefined,
         photo: it.photo, glyph: it.glyph,
       };
     }
-    // ★タスク側 … 重要度は元があればそれ、無ければ中（`specOf` の既定）。
-    const t = srcOf(it).task;
-    const spec = specOf({ title: it.text, weight: t?.weight ?? 2, dueDate: day }, today);
+    // ★★★**ホームは重要度を持たない**（第116巡）。段の高さを物差しにした箱
+    //   （`rowSpecOf`）を、山とまったく同じ式で読む。
+    const spec = rowSpecOf({ title: it.text });
     // ★★**器より大きく出さない**（`buildPieces` と同じ頭打ち）。まだ山に居ないものは
     //   一括の倍率の計算に入っていないので、抑えないと壁からはみ出した姿になる。
     const u = fitUnit(unit, spec.w, spec.h, bw, bh);
@@ -134,7 +134,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       // ★★**`buildPieces` のタスクとまったく同じ数**（`spec.area`）。上の注釈。
       area: spec.area,
     };
-  }, [srcOf, day, today]);
+  }, [srcOf]);
 
   /**
    * ★日付を書き込む。**帯の段ごとに元が違う**ので、ここで1か所に集める。

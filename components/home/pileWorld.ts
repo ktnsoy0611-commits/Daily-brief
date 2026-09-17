@@ -2,10 +2,9 @@ import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, PAPER, RUST, SHAPE_FACE, TASK_
 import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
 import { CASSETTE_ASPECT } from "@/lib/cassette";
 import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
-import { pad } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { glyphOfKind } from "@/lib/deckStyle";
-import { areaOf, rowsOf, specOf, weightArea } from "@/lib/taskSize";
+import { rowSpecOf, rowsOf } from "@/lib/taskSize";
 import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
 import {
@@ -13,7 +12,7 @@ import {
 } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
-import type { Item, TabId, Task, TaskWeight } from "@/lib/types";
+import type { Item, TabId, Task } from "@/lib/types";
 import type { Landing } from "@/lib/pullDrag";
 
 // ★★★**山の「世界」**（2026-09-11・第92巡に `components/home/Pile.tsx` から分けた）。
@@ -33,7 +32,8 @@ import type { Landing } from "@/lib/pullDrag";
 //   ・**トゲトゲの円** … まだ見ていない提案の残り数。数字を中に置き、0 で消える。
 // ★★**色は帯から引き継ぐ** ―― 上でその色だったものが、下りても同じ色のまま
 //   形だけ変わる（タスク＝タグの色／提案＝そのカードの色）。
-// ★大きさ＝**重要度 × 締切の近さ**（既存の `areaOf`。GRAVITY と同じ式）。
+// ★★★**大きさは「段の高さ」1つ**（第116巡。`lib/taskSize.ts` の `rowSpecOf`）。
+//   ★GRAVITY は今までどおり `specOf`（重要度 × 締切の近さ）。**別の読み方**。
 
 type M = typeof import("matter-js");
 
@@ -73,13 +73,21 @@ export function fitUnit(unit: number, sw: number, sh: number, bw: number, bh: nu
   return Math.max(10, Math.min(unit,
     (bw * FIT_W) / Math.max(1, sw), (usableH * FIT_H) / Math.max(1, sh)));
 }
-/** ★提案の円の大きさ。**いちばん重いタスク × これ**（2026-09-08 に 1 → 1.6）。 */
-const OFFER_K = 1.6;
 /**
- * ★★★**提案の面積**（solid²。2026-09-15・第110巡に名前を付けた）。
+ * ★★★**提案の直径は「段の高さの何倍か」**（2026-09-17・第116巡）。
+ * ★★**`unit` の意味が「段の高さ」に変わった**（`rowSpecOf`）ので、重要度の目盛り
+ *   （`weightArea(3) × 1.6`）からは引けない ―― **ホームの図形はもう重要度を持たない**。
+ * ★3.2 は移行前の実測から … 旧 `unit` で提案の直径は `4.04 unit`、1段のタスクの
+ *   段の高さは `1.49 unit` だったので **2.7倍**、3段だと 5.4倍。**その間を取る。**
+ */
+const OFFER_D = 3.2;
+/** ★カセットの高さ（段の高さの何倍か）。理由は `OFFER_D` と同じ。 */
+const CASSETTE_ROWS = 2.2;
+/**
+ * ★★★**提案の面積**（段の高さ²。2026-09-15・第110巡に名前を付けた）。
  * ★**`HomeTab.seed` も代理の体もここを読む** ―― 重さの目盛りは1つ。
  */
-export const OFFER_AREA = weightArea(3) * OFFER_K;
+export const OFFER_AREA = Math.PI * (OFFER_D / 2) ** 2;
 /** ★提案の半径（px）。★引き下ろしの行き先の大きさにも要るので **export**（第102巡）。 */
 export const offerRadiusOf = (unit: number): number =>
   Math.max(28, Math.sqrt((OFFER_AREA * unit * unit) / Math.PI));
@@ -127,13 +135,6 @@ const WORD_W = 0.84;
  *   2度「小さすぎる」と差し戻された。**縦だけを見て決めないこと。**
  */
 const PILE_WORD_MAX = 72;
-/**
- * ★★★**ホームのタスクの大きさは1つ**（2026-09-16・第115巡にユーザー指定）。
- * ★**真ん中の重要度**（`lib/taskSize.ts` の `weightArea` の既定と同じ）。
- * ★目盛りの外（図形の寸法）。
- */
-const HOME_WEIGHT: TaskWeight = 2;
-
 /**
  * ★★★**未読の数のトゲトゲの輪郭（絵だけ）**（2026-09-09）。
  * ★★**物理はこれではない** ―― `Bodies.polygon(ZIG_N, BADGE_R)` の**凸の12角形**
@@ -510,12 +511,11 @@ export function buildPieces(
   //   部分がブルーで他が黒」）。第93巡の「録音の円」からさらに一歩 ――
   //   **行き先の顔をそのまま持ってくる**ので、何が起きるか説明が要らない。
   //   ★寸法は `lib/cassette.ts`（タブの SVG と同じ数を読む）。
-  const jDue = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-  // ★**面積は今までと同じ**（重要度 2 ＋ 今日が期限）。変えると山の詰まり具合が動く。
-  const jArea = journal ? areaOf({ title: "", weight: 2, dueDate: jDue }, today) : 0;
-  // カセットの外接箱（solid 座標）。★面積を保ったままアイコンの比にする。
-  const jW = jArea > 0 ? Math.sqrt(jArea * CASSETTE_ASPECT) : 0;
-  const jH = jArea > 0 ? Math.sqrt(jArea / CASSETTE_ASPECT) : 0;
+  // ★★★**カセットの高さも「段の高さの何倍か」**（第116巡。理由は `OFFER_D` の注釈）。
+  //   2.2 は移行前の実測（旧 `unit` で高さ `2.26 unit`／1段の段の高さ `1.49 unit`）。
+  const jH = journal ? CASSETTE_ROWS : 0;
+  const jW = jH * CASSETTE_ASPECT;
+  const jArea = jW * jH;
 
   // ★★★**文字の板は先に決めて、器の予算から差し引く**（2026-09-10）。
   //   板は器の幅の `WORD_W` を取る**いちばん大きな塊**なので、予算に数えないと
@@ -542,21 +542,22 @@ export function buildPieces(
    * （2026-09-16・第115巡にユーザー指定「**ホームでは今日に割り当てられている
    * タスクが集まっているから、重要度や優先度によって大きさが変わる機能はやめます**」）。
    *
-   * ★★**`weight` と `dueDate` を固定して `specOf` に渡す** ―― `areaOf` は
-   *   `weightArea(weight) × urgencyScale(dueDate)` なので、両方を止めれば面積は1つ。
-   *   ★形（段の数・箱の比）は**題の文字数**から出るので、そちらは今までどおり違う。
-   * ★★★**`lib/taskSize.ts` は触らない** ―― TASK（GRAVITY）は重要度で大きさが
+   * ★★★**第116巡に「段の高さを固定する」へ作り直した**（ユーザー指定
+   *   「**1段ごとのピルの大きさは同じで、2段の時はそれが2個、3段の時はそれが3個。
+   *   文字の大きさを揃えてください**」）―― 第115巡は**面積**を1つにしていたので、
+   *   段が増えるほど段が痩せ、**1段と3段で字が2倍違った**（`rowSpecOf` の注釈に実測）。
+   * ★★**`unit` の意味が変わった** … solid 座標の倍率 → **段の高さ（px）**。
+   *   `rowSpecOf` の `w`/`h` が段の高さを 1 とした箱なので、掛け算はそのままでよい。
+   * ★★★**`specOf` は 1 行も変えない** ―― TASK（GRAVITY）は重要度で大きさが
    *   変わるまま。**変えるのはホームの読み方だけ。**
-   * ★★おまけに**焼くのが速くなる** ―― 大きさが1つなら字の大きさも1つなので、
-   *   焼いた字（`lib/textFit.ts` の `glyphCache`）が**全部の図形で使い回せる**。
+   * ★★おまけに**焼くのが速くなる** ―― 字の大きさが1つなので、焼いた字
+   *   （`lib/textFit.ts` の `glyphCache`）が**全部の図形で使い回せる**。
    */
-  const flat = (t: { title?: string }) =>
-    ({ title: t.title ?? "", weight: HOME_WEIGHT, dueDate: HOME_DUE });
-  const HOME_DUE = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  const flat = (t: { title?: string }) => ({ title: t.title ?? "" });
   // ★★★**予算は「図形が居られる高さ」で取る** ―― 器の高さ `h` ではなく**床まで**。
   const usableH = Math.max(120, floorYOf(h));
   const areas = [
-    ...tasks.map((t) => areaOf(flat(t), today)),
+    ...tasks.map((t) => rowSpecOf(flat(t)).area),
     ...offers.map(() => OFFER_AREA),
     ...(jArea > 0 ? [jArea] : []),
   ];
@@ -572,7 +573,7 @@ export function buildPieces(
   //   **これだけは必ず効かせる**（＝器に入らない倍率は据え置かない）。
   let cap = UNIT;
   for (const sp of [
-    ...tasks.map((t) => specOf(flat(t), today)),
+    ...tasks.map((t) => rowSpecOf(flat(t))),
     ...(jW > 0 ? [{ w: jW, h: jH }] : []),
   ]) {
     cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
@@ -693,7 +694,7 @@ export function buildPieces(
   });
 
   tasks.forEach((t) => {
-    const spec = specOf(flat(t), today);
+    const spec = rowSpecOf(flat(t));
     const pw = Math.max(28, spec.w * unit);
     const ph = Math.max(24, spec.h * unit);
     // ★★**絵と同じ「ピルの積み」で当たる**（第101巡。GRAVITY／DRIFT と同じ形）。
@@ -791,7 +792,9 @@ export function buildPieces(
     const body = kept ?? m.Bodies.polygon(0, 0, ZIG_N, BADGE_R + PHYS_GAP, BODY);
     let fresh = false;
     if (!kept) {
-      m.Body.setMass(body, weightArea(3) * MASS_K);
+      // ★★★**密度は全部の体で同じ**（箱の面積 ÷ `unit²`）。★★`unit` の意味が
+      //   「段の高さ」に変わった（第116巡）ので、重要度の目盛りからは引けない。
+      m.Body.setMass(body, (Math.PI * BADGE_R * BADGE_R) / (unit * unit) * MASS_K);
       fresh = toss(body, "unread", BADGE_R * 2);
       stamp(body, sig);
     }

@@ -150,6 +150,39 @@ export function specOf(t: Partial<Task> & { title: string }, today = new Date())
   };
 }
 
+/**
+ * ★★★**段の高さを物差しにした外接箱**（2026-09-17・第116巡にユーザー指定
+ * 「**1段ごとのピルの大きさは同じで、2段の時はそれが2個、3段の時はそれが3個、
+ * そのまま積み上がったような形にしてください。で文字の大きさを揃えてください**」）。
+ *
+ * ★★★**`specOf` との違いはここだけ** ―― あちらは**面積**（＝重要度）を先に決めて
+ *   比で割るので、**段が増えるほど段の高さが痩せ、字も小さくなる**
+ *   （実測 … 同じ面積で 1段の段の高さ `0.511√A` に対し 3段は `0.256√A` ＝ **ちょうど半分**。
+ *   これが「1段と2段と3段で大きさが全く違う」の正体）。
+ *   こちらは**段の高さを 1 に固定**し、箱がそれに従う:
+ *     `h = 段の数` ／ `w = rowAspect`（＝その段が抱える文字数）。
+ *   → **どの図形でも段の厚みが同じ＝字の大きさも同じ**（字は `pitch × ROW_FILL` で、
+ *     `pitch = h / rows = 1`）。
+ * ★★**幅だけは題の長さで伸びる** ―― 字を同じ大きさで折り返さずに収めるには、
+ *   文字数ぶんの幅が要る。**幅も固定にすると、字が縮むか `…` で消える**かの
+ *   どちらかになり、ユーザーの「文字の大きさを揃えて」と両立しない。
+ * ★★★**`specOf` は 1 行も変えない** ―― TASK（GRAVITY）は重要度で大きさが変わるまま。
+ *   **読み替えるのはホームの山だけ**（`components/home/pileWorld.ts`）。
+ */
+export function rowSpecOf(t: Partial<Task> & { title: string }): SolidSpec {
+  const rows = rowsOf(t.title);
+  const w = rowAspect(t.title, rows);
+  const h = rows;
+  return {
+    sides: sidesOf(t),
+    // ★**塗られる**面積（物理の重さ・予算の割り当てが読む）。塗り率は積みと同じ。
+    area: w * h * STACK_INK,
+    w,
+    h,
+    slabs: slabsOf(t as Pick<Task, "subtasks">),
+  };
+}
+
 /** 物理の重さ。**塗られる面積 = 重要度**にそのまま比例させる。 */
 export const massOf = (spec: SolidSpec): number => spec.area;
 

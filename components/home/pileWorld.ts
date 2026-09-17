@@ -1,7 +1,6 @@
 import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, PAPER, RUST, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
 import { CASSETTE_ASPECT } from "@/lib/cassette";
-import { ACCENT_TEST, accentOf } from "@/lib/appAccent";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { glyphOfKind } from "@/lib/deckStyle";
 import { rowSpecOf, rowsOf } from "@/lib/taskSize";
@@ -714,7 +713,8 @@ export function buildPieces(
     const outlined = !(t.dueDate ?? "").trim();
     pieces.push({
       id: t.id, body, kind: "task", w: pw, h: ph,
-      face: TASK_FACE, ink: outlined ? TASK_FACE : bodyInkOn(TASK_FACE),
+      // ★★★**字は塗りでも輪郭でも黒**（第117巡にユーザー指定「グレーの塗りに黒の字」）。
+      face: TASK_FACE, ink: bodyInkOn(TASK_FACE),
       title: t.title, face_: SHAPE_FACE, outlined, fresh,
     });
   });
@@ -768,7 +768,7 @@ export function buildPieces(
     }
     // ★★**焼き込まれた色を信じない**（帯の `cardFace` と同じ理由）。生成した夜の
     //   パレットが残っているので、**いま生きている表から引き直す**。
-    const face = ACCENT_TEST ? colorOfKind(it.kind) : (it.color ?? colorOfKind(it.kind));
+    const face = colorOfKind(it.kind);
     pieces.push({
       id: it.id, body, kind: "offer", r, fresh,
       face, ink: bodyInkOn(face),
@@ -800,7 +800,8 @@ export function buildPieces(
     }
     // ★★色は **EXPLORE の家族のメイン**（2026-09-09 ユーザー指定）。
     //   数えているのが Explore の未読なので、**行き先と同じ色**を着る。
-    const face = ACCENT_TEST ? accentOf("life").main : RUST;
+    // ★★未読の数は**分類ではなく状態**なので、ドメインの4色からは取らない（赤）。
+    const face = RUST;
     pieces.push({
       id: "unread", body, kind: "badge", r: BADGE_R, fresh,
       face, ink: bodyInkOn(face), count: unread,

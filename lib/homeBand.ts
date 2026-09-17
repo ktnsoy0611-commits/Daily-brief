@@ -1,5 +1,4 @@
 import type { AppState, BriefCard } from "./types";
-import { ACCENT_TEST } from "./appAccent";
 import { genreOfKind, glyphOfKind } from "./deckStyle";
 import { colorOfKind } from "./palette";
 import { TASK_FACE } from "./constants";
@@ -108,12 +107,10 @@ const cardText = (c: BriefCard): string => c.title || c.trigger || c.category;
  *   `deckStyle` が**生成した夜のパレット**で色を焼き込んでいるので、配色を
  *   替えても**過去に生成された号は昔の色のまま**出てくる（展覧会が古いオレンジ
  *   のままだったのがこれ）。**いま生きている表から毎回引き直す。**
- * ★`ACCENT_TEST` を切ったときだけ、焼き込まれた色を尊重する（旧来の挙動）。
  */
-const cardFace = (c: BriefCard): string =>
-  ACCENT_TEST ? colorOfKind(c.kind ?? "info") : (c.color ?? colorOfKind(c.kind ?? "info"));
+const cardFace = (c: BriefCard): string => colorOfKind(c.kind ?? "info");
 /**
- * タスク系のピルの色。★★**TASK のメインカラー1色**（2026-09-09 ユーザー指定）。
+ * タスク系のピルの色。★★**無彩色のグレー1色**（第117巡にユーザー指定）。
  * ★第93巡にタグを廃止したので、分岐そのものが消えた（`lib/constants.ts` の1か所）。
  */
 const taskFace = (): string => TASK_FACE;

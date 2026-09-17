@@ -227,9 +227,10 @@ function computeTextPlan(p: SolidPaint, unit: number): TextPlan | null {
   if (s < LOD_NO_TEXT) return null;
   const { w, h } = rectOf(p.spec);
   const face = SHAPE_FACE;
-  // ★★**字の色は塗り方から決まる** … 塗りなら面から導いた墨、輪郭なら縁と同じ色
-  //   （帯のピルの `ink = outline ? face : bodyInkOn(face)` と同じ）。
-  const ink = isDated(p.spec) ? bodyInkOn(TASK_FACE) : TASK_FACE;
+  // ★★★**字は塗りでも輪郭でも黒**（2026-09-17・第117巡にユーザー指定
+  //   「タスクに関する図形はグレーを主に使って文字は黒」）。無彩色になったので
+  //   縁と同じ色の字は地の上で **3.2** しか出ない。**帯のピルと同じ規則。**
+  const ink = bodyInkOn(TASK_FACE);
   const wpx = w * unit;
   const hpx = h * unit;
   // ★書体が届くまでは文字を描かない(fallback で焼くと、焼いている途中で

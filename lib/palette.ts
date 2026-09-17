@@ -1,6 +1,5 @@
 import type { ItemDomain, ItemKind } from "./types";
 import { INK, KIND_DOMAIN, MUTED, PALETTE, PAPER, SCHEME } from "./constants";
-import { ACCENT_TEST, accentSteps } from "./appAccent";
 
 // ★★★**有彩色の出どころはここ1つ**（2026-08-31・第73巡）。
 //
@@ -53,16 +52,16 @@ export const bodyInkOn = (main: string): string =>
   contrast(main, INK) >= contrast(main, PAPER) ? INK : PAPER;
 
 /**
- * ★★**盤の赤は2つある**（Terracota `#EA5E3D` と Magenta `#B42648`）。
- * **その面で読めるほう**を返す ―― 暗い面には Terracota（墨の上 4.36）、
- * 明るい面には Magenta（紙の上 6.07）。
- * ★録音の赤は乗る面が2つ（キーの面と地）あり、**必要な赤が逆になる**ので、
- * 手で書き分けずにここに導かせる。★パレットが替わっても、2つの赤の
- * **明暗の役**さえ同じなら、この関数はそのまま効く。
+ * ★★**その面で読める「赤の役」の色**（第117巡にパレットを入れ替えて中身が変わった）。
+ * 新しい盤の赤は **`rojo` 1つ**しかないので、暗い面では**ピンク**を代わりに返す
+ * （実測 … 墨の上で 赤 3.19 に対し **ピンク 4.09**／紙の上は 赤 4.46・ピンク 3.48）。
+ * ★録音の赤は乗る面が2つ（キーの面と地）あり、**必要な色が逆になる**ので、
+ * 手で書き分けずにここに導かせる。★パレットが替わっても、**2つの候補の明暗の役**
+ * さえ同じならこの関数はそのまま効く。
  */
 export const redOn = (surface: string): string =>
-  contrast(surface, SCHEME.danger) >= contrast(surface, PALETTE.terracota)
-    ? SCHEME.danger : PALETTE.terracota;
+  contrast(surface, SCHEME.danger) >= contrast(surface, PALETTE.rosa)
+    ? SCHEME.danger : PALETTE.rosa;
 
 /**
  * ★**地の上に直接いる文字の色**を CSS 変数で配る（第77巡）。
@@ -110,20 +109,13 @@ export const deepen = (hex: string, k: number): string => {
  * の 900 なので実用上は読めるが、**目盛りの外**なので `design.md` に数字ごと
  * 書いてある。代わりに置ける色は 1.43／1.50 しかなく、もっと悪い。
  */
-// ★★★**テスト（2026-09-09）**。`ACCENT_TEST` の間は、ドメイン4色を
-//   **EXPLORE の家族の濃淡4段**にする。`lib/appAccent.ts` の1行で元へ戻る。
-const ACCENT_DOMAINS = accentSteps("life", 4);
-
-export const DOMAIN_COLOR: Record<ItemDomain, string> = ACCENT_TEST ? {
-  place: ACCENT_DOMAINS[0],
-  experience: ACCENT_DOMAINS[1],
-  info: ACCENT_DOMAINS[2],
-  thing: ACCENT_DOMAINS[3],
-} : {
-  place: SCHEME.danger,       // Magenta comunidad（共同体）
-  experience: SCHEME.growth,  // Terracota Ancestral（土）
-  info: SCHEME.work,          // Azul saberes（知）
-  thing: SCHEME.life,         // Verde Raíz（根）
+// ★★★**色と形は組**（2026-09-17・第117巡にユーザー指定）。形は `lib/cardShape.ts`
+//   が持っていて**変えていない** ―― その形と印象が合う色を当てた。
+export const DOMAIN_COLOR: Record<ItemDomain, string> = {
+  place: SCHEME.life,          // 緑 … 四つ葉（やわらかい弧）＝土地・庭
+  experience: SCHEME.growth,   // 赤 … 六角形（斜めの鋏痕）＝いちばん強い
+  info: SCHEME.work,           // 青 … 波打つ四角（直角の鋏痕）＝知
+  thing: SCHEME.wellness,      // 黄 … トゲトゲ（切れ込み）＝バーストの明るさ
 };
 
 /** その面の**本文**の色。★メインから導くので、`SCHEME` を替えれば追従する。 */

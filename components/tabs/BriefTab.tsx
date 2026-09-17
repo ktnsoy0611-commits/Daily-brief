@@ -11,8 +11,7 @@ import { appTitle } from "@/lib/apps";
 import { BRIEF_CARD_ASPECT, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import { BRIEF_POOL_CAP } from "@/lib/homeBand";
-import { accentOf } from "@/lib/appAccent";
-import { bodyInkOn } from "@/lib/palette";
+import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { cardShapeClip, cardShapeOf } from "@/lib/cardShape";
 import { CardShapeDefs } from "@/components/explore/CardShapeDefs";
 import type { BriefCard, DeckCard, GrowthCard, TabProps } from "@/lib/types";
@@ -113,10 +112,13 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
   //   ★★**焼き込まれた `card.color`/`bg`/`fg` を信じない**（`lib/homeBand.ts` と
   //     同じ理由 ―― 生成した夜のパレットが残っている）。面に載る字は
   //     `bodyInkOn()` が面から導く。
-  // ★★★**分類は色ではなく形が言う** ―― 写真を**ドメインの形で切り抜く**
-  //   （`lib/cardShape.ts`。券の鋏痕と同じ性格を引き継いだ4つ）。
-  //   だから**ジャンルの文字は置かない**（同じことを2つの言い方で言わない）。
-  const face = accentOf("life").main;
+  // ★★★**分類は「色 × 形」の組が言う**（2026-09-17・第117巡にユーザー指定
+  //   「**各ジャンルに対して図形の形が割り当たっているのは維持して、色とその形が
+  //   セットで印象が合うように**」）。第94巡は「面＝EXPLORE のメイン1色／形＝
+  //   ドメイン」だったが、**面もドメインの色にした**。
+  //   ★★**それでも「ジャンルの文字」は置かない** ―― 形と色の2つで言っているので、
+  //     3つ目の言い方は要らない。
+  const face = colorOfKind(card.kind ?? "place");
   const ink = bodyInkOn(face);
   const shape = cardShapeOf(KIND_DOMAIN[card.kind ?? "place"] ?? "info");
   return (

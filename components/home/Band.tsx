@@ -72,9 +72,11 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
   // ★★★**線だけのピルも中は塗る**（2026-09-11 ユーザー指定）。**地と同じ色**で
   //   塗るので見た目は「線だけ」のままだが、**後ろを落ちてくる図形が透けない**
   //   （帯は山の上に重ねてあるので、透明だと図形がピルの中を通って見える）。
-  // ★★**字は線と同じ色**（同ユーザー指定）。★地の上で比 2.55 しかないので
-  //   `design.md` の本文の下限は割る ―― **目盛りの外（ユーザー指定の配色）**。
-  const ink = outline ? face : bodyInkOn(face);
+  // ★★★**字は塗りでも輪郭でも黒**（2026-09-17・第117巡にユーザー指定
+  //   「グレーの塗りに黒の字」）。第116巡までは輪郭のピルだけ**線と同じ色**の字に
+  //   していたが、無彩色になると地の上で **3.2** しか出ず 13px の本文が読めない。
+  //   ★`bodyInkOn(地)` は墨を返す（**15.5**）。
+  const ink = outline ? bodyInkOn(groundOf("home")) : bodyInkOn(face);
   const h = HEIGHT[row];
   const head = row === 0;                              // 提案の段
   const photo = head ? item.photo : undefined;

@@ -258,7 +258,8 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     const outlined = !head;
     const base = {
       h: head ? BAND_H.photo : BAND_H.plain, press: 1,
-      face, ink: outlined ? face : bodyInkOn(face),
+      // ★★字は塗りでも輪郭でも面から導く（第117巡。タスクは黒）。
+      face, ink: outlined ? bodyInkOn(groundOf("home")) : bodyInkOn(face),
       outlined, ground: groundOf("home"),
       text: p.title ?? "", textSize: head ? TYPE.lead : TYPE.body,
       genre: head && item ? genreOfKind(item.kind) : undefined,

@@ -12,9 +12,12 @@ import { groundOf } from "@/components/AppBackdrop";
 import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
-import { bandRows, pinBand, unreadCards, unreadEntries, type BandItem } from "@/lib/homeBand";
+import {
+  bandRows, pinBand, unreadCards, unreadEntries, type BandItem, type BandRowId,
+} from "@/lib/homeBand";
 import { keepCard } from "@/lib/keepCard";
 import { bandNotes } from "@/lib/bandNotes";
+import { useNewsBand } from "@/lib/newsFeed";
 import { pickOffers } from "@/lib/offerPick";
 import { genreOfKind } from "@/lib/deckStyle";
 import { haptic, todayKey } from "@/lib/helpers";
@@ -51,7 +54,12 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   //   ★★**ここで作って渡す** ―― `bandNotes` は `lib/offerPick.ts` を読み、そちらは
   //     `lib/homeBand.ts` の `unreadEntries` を読むので、**帯の側から呼ぶと輪になる**。
   const notes = useMemo(() => bandNotes(appState, pickOffers(appState)), [appState]);
-  const rows = useMemo(() => bandRows(appState, keepId, notes), [appState, keepId, notes]);
+  // ★★★**帯の3段目＝ニュース**（2026-09-18・第122巡）。**中身は `lib/newsFeed.ts`**。
+  //   ★★**`AppState` に入れない**（外の世界のもの。理由はあのファイルの頭）ので、
+  //     ここだけが非同期に届く ―― 届くまでは段そのものが出ない。
+  const news = useNewsBand(appState);
+  const rows = useMemo(
+    () => bandRows(appState, keepId, notes, news), [appState, keepId, notes, news]);
   const unread = useMemo(() => unreadCards(appState).length, [appState]);
 
   // ★★山にいるのは**今日のものだけ**（ユーザー確定）。だから山は説明が要らない
@@ -234,7 +242,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
    *   無い日は下の段そのものが DOM に存在しない。**実測して返す。**
    * ★段の分け方は `unassign` と同じ切り分け（提案＝上／タスク＝下）。
    */
-  const rowCenter = useCallback((row: 0 | 1) => {
+  const rowCenter = useCallback((row: BandRowId) => {
     const box = boxRef.current?.getBoundingClientRect();
     const el = bandRef.current?.querySelector<HTMLElement>(`[data-band-row="${row}"]`);
     if (!box || !el) return null;

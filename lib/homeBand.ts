@@ -23,9 +23,12 @@ import { pickTodayItems } from "./todayPick";
 //   ★★種類の見分けは**色ではなく、写真の有無と厚み**が担う（上の段だけ厚く、
 //   先頭に丸い写真か字面が付く）。
 //
-// ★★★段は**2段**（2026-09-09 ユーザー指定「タスク系のピルは一段に」）…
-//   **上＝1・2**（提案。写真を持つものがまとまる）／**下＝3・4・5**（タスク系）。
+// ★★★段は**3段**（2026-09-18・第122巡にニュースの段を足した）…
+//   **上＝1・2**（提案。写真を持つものがまとまる）／**中＝3・4・5**（タスク系）／
+//   **下＝ニュース**（`lib/newsFeed.ts`。**外の世界のもの**なので `AppState` に無い）。
 //   **空の段は消す**（無いものを説明しない）。
+//   ★★★**上の2段は「自分に関わるもの」、いちばん下だけが「世の中のもの」** ――
+//     だから**触れるのは上の2段だけ**で、ニュースは字だけが流れる。
 // ★★★タスク系の1段の中は、**塗りと線で「まだ提案か／もう自分のものか」を分ける**
 //   （2026-09-09 ユーザー指定）:
 //   ・**塗り** … 3・4（AI がまだ差し出している最中のもの）。
@@ -45,7 +48,11 @@ export interface BandItem {
   photo?: string;
   /** ★写真が無い提案の丸に入る**字面**（「展」「本」）。Explore と同じ規則。 */
   glyph?: string;
-  /** ★1・2 だけが持つ。**ピルの2行目**に小さく出るジャンル（「展覧会」「場所」）。 */
+  /**
+   * ★1・2 だけが持つ。**ピルの2行目**に小さく出るジャンル（「展覧会」「場所」）。
+   * ★★**ニュース（`news`）は出典をここへ入れる**（第122巡）―― どちらも
+   *   「題に小さく添える語」なので、枠を2つ持たない。
+   */
   genre?: string;
   /** 4 だけが持つ。どのタスクへのフォローアップか。 */
   parentId?: string;
@@ -66,12 +73,26 @@ export interface BandItem {
  *   押せないものに縁を付けない、が `design.md` の約束。
  * ★★**中身は `lib/bandNotes.ts` の1か所**。
  */
-export type BandKind = "offer" | "today" | "voice" | "followup" | "someday" | "note";
+/**
+ * ★★★**`news` ＝ ニュースの見出し**（2026-09-18・第122巡にユーザー指定
+ * 「**上の帯にもう一列追加して、ニュースを取ってこれるようなものを探して組み込んで、
+ * 私が確認するべきニュースみたいなものを表示するように。帯は今あるものの1個下に
+ * 段を追加して**」）。
+ * ★★**中身は `lib/newsFeed.ts`**（取ってくるのは `app/api/news/route.ts`）。
+ * ★★**`note` と同じく、面も縁も持たない字だけ**（押せないものに縁を付けない）。
+ */
+export type BandKind =
+  "offer" | "today" | "voice" | "followup" | "someday" | "note" | "news";
 
-/** どの段に置くか（0=上＝提案 / 1=下＝タスク系）。 */
-export const BAND_ROW: Record<BandKind, 0 | 1> = {
-  offer: 0, today: 0, voice: 1, followup: 1, someday: 1, note: 0,
+/** 段の番号（0=上＝提案 / 1=中＝タスク系 / 2=下＝ニュース）。 */
+export type BandRowId = 0 | 1 | 2;
+
+/** どの段に置くか。★**段の数の正はここ**（`BAND_ROWS`）。 */
+export const BAND_ROW: Record<BandKind, BandRowId> = {
+  offer: 0, today: 0, voice: 1, followup: 1, someday: 1, note: 0, news: 2,
 };
+/** 段の数。★`bandRows` の戻り値も `bandMotion` の `rows` もこれで揃える。 */
+export const BAND_ROWS = 3;
 
 /**
  * ★★★**線と文字だけ**で描く種類（2026-09-12・第93巡）。
@@ -97,6 +118,12 @@ export const BAND_LIMIT = 6;
  * 出てこない**（種類ごとの取り分が無いため）。★目盛りの外（部品の寸法）。
  */
 export const BAND_LIMIT_TASKS = 9;
+/**
+ * ★ニュースの段の上限（2026-09-18・第122巡）。★目盛りの外（部品の数）。
+ * ★★**取ってくる側（`app/api/news/route.ts` の `LIMIT`）と同じ数**にしてある ――
+ *   向こうで切っているので、ここは**念のための蓋**。
+ */
+export const BAND_LIMIT_NEWS = 8;
 
 /**
  * ★★★**未読の提案は 15 枚までしか見せない**（2026-09-11 ユーザー確定
@@ -264,10 +291,15 @@ export function bandItems(state: AppState, notes?: BandItem[]): BandItem[] {
  *     「**画面外に出たらいいように処理して**」）。
  */
 export function bandRows(
-  state: AppState, keepId?: string | null, notes?: BandItem[],
-): [BandItem[], BandItem[]] {
-  const rows: [BandItem[], BandItem[]] = [[], []];
+  state: AppState, keepId?: string | null, notes?: BandItem[], news?: BandItem[],
+): [BandItem[], BandItem[], BandItem[]] {
+  const rows: [BandItem[], BandItem[], BandItem[]] = [[], [], []];
   for (const it of bandItems(state, notes)) rows[BAND_ROW[it.kind]].push(it);
+  // ★★★**ニュースは `bandItems` を通さない**（2026-09-18・第122巡）――
+  //   あちらは `AppState` だけから作る純粋な関数で、**ニュースは外の世界のもの**
+  //   （非同期に届き、`AppState` に入れない。理由は `lib/newsFeed.ts` の頭）。
+  //   ★★留め金も上限の例外も要らないので、**そのまま並べて切るだけ**。
+  rows[2] = (news ?? []).slice(0, BAND_LIMIT_NEWS);
   // ★★★**留め金を当てる**（下の `pinBand`）。**段ごと**に当てるので、
   //   段をまたぐ留め金は自然に無効になる（相手が同じ段に居ない）。
   const pins = state.bandPins ?? [];
@@ -282,7 +314,11 @@ export function bandRows(
   //   **文章が出た日だけ提案が押し出されて消える**。
   const notesIn = rows[0].filter((it) => it.kind === "note");
   const rest = rows[0].filter((it) => it.kind !== "note");
-  return [[...notesIn, ...cut(rest, BAND_LIMIT)], cut(rows[1], BAND_LIMIT_TASKS)];
+  return [
+    [...notesIn, ...cut(rest, BAND_LIMIT)],
+    cut(rows[1], BAND_LIMIT_TASKS),
+    rows[2],
+  ];
 }
 
 /**

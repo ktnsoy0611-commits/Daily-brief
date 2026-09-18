@@ -1,4 +1,7 @@
-import { D_OPEN, D_SWING, K_OPEN, K_SWING, spring, springTo, type Spring } from "@/lib/spring";
+import {
+  D_OPEN, D_SETTLE, D_SWING, K_OPEN, K_SETTLE, K_SWING, spring, springTo, type Spring,
+} from "@/lib/spring";
+import { BAND_ROWS, type BandRowId } from "@/lib/homeBand";
 import { SPACE } from "@/lib/tokens";
 
 // ★★★**帯の「物理っぽい動き」はここ1つ**（2026-09-15・第109巡にユーザー指定、
@@ -130,8 +133,8 @@ const motion = (): RowMotion => ({
  * 入れ物に置き、rAF のループだけが読み書きする。
  */
 export const bandBus = {
-  /** 段ごとの動き。 */
-  rows: [motion(), motion()] as [RowMotion, RowMotion],
+  /** 段ごとの動き。★**数の正は `lib/homeBand.ts` の `BAND_ROWS`**（第122巡に3段）。 */
+  rows: Array.from({ length: BAND_ROWS }, motion) as RowMotion[],
   /** ★動いているか（ループを回すかの判定）。 */
   live: false,
   /** ★★段の rAF を起こす口（`Band.tsx` が段ごとに登録する）。 */
@@ -145,7 +148,7 @@ export const bandBus = {
    *   指に合わせる**（`HomeTab.unassign` がタスクの並びを組み替える）。
    * ★`w` は挿し込まれるピルの幅（＋ピルとピルのあいだの素の幅）。
    */
-  aim: null as { row: 0 | 1; x: number; w: number } | null,
+  aim: null as { row: BandRowId; x: number; w: number } | null,
   /**
    * ★★★**指がいま指している挿し口の index**（段の rAF が毎フレーム書く）。
    * ★★**ピルの居場所を知っているのは段だけ**（流れの `transform` が決めていて
@@ -153,8 +156,16 @@ export const bandBus = {
    * ★離したときに `HomeTab` がこれを読んで、**その場所へ並べ替える**。
    * ★★**帯は輪なので index は 0〜n-1 で足りる**（「n 番目の後ろ」＝「0 番目の前」）。
    */
-  slot: null as { row: 0 | 1; at: number; after: string } | null,
+  slot: null as { row: BandRowId; at: number; after: string } | null,
 };
+
+/**
+ * ★★★**段の流れる向き**（真 ＝ 右へ。2026-09-18・第122巡に3段になったので式にした）。
+ * ★★**互い違い**（上＝左へ／中＝右へ／下＝左へ）―― **止まって見える瞬間が無い**のは
+ *   隣の段が逆へ動いているからで、段が増えてもこの約束は変わらない。
+ * ★★**`Band.tsx` の `direction` もここから引く**（向きを2か所に書かない）。
+ */
+export const bandReverse = (row: BandRowId): boolean => row % 2 === 1;
 
 /** ★注文が入ったら**すぐ**段のループを起こす（間を置いて見に行かない）。 */
 const wake = () => { bandBus.live = true; for (const w of bandBus.wakers) w(); };
@@ -166,15 +177,15 @@ const wake = () => { bandBus.live = true; for (const w of bandBus.wakers) w(); }
  *   だから**閉じ切るまで乗り換えを受けない**。`K_OPEN` は 267ms で静止するので
  *   体感の遅れにはならない。
  */
-export const bandSettling = (row: 0 | 1): boolean =>
+export const bandSettling = (row: BandRowId): boolean =>
   Math.abs(bandBus.rows[row].shut.p) > CALM;
 
 /**
  * ★★★**④a 帯が止まる** … 流れていた向きへ少し行き過ぎてから戻る。
- * @param row 段（0 ＝ 左へ流れる／1 ＝ 右へ流れる）
+ * @param row 段（向きは `bandReverse`）
  */
-export function bandStop(row: 0 | 1): void {
-  bandBus.rows[row].off.v += row === 0 ? -STOP_KICK : STOP_KICK;
+export function bandStop(row: BandRowId): void {
+  bandBus.rows[row].off.v += bandReverse(row) ? STOP_KICK : -STOP_KICK;
   wake();
 }
 
@@ -186,8 +197,8 @@ export function bandStop(row: 0 | 1): void {
  *   1秒眺めても 15px しか進まないので、「また動き出した」ことは**速さでは
  *   絶対に分からない**。**見えるのは一発の慣性だけ**なので、それを必ず撃つ。
  */
-export function bandResume(row: 0 | 1): void {
-  bandBus.rows[row].off.v += row === 0 ? -BUMP_KICK : BUMP_KICK;
+export function bandResume(row: BandRowId): void {
+  bandBus.rows[row].off.v += bandReverse(row) ? BUMP_KICK : -BUMP_KICK;
   wake();
 }
 
@@ -197,7 +208,7 @@ export function bandResume(row: 0 | 1): void {
  * @param w    挿し込まれるピルの幅（＋素の隙間）
  * @param pick 指のそばの器が DOM の何枚目か（`lead` を測る起点）
  */
-export function bandGapAt(row: 0 | 1, at: number, w: number, pick: number): void {
+export function bandGapAt(row: BandRowId, at: number, w: number, pick: number): void {
   const m = bandBus.rows[row];
   m.pick = pick;
   if (m.open.at !== at) {
@@ -214,7 +225,7 @@ export function bandGapAt(row: 0 | 1, at: number, w: number, pick: number): void
 }
 
 /** ★挿し口を閉じる（指が離れた・帯から出た）。**行き先を 0 にするだけ**。 */
-export function bandGapClear(row: 0 | 1): void {
+export function bandGapClear(row: BandRowId): void {
   bandBus.rows[row].open.to = 0;
   wake();
 }
@@ -225,7 +236,7 @@ export function bandGapClear(row: 0 | 1): void {
  *   **バネを 0 に落とすだけでよい**（第112巡までの `bandGapCommit` の
  *   px 合わせは要らなくなった）。★**`useLayoutEffect` から呼ぶこと。**
  */
-export function bandGapDone(row: 0 | 1, at: number, id: string, pillW: number): void {
+export function bandGapDone(row: BandRowId, at: number, id: string, pillW: number): void {
   const m = bandBus.rows[row];
   // ★★**幅 0 ＝「畳んでいた席の幅を使え」**（引き抜いたピルを入れ直したとき）。
   //   そのピルの DOM はいま幅 0 を書かれているので、測り直しては 0 になる。
@@ -253,7 +264,7 @@ export function bandGapDone(row: 0 | 1, at: number, id: string, pillW: number): 
  * ★★★**慣性の一発は `bandResume` が別に撃つ**（段の最後のピルを引き抜くと
  *   閉じる席はあっても後ろが居ない ―― 混ぜると再開ごと落ちる）。
  */
-export function bandHole(row: 0 | 1, id: string, w: number): void {
+export function bandHole(row: BandRowId, id: string, w: number): void {
   const m = bandBus.rows[row];
   if (m.holeId !== id) { m.holeId = id; m.hole.p = 0; m.hole.v = 0; }
   m.holeW = w;
@@ -262,7 +273,7 @@ export function bandHole(row: 0 | 1, id: string, w: number): void {
 }
 
 /** ★★席を戻す（引き戻した・入れ直した）。**行き先を 0 にするだけ**＝逆再生。 */
-export function bandHoleRelease(row: 0 | 1): void {
+export function bandHoleRelease(row: BandRowId): void {
   bandBus.rows[row].hole.to = 0;
   wake();
 }
@@ -272,7 +283,7 @@ export function bandHoleRelease(row: 0 | 1): void {
  * 畳みきった幅（`pad + ピル`）とレイアウトが失う幅は厳密に同じなので、
  * **掛け金を外すだけ**。★**`useLayoutEffect` から呼ぶこと。**
  */
-export function bandHoleDone(row: 0 | 1): void {
+export function bandHoleDone(row: BandRowId): void {
   const m = bandBus.rows[row];
   m.holeId = null; m.holeW = 0; m.hole.p = 0; m.hole.v = 0; m.hole.to = 0;
 }
@@ -283,7 +294,7 @@ export function bandHoleDone(row: 0 | 1): void {
  *   あるので、**起こさないと誰も隙間を開けない**（第110巡に実測 … `--nudge` が
  *   1つも書かれず 0/5 件）。**注文には必ず `wake()` が要る。**
  */
-export function bandAim(aim: { row: 0 | 1; x: number; w: number } | null): void {
+export function bandAim(aim: { row: BandRowId; x: number; w: number } | null): void {
   const was = bandBus.aim;
   bandBus.aim = aim;
   if (!aim) bandBus.slot = null;
@@ -329,7 +340,22 @@ function stepOnce(): boolean {
     if (advance(m.open, K_OPEN, D_OPEN, 0)) live = true;
     if (advance(m.shut, K_OPEN, D_OPEN, 0)) live = true;
     else if (m.shut.to === 0) m.shut.at = -1;
-    if (advance(m.hole, K_OPEN, D_OPEN, 0)) live = true;
+    // ★★★**席（引き抜いた穴）の畳みだけ `K_SETTLE`**（2026-09-18・第122巡に
+    //   ユーザー指摘「**帯からピルを引っ張り出した時に開く穴が閉じるスピードが
+    //   速すぎて、非常にガクッと急に動いた感じがして、全く洗練された印象を
+    //   受けない**」）。
+    // ★★★**挿し口（`open`/`shut`）と席（`hole`）は、速さの要求が正反対**:
+    //   挿し口は**指が居るあいだ（0.1〜0.3秒）に開き切らないと意味が無い**ので
+    //   `K_OPEN`（90% まで 117ms）。席は**もう指が離れたあと**に、ピル1つぶんの
+    //   幅（150px 級）を畳む ―― そこを 117ms でやると**畳むというより消える**。
+    // ★★`K_SETTLE` は **90% まで 467ms・行き過ぎ 0.0%**（`lib/spring.ts` の表）。
+    //   **跳ね返らないまま4倍ゆっくり**になる＝「ガクッ」が消える。
+    //   ★★**新しい係数は作らない**（5組のまま。役の割り当てを変えただけ）。
+    // ★★★**畳むときだけ遅くする**（`to > p`）。**素の幅へ戻すとき（挿し込み・
+    //   引き戻し）は `K_OPEN` のまま** ―― そちらは**指がまだ居る**ので、
+    //   遅いと「入れたのに広がらない」に戻る。**向きで分ける。**
+    const shutting = m.hole.to > m.hole.p;
+    if (advance(m.hole, shutting ? K_SETTLE : K_OPEN, shutting ? D_SETTLE : D_OPEN, 0)) live = true;
     // ★席が素の大きさへ戻りきったら掛け金を外す（幅を書き続けない）。
     else if (m.hole.to === 0) m.holeId = null;
   }

@@ -177,17 +177,38 @@ export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
  * ★大きさは 120 刻みへ丸める（倍率が揺れるたびに取り直さないため）。
  */
 const photoCache = new Map<string, HTMLImageElement>();
+/** ★★来なかった写真（もう頼まない。字面へ落とす）。 */
+const photoBad = new Set<string>();
 const photoPx = (r: number, dpr: number) =>
   Math.min(720, Math.max(120, Math.ceil((r * 2 * dpr) / 120) * 120));
+
+/** ★その写真は「来ないと分かっている」か（呼ぶ側が字面へ落とすのに使う）。 */
+export const photoFailed = (url: string, r: number, dpr: number): boolean =>
+  photoBad.has(`${url}|${photoPx(r, dpr)}`);
 
 function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLImageElement | undefined {
   const px = photoPx(r, dpr);
   const key = `${url}|${px}`;
+  if (photoBad.has(key)) return undefined;
   const hit = photoCache.get(key);
   if (hit) return hit.complete && hit.naturalWidth > 0 ? hit : undefined;
   const el = new Image();
-  el.crossOrigin = "anonymous";
+  // ★★★**`crossOrigin` を付けないこと**（2026-09-18・第122巡にユーザー報告
+  //   「**山に落ちてきている提案の図形に写真がついてきていない**」の真因）。
+  //   ★★★**提案の写真は他所のサイトの OGP 画像**で、その多くは
+  //     `Access-Control-Allow-Origin` を返さない。`crossOrigin="anonymous"` を
+  //     付けると**そういう画像は読み込みそのものが失敗する** ―― 帯のピルは
+  //     素の `<img>` なので出るのに、**山（canvas）だけ出なかった**。
+  //   ★★**付ける理由が1つも無い** ―― `crossOrigin` が要るのは canvas を
+  //     **読み返す**とき（`getImageData`/`toDataURL`/`toBlob`）だけで、
+  //     このアプリはどこでもやっていない（実測 … 0 件）。**汚染されても困らない。**
+  //   ★★もし将来 canvas を読み返すなら、**そのときは代理（プロキシ）が要る**。
+  //     ここへ `crossOrigin` を戻しても、写真が消えるだけで解決しない。
   el.onload = onLoad;
+  // ★★★**来なかったら諦めて字面へ**（`onerror` が無いと、`complete` が真で
+  //   `naturalWidth` が 0 のまま**永久に `undefined` を返し続け**、字面にも
+  //   落ちないので**色ベタの図形**になる。第121巡までがその状態）。
+  el.onerror = () => { photoBad.add(key); onLoad(); };
   el.src = img(url, px, px);
   photoCache.set(key, el);
   return undefined;
@@ -418,6 +439,7 @@ export function drawPile(
       trace(p.r * 2);
       ctx.fill();
       const im = p.photo ? photoOf(p.photo, p.r, dpr, onPhoto) : undefined;
+      // ★★**写真が来ないと分かったら字面へ落ちる**（`glyph` は写真があっても持つ）。
       if (!im && p.glyph) {
         // ★★★**写真が無い提案の顔は「字面」**（2026-09-08）。ブリーフの
         //   カードが写真の無いときにやっていることと**同じ規則**。

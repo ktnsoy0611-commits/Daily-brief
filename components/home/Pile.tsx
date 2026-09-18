@@ -14,6 +14,7 @@ import { floorYOf } from "@/lib/pileBox";
 import { SPACE } from "@/lib/tokens";
 import { bandAim, bandBus } from "./bandMotion";
 import { inCardShape } from "@/lib/cardShape";
+import type { BandRowId } from "@/lib/homeBand";
 import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { ensureGlyphs } from "@/lib/textFit";
@@ -239,7 +240,7 @@ export function Pile({
    * ★**空の段は描かれない**ので「上が row0・下が row1」と決め打ちできない ――
    *   `HomeTab` が `.band-row` を実測して返す。
    */
-  rowCenter?: (row: 0 | 1) => number | null;
+  rowCenter?: (row: BandRowId) => number | null;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -1108,6 +1109,21 @@ export function Pile({
         if (inside && p.kind === "task" && pw > 0 && ph > 0) {
           const hw = halfWidthAtStack(clampRows(rowsOf(p.title ?? "")), pw / ph, ly / ph);
           inside = Math.abs(lx) <= hw * pw + slop;
+        } else if (inside && p.kind === "word" && p.plate?.pill && pw > 0 && ph > 0) {
+          // ★★★**板も「絵と同じ形」で見る**（2026-09-18・第122巡にユーザー指摘
+          //   「**山の日付と曜日の当たり判定がおかしくて、見た目に対して
+          //   大きすぎる**」）。第120巡に板を掴めるようにしたとき、判定だけ
+          //   **外接箱のまま**だった ―― 板は**角丸がピルと同じ `bh/2`**
+          //   （`lib/wordPlate.ts` の `roundRect`）なので、**四隅の外の何も
+          //   描かれていない所が触れる**。しかも板は `plate ?? best` で
+          //   **必ず勝つ**ので、そこに居た図形が掴めなくなっていた。
+          //   ★実測（283×64 の板）… 角の4つの欠けは合わせて **1157px²**
+          //     ＝ 箱の 6.4%。そこは下の図形へ譲る。
+          // ★★**式は丸い角の矩形との距離**（角丸の半径 ＝ 高さの半分）。
+          const rad = ph / 2;
+          const qx = Math.max(0, Math.abs(lx) - (pw / 2 - rad));
+          const qy = Math.max(0, Math.abs(ly) - (ph / 2 - rad));
+          inside = Math.abs(lx) <= pw / 2 + slop && Math.hypot(qx, qy) <= rad + slop;
         } else {
           inside = inside && Math.abs(lx) <= pw / 2 + slop;
         }

@@ -4,7 +4,8 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import { groundOf } from "@/components/AppBackdrop";
 import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { BAND_ROW, type BandItem, isOutlined } from "@/lib/homeBand";
+import { BAND_ROW, type BandItem, type BandRowId, isOutlined } from "@/lib/homeBand";
+import { MUTED } from "@/lib/constants";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
@@ -15,6 +16,7 @@ import {
 import { haptic } from "@/lib/helpers";
 import {
   BAND_PAD, GAP_HYST, bandAim, bandBus, bandGapAt, bandGapClear, bandGapDone, bandHole,
+  bandReverse,
   bandSettling,
   bandHoleDone, bandHoleRelease, bandResume, bandStop, stepBandMotion,
 } from "./bandMotion";
@@ -35,10 +37,15 @@ import {
 // ★★**指が触れている間は止まる**。離すと続きから動く（位置は戻さない）。
 // ★★**ピルに印（アイコン・矢印）を付けない。**
 
-type Row = 0 | 1;
+type Row = BandRowId;
 
-/** 段の厚み。★写真の丸が入る上の段だけ厚い（丸は高さいっぱい）。 */
-const HEIGHT: Record<Row, number> = { 0: BAND_H.photo, 1: BAND_H.plain };
+/**
+ * 段の厚み。★写真の丸が入る上の段だけ厚い（丸は高さいっぱい）。
+ * ★★**ニュースの段（2）は字だけ**なので、いちばん薄い（第122巡）。
+ */
+const HEIGHT: Record<Row, number> = {
+  0: BAND_H.photo, 1: BAND_H.plain, 2: BAND_H.news,
+};
 
 /**
  * ピル1つ。★色は**その中身が既存のアプリで持っている色**（`lib/homeBand.ts`）。
@@ -81,7 +88,22 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
   const ink = outline ? bodyInkOn(groundOf("home")) : bodyInkOn(face);
   const h = HEIGHT[row];
   const head = row === 0;                              // 提案の段
-  const photo = head ? item.photo : undefined;
+  /**
+   * ★★★**届かなかった写真は「無かったこと」にする**（2026-09-18・第122巡に
+   * ユーザー指摘「**提案のピルの、写真がないものの見た目が崩れている。角に文字が
+   * 左に寄ったりしていて崩れている**」）。
+   *
+   * ★★★**真因は `onError` が `display: none` しか書いていなかったこと** ――
+   *   丸が消えても `photo` は真のままなので、**左のパディングは丸のための
+   *   `BAND_BEZEL`(4) のまま**だった。だから題が**ピルの丸い角に食い込んで**
+   *   左へ寄って見えた（写真のあるピルは丸が余白を持つので成立していた）。
+   * ★★**落ちた URL を憶える**（`display: none` ではなく `photo` そのものを落とす）
+   *   ―― こうすると `padding` も `gap` も `<img>` も**1つの条件から同時に**外れる。
+   * ★★**憶えるのは URL** ―― 同じ `Pill` が別の中身で使い回されても、
+   *   **URL が変われば自動で元に戻る**（真偽値だと落ちたまま固まる）。
+   */
+  const [badPhoto, setBadPhoto] = useState<string | null>(null);
+  const photo = head && item.photo && item.photo !== badPhoto ? item.photo : undefined;
   // ★丸の直径 ＝ ピルの高さ − 縁取り2つぶん。
   const dia = h - BAND_BEZEL * 2;
   // ── 引き下ろし（2026-09-14・第102巡） ───────────────────────
@@ -344,6 +366,36 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     );
   }
 
+  // ★★★**ニュースも「地の上の字」だけ**（2026-09-18・第122巡）。
+  //   ★★**文章（`note`）との違いは3つ** … ①**字が1段小さい**（`small`）
+  //     ②**出典を薄く添える**（`genre` の枠を借りる）③**段がいちばん薄い**。
+  //     ＝「これは自分のことではなく世の中のこと」を**大きさと濃さ**で言う。
+  //   ★★**押せない** ―― 帯は流れているので、狙って押させる場所ではない。
+  //     `BandRow row={2}` は `pull` そのものを受け取っていないので、
+  //     **掴む仕掛けは配線からして存在しない**。
+  if (item.kind === "news") {
+    return (
+      <div style={{
+        display: "flex", alignItems: "baseline", gap: SPACE.sm, flexShrink: 0, height: h,
+        pointerEvents: "none", padding: `0 ${SPACE.xl}px`,
+      }}>
+        <span style={{
+          fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.text,
+          letterSpacing: TRACK.normal, lineHeight: LEAD.snug,
+          color: bodyInkOn(groundOf("home")), whiteSpace: "nowrap",
+        }}>{item.text}</span>
+        {item.genre && (
+          <span style={{
+            fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.text,
+            letterSpacing: TRACK.wide, lineHeight: LEAD.flat,
+            // ★副文の字は `MUTED`（地の上で 3.2。`design.md` §3-1 の役どおり）。
+            color: MUTED, whiteSpace: "nowrap",
+          }}>{item.genre}</span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       onPointerDown={onDown}
@@ -385,7 +437,8 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
       {photo && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={img(photo, 200, 200)} alt=""
-          onError={(e) => { e.currentTarget.style.display = "none"; }}
+          // ★★**丸だけを消さない。`photo` ごと落とす**（上の `badPhoto` の注釈）。
+          onError={() => setBadPhoto(photo)}
           style={{
             width: dia, height: dia, borderRadius: RADIUS.circle,
             objectFit: "cover", display: "block", flexShrink: 0,
@@ -473,7 +526,7 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     //   時計の値をそのまま持ち越すと、**送りが鏡になる** ―― 実測で
     //   1周の幅が 416 → 617 になったとき、送りが -302.6 → -502.8px へ飛んだ。
     //   **持ち越すのは「どれだけ送ったか」（進み）であって、時計ではない。**
-    phaseRef.current = (row === 1 ? 1 - ct : ct) * lap;
+    phaseRef.current = (bandReverse(row) ? 1 - ct : ct) * lap;
   }, [row]);
 
   /**
@@ -567,7 +620,8 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
       {
         duration, iterations: Infinity, easing: "linear",
         // ★中の段だけ**右へ**流す。2つ目のキーフレームを書かず、向きだけ逆にする。
-        direction: row === 1 ? "reverse" : "normal",
+        // ★★向きは `bandMotion.bandReverse` の1か所から（互い違い。第122巡に3段）。
+        direction: bandReverse(row) ? "reverse" : "normal",
       },
     );
     // ★★組み直す前に**同じ px だけ送った所**から続ける（上の `phaseRef`）。
@@ -576,7 +630,7 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     phaseRef.current += holdRef.current;
     holdRef.current = 0;
     const gone = (((phaseRef.current % lap) + lap) % lap) / lap;
-    anim.currentTime = (row === 1 ? 1 - gone : gone) * duration;
+    anim.currentTime = (bandReverse(row) ? 1 - gone : gone) * duration;
     lapRef.current = lap;
     animRef.current = anim;
     // ★★**送りへ畳んだのと同じ瞬間に `transform` から外す**（別のフレームに
@@ -882,8 +936,13 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
   );
 }
 
-/** 帯（★2段）。上＝提案／下＝タスク系（塗り＝まだ提案／線＝登録済み）。 */
-export function Band({ rows, pull }: { rows: [BandItem[], BandItem[]]; pull?: PullHost }) {
+/**
+ * 帯（★**3段**）。上＝提案／中＝タスク系（塗り＝まだ提案／線＝登録済み）／
+ * **下＝ニュース**（2026-09-18・第122巡。字だけ・押せない）。
+ */
+export function Band({ rows, pull }: {
+  rows: [BandItem[], BandItem[], BandItem[]]; pull?: PullHost;
+}) {
   // ★★**引いている最中のピルは、2周ぶんとも消す**（幽霊と二重に見えないように）。
   //   ★掴むたびに1度だけ動くので、毎フレームの再描画にはならない。
   const [taken, setTaken] = useState<string | null>(null);
@@ -895,6 +954,10 @@ export function Band({ rows, pull }: { rows: [BandItem[], BandItem[]]; pull?: Pu
       <BandRow row={0} items={rows[0]} pull={pull} taken={taken} onTake={setTaken}
         armed={armed} onArm={setArmed} />
       <BandRow row={1} items={rows[1]} pull={pull} taken={taken} onTake={setTaken}
+        armed={armed} onArm={setArmed} />
+      {/* ★★ニュースの段。**`pull` を渡さない** ―― 引き下ろす相手ではないので、
+          掴む仕掛けを配線しないことで「押せない」を**構造で**言う。 */}
+      <BandRow row={2} items={rows[2]} taken={taken} onTake={setTaken}
         armed={armed} onArm={setArmed} />
     </div>
   );

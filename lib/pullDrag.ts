@@ -1,9 +1,9 @@
 import type { RefObject } from "react";
 import type { CardShape } from "./cardShape";
 import { BAND_H } from "./constants";
-import type { BandItem } from "./homeBand";
+import type { BandItem, BandRowId } from "./homeBand";
 import {
-  D_CATCH, D_SWING, K_CATCH, K_SWING,
+  D_OPEN, D_SWING, K_OPEN, K_SWING,
   rubber, settled, spring, springTo, type Spring,
 } from "./spring";
 
@@ -435,7 +435,7 @@ export const BAND_CATCH = 24;
 export const RAIL_HYST = 12;
 /**
  * ★★★**姿の掛け金が「図形」へ戻る境目**（2026-09-16・第108巡）。★目盛りの外（変形の進み）。
- * ★変形のばね（`K_CATCH`/`D_CATCH`）の行き過ぎは **16%** なので、それより**広く**取る。
+ * ★変形のばね（第109巡から `K_SWING`/`D_SWING`）は行き過ぎるので、それより**広く**取る。
  *   狭いと行き過ぎの底で掛け金が外れ、また点滅する。
  */
 export const PILL_EXIT = 0.2;
@@ -608,7 +608,8 @@ export function stepGhost(mo: GhostMotion, g: Ghost, pin?: Pin | null): void {
   // ★★★**弾けた所から指へ「追いつく」**（2026-09-14・第105巡にユーザー指定
   //   「**一気に指の方に全体が滑らかにアニメーションしながら吸い付いて揺れる**」）。
   //   第104巡は支点を指へ**瞬間移動**させていたので、滑らかでも揺れてもいなかった。
-  //   ★`K_CATCH` は 16% 行き過ぎるので、**指を追い越してから戻る**＝吸い付く。
+  //   ★★★**第122巡に `K_CATCH` から `K_OPEN` へ弱めた**（下の注釈）。**追い越さない**
+  //     ので「弾ける」は消えたが、揺れは**支点まわりの振れ**（`mo.swing`）が持つ。
   if (pin) {
     // ★★★**バネの位置を、体が実際に居る所へ繋ぎ直す**（2026-09-15・第110巡）。
     //   ★★**速さ（`v`）は残す** ―― バネの慣性と行き過ぎ（＝第105巡の「指を
@@ -627,8 +628,17 @@ export function stepGhost(mo: GhostMotion, g: Ghost, pin?: Pin | null): void {
     mo.catchX.p = g.hx; mo.catchX.v = 0;
     mo.catchY.p = g.hy; mo.catchY.v = 0;
   }
-  springTo(mo.catchX, g.cx, K_CATCH, D_CATCH);
-  springTo(mo.catchY, g.cy, K_CATCH, D_CATCH);
+  // ★★★**第122巡に `K_CATCH` → `K_OPEN` へ弱めた**（ユーザー指摘
+  //   「**弾けるように手に吸い付いてくるのが強すぎるので、もっと弱めて**」）。
+  //   ★★★**「強い」の正体は2つ** … ① **4フレームで届く**（66ms ＝ ほぼ瞬間移動に
+  //     見える）／② **10.5% 指を追い越す**（＝弾ける）。`K_OPEN` は
+  //     **7フレーム（117ms）・行き過ぎ 0.0%**（`lib/spring.ts` の表）なので、
+  //     **どちらも同時に弱まる**。まだ十分速いので「置いていかれる」にはならない。
+  //   ★★**新しい係数は作らない**（5組のまま。役の割り当てを変えただけ）。
+  //   ★★★**姿の掛け金は `tTo` で分けてある**（上の注釈）ので、**係数を柔らかく
+  //     してもスナップは消えない** ―― 第108巡の縛りは第109巡に外れている。
+  springTo(mo.catchX, g.cx, K_OPEN, D_OPEN);
+  springTo(mo.catchY, g.cy, K_OPEN, D_OPEN);
   g.hx = mo.catchX.p; g.hy = mo.catchY.p;
   // ★★離した瞬間に物理へ渡す（`Landing`）のは**支点の速さ**（＝実際に絵が動いて
   //   いる速さ）。指の速さだと、追いついている最中に離したときに**絵より速く**飛ぶ。
@@ -716,7 +726,7 @@ export interface PullHost {
    */
   bandBottom: () => number;
   /** ★その段の中心（器の座標）。`null` ＝ その段が描かれていない。 */
-  rowCenter: (row: 0 | 1) => number | null;
+  rowCenter: (row: BandRowId) => number | null;
   /**
    * ★★★**帯のその場所へ置く**（`after` の次。空文字なら段の先頭）。
    * ★引き抜いたピルを**別の場所へ入れ直す**ときに呼ぶ ―― 日付は付けない。

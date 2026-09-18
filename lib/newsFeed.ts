@@ -50,8 +50,8 @@ async function load(topics: string[]): Promise<Headline[]> {
 
 /**
  * ★★★**帯の3段目に流すニュース**（`components/tabs/HomeTab.tsx` が呼ぶ）。
- * ★★**押せない**（`components/home/Band.tsx` が `news` を面も縁も無しで描く）――
- *   帯は流れているので、狙って押させるものを置く場所ではない。
+ * ★★**絵と手つきは `components/home/NewsCard.tsx` の `NewsPill`**（第123巡）――
+ *   **輪郭のピル**で流れ、**下へ引くと角丸の四角に広がって詳細が出る**。
  */
 export function useNewsBand(state: AppState): BandItem[] {
   const [items, setItems] = useState<Headline[]>(cache ?? []);
@@ -64,9 +64,11 @@ export function useNewsBand(state: AppState): BandItem[] {
   }, [key]);
   return items.map((h) => ({
     id: `news-${h.id}`, kind: "news" as const, text: h.title,
-    // ★`face` は使わない（字だけで描く）が、`BandItem` の形に合わせる。
+    // ★★**輪郭のピルの線の色**（第123巡に字だけからピルへ）。
     face: INK,
     // ★★**出典は `genre` の枠を借りる**（帯が「小さく添える語」として持っている枠）。
     genre: h.source,
+    // ★★**広がった札が読む**（`components/home/NewsCard.tsx`）。
+    link: h.link, at: h.at,
   }));
 }

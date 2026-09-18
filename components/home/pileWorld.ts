@@ -102,8 +102,6 @@ const OFFER_D = 4.4;
  * ★目盛りの外（物理の刻み）。
  */
 const OFFER_VERTS = 28;
-/** ★カセットの高さ（段の高さの何倍か）。理由は `OFFER_D` と同じ。 */
-const CASSETTE_ROWS = 2.2;
 /**
  * ★★★**混み具合で全体を縮める**（2026-09-17・第118巡にユーザー指定
  * 「**図形が多すぎると操作しづらくなる（特にピルのあたりまで高さがくると
@@ -373,15 +371,15 @@ export function respawn(m: M, body: Body, w: number, seed: string, bh?: number):
   const bw = body.bounds.max.x - body.bounds.min.x;
   const up = (bh ?? body.bounds.max.y - body.bounds.min.y) / 2 + DROP_ABOVE + r2 * DROP_SCATTER;
   m.Body.setPosition(body, { x: spawnXOf(w, bw, r1), y: -up });
-  // ★★★**回らない体は傾けない**（2026-09-18・第121巡）。**合図は体そのもの**
-  //   （`inverseInertia === 0` ＝ `setInertia(Infinity)` を掛けてある）――
-  //   旗を別に持ち回ると、`isLost` → `respawn` の道で**付け忘れて傾く**。
-  //   ★いま該当するのは**提案の図形だけ**（理由は `offerPiece` の注釈）。
-  const spin = body.inverseInertia !== 0;
-  m.Body.setAngle(body, spin ? (r3 - 0.5) * SPAWN_TILT : 0);
+  // ★★★**どの図形も傾いて落ち、自由に回る**（2026-09-19・第123巡にユーザー指定
+  //   「**提案の図形も自由に回転したり動くようにしてください**」）。
+  //   ★★**第121巡の「回らない体は傾けない」（`inverseInertia === 0` の枝）は
+  //     撤回した。復活させない** ―― 歪んで見えた原因は回転ではなく
+  //     **六角形の定義**だった（`lib/cardShape.ts` の `HEX_H`）。
+  m.Body.setAngle(body, (r3 - 0.5) * SPAWN_TILT);
   // ★★**回りは形の大小で加減しない**（2026-09-09）。大きさで割ると、小さい
   //   ものだけ空中で止まって見える。同じ初速を与えて、あとは形に任せる。
-  m.Body.setAngularVelocity(body, spin ? (r3 - 0.5) * SPAWN_SPIN : 0);
+  m.Body.setAngularVelocity(body, (r3 - 0.5) * SPAWN_SPIN);
   m.Body.setVelocity(body, { x: (r1 - 0.5) * SPAWN_VX, y: 0 });
   m.Sleeping.set(body, false);
 }
@@ -600,11 +598,16 @@ export function buildPieces(
   //   部分がブルーで他が黒」）。第93巡の「録音の円」からさらに一歩 ――
   //   **行き先の顔をそのまま持ってくる**ので、何が起きるか説明が要らない。
   //   ★寸法は `lib/cassette.ts`（タブの SVG と同じ数を読む）。
-  // ★★★**カセットの高さも「段の高さの何倍か」**（第116巡。理由は `OFFER_D` の注釈）。
-  //   2.2 は移行前の実測（旧 `unit` で高さ `2.26 unit`／1段の段の高さ `1.49 unit`）。
-  const jH = journal ? CASSETTE_ROWS : 0;
-  const jW = jH * CASSETTE_ASPECT;
-  const jArea = jW * jH;
+  // ★★★**大きさは「日付と曜日の板」に揃える**（2026-09-19・第123巡にユーザー指定
+  //   「**Journal の図形の大きさは日付と曜日ぐらいにして**」）。
+  //   ★★★**だから `unit` の倍数ではなく、板と同じ「px の固定の箱」**として扱う
+  //     ―― 板も `wordFs` から px で決まるので、**同じ物差しに乗せるには、
+  //     倍率の側ではなく px の側へ移すしかない**（`unit` は予算から出るので、
+  //     混み具合や件数で板との比が毎回ずれる）。
+  //   ★★**第116巡の `CASSETTE_ROWS`(2.2) は削除した。復活させない**
+  //     （`lib/taskSize.ts` の注釈も同時に直した）。
+  //   ★★高さは**板の高さそのもの**、幅は `CASSETTE_ASPECT` から導く。
+  //   ★★予算では**板と同じ扱い**（`fixed` へ足す。`areas` には入れない）。
 
   // ★★★**文字の板は先に決めて、器の予算から差し引く**（2026-09-10）。
   //   板は器の幅の `WORD_W` を取る**いちばん大きな塊**なので、予算に数えないと
@@ -621,7 +624,7 @@ export function buildPieces(
   //   ★数えるのは**落とす体の全部**（タスク・提案・カセット・未読・板2枚）。
   const crowd = crowdOf(
     tasks.length + offers.length + picks.length
-    + (jH > 0 ? 1 : 0) + (unread > 0 ? 1 : 0) + 2);
+    + (journal ? 1 : 0) + (unread > 0 ? 1 : 0) + 2);
   const words = [`${today.getMonth() + 1}.${today.getDate()}`, WD_SHORT[today.getDay()]];
   const room = pileWOf(w) * WORD_W * crowd;
   // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
@@ -634,6 +637,9 @@ export function buildPieces(
     [WD_FULL[today.getDay()]], room, DISPLAY, PILE_WORD_MAX * crowd);
   const plates = words.map(
     (wd) => measureWordPlate(wd, wordFs, room, PAPER, DISPLAY, undefined, undefined, INK));
+  /** カセットの箱（px）。★**高さは板と同じ**（上の注釈）。0 ＝ 出さない。 */
+  const jH = journal ? plates[0].bh : 0;
+  const jW = jH * CASSETTE_ASPECT;
 
   /**
    * ★★★**ホームの図形は、重要度でも切迫度でも大きさが変わらない**
@@ -665,11 +671,12 @@ export function buildPieces(
     ...tasks.map((t) => rowSpecOf(flat(t)).area),
     ...offers.map(() => OFFER_AREA),
     ...picks.map(() => OFFER_AREA),
-    ...(jArea > 0 ? [jArea] : []),
   ];
   const total = areas.reduce((a, b) => a + b, 0) || 1;
+  // ★★**px で大きさが決まっているものは「固定」側**（板・未読の数・カセット）。
   const fixed = plates.reduce((a, pl) => a + pl.w * pl.h, 0)
-    + (unread > 0 ? Math.PI * BADGE_R * BADGE_R : 0);
+    + (unread > 0 ? Math.PI * BADGE_R * BADGE_R : 0)
+    + jW * jH;
   // ★★**`crowd` は「長さ」の倍率なので、面積の予算には2乗で効かせる**（第118巡）。
   const room2 = w * usableH * FILL * crowd * crowd;
   const budget = Math.max(room2 * 0.25, room2 - fixed);
@@ -679,11 +686,10 @@ export function buildPieces(
   //   1枚だけ縮めない ―― 図形どうしの大きさの比がそのまま重要度なので。
   //   ★★★**この頭打ちは予算とは別に出す**（第110巡）―― 据え置きのときも
   //   **これだけは必ず効かせる**（＝器に入らない倍率は据え置かない）。
+  // ★★カセットはもう `unit` の倍数ではないので、**頭打ちの相手はタスクだけ**
+  //   （板・未読と同じ扱い ―― px で決まっているものは `unit` では抑えられない）。
   let cap = UNIT;
-  for (const sp of [
-    ...tasks.map((t) => rowSpecOf(flat(t))),
-    ...(jW > 0 ? [{ w: jW, h: jH }] : []),
-  ]) {
+  for (const sp of tasks.map((t) => rowSpecOf(flat(t)))) {
     cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
   }
   // ★★★**据え置きが渡されていれば、予算からは決め直さない**（第110巡。上の注釈）。
@@ -828,11 +834,12 @@ export function buildPieces(
     });
   });
 
-  if (jArea > 0) {
+  if (jH > 0) {
     // ★★**タブのアイコンと同じカセット**。文字は載せない（ユーザー指定）。
     // ★★**体は四角**（円ではない）。当たり判定も `Pile.tsx` の四角の枝へ入る。
-    const pw = Math.max(32, jW * unit);
-    const ph = Math.max(24, jH * unit);
+    // ★★★**大きさは px で決まっている**（＝板と同じ高さ。第123巡）。
+    const pw = Math.max(32, jW);
+    const ph = Math.max(24, jH);
     const sig = `cassette|${pw.toFixed(2)}|${ph.toFixed(2)}`;
     const kept = same("journal", sig);
     // ★体は矩形（本体が矩形なので絵と合う）。★★**絵より `PHYS_GAP` 外側**（第101巡）。
@@ -840,7 +847,8 @@ export function buildPieces(
       ?? m.Bodies.rectangle(0, 0, pw + PHYS_GAP * 2, ph + PHYS_GAP * 2, BODY);
     let fresh = false;
     if (!kept) {
-      m.Body.setMass(body, jArea * MASS_K);
+      // ★★**密度は全部の体で同じ**（箱の面積 ÷ `unit²`）。板・未読と同じ式。
+      m.Body.setMass(body, (pw * ph) / (unit * unit) * MASS_K);
       fresh = toss(body, "journal", ph);
       stamp(body, sig);
     }
@@ -873,19 +881,14 @@ export function buildPieces(
     let fresh = false;
     if (!kept) {
       m.Body.setMass(body, area * MASS_K);
-      // ★★★**提案だけは正立で固定する**（2026-09-18・第121巡にユーザー確定
-      //   「**提案だけ傾けない**」）。
-      //   ★★★**ユーザー報告「図形が歪んでいる」の正体は回転だった** ―― 実機の
-      //     青い図形を測ったら**正規の「波打つ四角」と半径のずれが平均 1.1%・
-      //     最大 5.1%**（＝形は正しい）で、**150° 回っていた**。四つ葉も波打つ
-      //     四角も**正方形に収まる形**なので、傾くと「四角い」と読めなくなる。
-      //   ★★**`setInertia(Infinity)` は `setMass` のあと**（`setMass` は慣性も
-      //     一緒に書き換える）。以後、接触では1度も回らない。
-      //   ★★**角度そのものは `respawn` が 0 にする**（`inverseInertia` を見て
-      //     判断するので、`isLost` で拾い直しても正立のまま）。
-      //   ★★★**タスクは今までどおり傾く**（「0° だと格子になって積もったに
-      //     見えない」＝ `docs/home-spec.md` §5-c）。**変えるのは提案だけ。**
-      m.Body.setInertia(body, Infinity);
+      // ★★★**提案も自由に回る**（2026-09-19・第123巡にユーザー指定
+      //   「**提案の図形も自由に回転したり動くようにしてください**」）。
+      //   ★★★**第121巡の `setInertia(Infinity)`（正立で固定）は撤回。復活させない。**
+      //     あのとき「歪んで見える」の犯人を回転だと見立てたが、**本当の犯人は
+      //     六角形の定義**だった（正方形いっぱいに広げていたので縦に 1.155 倍。
+      //     `lib/cardShape.ts` の `HEX_H`）。**形を直したので、回してよい。**
+      //   ★★**回りの目盛りはタスクと同じ**（`respawn` の `SPAWN_TILT`/`SPAWN_SPIN`）
+      //     ―― 山の中で提案だけが別の物理法則に従っていると、物体に見えない。
       fresh = toss(body, seed, r * 2);
       stamp(body, sig);
     }

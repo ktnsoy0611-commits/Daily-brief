@@ -1043,98 +1043,84 @@ export function Pile({
 
   // ── 掴む ──────────────────────────────────────────────────
   /**
-   * ★★★**当たり判定**（2026-09-09 に作り直した）。直す前は3つ外していた:
-   *   1. **掴めないもの（数の図形・文字の板）が上に乗っていると、下の図形が
-   *      掴めなかった** ―― **掴めないものは初めから見ない。**
-   *   2. **円を多角形として見ていた** ―― matter.js の円は 25 角形で、頂点は
-   *      円周上にあるから**辺の内側が欠ける**。円は半径で見る。
-   *   3. **指の太さぶんの余裕が無かった** ―― `TOUCH_SLOP` ぶん広げ、
-   *      **当たった中でいちばん近いもの**を採る。
-   * ★★★**トゲトゲの円も見る**（押すと行き先があるので、見ないと触れない）。
-   * ★★★**文字の板も見る**（2026-09-18・第120巡にユーザー指定「**日付も
-   *   つかめるように**」）。★★**ただし帯にも右端にも入らない**
-   *   （`dragRef.place`）―― 日付の板に割り当てる日付は無い。
-   * ★★★**板は「遊びなし」で勝つ**（＝見えているものが掴める）。
-   *   ★**板はいちばん最後に塗られる**ので、画面では必ずいちばん上に居る。
-   *     だから**板の内側を押したら板**、という以外は嘘になる。
-   *   ★★**`TOUCH_SLOP` を足さないのが肝** ―― 足すと、板は山でいちばん大きな
-   *     塊なので**まわりの図形を軒並み飲み込む**（実測 … 板の中心を押したのに
-   *     隣のタスクが掴まれ、板は 295px 置き去りになった）。縁のそばは下の図形へ譲る。
+   * ★★★**その1点に、その図形が描かれているか**（回りを戻して、絵と同じ式で見る）。
+   * @param slop 指の太さぶんの遊び（px）。0 なら**描かれているところだけ**。
+   */
+  const hitPiece = (p: Piece, px: number, py: number, slop: number): boolean => {
+    const b = p.body;
+    const dx = px - b.position.x; const dy = py - b.position.y;
+    // ★回っている図形は、**体の向きへ座標を戻してから**見る。
+    const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
+    const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
+    // ★★★**円で描くものは半径で見る**（忘れると押しても飛ばない）。
+    //   ★★カセット（`cassette`）は**四角**なので下の枝（箱で見る）へ入る。
+    if (p.kind === "offer" && p.r && p.shape) {
+      // ★★★**提案は「絵と同じ形」で見る**（2026-09-18・第121巡）。絵は
+      //   `traceCardShape(…, p.r * 2)` ＝ **2r 四方いっぱい**なので、`p.r` の円で
+      //   見ると**出っ張りを押しても掴めず、へこみの何も無い所で掴めた**。
+      // ★★**遊びは「形を太らせる」ことで入れる** ―― 器を `2r + 2·slop` と
+      //   見なして正規化すれば、どの向きにもおよそ `slop` ぶん広がる。
+      const k = p.r * 2 + slop * 2;
+      return inCardShape(p.shape, lx / k, ly / k);
+    }
+    if ((p.kind === "offer" || p.kind === "badge") && p.r) {
+      return Math.hypot(dx, dy) <= p.r + slop;
+    }
+    const pw = p.w ?? 0; const ph = p.h ?? 0;
+    if (Math.abs(ly) > ph / 2 + slop) return false;
+    // ★★★**タスクは「絵と同じ輪郭」で見る**（2026-09-14・第104巡）。
+    //   ★★**式は `halfWidthAtStack`**（絵と物理と同じ1か所。`lib/solid.ts`）。
+    if (p.kind === "task" && pw > 0 && ph > 0) {
+      const hw = halfWidthAtStack(clampRows(rowsOf(p.title ?? "")), pw / ph, ly / ph);
+      return Math.abs(lx) <= hw * pw + slop;
+    }
+    // ★★★**板も「絵と同じ形」で見る**（2026-09-18・第122巡）。板は**角丸が
+    //   高さの半分のピル**（`lib/wordPlate.ts` の `roundRect`）なので、外接箱で
+    //   当てると**四隅の外の何も描かれていない所が触れる**（箱の 4.9%）。
+    if (p.kind === "word" && p.plate?.pill && pw > 0 && ph > 0) {
+      const rad = ph / 2;
+      const qx = Math.max(0, Math.abs(lx) - (pw / 2 - rad));
+      const qy = Math.max(0, Math.abs(ly) - (ph / 2 - rad));
+      return Math.abs(lx) <= pw / 2 + slop && Math.hypot(qx, qy) <= rad + slop;
+    }
+    return Math.abs(lx) <= pw / 2 + slop;
+  };
+
+  /**
+   * ★★★**当たり判定 ―― 「画面でいちばん上に描かれているもの」を掴む**
+   * （2026-09-19・第123巡にユーザー指摘「**やはりまだ当たり判定がおかしいようです**」）。
+   *
+   * ★★★**真因は「いちばん近い中心」を採っていたこと** ―― 重なった2つのどちらを
+   *   掴むかは、**画面でどちらが上に見えているか**でしか説明できない。中心の
+   *   近さで選ぶと、**大きな図形の上に小さな図形が乗っているとき、下の大きい
+   *   ほうが掴めてしまう**（中心が近いのは大きいほうだから）。
+   * ★★★**そのうえ第120〜122巡は「板が必ず勝つ」という規則を足していた** ――
+   *   根拠は「**板はいちばん最後に塗られる**」だったが、**事実は逆**で、
+   *   `buildPieces` は **板 → タスク → カセット → 提案 → 未読の数**の順に積む＝
+   *   **板はいちばん下**。つまり**画面でいちばん下のものが必ず勝っていた**。
+   *   ★★**`plate ?? best` の枝は削除した。復活させない。**
+   * ★★★**塗る順と拾う順は同じ配列（`piecesRef`）から引く** ―― 2つの順番を
+   *   別々に持つと、また食い違う。**後ろにあるものほど上**なので、**末尾から探す**。
+   *
+   * ★★★**遊び（`TOUCH_SLOP`）は2周目でだけ効かせる**（第123巡）。
+   *   1周目は**遊びなし＝描かれているところだけ**で上から探し、**何にも当たら
+   *   なかったときだけ**遊びを付けてもう一度。★こうすると
+   *   **「何かの上を押したら、必ずその見えているもの」**が保証され、遊びは
+   *   「隙間を押したときの助け」だけに縮む（＝上の図形が隣の絵を盗まない）。
    */
   const pickAt = (cx: number, cy: number): Piece | null => {
     const box = boxRef.current;
     if (!box) return null;
     const r = box.getBoundingClientRect();
-    const pt = { x: cx - r.left, y: cy - r.top };
-    let best: Piece | null = null;
-    let bestD = Infinity;
-    let plate: Piece | null = null;
-    let plateD = Infinity;
-    for (const p of piecesRef.current) {
-      const b = p.body;
-      const dx = pt.x - b.position.x; const dy = pt.y - b.position.y;
-      const d = Math.hypot(dx, dy);
-      // ★★板だけ遊びを 0 にする（上の注釈）。
-      const slop = p.kind === "word" ? 0 : TOUCH_SLOP;
-      // ★回っている図形は、**体の向きへ座標を戻してから**見る。
-      const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
-      const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
-      let inside: boolean;
-      // ★★★**円で描くものは半径で見る**（忘れると押しても飛ばない）。
-      //   ★★カセット（`cassette`）は**四角**なので下の枝（箱で見る）へ入る
-      //     ―― 第94巡に円からカセットへ替えたとき、ここを直すのを忘れると
-      //     四角い図形を円で当てることになる。
-      if (p.kind === "offer" && p.r && p.shape) {
-        // ★★★**提案は「絵と同じ形」で見る**（2026-09-18・第121巡にユーザー指摘
-        //   「**当たり判定がずれていたり**」）。第120巡までは**半径の円**で見て
-        //   いたが、絵は `traceCardShape(…, p.r * 2)` ＝ **2r 四方いっぱい**なので、
-        //   **出っ張り（実測 … 波打つ四角で半径の 1.29 倍）は押しても掴めず、
-        //   へこみの何も無い所で掴めた**。
-        // ★★**遊びは「形を太らせる」ことで入れる** ―― 器を `2r + 2·slop` と
-        //   見なして正規化すれば、どの向きにもおよそ `slop` ぶん広がる。
-        const k = p.r * 2 + slop * 2;
-        inside = inCardShape(p.shape, lx / k, ly / k);
-      } else if ((p.kind === "offer" || p.kind === "badge") && p.r) {
-        inside = d <= p.r + slop;
-      } else {
-        const pw = p.w ?? 0; const ph = p.h ?? 0;
-        inside = Math.abs(ly) <= ph / 2 + slop;
-        // ★★★**タスクは「絵と同じ輪郭」で見る**（2026-09-14・第104巡にユーザー指摘
-        //   「**図形のピルの左右のところの当たり判定がおかしい**」）。
-        //   第101巡に**物理の体**は `stackOutline` の輪郭へ直したが、**指で触る
-        //   判定だけ外接箱のまま**だった ―― ピルは左右が丸いので、
-        //   **何も描かれていない左右の角が触れてしまう**。
-        //   ★★**式は `halfWidthAtStack`**（絵と物理と同じ1か所。`lib/solid.ts`）。
-        //   ★カセットは本当に四角なので、そのまま箱で見る（下の枝）。
-        if (inside && p.kind === "task" && pw > 0 && ph > 0) {
-          const hw = halfWidthAtStack(clampRows(rowsOf(p.title ?? "")), pw / ph, ly / ph);
-          inside = Math.abs(lx) <= hw * pw + slop;
-        } else if (inside && p.kind === "word" && p.plate?.pill && pw > 0 && ph > 0) {
-          // ★★★**板も「絵と同じ形」で見る**（2026-09-18・第122巡にユーザー指摘
-          //   「**山の日付と曜日の当たり判定がおかしくて、見た目に対して
-          //   大きすぎる**」）。第120巡に板を掴めるようにしたとき、判定だけ
-          //   **外接箱のまま**だった ―― 板は**角丸がピルと同じ `bh/2`**
-          //   （`lib/wordPlate.ts` の `roundRect`）なので、**四隅の外の何も
-          //   描かれていない所が触れる**。しかも板は `plate ?? best` で
-          //   **必ず勝つ**ので、そこに居た図形が掴めなくなっていた。
-          //   ★実測（283×64 の板）… 角の4つの欠けは合わせて **1157px²**
-          //     ＝ 箱の 6.4%。そこは下の図形へ譲る。
-          // ★★**式は丸い角の矩形との距離**（角丸の半径 ＝ 高さの半分）。
-          const rad = ph / 2;
-          const qx = Math.max(0, Math.abs(lx) - (pw / 2 - rad));
-          const qy = Math.max(0, Math.abs(ly) - (ph / 2 - rad));
-          inside = Math.abs(lx) <= pw / 2 + slop && Math.hypot(qx, qy) <= rad + slop;
-        } else {
-          inside = inside && Math.abs(lx) <= pw / 2 + slop;
-        }
-      }
-      if (!inside) continue;
-      // ★★板は「内側を押したら必ず板」（上の注釈）。ほかは今までどおり近い順。
-      if (p.kind === "word") {
-        if (d < plateD) { plate = p; plateD = d; }
-      } else if (d < bestD) { best = p; bestD = d; }
+    const px = cx - r.left; const py = cy - r.top;
+    const list = piecesRef.current;
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (hitPiece(list[i], px, py, 0)) return list[i];
     }
-    return plate ?? best;
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (hitPiece(list[i], px, py, TOUCH_SLOP)) return list[i];
+    }
+    return null;
   };
 
   const press = useRef<{ id: number; x: number; y: number; timer: number } | null>(null);

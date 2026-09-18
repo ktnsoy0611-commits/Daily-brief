@@ -5,8 +5,8 @@ import { groundOf } from "@/components/AppBackdrop";
 import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { BAND_ROW, type BandItem, type BandRowId, isOutlined } from "@/lib/homeBand";
-import { MUTED } from "@/lib/constants";
 import { bodyInkOn } from "@/lib/palette";
+import { NewsPill } from "./NewsCard";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
   BAND_CATCH, PILL_EDGE, PILL_HINT, PILL_PRESS, RAIL_HYST, RAIL_NEAR,
@@ -41,7 +41,7 @@ type Row = BandRowId;
 
 /**
  * 段の厚み。★写真の丸が入る上の段だけ厚い（丸は高さいっぱい）。
- * ★★**ニュースの段（2）は字だけ**なので、いちばん薄い（第122巡）。
+ * ★★**ニュースの段（2）は輪郭だけのピル**なので、いちばん薄い（第123巡）。
  */
 const HEIGHT: Record<Row, number> = {
   0: BAND_H.photo, 1: BAND_H.plain, 2: BAND_H.news,
@@ -366,33 +366,21 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     );
   }
 
-  // ★★★**ニュースも「地の上の字」だけ**（2026-09-18・第122巡）。
-  //   ★★**文章（`note`）との違いは3つ** … ①**字が1段小さい**（`small`）
-  //     ②**出典を薄く添える**（`genre` の枠を借りる）③**段がいちばん薄い**。
-  //     ＝「これは自分のことではなく世の中のこと」を**大きさと濃さ**で言う。
-  //   ★★**押せない** ―― 帯は流れているので、狙って押させる場所ではない。
-  //     `BandRow row={2}` は `pull` そのものを受け取っていないので、
-  //     **掴む仕掛けは配線からして存在しない**。
+  // ★★★**ニュースは「輪郭のピル」**（2026-09-19・第123巡にユーザー指定
+  //   「**ニュースもピルにしてください。そして引き出した時にそのピルが画面上で
+  //   広がって角丸の四角になって展開し、ニュースの詳細が見れるようにして**」）。
+  //   ★★**絵も手つきも `components/home/NewsCard.tsx` の `NewsPill` が持つ** ――
+  //     引き下ろし（日付の割り当て）とは**別の手つき**なので、`Pill` の
+  //     `pull` の仕掛けには載せない。**ここは行き先を示すだけ。**
   if (item.kind === "news") {
     return (
-      <div style={{
-        display: "flex", alignItems: "baseline", gap: SPACE.sm, flexShrink: 0, height: h,
-        pointerEvents: "none", padding: `0 ${SPACE.xl}px`,
-      }}>
-        <span style={{
-          fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.text,
-          letterSpacing: TRACK.normal, lineHeight: LEAD.snug,
-          color: bodyInkOn(groundOf("home")), whiteSpace: "nowrap",
-        }}>{item.text}</span>
-        {item.genre && (
-          <span style={{
-            fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.text,
-            letterSpacing: TRACK.wide, lineHeight: LEAD.flat,
-            // ★副文の字は `MUTED`（地の上で 3.2。`design.md` §3-1 の役どおり）。
-            color: MUTED, whiteSpace: "nowrap",
-          }}>{item.genre}</span>
-        )}
-      </div>
+      <NewsPill
+        h={h}
+        item={{
+          id: item.id, title: item.text, source: item.genre ?? "",
+          link: item.link ?? "", at: item.at ?? "",
+        }}
+      />
     );
   }
 
@@ -955,8 +943,8 @@ export function Band({ rows, pull }: {
         armed={armed} onArm={setArmed} />
       <BandRow row={1} items={rows[1]} pull={pull} taken={taken} onTake={setTaken}
         armed={armed} onArm={setArmed} />
-      {/* ★★ニュースの段。**`pull` を渡さない** ―― 引き下ろす相手ではないので、
-          掴む仕掛けを配線しないことで「押せない」を**構造で**言う。 */}
+      {/* ★★ニュースの段。**`pull` を渡さない** ―― 日付を割り当てる相手ではない。
+          ★ニュースの手つき（下へ引くと広がる）は `NewsPill` が自分で持つ。 */}
       <BandRow row={2} items={rows[2]} taken={taken} onTake={setTaken}
         armed={armed} onArm={setArmed} />
     </div>

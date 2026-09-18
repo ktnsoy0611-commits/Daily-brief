@@ -80,6 +80,22 @@ export function fitUnit(unit: number, sw: number, sh: number, bw: number, bh: nu
  *   段の高さは `1.49 unit` だったので **2.7倍**、3段だと 5.4倍。**その間を取る。**
  */
 const OFFER_D = 3.2;
+/**
+ * ★★★**提案の体だけ光線を増やす**（2026-09-18・第121巡にユーザー指摘
+ * 「**他の図形と干渉してなんかめり込んでしまったり**」）。
+ *
+ * ★★★**タスクの `PHYS_VERTS`(12) は「ピルの積み」に合わせた本数** ―― 縁が
+ *   なめらかな形なので 12 で足りる。ところが**札の4つの形は縁に山と谷がある**
+ *   （波打つ四角は 16 個の円の外縁）ので、12 本では谷ばかり拾って**体が絵より
+ *   小さくなる**。実測 体÷絵 … 四つ葉 0.988／六角形 0.973／**波打つ四角 0.900**／
+ *   トゲトゲ 1.014 ―― 波打つ四角は **10% 小さい**ので、隣とめり込んで見えた。
+ * ★**28 本にすると** 1.034／0.990／**1.011**／1.014 に収まる（頂点 16／21／12／20）。
+ * ★★**偶数**であること（左右の対称性を式に保証させる。`PHYS_VERTS` と同じ約束）。
+ * ★★**費用は「軸の本数 × 頂点数」**だが、提案は多くて数体なので効かない
+ *   （タスクは 12 のまま ―― こちらは十数体あるので上げない）。
+ * ★目盛りの外（物理の刻み）。
+ */
+const OFFER_VERTS = 28;
 /** ★カセットの高さ（段の高さの何倍か）。理由は `OFFER_D` と同じ。 */
 const CASSETTE_ROWS = 2.2;
 /**
@@ -204,6 +220,7 @@ export function zigVerts(r: number): { x: number; y: number }[] {
  */
 function bodyFromOutline(
   m: M, pts: { x: number; y: number }[], w: number, h: number, opts: object,
+  rays = PHYS_VERTS,
 ): Body {
   // ★★★**光線は「正規化した空間」で飛ばし、そのあと w/h を掛ける**
   //   （2026-09-16・第108巡）。
@@ -231,7 +248,7 @@ function bodyFromOutline(
   const nx = N.map((q) => q.x); const ny = N.map((q) => q.y);
   const cx = (Math.min(...nx) + Math.max(...nx)) / 2;
   const cy = (Math.min(...ny) + Math.max(...ny)) / 2;
-  const C = radialVerts(N.map((q) => ({ x: q.x - cx, y: q.y - cy })), PHYS_VERTS)
+  const C = radialVerts(N.map((q) => ({ x: q.x - cx, y: q.y - cy })), rays)
     .map((q) => ({ x: (q.x / REF) * w, y: (q.y / REF) * h }));
   const body = m.Bodies.fromVertices(0, 0, [C], opts);
   if (w > 1 && h > 1) {
@@ -340,10 +357,15 @@ export function respawn(m: M, body: Body, w: number, seed: string, bh?: number):
   const bw = body.bounds.max.x - body.bounds.min.x;
   const up = (bh ?? body.bounds.max.y - body.bounds.min.y) / 2 + DROP_ABOVE + r2 * DROP_SCATTER;
   m.Body.setPosition(body, { x: spawnXOf(w, bw, r1), y: -up });
-  m.Body.setAngle(body, (r3 - 0.5) * SPAWN_TILT);
+  // ★★★**回らない体は傾けない**（2026-09-18・第121巡）。**合図は体そのもの**
+  //   （`inverseInertia === 0` ＝ `setInertia(Infinity)` を掛けてある）――
+  //   旗を別に持ち回ると、`isLost` → `respawn` の道で**付け忘れて傾く**。
+  //   ★いま該当するのは**提案の図形だけ**（理由は `offerPiece` の注釈）。
+  const spin = body.inverseInertia !== 0;
+  m.Body.setAngle(body, spin ? (r3 - 0.5) * SPAWN_TILT : 0);
   // ★★**回りは形の大小で加減しない**（2026-09-09）。大きさで割ると、小さい
   //   ものだけ空中で止まって見える。同じ初速を与えて、あとは形に任せる。
-  m.Body.setAngularVelocity(body, (r3 - 0.5) * SPAWN_SPIN);
+  m.Body.setAngularVelocity(body, spin ? (r3 - 0.5) * SPAWN_SPIN : 0);
   m.Body.setVelocity(body, { x: (r1 - 0.5) * SPAWN_VX, y: 0 });
   m.Sleeping.set(body, false);
 }
@@ -830,10 +852,24 @@ export function buildPieces(
     const sig = `offer|${r.toFixed(2)}|${shape}`;
     const kept = same(seed, sig);
     const body = kept ?? bodyFromOutline(
-      m, cardShapePoints(shape).map(([x, y]) => ({ x: x - 0.5, y: y - 0.5 })), r * 2, r * 2, BODY);
+      m, cardShapePoints(shape).map(([x, y]) => ({ x: x - 0.5, y: y - 0.5 })),
+      r * 2, r * 2, BODY, OFFER_VERTS);
     let fresh = false;
     if (!kept) {
       m.Body.setMass(body, area * MASS_K);
+      // ★★★**提案だけは正立で固定する**（2026-09-18・第121巡にユーザー確定
+      //   「**提案だけ傾けない**」）。
+      //   ★★★**ユーザー報告「図形が歪んでいる」の正体は回転だった** ―― 実機の
+      //     青い図形を測ったら**正規の「波打つ四角」と半径のずれが平均 1.1%・
+      //     最大 5.1%**（＝形は正しい）で、**150° 回っていた**。四つ葉も波打つ
+      //     四角も**正方形に収まる形**なので、傾くと「四角い」と読めなくなる。
+      //   ★★**`setInertia(Infinity)` は `setMass` のあと**（`setMass` は慣性も
+      //     一緒に書き換える）。以後、接触では1度も回らない。
+      //   ★★**角度そのものは `respawn` が 0 にする**（`inverseInertia` を見て
+      //     判断するので、`isLost` で拾い直しても正立のまま）。
+      //   ★★★**タスクは今までどおり傾く**（「0° だと格子になって積もったに
+      //     見えない」＝ `docs/home-spec.md` §5-c）。**変えるのは提案だけ。**
+      m.Body.setInertia(body, Infinity);
       fresh = toss(body, seed, r * 2);
       stamp(body, sig);
     }

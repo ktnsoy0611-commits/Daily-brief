@@ -320,6 +320,30 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     if (near !== g.rail) { g.rail = near; pull.rail(near); }
   };
 
+  // ★★★**文章は「地の上の字」だけ**（2026-09-18・第121巡にユーザー指定
+  //   「**ピル以外に文章みたいなのも一緒に流して**」）。
+  //   ★★**面も縁も持たない** ―― `design.md` の「縁を付けてよいのは押せるものだけ」。
+  //     ピルの列にそのまま字が流れるので、**雑誌の中見出しのように読める**。
+  //   ★★**指のイベントは素通しする**（引き下ろす相手ではない）。
+  //   ★★**幅は決めない** ―― 文は 20〜30 字あるので、`maxWidth` で切ると
+  //     途中で `…` になる。帯は左右へ切れてよい場所（`docs/home-spec.md` §4-c）。
+  //   ★中身は `lib/bandNotes.ts` の1か所。
+  if (item.kind === "note") {
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", flexShrink: 0, height: h,
+        pointerEvents: "none", padding: `0 ${SPACE.xl}px`,
+      }}>
+        <span style={{
+          fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text,
+          letterSpacing: TRACK.normal, lineHeight: LEAD.snug,
+          // ★地の上に直接いるので `bodyInkOn(地)`（墨。比 15.5）。
+          color: bodyInkOn(groundOf("home")), whiteSpace: "nowrap",
+        }}>{item.text}</span>
+      </div>
+    );
+  }
+
   return (
     <div
       onPointerDown={onDown}

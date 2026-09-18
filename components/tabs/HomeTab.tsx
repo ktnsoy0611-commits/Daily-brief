@@ -14,6 +14,7 @@ import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { bandRows, pinBand, unreadCards, unreadEntries, type BandItem } from "@/lib/homeBand";
 import { keepCard } from "@/lib/keepCard";
+import { bandNotes } from "@/lib/bandNotes";
 import { pickOffers } from "@/lib/offerPick";
 import { genreOfKind } from "@/lib/deckStyle";
 import { haptic, todayKey } from "@/lib/helpers";
@@ -46,7 +47,11 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
    *   理由は `lib/homeBand.ts` の `bandRows` の `keepId`（黙って消えていた）。
    */
   const [keepId, setKeepId] = useState<string | null>(null);
-  const rows = useMemo(() => bandRows(appState, keepId), [appState, keepId]);
+  // ★★★**帯に流す文章**（2026-09-18・第121巡）。**中身は `lib/bandNotes.ts` の1か所**。
+  //   ★★**ここで作って渡す** ―― `bandNotes` は `lib/offerPick.ts` を読み、そちらは
+  //     `lib/homeBand.ts` の `unreadEntries` を読むので、**帯の側から呼ぶと輪になる**。
+  const notes = useMemo(() => bandNotes(appState, pickOffers(appState)), [appState]);
+  const rows = useMemo(() => bandRows(appState, keepId, notes), [appState, keepId, notes]);
   const unread = useMemo(() => unreadCards(appState).length, [appState]);
 
   // ★★山にいるのは**今日のものだけ**（ユーザー確定）。だから山は説明が要らない

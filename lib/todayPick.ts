@@ -51,6 +51,13 @@ const openLater = (slots: Slot[], hour: number): boolean =>
   slots.some((s) => hour < s.from);
 
 /**
+ * ★★★**いつ行けるか**（2026-09-18・第121巡）。
+ * `now` ＝ いま開いている ／ `later` ＝ 今日このあと ／ `tomorrow` ＝ 明日なら。
+ */
+export type TodayWhen = "now" | "later" | "tomorrow";
+export interface TodayPick { it: Item; when: TodayWhen }
+
+/**
  * ★行き先であるか。**場所があるか、ドメインが場所／体験**なら「行く」もの。
  * （`hasPlace` は座標かエリア名。生成の途中で座標が取れていない候補もあるので、
  *  ドメインでも拾う。）
@@ -76,9 +83,11 @@ const daysLeft = (it: Item): number => {
  */
 export function pickTodayItems(
   items: Item[], now = new Date(), force?: ReadonlySet<string>,
-): Item[] {
+): TodayPick[] {
   const hour = now.getHours();
   const scored: { it: Item; rank: number }[] = [];
+  /** ★今日はもう無理だが、**明日なら行ける**もの（今日が 0 件のときだけ使う）。 */
+  const tomorrow: { it: Item; rank: number }[] = [];
   for (const it of items) {
     if (it.status !== "candidate") continue;
     // ★★★**もう予定に入れたものは出さない**（2026-09-15・第110巡）。
@@ -98,15 +107,23 @@ export function pickTodayItems(
     if (!isGoable(it)) continue;
     const slots = KIND_HOURS[it.kind] ?? [];
     if (!slots.length) continue;
-    // ★0 ＝ いま開いている／1 ＝ 今日このあと開く／それ以外は落とす。
+    // ★0 ＝ いま開いている／1 ＝ 今日このあと開く／それ以外は**明日へ回す**。
     const rank = openNow(slots, hour) ? 0 : openLater(slots, hour) ? 1 : -1;
-    if (rank < 0) continue;
+    if (rank < 0) { tomorrow.push({ it, rank: 2 }); continue; }
     scored.push({ it, rank });
   }
-  return scored
+  // ★★★**今日が1件も無い夜だけ、明日の分を出す**（2026-09-18・第121巡に
+  //   ユーザー指定「**もし今が夜だからどこにも行けないから出していないのだと
+  //   したら、この時間は次の日に行けそうなやつを出すようにしてください**」）。
+  //   ★★**今日の分があるうちは混ぜない** ―― 混ぜると「今日行ける」という
+  //     この段の意味が壊れる。**0 件のときだけ、行き先を明日へ替える。**
+  //   ★★**明日の分であることは帯の文章が言う**（`lib/bandNotes.ts`）。
+  //     印を付けずに並べると**今日行けると読めてしまう＝嘘になる**。
+  const use = scored.length > 0 ? scored : tomorrow;
+  return use
     .sort((a, b) =>
       a.rank - b.rank
       || daysLeft(a.it) - daysLeft(b.it)
       || Date.parse(b.it.addedAt) - Date.parse(a.it.addedAt))
-    .map((s) => s.it);
+    .map((s) => ({ it: s.it, when: (s.rank === 0 ? "now" : s.rank === 1 ? "later" : "tomorrow") as TodayWhen }));
 }

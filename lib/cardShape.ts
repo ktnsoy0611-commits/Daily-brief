@@ -301,3 +301,55 @@ export function cardShapeClip(shape: CardShape, prefix: string): React.CSSProper
   const url = `url(#${prefix}-${shape})`;
   return { clipPath: url, WebkitClipPath: url } as React.CSSProperties;
 }
+
+// ─────────────────────────────────────────────────────────────
+// ★★★**「絵がどこまで届くか」と「その点は形の中か」**（2026-09-18・第121巡）。
+//
+// ★★★**なぜ要るか。** ホームの山の提案は **`p.r`（円の半径）を持ち歩き、絵は
+//   `traceCardShape(ctx, shape, p.r * 2)`** で描く。ところが点の列は `fitBox` で
+//   **外接箱を 0〜1 に正規化**してあるので、**絵は 2r 四方の正方形いっぱいに広がる**
+//   ―― つまり**中心からいちばん遠い点は `p.r` ではない**。
+//   実測（`reach`）… 四つ葉 **1.169**／六角形 **1.116**／波打つ四角 **1.292**／
+//   トゲトゲ 1.000（★これだけ円に内接するので 1）。
+//
+//   これを `p.r` のまま使っていた2か所が、第120巡までのバグの正体だった:
+//   ★★★**① 塗り直す箱**（`pilePaint.drawBoxOf`）… `p.r + PAINT_PAD`(4) しか
+//     消していなかったので、**波打つ四角は四方 13px ぶん古い絵が残った**
+//     ―― ユーザー報告「**端っこの部分が一部ずれて表示される**」「**図形が歪んで
+//     いる**」は、歪んだ形を描いていたのではなく**前のフレームの拭き残し**。
+//   ★★★**② 指の当たり判定**（`Pile.pickAt`）… 円で見ていたので、**出っ張りを
+//     押しても掴めず、へこみの何も無い所で掴めた**。
+//
+// ★★**形を2度書かない**という約束のとおり、どちらも**点の列から導く**。
+
+/** 形ごとの覚え書き（点の列から1度だけ出す）。 */
+const REACH = new Map<CardShape, number>();
+/**
+ * ★**`traceCardShape(ctx, shape, size)` で描いた絵の最大半径 ÷ `size / 2`。**
+ * ★塗り直す箱はこれを掛ける。1 より小さくはならない（外接箱が 0〜1 なので）。
+ */
+export function cardShapeReach(shape: CardShape): number {
+  const hit = REACH.get(shape);
+  if (hit !== undefined) return hit;
+  let far = 0;
+  for (const [x, y] of cardShapePoints(shape)) far = Math.max(far, Math.hypot(x - 0.5, y - 0.5));
+  const out = far * 2;
+  REACH.set(shape, out);
+  return out;
+}
+
+/**
+ * ★**その点は形の中か。** 座標は**中心を原点とし、外接箱の一辺を 1 とした空間**
+ * （＝ `traceCardShape(…, size)` で描いたなら `x / size`・`y / size` を渡す）。
+ * ★交差数で見る（`fitBox` の点の列は閉じた単純多角形）。
+ */
+export function inCardShape(shape: CardShape, x: number, y: number): boolean {
+  const pts = cardShapePoints(shape);
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i][0] - 0.5; const yi = pts[i][1] - 0.5;
+    const xj = pts[j][0] - 0.5; const yj = pts[j][1] - 0.5;
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}

@@ -13,6 +13,7 @@ import {
 import { floorYOf } from "@/lib/pileBox";
 import { SPACE } from "@/lib/tokens";
 import { bandAim, bandBus } from "./bandMotion";
+import { inCardShape } from "@/lib/cardShape";
 import { clampRows, halfWidthAtStack } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { ensureGlyphs } from "@/lib/textFit";
@@ -1074,17 +1075,27 @@ export function Pile({
       const d = Math.hypot(dx, dy);
       // ★★板だけ遊びを 0 にする（上の注釈）。
       const slop = p.kind === "word" ? 0 : TOUCH_SLOP;
+      // ★回っている図形は、**体の向きへ座標を戻してから**見る。
+      const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
+      const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
       let inside: boolean;
       // ★★★**円で描くものは半径で見る**（忘れると押しても飛ばない）。
       //   ★★カセット（`cassette`）は**四角**なので下の枝（箱で見る）へ入る
       //     ―― 第94巡に円からカセットへ替えたとき、ここを直すのを忘れると
       //     四角い図形を円で当てることになる。
-      if ((p.kind === "offer" || p.kind === "badge") && p.r) {
+      if (p.kind === "offer" && p.r && p.shape) {
+        // ★★★**提案は「絵と同じ形」で見る**（2026-09-18・第121巡にユーザー指摘
+        //   「**当たり判定がずれていたり**」）。第120巡までは**半径の円**で見て
+        //   いたが、絵は `traceCardShape(…, p.r * 2)` ＝ **2r 四方いっぱい**なので、
+        //   **出っ張り（実測 … 波打つ四角で半径の 1.29 倍）は押しても掴めず、
+        //   へこみの何も無い所で掴めた**。
+        // ★★**遊びは「形を太らせる」ことで入れる** ―― 器を `2r + 2·slop` と
+        //   見なして正規化すれば、どの向きにもおよそ `slop` ぶん広がる。
+        const k = p.r * 2 + slop * 2;
+        inside = inCardShape(p.shape, lx / k, ly / k);
+      } else if ((p.kind === "offer" || p.kind === "badge") && p.r) {
         inside = d <= p.r + slop;
       } else {
-        // ★回っている図形は、**体の向きへ座標を戻してから**見る。
-        const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
-        const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
         const pw = p.w ?? 0; const ph = p.h ?? 0;
         inside = Math.abs(ly) <= ph / 2 + slop;
         // ★★★**タスクは「絵と同じ輪郭」で見る**（2026-09-14・第104巡にユーザー指摘

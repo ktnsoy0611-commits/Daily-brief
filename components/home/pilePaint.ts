@@ -1,7 +1,7 @@
 import { BAND_BEZEL, BD_GREY, DISPLAY, MUTED, SANS, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
-import { traceCardShape } from "@/lib/cardShape";
+import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
 import { clampRows, halfWidthAtStack, stackOutline } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { canvasFont, drawFitted, ensureGlyphs, layoutInRows } from "@/lib/textFit";
@@ -344,6 +344,14 @@ export function drawBoxOf(p: Piece): Box {
     const b = p.body.bounds;
     r = Math.hypot(b.max.x - b.min.x, b.max.y - b.min.y) / 2;
   }
+  // ★★★**提案は「円の半径」より外まで描かれる**（2026-09-18・第121巡）。
+  //   絵は `traceCardShape(ctx, shape, p.r * 2)` ＝ **2r 四方の正方形いっぱい**
+  //   なので、中心からいちばん遠い点は `p.r × reach`（実測 … 波打つ四角で **1.292**）。
+  //   ★★★**これを忘れると四方 13px ぶん古い絵が残る** ―― ユーザー報告
+  //     「**端っこの部分が一部ずれて表示される**」「**図形が歪んでいる**」の正体は
+  //     歪んだ形ではなく**前のフレームの拭き残し**だった。
+  //   ★倍率は `lib/cardShape.ts` の `cardShapeReach`（**点の列から導く**）。
+  if (p.kind === "offer" && p.shape) r *= cardShapeReach(p.shape);
   // ★★カセットだけは**突起が本体の外へ出る**ので、焼き箱と同じだけ広げる。
   if (p.kind === "cassette" && p.h) r += p.h * CASSETTE_TAB_H_PER_H;
   r += PAINT_PAD;

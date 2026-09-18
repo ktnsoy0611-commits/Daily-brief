@@ -58,11 +58,19 @@ export interface BandItem {
   itemKind?: ItemKind;
 }
 
-export type BandKind = "offer" | "today" | "voice" | "followup" | "someday";
+/**
+ * ★★★**`note` ＝ 文章**（2026-09-18・第121巡にユーザー指定「**この流れるピルに
+ * 今日のおすすめはこれとか、そのピル以外に文章みたいなのも一緒に流して、ユーザーに
+ * 何かを提案する**」）。
+ * ★★**面も縁も持たない。地の上に字だけ**（`components/home/Band.tsx`）――
+ *   押せないものに縁を付けない、が `design.md` の約束。
+ * ★★**中身は `lib/bandNotes.ts` の1か所**。
+ */
+export type BandKind = "offer" | "today" | "voice" | "followup" | "someday" | "note";
 
 /** どの段に置くか（0=上＝提案 / 1=下＝タスク系）。 */
 export const BAND_ROW: Record<BandKind, 0 | 1> = {
-  offer: 0, today: 0, voice: 1, followup: 1, someday: 1,
+  offer: 0, today: 0, voice: 1, followup: 1, someday: 1, note: 0,
 };
 
 /**
@@ -172,7 +180,7 @@ export function unreadEntries(state: AppState): { ed: string; card: BriefCard }[
 }
 
 /** 帯の中身（種類ごと）。★**出どころだけで決める**（切実さで混ぜない）。 */
-export function bandItems(state: AppState): BandItem[] {
+export function bandItems(state: AppState, notes?: BandItem[]): BandItem[] {
   const out: BandItem[] = [];
 
   // ★★★**まだ読んでいない提案は、もう帯に流さない**（2026-09-17・第119巡に
@@ -201,7 +209,8 @@ export function bandItems(state: AppState): BandItem[] {
   for (const p of state.bandPins ?? []) {
     if (p.id.startsWith("today-")) kept.add(p.id.slice("today-".length));
   }
-  for (const it of pickTodayItems(state.items ?? [], new Date(), kept)) {
+  const picks = pickTodayItems(state.items ?? [], new Date(), kept);
+  for (const { it } of picks) {
     out.push({
       id: `today-${it.id}`, kind: "today", text: it.title, itemKind: it.kind,
       // ★★焼き込まれた `it.color` は信じない（`cardFace` と同じ理由）。
@@ -209,6 +218,11 @@ export function bandItems(state: AppState): BandItem[] {
       genre: genreOfKind(it.kind),
     });
   }
+  // ★★★**文章は上の段の先頭へ**（2026-09-18・第121巡）。**中身は
+  //   `lib/bandNotes.ts` の1か所**（ここは並べるだけ）。
+  //   ★★**呼ぶ側から渡してもらう** ―― `bandNotes` は `lib/offerPick.ts` を読み、
+  //     そちらは `unreadEntries`（このファイル）を読むので、**ここから呼ぶと輪になる**。
+  out.unshift(...(notes ?? []));
 
   // 3 JOURNAL のデータから抽出されたタスクの候補。
   for (const c of state.inbox ?? []) {
@@ -249,9 +263,11 @@ export function bandItems(state: AppState): BandItem[] {
  *   ★帯は輪なので、**入ってさえいれば必ず流れてくる**（ユーザー確定
  *     「**画面外に出たらいいように処理して**」）。
  */
-export function bandRows(state: AppState, keepId?: string | null): [BandItem[], BandItem[]] {
+export function bandRows(
+  state: AppState, keepId?: string | null, notes?: BandItem[],
+): [BandItem[], BandItem[]] {
   const rows: [BandItem[], BandItem[]] = [[], []];
-  for (const it of bandItems(state)) rows[BAND_ROW[it.kind]].push(it);
+  for (const it of bandItems(state, notes)) rows[BAND_ROW[it.kind]].push(it);
   // ★★★**留め金を当てる**（下の `pinBand`）。**段ごと**に当てるので、
   //   段をまたぐ留め金は自然に無効になる（相手が同じ段に居ない）。
   const pins = state.bandPins ?? [];
@@ -261,7 +277,12 @@ export function bandRows(state: AppState, keepId?: string | null): [BandItem[], 
     const at = keepId ? list.findIndex((it) => it.id === keepId) : -1;
     return list.slice(0, at >= lim ? at + 1 : lim);
   };
-  return [cut(rows[0], BAND_LIMIT), cut(rows[1], BAND_LIMIT_TASKS)];
+  // ★★★**文章は上限の数に入れない**（2026-09-18・第121巡）―― 上限は「一周が
+  //   長くなりすぎない」ためのもので、文章は高々3件・面も持たない。数に入れると
+  //   **文章が出た日だけ提案が押し出されて消える**。
+  const notesIn = rows[0].filter((it) => it.kind === "note");
+  const rest = rows[0].filter((it) => it.kind !== "note");
+  return [[...notesIn, ...cut(rest, BAND_LIMIT)], cut(rows[1], BAND_LIMIT_TASKS)];
 }
 
 /**

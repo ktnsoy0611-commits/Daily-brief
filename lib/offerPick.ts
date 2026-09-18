@@ -35,6 +35,14 @@ const W_INTEREST = 2.0;  // 好みの語に当たった（当たり具合を 0�
 const W_HISTORY = 1.0;   // そのドメインを過去に KEEP した率（全体との差）
 const W_FRESH = 0.6;     // いちばん新しい号
 
+/**
+ * ★**ドメインを人の言葉で**（帯の文章が使う）。カタカナの符丁（バショ／タイケン…）は
+ * **図と色の語彙**なので、文の中には置かない。★文面そのものは `lib/bandNotes.ts`。
+ */
+const DOMAIN_JP: Record<ItemDomain, string> = {
+  place: "場所", experience: "体験", info: "読みもの", thing: "もの",
+};
+
 /** その号が「いちばん新しい号」か（キーは "YYYY-MM-DD" で文字列比較できる）。 */
 const newestEdition = (state: AppState): string =>
   Object.keys(state.generatedDecks ?? {}).sort().at(-1) ?? "";
@@ -86,17 +94,39 @@ const textOf = (c: BriefCard): string =>
  * その `weight` を足して**いちばん重い1語で割る**（＝「一番好きな語に当たったら 1」）。
  * ★★**語が空・1文字のものは飛ばす**（「本」のような語が何にでも当たる）。
  */
-function interestHit(c: BriefCard, state: AppState): number {
+function interestHit(c: BriefCard, state: AppState): { hit: number; word: string } {
   const list = (state.profile?.interests ?? []).filter((i) => (i.label ?? "").trim().length >= 2);
-  if (!list.length) return 0;
+  if (!list.length) return { hit: 0, word: "" };
   const text = textOf(c);
   const top = Math.max(...list.map((i) => i.weight || 1));
   let sum = 0;
-  for (const i of list) if (text.includes(i.label.toLowerCase())) sum += i.weight || 1;
-  return Math.min(1, sum / Math.max(1, top));
+  // ★★**当たった中でいちばん重い語**を控える（帯の文章がそれを名指す）。
+  let word = ""; let best = -1;
+  for (const i of list) {
+    if (!text.includes(i.label.toLowerCase())) continue;
+    const wgt = i.weight || 1;
+    sum += wgt;
+    if (wgt > best) { best = wgt; word = i.label; }
+  }
+  return { hit: Math.min(1, sum / Math.max(1, top)), word };
 }
 
-export interface OfferPick { ed: string; card: BriefCard; score: number; why: string }
+/**
+ * ★★★**人に見せる「選んだ理由」**（2026-09-18・第121巡にユーザー指定
+ * 「**おすすめの理由**を帯の文章で流す」）。
+ * ★★**いちばん効いた1つだけ**を返す ―― 全部並べると言い訳に見える。
+ * ★`word` はその理由の主語（願いの題／ゴールの題／好みの語／ドメインの名）。
+ * ★★**文面はここでは作らない**（`lib/bandNotes.ts` の1か所）―― 理由と言葉づかいを
+ *   別の場所に置いておくと、片方だけ直す事故が起きない。
+ */
+export type OfferReasonKind = "wish" | "goal" | "interest" | "history" | "fresh";
+export interface OfferReason { kind: OfferReasonKind; word: string }
+
+export interface OfferPick {
+  ed: string; card: BriefCard; score: number; why: string;
+  /** ★人に見せる理由（いちばん効いた1つ）。無いこともある。 */
+  reason?: OfferReason;
+}
 
 /**
  * ★★★**まだ読んでいない提案から「好みそうな」ものを選ぶ**。
@@ -113,14 +143,32 @@ export function pickOffers(state: AppState, n = OFFER_PICKS): OfferPick[] {
     const dom = KIND_DOMAIN[card.kind ?? "place"] ?? "info";
     const why: string[] = [];
     let s = 0;
-    if (card.sourceWishId && wishes.has(card.sourceWishId)) { s += W_WISH; why.push("願い"); }
-    if (card.goalId && goals.has(card.goalId)) { s += W_GOAL; why.push("ゴール"); }
-    const hit = interestHit(card, state);
-    if (hit > 0) { s += W_INTEREST * hit; why.push(`好み${hit.toFixed(2)}`); }
+    // ★★**理由は「足した点がいちばん大きかったもの」1つ**（上の `OfferReason`）。
+    let top = 0; let reason: OfferReason | undefined;
+    const add = (pt: number, kind: OfferReasonKind, word: string) => {
+      s += pt;
+      if (pt > top) { top = pt; reason = { kind, word }; }
+    };
+    if (card.sourceWishId && wishes.has(card.sourceWishId)) {
+      const w = (state.wishes ?? []).find((q) => q.id === card.sourceWishId);
+      add(W_WISH, "wish", w?.title ?? "");
+      why.push("願い");
+    }
+    if (card.goalId && goals.has(card.goalId)) {
+      const g = (state.goals ?? []).find((q) => q.id === card.goalId);
+      add(W_GOAL, "goal", g?.title ?? "");
+      why.push("ゴール");
+    }
+    const { hit, word } = interestHit(card, state);
+    if (hit > 0) { add(W_INTEREST * hit, "interest", word); why.push(`好み${hit.toFixed(2)}`); }
     const b = bias[dom] ?? 0;
-    if (b !== 0) { s += W_HISTORY * b; why.push(`履歴${b >= 0 ? "+" : ""}${b.toFixed(2)}`); }
-    if (ed === newest) { s += W_FRESH; why.push("新着"); }
-    return { ed, card, score: s, why: why.join("/") || "—", dom };
+    if (b !== 0) {
+      // ★★**「よく残している」だけを理由にする**（減点は人に言わない）。
+      if (b > 0) add(W_HISTORY * b, "history", DOMAIN_JP[dom]); else s += W_HISTORY * b;
+      why.push(`履歴${b >= 0 ? "+" : ""}${b.toFixed(2)}`);
+    }
+    if (ed === newest) { add(W_FRESH, "fresh", ""); why.push("新着"); }
+    return { ed, card, score: s, why: why.join("/") || "—", dom, reason };
   });
 
   // ★★**同点は「新しい号が先」**（`unreadEntries` が新しい順に返すので、
@@ -133,13 +181,13 @@ export function pickOffers(state: AppState, n = OFFER_PICKS): OfferPick[] {
     if (out.length >= n) break;
     if ((used[x.dom] ?? 0) >= PER_DOMAIN) continue;   // ★幅を作る
     used[x.dom] = (used[x.dom] ?? 0) + 1;
-    out.push({ ed: x.ed, card: x.card, score: x.score, why: x.why });
+    out.push({ ed: x.ed, card: x.card, score: x.score, why: x.why, reason: x.reason });
   }
   // ★★**幅の門で足りなくなったら、順位のまま埋める**（3枚に満たないより出すほうがよい）。
   for (const x of scored) {
     if (out.length >= n) break;
     if (out.some((o) => o.card.id === x.card.id)) continue;
-    out.push({ ed: x.ed, card: x.card, score: x.score, why: x.why });
+    out.push({ ed: x.ed, card: x.card, score: x.score, why: x.why, reason: x.reason });
   }
   return out;
 }

@@ -2,7 +2,7 @@ import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, PAPER, RUST, SHAPE_FACE, TASK_
 import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
 import { CASSETTE_ASPECT } from "@/lib/cassette";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
-import { glyphOfKind } from "@/lib/deckStyle";
+import { categoryOfKind } from "@/lib/deckStyle";
 import { rowSpecOf, rowsOf } from "@/lib/taskSize";
 import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
@@ -57,9 +57,15 @@ const VERT_MIN = 2;
 const FILL = 0.36;
 /** ★★**1つの図形が器に対して取ってよい上限**（`GravityTab` の `FIT_W`/`FIT_H` と
  *  同じ考え方）。面積の予算だけだと、重要度の高い1枚が器の半分を覆ってしまう。
- *  ★★★**面積の予算は「横に2つ並ぶ」を前提にしている**ので、幅は半分あたりに
- *  抑える ―― 0.68 では1行に1枚しか載らず、山ではなく**塔**になった（第90巡に実測）。 */
-const FIT_W = 0.52;
+ *  ★★★**第124巡に 0.52 → 0.86**（ユーザー指定「**横幅を今の2倍くらい大きく**」）。
+ *  ★★★**幅を2倍にしたら、上限も同じだけ広げないと「上限のほうが先に効く」** ――
+ *    0.52 のままだと `cap` が全体を 26.4 まで押し下げ、**タスクは大きくなるどころか
+ *    小さくなった**（実測 … 4件で unit 26.4 ＝ 板の 37.0 に届かない）。
+ *  ★★**0.86 は「いちばん幅を取る3段の題が器に収まる」上限**（実測 … 284px 対
+ *    山の内寸 358px）。★第90巡の「0.68 では塔になる」は**幅が半分だった頃の話**で、
+ *    いまは figure そのものが横長なので塔にはならない。
+ *  ★★**高さの上限（`FIT_H`）は変えない** ―― 段の数は増やしていない。 */
+const FIT_W = 0.86;
 const FIT_H = 0.28;
 
 /**
@@ -78,14 +84,22 @@ export function fitUnit(unit: number, sw: number, sh: number, bw: number, bh: nu
  *   （`weightArea(3) × 1.6`）からは引けない ―― **ホームの図形はもう重要度を持たない**。
  * ★3.2 は移行前の実測から … 旧 `unit` で提案の直径は `4.04 unit`、1段のタスクの
  *   段の高さは `1.49 unit` だったので **2.7倍**、3段だと 5.4倍。**その間を取る。**
- * ★★★**第122巡に 3.2 → 4.4**（ユーザー指定「**提案の図形はある程度大きく、
- *   綺麗に見せないと写真がついていてもよく見えないので、その辺は調整して**」）。
- *   ★★★**値上げは「ただ大きくなる」ではない** ―― `unit` は
- *     **面積の予算 ÷ 全員の面積**なので、提案の取り分が増えると**タスクは
- *     そのぶん小さくなる**（＝山の総面積は変わらない）。実測は下の検証に。
- *   ★★**だから欲張らない** ―― 写真が読める大きさまで上げたら止める。
+ * ★★★**第124巡に「カーブから逆算する数」へ変わった**（ユーザー指定
+ *   「**ピルの角のカーブを基準に形を構成できますか。ピルのカーブに対して提案の
+ *   図形のカーブが合っていない。うまく調整し、図形で調和をとってください**」）。
+ *
+ * ★★★**札の形のカーブの半径は「形の箱に対する比」で決まる**（`lib/cardShape.ts`
+ *   の実測 … 四つ葉 0.2778 ／ 六角形 0.2665 ／ 波打つ四角 0.2436 ／
+ *   トゲトゲ 0.2563。**平均 0.2611**）。
+ * ★★★**ピルの角の半径は「段の高さ」そのもの**（`lib/solid.ts` ―― 角丸 ＝
+ *   高さの半分、2段 ＝ `2 × unit`）。**だから `OFFER_D = 1 / 0.2611` にすれば、
+ *   提案のカーブとタスク・板・帯のカーブが px で一致する。**
+ * ★★★**だからこの数を手で振らない** ―― 大きさを変えたいなら、変えるのは
+ *   `lib/cardShape.ts` の凹凸の数（＝カーブの比）のほう。振ると調和が崩れる。
+ * ★★**4つを完全に揃えることはできない** ―― 四つ葉は `k > 1` の制約で 0.25 より
+ *   下へ行けない（`QUATREFOIL_R` の注釈）。幅は 1.14倍（第123巡は 2.55倍）。
  */
-const OFFER_D = 4.4;
+const OFFER_D = 3.83;
 /**
  * ★★★**提案の体だけ光線を増やす**（2026-09-18・第121巡にユーザー指摘
  * 「**他の図形と干渉してなんかめり込んでしまったり**」）。
@@ -133,6 +147,13 @@ const OFFER_VERTS = 28;
  *     （実測 … 4／9／14／22 件で余裕 104／164／168／220px・塗った面積はほぼ一定）。
  * ★目盛りの外（詰め込み具合）。
  */
+/**
+ * ★★★**日付と曜日の板の高さ ＝ 何段ぶんか**（2026-09-19・第124巡にユーザー指定
+ * 「**2段の時の大きさを日付と曜日の図形の高さと合わせ**」）。
+ * ★★**段の高さ（`unit`）はここから導く**ので、**画面側に数を置かない**。
+ * ★目盛りの外（図形の座標系）。
+ */
+const PLATE_ROWS = 2;
 const CROWD_N0 = 18;
 const CROWD_MIN = 0.94;
 /** ★落とす体の数 → 長さの倍率（1 以下）。 */
@@ -409,7 +430,8 @@ export interface Piece {
   outlined?: boolean;
   photo?: string;
   /** ★写真が無い提案の顔（「展」「場」）。 */
-  glyph?: string;
+  /** ★写真が来なかった提案に組む**欧文のラベル**（「PLACE」「EXHIBITION」）。 */
+  label?: string;
   count?: number;
   /** 文字の板（日付・曜日）だけが持つ。★寸法も描き方も `lib/wordPlate.ts`。 */
   plate?: WordPlate;
@@ -692,9 +714,22 @@ export function buildPieces(
   for (const sp of tasks.map((t) => rowSpecOf(flat(t)))) {
     cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
   }
-  // ★★★**据え置きが渡されていれば、予算からは決め直さない**（第110巡。上の注釈）。
+  // ★★★**段の高さは「日付と曜日の板の半分」**（2026-09-19・第124巡にユーザー指定
+  //   「**2段の時の大きさを日付と曜日の図形の高さと合わせ**」）。
+  //   ★★**タスクの箱は `h = 段の数`** なので、2段 ＝ `2 × unit` ＝ 板の高さ。
+  //     角丸は高さの半分（`lib/solid.ts`）なので、**2段のタスクの角の半径と
+  //     板の角の半径が px で厳密に一致する**（＝カーブが揃う）。
+  //   ★★★**板は `unit` より先に決まっている**ので、循環しない（上の `plates`）。
+  //   ★★**`crowd` は板を通して効く** ―― 板が縮めば `unit` も同じ比で縮むので、
+  //     混み具合の調整は1か所（`crowdOf`）のままでよい。
+  const plateUnit = plates[0].bh / PLATE_ROWS;
+  // ★★★**予算はまだ効かせる**（安全網の2本目）―― 板は器の幅から決まるので
+  //   **件数を知らない**。件数が多い日は板どおりだと山が帯の裏まで伸びるので、
+  //   **小さいほうを採る**。★どちらが効いたかは検証で件数とともに出す。
+  const budgetUnit = Math.min(UNIT, Math.sqrt(budget / total));
+  // ★★★**据え置きが渡されていれば、決め直さない**（第110巡。上の注釈）。
   //   **安全網は `cap` の1つだけ** ―― それ以外では 1px も動かさない。
-  const raw = hold && hold > 0 ? hold : Math.min(UNIT, Math.sqrt(budget / total));
+  const raw = hold && hold > 0 ? hold : Math.min(plateUnit, budgetUnit);
   const unit = Math.max(10, Math.min(raw, cap));
 
   const pieces: Piece[] = [];
@@ -901,11 +936,12 @@ export function buildPieces(
       photo, title,
       // ★★**形は券の鋏痕から導く**（`lib/cardShape.ts`。BRIEF の札と同じ1か所）。
       shape,
-      // ★★★**字面は写真があっても持たせる**（2026-09-18・第122巡）――
-      //   **写真が来なかったときの受け皿**。`undefined` にしていたので、
-      //   読み込みに失敗した提案は**色ベタの円**になっていた。
-      //   ★絵の側（`pilePaint`）が「写真が無い／来ない」ときだけ字面を描く。
-      glyph: glyphOfKind(kind),
+      // ★★★**写真が来なかったときの受け皿は「欧文のラベル」**（2026-09-19・
+      //   第124巡にユーザー指定「**写真がないときのデザインがダサいので、せめて
+      //   英語にしてしっかりとレイアウトして**」）。★第122巡までは和文1字の
+      //   「字面」だった。★**語は券と同じ `category`**（`lib/deckStyle.ts`）。
+      //   ★絵の側（`pilePaint`）が「写真が無い／来ない」ときだけ組む。
+      label: categoryOfKind(kind),
       nav, card, ed,
     });
   };

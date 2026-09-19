@@ -31,6 +31,16 @@ const FALLBACK_META = KIND_META.info;
  *  を使うので、ここから引く（表を2つ持たない）。 */
 export const glyphOfKind = (kind: ItemKind): string => (KIND_META[kind] ?? FALLBACK_META).glyph;
 
+/**
+ * ★kind → **ジャンルの欧文**（「PLACE」「EXHIBITION」）。
+ * ★★★**写真が来なかった提案の顔**（2026-09-19・第124巡にユーザー指定
+ *   「**写真がないときのデザインがダサいので、せめて英語にしてしっかりと
+ *   レイアウトしてください**」）。★**新しい語は作っていない** ―― 券の
+ *   ラベルと同じ `category` をそのまま読む（言葉を2か所に持たない）。
+ */
+export const categoryOfKind = (kind: ItemKind): string =>
+  (KIND_META[kind] ?? FALLBACK_META).category;
+
 /** ★kind → **ジャンルの和名**（「展覧会」「場所」）。ホームの帯のピルの2行目。 */
 export const genreOfKind = (kind: ItemKind): string => (KIND_META[kind] ?? FALLBACK_META).categoryJp;
 

@@ -48,6 +48,15 @@ const HEIGHT: Record<Row, number> = {
 };
 
 /**
+ * ★★★**指で帯を左右に送り始めるまでの遊び**（px。2026-09-19・第124巡にユーザー指定
+ *   「**ピルは自分で左右にスクロールできるようにもしてください**」）。
+ * ★★**引き下ろし（縦）と食い合わない値**にする ―― ピルは `touchAction: "none"` で
+ *   縦も横も JS が受けるので、遊びが小さいと**下へ引く指の横揺れで帯が送れる**。
+ * ★★目盛りの外（指の遊び。`lib/pullDrag.ts` の `PULL_ARM` と同じ性質の数）。
+ */
+const PAN_SLOP = 10;
+
+/**
  * ピル1つ。★色は**その中身が既存のアプリで持っている色**（`lib/homeBand.ts`）。
  * 面に載る字は `bodyInkOn()` が面から導く（表に持たない）。
  *
@@ -57,7 +66,7 @@ const HEIGHT: Record<Row, number> = {
  * ★★**丸はピルの中に収める**（縁とのあいだに `SPACE.sm` の縁取り）。高さいっぱいに
  *   すると、丸とピルの輪郭が接して「はめ込んだ」ではなく「はみ出した」に見える。
  */
-function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
+function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
   item: BandItem; row: Row; pull?: PullHost;
   /** ★★**同じ中身は2周ぶん DOM に居る**ので、隠すのは id で決める。 */
   taken: boolean;
@@ -71,6 +80,8 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
   onArm: (id: string | null) => void;
   /** ★段の流れを止める／戻す（`animRef` は段が持っているので預ける）。 */
   onFlow: (on: boolean) => void;
+  /** ★★段を「開いたまま」留める掛け金（ニュースの札の寿命に合わせる）。 */
+  onHold: (on: boolean) => void;
 }) {
   const face = item.face;
   // ★★★**線と文字だけのピル**（2026-09-09 ユーザー指定）。すでに登録してある
@@ -329,7 +340,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
       bend: f.bend, gx: g.sx - g.bx, look: g.look,
       rows: g.seed.rows, outlined: g.seed.outlined, area: g.seed.area,
       face: g.seed.face, ink: g.seed.ink, faceIdx: g.seed.faceIdx,
-      shape: g.seed.shape, photo: g.seed.photo, glyph: g.seed.glyph,
+      shape: g.seed.shape, photo: g.seed.photo, label: g.seed.label,
       ax: was?.ax ?? 0, ay: was?.ay ?? 0, dx: was?.dx ?? f.cx, dy: was?.dy ?? f.cy,
       angle: was?.angle ?? 0,
       sx: was?.sx ?? 1, sy: was?.sy ?? 1,
@@ -376,6 +387,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow }: {
     return (
       <NewsPill
         h={h}
+        onHold={onHold}
         item={{
           id: item.id, title: item.text, source: item.genre ?? "",
           link: item.link ?? "", at: item.at ?? "",
@@ -642,15 +654,27 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
    *   `.band-row` の `onPointerUp` しか戻す道が無く、**捕捉が外れると段が
    *   止まったまま**になり得た。
    */
-  const flow = useCallback((on: boolean) => {
+  /**
+   * ★★★**段を「開いたまま」留める掛け金**（2026-09-19・第124巡）。
+   * ニュースの札が開いているあいだは段を止めておく ―― 流れたままだと
+   * **札が戻る先（開いた瞬間のピルの矩形）がもう別の場所**なので、閉じるときに
+   * 札が横へ飛ぶ。★数で持つのは、2周ぶんのピルが同時に掛けうるため。
+   */
+  const lockRef = useRef(0);
+  const flow = useCallback((on: boolean, kick = true) => {
     const a = animRef.current;
     if (!a) return;
-    if (on) { a.play(); return; }
+    if (on) { if (lockRef.current > 0) return; a.play(); return; }
     if (a.playState === "paused") return;    // ★二度入れない
     a.pause();
     // ★★`bandStop` は `bandBus.wakers` 経由で段のループを起こす（直に呼ばない）。
-    bandStop(row);
+    if (kick) bandStop(row);
   }, [row]);
+  /** ★掛け金の上げ下げ（`NewsPill` が札の寿命に合わせて呼ぶ）。 */
+  const hold = useCallback((on: boolean) => {
+    lockRef.current = Math.max(0, lockRef.current + (on ? 1 : -1));
+    if (on) flow(false, false); else flow(true);
+  }, [flow]);
 
   /**
    * ★★★**ずれのバネを回す rAF のループ**（2026-09-15・第109巡）。
@@ -873,6 +897,42 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     };
   }, [build, sig, snapPhase, row]);
 
+  /**
+   * ★★★**指で帯を左右に送る**（2026-09-19・第124巡にユーザー指定
+   *   「**ピルは自分で左右にスクロールできるようにもしてください**」）。
+   *
+   * ★★★**送りは `holdRef` が預かる** ―― 受け渡しの一様なずれと**同じ入れ物**。
+   *   別に持つと `paint()` の式が2本になり、次に画素を直す人が片方しか直さない。
+   *   ★`build()` が送り（`phaseRef`）へ畳むので、組み直しても位置は動かない。
+   * ★★★**ピルの上から始めた指もここへ来る** ―― ピルが `setPointerCapture` しても
+   *   **イベントは祖先へ上がる**ので、段はそのまま受け取れる（新しい口を増やさない）。
+   * ★★**引き下ろしが始まったら手を引く**（`taken`）―― 縦と横で同じ指を奪い合わない。
+   * ★★★**ニュースのピルの上では慣性の一発を出さない**（ユーザー指定「**ニュースを
+   *   タップした時に、帯に流れているピルが不安定な動きをする**」）―― タップは
+   *   「掴んで止めた」ではないので、`bandStop` の行き過ぎが**ただの跳ね**に見える。
+   */
+  const panRef = useRef<{ id: number; x: number; on: boolean } | null>(null);
+  const onPanDown = (e: React.PointerEvent) => {
+    const tap = (e.target as HTMLElement).closest?.("[data-news-pill]");
+    flow(false, !tap);
+    panRef.current = { id: e.pointerId, x: e.clientX, on: false };
+  };
+  const onPanMove = (e: React.PointerEvent) => {
+    const p = panRef.current;
+    if (!p || p.id !== e.pointerId) return;
+    if (taken) { panRef.current = null; return; }   // ★引き下ろしに譲る
+    const dx = e.clientX - p.x;
+    if (!p.on) {
+      if (Math.abs(dx) < PAN_SLOP) return;
+      p.on = true; p.x = e.clientX; return;          // ★遊びのぶんは送らない
+    }
+    p.x = e.clientX;
+    // ★`paint()` は `- holdRef` で書くので、**右へ引く ＝ 引く**（符号が逆）。
+    holdRef.current -= dx;
+    paint();
+  };
+  const onPanEnd = () => { panRef.current = null; flow(true); };
+
   if (!items.length) return null;   // ★空の段は消す（無いものを説明しない）
 
   return (
@@ -884,9 +944,10 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
       // ★★帯は山の上に重ねてある。**触れるのはこの段だけ**（外側の器は透かす）。
       style={{ height: HEIGHT[row], touchAction: "pan-y", pointerEvents: "auto" }}
       // ★指が触れている間だけ止める。離しても**位置は戻さない**。
-      onPointerDown={() => flow(false)}
-      onPointerUp={() => flow(true)}
-      onPointerCancel={() => flow(true)}
+      onPointerDown={onPanDown}
+      onPointerMove={onPanMove}
+      onPointerUp={onPanEnd}
+      onPointerCancel={onPanEnd}
     >
       {/* ★★★**ずれはここが持つ**（2026-09-15・第109巡）。`.band-track` の
           `transform` は**流れの WAAPI が占有している**（インラインの style は
@@ -912,7 +973,8 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
                 <div className="band-slot" data-pill-id={it.id}
                   style={{ flexShrink: 0, overflow: "hidden" }}>
                   <Pill item={it} row={row} pull={pull}
-                    taken={taken === it.id} onTake={onTake} onArm={onArm} onFlow={flow} />
+                    taken={taken === it.id} onTake={onTake} onArm={onArm}
+                    onFlow={flow} onHold={hold} />
                 </div>
               </Fragment>
             ))}

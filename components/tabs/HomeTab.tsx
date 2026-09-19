@@ -74,9 +74,12 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   //   ★それまでは `AppState.magazine` を見ていたが、**書き込む場所がもう無く**
   //   （`buildMagazine` の呼び手が 0 件）、**円は常に0個**だった。
   //   いまはタスクの四角（`dueDate <= 今日`）と**まったく同じ式**。
+  // ★★★**写真のあるものだけ**（2026-09-19・第124巡にユーザー指定
+  //   「**ホームに落ちてくる提案は画像があるもの限定に**」）。理由は
+  //   `lib/offerPick.ts` の同じ門と同じ ―― 山の提案は**写真を切り抜いた絵**。
   const pileOffers = useMemo(
     () => (appState.items ?? []).filter(
-      (i) => i.plannedFor && i.plannedFor <= day && i.status !== "done"),
+      (i) => i.plannedFor && i.plannedFor <= day && i.status !== "done" && !!i.images?.[0]),
     [appState.items, day],
   );
   /**
@@ -144,7 +147,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
         //   ★代理の体の重さに使う ―― 山と密度が違うと2つのソルバが喧嘩する。
         area: OFFER_AREA,
         shape: kind ? cardShapeOf(KIND_DOMAIN[kind]) : undefined,
-        photo: it.photo, glyph: it.glyph,
+        photo: it.photo, label: it.label,
       };
     }
     // ★★★**ホームは重要度を持たない**（第116巡）。段の高さを物差しにした箱

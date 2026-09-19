@@ -139,7 +139,14 @@ export function pickOffers(state: AppState, n = OFFER_PICKS): OfferPick[] {
   const wishes = new Set((state.wishes ?? []).filter((w) => w.status === "stock").map((w) => w.id));
   const goals = new Set((state.goals ?? []).map((g) => g.id));
 
-  const scored = unreadEntries(state).map(({ ed, card }) => {
+  // ★★★**写真のあるカードだけ**（2026-09-19・第124巡にユーザー指定
+  //   「**ホームに落ちてくる提案は画像があるもの限定にしてください**」）。
+  //   ★★山の提案は**写真を切り抜いた絵**なので、写真が無いと**色ベタの形**に
+  //     なる ―― そこだけ別のデザインを用意するより、**出さないほうが強い**。
+  //   ★★**Explore のデッキには今までどおり全部出る**（あちらは版面が別）。
+  const scored = unreadEntries(state)
+    .filter(({ card }) => !!card.images?.[0])
+    .map(({ ed, card }) => {
     const dom = KIND_DOMAIN[card.kind ?? "place"] ?? "info";
     const why: string[] = [];
     let s = 0;

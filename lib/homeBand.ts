@@ -1,5 +1,5 @@
 import type { AppState, BriefCard, ItemKind } from "./types";
-import { genreOfKind, glyphOfKind } from "./deckStyle";
+import { categoryOfKind, genreOfKind } from "./deckStyle";
 import { colorOfKind } from "./palette";
 import { TASK_FACE } from "./constants";
 import { pickTodayItems } from "./todayPick";
@@ -47,8 +47,8 @@ export interface BandItem {
   face: string;
   /** 1・2 だけが持つ。先頭の丸い写真。 */
   photo?: string;
-  /** ★写真が無い提案の丸に入る**字面**（「展」「本」）。Explore と同じ規則。 */
-  glyph?: string;
+  /** ★写真が来なかった提案に組む**欧文のラベル**（「PLACE」）。 */
+  label?: string;
   /**
    * ★1・2 だけが持つ。**ピルの2行目**に小さく出るジャンル（「展覧会」「場所」）。
    * ★★**ニュース（`news`）は出典をここへ入れる**（第122巡）―― どちらも
@@ -251,7 +251,7 @@ export function bandItems(state: AppState, notes?: BandItem[]): BandItem[] {
     out.push({
       id: `today-${it.id}`, kind: "today", text: it.title, itemKind: it.kind,
       // ★★焼き込まれた `it.color` は信じない（`cardFace` と同じ理由）。
-      face: colorOfKind(it.kind), photo: it.images?.[0], glyph: glyphOfKind(it.kind),
+      face: colorOfKind(it.kind), photo: it.images?.[0], label: categoryOfKind(it.kind),
       genre: genreOfKind(it.kind),
     });
   }

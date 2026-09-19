@@ -124,7 +124,8 @@ export interface Ghost {
   /** 提案のときだけ。写真を切り抜く形。 */
   shape?: CardShape;
   photo?: string;
-  glyph?: string;
+  /** ★写真が来なかった提案に組む**欧文のラベル**（`lib/deckStyle.ts` の `category`）。 */
+  label?: string;
   // ── ここから下は `stepGhost` が毎フレーム書く（指のイベントでは触らない） ──
   /**
    * ★★★**支点から絵の中心までのずれ**（`cx`/`cy` が**支点＝指**）。
@@ -710,7 +711,8 @@ export interface GhostSeed {
   area: number;
   shape?: CardShape;
   photo?: string;
-  glyph?: string;
+  /** ★写真が来なかった提案に組む**欧文のラベル**（`lib/deckStyle.ts` の `category`）。 */
+  label?: string;
 }
 
 /** 帯（と山）が引き下ろしのために外から貰うもの。★**画面は持たない**。 */

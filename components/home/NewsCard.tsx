@@ -226,11 +226,30 @@ function whenText(at: string): string {
  * ★★★**後始末は3重**（`lostpointercapture` ／ unmount ／ `window` の `pointerup`）
  *   ―― 帯のピル（`components/home/Band.tsx`）で同じ罠を3度踏んでいる。
  */
-export function NewsPill({ item, h }: { item: NewsDetail; h: number }) {
+/**
+ * ★★★**帯に流れるニュースのピル**（第123巡）。
+ * ★★★**札が開いているあいだは段を止める**（2026-09-19・第124巡にユーザー指定
+ *   「**ニュースをタップした時に、帯に流れているピルが不安定な動きをするのを
+ *   直してください**」）―― 流れたままだと、①札が戻る先（開いた瞬間のピルの矩形）
+ *   がもう別の場所なので**閉じるときに横へ飛び**、②`opacity: 0` にした元のピルが
+ *   流れ去って**列に穴が動いて見える**。**止めれば札が帯から持ち上がったように読める。**
+ * ★★掛け金は `onHold`（段が数で持つ）。**閉じる・消えるの両方で必ず下ろす。**
+ */
+export function NewsPill({ item, h, onHold }: {
+  item: NewsDetail; h: number; onHold: (on: boolean) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [card, setCard] = useState<{ from: NewsFrom; tap: boolean } | null>(null);
   const [grab, setGrab] = useState<number | null>(null);
-  const hold = useRef<{ id: number; y: number; moved: boolean } | null>(null);
+  // ★★`pan` ＝ 横へ送った指（帯のスクロール）。**タップとして札を出さない。**
+  const hold = useRef<{ id: number; x: number; y: number; moved: boolean; pan: boolean } | null>(null);
+  /** ★★掛け金を上げたか（二重に上げない／必ず下ろすため）。 */
+  const held = useRef(false);
+  const lock = useCallback((on: boolean) => {
+    if (held.current === on) return;
+    held.current = on;
+    onHold(on);
+  }, [onHold]);
   const ground = groundOf("home");
   const ink = bodyInkOn(ground);
 
@@ -239,14 +258,16 @@ export function NewsPill({ item, h }: { item: NewsDetail; h: number }) {
     const g = hold.current;
     hold.current = null;
     if (!g) return;
+    // ★★**横へ送った指は帯のスクロール**。札は出さず、掛け金も下ろす。
+    if (g.pan) { lock(false); return; }
     // ★★**動かさずに離した ＝ タップ**。札がまだ無ければ出して、曲線で開く。
     if (!g.moved) { openTap(); return; }
     setGrab(null);
     function openTap() {
       const r = ref.current?.getBoundingClientRect();
-      if (r) setCard({ from: { x: r.x, y: r.y, w: r.width, h: r.height }, tap: true });
+      if (r) { lock(true); setCard({ from: { x: r.x, y: r.y, w: r.width, h: r.height }, tap: true }); }
     }
-  }, []);
+  }, [lock]);
 
   useEffect(() => {
     const up = () => end();
@@ -254,19 +275,32 @@ export function NewsPill({ item, h }: { item: NewsDetail; h: number }) {
     return () => { window.removeEventListener("pointerup", up); hold.current = null; };
   }, [end]);
 
+  // ★★★**掴んだまま消えても掛け金は下ろす**（背後の同期で帯が組み直ると unmount する）
+  //   ―― 下ろし忘れると**段が二度と流れない**。
+  const lockRef = useRef(lock);
+  lockRef.current = lock;
+  useEffect(() => () => lockRef.current(false), []);
+
   const onDown = (e: React.PointerEvent) => {
     if (card) return;
-    hold.current = { id: e.pointerId, y: e.clientY, moved: false };
+    hold.current = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, pan: false };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
   };
   const onMove = (e: React.PointerEvent) => {
     const g = hold.current;
     if (!g || g.id !== e.pointerId) return;
     const dy = e.clientY - g.y;
+    // ★★★**横へ送ったら帯のスクロールに譲る**（第124巡）―― 段は祖先なので
+    //   同じ指をそのまま受け取れる。**こちらは以後 何もしない。**
+    if (!g.moved && Math.abs(e.clientX - g.x) >= 4 && Math.abs(e.clientX - g.x) > dy) {
+      g.pan = true;
+    }
+    if (g.pan) return;
     // ★★**4px 引くまでは「まだ引いていない」**（指の震えで札を出さない）。
     if (!g.moved && dy < 4) return;
     if (!g.moved) {
       g.moved = true;
+      lock(true);
       const r = ref.current?.getBoundingClientRect();
       if (r) setCard({ from: { x: r.x, y: r.y, w: r.width, h: r.height }, tap: false });
     }
@@ -304,7 +338,7 @@ export function NewsPill({ item, h }: { item: NewsDetail; h: number }) {
         <NewsCard
           item={item} from={card.from}
           grab={card.tap ? null : grab} autoOpen={card.tap}
-          onClose={() => { setCard(null); setGrab(null); }}
+          onClose={() => { setCard(null); setGrab(null); lock(false); }}
         />
       )}
     </>

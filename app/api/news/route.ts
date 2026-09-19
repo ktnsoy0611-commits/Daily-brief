@@ -31,6 +31,17 @@ const LIMIT = 8;
 const LOCALE = "hl=ja&gl=JP&ceid=JP:ja";
 /** ★好みの語を何語まで混ぜるか。★多すぎると検索が絞られすぎて 0 件になる。 */
 const TOPIC_MAX = 3;
+/**
+ * ★★★**好みに寄せた見出しの割合**（2026-09-19・第124巡にユーザー指定
+ *   「**ニュースはもう少し一般的なニュースを基本的に流して、2割くらいだけ
+ *   私に合わせたニュースにしてください**」）。
+ * ★★**第122巡は「好みの語が1つでもあれば全件を検索に振る」**だった ―― だから
+ *   帯が**趣味の話だけ**になり、世の中の見出しが1本も流れなかった。
+ * ★8件のうち **2件**（0.2 × 8 = 1.6 → 四捨五入）。★最低 1 件は入れる
+ *   ―― 0 だと「私に合わせた」が消えるので、混ぜる意味が無くなる。
+ */
+const TOPIC_SHARE = 0.2;
+const topicTake = () => Math.max(1, Math.round(LIMIT * TOPIC_SHARE));
 
 export interface NewsHeadline {
   /** ★RSS の `guid`（無ければリンク）。**帯の id になる**ので一意であること。 */
@@ -102,25 +113,45 @@ function feedUrl(topics: string[]): string {
   return `https://news.google.com/rss/search?q=${term}+when:2d&${LOCALE}`;
 }
 
+async function feed(topics: string[]): Promise<NewsHeadline[]> {
+  const res = await fetch(feedUrl(topics), {
+    headers: { "user-agent": "Mozilla/5.0 (compatible; daily-brief/1.0)" },
+    next: { revalidate },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parse(await res.text());
+}
+
+/**
+ * ★★★**一般を土台に、好みを等間隔で差し込む**。
+ * ★★**まとめて後ろに付けない** ―― 帯は輪なので、末尾に固めると**趣味の塊が
+ *   1周に1度だけ通り過ぎる**。差し込めば「たまに1本だけ自分向け」になる。
+ * ★同じ記事は落とす（検索と主要は重なることがある）。
+ */
+function blend(base: NewsHeadline[], mine: NewsHeadline[]): NewsHeadline[] {
+  const seen = new Set(base.map((h) => h.link));
+  const extra = mine.filter((h) => !seen.has(h.link)).slice(0, topicTake());
+  if (!extra.length) return base.slice(0, LIMIT);
+  const keep = base.slice(0, Math.max(0, LIMIT - extra.length));
+  const out = keep.slice();
+  const step = Math.max(1, Math.floor((keep.length + 1) / (extra.length + 1)));
+  extra.forEach((h, i) => out.splice(Math.min(out.length, step * (i + 1) + i), 0, h));
+  return out.slice(0, LIMIT);
+}
+
 export async function GET(req: Request) {
   const topics = (new URL(req.url).searchParams.get("q") ?? "")
     .split(",").map((s) => s.trim()).filter(Boolean);
   try {
-    const res = await fetch(feedUrl(topics), {
-      headers: { "user-agent": "Mozilla/5.0 (compatible; daily-brief/1.0)" },
-      next: { revalidate },
-    });
-    if (!res.ok) return NextResponse.json({ items: [], error: `HTTP ${res.status}` });
-    let items = parse(await res.text());
-    // ★★★**好みの語で 0 件なら、主要ニュースへ落とす**（`when:2d` で絞ると
-    //   語によっては本当に 0 件になる）。**段が空のまま残るほうが悪い。**
-    if (!items.length && topics.length) {
-      const res2 = await fetch(feedUrl([]), {
-        headers: { "user-agent": "Mozilla/5.0 (compatible; daily-brief/1.0)" },
-        next: { revalidate },
-      });
-      if (res2.ok) items = parse(await res2.text());
-    }
+    // ★★**2本 同時に取る**（直列だと待ちが2倍。どちらも 30分キャッシュ）。
+    const [base, mine] = await Promise.all([
+      feed([]).catch(() => [] as NewsHeadline[]),
+      topics.length ? feed(topics).catch(() => [] as NewsHeadline[]) : Promise.resolve([]),
+    ]);
+    // ★★★**主要が取れなかったときだけ、好みで全部を埋める**（段が空のまま
+    //   残るほうが悪い）。逆は起きない ―― 好みが 0 件でも主要で埋まる。
+    const items = base.length ? blend(base, mine) : mine.slice(0, LIMIT);
+    if (!items.length) return NextResponse.json({ items: [], error: "empty" });
     return NextResponse.json({ items });
   } catch (e) {
     // ★★**落ちても画面は動く**（帯はこの段だけ消える）。理由は返す。

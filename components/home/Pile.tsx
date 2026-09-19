@@ -172,7 +172,7 @@ function homeGhost(p: Piece, look: PillLook, owner: number): Ghost {
     // ★戻す幽霊は**山に居る本物**なので、重さはその体からそのまま引く。
     area: p.body.mass / MASS_K,
     face: p.face, ink: p.ink, faceIdx: p.face_ ?? 0,
-    shape: p.shape, photo: p.photo, glyph: p.glyph,
+    shape: p.shape, photo: p.photo, label: p.label,
     ax: 0, ay: 0, dx: x, dy: y, angle: p.body.angle,
     sx: 1, sy: 1, stretchDir: Math.PI / 2, vx: 0, vy: 0,
     waist: 1,

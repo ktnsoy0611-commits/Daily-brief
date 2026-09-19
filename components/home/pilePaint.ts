@@ -1,11 +1,10 @@
-import { BAND_BEZEL, BD_GREY, DISPLAY, MUTED, SANS, mixHex } from "@/lib/constants";
+import { BAND_BEZEL, BD_GREY, DISPLAY, MUTED, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
 import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
 import { clampRows, halfWidthAtStack, stackOutline } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { canvasFont, drawFitted, ensureGlyphs, layoutInRows } from "@/lib/textFit";
-import { WEIGHT } from "@/lib/tokens";
 import { drawWordPlate } from "@/lib/wordPlate";
 import { WORD_WEIGHT } from "@/lib/solidPaint";
 import { zigVerts, type Piece } from "./pileWorld";
@@ -214,6 +213,40 @@ function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLI
   return undefined;
 }
 
+/** 字面の顔が版面として使える幅（直径に対する割合）。★目盛りの外（絵の寸法）。
+ *  ★凹凸の内側に収める値 ―― 形は器いっぱいに広がるので、1 だと谷で字が欠ける。 */
+const LABEL_W = 0.62;
+/** 字面の顔の高さの上限（直径に対する割合）。★目盛りの外（絵の寸法）。 */
+const LABEL_CAP = 0.30;
+
+/**
+ * ★★★**写真が無い提案の顔は「英語の1語」**（2026-09-19・第124巡にユーザー指定
+ * 「**写真がないときのデザインがダサいので、せめて英語にしてしっかりとレイアウト
+ * してください**」）。語の出どころは `lib/deckStyle.ts` の `categoryOfKind` の1か所
+ * ―― 券の版面と同じ語彙（PLACE / EXHIBITION / …）。
+ *
+ * ★★**書体は `DISPLAY`（Anton）**（`lib/constants.ts` の「大きな欧文と数字だけ」）。
+ *   ★`ensureWordFont(DISPLAY)` は板のために**もう頼んである**（山には必ず日付と曜日の
+ *   板が居る）。`PLATE_CHARS` が大文字を含むので、この語も同じ断片で描ける。
+ * ★★★**大きさは版面の幅に合わせて組む**（段から選ばない＝券の `FitLine` と同じ作法）
+ *   ―― 語の長さが 4〜10 字とばらつくので、段から選ぶと短い語だけ間延びする。
+ * ★★**字は回さない**（呼ぶ側が `-b.angle` を掛ける）。読ませる字なので。
+ */
+function drawOfferLabel(
+  ctx: CanvasRenderingContext2D, label: string, d: number, ink: string,
+): void {
+  const room = d * LABEL_W;
+  const cap = d * LABEL_CAP;
+  ctx.font = canvasFont(WORD_WEIGHT, cap, DISPLAY);
+  const w0 = ctx.measureText(label).width || 1;
+  // 幅は字の大きさに比例するので、1回測れば解ける（二分探索は要らない）。
+  const fs = Math.max(6, Math.min(cap, (cap * room) / w0));
+  ctx.font = canvasFont(WORD_WEIGHT, fs, DISPLAY);
+  ctx.fillStyle = ink;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(label, 0, 0);
+}
+
 /**
  * ★★★**引き下ろしの「幽霊」を1枚描く**（2026-09-14・第102巡）。
  *
@@ -259,12 +292,7 @@ export function drawGhost(ctx: CanvasRenderingContext2D, g: Ghost, dpr: number):
     if (g.shape && g.t > 0.5) traceCardShape(ctx, g.shape, d);
     else { ctx.beginPath(); ctx.roundRect(-w / 2, -h / 2, w, h, h / 2); ctx.closePath(); }
     ctx.fill();
-    if (g.glyph) {
-      ctx.fillStyle = g.ink;
-      ctx.font = canvasFont(WEIGHT.bold, Math.min(w, h) * 0.5, SANS);
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(g.glyph, 0, 0);
-    }
+    if (g.label) drawOfferLabel(ctx, g.label, Math.min(w, h), g.ink);
     ctx.restore();
     return;
   }
@@ -439,17 +467,10 @@ export function drawPile(
       trace(p.r * 2);
       ctx.fill();
       const im = p.photo ? photoOf(p.photo, p.r, dpr, onPhoto) : undefined;
-      // ★★**写真が来ないと分かったら字面へ落ちる**（`glyph` は写真があっても持つ）。
-      if (!im && p.glyph) {
-        // ★★★**写真が無い提案の顔は「字面」**（2026-09-08）。ブリーフの
-        //   カードが写真の無いときにやっていることと**同じ規則**。
+      // ★★**写真が来ないと分かったら字面へ落ちる**（`label` は写真があっても持つ）。
+      if (!im && p.label) {
         ctx.rotate(-b.angle);          // ★読ませる字なので回さない
-        ctx.fillStyle = p.ink;
-        ctx.globalAlpha = 0.92;
-        ctx.font = canvasFont(WEIGHT.bold, p.r * 1.15, SANS);
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(p.glyph, 0, 0);
-        ctx.globalAlpha = 1;
+        drawOfferLabel(ctx, p.label, p.r * 2, p.ink);
       }
       if (im) {
         const inner = Math.max(4, p.r - BAND_BEZEL);

@@ -68,6 +68,17 @@ export function areaOf(t: Partial<Task>, today: Date): number {
 export const ROW_AR = 3;
 
 /**
+ * ★★★**ホームの山のタスクの横幅の倍率**（2026-09-19・第124巡にユーザー指定
+ * 「**もう少し横幅を今の2倍くらい大きくしてください**」）。
+ * ★★**効くのは `rowSpecOf` だけ**（＝ホームの山）。GRAVITY の `specOf` は素のまま。
+ * ★★★**幅を広げると字も大きくなるわけではない** ―― 字の大きさは**段の高さ**が
+ *   決める（`layoutInRows` の `pitch × ROW_FILL`）ので、増えるのは**字の両脇の
+ *   余り**だけ。**長い題ほど折り返さずに収まる**のが利き目。
+ * ★目盛りの外（図形の座標系）。
+ */
+export const ROW_WIDE = 2;
+
+/**
  * 題の文字数 → **段の数**（1..3）。
  * ★★**字の大きさは面積に比例し、箱の幅も面積の平方根に比例する**ので、
  *   1段に入る文字数は**大きさによらず一定**。だから文字数だけで決めてよい。
@@ -168,10 +179,14 @@ export function specOf(t: Partial<Task> & { title: string }, today = new Date())
  *   どちらかになり、ユーザーの「文字の大きさを揃えて」と両立しない。
  * ★★★**`specOf` は 1 行も変えない** ―― TASK（GRAVITY）は重要度で大きさが変わるまま。
  *   **読み替えるのはホームの山だけ**（`components/home/pileWorld.ts`）。
+ * ★★★**幅は `ROW_WIDE` 倍**（2026-09-19・第124巡にユーザー指定「**もう少し横幅を
+ *   今の2倍くらい大きくしてください**」）。★★**`rowAspect` の側ではなく、ここで
+ *   掛ける** ―― `rowAspect` は `ratioOf` 経由で **GRAVITY の `specOf`** も読むので、
+ *   向こうで掛けると**ホームと無関係な画面の図形まで横に伸びる**。
  */
 export function rowSpecOf(t: Partial<Task> & { title: string }): SolidSpec {
   const rows = rowsOf(t.title);
-  const w = rowAspect(t.title, rows);
+  const w = ROW_WIDE * rowAspect(t.title, rows);
   const h = rows;
   return {
     sides: sidesOf(t),

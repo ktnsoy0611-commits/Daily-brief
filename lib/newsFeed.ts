@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { INK } from "./constants";
+import { NEWS_FACE } from "./constants";
 import type { BandItem } from "./homeBand";
 import type { AppState } from "./types";
 
@@ -65,7 +65,8 @@ export function useNewsBand(state: AppState): BandItem[] {
   return items.map((h) => ({
     id: `news-${h.id}`, kind: "news" as const, text: h.title,
     // ★★**輪郭のピルの線の色**（第123巡に字だけからピルへ）。
-    face: INK,
+    // ★★★**ニュースの色**（第125巡）。**縁の線にだけ出る**（ピルは輪郭だけ）。
+    face: NEWS_FACE,
     // ★★**出典は `genre` の枠を借りる**（帯が「小さく添える語」として持っている枠）。
     genre: h.source,
     // ★★**広がった札が読む**（`components/home/NewsCard.tsx`）。

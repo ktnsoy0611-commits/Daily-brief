@@ -387,6 +387,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
     return (
       <NewsPill
         h={h}
+        face={face}
         onHold={onHold}
         item={{
           id: item.id, title: item.text, source: item.genre ?? "",
@@ -927,11 +928,37 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
       p.on = true; p.x = e.clientX; return;          // ★遊びのぶんは送らない
     }
     p.x = e.clientX;
-    // ★`paint()` は `- holdRef` で書くので、**右へ引く ＝ 引く**（符号が逆）。
-    holdRef.current -= dx;
-    paint();
+    pan(dx);
   };
   const onPanEnd = () => { panRef.current = null; flow(true); };
+
+  /**
+   * ★★★**指の送りは「流れの時計」へ入れる。`transform` のずれへ足さない**
+   *   （2026-09-20・第125巡にユーザー指定「**タスクの帯をスクロールしていったら
+   *   何も出なくなってしまいました。循環するようにしてください**」）。
+   *
+   * ★★★**真因** ―― 第124巡は `holdRef`（`transform` の一様なずれ）へ足していた。
+   *   帯は**中身を2周ぶんしか並べていない**ので、ずれが1周ぶんを超えると
+   *   **列の端が画面へ入ってきて、その先は何も無い**。`holdRef` に上限は無い。
+   * ★★★**時計は `iterations: Infinity` で勝手に循環する** ―― 送りを
+   *   `currentTime` へ畳めば、**何周スクロールしても同じ列が回り続ける**。
+   *   ★`% duration` で折り返すので値も発散しない。
+   * ★★**1周の幅は `lapRef`（組んだときの値）から読む**（`snapPhase` と同じ理由）。
+   * ★★**下の段は `direction: "reverse"`** なので**時計の向きが逆**
+   *   ―― 進みは `1 - ct/d` で測られる。だから符号を反転する。
+   * ★★`holdRef` は**受け渡しの一様なずれ専用**に戻った（第113巡の役のまま）。
+   */
+  const pan = (dx: number) => {
+    const a = animRef.current;
+    const lap = lapRef.current;
+    if (!a || lap <= 0) return;
+    const d = a.effect ? (a.effect.getTiming().duration as number) || 0 : 0;
+    if (d <= 0) return;
+    // 絵は `translateX(-progress × lap)`。右へ dx 送る ＝ 進みを dx/lap 戻す。
+    const back = (dx / lap) * d * (bandReverse(row) ? -1 : 1);
+    const ct = ((a.currentTime as number) ?? 0) - back;
+    a.currentTime = ((ct % d) + d) % d;
+  };
 
   if (!items.length) return null;   // ★空の段は消す（無いものを説明しない）
 

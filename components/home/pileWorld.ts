@@ -1,4 +1,4 @@
-import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, PAPER, RUST, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
+import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, PAPER, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
 import { CASSETTE_ASPECT } from "@/lib/cassette";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -977,10 +977,13 @@ export function buildPieces(
       fresh = toss(body, "unread", BADGE_R * 2);
       stamp(body, sig);
     }
-    // ★★色は **EXPLORE の家族のメイン**（2026-09-09 ユーザー指定）。
-    //   数えているのが Explore の未読なので、**行き先と同じ色**を着る。
-    // ★★未読の数は**分類ではなく状態**なので、ドメインの4色からは取らない（赤）。
-    const face = RUST;
+    // ★★未読の数は**分類ではなく状態**なので、ドメインの4色からは取らない。
+    // ★★★**第125巡に赤（`RUST`）をやめて墨へ**（配色の総入れ替え）――
+    //   赤 `#E73115` とタスクのオレンジ `#FD6A23` は**色相が 8° しか違わない**ので、
+    //   **同じ山に出ると見分けが付かない**（`lib/constants.ts` の `PALETTE` の注釈）。
+    //   ★墨なら日付と曜日の板と同じ「読むための黒」の列に入り、**形（トゲトゲ）**
+    //   だけが板と違う ―― **数えているものは色ではなく形で言う。**
+    const face = INK;
     pieces.push({
       id: "unread", body, kind: "badge", r: BADGE_R, fresh,
       face, ink: bodyInkOn(face), count: unread,

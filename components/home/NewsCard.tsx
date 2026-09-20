@@ -235,8 +235,11 @@ function whenText(at: string): string {
  *   流れ去って**列に穴が動いて見える**。**止めれば札が帯から持ち上がったように読める。**
  * ★★掛け金は `onHold`（段が数で持つ）。**閉じる・消えるの両方で必ず下ろす。**
  */
-export function NewsPill({ item, h, onHold }: {
-  item: NewsDetail; h: number; onHold: (on: boolean) => void;
+export function NewsPill({ item, h, face, onHold }: {
+  item: NewsDetail; h: number;
+  /** ★ニュースの色（`NEWS_FACE`）。**縁の線にだけ出る**。 */
+  face: string;
+  onHold: (on: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [card, setCard] = useState<{ from: NewsFrom; tap: boolean } | null>(null);
@@ -322,7 +325,9 @@ export function NewsPill({ item, h, onHold }: {
           height: h, borderRadius: RADIUS.pill,
           padding: `0 ${SPACE.xl}px`, maxWidth: "84vw",
           // ★地と同じ色で塗る（後ろを落ちてくる図形が透けない）。
-          background: ground, border: `${NEWS_EDGE}px solid ${ink}`,
+          // ★★★**縁はニュースの色・字は黒**（2026-09-20・第125巡にユーザー指定
+          //   「**ピルは全て塗り無しにします。枠線だけにして、文字は黒にします**」）。
+          background: ground, border: `${NEWS_EDGE}px solid ${face}`,
           touchAction: "none", pointerEvents: "auto",
           // ★引いているあいだは元のピルを消す（札と二重に見えない）。
           opacity: card ? 0 : 1,

@@ -79,16 +79,35 @@ export const ROW_AR = 3;
 export const ROW_WIDE = 2;
 
 /**
+ * 1段に入る文字数の目安（**横長にする前**の基準）。★参照の1段は 399×131 で
+ * 字は段の高さの約 0.62 倍 ＝ **1行 約4.9字**。
+ * ★目盛りの外（図形の座標系）。
+ */
+const CH_1 = 5;
+/** 2段に収める文字数の目安（同上）。 */
+const CH_2 = 12;
+
+/**
  * 題の文字数 → **段の数**（1..3）。
  * ★★**字の大きさは面積に比例し、箱の幅も面積の平方根に比例する**ので、
  *   1段に入る文字数は**大きさによらず一定**。だから文字数だけで決めてよい。
  * ★★実際に描く段の数は `lib/solidPaint.ts` の `plan()` が**組んでみて**決める。
  *   ここは**箱の形をあらかじめその段数に合わせておく**ための見積もり。
+ *
+ * ★★★**横長にしたぶんだけ、1段に入る量を増やす**（2026-09-20・第125巡に
+ *   ユーザー指定「**タスクの図形は横長にした分、文字が一段に入る量を増やして
+ *   ください**」）―― 閾値に **`ROW_WIDE`(2) を掛ける**。
+ *   ★★★**`ROW_WIDE` を掛けた幅は、第124巡までは「字の両脇の余り」でしかなかった**
+ *     ―― 箱は 2倍 広いのに折り返しの目安は元のままだったので、**10文字の題が
+ *     すかすかの2段**になっていた。**同じ数から両方を出せば、広げたぶんが
+ *     そのまま字に回る。**
+ *   ★★**返す段の数はここ1か所**（`rowSpecOf`・`ratioOf`・`taskBitmap`・幽霊が
+ *     全部これを読む）。**ホームだけ別の閾値にしない** ―― 絵と物理がずれる。
  */
 export function rowsOf(title: string): number {
   const n = (title ?? "").trim().length;
-  if (n <= 5) return 1;
-  if (n <= 12) return 2;
+  if (n <= CH_1 * ROW_WIDE) return 1;
+  if (n <= CH_2 * ROW_WIDE) return 2;
   return MAX_ROWS;
 }
 
@@ -186,7 +205,12 @@ export function specOf(t: Partial<Task> & { title: string }, today = new Date())
  */
 export function rowSpecOf(t: Partial<Task> & { title: string }): SolidSpec {
   const rows = rowsOf(t.title);
-  const w = ROW_WIDE * rowAspect(t.title, rows);
+  // ★★★**`ROW_WIDE` は「下限」に掛ける。文字の項には掛けない**（第125巡）。
+  //   `rowAspect` は**その段が抱える文字数ぶんの幅**をもう返しているので、
+  //   そこへ掛けると**二重に広がる**（実測 … 10文字の題で 13.9 単位 ＝ 514px。
+  //   山の内寸 358px を超えて `cap` が全体を押し下げ、**図形が小さくなる**）。
+  //   → **短い題は下限で横長に、長い題は文字数で自然に伸びる。**
+  const w = Math.max(ROW_AR * ROW_WIDE, rowAspect(t.title, rows));
   const h = rows;
   return {
     sides: sidesOf(t),

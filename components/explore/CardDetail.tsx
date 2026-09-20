@@ -6,7 +6,7 @@ import { SANS } from "@/lib/constants";
 import type { CardShape } from "@/lib/cardShape";
 import { cardMorph } from "@/lib/cardMorph";
 import { img } from "@/lib/helpers";
-import { EASE_SETTLE, T_IN, T_OUT, easeAt, ms } from "@/lib/motion";
+import { EASE_SETTLE, T_IN, T_OUT, easeAt, ms, twoStage } from "@/lib/motion";
 import { bodyInkOn } from "@/lib/palette";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import type { BriefCard } from "@/lib/types";
@@ -114,7 +114,12 @@ export function CardDetail({ card, shape, face, from, onClose }: {
     const t0 = performance.now();
     const step = (now: number) => {
       const raw = Math.min(1, (now - t0) / span);
-      const e = easeAt(EASE_SETTLE, raw);
+      // ★★★**開くのは2段階**（2026-09-20・第125巡にユーザー指定。振り付けは
+      //   `lib/motion.ts` の `twoStage`）―― ふわっと 1/3 まで行き過ぎ、
+      //   ゆっくり戻りながら少しとどまり、そこから一気に。
+      // ★★**閉じるのは1本のまま**（`EASE_SETTLE`）―― 戻る途中で一度 止まると
+      //   「引っ掛かった」に見える。**開きと閉じは非対称でよい**（`T_IN`/`T_OUT`）。
+      const e = dir > 0 ? twoStage(raw) : easeAt(EASE_SETTLE, raw);
       draw(dir > 0 ? e : 1 - e);
       if (raw < 1) { rafRef.current = requestAnimationFrame(step); return; }
       done();

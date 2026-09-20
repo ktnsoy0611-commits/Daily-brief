@@ -3,13 +3,14 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { groundOf } from "@/components/AppBackdrop";
 import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
+import { PILL_KNOCK, halftoneCss } from "@/lib/halftone";
 import { img } from "@/lib/helpers";
 import { BAND_ROW, type BandItem, type BandRowId, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { NewsPill } from "./NewsCard";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import {
-  BAND_CATCH, PILL_EDGE, PILL_HINT, PILL_PRESS, RAIL_HYST, RAIL_NEAR,
+  BAND_CATCH, PAN_SLOP, PILL_EDGE, PILL_HINT, PILL_PRESS, RAIL_HYST, RAIL_NEAR,
   pullBus, pullFrame,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
@@ -18,7 +19,7 @@ import {
   BAND_PAD, GAP_HYST, bandAim, bandBus, bandGapAt, bandGapClear, bandGapDone, bandHole,
   bandReverse,
   bandSettling,
-  bandHoleDone, bandHoleRelease, bandResume, bandStop, stepBandMotion,
+  bandHoleDone, bandHoleRelease, bandResume, stepBandMotion,
 } from "./bandMotion";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
@@ -48,13 +49,17 @@ const HEIGHT: Record<Row, number> = {
 };
 
 /**
- * ★★★**指で帯を左右に送り始めるまでの遊び**（px。2026-09-19・第124巡にユーザー指定
- *   「**ピルは自分で左右にスクロールできるようにもしてください**」）。
- * ★★**引き下ろし（縦）と食い合わない値**にする ―― ピルは `touchAction: "none"` で
- *   縦も横も JS が受けるので、遊びが小さいと**下へ引く指の横揺れで帯が送れる**。
- * ★★目盛りの外（指の遊び。`lib/pullDrag.ts` の `PULL_ARM` と同じ性質の数）。
+ * ★★★**何 px 下へ引いたら canvas の写し取りへ移るか**（2026-09-20・第126巡）。
+ *
+ * ★第105巡の約束は「**1px でも下へ引いたら写し取る**」だったが、**1px は指の
+ *   ぶれと区別が付かない**。横へゆっくり払うと、`dx` が `PAN_SLOP` に届く前に
+ *   `dy` が 1px を越えて**一瞬だけ帯からピルが消える**（ユーザー報告
+ *   「**行ったり戻ったりする不安定な挙動**」の残り半分）。
+ * ★★**3px は指では出せない差**なので、「触った瞬間に写し取る」という手ざわりは
+ *   1px のときと変わらない。★目盛りの外（手ざわり）。
  */
-const PAN_SLOP = 10;
+const PULL_LIVE = 3;
+
 
 /**
  * ピル1つ。★色は**その中身が既存のアプリで持っている色**（`lib/homeBand.ts`）。
@@ -130,6 +135,10 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
     armed: boolean; rail: boolean; live: boolean;
     /** ★★いま帯の挿し口を狙っているか（第114巡）。 */
     aim: boolean;
+    /** ★掴んだ瞬間の指（横へ払ったかを見分ける。第126巡）。 */
+    fx0: number; fy0: number;
+    /** ★★**横へ払う指と決まった**（＝帯のスクロール。引き下ろしにはしない）。 */
+    pan: boolean;
   } | null>(null);
 
   /**
@@ -235,6 +244,8 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
         padR: (outline ? PILL_EDGE : 0) + SPACE.xl,
       },
       armed: false, rail: false, live: false, aim: false,
+      // ★横へ払う指を見分けるための出発点と掛け金（上の `onMove`）。
+      fx0: e.clientX, fy0: e.clientY, pan: false,
     };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     guard(e.pointerId);
@@ -243,6 +254,25 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
   const onMove = (e: React.PointerEvent) => {
     const g = grab.current;
     if (!g || !pull) return;
+    // ★★★**横へ払う指は帯のスクロールに譲る**（2026-09-20・第126巡）。
+    //   ★★★**`lib/pullDrag.ts` の `pulled` は `max(0, dy)`** ＝ **1px 下がれば
+    //     引き下ろしが成立する**。横へ払えば指は必ず少し下がるので、
+    //     **スワイプのたびに canvas への写し取りが始まって帯からピルが消えていた**
+    //     ―― ユーザー報告「**行ったり戻ったりする不安定な挙動**」。
+    //   ★★**一度 横と決まったら、その指のあいだは二度と引き下ろしにしない**
+    //     （`g.pan` の掛け金）―― 途中で下へ向け直せてしまうと、判定が毎フレーム
+    //     入れ替わって同じちらつきが戻る。
+    //   ★遊びは帯と同じ `PAN_SLOP`（判定を2つ持たない）。
+    if (!g.pan && !g.live) {
+      const dx = Math.abs(e.clientX - g.fx0);
+      const dy = Math.abs(e.clientY - g.fy0);
+      if (dx > dy && dx >= PAN_SLOP) {
+        g.pan = true;
+        setPressed(false);
+        return;
+      }
+    }
+    if (g.pan) return;
     const box = pull.box.current;
     if (!box) return;
     const br = box.getBoundingClientRect();
@@ -255,7 +285,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
     //   ★**ただのタップでは切り替えない**（ちらつかせない）。
     //   ★★山の canvas を帯の上へ上げる ―― 上げないと、上の段から引いたピルが
     //     **下の段のピルの後ろへ潜る**。★1ジェスチャに1回だけ。
-    const live = f.pulled >= 1;
+    const live = f.pulled >= PULL_LIVE;
     if (live !== g.live) {
       g.live = live;
       pull.lift(live);
@@ -427,8 +457,13 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
       //   `pointerup` が別の要素へ行き、後始末が走らずに**幽霊が残る**。
       //   `opacity: 0` は当たり判定も捕捉もそのままで、見た目だけ消える。
       opacity: taken ? 0 : 1,
-      // ★地と同じ色で塗る（透過させない）。★色の持ち主は `groundOf` の1か所。
-      background: outline ? groundOf("home") : face,
+      // ★★★**ハーフトーンで塗る**（2026-09-20・第126巡にユーザー指定
+      //   「**帯のピルはハーフトーンで塗る感じにしてください**」）。地を敷いて、
+      //   その上に**面の色の点の格子**を重ねる。格子は `lib/halftone.ts` の1か所。
+      // ★★**ベタ塗りではないので地が透けて見える** ―― だから参照画像のように
+      //   **明度差の小さい色**（ライム 1.07・ラベンダー 1.31）でも形が読める。
+      backgroundColor: groundOf("home"),
+      ...halftoneCss(face),
       // ★輪郭は `Button` の secondary と同じ引き方（押せるものの縁）。
       border: outline ? `${PILL_EDGE}px solid ${face}` : "none",
       // ★丸があるときは、左の余白を縁取りぶんだけにする（丸が余白を持つ）。
@@ -445,11 +480,20 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
             objectFit: "cover", display: "block", flexShrink: 0,
           }} />
       )}
+      {/* ★★★**文字の周りにはハーフトーンを置かない**（第126巡にユーザー指定
+          「**文字の周りはハーフトーンがない感じにして**」）。地の色の角丸を
+          字の後ろに敷いて、そこだけ格子を抜く ―― 点の上に小さな和文を置くと
+          **画数と点が同じ太さ**になって潰れる。★余白は `PILL_KNOCK` の1か所
+          （canvas の幽霊と `pillWidth()` も同じ数を読む）。 */}
       {/* ★★★**提案のピルは2行**（2026-09-09 ユーザー指定・参照画像）… 題の下に
           **ジャンル**を小さく置く。「何であるか」が読めないと、題だけでは
           展覧会なのか店なのか分からない。★2行目は**控えめな色**（`--muted-on`
           ではなく面から導いた字を薄める ―― 面の上なので地の変数は使えない）。 */}
-      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: SPACE.hair }}>
+      <div style={{
+        minWidth: 0, display: "flex", flexDirection: "column", gap: SPACE.hair,
+        background: groundOf("home"), borderRadius: RADIUS.pill,
+        padding: `0 ${PILL_KNOCK}px`,
+      }}>
         <span style={{
           // ★★提案は `lead`(16)、候補・期日未割当は `body`(13)。
           //   ★実機で「ピルが全体的に大きすぎる」ため1段ずつ下げた（2026-09-08）。
@@ -662,19 +706,22 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
    * 札が横へ飛ぶ。★数で持つのは、2周ぶんのピルが同時に掛けうるため。
    */
   const lockRef = useRef(0);
-  const flow = useCallback((on: boolean, kick = true) => {
+  // ★★★**触っても跳ねさせない**（2026-09-20・第126巡）―― 第109〜125巡は
+  //   ここで `bandStop`（行き過ぎ 11.5px の一発）を入れていた。**帯を掴むたびに
+  //   必ず1回 跳ねる**ので、指で送り始める前の「**変な挙動**」になっていた。
+  //   ★**引き抜いたときの再開の一発（`bandResume`）は残っている** ―― あちらは
+  //     「席が空いて流れ出す」合図で、指が触れているあいだの話ではない。
+  const flow = useCallback((on: boolean) => {
     const a = animRef.current;
     if (!a) return;
     if (on) { if (lockRef.current > 0) return; a.play(); return; }
     if (a.playState === "paused") return;    // ★二度入れない
     a.pause();
-    // ★★`bandStop` は `bandBus.wakers` 経由で段のループを起こす（直に呼ばない）。
-    if (kick) bandStop(row);
-  }, [row]);
+  }, []);
   /** ★掛け金の上げ下げ（`NewsPill` が札の寿命に合わせて呼ぶ）。 */
   const hold = useCallback((on: boolean) => {
     lockRef.current = Math.max(0, lockRef.current + (on ? 1 : -1));
-    if (on) flow(false, false); else flow(true);
+    if (on) flow(false); else flow(true);
   }, [flow]);
 
   /**
@@ -912,11 +959,41 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
    *   タップした時に、帯に流れているピルが不安定な動きをする**」）―― タップは
    *   「掴んで止めた」ではないので、`bandStop` の行き過ぎが**ただの跳ね**に見える。
    */
-  const panRef = useRef<{ id: number; x: number; on: boolean } | null>(null);
+  /**
+   * ★★★**指の送りと、離したあとの滑り**（2026-09-20・第126巡にユーザー指定
+   * 「**帯をスクロールした時に、行ったり戻ったりする不安定な挙動をします。また
+   * スワイプして払ったときにすべらず、変な挙動をしてからスクロールし直すので、
+   * そこら辺もスムーズに移行するように**」）。
+   *
+   * ★★★**真因は3つ**（全部この巡で取った）――
+   *   ① **触った瞬間に慣性の一発（`bandStop`）を入れていた** ―― 帯を掴むたびに
+   *      **11.5px 行き過ぎて戻る**ので、指で送り始める前に必ず1回 跳ねていた。
+   *      ＝「**変な挙動をしてからスクロールし直す**」。**触っただけでは跳ねさせない。**
+   *   ② **離したあとの滑りが無かった** ―― `flow(true)` で一定速の流れへ戻るだけ。
+   *      払った速さがその瞬間に消えるので「**すべらない**」。→ **`glide`**。
+   *   ③ **横へ払う指が「引き下ろし」に化けていた**（`lib/pullDrag.ts` の
+   *      `pulled = max(0, dy)` は **1px 下がれば成立**する）。横に払えば指は必ず
+   *      少し下がるので、**canvas への写し取りが始まって帯からピルが消える**。
+   *      ＝「**行ったり戻ったり**」。→ `Pill` 側で**横が勝ったら掴みを捨てる**。
+   *
+   * ★★**滑りは「流れを止めずに上から足す」** ―― 離した瞬間に `flow(true)` して
+   *   おいて、その上へ減衰する速さを毎フレーム足す。**止まってから動き直す継ぎ目が
+   *   存在しない。**
+   */
+  const panRef = useRef<{ id: number; x: number; t: number; on: boolean; v: number } | null>(null);
+  const glideRef = useRef(0);
+  /** ★指の速さの均し（1フレームの生の値は端末の刻みでばらつく）。★目盛りの外（手ざわり）。 */
+  const VEL_MIX = 0.3;
+  /** ★滑りの減衰（1フレームあたり）。★目盛りの外（手ざわり）。 */
+  const GLIDE_DECAY = 0.94;
+  /** ★これ未満になったら流れに任せる（px/ms）。★目盛りの外（手ざわり）。 */
+  const GLIDE_MIN = 0.02;
+
   const onPanDown = (e: React.PointerEvent) => {
-    const tap = (e.target as HTMLElement).closest?.("[data-news-pill]");
-    flow(false, !tap);
-    panRef.current = { id: e.pointerId, x: e.clientX, on: false };
+    cancelAnimationFrame(glideRef.current);
+    // ★★**慣性の一発は入れない**（上の ①）。止めるだけ。
+    flow(false);
+    panRef.current = { id: e.pointerId, x: e.clientX, t: e.timeStamp, on: false, v: 0 };
   };
   const onPanMove = (e: React.PointerEvent) => {
     const p = panRef.current;
@@ -925,12 +1002,33 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     const dx = e.clientX - p.x;
     if (!p.on) {
       if (Math.abs(dx) < PAN_SLOP) return;
-      p.on = true; p.x = e.clientX; return;          // ★遊びのぶんは送らない
+      // ★遊びのぶんは送らない。速さの計測もここから始める。
+      p.on = true; p.x = e.clientX; p.t = e.timeStamp; return;
     }
-    p.x = e.clientX;
+    const dt = Math.max(1, e.timeStamp - p.t);
+    p.v = p.v * (1 - VEL_MIX) + (dx / dt) * VEL_MIX;
+    p.x = e.clientX; p.t = e.timeStamp;
     pan(dx);
   };
-  const onPanEnd = () => { panRef.current = null; flow(true); };
+  const onPanEnd = () => {
+    const p = panRef.current;
+    panRef.current = null;
+    // ★★**先に流れを戻してから滑らせる**（止まる瞬間を作らない）。
+    flow(true);
+    if (!p || !p.on || Math.abs(p.v) < GLIDE_MIN) return;
+    let v = p.v;
+    let last = performance.now();
+    const step = (now: number) => {
+      const dt = Math.min(64, now - last);   // ★タブが戻ったときに飛ばさない
+      last = now;
+      pan(v * dt);
+      v *= Math.pow(GLIDE_DECAY, dt / (1000 / 60));
+      if (Math.abs(v) < GLIDE_MIN) return;
+      glideRef.current = requestAnimationFrame(step);
+    };
+    glideRef.current = requestAnimationFrame(step);
+  };
+  useEffect(() => () => cancelAnimationFrame(glideRef.current), []);
 
   /**
    * ★★★**指の送りは「流れの時計」へ入れる。`transform` のずれへ足さない**

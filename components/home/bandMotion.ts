@@ -181,6 +181,13 @@ export const bandSettling = (row: BandRowId): boolean =>
   Math.abs(bandBus.rows[row].shut.p) > CALM;
 
 /**
+ * ★★★**第126巡から誰も呼んでいない**（ユーザー指定「**スワイプして払ったとき
+ * すべらず、変な挙動をしてからスクロールし直す**」）―― 帯を**触るたび**に
+ * 行き過ぎ 11.5px の一発が入っていたのが、その「変な挙動」の正体だった。
+ * ★★**消していないのは、これが「④a 止まるときの慣性」という確定した語彙**
+ *   だから。戻すなら `components/home/Band.tsx` の `flow(false)` から呼ぶ。
+ */
+/**
  * ★★★**④a 帯が止まる** … 流れていた向きへ少し行き過ぎてから戻る。
  * @param row 段（向きは `bandReverse`）
  */

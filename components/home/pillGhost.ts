@@ -1,4 +1,5 @@
 import { SANS, mixHex } from "@/lib/constants";
+import { PILL_KNOCK, drawHalftone } from "@/lib/halftone";
 import { canvasFont } from "@/lib/textFit";
 import { LEAD, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import { BEND_TOP, PILL_EDGE, bendAt, type Ghost, type PillLook } from "@/lib/pullDrag";
@@ -56,7 +57,10 @@ export function pillWidth(L: Omit<PillLook, "w">, screenW: number): number {
       text = Math.max(text, ctx.measureText(L.genre).width);
     }
   }
-  const w = L.padL + (L.photo ? L.dia + L.gap : 0) + Math.ceil(text) + L.padR;
+  // ★★**文字の周りの「地の余白」も数に入れる**（第126巡。`PILL_KNOCK`）――
+  //   DOM 側が字の後ろに角丸を敷いているので、入れないと戻したピルだけ幅が足りない。
+  const w = L.padL + (L.photo ? L.dia + L.gap : 0)
+    + PILL_KNOCK * 2 + Math.ceil(text) + L.padR;
   return Math.min(w, screenW * PILL_MAX_VW);
 }
 
@@ -147,6 +151,13 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
     ctx.globalAlpha = 1;
   }
   if (mix < 1) {
+    // ★★★**中はハーフトーン**（第126巡。DOM の `halftoneCss` と**同じ格子**）。
+    //   ★図形へ変わるぶんだけ（`mix`）薄れて、ベタ塗りの面へ渡る。
+    ctx.save();
+    tracePill(ctx, w, h, gx, give);
+    ctx.clip();
+    drawHalftone(ctx, -w / 2, -h / 2, w, h, L.face, 1 - mix);
+    ctx.restore();
     // ★線は**内側に**引く（CSS の `border` と同じ。`pilePaint.ts` と同じ作法）。
     ctx.globalAlpha = 1 - mix;
     ctx.strokeStyle = L.face;
@@ -182,7 +193,22 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
   const gh = L.genre ? TYPE.nano * LEAD.flat : 0;
   const total = th + (L.genre ? SPACE.hair + gh : 0);
   const top = -total / 2;
-  const room = w / 2 - L.padR - x;
+  // ★★★**文字の周りは格子を抜く**（第126巡。DOM の「地の色の角丸」と同じ）。
+  //   ★`x` はこの器の左端。字はその `PILL_KNOCK` ぶん内側から始まる。
+  const knockW = Math.max(0, w / 2 - L.padR - x);
+  const knockH = total;
+  if (knockW > 0 && mix < 1) {
+    const dy = bendAt(x + knockW / 2, gx, reach, give, weightAt(0, h));
+    ctx.save();
+    ctx.globalAlpha = 1 - mix;
+    ctx.fillStyle = L.ground;
+    ctx.beginPath();
+    ctx.roundRect(x, dy + top, knockW, knockH, knockH / 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  x += PILL_KNOCK;
+  const room = w / 2 - L.padR - PILL_KNOCK - x;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   const line = (s: string, cy: number, size: number, tr: string, alpha: number) => {

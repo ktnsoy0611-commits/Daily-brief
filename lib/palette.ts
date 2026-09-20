@@ -52,16 +52,19 @@ export const bodyInkOn = (main: string): string =>
   contrast(main, INK) >= contrast(main, PAPER) ? INK : PAPER;
 
 /**
- * ★★**その面で読める「赤の役」の色**（第117巡にパレットを入れ替えて中身が変わった）。
- * 新しい盤の赤は **`rojo` 1つ**しかないので、暗い面では**ピンク**を代わりに返す
- * （実測 … 墨の上で 赤 3.19 に対し **ピンク 4.09**／紙の上は 赤 4.46・ピンク 3.48）。
+ * ★★**その面で読める「赤の役」の色**（第126巡にパレットが替わって候補が変わった）。
+ * 盤の赤は **`rojo`（朱）1つ**しかないので、暗い面では**オレンジ**を代わりに返す
+ * （実測 … 墨の上で 朱 3.47 に対し **オレンジ 5.27**／明るい地の上は 朱 3.98・
+ * オレンジ 2.62）。
  * ★録音の赤は乗る面が2つ（キーの面と地）あり、**必要な色が逆になる**ので、
  * 手で書き分けずにここに導かせる。★パレットが替わっても、**2つの候補の明暗の役**
  * さえ同じならこの関数はそのまま効く。
+ * ★★★**第117〜125巡はピンク（`rosa`）が暗い面の赤だった**。参照画像にピンクが
+ *   無くなったので、同じ役（明るいほうの暖色）を**オレンジ**が引き継いだ。
  */
 export const redOn = (surface: string): string =>
-  contrast(surface, SCHEME.danger) >= contrast(surface, PALETTE.rosa)
-    ? SCHEME.danger : PALETTE.rosa;
+  contrast(surface, SCHEME.danger) >= contrast(surface, PALETTE.naranja)
+    ? SCHEME.danger : PALETTE.naranja;
 
 /**
  * ★**地の上に直接いる文字の色**を CSS 変数で配る（第77巡）。

@@ -1,46 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import { SPACE } from "@/lib/tokens";
 import { BD_GREY, INK, GREEN, RUST } from "@/lib/constants";
-import { Anton, Archivo, Noto_Sans_JP, Zen_Kaku_Gothic_New } from "next/font/google";
-import localFont from "next/font/local";
+import { Anton, Archivo, Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
 
-// ★★★**和文を LINE Seed JP で試している**（2026-09-20・第125巡にユーザー指定
-//   「**woff2 ファイルがあるのですが、アプリ内の日本語を全部これにしてみることは
-//   できますか？気に入らなかったら戻すので戻せるようにはしてください。その際、
-//   bold とかは使い分けてください**」）。
-//
-// ★★★**戻し方は1行**（`lib/constants.ts` の `JP` を `JP_NOTO` に変えるだけ）。
-//   Noto Sans JP の登録はここに**残してある**ので、書体は即座に戻る。
-// ★★**太さは4本を別々のファイルで登録する** ―― 可変フォントではないので、
-//   1本だけ登録して `fontWeight` を振ると**ブラウザが合成ボールド**を掛ける
-//   （`lib/wordPlate.ts` の Anton で踏んだのと同じ罠）。
-//   `WEIGHT.text`(400) → Rg ／ `WEIGHT.bold`(700) → Bd ／
-//   `WEIGHT.heavy`(800) → Eb。★Th(100) は**いまどこからも使われていない**が、
-//   もらった4本を揃えて登録しておく（使わない太さのファイルは**取りに行かれない**）。
-// ★★★**代償** … Google の和文は `unicode-range` で断片配信されるのに対し、
-//   こちらは**1ファイル丸ごと**（Rg 2.1MB ／ Bd 2.2MB）。`display: "swap"` に
-//   してあるので**届くまでは代替で出る**が、実機の初回は重い。
-const lineSeed = localFont({
-  variable: "--font-line-seed",
-  src: [
-    { path: "./fonts/LINESeedJP_Th.woff2", weight: "100", style: "normal" },
-    { path: "./fonts/LINESeedJP_Rg.woff2", weight: "400", style: "normal" },
-    { path: "./fonts/LINESeedJP_Bd.woff2", weight: "700", style: "normal" },
-    { path: "./fonts/LINESeedJP_Eb.woff2", weight: "800", style: "normal" },
-  ],
-  preload: false,
-  display: "swap",
-});
-
-// ミニマルなデザインへの刷新に伴い、明朝体(Zen Old Mincho)とPlayfair
-// Displayの読み込みは廃止。サンセリフ1書体(太さ違い)に統一している。
-const zenKakuGothicNew = Zen_Kaku_Gothic_New({
-  variable: "--font-zen-kaku-gothic-new",
-  weight: ["400", "500", "700"],
-  subsets: ["latin"],
-  preload: false,
-});
+// ★★★**Zen Kaku Gothic New は第126巡に外した** ―― ユーザー指定「**帯のピルに
+// 使われていたフォントをすべての日本語の部分に適用して**」で、図形に載る字
+// （`lib/constants.ts` の `GOTHIC`）も `SANS` と同じ Noto Sans JP になり、
+// **誰も読まない Web フォント**になったため。
+// ★★★**第125巡の LINE Seed JP（`app/fonts/` ＋ `next/font/local`）も撤回**
+// （ユーザー「**フォントは前のものに戻し**」）。戻したいなら commit `0b04755`。
 
 // ★★**欧文は Archivo、和文は Noto Sans JP**(2026-08-24・第53巡にユーザー確定)。
 // Archivo は**可変フォント**で `wdth`(幅) と `wght`(太さ) の軸を持つ。
@@ -164,8 +133,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja" className={[
-      zenKakuGothicNew.variable, archivo.variable, anton.variable, notoSansJP.variable,
-      lineSeed.variable,
+      archivo.variable, anton.variable, notoSansJP.variable,
     ].join(" ")}>
       {/* ★色の持ち主は `lib/constants.ts` の1か所だけ。CSS には**変数で配る**。
           第66巡まで globals.css が地色・墨・緑・赤の4色を

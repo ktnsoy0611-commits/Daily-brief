@@ -14,8 +14,8 @@ export default function manifest(): MetadataRoute.Manifest {
     // ★変えても、すでにホーム画面にあるアプリには反映されない。
     //   一度消して追加し直すこと。
     // ★第76巡に `BD_GREY` を盤の CLOUD `#FFFBF5` へ変えたので、ここも合わせた。
-    background_color: "#FFFBF5",
-    theme_color: "#FFFBF5",
+    background_color: "#F7F6FB",
+    theme_color: "#F7F6FB",
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },

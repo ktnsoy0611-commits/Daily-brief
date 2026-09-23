@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { groundOf } from "@/components/AppBackdrop";
 import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
-import { PILL_KNOCK, halftoneCss } from "@/lib/halftone";
+import { pillFillOf } from "@/lib/pillFill";
 import { img } from "@/lib/helpers";
 import { BAND_ROW, type BandItem, type BandRowId, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
@@ -457,13 +457,12 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
       //   `pointerup` が別の要素へ行き、後始末が走らずに**幽霊が残る**。
       //   `opacity: 0` は当たり判定も捕捉もそのままで、見た目だけ消える。
       opacity: taken ? 0 : 1,
-      // ★★★**ハーフトーンで塗る**（2026-09-20・第126巡にユーザー指定
-      //   「**帯のピルはハーフトーンで塗る感じにしてください**」）。地を敷いて、
-      //   その上に**面の色の点の格子**を重ねる。格子は `lib/halftone.ts` の1か所。
-      // ★★**ベタ塗りではないので地が透けて見える** ―― だから参照画像のように
-      //   **明度差の小さい色**（ライム 1.07・ラベンダー 1.31）でも形が読める。
-      backgroundColor: groundOf("home"),
-      ...halftoneCss(face),
+      // ★★★**半透明の塗り**（2026-09-23・第127巡にユーザー指定「**帯の
+      //   ハーフトーンもやめてください。代わりに半透明の塗りに文字に**」）。
+      //   ★★**α ではなく「地と混ぜた不透明色」**（`lib/pillFill.ts`）――
+      //     引き下ろした瞬間に canvas へ写し取るので、重なる相手が変わっても
+      //     色が 1 も動かないようにしてある。
+      backgroundColor: pillFillOf(face, groundOf("home")),
       // ★輪郭は `Button` の secondary と同じ引き方（押せるものの縁）。
       border: outline ? `${PILL_EDGE}px solid ${face}` : "none",
       // ★丸があるときは、左の余白を縁取りぶんだけにする（丸が余白を持つ）。
@@ -480,20 +479,13 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
             objectFit: "cover", display: "block", flexShrink: 0,
           }} />
       )}
-      {/* ★★★**文字の周りにはハーフトーンを置かない**（第126巡にユーザー指定
-          「**文字の周りはハーフトーンがない感じにして**」）。地の色の角丸を
-          字の後ろに敷いて、そこだけ格子を抜く ―― 点の上に小さな和文を置くと
-          **画数と点が同じ太さ**になって潰れる。★余白は `PILL_KNOCK` の1か所
-          （canvas の幽霊と `pillWidth()` も同じ数を読む）。 */}
       {/* ★★★**提案のピルは2行**（2026-09-09 ユーザー指定・参照画像）… 題の下に
           **ジャンル**を小さく置く。「何であるか」が読めないと、題だけでは
           展覧会なのか店なのか分からない。★2行目は**控えめな色**（`--muted-on`
           ではなく面から導いた字を薄める ―― 面の上なので地の変数は使えない）。 */}
-      <div style={{
-        minWidth: 0, display: "flex", flexDirection: "column", gap: SPACE.hair,
-        background: groundOf("home"), borderRadius: RADIUS.pill,
-        padding: `0 ${PILL_KNOCK}px`,
-      }}>
+      {/* ★★★**第126巡の「字の後ろの抜き」は削除した**（面が平らになったので、
+          字が点と噛み合う心配が無い）。**復活させない。** */}
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: SPACE.hair }}>
         <span style={{
           // ★★提案は `lead`(16)、候補・期日未割当は `body`(13)。
           //   ★実機で「ピルが全体的に大きすぎる」ため1段ずつ下げた（2026-09-08）。

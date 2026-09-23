@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { groundOf } from "@/components/AppBackdrop";
 import { INK, PAPER, SANS, SOFT_SHADOW_LG } from "@/lib/constants";
-import { PILL_KNOCK, halftoneCss } from "@/lib/halftone";
+import { pillFillOf } from "@/lib/pillFill";
 import { PAN_SLOP } from "@/lib/pullDrag";
 import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
 import { bodyInkOn } from "@/lib/palette";
@@ -327,19 +327,17 @@ export function NewsPill({ item, h, face, onHold }: {
           display: "flex", alignItems: "center", flexShrink: 0,
           height: h, borderRadius: RADIUS.pill,
           padding: `0 ${SPACE.xl}px`, maxWidth: "84vw",
-          // ★地と同じ色で塗る（後ろを落ちてくる図形が透けない）。
-          // ★★★**縁はニュースの色・字は黒**（第125巡）＋**中はハーフトーン**
-          //   （第126巡）。格子は `lib/halftone.ts` の1か所（帯のピルと同じ）。
-          backgroundColor: ground, ...halftoneCss(face),
+          // ★★★**縁はニュースの色・字は黒**（第125巡）＋**中は半透明の塗り**
+          //   （第127巡）。濃さは `lib/pillFill.ts` の1か所（帯のピルと同じ）。
+          //   ★不透明なので、後ろを落ちてくる図形は透けない。
+          backgroundColor: pillFillOf(face, ground),
           border: `${NEWS_EDGE}px solid ${face}`,
           touchAction: "none", pointerEvents: "auto",
           // ★引いているあいだは元のピルを消す（札と二重に見えない）。
           opacity: card ? 0 : 1,
         }}
       >
-        {/* ★★文字の周りは格子を抜く（`PILL_KNOCK`。帯のピルと同じ作法）。 */}
         <span style={{
-          background: ground, borderRadius: RADIUS.pill, padding: `0 ${PILL_KNOCK}px`,
           fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.text,
           letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",

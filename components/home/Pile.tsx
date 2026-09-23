@@ -303,9 +303,14 @@ export function Pile({
    * ★`place` … **帯へ戻す／右端で日付を付け直す**が効く相手か（＝`pillOf` が
    * 版面を返す相手か）。★★★**日付と曜日の板は運べるが、行き先は無い**
    * （2026-09-18・第120巡。ユーザー「**日付もつかめるように**」）。
+   * ★★★`band` … **そのうち「帯へ戻す」だけが効く相手か**（2026-09-23・第127巡に
+   * ユーザー指定「**提案カードは、帯に戻せないようにしてください**」）。
+   * ★★**`place` と分けてあるのは、右端の ASSIGN を残すため** ―― あそこは
+   *   「日付を付け直す」で、帯へ戻すのとは別の行き先。1つの掛け金にまとめると、
+   *   **提案の日付を変える道まで一緒に消える。**
    */
   const dragRef = useRef<
-    { piece: Piece; x: number; y: number; angle: number; place: boolean } | null>(null);
+    { piece: Piece; x: number; y: number; angle: number; place: boolean; band: boolean } | null>(null);
   /**
    * ★★★**ループが回っているか／回す本体**（2026-09-16・第107巡。`GravityTab` と
    * 同じ名前・同じ形）。**読む人が1つの作りだけ覚えればよい**ようにしてある。
@@ -1144,6 +1149,9 @@ export function Pile({
       dragRef.current = {
         piece: p, x: cx - r.left, y: cy - r.top, angle: p.body.angle,
         place: !!pillOf?.(p),
+        // ★★★**提案は帯へ戻せない**（第127巡）。`pillOf` は版面を返すので
+        //   右端の ASSIGN は今までどおり効く。**ここで1行だけ落とす。**
+        band: !!pillOf?.(p) && p.kind !== "offer",
       };
       // ★★★**眠っている体を起こす**（2026-09-14・第102巡。ユーザー指摘
       //   「**ホームの図形も触れれるように**」の正体）。山は落ち着くと
@@ -1206,9 +1214,10 @@ export function Pile({
     //     ―― 入るのは `BAND_NEAR`、出るのは `BAND_NEAR + RAIL_HYST`。1本の線だと
     //     指がその上に居るあいだ `tTo` が 1 と 0 を往復し、**形がぶるぶる震える**
     //     （ユーザー報告「動作がやっぱり不安定」）。
-    //   ★★★**行き先の無いもの（日付・曜日の板）では入らない**（第120巡）。
+    //   ★★★**行き先の無いもの（板）と、戻せないもの（提案）では入らない**
+    //     （第120巡・第127巡。掛け金は `dragRef.band`）。
     const bandY = bandBottom?.() ?? 0;
-    const inBand = dragRef.current.place && bandY > 0 && dragRef.current.y
+    const inBand = dragRef.current.band && bandY > 0 && dragRef.current.y
       < bandY + BAND_NEAR + (homeRef.current ? RAIL_HYST : 0);
     if (inBand !== homeRef.current) {
       homeRef.current = inBand;

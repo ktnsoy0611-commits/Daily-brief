@@ -42,7 +42,7 @@ const W_FRESH = 0.6;     // いちばん新しい号
 
 /**
  * ★**ドメインを人の言葉で**（帯の文章が使う）。カタカナの符丁（バショ／タイケン…）は
- * **図と色の語彙**なので、文の中には置かない。★文面そのものは `lib/bandNotes.ts`。
+ * **図と色の語彙**なので、文の中には置かない。★文面にはしない（帯の文章は第130巡に削除）。
  */
 const DOMAIN_JP: Record<ItemDomain, string> = {
   place: "場所", experience: "体験", info: "読みもの", thing: "もの",
@@ -121,7 +121,7 @@ function interestHit(c: BriefCard, state: AppState): { hit: number; word: string
  * 「**おすすめの理由**を帯の文章で流す」）。
  * ★★**いちばん効いた1つだけ**を返す ―― 全部並べると言い訳に見える。
  * ★`word` はその理由の主語（願いの題／ゴールの題／好みの語／ドメインの名）。
- * ★★**文面はここでは作らない**（`lib/bandNotes.ts` の1か所）―― 理由と言葉づかいを
+ * ★★**文面はもう作らない**（帯の文章＝`lib/bandNotes.ts` は第130巡に削除。`reason` は採点の根拠としてだけ残る）―― 理由と言葉づかいを
  *   別の場所に置いておくと、片方だけ直す事故が起きない。
  */
 export type OfferReasonKind = "wish" | "goal" | "interest" | "history" | "fresh";

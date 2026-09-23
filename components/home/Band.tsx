@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { groundOf } from "@/components/AppBackdrop";
-import { BAND_BEZEL, BAND_H, INK, SANS } from "@/lib/constants";
+import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { BAND_OFFER_LINE, BAND_OFFER_TEXT, BAND_ROW, BAND_TEXT, type BandItem, type BandRowId, bandLines, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
@@ -381,30 +381,6 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
     const near = f.armed && e.clientX > window.innerWidth - RAIL_NEAR;
     if (near !== g.rail) { g.rail = near; pull.rail(near); }
   };
-
-  // ★★★**文章は「黒いピルに白い字」**（2026-09-24・第128巡にユーザー指定
-  //   「**帯の文字は黒背景に白文字とし**」。参照画像の黒いハイライトと同じ役）。
-  //   ★第121〜127巡は「地の上の字だけ」だった。
-  //   ★★**指のイベントは素通しする**（引き下ろす相手ではない）。
-  //   ★★**幅は決めない**（`lib/bandNotes.ts` の文は 14字前後で頭打ち）。
-  //   ★中身は `lib/bandNotes.ts` の1か所。
-  if (item.kind === "note") {
-    return (
-      <div style={{
-        display: "flex", alignItems: "center", flexShrink: 0, height: h,
-        pointerEvents: "none",
-      }}>
-        <span style={{
-          display: "flex", alignItems: "center", height: BAND_H.news,
-          padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.pill, background: INK,
-          fontFamily: SANS, fontSize: BAND_TEXT, fontWeight: WEIGHT.heavy,
-          letterSpacing: TRACK.normal, lineHeight: LEAD.snug,
-          // ★墨の面の上なので `bodyInkOn(INK)`（紙。比 14.22）。
-          color: bodyInkOn(INK), whiteSpace: "nowrap",
-        }}>{item.text}</span>
-      </div>
-    );
-  }
 
   // ★★★**ニュースは「輪郭のピル」**（2026-09-19・第123巡にユーザー指定
   //   「**ニュースもピルにしてください。そして引き出した時にそのピルが画面上で

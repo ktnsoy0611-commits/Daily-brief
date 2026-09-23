@@ -176,6 +176,31 @@ export interface WordPlate {
    * 「文字そのものが図形」のまま）。★ホームの山だけが渡す（TASK は今までどおり）。
    */
   pill?: string;
+  /**
+   * ★★★**「割れたピル」**（2026-09-24・第130巡にユーザー承認「**日付と曜日は C 案**」）。
+   * 左 ＝ 墨の面に紙の字（曜日）／右 ＝ 紙の面に墨の字（日付）が**1本のピル**に繋がり、
+   * 外周を墨の縁 `SPLIT_EDGE` が巡る。★2枚の板を**1つの物体**にする（第114〜129巡は
+   * 別々の2体だった）。★`bw`/`bh` は2つの和と大きいほう、`pill` は外周の墨。
+   */
+  split?: { left: WordPlate; right: WordPlate };
+}
+
+/**
+ * ★割れたピルの外周の縁の太さ（**板の高さに対する比**）。★目盛りの外（絵の寸法）。
+ * ★承認した見本（高さ 72px に縁 4px）と同じ比。生の px にしないのは、混んだ日に
+ *   板ごと縮めても（`pileWorld.platesAt`）縁と字の関係が動かないため。
+ */
+export const SPLIT_EDGE = 0.055;
+
+/** ★★2枚の板 → 割れたピル1枚（`measureWordPlate` で測った2枚を渡す）。 */
+export function joinSplitPlate(left: WordPlate, right: WordPlate): WordPlate {
+  const bh = Math.max(left.bh, right.bh);
+  return {
+    word: `${left.word} ${right.word}`, fs: left.fs, sx: 1, ink: left.ink, fam: left.fam,
+    dx: 0, dy: 0, w: left.bw + right.bw, h: bh,
+    bw: left.bw + right.bw, bh,
+    pill: left.pill ?? right.pill, split: { left, right },
+  };
 }
 
 /** 語 → 板の寸法。★`GravityTab.makeWordPiece` の前半そのまま。 */
@@ -218,6 +243,7 @@ export function drawWordPlate(
   ctx: CanvasRenderingContext2D, plate: WordPlate,
   x: number, y: number, angle: number, dpr: number,
 ): void {
+  if (plate.split) { drawSplitPlate(ctx, plate, x, y, angle, dpr); return; }
   const wb = wordBitmap(plate.word, plate.fs, plate.sx, plate.ink, plate.fam,
     plate.w, plate.h, plate.dx, plate.dy, dpr, PLATE_TRACK);
   ctx.save();
@@ -232,5 +258,42 @@ export function drawWordPlate(
     ctx.fill();
   }
   ctx.drawImage(wb.canvas, -wb.w / 2, -wb.h / 2, wb.w, wb.h);
+  ctx.restore();
+}
+
+/**
+ * ★★★**割れたピルを描く**（第130巡）。外周を墨で塗り、縁のぶん内側へ寄せたピルで
+ * 切り抜いて**右の半分だけ紙**を敷く ―― 縁が左右で1本に繋がる（2枚を並べて描くと
+ * 継ぎ目に縁が二重に出る）。字は**それぞれの半分の中心**へ置く。
+ */
+function drawSplitPlate(
+  ctx: CanvasRenderingContext2D, plate: WordPlate,
+  x: number, y: number, angle: number, dpr: number,
+): void {
+  const sp = plate.split;
+  if (!sp) return;
+  const { bw, bh } = plate;
+  const e = bh * SPLIT_EDGE;
+  const x0 = -bw / 2;
+  const mid = x0 + sp.left.bw;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.roundRect(-bw / 2, -bh / 2, bw, bh, bh / 2);
+  ctx.fillStyle = plate.pill ?? sp.right.ink;
+  ctx.fill();
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(-bw / 2 + e, -bh / 2 + e, bw - e * 2, bh - e * 2, bh / 2 - e);
+  ctx.clip();
+  ctx.fillStyle = sp.left.ink;           // ★右の面 ＝ 左の字の色（紙）
+  ctx.fillRect(mid, -bh / 2, bw / 2 - mid + e, bh);
+  ctx.restore();
+  for (const [pl, cx] of [[sp.left, x0 + sp.left.bw / 2], [sp.right, mid + sp.right.bw / 2]] as const) {
+    const wb = wordBitmap(pl.word, pl.fs, pl.sx, pl.ink, pl.fam,
+      pl.w, pl.h, pl.dx, pl.dy, dpr, PLATE_TRACK);
+    ctx.drawImage(wb.canvas, cx - wb.w / 2, -wb.h / 2, wb.w, wb.h);
+  }
   ctx.restore();
 }

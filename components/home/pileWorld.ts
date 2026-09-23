@@ -7,7 +7,7 @@ import { rowSpecOf, rowsOf } from "@/lib/taskSize";
 import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
 import {
-  WD_FULL, WD_SHORT, makeWordBody, measureWordPlate, wordFontSize, type WordPlate,
+  WD_FULL, WD_SHORT, joinSplitPlate, makeWordBody, measureWordPlate, wordFontSize, type WordPlate,
 } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
@@ -665,11 +665,18 @@ export function buildPieces(
   //   掛けないと、上限が効いている幅（実測 390）では板だけが縮まない。
   // ★★★**板は「長さの倍率 c」の関数**（第128巡）―― 混んだ日は下の安全網が
   //   **板ごと**縮める（段の高さは板から導くので、板を縮めれば全員が同じ比で縮む）。
+  // ★★★**第130巡から板は1枚 ―― 「割れたピル」**（ユーザー承認「**日付と曜日は C 案**」）。
+  //   左 ＝ 曜日（墨の面・紙の字）／右 ＝ 日付（紙の面・墨の字）。**1つの物体**なので、
+  //   2枚がばらばらに転がって離れることがもう無い。★寸法は2枚を測ってから繋ぐ
+  //   （`joinSplitPlate`）ので、字の大きさ・遊び・段の高さの式（`PLATE_ROWS`）は変わらない。
   const platesAt = (c: number) => {
     const room = pileWOf(w) * WORD_W * c;
     const fs = wordFontSize([WD_FULL[today.getDay()]], room, DISPLAY, PILE_WORD_MAX * c);
-    return words.map(
-      (wd) => measureWordPlate(wd, fs, room, PAPER, DISPLAY, undefined, undefined, INK));
+    const [date, day] = words;
+    return [joinSplitPlate(
+      measureWordPlate(day, fs, room, PAPER, DISPLAY, undefined, undefined, INK),
+      measureWordPlate(date, fs, room, INK, DISPLAY, undefined, undefined, INK),
+    )];
   };
   let plates = platesAt(crowd);
   /** カセットの箱（px）。★**高さは板と同じ**（上の注釈）。0 ＝ 出さない。 */

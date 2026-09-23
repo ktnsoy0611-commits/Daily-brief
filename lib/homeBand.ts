@@ -70,14 +70,9 @@ export interface BandItem {
   itemKind?: ItemKind;
 }
 
-/**
- * ★★★**`note` ＝ 文章**（2026-09-18・第121巡にユーザー指定「**この流れるピルに
- * 今日のおすすめはこれとか、そのピル以外に文章みたいなのも一緒に流して、ユーザーに
- * 何かを提案する**」）。
- * ★★**面も縁も持たない。地の上に字だけ**（`components/home/Band.tsx`）――
- *   押せないものに縁を付けない、が `design.md` の約束。
- * ★★**中身は `lib/bandNotes.ts` の1か所**。
- */
+// ★★★**帯の文章（`note`）は第130巡に削除した**（ユーザー指定「**帯の文章は、削除しましょう**」）。
+//   `lib/bandNotes.ts` ごと消えている。★理由 … 「建築が好きなら」「今日届きました」は
+//   **主語が山の図形のほうに在り**、帯だけでは意味が通らなかった。**復活させない。**
 /**
  * ★★★**`news` ＝ ニュースの見出し**（2026-09-18・第122巡にユーザー指定
  * 「**上の帯にもう一列追加して、ニュースを取ってこれるようなものを探して組み込んで、
@@ -88,14 +83,14 @@ export interface BandItem {
  *   **下へ引くと角丸の四角に広がって詳細が出る**（`components/home/NewsCard.tsx`）。
  */
 export type BandKind =
-  "offer" | "today" | "voice" | "followup" | "someday" | "note" | "news";
+  "offer" | "today" | "voice" | "followup" | "someday" | "news";
 
 /** 段の番号（0=上＝提案 / 1=中＝タスク系 / 2=下＝ニュース）。 */
 export type BandRowId = 0 | 1 | 2;
 
 /** どの段に置くか。★**段の数の正はここ**（`BAND_ROWS`）。 */
 export const BAND_ROW: Record<BandKind, BandRowId> = {
-  offer: 0, today: 0, voice: 1, followup: 1, someday: 1, note: 0, news: 2,
+  offer: 0, today: 0, voice: 1, followup: 1, someday: 1, news: 2,
 };
 /** 段の数。★`bandRows` の戻り値も `bandMotion` の `rows` もこれで揃える。 */
 export const BAND_ROWS = 3;
@@ -292,7 +287,7 @@ export function unreadEntries(state: AppState): { ed: string; card: BriefCard }[
 }
 
 /** 帯の中身（種類ごと）。★**出どころだけで決める**（切実さで混ぜない）。 */
-export function bandItems(state: AppState, notes?: BandItem[]): BandItem[] {
+export function bandItems(state: AppState): BandItem[] {
   const out: BandItem[] = [];
 
   // ★★★**まだ読んでいない提案は、もう帯に流さない**（2026-09-17・第119巡に
@@ -330,11 +325,6 @@ export function bandItems(state: AppState, notes?: BandItem[]): BandItem[] {
       genre: genreOfKind(it.kind),
     });
   }
-  // ★★★**文章は上の段の先頭へ**（2026-09-18・第121巡）。**中身は
-  //   `lib/bandNotes.ts` の1か所**（ここは並べるだけ）。
-  //   ★★**呼ぶ側から渡してもらう** ―― `bandNotes` は `lib/offerPick.ts` を読み、
-  //     そちらは `unreadEntries`（このファイル）を読むので、**ここから呼ぶと輪になる**。
-  out.unshift(...(notes ?? []));
 
   // 3 JOURNAL のデータから抽出されたタスクの候補。
   for (const c of state.inbox ?? []) {
@@ -376,10 +366,10 @@ export function bandItems(state: AppState, notes?: BandItem[]): BandItem[] {
  *     「**画面外に出たらいいように処理して**」）。
  */
 export function bandRows(
-  state: AppState, keepId?: string | null, notes?: BandItem[], news?: BandItem[],
+  state: AppState, keepId?: string | null, news?: BandItem[],
 ): [BandItem[], BandItem[], BandItem[]] {
   const rows: [BandItem[], BandItem[], BandItem[]] = [[], [], []];
-  for (const it of bandItems(state, notes)) rows[BAND_ROW[it.kind]].push(it);
+  for (const it of bandItems(state)) rows[BAND_ROW[it.kind]].push(it);
   // ★★★**ニュースは `bandItems` を通さない**（2026-09-18・第122巡）――
   //   あちらは `AppState` だけから作る純粋な関数で、**ニュースは外の世界のもの**
   //   （非同期に届き、`AppState` に入れない。理由は `lib/newsFeed.ts` の頭）。
@@ -394,13 +384,8 @@ export function bandRows(
     const at = keepId ? list.findIndex((it) => it.id === keepId) : -1;
     return list.slice(0, at >= lim ? at + 1 : lim);
   };
-  // ★★★**文章は上限の数に入れない**（2026-09-18・第121巡）―― 上限は「一周が
-  //   長くなりすぎない」ためのもので、文章は高々3件・面も持たない。数に入れると
-  //   **文章が出た日だけ提案が押し出されて消える**。
-  const notesIn = rows[0].filter((it) => it.kind === "note");
-  const rest = rows[0].filter((it) => it.kind !== "note");
   return [
-    [...notesIn, ...cut(rest, BAND_LIMIT)],
+    cut(rows[0], BAND_LIMIT),
     cut(rows[1], BAND_LIMIT_TASKS),
     rows[2],
   ];

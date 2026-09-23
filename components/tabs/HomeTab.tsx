@@ -13,7 +13,7 @@ import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import {
-  BAND_TEXT, bandLines, bandRows, isOutlined, pinBand, unreadCards, unreadEntries,
+  BAND_OFFER_TEXT, BAND_TEXT, bandLines, bandRows, isOutlined, pinBand, unreadCards, unreadEntries,
   type BandItem, type BandRowId,
 } from "@/lib/homeBand";
 import { keepCard } from "@/lib/keepCard";
@@ -307,7 +307,8 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       h: head ? BAND_H.photo : BAND_H.plain, press: 1,
       face, ink: outlined ? bodyInkOn(groundOf("home")) : bodyInkOn(face),
       outlined, ground: groundOf("home"),
-      text: p.title ?? "", textSize: BAND_TEXT, lines: bandLines(p.title ?? "", head),
+      text: p.title ?? "", textSize: head ? BAND_OFFER_TEXT : BAND_TEXT,
+      lines: bandLines(p.title ?? "", head),
       photo: undefined, dia: BAND_H.photo - BAND_BEZEL * 2, gap: SPACE.sm,
       padL: (outlined ? PILL_EDGE : 0) + SPACE.lg,
       padR: (outlined ? PILL_EDGE : 0) + SPACE.lg,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { groundOf } from "@/components/AppBackdrop";
-import { INK, PAPER, SANS, SOFT_SHADOW_LG } from "@/lib/constants";
+import { INK, PAPER, SANS, SOFT_SHADOW_LG, mixHex } from "@/lib/constants";
 import { PAN_SLOP } from "@/lib/pullDrag";
 import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
 import { bodyInkOn } from "@/lib/palette";
@@ -49,9 +49,11 @@ export interface NewsFrom { x: number; y: number; w: number; h: number }
 /** ★2つの矩形を混ぜる（`t` は 0〜1）。 */
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-function NewsCard({ item, from, grab, autoOpen, onClose }: {
+function NewsCard({ item, from, face, grab, autoOpen, onClose }: {
   item: NewsDetail;
   from: NewsFrom;
+  /** ★ピルの面の色。★★**閉じ切ったときに札がこの色へ戻る**（第129巡）。 */
+  face: string;
   /**
    * ★★**指が引いている距離（px）。`null` ＝ もう指は離れている。**
    * 引いているあいだは `t` を指が決め、離したら曲線が引き取る。
@@ -182,15 +184,41 @@ function NewsCard({ item, from, grab, autoOpen, onClose }: {
       <div data-news-sheet style={{
         position: "absolute",
         left: box.x, top: box.y, width: box.w, height: box.h,
-        borderRadius: rad, background: PAPER, overflow: "hidden",
-        padding: `${SPACE.xl}px ${SPACE.xl}px`,
+        // ★★★**面は「ピルの色 → 紙」を `e` で混ぜる**（2026-09-24・第129巡にユーザー指摘
+        //   「**ニュースを閉じる時のアニメーションで、最後が白い枠になってそこから急に
+        //   ピルに戻ってアニメーションが繋がっていない**」）。
+        //   ★★★**真因は両端の見た目が違ったこと** ―― 札は最後まで紙の白で縮み、
+        //     `e = 0` の瞬間に**色も字も違うピル**へ入れ替わっていた。
+        //     → **面の色も字も「ピルそのもの」で終わる**（下の写し）。これで閉じ切った
+        //     1フレームと帯のピルが**画素まで同じ**になり、入れ替わりが見えない。
+        borderRadius: rad, background: mixHex(face, PAPER, e), overflow: "hidden",
+        // ★★★**余白は札が持たない。中身の器が持つ**（第129巡）―― `border-box` の札に
+        //   上下 24px の余白を持たせると、**ピル（28px）より小さく縮めない**。
+        //   閉じ切っても札が 48px のまま残り、そこからピルへ飛んでいた（実測）。
         // ★★**縁を引かない**（`design.md`。押せるものにだけ縁）。面と影で浮かせる。
         //   ★影は既存の1つ（`SOFT_SHADOW_LG`）。**新しい影を作らない。**
-        boxShadow: SOFT_SHADOW_LG,
+        //   ★★ピルには影が無いので、**閉じるほど影も消える**（同じ理由）。
+        boxShadow: e > 0.02 ? SOFT_SHADOW_LG : "none", opacity: 1,
       }}>
+        {/* ★★★**ピルの写し**（第129巡）… 閉じるほど現れ、閉じ切ったときに帯の
+            ピルと同じ字・同じ位置になる。★`NewsPill` の版面と同じトークンを読む。 */}
+        <div aria-hidden style={{
+          position: "absolute", inset: 0, display: "flex", alignItems: "center",
+          padding: `0 ${SPACE.lg}px`, pointerEvents: "none",
+          opacity: Math.max(0, 1 - e / 0.35),
+        }}>
+          <span style={{
+            fontFamily: SANS, fontSize: BAND_TEXT, fontWeight: WEIGHT.heavy,
+            letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: bodyInkOn(face),
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>{item.title}</span>
+        </div>
         {/* ★★**中身は開くほど現れる**（版面が崩れたまま見えない）。
             ★★**幅は開いたときの幅で固定**（途中で折り返しが変わらない）。 */}
-        <div style={{ width: toW - SPACE.xl * 2, opacity: Math.max(0, (e - 0.45) / 0.55) }}>
+        <div style={{
+          width: toW, padding: `${SPACE.xl}px ${SPACE.xl}px`,
+          opacity: Math.max(0, (e - 0.45) / 0.55),
+        }}>
           {open && item.link
             ? <a href={item.link} target="_blank" rel="noreferrer"
                 style={{ textDecoration: "none", color: "inherit" }}>{body}</a>
@@ -237,7 +265,7 @@ function whenText(at: string): string {
  */
 export function NewsPill({ item, h, face, onHold }: {
   item: NewsDetail; h: number;
-  /** ★ニュースの色（`NEWS_FACE`）。**縁の線にだけ出る**。 */
+  /** ★ニュースの色（`NEWS_FACE`。第129巡から黒）。ピルの面。 */
   face: string;
   onHold: (on: boolean) => void;
 }) {
@@ -341,7 +369,7 @@ export function NewsPill({ item, h, face, onHold }: {
       </div>
       {card && (
         <NewsCard
-          item={item} from={card.from}
+          item={item} from={card.from} face={face}
           grab={card.tap ? null : grab} autoOpen={card.tap}
           onClose={() => { setCard(null); setGrab(null); lock(false); }}
         />

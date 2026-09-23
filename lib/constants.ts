@@ -236,6 +236,8 @@ export const STUDIO = {
 // 参照画像 … Barcelona の SNS 版面（黄・青・オレンジ・緑の4色のハイライトと黒）。
 // **画素を数えて**採った（彩度 0.3 以上の画素を塊にまとめ、各塊の平均）。
 //
+// ★★★**第129巡に役を入れ替えた**（ユーザー指定「**提案は黄色、タスクはオレンジ、
+//   ジャーナルは青、ニュースは黒にしてください**」）。色そのもの（4行）は第128巡のまま。
 // ★★★**第128巡に4色を差し替え**（ユーザー指定「**やはりダメです。こっちの色に
 //   してください。4色のカラースキームがあるのでこれを適応してください。
 //   文字は太めの黒で良いです**」）。
@@ -254,10 +256,10 @@ export const STUDIO = {
 // ★★**4色とも地との比は低い**（1.16〜2.50）―― 参照画像と同じく**彩度差で立つ**色。
 //   **地の上に直接いる小さな字にはしない**（面と縁にだけ使う）。
 export const PALETTE = {
-  azul:     "#A2B9F0",  // 青       … その他（ニュース・選択・肯定）
-  amarillo: "#F3EA70",  // 黄       … JOURNAL
-  naranja:  "#F47B51",  // オレンジ … 提案（ドメイン4は全部これ）／危険
-  verde:    "#3AE580",  // 緑       … TASK
+  azul:     "#A2B9F0",  // 青       … JOURNAL ／選択・肯定
+  amarillo: "#F3EA70",  // 黄       … 提案（ドメイン4は全部これ）
+  naranja:  "#F47B51",  // オレンジ … TASK ／危険
+  verde:    "#3AE580",  // 緑       … 録音の CANCEL だけ（★第129巡に TASK から外れた）
 } as const;
 
 // ★★★**役 → 色**。ここが「何がどの色か」の唯一の表。
@@ -270,10 +272,10 @@ export const PALETTE = {
 export const SCHEME = {
   work: PALETTE.azul,          // 青       … 選ばれている・リンク
   life: PALETTE.azul,          // 青       … 肯定・達成
-  growth: PALETTE.naranja,     // オレンジ … 提案（ドメイン4の唯一の色）
-  wellness: PALETTE.amarillo,  // 黄       … JOURNAL の系統（キーの PAUSE）
-  social: PALETTE.amarillo,    // 黄       … JOURNAL
-  danger: PALETTE.naranja,     // オレンジ … 危険（★上の注釈）
+  growth: PALETTE.amarillo,    // 黄       … 提案（ドメイン4の唯一の色）
+  wellness: PALETTE.amarillo,  // 黄       … キーの PAUSE
+  social: PALETTE.azul,        // 青       … JOURNAL
+  danger: PALETTE.naranja,     // オレンジ … 危険（★上の注釈。第129巡から TASK と同じ色）
 } as const;
 
 /**
@@ -282,13 +284,19 @@ export const SCHEME = {
  * ★★実測 … 地（`BD_GREY`）との比 **1.54**／**墨の字 8.98**。
  * ★★★**第117〜124巡の「タスクは無彩色」は撤回したまま**（`TASK_GREY` は残してある）。
  */
-export const TASK_FACE = PALETTE.verde;
+// ★★★**第129巡に緑 → オレンジ**（ユーザー指定「**提案は黄色、タスクはオレンジ、
+//   ジャーナルは青、ニュースは黒にしてください**」）。墨の字 5.52（AA）。
+export const TASK_FACE = PALETTE.naranja;
 
 /**
  * ★★★**ニュースの色 ＝ 青**（第127巡から。ユーザー指定の「**その他は青**」）。
  * ★★実測 … 地との比 **1.82**／墨の字 7.59。
  */
-export const NEWS_FACE = PALETTE.azul;
+// ★★★**第129巡に青 → 黒**（ユーザー指定「**ニュースは黒**」）。**有彩色ではない**
+//   ので `PALETTE` には入れず、墨 `INK` をそのまま使う。字は `bodyInkOn(INK)` ＝ 紙（14.22）。
+//   ★★**帯の文章（黒いピル）と同じ見え方**になるが、文章は上の段・ニュースは下の段
+//   にしか流れないので、段で見分けられる。
+export const NEWS_FACE = INK;
 
 /**
  * ★★★**JOURNAL の顔の色 ＝ 黄**（第127巡から）。録音の大きな円（ダイヤル）と

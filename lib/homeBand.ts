@@ -1,8 +1,8 @@
 import type { AppState, BriefCard, ItemKind } from "./types";
 import { categoryOfKind, genreOfKind } from "./deckStyle";
 import { colorOfKind } from "./palette";
-import { TASK_FACE } from "./constants";
-import { TYPE } from "./tokens";
+import { BAND_BEZEL, BAND_H, TASK_FACE } from "./constants";
+import { LEAD, TYPE } from "./tokens";
 import { pickTodayItems } from "./todayPick";
 
 // ★★★**帯に何が並ぶかを決める唯一の場所**（2026-09-07・ホームの帯）。
@@ -117,39 +117,71 @@ export const BAND_ROWS = 3;
  * ★★色は種類ごとに違う（`face`）が、**面には出ず 1px の線にだけ出る**。
  */
 /**
- * ★★★**提案の段のピルは「2段組」**（2026-09-24・第128巡にユーザー指定「**提案の
- * 帯の文字は2段にしてできる限り帯の文字が短くなるようにしてください**」）。
+ * ★★★**提案の段のピルは「必ず2段組」**（2026-09-24・第128巡に2段組、**第129巡に
+ * 「必ず」**。ユーザー指定「**提案のところは、文字を2段にして、高さをピルに必ず
+ * 合わせてください**」）。
  *
  * ★★★**行の切り方はここ1か所** ―― 帯のピル（**DOM**）と引き下ろしの幽霊
  *   （**canvas**。`components/home/pillGhost.ts`）が**同じ行の列**を読む。
  *   DOM の自動折り返しに任せると、canvas では同じ所で折れないので、
  *   **1px 下へ引いて写し取った瞬間に字の並びが変わる**。
- * ★★**1行は `BAND_LINE_CH` 字まで**。2行目に入りきらなければ `…` で切る。
- * ★★**切れ目は「読める所」を優先** ―― 1行の長さの 6割から先で、空白・読点・
- *   閉じ括弧の直後があればそこで折る（無ければ字数で折る）。
+ * ★★★**短い題も2段に割る**（第128巡は10字以下を1行のまま出していたので、
+ *   ピルごとに字の塊の高さが違った ―― 実機の写真の「日本の新進写真家」）。
+ * ★★**切れ目は「真ん中にいちばん近い、読める所」** ―― 空白・句読点・閉じ括弧・
+ *   **助詞（の が を に と で へ は も）の直後**。遠すぎれば（題の長さの 1/4 超）
+ *   字数で真ん中を割る。★1行は `BAND_LINE_CH` 字まで、2行目は入らなければ `…`。
  * ★★**提案の段以外は1行**（今までどおり）。★目盛りの外（文の長さ）。
  */
 export const BAND_LINE_CH = 10;
 /**
- * ★★★**帯の字の大きさは1つ**（第128巡にユーザー指定「**帯は全体的にもっと小さく**」）。
- * 第127巡までは提案 `lead`(16)／候補 `body`(13)／ニュース `small`(11) の3つだった。
- * ★★**帯のピル（DOM）・写し取り（canvas）・戻すピルの見積もり（`HomeTab.pillOf`）・
- *   文章の4つが読む。**
+ * ★★★**帯の字の大きさ**（第128巡にユーザー指定「**帯は全体的にもっと小さく**」）。
+ * ★**帯のピル（DOM）・写し取り（canvas）・戻すピルの見積もり・文章の4つが読む。**
  */
 export const BAND_TEXT = TYPE.small;
-const BREAK_AFTER = new Set([" ", "　", "、", "。", "・", "」", "』", "）", ")", "／"]);
+/**
+ * ★★★**提案の段の字は「2行の高さ ＝ 写真の丸の直径」から解く**（第129巡。ユーザー
+ * 指定「**高さをピルに必ず合わせて**」）。丸の直径は `BAND_H.photo − BAND_BEZEL × 2`
+ * （32px）なので、`32 ÷ (2 × LEAD.snug)` ＝ **12.3px**。これで**字の塊の上下が
+ * 丸の上下と揃い、ピルの中で縁取り（`BAND_BEZEL`）が四方で同じになる**。
+ * ★目盛りの外（部品の寸法から解いた値。段から選ぶと 11 では 3.4px 足りず、13 では溢れる）。
+ */
+export const BAND_OFFER_TEXT = (BAND_H.photo - BAND_BEZEL * 2) / (2 * LEAD.snug);
+/**
+ * ★★★**その行の高さは px で渡す**（丸の直径の半分 ＝ 16px）。★目盛りの外（同上）。
+ * ★★**比（`LEAD.snug`）で渡すと WebKit が行の高さを整数へ丸める**ので、字の塊が
+ *   Chromium 32px 対 WebKit 30px になった（実測）。px なら両方 32px。
+ */
+export const BAND_OFFER_LINE = (BAND_H.photo - BAND_BEZEL * 2) / 2;
+const BREAK_AFTER = new Set([
+  " ", "　", "、", "。", "・", "」", "』", "）", ")", "／", "—", "─", "―", "–", "：", ":",
+  "の", "が", "を", "に", "と", "で", "へ", "は", "も",
+]);
+/** ★★**開き括弧の「前」でも折ってよい**（「スズキユウリ」／「Music As…」）。 */
+const BREAK_BEFORE = new Set(["「", "『", "（", "(", "“", "【", "〈"]);
+/** ★英数字（単語の途中で折らないために見る）。 */
+const isWordChar = (c: string | undefined) => !!c && /[A-Za-z0-9]/.test(c);
 export function bandLines(text: string, head: boolean): string[] {
   const t = (text ?? "").trim();
   const chars = [...t];
-  if (!head || chars.length <= BAND_LINE_CH) return [t];
-  let cut = BAND_LINE_CH;
-  for (let i = BAND_LINE_CH; i >= Math.ceil(BAND_LINE_CH * 0.6); i--) {
-    if (BREAK_AFTER.has(chars[i - 1])) { cut = i; break; }
+  const n = chars.length;
+  if (!head || n < 2) return [t];
+  const target = Math.min(Math.ceil(n / 2), BAND_LINE_CH);
+  let cut = target;
+  let best = Infinity;
+  for (let i = 1; i <= Math.min(n - 1, BAND_LINE_CH); i++) {
+    if (!BREAK_AFTER.has(chars[i - 1]) && !BREAK_BEFORE.has(chars[i])) continue;
+    const d = Math.abs(i - target);
+    if (d < best && d <= Math.max(1, n / 4)) { best = d; cut = i; }
+  }
+  // ★★**英単語の途中では折らない**（字数で割ったときだけ起きる。単語の頭まで戻す）。
+  if (best === Infinity) {
+    let k = cut;
+    while (k > 1 && isWordChar(chars[k - 1]) && isWordChar(chars[k])) k--;
+    if (k > 1) cut = k;
   }
   const a = chars.slice(0, cut).join("").trim();
-  const rest = chars.slice(cut).join("").trim();
-  const r = [...rest];
-  const b = r.length <= BAND_LINE_CH ? rest : `${r.slice(0, BAND_LINE_CH - 1).join("")}…`;
+  const r = chars.slice(cut);
+  const b = (r.length <= BAND_LINE_CH ? r.join("") : `${r.slice(0, BAND_LINE_CH - 1).join("")}…`).trim();
   return b ? [a, b] : [a];
 }
 

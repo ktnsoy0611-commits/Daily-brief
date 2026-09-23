@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import { groundOf } from "@/components/AppBackdrop";
 import { BAND_BEZEL, BAND_H, INK, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { BAND_ROW, BAND_TEXT, type BandItem, type BandRowId, bandLines, isOutlined } from "@/lib/homeBand";
+import { BAND_OFFER_LINE, BAND_OFFER_TEXT, BAND_ROW, BAND_TEXT, type BandItem, type BandRowId, bandLines, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { NewsPill } from "./NewsCard";
 import { LEAD, RADIUS, SPACE, TRACK, WEIGHT } from "@/lib/tokens";
@@ -234,7 +234,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
       look: {
         w: pr.width, h: pr.height, press: PILL_PRESS,
         face, ink, outlined: outline, ground: groundOf("home"),
-        text: item.text, textSize: BAND_TEXT,
+        text: item.text, textSize: head ? BAND_OFFER_TEXT : BAND_TEXT,
         lines: bandLines(item.text, head),
         // ★★**線のぶんだけ中身が内へ寄る**（`border` は余白の外側に積まれる）。
         dia, gap: SPACE.sm,
@@ -486,8 +486,9 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
       <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
         {bandLines(item.text, head).map((ln, i) => (
           <span key={i} style={{
-            fontFamily: SANS, fontSize: BAND_TEXT, fontWeight: WEIGHT.heavy,
-            letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
+            // ★★提案の段は「2行 ＝ 丸の直径」から解いた大きさ（`BAND_OFFER_TEXT`）。
+            fontFamily: SANS, fontSize: head ? BAND_OFFER_TEXT : BAND_TEXT, fontWeight: WEIGHT.heavy,
+            letterSpacing: TRACK.normal, lineHeight: head ? `${BAND_OFFER_LINE}px` : LEAD.snug, color: ink,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
           }}>{ln}</span>
         ))}

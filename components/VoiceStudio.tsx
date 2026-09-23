@@ -4,7 +4,7 @@ import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, MUTED, PAPER, SANS, PALETTE, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
+import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, MUTED, PAPER, SANS, SCHEME, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { hubPath } from "@/lib/reelHub";
 import { CASSETTE, CASSETTE_ASPECT, CASSETTE_BOX_H_PER_H, CASSETTE_DECK_H, CASSETTE_DECK_W_PER_W, CASSETTE_DECK_X, CASSETTE_DECK_Y_PER_H, CASSETTE_KEY_LIP_PER_H, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W, CASSETTE_WAVE_CY_PER_D, CASSETTE_WAVE_H_PER_D, topRoundRadii } from "@/lib/cassette";
 import { PILE_INSET } from "@/lib/pileBox";
@@ -219,9 +219,9 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   //   盤の色が 1.2〜1.8 しか出ないが、窓の上なら 4.7 以上出る（第79巡の実測）。
   const acc = STUDIO_KEY;
   // ★★★REC の輪は**キーの面の上**にいるので、白い面から決まる。
-  //   待機＝墨 14.41／録音中＝**赤 4.46**。**光ったと分かる赤**を採る。
+  //   待機＝墨 14.41／録音中＝**危険の色**（第128巡からオレンジ。参照画像に赤が無い）。
   const ringIdle = bodyInkOn(cap);
-  const ringRec = PALETTE.rojo;
+  const ringRec = SCHEME.danger;
   // ★★波形の線は**地**の上なので、こちらは面が2通りある。`redOn()` に導かせる。
   const lineRec = redOn(dim ? DIM_GROUND : BD_GREY);
 

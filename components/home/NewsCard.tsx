@@ -4,12 +4,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { groundOf } from "@/components/AppBackdrop";
 import { INK, PAPER, SANS, SOFT_SHADOW_LG } from "@/lib/constants";
-import { pillFillOf } from "@/lib/pillFill";
 import { PAN_SLOP } from "@/lib/pullDrag";
 import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
 import { bodyInkOn } from "@/lib/palette";
 import { rubber } from "@/lib/spring";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
+import { BAND_TEXT } from "@/lib/homeBand";
 
 // ★★★**ニュースのピルを引き出すと、角丸の四角に広がって詳細が出る**
 //   （2026-09-19・第123巡にユーザー指定「**ニュースもピルにしてください。そして
@@ -34,8 +34,6 @@ const PULL_OPEN = 64;
 const PULL_TRIP = 0.45;
 /** ★開いた札の高さの上限（画面の高さに対する割合）。★目盛りの外（版面の寸法）。 */
 const CARD_MAX = 0.6;
-/** ★ピルの輪郭の太さ（`components/home/Band.tsx` の `PILL_EDGE` と同じ引き方）。 */
-const NEWS_EDGE = 1;
 
 export interface NewsDetail {
   id: string;
@@ -255,8 +253,8 @@ export function NewsPill({ item, h, face, onHold }: {
     held.current = on;
     onHold(on);
   }, [onHold]);
-  const ground = groundOf("home");
-  const ink = bodyInkOn(ground);
+  // ★★第128巡からベタ塗りなので、字は**面から**導く（青の上の墨 7.59）。
+  const ink = bodyInkOn(face);
 
   /** ★指を離した（引き切っていれば `NewsCard` が開き、足りなければ閉じる）。 */
   const end = useCallback(() => {
@@ -326,19 +324,17 @@ export function NewsPill({ item, h, face, onHold }: {
         style={{
           display: "flex", alignItems: "center", flexShrink: 0,
           height: h, borderRadius: RADIUS.pill,
-          padding: `0 ${SPACE.xl}px`, maxWidth: "84vw",
-          // ★★★**縁はニュースの色・字は黒**（第125巡）＋**中は半透明の塗り**
-          //   （第127巡）。濃さは `lib/pillFill.ts` の1か所（帯のピルと同じ）。
-          //   ★不透明なので、後ろを落ちてくる図形は透けない。
-          backgroundColor: pillFillOf(face, ground),
-          border: `${NEWS_EDGE}px solid ${face}`,
+          padding: `0 ${SPACE.lg}px`, maxWidth: "84vw",
+          // ★★★**ベタ塗り・墨の字**（第128巡。帯のピルと同じ。縁は持たない）。
+          backgroundColor: face,
           touchAction: "none", pointerEvents: "auto",
           // ★引いているあいだは元のピルを消す（札と二重に見えない）。
           opacity: card ? 0 : 1,
         }}
       >
         <span style={{
-          fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.text,
+          // ★★字は帯の他のピルと同じ「太い墨」（第128巡）。
+          fontFamily: SANS, fontSize: BAND_TEXT, fontWeight: WEIGHT.heavy,
           letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         }}>{item.title}</span>

@@ -1,9 +1,8 @@
 import type { RefObject } from "react";
 import type { CardShape } from "./cardShape";
-import { BAND_H } from "./constants";
 import type { BandItem, BandRowId } from "./homeBand";
 import {
-  D_OPEN, D_SWING, K_OPEN, K_SWING,
+  D_OPEN, D_SETTLE, D_SWING, K_OPEN, K_SETTLE, K_SWING,
   rubber, settled, spring, springTo, type Spring,
 } from "./spring";
 
@@ -44,10 +43,14 @@ export interface PillLook {
   /** 面（塗り）と字の色。★輪郭だけのピルは中を地の色で塗る。 */
   face: string; ink: string;
   outlined: boolean; ground: string;
-  /** 題（1行・`lead` か `body`）。 */
+  /** 題と字の大きさ。 */
   text: string; textSize: number;
-  /** 提案の段だけ … ジャンルの2行目。 */
-  genre?: string;
+  /**
+   * ★★★**描く行の列**（第128巡。提案の段は2段組）。**`bandLines()`
+   * （`lib/homeBand.ts`）の戻り値そのもの** ―― DOM と canvas が同じ所で折れる。
+   * ★第127巡までの「ジャンルの2行目」（`genre`）は削除した。
+   */
+  lines: string[];
   /**
    * ★★★**提案の段だけ … 写真の丸**。**帯の `<img>` そのものを渡す**（2026-09-14・
    * 第105巡）―― URL を渡して取り直すと、**大きさの丸めが違って別の URL になり**、
@@ -265,7 +268,10 @@ export const pullBus: PullBus = { ghost: null, unit: 64, landing: null };
  *   **ピルの高さより深く垂れる**ので、ゴムが伸びているのがはっきり見える。
  * ★目盛りの外（手ざわり）。
  */
-export const PULL_ARM = BAND_H.plain;
+// ★★★**第128巡に帯を細くした（44 → 32）ので、ピルの高さから切り離した** ――
+//   引く距離まで縮むと、**少し引いただけで弾けて**「弾ける」感じが強まる。
+//   ★目盛りの外（手つきの距離）。
+export const PULL_ARM = 44;
 /**
  * ゴムの間、指の何割だけ動くか。★目盛りの外（手ざわり）。
  * ★★★**1.0 ＝ 指とぴったり同じだけ垂れる**（2026-09-16・第107巡にユーザー確定。
@@ -562,7 +568,15 @@ export function stepGhost(mo: GhostMotion, g: Ghost, pin?: Pin | null): void {
   //   ★変形は **`K_SWING`/`D_SWING`**（周期30フレーム・減衰比 0.3）＝
   //     **はっきり行き過ぎてから戻る** ―― ピルが図形へ**一度開きすぎて落ち着く**。
   //   ★吸い付き（`catchX/Y`）は `K_CATCH` のまま速い。**係数は4組のまま。**
-  springTo(mo.morph, g.tTo, K_SWING, D_SWING);
+  // ★★★**第128巡に `K_SWING` → `K_SETTLE` へ**（ユーザー指定「**小さいピルの状態
+  //   から大きい図形の状態に移行する時の弾けるような感じはなくしてください。
+  //   もう少しゆっくり滑らかに帯のピルが図形に遷移するアニメーションを**」）。
+  //   ★★★**「弾ける」の正体は `K_SWING` の行き過ぎ**（減衰比 0.3 ＝ 一度
+  //     **開きすぎてから**戻る）。`K_SETTLE` は**臨界減衰で行き過ぎ 0**・
+  //     90% まで **467ms**（`K_SWING` は約 130ms で行き過ぎる）。
+  //   ★★**新しい係数は作らない**（5組のまま。役の割り当てを変えただけ）。
+  //   ★帯へ戻すとき（`tTo` → 0）も同じばねなので、**畳むのも同じ速さ**になる。
+  springTo(mo.morph, g.tTo, K_SETTLE, D_SETTLE);
   g.t = mo.morph.p;
   g.w = g.w0 + (g.w1 - g.w0) * g.t;
   g.h = g.h0 + (g.h1 - g.h0) * g.t;

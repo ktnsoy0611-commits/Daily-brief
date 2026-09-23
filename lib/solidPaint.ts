@@ -5,7 +5,6 @@ import {
 import { rowsOf } from "./taskSize";
 import { BD_GREY, SHAPE_FACE, TASK_FACE } from "./constants";
 import { bodyInkOn } from "./palette";
-import { pillFillOf } from "./pillFill";
 import { canvasFont, drawFitted, ensureGlyphs, layoutInRows, missingGlyphs, textDrawable, warmGlyphs, type FitResult } from "./textFit";
 
 // ★タスクの図形を canvas に描く。**3D は一切持たない**(2026-08-13にユーザー
@@ -147,11 +146,9 @@ export function paintShape(
     }
   } else {
     // ── 日付なし … 輪郭線だけ ──
-    // ★★★**中は「半透明の塗り」**（2026-09-23・第127巡。ホームの山
-    //   `components/home/pilePaint.ts` と**同じ規則**）。濃さは
-    //   `lib/pillFill.ts` の1か所。★**不透明なのは今までどおり**（地と混ぜた
-    //   色を1枚塗るだけなので、後ろの図形は透けない）。
-    ctx.fillStyle = pillFillOf(TASK_FACE, ground);
+    // ★中は**地と同じ色で不透明に**塗る（透けると後ろの図形が図形の中を通って
+    //   見える）。★第127巡の半透明は第128巡に撤回した。
+    ctx.fillStyle = ground;
     path();
     ctx.fill();
     // ★★★**線は「内側に」引く**（CSS の `border` が内側に引かれるのと同じ）。

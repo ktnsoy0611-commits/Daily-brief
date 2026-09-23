@@ -54,7 +54,7 @@ const VERT_MIN = 2;
 /** 山が器に占める割合。★目盛りの外（詰め込み具合）。
  *  ★★**帯が厚いほど山の取り分が減る**ので、帯の厚み（`BAND_H`）とセットで決める。
  *  ★2026-09-10 に **0.36** ―― 文字の板と未読の図形を予算に数えるようにしたぶん。 */
-const FILL = 0.36;
+const FILL = 0.5;
 /** ★★**1つの図形が器に対して取ってよい上限**（`GravityTab` の `FIT_W`/`FIT_H` と
  *  同じ考え方）。面積の予算だけだと、重要度の高い1枚が器の半分を覆ってしまう。
  *  ★★★**第124巡に 0.52 → 0.86**（ユーザー指定「**横幅を今の2倍くらい大きく**」）。
@@ -99,7 +99,16 @@ export function fitUnit(unit: number, sw: number, sh: number, bw: number, bh: nu
  * ★★**4つを完全に揃えることはできない** ―― 四つ葉は `k > 1` の制約で 0.25 より
  *   下へ行けない（`QUATREFOIL_R` の注釈）。幅は 1.14倍（第123巡は 2.55倍）。
  */
-const OFFER_D = 3.83;
+// ★★★**第128巡に「実機の写真の 1.5倍」へ**（ユーザー指定「**提案の図形は最大2個に
+//   減らし、一つあたりの大きさを1.5倍くらいに**」）。
+//   ★★★**3.83 × 1.5 ではない** ―― 同じ巡に**段の高さそのもの**も上がった
+//     （予算の頭打ちを外して `unit` ＝ 板の半分。下の `raw`）ので、掛け算すると
+//     **2.2倍**になる（試して実測 … 直径 212px で山が帯の裏まで積み上がった）。
+//   ★★**写真から解いた** … 実機の写真で 提案の直径 ≒ **95px**・板の高さ ≒ 70.5px
+//     （段の高さ 35.2px）。目標 95 × 1.5 ＝ 143px ÷ 35.2 ＝ **4.05 段**。
+//   ★★**上の「カーブが一致する」は崩れる**（提案のカーブは約 1.06 unit）。
+//     ユーザー指定の上での選択。**カーブの比（`lib/cardShape.ts`）は触っていない。**
+const OFFER_D = 4.05;
 /**
  * ★★★**提案の体だけ光線を増やす**（2026-09-18・第121巡にユーザー指摘
  * 「**他の図形と干渉してなんかめり込んでしまったり**」）。
@@ -648,20 +657,26 @@ export function buildPieces(
     tasks.length + offers.length + picks.length
     + (journal ? 1 : 0) + (unread > 0 ? 1 : 0) + 2);
   const words = [`${today.getMonth() + 1}.${today.getDate()}`, WD_SHORT[today.getDay()]];
-  const room = pileWOf(w) * WORD_W * crowd;
   // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
   // ★★★**大きさの物差しは長いほうの綴り（`WD_FULL`）のまま**（ユーザー
   //   「**サイズは今の文字くらいでよく**」）―― 3文字で測ると器いっぱいまで
   //   太ってしまい、**今までの倍近い字**になる。物差しだけ据え置く。
-  // ★★★**上限にも `crowd` を掛ける**（第120巡。理由は `CROWD_N0` の注釈）――
+  // ★★★**上限にも倍率を掛ける**（第120巡。理由は `CROWD_N0` の注釈）――
   //   掛けないと、上限が効いている幅（実測 390）では板だけが縮まない。
-  const wordFs = wordFontSize(
-    [WD_FULL[today.getDay()]], room, DISPLAY, PILE_WORD_MAX * crowd);
-  const plates = words.map(
-    (wd) => measureWordPlate(wd, wordFs, room, PAPER, DISPLAY, undefined, undefined, INK));
+  // ★★★**板は「長さの倍率 c」の関数**（第128巡）―― 混んだ日は下の安全網が
+  //   **板ごと**縮める（段の高さは板から導くので、板を縮めれば全員が同じ比で縮む）。
+  const platesAt = (c: number) => {
+    const room = pileWOf(w) * WORD_W * c;
+    const fs = wordFontSize([WD_FULL[today.getDay()]], room, DISPLAY, PILE_WORD_MAX * c);
+    return words.map(
+      (wd) => measureWordPlate(wd, fs, room, PAPER, DISPLAY, undefined, undefined, INK));
+  };
+  let plates = platesAt(crowd);
   /** カセットの箱（px）。★**高さは板と同じ**（上の注釈）。0 ＝ 出さない。 */
-  const jH = journal ? plates[0].bh : 0;
-  const jW = jH * CASSETTE_ASPECT;
+  const cassetteOf = (pl: typeof plates) => {
+    const jh = journal ? pl[0].bh : 0;
+    return { jH: jh, jW: jh * CASSETTE_ASPECT };
+  };
 
   /**
    * ★★★**ホームの図形は、重要度でも切迫度でも大きさが変わらない**
@@ -696,41 +711,58 @@ export function buildPieces(
   ];
   const total = areas.reduce((a, b) => a + b, 0) || 1;
   // ★★**px で大きさが決まっているものは「固定」側**（板・未読の数・カセット）。
-  const fixed = plates.reduce((a, pl) => a + pl.w * pl.h, 0)
-    + (unread > 0 ? Math.PI * BADGE_R * BADGE_R : 0)
-    + jW * jH;
   // ★★**`crowd` は「長さ」の倍率なので、面積の予算には2乗で効かせる**（第118巡）。
-  const room2 = w * usableH * FILL * crowd * crowd;
-  const budget = Math.max(room2 * 0.25, room2 - fixed);
-  // ★★★**下限で予算を破らない**。以前は 16 を床にしていたので、件数が多い日は
-  //   予算を無視して大きいまま出て、器に入り切らなかった。
-  // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。
-  //   1枚だけ縮めない ―― 図形どうしの大きさの比がそのまま重要度なので。
-  //   ★★★**この頭打ちは予算とは別に出す**（第110巡）―― 据え置きのときも
-  //   **これだけは必ず効かせる**（＝器に入らない倍率は据え置かない）。
-  // ★★カセットはもう `unit` の倍数ではないので、**頭打ちの相手はタスクだけ**
-  //   （板・未読と同じ扱い ―― px で決まっているものは `unit` では抑えられない）。
-  let cap = UNIT;
-  for (const sp of tasks.map((t) => rowSpecOf(flat(t)))) {
-    cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
-  }
+  const budgetOf = (pl: typeof plates): number => {
+    const { jH: jh, jW: jw } = cassetteOf(pl);
+    const fixed = pl.reduce((a, x) => a + x.w * x.h, 0)
+      + (unread > 0 ? Math.PI * BADGE_R * BADGE_R : 0) + jw * jh;
+    const room2 = w * usableH * FILL * crowd * crowd;
+    return Math.max(room2 * 0.25, room2 - fixed);
+  };
   // ★★★**段の高さは「日付と曜日の板の半分」**（2026-09-19・第124巡にユーザー指定
   //   「**2段の時の大きさを日付と曜日の図形の高さと合わせ**」）。
   //   ★★**タスクの箱は `h = 段の数`** なので、2段 ＝ `2 × unit` ＝ 板の高さ。
   //     角丸は高さの半分（`lib/solid.ts`）なので、**2段のタスクの角の半径と
   //     板の角の半径が px で厳密に一致する**（＝カーブが揃う）。
-  //   ★★★**板は `unit` より先に決まっている**ので、循環しない（上の `plates`）。
-  //   ★★**`crowd` は板を通して効く** ―― 板が縮めば `unit` も同じ比で縮むので、
-  //     混み具合の調整は1か所（`crowdOf`）のままでよい。
-  const plateUnit = plates[0].bh / PLATE_ROWS;
-  // ★★★**予算はまだ効かせる**（安全網の2本目）―― 板は器の幅から決まるので
-  //   **件数を知らない**。件数が多い日は板どおりだと山が帯の裏まで伸びるので、
-  //   **小さいほうを採る**。★どちらが効いたかは検証で件数とともに出す。
-  const budgetUnit = Math.min(UNIT, Math.sqrt(budget / total));
-  // ★★★**据え置きが渡されていれば、決め直さない**（第110巡。上の注釈）。
-  //   **安全網は `cap` の1つだけ** ―― それ以外では 1px も動かさない。
-  const raw = hold && hold > 0 ? hold : Math.min(plateUnit, budgetUnit);
-  const unit = Math.max(10, Math.min(raw, cap));
+  //
+  // ★★★**第128巡に「予算で段だけ小さくする」をやめた**（ユーザー指定「**何度も
+  //   言っているのですが、タスクの図形の縦の高さと横幅が小さすぎます。高さは一段の
+  //   時は、日付と曜日の図形の高さの半分にしてください**」）。
+  //   ★★★**真因は `min(板の半分, 予算)`** ―― 件数が多い日は面積の予算が先に効き、
+  //     **板はそのままで段だけが縮んでいた**（実機の写真で 段 ≒ 25px 対 板の半分
+  //     ≒ 35px ＝ **7割**）。第124巡に「板の半分」を決めたのに、**安全網のほうが
+  //     毎日効いていた**。
+  //   ★★★**予算は捨てない。板ごと縮める** ―― 予算を外すだけだと 9件で山が帯の裏へ
+  //     110px 伸びた（実測）。予算が足りない日だけ**板の倍率 c を下げて測り直す**
+  //     ので、**どの件数でも「1段 ＝ 板の半分」**のまま、全部が一律に縮む
+  //     （第118巡の「一律で少しだけ小さく」と同じ作法）。
+  //   ★板の字は倍率に比例する（幅と上限の両方に掛けてある）ので、2〜3回で収まる。
+  let plateUnit = plates[0].bh / PLATE_ROWS;
+  if (hold && hold > 0) {
+    // ★★据え置き（第110巡）… 段の高さは変えない。**板もその段に合わせて測り直す**
+    //   （件数が変わって `crowd` が動いても、「1段 ＝ 板の半分」を崩さない）。
+    if (Math.abs(hold - plateUnit) > 0.5) plates = platesAt(crowd * (hold / plateUnit));
+    plateUnit = hold;
+  } else {
+    let c = crowd;
+    for (let i = 0; i < 3; i++) {
+      const fit = Math.min(UNIT, Math.sqrt(budgetOf(plates) / total));
+      if (fit >= plateUnit * 0.99) break;
+      c *= fit / plateUnit;
+      plates = platesAt(c);
+      plateUnit = plates[0].bh / PLATE_ROWS;
+    }
+  }
+  const { jH, jW } = cassetteOf(plates);
+  // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。
+  //   ★★★**この頭打ちは予算とは別に出す**（第110巡）―― 据え置きのときも効かせる。
+  //   ★★カセットは `unit` の倍数ではないので、**頭打ちの相手はタスクだけ**。
+  let cap = UNIT;
+  for (const sp of tasks.map((t) => rowSpecOf(flat(t)))) {
+    cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
+  }
+  // ★★★**安全網は `cap`（いちばん大きな図形が器に入るか）の1つだけ**。
+  const unit = Math.max(10, Math.min(plateUnit, cap));
 
   const pieces: Piece[] = [];
   let nth = 0;

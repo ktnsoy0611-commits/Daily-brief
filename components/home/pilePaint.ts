@@ -2,7 +2,6 @@ import { BAND_BEZEL, BD_GREY, DISPLAY, MUTED, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
 import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
-import { pillFillOf } from "@/lib/pillFill";
 import { clampRows, halfWidthAtStack, stackOutline } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
 import { canvasFont, drawFitted, ensureGlyphs, layoutInRows } from "@/lib/textFit";
@@ -109,13 +108,8 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   // ★★★**日付あり＝塗り／日付なし＝輪郭**（2026-09-12）。GRAVITY の図形
   //   （`lib/solidPaint.ts` の `paintShape`）と**同じ規則**を通す。
   path();
-  // ★★★**日付なしの中は「半透明の塗り」**（2026-09-23・第127巡）――
-  //   ユーザー指定は帯のピルについてだったが、**帯から引き下ろした幽霊は
-  //   ピルの面から図形の面へ地続きで渡る**（`components/home/pillGhost.ts` の
-  //   `inkMix`）ので、**山の側だけ地のままだと切り替わる1フレームで色が飛ぶ**。
-  //   ★★濃さは `lib/pillFill.ts` の1か所（帯・幽霊・山の3つが同じ数を読む）。
-  //   ★★**不透明であることは変わらない** ―― 後ろの図形は透けない。
-  ctx.fillStyle = p.outlined ? pillFillOf(p.face, BD_GREY) : p.face;
+  // ★日付なしの中は**地と同じ色**（第127巡の半透明は第128巡に撤回）。
+  ctx.fillStyle = p.outlined ? BD_GREY : p.face;
   ctx.fill();
   if (p.outlined) {
     // ★★★**線は「内側に」引く**（CSS の `border` と同じ）。道を `EDGE/2` だけ

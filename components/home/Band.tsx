@@ -2,19 +2,17 @@
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { groundOf } from "@/components/AppBackdrop";
-import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
-import { pillFillOf } from "@/lib/pillFill";
+import { BAND_BEZEL, BAND_H, INK, SANS } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { BAND_ROW, type BandItem, type BandRowId, isOutlined } from "@/lib/homeBand";
+import { BAND_ROW, BAND_TEXT, type BandItem, type BandRowId, bandLines, isOutlined } from "@/lib/homeBand";
 import { bodyInkOn } from "@/lib/palette";
 import { NewsPill } from "./NewsCard";
-import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
+import { LEAD, RADIUS, SPACE, TRACK, WEIGHT } from "@/lib/tokens";
 import {
   BAND_CATCH, PAN_SLOP, PILL_EDGE, PILL_HINT, PILL_PRESS, RAIL_HYST, RAIL_NEAR,
   pullBus, pullFrame,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
-import { haptic } from "@/lib/helpers";
 import {
   BAND_PAD, GAP_HYST, bandAim, bandBus, bandGapAt, bandGapClear, bandGapDone, bandHole,
   bandReverse,
@@ -236,12 +234,12 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
       look: {
         w: pr.width, h: pr.height, press: PILL_PRESS,
         face, ink, outlined: outline, ground: groundOf("home"),
-        text: item.text, textSize: head ? TYPE.lead : TYPE.body,
-        genre: head ? item.genre : undefined,
+        text: item.text, textSize: BAND_TEXT,
+        lines: bandLines(item.text, head),
         // ★★**線のぶんだけ中身が内へ寄る**（`border` は余白の外側に積まれる）。
-        dia, gap: SPACE.md,
-        padL: (outline ? PILL_EDGE : 0) + (photo ? BAND_BEZEL : SPACE.xl),
-        padR: (outline ? PILL_EDGE : 0) + SPACE.xl,
+        dia, gap: SPACE.sm,
+        padL: (outline ? PILL_EDGE : 0) + (photo ? BAND_BEZEL : SPACE.lg),
+        padR: (outline ? PILL_EDGE : 0) + SPACE.lg,
       },
       armed: false, rail: false, live: false, aim: false,
       // ★横へ払う指を見分けるための出発点と掛け金（上の `onMove`）。
@@ -321,7 +319,8 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
     if (live !== taken) onTake(live ? item.id : null);
     // ★★★**ばちん**（弾けた瞬間）… バネへ勢いを1発入れて手ごたえを返す。
     if (f.armed !== g.armed) {
-      if (f.armed) haptic(12);
+      // ★★★**弾けた瞬間の振動は外した**（第128巡にユーザー指定「**弾けるような
+      //   感じはなくして**」）。手ざわりで「ばちん」と言わない。
       // ★★段へ知らせる ―― 帯の穴を閉じるのは**ここが唯一の合図**（第110巡）。
       onArm(f.armed ? item.id : null);
     }
@@ -383,25 +382,25 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
     if (near !== g.rail) { g.rail = near; pull.rail(near); }
   };
 
-  // ★★★**文章は「地の上の字」だけ**（2026-09-18・第121巡にユーザー指定
-  //   「**ピル以外に文章みたいなのも一緒に流して**」）。
-  //   ★★**面も縁も持たない** ―― `design.md` の「縁を付けてよいのは押せるものだけ」。
-  //     ピルの列にそのまま字が流れるので、**雑誌の中見出しのように読める**。
+  // ★★★**文章は「黒いピルに白い字」**（2026-09-24・第128巡にユーザー指定
+  //   「**帯の文字は黒背景に白文字とし**」。参照画像の黒いハイライトと同じ役）。
+  //   ★第121〜127巡は「地の上の字だけ」だった。
   //   ★★**指のイベントは素通しする**（引き下ろす相手ではない）。
-  //   ★★**幅は決めない** ―― 文は 20〜30 字あるので、`maxWidth` で切ると
-  //     途中で `…` になる。帯は左右へ切れてよい場所（`docs/home-spec.md` §4-c）。
+  //   ★★**幅は決めない**（`lib/bandNotes.ts` の文は 14字前後で頭打ち）。
   //   ★中身は `lib/bandNotes.ts` の1か所。
   if (item.kind === "note") {
     return (
       <div style={{
         display: "flex", alignItems: "center", flexShrink: 0, height: h,
-        pointerEvents: "none", padding: `0 ${SPACE.xl}px`,
+        pointerEvents: "none",
       }}>
         <span style={{
-          fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text,
+          display: "flex", alignItems: "center", height: BAND_H.news,
+          padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.pill, background: INK,
+          fontFamily: SANS, fontSize: BAND_TEXT, fontWeight: WEIGHT.heavy,
           letterSpacing: TRACK.normal, lineHeight: LEAD.snug,
-          // ★地の上に直接いるので `bodyInkOn(地)`（墨。比 15.5）。
-          color: bodyInkOn(groundOf("home")), whiteSpace: "nowrap",
+          // ★墨の面の上なので `bodyInkOn(INK)`（紙。比 14.22）。
+          color: bodyInkOn(INK), whiteSpace: "nowrap",
         }}>{item.text}</span>
       </div>
     );
@@ -435,7 +434,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
       onPointerCancel={() => end(false)}
       onLostPointerCapture={() => { if (grab.current) end(false); }}
       style={{
-      display: "flex", alignItems: "center", gap: SPACE.md, flexShrink: 0,
+      display: "flex", alignItems: "center", gap: SPACE.sm, flexShrink: 0,
       height: h, borderRadius: RADIUS.pill,
       // ★★引き下ろしのため、**縦も横もこちらで受ける**（段の `pan-y` を上書き）。
       touchAction: pull ? "none" : undefined,
@@ -457,16 +456,15 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
       //   `pointerup` が別の要素へ行き、後始末が走らずに**幽霊が残る**。
       //   `opacity: 0` は当たり判定も捕捉もそのままで、見た目だけ消える。
       opacity: taken ? 0 : 1,
-      // ★★★**半透明の塗り**（2026-09-23・第127巡にユーザー指定「**帯の
-      //   ハーフトーンもやめてください。代わりに半透明の塗りに文字に**」）。
-      //   ★★**α ではなく「地と混ぜた不透明色」**（`lib/pillFill.ts`）――
-      //     引き下ろした瞬間に canvas へ写し取るので、重なる相手が変わっても
-      //     色が 1 も動かないようにしてある。
-      backgroundColor: pillFillOf(face, groundOf("home")),
+      // ★★★**ベタ塗り**（2026-09-24・第128巡にユーザー指定「**帯のピルも図形と
+      //   同じような塗りに戻してください**」）。第126巡のハーフトーン・第127巡の
+      //   半透明（`lib/pillFill.ts`）は**どちらも削除した。復活させない。**
+      backgroundColor: outline ? groundOf("home") : face,
       // ★輪郭は `Button` の secondary と同じ引き方（押せるものの縁）。
       border: outline ? `${PILL_EDGE}px solid ${face}` : "none",
       // ★丸があるときは、左の余白を縁取りぶんだけにする（丸が余白を持つ）。
-      padding: photo ? `0 ${SPACE.xl}px 0 ${BAND_BEZEL}px` : `0 ${SPACE.xl}px`,
+      // ★★第128巡に `xl` → `lg`（ユーザー「**帯は全体的にもっと小さく**」）。
+      padding: photo ? `0 ${SPACE.lg}px 0 ${BAND_BEZEL}px` : `0 ${SPACE.lg}px`,
       maxWidth: "84vw",
     }}>
       {photo && (
@@ -479,29 +477,20 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
             objectFit: "cover", display: "block", flexShrink: 0,
           }} />
       )}
-      {/* ★★★**提案のピルは2行**（2026-09-09 ユーザー指定・参照画像）… 題の下に
-          **ジャンル**を小さく置く。「何であるか」が読めないと、題だけでは
-          展覧会なのか店なのか分からない。★2行目は**控えめな色**（`--muted-on`
-          ではなく面から導いた字を薄める ―― 面の上なので地の変数は使えない）。 */}
-      {/* ★★★**第126巡の「字の後ろの抜き」は削除した**（面が平らになったので、
-          字が点と噛み合う心配が無い）。**復活させない。** */}
-      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: SPACE.hair }}>
-        <span style={{
-          // ★★提案は `lead`(16)、候補・期日未割当は `body`(13)。
-          //   ★実機で「ピルが全体的に大きすぎる」ため1段ずつ下げた（2026-09-08）。
-          //   ★どちらも 700 なので、面の比が 4.5 に届かない色でも
-          //   「大きな文字 3.0」で通る（`lead` は 16px＝太字の下限ちょうど）。
-          fontFamily: SANS, fontSize: head ? TYPE.lead : TYPE.body, fontWeight: WEIGHT.bold,
-          letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        }}>{item.text}</span>
-        {head && item.genre && (
-          <span style={{
-            fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
-            letterSpacing: TRACK.wide, lineHeight: LEAD.flat, color: ink, opacity: 0.62,
+      {/* ★★★**提案の段は「題の2段組」**（2026-09-24・第128巡にユーザー指定
+          「**提案の帯の文字は2段にしてできる限り帯の文字が短くなるように**」）。
+          ★★**行は `bandLines()` が切る**（canvas の写し取りと同じ所で折るため。
+          DOM の自動折り返しに任せない）。★第109〜127巡の「ジャンルの2行目」は外した
+          （2段組と両立しない。ジャンルは写真と山の図形の**形**が言う）。
+          ★★★**字は太い墨**（第128巡にユーザー指定「**文字は太めの黒で良い**」）。 */}
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
+        {bandLines(item.text, head).map((ln, i) => (
+          <span key={i} style={{
+            fontFamily: SANS, fontSize: BAND_TEXT, fontWeight: WEIGHT.heavy,
+            letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          }}>{item.genre}</span>
-        )}
+          }}>{ln}</span>
+        ))}
       </div>
     </div>
   );

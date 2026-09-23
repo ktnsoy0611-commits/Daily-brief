@@ -1,7 +1,6 @@
 import { SANS, mixHex } from "@/lib/constants";
-import { pillFillOf } from "@/lib/pillFill";
 import { canvasFont } from "@/lib/textFit";
-import { LEAD, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
+import { LEAD, TRACK, WEIGHT } from "@/lib/tokens";
 import { BEND_TOP, PILL_EDGE, bendAt, type Ghost, type PillLook } from "@/lib/pullDrag";
 
 // ★★★**帯のピルを canvas へ写し取って、掴んだ一点だけを垂らす**
@@ -48,14 +47,10 @@ export function pillWidth(L: Omit<PillLook, "w">, screenW: number): number {
   const ctx = cv.getContext("2d");
   let text = 0;
   if (ctx) {
-    ctx.font = canvasFont(WEIGHT.bold, L.textSize, SANS);
+    ctx.font = canvasFont(WEIGHT.heavy, L.textSize, SANS);
     track(ctx, TRACK.normal);
-    text = ctx.measureText(L.text).width;
-    if (L.genre) {
-      ctx.font = canvasFont(WEIGHT.bold, TYPE.nano, SANS);
-      track(ctx, TRACK.wide);
-      text = Math.max(text, ctx.measureText(L.genre).width);
-    }
+    // ★★行は `bandLines()` が切った列（第128巡）。いちばん長い行が幅を決める。
+    for (const ln of L.lines) text = Math.max(text, ctx.measureText(ln).width);
   }
   // ★★**第127巡に `PILL_KNOCK`（字の後ろの抜き）が消えたので、幅からも外した**
   //   ―― DOM 側も同じ抜きを外している。**片方だけ直すとピルの幅が食い違う。**
@@ -141,12 +136,9 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
   //   輪郭は残りぶんだけ引く ―― **どちらも「量」なので段差が出ない**。
   const mix = inkMix(g);
   tracePill(ctx, w, h, gx, give);
-  // ★★★**両端は「半透明の塗り」と「ベタ塗り」**（第127巡）。
-  //   `mix = 0` ＝ 帯のピルそのもの（`lib/pillFill.ts` の1か所から引く）／
-  //   `mix = 1` ＝ 山の図形のベタ塗り。**地を敷いてから重ねるのではなく、
-  //   はじめからピルの面を敷く** ―― そうしないと `mix` が 0 のときに
-  //   DOM の色と 1px も一致しない。
-  ctx.fillStyle = pillFillOf(L.face, L.ground);
+  // ★★地を敷いてから面を `mix` の量だけ重ねる（第113巡の作法）。
+  //   ★第128巡から帯のピルはベタ塗りなので、両端とも塗り＝`mix` は 1 のまま。
+  ctx.fillStyle = L.ground;
   ctx.fill();
   if (mix > 0) {
     ctx.globalAlpha = mix;
@@ -187,8 +179,7 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
   // ★文字の列は**縦に中央**（DOM の `align-items: center`）。
   //   行の高さは `fontSize × lineHeight` そのもの。
   const th = L.textSize * LEAD.snug;
-  const gh = L.genre ? TYPE.nano * LEAD.flat : 0;
-  const total = th + (L.genre ? SPACE.hair + gh : 0);
+  const total = th * L.lines.length;
   const top = -total / 2;
   // ★★★**第126巡の「字の後ろの抜き」は削除した**（面が平らになったので、
   //   字が点と噛み合う心配が無い）。**復活させない。**
@@ -196,7 +187,7 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   const line = (s: string, cy: number, size: number, tr: string, alpha: number) => {
-    ctx.font = canvasFont(WEIGHT.bold, size, SANS);
+    ctx.font = canvasFont(WEIGHT.heavy, size, SANS);
     track(ctx, tr);
     // ★★字の色も**面と同じ量で渡る**（輪郭のピルは面の色／塗りの面は
     //   `bodyInkOn()` が導いた色。切り替えると面だけ渡って字が飛ぶ）。
@@ -225,9 +216,8 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
     ctx.globalAlpha = 1;
     track(ctx, "0");
   };
-  line(L.text, top + th / 2, L.textSize, TRACK.normal, 1);
-  // ★2行目（ジャンル）は控えめ。★DOM の `opacity: .62` と同じ。
-  if (L.genre) line(L.genre, top + th + SPACE.hair + gh / 2, TYPE.nano, TRACK.wide, 0.62);
+  // ★★行ごとに描く（DOM は `flex-direction: column` に行を積んでいる）。
+  L.lines.forEach((ln, i) => line(ln, top + th * i + th / 2, L.textSize, TRACK.normal, 1));
   ctx.restore();
   ctx.restore();
 }

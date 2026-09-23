@@ -2,6 +2,7 @@ import type { AppState, BriefCard, ItemKind } from "./types";
 import { categoryOfKind, genreOfKind } from "./deckStyle";
 import { colorOfKind } from "./palette";
 import { TASK_FACE } from "./constants";
+import { TYPE } from "./tokens";
 import { pickTodayItems } from "./todayPick";
 
 // ★★★**帯に何が並ぶかを決める唯一の場所**（2026-09-07・ホームの帯）。
@@ -115,7 +116,48 @@ export const BAND_ROWS = 3;
  *   **上と下の対比**に変わった。
  * ★★色は種類ごとに違う（`face`）が、**面には出ず 1px の線にだけ出る**。
  */
-export const isOutlined = (kind: BandKind): boolean => { void kind; return true; };
+/**
+ * ★★★**提案の段のピルは「2段組」**（2026-09-24・第128巡にユーザー指定「**提案の
+ * 帯の文字は2段にしてできる限り帯の文字が短くなるようにしてください**」）。
+ *
+ * ★★★**行の切り方はここ1か所** ―― 帯のピル（**DOM**）と引き下ろしの幽霊
+ *   （**canvas**。`components/home/pillGhost.ts`）が**同じ行の列**を読む。
+ *   DOM の自動折り返しに任せると、canvas では同じ所で折れないので、
+ *   **1px 下へ引いて写し取った瞬間に字の並びが変わる**。
+ * ★★**1行は `BAND_LINE_CH` 字まで**。2行目に入りきらなければ `…` で切る。
+ * ★★**切れ目は「読める所」を優先** ―― 1行の長さの 6割から先で、空白・読点・
+ *   閉じ括弧の直後があればそこで折る（無ければ字数で折る）。
+ * ★★**提案の段以外は1行**（今までどおり）。★目盛りの外（文の長さ）。
+ */
+export const BAND_LINE_CH = 10;
+/**
+ * ★★★**帯の字の大きさは1つ**（第128巡にユーザー指定「**帯は全体的にもっと小さく**」）。
+ * 第127巡までは提案 `lead`(16)／候補 `body`(13)／ニュース `small`(11) の3つだった。
+ * ★★**帯のピル（DOM）・写し取り（canvas）・戻すピルの見積もり（`HomeTab.pillOf`）・
+ *   文章の4つが読む。**
+ */
+export const BAND_TEXT = TYPE.small;
+const BREAK_AFTER = new Set([" ", "　", "、", "。", "・", "」", "』", "）", ")", "／"]);
+export function bandLines(text: string, head: boolean): string[] {
+  const t = (text ?? "").trim();
+  const chars = [...t];
+  if (!head || chars.length <= BAND_LINE_CH) return [t];
+  let cut = BAND_LINE_CH;
+  for (let i = BAND_LINE_CH; i >= Math.ceil(BAND_LINE_CH * 0.6); i--) {
+    if (BREAK_AFTER.has(chars[i - 1])) { cut = i; break; }
+  }
+  const a = chars.slice(0, cut).join("").trim();
+  const rest = chars.slice(cut).join("").trim();
+  const r = [...rest];
+  const b = r.length <= BAND_LINE_CH ? rest : `${r.slice(0, BAND_LINE_CH - 1).join("")}…`;
+  return b ? [a, b] : [a];
+}
+
+// ★★★**第128巡に「常に偽」へ**（ユーザー指定「**帯のピルも図形と同じような塗りに
+//   戻してください**」）―― 帯のピルは全部**ベタ塗り＋太い墨の字**。
+//   **山の図形と同じ見え方**なので、引き下ろしても**面の量は 1 のまま**
+//   （`inkMix` の両端がどちらも塗り）。★関数を残す理由は上の①②のまま。
+export const isOutlined = (kind: BandKind): boolean => { void kind; return false; };
 
 /**
  * ★段ごとの件数の上限（2026-09-07 ユーザー確定）。★目盛りの外（部品の寸法）。

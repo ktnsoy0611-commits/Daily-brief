@@ -13,13 +13,13 @@ import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import {
-  bandRows, pinBand, unreadCards, unreadEntries, type BandItem, type BandRowId,
+  BAND_TEXT, bandLines, bandRows, isOutlined, pinBand, unreadCards, unreadEntries,
+  type BandItem, type BandRowId,
 } from "@/lib/homeBand";
 import { keepCard } from "@/lib/keepCard";
 import { bandNotes } from "@/lib/bandNotes";
 import { useNewsBand } from "@/lib/newsFeed";
-import { pickOffers } from "@/lib/offerPick";
-import { genreOfKind } from "@/lib/deckStyle";
+import { OFFER_PICKS, pickOffers } from "@/lib/offerPick";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import {
@@ -28,7 +28,7 @@ import {
 } from "@/lib/pullDrag";
 import { clampRows } from "@/lib/solid";
 import { rowSpecOf, rowsOf } from "@/lib/taskSize";
-import { SPACE, TYPE } from "@/lib/tokens";
+import { SPACE } from "@/lib/tokens";
 import type { AppState, Item, Task, TabProps } from "@/lib/types";
 
 // ★★★**ホーム**（2026-09-07）。起動して最初に見る画面で、3アプリの**玄関**。
@@ -91,8 +91,13 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
    * ★★**まだ KEEP していないカード**なので `Item` ではない ―― 山の中では
    *   ストックの提案とまったく同じ絵で、**押すと Explore のそのカードへ飛ぶ**。
    */
-  const picks = useMemo(() => pickOffers(appState).map(
-    ({ ed, card }) => ({ ed, card })), [appState]);
+  // ★★★**山の提案は合わせて `OFFER_PICKS`(2) 枚まで**（第128巡にユーザー指定
+  //   「**提案の図形は最大2個に**」）。★★**今日へ割り当てた提案（`pileOffers`）は
+  //   削らない** ―― それはユーザーが自分で決めた予定なので、黙って隠すと今日の
+  //   山から予定が消える。**減らすのはおすすめのほう。**
+  const picks = useMemo(() => pickOffers(
+    appState, Math.max(0, OFFER_PICKS - pileOffers.length)).map(
+    ({ ed, card }) => ({ ed, card })), [appState, pileOffers.length]);
 
   // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も山に落とす**
   //   （2026-09-09 ユーザー指定）。録ってあれば出さない ―― 済んだことを
@@ -294,25 +299,21 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
    */
   const pillOf = useCallback((p: Piece): PillLook | null => {
     if (p.kind !== "task" && p.kind !== "offer") return null;   // ★板・カセット・未読は戻せない
-    const item = p.kind === "offer"
-      ? (appState.items ?? []).find((x) => x.id === p.id) : undefined;
     const head = p.kind === "offer";
     const face = head ? p.face : TASK_FACE;
-    // ★★戻った先は**日付の無いもの**なので、下の段＝輪郭／上の段＝塗り。
-    const outlined = !head;
+    // ★★第128巡から帯のピルは全部ベタ塗り（`isOutlined` は常に偽）。
+    const outlined = isOutlined(head ? "offer" : "someday");
     const base = {
       h: head ? BAND_H.photo : BAND_H.plain, press: 1,
-      // ★★字は塗りでも輪郭でも面から導く（第117巡。タスクは黒）。
       face, ink: outlined ? bodyInkOn(groundOf("home")) : bodyInkOn(face),
       outlined, ground: groundOf("home"),
-      text: p.title ?? "", textSize: head ? TYPE.lead : TYPE.body,
-      genre: head && item ? genreOfKind(item.kind) : undefined,
-      photo: undefined, dia: BAND_H.photo - BAND_BEZEL * 2, gap: SPACE.md,
-      padL: (outlined ? PILL_EDGE : 0) + SPACE.xl,
-      padR: (outlined ? PILL_EDGE : 0) + SPACE.xl,
+      text: p.title ?? "", textSize: BAND_TEXT, lines: bandLines(p.title ?? "", head),
+      photo: undefined, dia: BAND_H.photo - BAND_BEZEL * 2, gap: SPACE.sm,
+      padL: (outlined ? PILL_EDGE : 0) + SPACE.lg,
+      padR: (outlined ? PILL_EDGE : 0) + SPACE.lg,
     };
     return { ...base, w: pillWidth(base, window.innerWidth) };
-  }, [appState.items]);
+  }, []);
 
   /**
    * ★★★**帯の上で離した＝日付を消して帯へ戻す**（同ユーザー指定）。

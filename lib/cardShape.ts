@@ -15,17 +15,20 @@ import type { ItemDomain } from "./types";
 // ★★★**形は参照画像（Google Labs）に在るものだけを使う**（第95巡にユーザー指摘
 //   「形が写真（＝参照）と違うものばかり」）。第94巡の**ドームと台形は参照に
 //   1枚も無かった**ので捨てた。参照の語彙は「波打つ四角・六角形・四つ葉・
-//   トゲトゲ・角丸四角・いびつな塊」。
+//   トゲトゲ・角丸四角・いびつな塊」。★★第131巡に案①（円とカプセルの文法）で
+//   六角形とトゲトゲを外した（下の表）。
 //
 // | ドメイン | 鋏痕の性格 | 札の外形 | 参照のどれ |
 // |---|---|---|---|
 // | バショ place | 弧（arch） | **四つ葉** … 輪郭が全部円弧 | GenChess / Say What You See |
-// | タイケン experience | 斜め（trapezoid） | **六角形** … 直線の斜め4本 | Illuminate / GenType |
+// | タイケン experience | 斜め（trapezoid） | **アーチ** … 半円と直線（第131巡。前は六角形） | ― |
 // | ジョウホウ info | 直角（square） | **波打つ四角** … 角は立ち縁だけ揺れる | Gen AI in Chrome |
-// | モノ thing | 切れ込み（fork） | **トゲトゲ** … 尖りのあいだに切れ込み | MusicFX |
+// | モノ thing | 切れ込み（fork） | **三つ葉** … 円3つ（第131巡。前はトゲトゲ） | ― |
 //
-// ★★**トゲトゲはホームの山の EXPLORE のバッジ**（`zigVerts`。`ZIG_N`＝12）と
-//   同じ性格を借りている。どちらも EXPLORE なので、語彙は割れない。
+// ★★★**第131巡に「円とカプセルの文法」へ揃えた**（ユーザー承認「**案1で進めて**」）。
+//   部品は**単位円（タスクの段の高さを半径とする円）と直線だけ**。山では提案の直径が
+//   4 段なので、箱の 0.25 ＝ 1 段。**円から組めない六角形（直線の多角形）と
+//   トゲトゲ（ロゼット）をやめた**。未読の数のトゲトゲも同じ巡に円になった。
 //
 // ─────────────────────────────────────────────────────────────
 // ★★★**CSS のマスクをやめ、SVG の `clipPath` で切る**（2026-09-13・第95巡）。
@@ -48,17 +51,17 @@ import type { ItemDomain } from "./types";
 // ★★★**切るのは写真だけ。札そのものには掛けない** ―― 掛けると `box-shadow` が
 //   出なくなる（`design.md` §3-c。第78〜80巡に3巡気づかなかった）。
 
-export type CardShape = "clover" | "hexagon" | "wave" | "starburst";
+export type CardShape = "clover" | "arch" | "wave" | "trefoil";
 
 /** ★★★**手で書かない表**。券の鋏痕の性格と1対1で対応させる。 */
 const SHAPE_BY_PUNCH: Record<PunchShape, CardShape> = {
   arch: "clover",
-  trapezoid: "hexagon",
+  trapezoid: "arch",
   square: "wave",
-  fork: "starburst",
+  fork: "trefoil",
 };
 
-export const CARD_SHAPES: CardShape[] = ["clover", "hexagon", "wave", "starburst"];
+export const CARD_SHAPES: CardShape[] = ["clover", "arch", "wave", "trefoil"];
 
 export const cardShapeOf = (domain: ItemDomain): CardShape =>
   SHAPE_BY_PUNCH[PUNCH_BY_DOMAIN[domain]];
@@ -86,34 +89,15 @@ export const cardShapeOf = (domain: ItemDomain): CardShape =>
 
 /** 極座標で作る形の分割数（多いほど滑らか。パスの長さと引き換え）。 */
 const STEPS = 288;
-/** 角の丸みを何本の直線に割るか（`Q` を平らにする）。 */
-const ROUND_SEG = 6;
 /**
- * ★★★**六角形は「正六角形」**（2026-09-19・第123巡にユーザー指摘
- * 「**特に六角形の図形が縦に引き伸ばされているのを修正して**」）。
- *
- * ★★★**真因は `fitBox` ではなく、形の定義そのものだった** ―― 第95巡から
- *   六角形の頂点は `(0,0.5) (0.22,0) (0.78,0) (1,0.5) (0.78,1) (0.22,1)` で、
- *   **外接箱がちょうど 1×1**。つまり**正方形いっぱいに広げた六角形**を描いていた。
- *   左右が尖った六角形の自然な比は **高さ ÷ 幅 ＝ √3/2 ＝ 0.866** なので、
- *   **縦に 1.155 倍 引き伸ばされていた**（＝報告そのもの）。
- *   ★★他の3つ（四つ葉・波打つ四角・トゲトゲ）は**円の和で上下左右が対称**なので
- *     生の外接箱が最初から正方形。**歪んでいたのは六角形だけ**（実測で確認）。
- * ★★★**上辺の入りは 0.25** ―― 正六角形では上辺の長さが幅のちょうど半分になる。
- *   **選んだ数ではなく、正六角形の定義から出る値。手で振らない。**
+ * ★★★**アーチの下の角の半径**（0〜1 の器の目盛り）。**0.25 ＝ 山で 1 段**（提案の
+ * 直径が 4 段なので）。上は**器の幅いっぱいの半円**（半径 0.5 ＝ 2 段）。
+ * ★★★**第123〜130巡の正六角形（`HEX_IN`/`HEX_H`/`HEX_R`）は第131巡に削除した**
+ *   ―― 円から組めない唯一の直線の多角形だった。★目盛りの外（形の座標系）。
  */
-const HEX_IN = 0.25;
-/** 正六角形の高さ ÷ 幅（＝ √3/2）。 */
-const HEX_H = Math.sqrt(3) / 2;
-/**
- * 六角形の角に食い込ませる長さ（0〜1 の器の目盛り。二次ベジェの端点までの距離）。
- * ★★★**第124巡に 0.07 → 0.154 へ大きくした**（ユーザー指定「**ピルのカーブに
- *   対して提案の図形のカーブが合っていない。凹凸の数を減らしてカーブを大きく**」）。
- * ★★**曲率の半径は `1.5 × この値`**（内角 120° の対称な二次ベジェの、頂点での解）。
- *   正規化後は `1.5d / (1 − 0.5d)` ＝ **0.250** ―― 他の3つと同じ帯に入る。
- * ★等方（`fitBox` が一様なので歪まない）。★目盛りの外（形の座標系）。
- */
-const HEX_R = 0.154;
+const ARCH_FOOT = 0.25;
+/** 円弧を何本の直線に割るか（半円ぶん。四分円はその半分）。 */
+const ARC_SEG = 72;
 
 /** 円1つ（中心は**形の中心が原点**。半径ともに 0〜1 の器の目盛り）。 */
 type Circle = { x: number; y: number; r: number };
@@ -166,12 +150,13 @@ const SCALLOP_S = 0.27;
  */
 const SCALLOP_N = 2;
 /**
- * ★★★**半径 0.95s**（第124巡）。正規化後の曲率 `r / (2(s+r))` ＝ **0.244**。
+ * ★★★**半径 1.0s**（第131巡に 0.95s から。案①）。正規化後の曲率 `r / (2(s+r))` ＝
+ *   **ちょうど 0.25 ＝ 山で 1 段**（単位円）。
  * ★★★**第123巡までは 0.42s × 16個 で 0.148** ―― **ピルの角（0.5）の 1/3** しか
  *   無く、並べると「小さな刻みの集まり」に見えた（＝ユーザーの「カーブが合っていない」）。
  * ★谷 ÷ 峰は 0.942 → **0.927**（ほとんど変わらない＝性格は保つ）。
  */
-const SCALLOP_R = SCALLOP_S * 0.95;
+const SCALLOP_R = SCALLOP_S;
 /** クアトレフォイル … 四隅の円の中心までの距離。 */
 const QUATREFOIL_A = 0.1746;
 /**
@@ -183,17 +168,13 @@ const QUATREFOIL_A = 0.1746;
  * ★谷 ÷ 峰は 0.837 → **0.778**（葉が少し深くなる）。
  */
 const QUATREFOIL_R = QUATREFOIL_A * 1.25;
-/** ロゼット … 中心の円の半径（＝谷の深さ）と、ふちの膨らみ。 */
-const ROSETTE_S = 0.462;
-/** ★★★**膨らみの数**。**第124巡に 12 → 5**（カーブを大きくするため）。 */
-const ROSETTE_N = 5;
 /**
- * ★峰 ＝ 1.082s（実測 0.924 の逆数）は**そのまま**（形の性格）。
- * ★★★**`D = R` に取る**（第124巡）と `R / (2(D+R))` ＝ **0.250** ―― 他と同じ帯。
- *   0.5412 は `(D+R) = 1.0823s` を半分ずつに割った値で、**選んだ数ではなく解**。
+ * ★★★**三つ葉 … 円3つを互いに重ねる**（第131巡。トゲトゲのロゼットの代わり）。
+ * ★重なりの比は**四つ葉と同じ 1.25**（隣どうしの中心の距離の半分に対して）――
+ *   1 だと接して尖る。正規化後の曲率は四つ葉と同じ **0.278 ＝ 山で 1.1 段**。
  */
-const ROSETTE_D = ROSETTE_S * 0.5412;
-const ROSETTE_R = ROSETTE_S * 0.5412;
+const TREFOIL_D = 0.2;
+const TREFOIL_R = TREFOIL_D * (Math.sqrt(3) / 2) * 1.25;
 
 /** 0〜1 の器の中の点。 */
 export type Pt = [number, number];
@@ -203,34 +184,12 @@ export type Pt = [number, number];
 //   **角では振幅が √2 倍に伸び、山が辺に揃わない**ので参照のどれにも似なかった。
 //   円の並びが要るなら `unionOfCircles` を使う。
 
-/**
- * 角を丸めた多角形を**点の列**へ。★角は二次ベジェを `ROUND_SEG` に割って平らにする
- * （`A` も `Q` も `objectBoundingBox` では器の比で歪むし、canvas と分かれる）。
- */
-function roundedPoly(corners: readonly Pt[], r: number): Pt[] {
-  const n = corners.length;
-  const out: Pt[] = [];
-  const at = (i: number) => corners[(i + n) % n];
-  const to = (a: Pt, b: Pt, d: number): Pt => {
-    const dx = b[0] - a[0]; const dy = b[1] - a[1];
-    const len = Math.hypot(dx, dy) || 1;
-    const k = Math.min(d, len / 2) / len;
-    return [a[0] + dx * k, a[1] + dy * k];
-  };
-  for (let i = 0; i < n; i++) {
-    const c = at(i);
-    const s0 = to(c, at(i - 1), r);
-    const s1 = to(c, at(i + 1), r);
-    out.push(s0);
-    for (let k = 1; k <= ROUND_SEG; k++) {
-      const u = k / ROUND_SEG; const v = 1 - u;
-      out.push([
-        v * v * s0[0] + 2 * v * u * c[0] + u * u * s1[0],
-        v * v * s0[1] + 2 * v * u * c[1] + u * u * s1[1],
-      ]);
-    }
-  }
-  return out;
+/** 円弧を**点の列**へ（`a0` → `a1`。終点は含めない ―― 次の弧の始点と重ねない）。 */
+function arcPts(cx: number, cy: number, r: number, a0: number, a1: number, n: number): Pt[] {
+  return Array.from({ length: n }, (_, i) => {
+    const a = a0 + ((a1 - a0) * i) / n;
+    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r] as Pt;
+  });
 }
 
 /**
@@ -250,7 +209,7 @@ function roundedPoly(corners: readonly Pt[], r: number): Pt[] {
  *   （＝第123巡のユーザー報告）。★★角の丸みも**等方でなくなる**（楕円になる）。
  *   ★★**四つ葉・波打つ四角・トゲトゲは生の外接箱が正方形**なので、一様でも
  *     別々でも**1点も変わらない**（実測）。**失うものが無い。**
- * ★★**形の性格の目盛り（`HEX_IN` など）は触らない** ―― 正規化は最後の一手。
+ * ★★**形の性格の目盛り（`ARCH_FOOT` など）は触らない** ―― 正規化は最後の一手。
  *   葉の深さや揺れの数を変えずに、**長いほうの辺を**四辺へ届かせるだけ。
  */
 function fitBox(pts: Pt[]): Pt[] {
@@ -276,8 +235,12 @@ function fitBox(pts: Pt[]): Pt[] {
  * ★★★**返す前に `fitBox` で外接箱を 0〜1 へ揃える**（第97巡）。ここを通るので
  *   SVG の `clip-path` も canvas の輪郭も**同時に**四辺へ届く。
  */
+const POINTS = new Map<CardShape, Pt[]>();
 export function cardShapePoints(shape: CardShape): Pt[] {
-  return fitBox(rawShapePoints(shape));
+  // ★★覚える（第131巡）。点 288 × 円の数を毎フレーム解き直していた（山の塗りと指）。
+  let pts = POINTS.get(shape);
+  if (!pts) { pts = fitBox(rawShapePoints(shape)); POINTS.set(shape, pts); }
+  return pts;
 }
 
 /** 形そのもの（外接箱は揃っていない）。★呼ぶのは `cardShapePoints` だけ。 */
@@ -291,13 +254,18 @@ function rawShapePoints(shape: CardShape): Pt[] {
         { x: QUATREFOIL_A, y: QUATREFOIL_A, r: QUATREFOIL_R },
         { x: -QUATREFOIL_A, y: QUATREFOIL_A, r: QUATREFOIL_R },
       ]);
-    // 斜め … 左右が尖り上下が平ら。**直線の斜め4本**が鋏痕の性格（券の `trapezoid`）。
-    // ★これだけ円ではない ―― 参照（GenType／Illuminate）が直線の多角形だから。
-    case "hexagon":
-      return roundedPoly([
-        [0, HEX_H / 2], [HEX_IN, 0], [1 - HEX_IN, 0],
-        [1, HEX_H / 2], [1 - HEX_IN, HEX_H], [HEX_IN, HEX_H],
-      ], HEX_R);
+    // 斜め … **上は器の幅いっぱいの半円、下は角を単位円で丸めた四角**（第131巡）。
+    // ★円と直線だけ（案①）。★点対称ではない ―― `lib/cardMorph.ts` は半径の列を
+    //   lerp するだけなので、行き先（角丸四角）が対称なら困らない。
+    case "arch": {
+      const f = ARCH_FOOT;
+      return [
+        ...arcPts(0.5, 0.5, 0.5, -Math.PI / 2, 0, ARC_SEG / 2),   // 上の半円（右半分）
+        ...arcPts(1 - f, 1 - f, f, 0, Math.PI / 2, ARC_SEG / 4),  // 右下の角
+        ...arcPts(f, 1 - f, f, Math.PI / 2, Math.PI, ARC_SEG / 4), // 左下の角
+        ...arcPts(0.5, 0.5, 0.5, Math.PI, Math.PI * 1.5, ARC_SEG / 2), // 上の半円（左半分）
+      ];
+    }
     // 直角 … **四角のふちに同じ円が並ぶ**（券の `square`／参照 Vids・/Code）。
     // ★1辺に `SCALLOP_N` 個（四隅を含む）。隣どうしの中心は `2s / N` 離れる。
     case "wave": {
@@ -312,14 +280,10 @@ function rawShapePoints(shape: CardShape): Pt[] {
       }
       return unionOfCircles(cs);
     }
-    // 切れ込み … **円のふちに膨らみ `ROSETTE_N` 個**（券の `fork`／参照 MusicFX）。
-    // ★中心の円が谷を作る。**尖った星にしない** ―― 参照の谷は 0.924 と浅い。
-    case "starburst":
+    // 切れ込み … **円3つ**（第131巡）。葉と葉のあいだの切れ込みが鋏痕の性格。
+    case "trefoil":
     default:
-      return unionOfCircles([
-        { x: 0, y: 0, r: ROSETTE_S },
-        ...ring(ROSETTE_N, ROSETTE_D, ROSETTE_R),
-      ]);
+      return unionOfCircles(ring(3, TREFOIL_D, TREFOIL_R));
   }
 }
 

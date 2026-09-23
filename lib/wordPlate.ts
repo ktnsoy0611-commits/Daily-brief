@@ -92,10 +92,13 @@ export const PILL_PAD_Y = 0.24;
  * ★頼む文字は**板に出る字だけ**（数字・スラッシュ・大文字）。
  */
 const PLATE_CHARS = "0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+/** ★★届いたと分かった書体（一度 真 になったら二度と `check` しない）。 */
+const wordLoaded = new Set<string>();
 export function ensureWordFont(fam: string): Promise<unknown> {
   if (typeof document === "undefined" || !document.fonts?.load) return Promise.resolve();
   try {
     return document.fonts.load(`${WORD_WEIGHT} 64px ${primaryFamily(fam)}`, PLATE_CHARS)
+      .then((faces) => { if (faces.length > 0) wordLoaded.add(fam); })
       .catch(() => undefined);
   } catch { return Promise.resolve(); }
 }
@@ -104,9 +107,16 @@ export function ensureWordFont(fam: string): Promise<unknown> {
  *  ★★遅れて届いたときに**測り直す**ための判定。`lib/textFit.ts` の
  *  `checkFace` と同じ作法で、**先頭の family だけ**を見る。 */
 export function wordFontReady(fam: string): boolean {
+  // ★★★**覚える**（第131巡）。`document.fonts.check` は和文の断片（数百の
+  //   `@font-face`）まで舐めるので重い（実測 … CPU×4 で1回 47ms。山を組む
+  //   effect の中で毎回呼んでいた）。届いたものは二度と外れない。
+  if (wordLoaded.has(fam)) return true;
   if (typeof document === "undefined" || !document.fonts?.check) return true;
-  try { return document.fonts.check(`${WORD_WEIGHT} 64px ${primaryFamily(fam)}`, PLATE_CHARS); }
-  catch { return true; }
+  try {
+    const ok = document.fonts.check(`${WORD_WEIGHT} 64px ${primaryFamily(fam)}`, PLATE_CHARS);
+    if (ok) wordLoaded.add(fam);
+    return ok;
+  } catch { return true; }
 }
 
 /** 測る用の canvas(使い回す)。 */

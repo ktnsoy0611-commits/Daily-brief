@@ -1,13 +1,13 @@
-import { BAND_BEZEL, BD_GREY, DISPLAY, MUTED, mixHex } from "@/lib/constants";
+import { BD_GREY, DISPLAY, MUTED, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
 import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
 import { clampRows, halfWidthAtStack, stackOutline } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
-import { canvasFont, drawFitted, ensureGlyphs, layoutInRows } from "@/lib/textFit";
+import { canvasFont, drawFitted, ensureGlyphs, layoutInRows, missingGlyphs, warmGlyphs } from "@/lib/textFit";
 import { drawWordPlate } from "@/lib/wordPlate";
 import { WORD_WEIGHT } from "@/lib/solidPaint";
-import { zigVerts, type Piece } from "./pileWorld";
+import { type Piece } from "./pileWorld";
 import { drawPillGhost, inkMix } from "./pillGhost";
 import type { Ghost } from "@/lib/pullDrag";
 
@@ -39,7 +39,7 @@ export interface Baked { canvas: HTMLCanvasElement; w: number; h: number }
 
 const bakeCache = new Map<string, Baked>();
 /** 焼いた絵を全部捨てる（★**書体が遅れて届いたとき**に呼ぶ。次の frame で戻る）。 */
-export function clearPileBitmaps() { bakeCache.clear(); }
+export function clearPileBitmaps() { bakeCache.clear(); labelFs.clear(); fitMemo.clear(); }
 
 /**
  * ★★★**1フレームに焼いてよい枚数**（2026-09-16・第115巡）。
@@ -57,9 +57,65 @@ const BAKE_PER_FRAME = 2;
 let bakeLeft = BAKE_PER_FRAME;
 let bakeSkipped = false;
 /** ★1フレームの焼く予算を戻す（`drawPile` の直前に呼ぶ）。 */
-export function beginPileFrame(): void { bakeLeft = BAKE_PER_FRAME; bakeSkipped = false; }
+export function beginPileFrame(): void {
+  bakeLeft = BAKE_PER_FRAME; bakeSkipped = false;
+  frameT0 = performance.now(); glyphsNow = 0;
+}
+/**
+ * ★1フレームで字を焼いてよい時間（ms。`taskBitmap` の注釈）。★数ではなく時間で
+ * 持つ ―― 1字の費用は端末と「その字の断片をもう読んだか」で 10 倍 変わる。
+ * ★目盛りの外（フレームの予算。16.7ms の 1/4）。
+ */
+const GLYPH_MS = 4;
+let frameT0 = 0;
+let glyphsNow = 0;
+const fitMemo = new Map<string, ReturnType<typeof layoutInRows>>();
 /** ★このフレームで焼き切れなかったか（真なら次のフレームも塗り直す）。 */
 export function bakeDeferred(): boolean { return bakeSkipped; }
+
+/**
+ * ★★★**描き方の決まった絵は、1度だけ焼いて貼る**（2026-09-23・第131巡）。
+ *
+ * ★★★**第130巡までは板・提案・未読の数を毎フレーム パスから描いていた** ――
+ *   落ちているあいだは全員が毎フレーム塗り直しになるので、**割れたピルの縁と
+ *   切り抜き・提案の輪郭（点 288）と写真の切り抜き・字の組み直し**が
+ *   同じフレームに全部入っていた（実測 … CPU×4 で山のループの 4割）。
+ *   焼いた絵なら**1枚の `drawImage`** で済む（タスクとカセットは前からそうしていた）。
+ * ★`w`/`h` は**余白を含む箱**（CSS 画素）。`paint` は**箱の中心が原点**で描く。
+ * ★予算（`BAKE_PER_FRAME`）を使い切ったら `undefined` ―― 呼ぶ側は直に描く。
+ */
+function spriteOf(
+  key: string, w: number, h: number, dpr: number,
+  paint: (ctx: CanvasRenderingContext2D) => void,
+): Baked | undefined {
+  const hit = bakeCache.get(key);
+  if (hit) return hit;
+  if (bakeLeft <= 0) { bakeSkipped = true; return undefined; }
+  bakeLeft -= 1;
+  const bw = Math.ceil(w); const bh = Math.ceil(h);
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(2, Math.round(bw * dpr));
+  cv.height = Math.max(2, Math.round(bh * dpr));
+  const ctx = cv.getContext("2d");
+  if (!ctx) return undefined;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingQuality = "high";
+  ctx.translate(bw / 2, bh / 2);
+  paint(ctx);
+  const made = { canvas: cv, w: bw, h: bh };
+  if (bakeCache.size > 80) bakeCache.clear();
+  bakeCache.set(key, made);
+  return made;
+}
+
+/** 提案の写真のまわりの縁（半径に対する比）。★半径 ＝ 2 段なので 0.25 ＝ 半段。
+ *  ★目盛りの外（絵の寸法）。 */
+const OFFER_BEZEL = 0.25;
+/** カセットの本体の高さ（段の数）。★`pileWorld.ts` の `CASSETTE_PER_PLATE` × 板の 2 段。 */
+const CASSETTE_ROWS_H = 4;
+
+const blit = (ctx: CanvasRenderingContext2D, b: Baked) =>
+  ctx.drawImage(b.canvas, -b.w / 2, -b.h / 2, b.w, b.h);
 
 /** タスク（角丸の四角）を1枚焼く。返る `w`/`h` は**余白を含む整数の箱**。 */
 export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
@@ -71,14 +127,6 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   if (hit) return hit;
   // ★★**1フレームの予算を使い切ったら、今回は代役で描く**（上の `BAKE_PER_FRAME`）。
   if (bakeLeft <= 0) { bakeSkipped = true; return undefined; }
-  bakeLeft -= 1;
-  const cv = document.createElement("canvas");
-  cv.width = Math.max(2, Math.round(w * dpr));
-  cv.height = Math.max(2, Math.round(h * dpr));
-  const ctx = cv.getContext("2d");
-  if (!ctx) return undefined;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.imageSmoothingQuality = "high";
   // ★★★**形は `lib/solid.ts` の「ピルの積み」から引く**（2026-09-13・第99巡）。
   //   山だけ角丸の四角を別に描いていたのをやめた ―― **同じタスクが画面によって
   //   違う形**に見えていた（ユーザー確定で TASK アプリと山の両方を揃える）。
@@ -90,10 +138,42 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   //   第99巡は `fitText(..., pw * 0.82, ph * 0.7, rows)` で組んでいた ―― 矩形に
   //   詰めるので**段の中心と行の中心が一致せず**、`0.7` のぶん山と TASK で
   //   **同じタスクの絵が違っていた**。段の profile（`halfWidthAtStack`）を渡す。
-  const fit = layoutInRows(
-    p.title, p.face_, rows, pw, ph,
-    (t) => halfWidthAtStack(rows, pw / ph, t), ph / rows,
-  );
+  // ★割り付けは覚える（字が焼き上がるまで数フレーム待つことがあるので）。
+  let fit = fitMemo.get(key);
+  if (fit === undefined) {
+    fit = layoutInRows(
+      p.title, p.face_, rows, pw, ph,
+      (t) => halfWidthAtStack(rows, pw / ph, t), ph / rows,
+    );
+    if (fitMemo.size > 80) fitMemo.clear();
+    fitMemo.set(key, fit);
+  }
+  // ★★★**字は1フレームに `GLYPH_MS` まで焼く**（2026-09-23・第131巡）。
+  //   字の絵（アトラス）は**1字＝1枚の canvas**で、ここがタスクを焼く費用のほぼ全部
+  //   （実測 … CPU×4 で山の最初のフレーム 175ms の半分）。絵2枚の予算では、
+  //   新しい字の多い2枚が同じフレームに当たると**そのフレームだけ飛び抜けて重い**。
+  //   ★1字目の費用は**その字の断片を canvas が初めて読む**ぶんで、実測 CPU×4 で 1字
+  //     18ms。6字の予算でも 110ms のフレームが出た。
+  //   → 字が揃うまでは代役のまま待ち、揃った絵だけを組む（組むのは貼るだけで軽い）。
+  if (fit) {
+    const text = fit.lines.map((l) => l.text).join("");
+    const need = missingGlyphs(text, p.face_, p.ink, fit.size * dpr);
+    let left = need;
+    // ★1字は必ず進める（時計だけで止めると、遅い端末では永久に焼けない）。
+    while (left > 0 && (glyphsNow === 0 || performance.now() - frameT0 < GLYPH_MS)) {
+      if (warmGlyphs(text, p.face_, p.ink, fit.size * dpr, 1) === 0) break;
+      glyphsNow += 1; left -= 1;
+    }
+    if (left > 0) { bakeSkipped = true; return undefined; }
+  }
+  bakeLeft -= 1;
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(2, Math.round(w * dpr));
+  cv.height = Math.max(2, Math.round(h * dpr));
+  const ctx = cv.getContext("2d");
+  if (!ctx) return undefined;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingQuality = "high";
   const outline = stackOutline(rows, pw / ph);
   const trace = (sw: number, sh: number) => {
     ctx.beginPath();
@@ -124,6 +204,9 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   ctx.save();
   path();
   ctx.clip();
+  // ★★★**字はアトラス経由のまま**（第131巡に `fillText` で直に書くのを試して撤回 ――
+  //   和文を1字ずつラスタ化するのでかえって 1.8倍 重かった。アトラスは同じ字・同じ
+  //   大きさを**全部のタスクで使い回す**ので、山ではそちらが速い）。
   if (fit) drawFitted(ctx, fit, p.face_, w / 2, h / 2, p.ink, fit.size * dpr);
   ctx.restore();
   const made = { canvas: cv, w, h };
@@ -144,7 +227,7 @@ export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
   //   ★四方に同じだけ広げるので、**本体の中心は箱の中心のまま**＝貼る位置は変わらない。
   const pad = Math.ceil(ph * CASSETTE_TAB_H_PER_H) + BAKE_PAD;
   const w = pw + pad * 2; const h = ph + pad * 2;
-  const key = ["cassette", w, h, p.face, p.ink, dpr.toFixed(2)].join("|");
+  const key = ["cassette", w, h, p.face, p.ink, dpr.toFixed(2), "r1"].join("|");
   const hit = bakeCache.get(key);
   if (hit) return hit;
   // ★★**1フレームの予算を使い切ったら、今回は代役で描く**（上の `BAKE_PER_FRAME`）。
@@ -163,7 +246,8 @@ export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
   //   グレーにしてあまり目立たないように」）。★★**ここだけ `bodyInkOn` から外れる**
   //   ―― 芯は「面の上で読ませる文字」ではなく**控えめに在る部品**だから。
   //   墨の円の上で比 4.3（白は 11.25）。
-  drawCassette(ctx, pw, ph, p.face, p.ink, MUTED);
+  // ★★★**角の半径は段の高さ 1 つ**（第131巡・案①）。本体は 4 段なので `ph / 4`。
+  drawCassette(ctx, pw, ph, p.face, p.ink, MUTED, ph / CASSETTE_ROWS_H);
   const made = { canvas: cv, w, h };
   if (bakeCache.size > 80) bakeCache.clear();
   bakeCache.set(key, made);
@@ -233,15 +317,23 @@ const LABEL_CAP = 0.30;
  *   ―― 語の長さが 4〜10 字とばらつくので、段から選ぶと短い語だけ間延びする。
  * ★★**字は回さない**（呼ぶ側が `-b.angle` を掛ける）。読ませる字なので。
  */
+const labelFs = new Map<string, number>();
 function drawOfferLabel(
   ctx: CanvasRenderingContext2D, label: string, d: number, ink: string,
 ): void {
   const room = d * LABEL_W;
   const cap = d * LABEL_CAP;
-  ctx.font = canvasFont(WORD_WEIGHT, cap, DISPLAY);
-  const w0 = ctx.measureText(label).width || 1;
-  // 幅は字の大きさに比例するので、1回測れば解ける（二分探索は要らない）。
-  const fs = Math.max(6, Math.min(cap, (cap * room) / w0));
+  // ★★字の大きさは覚える（第131巡。毎フレーム `measureText` していた）。
+  const k = `${label}|${d.toFixed(2)}`;
+  let fs = labelFs.get(k);
+  if (fs === undefined) {
+    ctx.font = canvasFont(WORD_WEIGHT, cap, DISPLAY);
+    const w0 = ctx.measureText(label).width || 1;
+    // 幅は字の大きさに比例するので、1回測れば解ける（二分探索は要らない）。
+    fs = Math.max(6, Math.min(cap, (cap * room) / w0));
+    if (labelFs.size > 40) labelFs.clear();
+    labelFs.set(k, fs);
+  }
   ctx.font = canvasFont(WORD_WEIGHT, fs, DISPLAY);
   ctx.fillStyle = ink;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -412,6 +504,32 @@ export const boxHits = (a: Box, b: Box): boolean =>
   a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
 
 /**
+ * ★★★**一度きりの費用を「落ち始める前」に払う**（2026-09-23・第131巡にユーザー指摘
+ * 「**落下し始める時に動作がまた重い**」）。
+ *
+ * ★★★**山の最初のフレームが 1 回だけ飛び抜けて重かった**（実測 CPU×4 … 166〜219ms）。
+ *   中身は**その書体を canvas が初めて使う**費用 ―― 最初の1字（80〜100ms）・
+ *   芯の点の列（`hubPoints` 15ms）・提案の字（Anton）・板の絵。どれも**分けられない**。
+ * → 中身を作り直した直後（まだ何も画面に入っていない）に、**見えない 1×1 の canvas へ
+ *   1度 描いて**払ってしまう。落ちているあいだのフレームには残らない。
+ * ★焼く予算は外す（`bakeLeft`）。字だけは時間の予算のまま（1字は必ず進む）。
+ */
+let scratch: CanvasRenderingContext2D | null = null;
+export function prewarmPile(pieces: Piece[], dpr: number): void {
+  if (typeof document === "undefined") return;
+  if (!scratch) {
+    const cv = document.createElement("canvas");
+    cv.width = 1; cv.height = 1;
+    scratch = cv.getContext("2d");
+  }
+  if (!scratch) return;
+  beginPileFrame();
+  bakeLeft = Number.POSITIVE_INFINITY;
+  drawPile(scratch, pieces, dpr, () => {});
+  bakeLeft = BAKE_PER_FRAME;
+}
+
+/**
  * 山を1フレームぶん描く。★`ctx` は**呼ぶ側が `setTransform(dpr,…)` 済み**。
  * ★★`clip` を渡すと、**その矩形に掛からない図形は飛ばす**（第106巡）。
  */
@@ -447,11 +565,27 @@ export function drawPile(
       //   同じ数を読む）。★合成の絵なので**焼いてから貼る**。
       const bmp = cassetteBitmap(p, dpr);
       if (bmp) ctx.drawImage(bmp.canvas, -bmp.w / 2, -bmp.h / 2, bmp.w, bmp.h);
-      else drawCassette(ctx, p.w, p.h, p.face, p.ink, MUTED);
+      else {
+        // ★★焼く前の代役は**本体の面だけ**（第131巡）。全部を直に描くと、焼く予算が
+        //   尽きているあいだ毎フレーム芯の点の列まで引き直すことになる。
+        ctx.beginPath();
+        ctx.roundRect(-p.w / 2, -p.h / 2, p.w, p.h, p.h / CASSETTE_ROWS_H);
+        ctx.fill();
+      }
     } else if (p.kind === "word") {
       // ★★文字の板は **GRAVITY と同じ焼いた絵**（`lib/wordPlate.ts`）。
       //   ★ここは既に translate/rotate 済みなので、原点に置くだけ。
-      if (p.plate) drawWordPlate(ctx, p.plate, 0, 0, 0, dpr);
+      const pl = p.plate;
+      if (pl) {
+        // ★★焼いて貼る（`spriteOf`）。★箱は面と字のどちらか大きいほう＋余白。
+        const bw = Math.max(pl.bw, pl.w) + BAKE_PAD * 2;
+        const bh = Math.max(pl.bh, pl.h) + BAKE_PAD * 2;
+        const key = ["plate", pl.word, pl.split ? `${pl.split.left.word}/${pl.split.right.word}` : "",
+          pl.bw.toFixed(2), pl.bh.toFixed(2), pl.fs.toFixed(2), pl.ink, pl.pill ?? "", dpr.toFixed(2)].join("|");
+        const bmp = spriteOf(key, bw, bh, dpr, (c) => drawWordPlate(c, pl, 0, 0, 0, dpr));
+        if (bmp) blit(ctx, bmp);
+        else drawWordPlate(ctx, pl, 0, 0, 0, dpr);
+      }
     } else if (p.kind === "offer" && p.r) {
       // ★★**写真の周りにベゼル**（2026-09-07 ユーザー指定）。面はその提案の色で、
       //   写真は**一回り小さい同じ形**に収まる ―― 色の輪が縁として残る。
@@ -461,43 +595,67 @@ export function drawPile(
       //   ★★**外接箱は 2r × 2r の正方形**なので、札で起きた「横に潰れる」は
       //     ここでは原理的に起きない。
       const shape = p.shape;
-      const trace = (size: number) => {
-        if (shape) traceCardShape(ctx, shape, size);
-        else { ctx.beginPath(); ctx.arc(0, 0, size / 2, 0, Math.PI * 2); ctx.closePath(); }
+      const r = p.r;
+      const trace = (c: CanvasRenderingContext2D, size: number) => {
+        if (shape) traceCardShape(c, shape, size);
+        else { c.beginPath(); c.arc(0, 0, size / 2, 0, Math.PI * 2); c.closePath(); }
       };
-      trace(p.r * 2);
-      ctx.fill();
-      const im = p.photo ? photoOf(p.photo, p.r, dpr, onPhoto) : undefined;
+      const im = p.photo ? photoOf(p.photo, r, dpr, onPhoto) : undefined;
+      // ★★**写真の状態も鍵に入れる**（届いたら焼き直す。1枚ぶんだけ）。
+      const key = ["offer", shape ?? "o", r.toFixed(2), p.face, im ? p.photo : "-", dpr.toFixed(2)].join("|");
+      const box = r * 2 + BAKE_PAD * 2;
+      const face = p.face;
+      const paintOffer = (c: CanvasRenderingContext2D) => {
+        c.fillStyle = face;
+        trace(c, r * 2);
+        c.fill();
+        if (!im) return;
+        // ★★★**ベゼルは半径の `OFFER_BEZEL`**（第131巡にユーザー指定「**提案の写真は、
+        //   一旦ベゼルを太くするだけで**」）。第130巡までは帯と同じ 6px ＝ 半径の 9% で、
+        //   面の色が細い線にしか見えなかった。
+        const inner = Math.max(4, r * (1 - OFFER_BEZEL));
+        c.save();
+        trace(c, inner * 2);
+        c.clip();
+        const s2 = Math.max((inner * 2) / im.naturalWidth, (inner * 2) / im.naturalHeight);
+        const iw = im.naturalWidth * s2; const ih = im.naturalHeight * s2;
+        c.drawImage(im, -iw / 2, -ih / 2, iw, ih);
+        c.restore();
+      };
+      // ★★★**焼くのは写真があるときだけ**（第131巡に測った）。写真は毎フレーム
+      //   切り抜いて縮めることになるので焼く価値がある。面だけの形は**点の列を
+      //   覚えてある**（`cardShapePoints`）ので直に塗るほうが軽い ―― 全部を焼くと
+      //   焼く予算をタスクと奪い合い、CPU×4 で8回中3回 落ちてくるあいだ 20fps に
+      //   張り付いた（焼かなければ 0 回）。
+      const bmp = im ? spriteOf(key, box, box, dpr, paintOffer) : undefined;
+      if (bmp) blit(ctx, bmp);
+      else paintOffer(ctx);
       // ★★**写真が来ないと分かったら字面へ落ちる**（`label` は写真があっても持つ）。
       if (!im && p.label) {
         ctx.rotate(-b.angle);          // ★読ませる字なので回さない
-        drawOfferLabel(ctx, p.label, p.r * 2, p.ink);
-      }
-      if (im) {
-        const inner = Math.max(4, p.r - BAND_BEZEL);
-        ctx.save();
-        trace(inner * 2);
-        ctx.clip();
-        const s2 = Math.max((inner * 2) / im.naturalWidth, (inner * 2) / im.naturalHeight);
-        const iw = im.naturalWidth * s2; const ih = im.naturalHeight * s2;
-        ctx.drawImage(im, -iw / 2, -ih / 2, iw, ih);
-        ctx.restore();
+        drawOfferLabel(ctx, p.label, r * 2, p.ink);
       }
     } else if (p.kind === "badge" && p.r) {
-      // ★輪郭は物理と同じ `zigVerts`（絵と当たり判定を1つの出どころに）。
-      ctx.beginPath();
-      zigVerts(p.r).forEach((v, i) => { if (i === 0) ctx.moveTo(v.x, v.y); else ctx.lineTo(v.x, v.y); });
-      ctx.closePath();
-      ctx.fill();
+      // ★★★**未読の数は「単位円」**（第131巡・案①。トゲトゲは円と直線から組めない）。
       // ★★★**数字も一緒に回す**（2026-09-09 ユーザー指定「そのまま図形に
       //   焼き付けて落として」）。図形は転がるのに中身だけ据わっていると、
       //   **面に描いてあるのではなく上に浮いている**ように見える。
-      ctx.fillStyle = p.ink;
-      // ★★大きな数字は `DISPLAY`（Anton。第100巡）。単一ウェイトなので 400 で頼む
-      //   （900 を頼むと合成ボールドが掛かる）。
-      ctx.font = canvasFont(WORD_WEIGHT, p.r * 0.9, DISPLAY);
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(String(p.count ?? 0), 0, 0);
+      const r = p.r; const face = p.face; const ink = p.ink; const n = String(p.count ?? 0);
+      const paintBadge = (c: CanvasRenderingContext2D) => {
+        c.fillStyle = face;
+        c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.closePath();
+        c.fill();
+        c.fillStyle = ink;
+        // ★★大きな数字は `DISPLAY`（Anton。第100巡）。単一ウェイトなので 400 で頼む
+        //   （900 を頼むと合成ボールドが掛かる）。
+        c.font = canvasFont(WORD_WEIGHT, r * 0.9, DISPLAY);
+        c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillText(n, 0, 0);
+      };
+      const key = ["badge", n, r.toFixed(2), face, ink, dpr.toFixed(2)].join("|");
+      const bmp = spriteOf(key, r * 2 + BAKE_PAD * 2, r * 2 + BAKE_PAD * 2, dpr, paintBadge);
+      if (bmp) blit(ctx, bmp);
+      else paintBadge(ctx);
     }
     ctx.restore();
   }

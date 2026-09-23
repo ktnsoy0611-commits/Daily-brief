@@ -28,7 +28,7 @@ import type { Landing } from "@/lib/pullDrag";
 // ★★**形は3つだけ**（意味づけはしない）:
 //   ・**角丸の四角** … タスク。文字が組める唯一の形で、1件が1つ（まとめない）。
 //   ・**円** … 提案。★**写真が入るのは円だけ**。
-//   ・**トゲトゲの円** … まだ見ていない提案の残り数。数字を中に置き、0 で消える。
+//   ・**円** … まだ見ていない提案の残り数（第131巡にトゲトゲから単位円へ）。数字を中に置き、0 で消える。
 // ★★**色は帯から引き継ぐ** ―― 上でその色だったものが、下りても同じ色のまま
 //   形だけ変わる（タスク＝タグの色／提案＝そのカードの色）。
 // ★★★**大きさは「段の高さ」1つ**（第116巡。`lib/taskSize.ts` の `rowSpecOf`）。
@@ -108,7 +108,11 @@ export function fitUnit(unit: number, sw: number, sh: number, bw: number, bh: nu
 //     （段の高さ 35.2px）。目標 95 × 1.5 ＝ 143px ÷ 35.2 ＝ **4.05 段**。
 //   ★★**上の「カーブが一致する」は崩れる**（提案のカーブは約 1.06 unit）。
 //     ユーザー指定の上での選択。**カーブの比（`lib/cardShape.ts`）は触っていない。**
-const OFFER_D = 4.05;
+// ★★★**第131巡に 4.05 → 4**（案①「円とカプセルの文法」… 大きさは段の 1・2・4 倍だけ）。
+//   直径 4 段 ＝ **半径 2 段**。形の凹凸の半径は箱の 0.25〜0.28 なので、**1〜1.1 段**
+//   ＝ タスクの角・板の角・未読の円と同じ「単位円」になる（`lib/cardShape.ts`）。
+//   ★4.05 との差は 1.2%（写真から解いた大きさはほぼそのまま）。
+const OFFER_D = 4;
 /**
  * ★★★**提案の体だけ光線を増やす**（2026-09-18・第121巡にユーザー指摘
  * 「**他の図形と干渉してなんかめり込んでしまったり**」）。
@@ -176,11 +180,8 @@ export const OFFER_AREA = Math.PI * (OFFER_D / 2) ** 2;
 /** ★提案の半径（px）。★引き下ろしの行き先の大きさにも要るので **export**（第102巡）。 */
 export const offerRadiusOf = (unit: number): number =>
   Math.max(28, Math.sqrt((OFFER_AREA * unit * unit) / Math.PI));
-/** 未読のトゲトゲの円。★12の尖り。★**谷は `ZIG_IN + 0.5 = 0.9`**（浅い刻み）。 */
-export const ZIG_N = 12;
-const ZIG_IN = 0.4;
-/** ★未読の数の図形。**数字を読ませる図形**なので、タスクより大きく取る。 */
-const BADGE_R = 44;
+/** ★★★未読の数の円の面積（段の高さ²）。半径 ＝ 段の高さ 1 つ（第131巡・案①）。 */
+const BADGE_AREA = Math.PI;
 /** ★★★落とし方は `GravityTab` と**同じ**（傾き・回り・横の初速）。
  *  ★★★2026-09-09 に**回り慣性の細工を全部やめた**（ユーザー指定「ひっくり返っても
  *  なんでもいいので自然に落としてください」）。`setInertia` で回りにくくすると、
@@ -198,6 +199,10 @@ const INSET = PILE_INSET;
  * 9個で最上段が **-1571px ＝ 器の 2.7 枚ぶん上**。着地が叩きつけになった。
  */
 export const DROP_EVERY_MS = 60;
+/** ★カセットの本体の高さ ÷ 日付の板の高さ（＝ 4 段 ÷ 2 段。第131巡）。 */
+const CASSETTE_PER_PLATE = 2;
+/** ★落とす順を決める前の印（`buildPieces` の最後で時刻に置き換わる）。 */
+const QUEUED = -1;
 /**
  * 出どころの高さ＝**自分の背丈の半分 ＋ `DROP_ABOVE` ＋ 0〜`DROP_SCATTER`**。
  * ★★★**高さをばらす**（2026-09-11）。等間隔に1つずつ落とすと、どれも同じ速さで
@@ -230,22 +235,6 @@ const WORD_W = 0.67;
  *     今回は**縦も横も揃って 0.80 倍**（`fs` を下げるだけなので比は変わらない）。
  */
 const PILE_WORD_MAX = 58;
-/**
- * ★★★**未読の数のトゲトゲの輪郭（絵だけ）**（2026-09-09）。
- * ★★**物理はこれではない** ―― `Bodies.polygon(ZIG_N, BADGE_R)` の**凸の12角形**
- * （`poly-decomp` が無いので凹んだ形を体にできない。下の `badge` の注意書き）。
- * 当たり判定はさらに別で、**半径の円**（`Pile.tsx`）。**3つは別物。**
- * 前は絵がトゲトゲ・物理が**まん丸**で、①掴もうとしても当たり判定とずれる
- * ②トゲが床に引っかからず**玉のように滑る**、の2つが起きていた。
- */
-export function zigVerts(r: number): { x: number; y: number }[] {
-  return Array.from({ length: ZIG_N * 2 }, (_, i) => {
-    const a = (i / (ZIG_N * 2)) * Math.PI * 2 - Math.PI / 2;
-    const rr = r * (i % 2 === 0 ? 1 : ZIG_IN + 0.5);
-    return { x: Math.cos(a) * rr, y: Math.sin(a) * rr };
-  });
-}
-
 /**
  * ★★★**絵と同じ輪郭で体を作り、`PHYS_GAP` だけ外側へ出す**（2026-09-13・第101巡に
  * ユーザー指定「**各図形と文字の当たり判定がおかしい**。図形も**表示されている
@@ -405,7 +394,7 @@ export function respawn(m: M, body: Body, w: number, seed: string, bh?: number):
   //   「**提案の図形も自由に回転したり動くようにしてください**」）。
   //   ★★**第121巡の「回らない体は傾けない」（`inverseInertia === 0` の枝）は
   //     撤回した。復活させない** ―― 歪んで見えた原因は回転ではなく
-  //     **六角形の定義**だった（`lib/cardShape.ts` の `HEX_H`）。
+  //     **六角形の定義**だった（第123巡に正六角形へ直し、第131巡にアーチへ替えた）。
   m.Body.setAngle(body, (r3 - 0.5) * SPAWN_TILT);
   // ★★**回りは形の大小で加減しない**（2026-09-09）。大きさで割ると、小さい
   //   ものだけ空中で止まって見える。同じ初速を与えて、あとは形に任せる。
@@ -637,7 +626,7 @@ export function buildPieces(
   //     混み具合や件数で板との比が毎回ずれる）。
   //   ★★**第116巡の `CASSETTE_ROWS`(2.2) は削除した。復活させない**
   //     （`lib/taskSize.ts` の注釈も同時に直した）。
-  //   ★★高さは**板の高さそのもの**、幅は `CASSETTE_ASPECT` から導く。
+  //   ★★高さは**板の高さの `CASSETTE_PER_PLATE` 倍**（第131巡）、幅は `CASSETTE_ASPECT` から導く。
   //   ★★予算では**板と同じ扱い**（`fixed` へ足す。`areas` には入れない）。
 
   // ★★★**文字の板は先に決めて、器の予算から差し引く**（2026-09-10）。
@@ -680,8 +669,12 @@ export function buildPieces(
   };
   let plates = platesAt(crowd);
   /** カセットの箱（px）。★**高さは板と同じ**（上の注釈）。0 ＝ 出さない。 */
+  // ★★★**第131巡に「板の高さ」→「板の 2 倍 ＝ 4 段」**（案①「円とカプセルの文法」）。
+  //   リールの半径は本体の高さの 3.6/14 なので、**4 段にして初めて 1.03 段 ＝ 単位円**
+  //   になる（板と同じ 2 段ではリールが 0.51 段）。★大きさは 1・2・4 段だけ、に乗る。
+  //   ★★第123巡のユーザー指定「日付と曜日ぐらい」からは**大きくなる**（面積 1.7倍）。
   const cassetteOf = (pl: typeof plates) => {
-    const jh = journal ? pl[0].bh : 0;
+    const jh = journal ? pl[0].bh * CASSETTE_PER_PLATE : 0;
     return { jH: jh, jW: jh * CASSETTE_ASPECT };
   };
 
@@ -715,14 +708,15 @@ export function buildPieces(
     ...tasks.map((t) => rowSpecOf(flat(t)).area),
     ...offers.map(() => OFFER_AREA),
     ...picks.map(() => OFFER_AREA),
+    // ★★未読の数は段の高さで決まる（第131巡）ので「固定」側ではなくこちら。
+    ...(unread > 0 ? [BADGE_AREA] : []),
   ];
   const total = areas.reduce((a, b) => a + b, 0) || 1;
   // ★★**px で大きさが決まっているものは「固定」側**（板・未読の数・カセット）。
   // ★★**`crowd` は「長さ」の倍率なので、面積の予算には2乗で効かせる**（第118巡）。
   const budgetOf = (pl: typeof plates): number => {
     const { jH: jh, jW: jw } = cassetteOf(pl);
-    const fixed = pl.reduce((a, x) => a + x.w * x.h, 0)
-      + (unread > 0 ? Math.PI * BADGE_R * BADGE_R : 0) + jw * jh;
+    const fixed = pl.reduce((a, x) => a + x.w * x.h, 0) + jw * jh;
     const room2 = w * usableH * FILL * crowd * crowd;
     return Math.max(room2 * 0.25, room2 - fixed);
   };
@@ -829,7 +823,9 @@ export function buildPieces(
     // ★★落とし方は `GravityTab` と同じ ―― **どこへ・どの高さから落ちるか**で
     //   ばらつきを作り、傾きと回りは控えめに添える。★式は `respawn` の1か所。
     respawn(m, body, w, seed, bh);
-    body.plugin = { ...(body.plugin ?? {}), releaseAt: nth++ * DROP_EVERY_MS };
+    // ★★順番は最後に決める（下の `order`）。ここでは「並ぶ」印だけ付ける。
+    body.plugin = { ...(body.plugin ?? {}), releaseAt: QUEUED };
+    nth++;
     return true;
   };
 
@@ -838,8 +834,7 @@ export function buildPieces(
   // ★★★**作り方は `lib/wordPlate.ts`。GRAVITY とまったく同じ部品**（第89巡）。
   //   ★DOM で組んでいたのをやめた ―― 板だけが物理と別の座標系に居たせいで、
   //   板まわりだけ挙動が違っていた（ユーザー「特に日付と曜日がおかしい」）。
-  // ★★★**いちばん先に落とす**（2026-09-09）。最後に落とすと、板は山の
-  //   **凸凹の上**へ着地して 59° 傾いた（実測。3回とも同じ）。
+  // ★★★**落とす順は最後に決める**（第131巡。板は**いちばん最後**。`buildPieces` の末尾）。
   plates.forEach((plate, i) => {
     const sig = `word|${plate.bw.toFixed(2)}|${plate.bh.toFixed(2)}|${plate.word}`;
     let fresh = false;
@@ -911,7 +906,7 @@ export function buildPieces(
   if (jH > 0) {
     // ★★**タブのアイコンと同じカセット**。文字は載せない（ユーザー指定）。
     // ★★**体は四角**（円ではない）。当たり判定も `Pile.tsx` の四角の枝へ入る。
-    // ★★★**大きさは px で決まっている**（＝板と同じ高さ。第123巡）。
+    // ★★★**大きさは px で決まっている**（＝板の 2 倍の高さ。第131巡）。
     const pw = Math.max(32, jW);
     const ph = Math.max(24, jH);
     const sig = `cassette|${pw.toFixed(2)}|${ph.toFixed(2)}`;
@@ -960,7 +955,7 @@ export function buildPieces(
       //   ★★★**第121巡の `setInertia(Infinity)`（正立で固定）は撤回。復活させない。**
       //     あのとき「歪んで見える」の犯人を回転だと見立てたが、**本当の犯人は
       //     六角形の定義**だった（正方形いっぱいに広げていたので縦に 1.155 倍。
-      //     `lib/cardShape.ts` の `HEX_H`）。**形を直したので、回してよい。**
+      //     第123巡に直した。第131巡にアーチへ替えた）。**回してよい。**
       //   ★★**回りの目盛りはタスクと同じ**（`respawn` の `SPAWN_TILT`/`SPAWN_SPIN`）
       //     ―― 山の中で提案だけが別の物理法則に従っていると、物体に見えない。
       fresh = toss(body, seed, r * 2);
@@ -999,37 +994,53 @@ export function buildPieces(
   });
 
   if (unread > 0) {
-    // ★★★**トゲの外側の12点を結んだ多角形**で作る（2026-09-09に作り直し）。
-    //   ★★`Bodies.fromVertices` に**凹んだ星をそのまま渡してはいけない** ――
-    //   `poly-decomp` を積んでいないので分解に失敗し、**凹んだ形を1つの凸形と
-    //   して**扱う（実測 `parts=1` ＋ 警告）。**凸なら SAT が正しく効く。**
-    //   ★まん丸に戻さないのは、玉のように滑らず**角で止まる**ため。
-    // ★★**絵より `PHYS_GAP` 外側**（第101巡）。形は凸の12角形のまま（上の注意書き）。
-    const sig = `badge|${unread}`;
+    // ★★★**未読の数は「単位円」**（2026-09-23・第131巡・案①「円とカプセルの文法」）。
+    //   ★★第130巡までは 12 の尖りのトゲトゲ（`zigVerts`。削除した）で、**円と直線から組めない
+    //     唯一の形**だった。半径は**段の高さ 1 つ**（直径 ＝ 2 段 ＝ 板の高さ）。
+    // ★★**絵より `PHYS_GAP` 外側**（第101巡）。
+    const br = unit;
+    const sig = `badge|${unread}|${br.toFixed(2)}`;
     const kept = same("unread", sig);
-    const body = kept ?? m.Bodies.polygon(0, 0, ZIG_N, BADGE_R + PHYS_GAP, BODY);
+    const body = kept ?? m.Bodies.circle(0, 0, br + PHYS_GAP, BODY);
     let fresh = false;
     if (!kept) {
-      // ★★★**密度は全部の体で同じ**（箱の面積 ÷ `unit²`）。★★`unit` の意味が
-      //   「段の高さ」に変わった（第116巡）ので、重要度の目盛りからは引けない。
-      m.Body.setMass(body, (Math.PI * BADGE_R * BADGE_R) / (unit * unit) * MASS_K);
-      fresh = toss(body, "unread", BADGE_R * 2);
+      // ★★★**密度は全部の体で同じ**（箱の面積 ÷ `unit²`）。
+      m.Body.setMass(body, BADGE_AREA * MASS_K);
+      fresh = toss(body, "unread", br * 2);
       stamp(body, sig);
     }
     // ★★未読の数は**分類ではなく状態**なので、ドメインの4色からは取らない。
     // ★★★**第125巡に赤（`RUST`）をやめて墨へ**（配色の総入れ替え）――
     //   赤 `#E73115` とタスクのオレンジ `#FD6A23` は**色相が 8° しか違わない**ので、
     //   **同じ山に出ると見分けが付かない**（`lib/constants.ts` の `PALETTE` の注釈）。
-    //   ★墨なら日付と曜日の板と同じ「読むための黒」の列に入り、**形（トゲトゲ）**
+    //   ★墨なら日付と曜日の板と同じ「読むための黒」の列に入り、**形（円）**
     //   だけが板と違う ―― **数えているものは色ではなく形で言う。**
     const face = INK;
     pieces.push({
-      id: "unread", body, kind: "badge", r: BADGE_R, fresh,
+      id: "unread", body, kind: "badge", r: br, fresh,
       face, ink: bodyInkOn(face), count: unread,
       // ★押すと EXPLORE のブリーフへ（そこで実際に読める）。
       nav: "brief",
     });
   }
+
+  // ★★★**落とす順は「ばらばら、日付の板は最後」**（2026-09-23・第131巡にユーザー指定
+  //   「**ランダムにするか、せめて曜日とかは一番最後に落とした方がいい**」）。
+  //   ★★第130巡までは組んだ順（板 → タスク → カセット → 提案 → 未読）で、毎日
+  //     **同じ種類がかたまって**降りてきた。★★板を最後にするので、板は山の
+  //     **凸凹の上**へ着地して傾く（2026-09-09 に「いちばん先」にした理由）――
+  //     ユーザー確定「**回転するのは構わない**」（第130巡）の上での選択。
+  //   ★★**塗る順と拾う順（`pieces` の並び）は変えない**。変えるのは入る時刻だけ。
+  const queued = pieces.filter((p) =>
+    (p.body.plugin as { releaseAt?: number } | undefined)?.releaseAt === QUEUED);
+  const rest = queued.filter((p) => p.kind !== "word");
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  [...rest, ...queued.filter((p) => p.kind === "word")].forEach((p, i) => {
+    p.body.plugin = { ...(p.body.plugin ?? {}), releaseAt: i * DROP_EVERY_MS };
+  });
 
   return { pieces, unit, dropped: nth > 0 || !!landing };
 }

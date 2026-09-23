@@ -231,18 +231,24 @@ export function onFontsReady(cb: () => void): (() => void) | undefined {
   // ただし**読み込みが落ち着いたとき**かつ**面の顔ぶれが実際に変わったとき**
   // だけ動かす。断片が届くたびに動かすと、1フレームに数枚しか焼けない
   // アトラスを捨て続けて永久に焼き終わらない(2026-08-17に実機で報告)。
-  const on = () => {
-    if (document.fonts.status !== "loaded") return;
-    const sig = faceSig();
-    if (sig === readySig) return;
-    readySig = sig;
-    scheduleFlush();
-  };
-  document.fonts.addEventListener?.("loadingdone", on);
-  return () => {
-    listeners.delete(cb);
-    document.fonts.removeEventListener?.("loadingdone", on);
-  };
+  // ★★★**見張りは1つだけ**（第131巡）。購読者ごとに付けていたので、断片が
+  //   届くたびに `faceSig()`（＝書体の数だけ `document.fonts.check`）が
+  //   **購読者の数だけ**走っていた（山・GRAVITY・図形の canvas の数ぶん）。
+  //   `scheduleFlush` はもともと全員へ知らせるので、1つで足りる。
+  if (!watching) {
+    watching = true;
+    document.fonts.addEventListener?.("loadingdone", onLoadingDone);
+  }
+  return () => { listeners.delete(cb); };
+}
+
+let watching = false;
+function onLoadingDone() {
+  if (document.fonts.status !== "loaded") return;
+  const sig = faceSig();
+  if (sig === readySig) return;
+  readySig = sig;
+  scheduleFlush();
 }
 
 export const cssFont = (f: FontFace, size: number): string =>

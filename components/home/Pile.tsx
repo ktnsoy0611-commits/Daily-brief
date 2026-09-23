@@ -20,7 +20,7 @@ import { rowsOf } from "@/lib/taskSize";
 import { ensureGlyphs } from "@/lib/textFit";
 import { SHAPE_FACE } from "@/lib/constants";
 import {
-  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile,
+  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile, prewarmPile,
 } from "./pilePaint";
 import {
   BAND_CATCH, BAND_NEAR, PILL_HINT, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey,
@@ -1010,6 +1010,8 @@ export function Pile({
     const held = new Set<string>();
     for (const p of pieces) if (prev.get(p.id)?.body === p.body) held.add(p.id);
     piecesRef.current = pieces;
+    // ★★★**一度きりの費用は落ち始める前に払う**（`pilePaint.prewarmPile` の注釈）。
+    prewarmPile(pieces, Math.min(DPR_MAX, window.devicePixelRatio || 1));
     // ★大きさを決めた高さを控える（器が大きく変わったら決め直すため）。
     builtFloorRef.current = floorYOf(h);
     // ★★引き下ろしの行き先の大きさに要る（`lib/pullDrag.ts`）。

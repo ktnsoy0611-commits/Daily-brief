@@ -724,6 +724,12 @@ button:active {
 }
 .drift-target .bh-core { transform-box: fill-box; transform-origin: center; }
 
+/* ★★★**環境ループは「出ているあいだ」だけ回す**（第131巡）。SVG の変形は合成で
+   回らないので、`opacity: 0` で隠れていても**毎フレーム スタイル＋レイアウト**を
+   起こしていた（実測 … 6秒で 166 回 × 11 要素。GRAVITY と DRIFT の2組が常に載っている
+   ので、**ホームの山が落ちているあいだも**その費用を払っていた）。 */
+.drift-target:not(.in) :is(.mouth-jaw, .bh-disc, .dust) { animation: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .drift-target, .drift-target .lip { transition: none; }
   .drift-target .mouth-jaw, .drift-target .bh-disc, .drift-target .dust,

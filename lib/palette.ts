@@ -117,9 +117,9 @@ export const deepen = (hex: string, k: number): string => {
  */
 export const DOMAIN_COLOR: Record<ItemDomain, string> = {
   place: SCHEME.growth,        // 黄 … 四つ葉（やわらかい弧）
-  experience: SCHEME.growth,   // 黄 … 六角形（斜めの鋏痕）
+  experience: SCHEME.growth,   // 黄 … アーチ（斜めの鋏痕。第131巡まで六角形）
   info: SCHEME.growth,         // 黄 … 波打つ四角（直角の鋏痕）
-  thing: SCHEME.growth,        // 黄 … トゲトゲ（切れ込み）
+  thing: SCHEME.growth,        // 黄 … 三つ葉（切れ込み。第131巡までトゲトゲ）
 };
 
 /** その面の**本文**の色。★メインから導くので、`SCHEME` を替えれば追従する。 */

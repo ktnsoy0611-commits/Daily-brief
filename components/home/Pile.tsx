@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { haptic } from "@/lib/helpers";
 import { GATE_MS, onFontsReady } from "@/lib/textFit";
 import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
 import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
-  GRAVITY_Y, MASS_K, UNIT, buildPieces, clearOverlap, ghostBodyOf, isLost, makeWalls,
+  GRAVITY_Y, MASS_K, UNIT, buildPieces, clearOverlap, focusOf, ghostBodyOf, isLost, makeWalls,
   refitPile, respawn, sink, type Piece,
 } from "./pileWorld";
 import { floorYOf } from "@/lib/pileBox";
@@ -199,14 +199,13 @@ const waitFonts = () => Promise.race([
 ]);
 
 export function Pile({
-  tasks, offers, picks, unread, today, journal, onOpen, above, onRail, onAssign,
+  tasks, offers, picks, today, journal, onOpen, above, onRail, onAssign,
   bandBottom, pillOf, onUnassign, rowCenter,
 }: {
   tasks: Task[];
   offers: Item[];
   /** ★★その日の「好みそうな」提案（`lib/offerPick.ts`）。**押すと Explore へ飛ぶ**。 */
   picks: { ed: string; card: BriefCard }[];
-  unread: number;
   today: Date;
   /** ★その日まだ声を録っていないか（真なら録音のダイヤルの円を落とす）。 */
   journal: boolean;
@@ -943,10 +942,18 @@ export function Pile({
   // ★★★**組み直す合図は「中身」だけ**（2026-09-10）。配列の同一性で見ていた
   //   ので、保存や同期のたびに `appState` が作り直されると**山ごと落ち直して
   //   いた**。中身が同じなら文字列も同じになるので、組み直しは起こらない。
+  // ★★★**焦点**（第132巡）… 時刻が一番近い「これから」のタスク1件。★時計は1分ごとに
+  //   見直す（予定の時刻を過ぎたら、次の1件へ焦点が移る）。
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
+  const focus = focusOf(tasks, clock);
   const sig = [
-    tasks.map((t) => `${t.id}:${t.weight ?? 2}:${t.dueDate ?? ""}:${t.title}`).join("|"),
+    tasks.map((t) => `${t.id}:${t.weight ?? 2}:${t.dueDate ?? ""}:${t.dueTime ?? ""}:${t.title}`).join("|"),
     offers.map((o) => `${o.id}:${o.kind}`).join("|"),
-    unread, journal ? "rec" : "", today.toDateString(),
+    journal ? "rec" : "", today.toDateString(), focus ?? "",
   ].join("#");
 
   useEffect(() => {
@@ -993,7 +1000,7 @@ export function Pile({
     //   ★ここは中身の effect（1度きり）なので、DOM を測ってよい ―― ループの
     //     中から `bandBottom()` を呼ばないこと（レイアウトを強制する）。
     const { pieces, unit } = buildPieces(
-      M, { tasks, offers, picks, unread, today, journal }, w, h, prev, landing, hold,
+      M, { tasks, offers, picks, today, journal, focus }, w, h, prev, landing, hold,
       bandBottom?.() ?? 0);
     // ★★★**使い回した体は world から出さない**（2026-09-15・第111巡）。
     //   ★★★**出して入れ直すと、接触も眠りも切れて山が落ち直す** ―― しかも
@@ -1070,7 +1077,7 @@ export function Pile({
       const k = p.r * 2 + slop * 2;
       return inCardShape(p.shape, lx / k, ly / k);
     }
-    if ((p.kind === "offer" || p.kind === "badge") && p.r) {
+    if (p.kind === "offer" && p.r) {
       return Math.hypot(dx, dy) <= p.r + slop;
     }
     const pw = p.w ?? 0; const ph = p.h ?? 0;
@@ -1134,7 +1141,11 @@ export function Pile({
   // ★長押しの途中で外れたら、タイマーを必ず落とす（消えた画面へ触りに行かない）。
   useEffect(() => () => { if (press.current) window.clearTimeout(press.current.timer); }, []);
 
-  const onDown = (e: React.PointerEvent) => {
+  /** ★★`capture` … 捕捉を掛ける要素（帯の上から横取りした指は山の器へ掛ける。第132巡）。 */
+  const onDown = (
+    e: { clientX: number; clientY: number; pointerId: number; target: EventTarget | null },
+    capture?: HTMLElement,
+  ) => {
     if (press.current) return;
     const timer = window.setTimeout(() => {
       const p = pickAt(e.clientX, e.clientY);
@@ -1174,9 +1185,30 @@ export function Pile({
       setHolding(true);
     }, HOLD_MS);
     press.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer };
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    (capture ?? (e.target as HTMLElement)).setPointerCapture?.(e.pointerId);
     wake();                              // ★掴むかもしれないので回し始める
   };
+
+  // ★★★**図形はいつでも帯の手前**（2026-09-24・第132巡にユーザー指定「**どんな時でも図形が
+  //   手前に来るように**」）。絵（canvas）は帯より上に重ね、**指は絵の通りに振り分ける** ――
+  //   帯のピルの上でも、そこに図形が描かれていれば山が掴む。何も描かれていなければ帯のまま。
+  //   ★絵の canvas は `pointerEvents: none`（塗りの無い所まで帯の指を奪わない）。
+  //   ★横取りは**捕捉の段（capture）で1度だけ**。以後の move/up は山の器へ捕捉して届ける。
+  const downRef = useRef(onDown);
+  const pickRef = useRef(pickAt);
+  useLayoutEffect(() => { downRef.current = onDown; pickRef.current = pickAt; });
+  useEffect(() => {
+    const steal = (ev: PointerEvent) => {
+      const box = boxRef.current;
+      const t = ev.target as Element | null;
+      if (!box || !t || box.contains(t) || !t.closest?.("[data-band-row]")) return;
+      if (!pickRef.current(ev.clientX, ev.clientY)) return;
+      ev.stopPropagation();
+      downRef.current(ev, box);
+    };
+    window.addEventListener("pointerdown", steal, true);
+    return () => window.removeEventListener("pointerdown", steal, true);
+  }, []);
 
   const onMove = (e: React.PointerEvent) => {
     const pr = press.current;
@@ -1340,6 +1372,8 @@ export function Pile({
           ―― 実解像度（`width`/`height` 属性）と食い違うと絵が伸びる。 */}
       <canvas ref={cvRef} style={{
         position: "absolute", inset: 0, width: "100%", height: "100%", display: "block",
+        // ★★★**絵は帯より上**（第132巡）。指は器（この親）と上の横取りが受ける。
+        zIndex: 2, pointerEvents: "none",
       }} />
     </div>
   );

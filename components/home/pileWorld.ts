@@ -180,8 +180,6 @@ export const OFFER_AREA = Math.PI * (OFFER_D / 2) ** 2;
 /** ★提案の半径（px）。★引き下ろしの行き先の大きさにも要るので **export**（第102巡）。 */
 export const offerRadiusOf = (unit: number): number =>
   Math.max(28, Math.sqrt((OFFER_AREA * unit * unit) / Math.PI));
-/** ★★★未読の数の円の面積（段の高さ²）。半径 ＝ 段の高さ 1 つ（第131巡・案①）。 */
-const BADGE_AREA = Math.PI;
 /** ★★★落とし方は `GravityTab` と**同じ**（傾き・回り・横の初速）。
  *  ★★★2026-09-09 に**回り慣性の細工を全部やめた**（ユーザー指定「ひっくり返っても
  *  なんでもいいので自然に落としてください」）。`setInertia` で回りにくくすると、
@@ -199,8 +197,26 @@ const INSET = PILE_INSET;
  * 9個で最上段が **-1571px ＝ 器の 2.7 枚ぶん上**。着地が叩きつけになった。
  */
 export const DROP_EVERY_MS = 60;
-/** ★カセットの本体の高さ ÷ 日付の板の高さ（＝ 4 段 ÷ 2 段。第131巡）。 */
-const CASSETTE_PER_PLATE = 2;
+/** ★カセットの本体の高さ ÷ 日付の板の高さ。★第131巡に 2 にしたのを第132巡に 1 へ戻した
+ *  （形の規則の都合で大きくしただけで、意味から決めた大きさではなかった）。 */
+const CASSETTE_PER_PLATE = 1;
+/**
+ * ★★★**焦点 … 時刻が一番近い「これから」のタスク1件だけを大きく落とす**（2026-09-24・第132巡に
+ * ユーザー承認「**山に最初に見る場所を1つ作る**」）。★大きさは 1.3倍の1段だけ（中間を作らない）。
+ */
+const FOCUS_K = 1.3;
+/** 焦点のタスク（時刻 `dueTime` が今以降でいちばん早い1件）。時刻のあるものが無ければ null。 */
+export function focusOf(tasks: { id: string; dueTime?: string }[], now: number): string | null {
+  const d = new Date(now); const cur = d.getHours() * 60 + d.getMinutes();
+  let best: { id: string; m: number } | null = null;
+  for (const t of tasks) {
+    const hm = /^(\d{1,2}):(\d{2})/.exec(t.dueTime ?? "");
+    if (!hm) continue;
+    const m = Number(hm[1]) * 60 + Number(hm[2]);
+    if (m >= cur && (!best || m < best.m)) best = { id: t.id, m };
+  }
+  return best?.id ?? null;
+}
 /** ★落とす順を決める前の印（`buildPieces` の最後で時刻に置き換わる）。 */
 const QUEUED = -1;
 /**
@@ -406,7 +422,7 @@ export function respawn(m: M, body: Body, w: number, seed: string, bh?: number):
 export interface Piece {
   id: string;
   body: Body;
-  kind: "task" | "offer" | "badge" | "word" | "cassette";
+  kind: "task" | "offer" | "word" | "cassette";
   /**
    * ★★★**提案だけが持つ「ジャンルの形」**（2026-09-13・第96巡にユーザー指定
    * 「ホームに落とす図形も、このマスクの形にします」）。BRIEF の札と**同じ写真が
@@ -430,7 +446,6 @@ export interface Piece {
   /** ★写真が無い提案の顔（「展」「場」）。 */
   /** ★写真が来なかった提案に組む**欧文のラベル**（「PLACE」「EXHIBITION」）。 */
   label?: string;
-  count?: number;
   /** 文字の板（日付・曜日）だけが持つ。★寸法も描き方も `lib/wordPlate.ts`。 */
   plate?: WordPlate;
   /** ★★**押すと行き先がある図形**（未読の数＝ブリーフ／ジャーナル＝レコード）。 */
@@ -561,8 +576,9 @@ export interface PileContent {
    * ★**まだ KEEP していないカード**なので `Item` ではない。
    */
   picks: { ed: string; card: BriefCard }[];
-  unread: number;
   today: Date;
+  /** ★★★**焦点のタスクの id**（`focusOf`。時刻が一番近い「これから」の1件。無ければ null）。 */
+  focus?: string | null;
   /** ★その日まだ声を録っていないか（真なら録音のダイヤルの円を落とす）。 */
   journal: boolean;
 }
@@ -610,7 +626,8 @@ export function buildPieces(
   prev?: Map<string, Piece>, landing?: Landing | null, hold?: number,
   bandH = 0,
 ): PileBuild {
-  const { tasks, offers, picks, unread, today, journal } = c;
+  const { tasks, offers, picks, today, journal, focus } = c;
+  const kOf = (t: { id: string }) => (t.id === focus ? FOCUS_K : 1);
 
   // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**（2026-09-09）。
   // ★★★**形は JOURNAL のタブのアイコン（カセット）そのもの**（2026-09-13・第94巡に
@@ -626,7 +643,7 @@ export function buildPieces(
   //     混み具合や件数で板との比が毎回ずれる）。
   //   ★★**第116巡の `CASSETTE_ROWS`(2.2) は削除した。復活させない**
   //     （`lib/taskSize.ts` の注釈も同時に直した）。
-  //   ★★高さは**板の高さの `CASSETTE_PER_PLATE` 倍**（第131巡）、幅は `CASSETTE_ASPECT` から導く。
+  //   ★★高さは**板の高さそのもの**（`CASSETTE_PER_PLATE` 1）、幅は `CASSETTE_ASPECT` から導く。
   //   ★★予算では**板と同じ扱い**（`fixed` へ足す。`areas` には入れない）。
 
   // ★★★**文字の板は先に決めて、器の予算から差し引く**（2026-09-10）。
@@ -644,7 +661,7 @@ export function buildPieces(
   //   ★数えるのは**落とす体の全部**（タスク・提案・カセット・未読・板2枚）。
   const crowd = crowdOf(
     tasks.length + offers.length + picks.length
-    + (journal ? 1 : 0) + (unread > 0 ? 1 : 0) + 2);
+    + (journal ? 1 : 0) + 2);
   const words = [`${today.getMonth() + 1}.${today.getDate()}`, WD_SHORT[today.getDay()]];
   // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
   // ★★★**大きさの物差しは長いほうの綴り（`WD_FULL`）のまま**（ユーザー
@@ -669,10 +686,7 @@ export function buildPieces(
   };
   let plates = platesAt(crowd);
   /** カセットの箱（px）。★**高さは板と同じ**（上の注釈）。0 ＝ 出さない。 */
-  // ★★★**第131巡に「板の高さ」→「板の 2 倍 ＝ 4 段」**（案①「円とカプセルの文法」）。
-  //   リールの半径は本体の高さの 3.6/14 なので、**4 段にして初めて 1.03 段 ＝ 単位円**
-  //   になる（板と同じ 2 段ではリールが 0.51 段）。★大きさは 1・2・4 段だけ、に乗る。
-  //   ★★第123巡のユーザー指定「日付と曜日ぐらい」からは**大きくなる**（面積 1.7倍）。
+  // ★★★**高さは板と同じ**（第123巡のユーザー指定「日付と曜日ぐらい」。第131巡の 2 倍は第132巡に撤回）。
   const cassetteOf = (pl: typeof plates) => {
     const jh = journal ? pl[0].bh * CASSETTE_PER_PLATE : 0;
     return { jH: jh, jW: jh * CASSETTE_ASPECT };
@@ -705,11 +719,9 @@ export function buildPieces(
   // ★`bandH` は `Pile` が `bandBottom()`（DOM の実測）から渡す。0 なら今までどおり。
   const usableH = Math.max(120, floorYOf(h) - bandH);
   const areas = [
-    ...tasks.map((t) => rowSpecOf(flat(t)).area),
+    ...tasks.map((t) => rowSpecOf(flat(t)).area * kOf(t) ** 2),
     ...offers.map(() => OFFER_AREA),
     ...picks.map(() => OFFER_AREA),
-    // ★★未読の数は段の高さで決まる（第131巡）ので「固定」側ではなくこちら。
-    ...(unread > 0 ? [BADGE_AREA] : []),
   ];
   const total = areas.reduce((a, b) => a + b, 0) || 1;
   // ★★**px で大きさが決まっているものは「固定」側**（板・未読の数・カセット）。
@@ -759,8 +771,9 @@ export function buildPieces(
   //   ★★★**この頭打ちは予算とは別に出す**（第110巡）―― 据え置きのときも効かせる。
   //   ★★カセットは `unit` の倍数ではないので、**頭打ちの相手はタスクだけ**。
   let cap = UNIT;
-  for (const sp of tasks.map((t) => rowSpecOf(flat(t)))) {
-    cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w), (usableH * FIT_H) / Math.max(1, sp.h));
+  for (const t of tasks) {
+    const sp = rowSpecOf(flat(t)); const k = kOf(t);
+    cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w * k), (usableH * FIT_H) / Math.max(1, sp.h * k));
   }
   // ★★★**安全網は `cap`（いちばん大きな図形が器に入るか）の1つだけ**。
   const unit = Math.max(10, Math.min(plateUnit, cap));
@@ -878,8 +891,11 @@ export function buildPieces(
 
   tasks.forEach((t) => {
     const spec = rowSpecOf(flat(t));
-    const pw = Math.max(28, spec.w * unit);
-    const ph = Math.max(24, spec.h * unit);
+    // ★★★**焦点の1件だけ `FOCUS_K` 倍**（第132巡）。形・段の数・字の組み方は同じで、
+    //   箱が一様に大きくなるだけ（字も同じ比で大きくなる）。
+    const k = kOf(t);
+    const pw = Math.max(28, spec.w * unit * k);
+    const ph = Math.max(24, spec.h * unit * k);
     // ★★**絵と同じ「ピルの積み」で当たる**（第101巡。GRAVITY／DRIFT と同じ形）。
     const rows = clampRows(rowsOf(t.title));
     const sig = `task|${pw.toFixed(2)}|${ph.toFixed(2)}|${rows}`;
@@ -889,7 +905,7 @@ export function buildPieces(
     if (!kept) {
       // ★★★**質量だけ与えて、回り慣性は触らない**（2026-09-09）。`setMass` は
       //   慣性も一緒に比例させるので、形と重さから正しい回りにくさが出る。
-      m.Body.setMass(body, spec.area * MASS_K);
+      m.Body.setMass(body, spec.area * k * k * MASS_K);
       fresh = toss(body, t.id, ph);
       stamp(body, sig);
     }
@@ -906,7 +922,7 @@ export function buildPieces(
   if (jH > 0) {
     // ★★**タブのアイコンと同じカセット**。文字は載せない（ユーザー指定）。
     // ★★**体は四角**（円ではない）。当たり判定も `Pile.tsx` の四角の枝へ入る。
-    // ★★★**大きさは px で決まっている**（＝板の 2 倍の高さ。第131巡）。
+    // ★★★**大きさは px で決まっている**（＝板と同じ高さ）。
     const pw = Math.max(32, jW);
     const ph = Math.max(24, jH);
     const sig = `cassette|${pw.toFixed(2)}|${ph.toFixed(2)}`;
@@ -993,36 +1009,8 @@ export function buildPieces(
     offerPiece(it.id, it.kind, it.title, it.images?.[0]);
   });
 
-  if (unread > 0) {
-    // ★★★**未読の数は「単位円」**（2026-09-23・第131巡・案①「円とカプセルの文法」）。
-    //   ★★第130巡までは 12 の尖りのトゲトゲ（`zigVerts`。削除した）で、**円と直線から組めない
-    //     唯一の形**だった。半径は**段の高さ 1 つ**（直径 ＝ 2 段 ＝ 板の高さ）。
-    // ★★**絵より `PHYS_GAP` 外側**（第101巡）。
-    const br = unit;
-    const sig = `badge|${unread}|${br.toFixed(2)}`;
-    const kept = same("unread", sig);
-    const body = kept ?? m.Bodies.circle(0, 0, br + PHYS_GAP, BODY);
-    let fresh = false;
-    if (!kept) {
-      // ★★★**密度は全部の体で同じ**（箱の面積 ÷ `unit²`）。
-      m.Body.setMass(body, BADGE_AREA * MASS_K);
-      fresh = toss(body, "unread", br * 2);
-      stamp(body, sig);
-    }
-    // ★★未読の数は**分類ではなく状態**なので、ドメインの4色からは取らない。
-    // ★★★**第125巡に赤（`RUST`）をやめて墨へ**（配色の総入れ替え）――
-    //   赤 `#E73115` とタスクのオレンジ `#FD6A23` は**色相が 8° しか違わない**ので、
-    //   **同じ山に出ると見分けが付かない**（`lib/constants.ts` の `PALETTE` の注釈）。
-    //   ★墨なら日付と曜日の板と同じ「読むための黒」の列に入り、**形（円）**
-    //   だけが板と違う ―― **数えているものは色ではなく形で言う。**
-    const face = INK;
-    pieces.push({
-      id: "unread", body, kind: "badge", r: br, fresh,
-      face, ink: bodyInkOn(face), count: unread,
-      // ★押すと EXPLORE のブリーフへ（そこで実際に読める）。
-      nav: "brief",
-    });
-  }
+  // ★★★**未読の数は山に落とさない**（2026-09-24・第132巡にユーザー承認）。数は「今日やること」
+  //   ではないので、EXPLORE のタブの角の小さな数字へ移した（`components/AppShell.tsx`）。
 
   // ★★★**落とす順は「ばらばら、日付の板は最後」**（2026-09-23・第131巡にユーザー指定
   //   「**ランダムにするか、せめて曜日とかは一番最後に落とした方がいい**」）。

@@ -204,8 +204,6 @@ const roundRect = (
  */
 export function drawCassette(
   ctx: CanvasRenderingContext2D, w: number, h: number, face: string, ink: string, hub: string,
-  /** 本体の角の半径（px）。★ホームの山だけが渡す ―― 段の高さ（単位円。第131巡）。 */
-  bodyR?: number,
 ): void {
   // 24 の器 → 実寸への倍率。★本体の外接箱が (w, h) になるように取る。
   const kx = w / CASSETTE.body.w;
@@ -217,7 +215,7 @@ export function drawCassette(
   const py = (y: number) => (y - cy) * ky;
 
   ctx.fillStyle = face;
-  roundRect(ctx, -w / 2, -h / 2, w, h, bodyR ?? CASSETTE.body.r * ky);
+  roundRect(ctx, -w / 2, -h / 2, w, h, CASSETTE.body.r * ky);
   ctx.fill();
 
   ctx.fillStyle = ink;

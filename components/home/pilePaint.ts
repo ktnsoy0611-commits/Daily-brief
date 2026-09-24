@@ -1,6 +1,6 @@
-import { BD_GREY, DISPLAY, MUTED, mixHex } from "@/lib/constants";
+import { BAND_BEZEL, BAND_H, BD_GREY, DISPLAY, MUTED, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
+import { CASSETTE_R_PER_H, CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
 import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
 import { clampRows, halfWidthAtStack, stackOutline } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
@@ -108,11 +108,13 @@ function spriteOf(
   return made;
 }
 
-/** 提案の写真のまわりの縁（半径に対する比）。★半径 ＝ 2 段なので 0.25 ＝ 半段。
- *  ★目盛りの外（絵の寸法）。 */
-const OFFER_BEZEL = 0.25;
-/** カセットの本体の高さ（段の数）。★`pileWorld.ts` の `CASSETTE_PER_PLATE` × 板の 2 段。 */
-const CASSETTE_ROWS_H = 4;
+/**
+ * ★★★**提案の写真のまわりの縁（半径に対する比）は、帯のピルと同じ比**（第132巡）。
+ * 帯のピルは高さ `BAND_H.photo` の中に、縁 `BAND_BEZEL` を残して写真の丸を置く ――
+ * 写真の径 ÷ 外の径 ＝ 1 − 2·縁 ÷ 高さ。山の図形も同じ比にすると、**引き下ろして形が
+ * 変わっても、写真と黄色の縁の関係は変わらない**（同じ物だと分かる）。
+ */
+const OFFER_BEZEL = (BAND_BEZEL * 2) / BAND_H.photo;
 
 const blit = (ctx: CanvasRenderingContext2D, b: Baked) =>
   ctx.drawImage(b.canvas, -b.w / 2, -b.h / 2, b.w, b.h);
@@ -227,7 +229,7 @@ export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
   //   ★四方に同じだけ広げるので、**本体の中心は箱の中心のまま**＝貼る位置は変わらない。
   const pad = Math.ceil(ph * CASSETTE_TAB_H_PER_H) + BAKE_PAD;
   const w = pw + pad * 2; const h = ph + pad * 2;
-  const key = ["cassette", w, h, p.face, p.ink, dpr.toFixed(2), "r1"].join("|");
+  const key = ["cassette", w, h, p.face, p.ink, dpr.toFixed(2)].join("|");
   const hit = bakeCache.get(key);
   if (hit) return hit;
   // ★★**1フレームの予算を使い切ったら、今回は代役で描く**（上の `BAKE_PER_FRAME`）。
@@ -246,8 +248,7 @@ export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
   //   グレーにしてあまり目立たないように」）。★★**ここだけ `bodyInkOn` から外れる**
   //   ―― 芯は「面の上で読ませる文字」ではなく**控えめに在る部品**だから。
   //   墨の円の上で比 4.3（白は 11.25）。
-  // ★★★**角の半径は段の高さ 1 つ**（第131巡・案①）。本体は 4 段なので `ph / 4`。
-  drawCassette(ctx, pw, ph, p.face, p.ink, MUTED, ph / CASSETTE_ROWS_H);
+  drawCassette(ctx, pw, ph, p.face, p.ink, MUTED);
   const made = { canvas: cv, w, h };
   if (bakeCache.size > 80) bakeCache.clear();
   bakeCache.set(key, made);
@@ -569,7 +570,7 @@ export function drawPile(
         // ★★焼く前の代役は**本体の面だけ**（第131巡）。全部を直に描くと、焼く予算が
         //   尽きているあいだ毎フレーム芯の点の列まで引き直すことになる。
         ctx.beginPath();
-        ctx.roundRect(-p.w / 2, -p.h / 2, p.w, p.h, p.h / CASSETTE_ROWS_H);
+        ctx.roundRect(-p.w / 2, -p.h / 2, p.w, p.h, p.h * CASSETTE_R_PER_H);
         ctx.fill();
       }
     } else if (p.kind === "word") {
@@ -610,9 +611,8 @@ export function drawPile(
         trace(c, r * 2);
         c.fill();
         if (!im) return;
-        // ★★★**ベゼルは半径の `OFFER_BEZEL`**（第131巡にユーザー指定「**提案の写真は、
-        //   一旦ベゼルを太くするだけで**」）。第130巡までは帯と同じ 6px ＝ 半径の 9% で、
-        //   面の色が細い線にしか見えなかった。
+        // ★★★**ベゼルは半径の `OFFER_BEZEL`＝帯のピルと同じ比**（第131巡に太くし、
+        //   第132巡に帯の比へ揃えた）。第130巡までは 6px 固定 ＝ 半径の 9% だった。
         const inner = Math.max(4, r * (1 - OFFER_BEZEL));
         c.save();
         trace(c, inner * 2);
@@ -635,27 +635,6 @@ export function drawPile(
         ctx.rotate(-b.angle);          // ★読ませる字なので回さない
         drawOfferLabel(ctx, p.label, r * 2, p.ink);
       }
-    } else if (p.kind === "badge" && p.r) {
-      // ★★★**未読の数は「単位円」**（第131巡・案①。トゲトゲは円と直線から組めない）。
-      // ★★★**数字も一緒に回す**（2026-09-09 ユーザー指定「そのまま図形に
-      //   焼き付けて落として」）。図形は転がるのに中身だけ据わっていると、
-      //   **面に描いてあるのではなく上に浮いている**ように見える。
-      const r = p.r; const face = p.face; const ink = p.ink; const n = String(p.count ?? 0);
-      const paintBadge = (c: CanvasRenderingContext2D) => {
-        c.fillStyle = face;
-        c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.closePath();
-        c.fill();
-        c.fillStyle = ink;
-        // ★★大きな数字は `DISPLAY`（Anton。第100巡）。単一ウェイトなので 400 で頼む
-        //   （900 を頼むと合成ボールドが掛かる）。
-        c.font = canvasFont(WORD_WEIGHT, r * 0.9, DISPLAY);
-        c.textAlign = "center"; c.textBaseline = "middle";
-        c.fillText(n, 0, 0);
-      };
-      const key = ["badge", n, r.toFixed(2), face, ink, dpr.toFixed(2)].join("|");
-      const bmp = spriteOf(key, r * 2 + BAKE_PAD * 2, r * 2 + BAKE_PAD * 2, dpr, paintBadge);
-      if (bmp) blit(ctx, bmp);
-      else paintBadge(ctx);
     }
     ctx.restore();
   }

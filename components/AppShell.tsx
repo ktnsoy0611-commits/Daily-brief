@@ -29,6 +29,7 @@ import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
 import { BD_GREY, CHARCOAL, INK, NAV_BOTTOM_GAP, NAV_CREATE_SLOT, NAV_H, NAV_PILL_PAD, NAV_ROW_MAX, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
+import { unreadCards } from "@/lib/homeBand";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { kickViewport } from "@/lib/viewportKick";
 import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -117,6 +118,9 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
   // ★★ホームだけタブバーの中身が「3アプリの名前」になる ―― ホームは3アプリの
   //   **入口**で、自分のタブを持たないため。
   const isHome = a.id === "home";
+  // ★★★**未読の提案の数は EXPLORE のタブの角に出す**（2026-09-24・第132巡）。
+  //   第131巡までは山に「数の円」として落としていたが、数は「今日やること」ではない。
+  const unread = useMemo(() => (isHome ? unreadCards(tabProps.appState).length : 0), [isHome, tabProps.appState]);
   // ★タスクアプリは4層が1本の縦の空間に積まれているので、タブごとの
   //   入場アニメーションも作り直しもしない(下の枠を参照)。
   const isTasks = a.id === "tasks";
@@ -355,6 +359,16 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                       label={appDef(id).en}
                       color={INK}
                     />
+                    {/* ★★未読の提案の数（第132巡）。アイコンの右肩に小さな墨の丸。0 なら出さない。 */}
+                    {id === "life" && unread > 0 && (
+                      <span aria-label={`未読 ${unread}`} style={{
+                        position: "absolute", top: 0, left: `calc(50% + ${SPACE.sm}px)`,
+                        minWidth: SPACE.lg, height: SPACE.lg, padding: `0 ${SPACE.xs}px`, boxSizing: "border-box",
+                        borderRadius: RADIUS.pill, background: INK, color: PAPER,
+                        fontFamily: SANS, fontSize: TYPE.micro, fontWeight: WEIGHT.bold, lineHeight: `${SPACE.lg}px`,
+                        letterSpacing: TRACK.normal, textAlign: "center", pointerEvents: "none",
+                      }}>{unread}</span>
+                    )}
                   </button>
                 ))}
                 {/* 選択中の印。1枚だけ置いて隣のタブへ滑らせる。 */}

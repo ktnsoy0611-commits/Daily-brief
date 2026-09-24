@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { groundOf } from "@/components/AppBackdrop";
 import { INK, PAPER, SANS, SOFT_SHADOW_LG, mixHex } from "@/lib/constants";
-import { PAN_SLOP } from "@/lib/pullDrag";
+import { PAN_SLOP, PILL_EDGE } from "@/lib/pullDrag";
 import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
 import { bodyInkOn } from "@/lib/palette";
 import { rubber } from "@/lib/spring";
@@ -191,14 +191,19 @@ function NewsCard({ item, from, face, grab, autoOpen, onClose }: {
         //     `e = 0` の瞬間に**色も字も違うピル**へ入れ替わっていた。
         //     → **面の色も字も「ピルそのもの」で終わる**（下の写し）。これで閉じ切った
         //     1フレームと帯のピルが**画素まで同じ**になり、入れ替わりが見えない。
-        borderRadius: rad, background: mixHex(face, PAPER, e), overflow: "hidden",
+        // ★★★**第132巡にピルが「墨の輪郭」になった**ので、閉じ切りの面は地の色・縁は墨の線。
+        //   面は「地 → 紙」を `e` で混ぜ、縁の線は閉じるほど現れる（ピルと画素まで同じで終わる）。
+        borderRadius: rad, background: mixHex(ground, PAPER, e), overflow: "hidden",
         // ★★★**余白は札が持たない。中身の器が持つ**（第129巡）―― `border-box` の札に
         //   上下 24px の余白を持たせると、**ピル（28px）より小さく縮めない**。
         //   閉じ切っても札が 48px のまま残り、そこからピルへ飛んでいた（実測）。
         // ★★**縁を引かない**（`design.md`。押せるものにだけ縁）。面と影で浮かせる。
         //   ★影は既存の1つ（`SOFT_SHADOW_LG`）。**新しい影を作らない。**
         //   ★★ピルには影が無いので、**閉じるほど影も消える**（同じ理由）。
-        boxShadow: e > 0.02 ? SOFT_SHADOW_LG : "none", opacity: 1,
+        boxShadow: [
+          `inset 0 0 0 ${PILL_EDGE}px ${mixHex(face, PAPER, Math.min(1, e / 0.35))}`,
+          ...(e > 0.02 ? [SOFT_SHADOW_LG] : []),
+        ].join(","), opacity: 1,
       }}>
         {/* ★★★**ピルの写し**（第129巡）… 閉じるほど現れ、閉じ切ったときに帯の
             ピルと同じ字・同じ位置になる。★`NewsPill` の版面と同じトークンを読む。 */}
@@ -209,7 +214,7 @@ function NewsCard({ item, from, face, grab, autoOpen, onClose }: {
         }}>
           <span style={{
             fontFamily: SANS, fontSize: BAND_TEXT, fontWeight: WEIGHT.heavy,
-            letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: bodyInkOn(face),
+            letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: face,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
           }}>{item.title}</span>
         </div>
@@ -281,8 +286,10 @@ export function NewsPill({ item, h, face, onHold }: {
     held.current = on;
     onHold(on);
   }, [onHold]);
-  // ★★第128巡からベタ塗りなので、字は**面から**導く（青の上の墨 7.59）。
-  const ink = bodyInkOn(face);
+  // ★★★**墨の輪郭だけのピル**（2026-09-24・第132巡にユーザー承認「帯の3段に強弱を」）。
+  //   帯の強さの順は「提案 → タスク → ニュース」。ニュースがいちばん強い墨のベタだったのを、
+  //   **地の面・墨の細い縁・墨の字**へ下げた。★`face` は線と字の色（`NEWS_FACE`）。
+  const ink = face;
 
   /** ★指を離した（引き切っていれば `NewsCard` が開き、足りなければ閉じる）。 */
   const end = useCallback(() => {
@@ -353,8 +360,8 @@ export function NewsPill({ item, h, face, onHold }: {
           display: "flex", alignItems: "center", flexShrink: 0,
           height: h, borderRadius: RADIUS.pill,
           padding: `0 ${SPACE.lg}px`, maxWidth: "84vw",
-          // ★★★**ベタ塗り・墨の字**（第128巡。帯のピルと同じ。縁は持たない）。
-          backgroundColor: face,
+          backgroundColor: groundOf("home"),
+          boxShadow: `inset 0 0 0 ${PILL_EDGE}px ${face}`,
           touchAction: "none", pointerEvents: "auto",
           // ★引いているあいだは元のピルを消す（札と二重に見えない）。
           opacity: card ? 0 : 1,

@@ -13,7 +13,7 @@ import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import {
-  BAND_OFFER_TEXT, BAND_TEXT, bandLines, bandRows, isOutlined, pinBand, unreadCards, unreadEntries,
+  BAND_OFFER_TEXT, BAND_TEXT, bandLines, bandRows, isOutlined, pinBand, unreadEntries,
   type BandItem, type BandRowId,
 } from "@/lib/homeBand";
 import { keepCard } from "@/lib/keepCard";
@@ -55,7 +55,6 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   const news = useNewsBand(appState);
   const rows = useMemo(
     () => bandRows(appState, keepId, news), [appState, keepId, news]);
-  const unread = useMemo(() => unreadCards(appState).length, [appState]);
 
   // ★★山にいるのは**今日のものだけ**（ユーザー確定）。だから山は説明が要らない
   //   ―― 日付のラベルもレーンも無い。
@@ -405,7 +404,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       <div ref={boxRef} className="bleed-x-b" style={{ position: "relative", flex: 1, minHeight: 0 }}>
         {/* 山。★器は名前の下の**残り全部**（左右は画面いっぱい）。 */}
         <Pile
-          tasks={pileTasks} offers={pileOffers} picks={picks} unread={unread} today={today}
+          tasks={pileTasks} offers={pileOffers} picks={picks} today={today}
           journal={journal} onOpen={goTab} above={lift}
           onRail={setRail} onAssign={assignPiece}
           bandBottom={bandBottom} pillOf={pillOf} onUnassign={unassign}
@@ -425,7 +424,8 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
             ASSIGN が見える（ユーザー報告）。★列の側にも `overflowX: "clip"` を
             入れてあるが（`components/AppShell.tsx`）、**はみ出す側でも止める**。 */}
         <div aria-hidden style={{
-          position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none",
+          // ★★山の絵（`zIndex: 2`。第132巡に帯より上へ）よりさらに上。
+          position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 3,
         }}>
           <AssignRail show={rail} />
         </div>

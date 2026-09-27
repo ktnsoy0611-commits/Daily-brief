@@ -19,6 +19,7 @@ import {
 import { keepCard } from "@/lib/keepCard";
 import { useNewsBand } from "@/lib/newsFeed";
 import { usePrepSuggest } from "@/lib/prepSuggest";
+import { useBandCuration } from "@/lib/bandCurateClient";
 import { OFFER_PICKS, pickOffers } from "@/lib/offerPick";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -55,8 +56,10 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   const news = useNewsBand();
   // ★★★**近い予定の準備タスクを AI に頼む**（第133巡。`lib/prepSuggest.ts`）。結果は帯の下の段へ。
   usePrepSuggest(appState, persist);
+  // ★★★**帯の下の段を AI が評価して選ぶ**（第133巡。`lib/bandCurate.ts`）。点が無ければ規則の並び。
+  const curated = useBandCuration(appState);
   const rows = useMemo(
-    () => bandRows(appState, keepId, news), [appState, keepId, news]);
+    () => bandRows(appState, keepId, news, curated), [appState, keepId, news, curated]);
 
   // ★★山にいるのは**今日のものだけ**（ユーザー確定）。だから山は説明が要らない
   //   ―― 日付のラベルもレーンも無い。

@@ -4,6 +4,7 @@ import { colorOfKind } from "./palette";
 import { BAND_BEZEL, BAND_H, INK, TASK_FACE } from "./constants";
 import { LEAD, SPACE, TYPE } from "./tokens";
 import { pickTodayItems } from "./todayPick";
+import { rankCurated, type CurateScore } from "./bandCurate";
 
 // ★★★**帯に何が並ぶかを決める唯一の場所**（2026-09-07・ホームの帯）。
 //
@@ -69,6 +70,8 @@ export interface BandItem {
    */
   why?: string;
   detail?: string;
+  /** ★★AI の選別へ渡す「事実」（第133巡。`lib/bandCurate.ts`）。**材料に在ることだけ**。 */
+  facts?: string;
   /**
    * ★★**1・2 だけが持つ。`ItemKind`**（2026-09-17・第118巡）。
    * ★★★**提案（`offer`）にはまだ `Item` が無い**ので、`HomeTab.srcOf` から
@@ -315,6 +318,11 @@ const PREP_URGENT_DAYS = 3;
 const PREP_IN_BAND = 3;
 const WHEN_WHY = { now: "いま行ける時間", later: "今日このあと行ける", tomorrow: "明日なら行ける" } as const;
 const join = (...xs: (string | undefined)[]) => xs.filter(Boolean).join(" ・ ");
+/** ★「9/27」（ISO でも YYYY-MM-DD でも）。 */
+const md = (iso: string) => {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`) : new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : `${d.getMonth() + 1}/${d.getDate()}`;
+};
 /** ★今日から何日後か（今日 ＝ 0。日付が無ければ `null`）。 */
 function daysUntil(ymd: string | undefined, now: Date): number | null {
   if (!ymd) return null;
@@ -375,6 +383,7 @@ export function bandItems(state: AppState): BandItem[] {
       genre: genreOfKind(it.kind),
       why: join(WHEN_WHY[when], endsSoon(it.expiresAt, now)),
       detail: it.summary,
+      facts: join(`行ける時間帯: ${WHEN_WHY[when]}`, it.expiresAt ? `会期の終わり: ${md(it.expiresAt)}` : ""),
     });
   }
 
@@ -384,6 +393,7 @@ export function bandItems(state: AppState): BandItem[] {
     out.push({
       id: `voice-${c.id}`, kind: "voice", text: c.title, face: taskFace(),
       why: "声のメモから", detail: c.note || c.sourceText,
+      facts: join("声のメモから", c.createdAt ? `登録した日: ${md(c.createdAt)}` : ""),
     });
   }
 
@@ -401,6 +411,7 @@ export function bandItems(state: AppState): BandItem[] {
           face: taskFace(), parentId: t.id,
           why: join(`「${t.title}」の準備`, dueText(due)),
           detail: sg.why,
+          facts: join(`「${t.title}」の準備`, t.dueDate ? `期日: ${md(t.dueDate)}${t.dueTime ? ` ${t.dueTime}` : ""}` : ""),
         },
       });
     }
@@ -423,6 +434,7 @@ export function bandItems(state: AppState): BandItem[] {
       id: `someday-${t.id}`, kind: "someday", text: t.title, face: taskFace(),
       why: join("日付がまだ無いタスク", age >= 7 ? `${age}日前に登録` : ""),
       detail: t.note,
+      facts: t.createdAt ? `登録した日: ${md(t.createdAt)}` : "",
     });
   }
 
@@ -443,10 +455,27 @@ export function bandItems(state: AppState): BandItem[] {
  *     「**画面外に出たらいいように処理して**」）。
  */
 export function bandRows(
-  state: AppState, keepId?: string | null, news?: BandItem[],
+  state: AppState, keepId?: string | null, news?: BandItem[], curated?: CurateScore[] | null,
 ): [BandItem[], BandItem[], BandItem[]] {
   const rows: [BandItem[], BandItem[], BandItem[]] = [[], [], []];
-  for (const it of bandItems(state)) rows[BAND_ROW[it.kind]].push(it);
+  let all = bandItems(state);
+  // ★★★**AI の点があれば、下の段は「点の高い5件」だけ**（第133巡。`lib/bandCurate.ts`）。
+  //   ★★自分で帯へ置いたもの（留め金）と戻したばかりの1件（`keepId`）は落とさない
+  //     ―― ユーザーの意思を AI の順位で消さない（第121巡の `force` と同じ考え）。
+  //   ★点が無い（鍵が無い・失敗・通信なし）ときは規則の並びのまま（下の `cut`）。
+  if (curated && curated.length) {
+    const picked = rankCurated(all.filter((it) => it.kind !== "news"), curated);
+    const keepIds = new Set([...(state.bandPins ?? []).map((p) => p.id), ...(keepId ? [keepId] : [])]);
+    const chosen = new Set(picked.map((it) => it.id));
+    const why = new Map(picked.map((it) => [it.id, it.why]));
+    all = all
+      .filter((it) => chosen.has(it.id) || keepIds.has(it.id))
+      .map((it) => (why.has(it.id) ? { ...it, why: why.get(it.id) } : it));
+    // ★並びは点の順（留め金はこのあと当たる）。
+    const order = new Map(picked.map((it, i) => [it.id, i]));
+    all.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
+  }
+  for (const it of all) rows[BAND_ROW[it.kind]].push(it);
   // ★★★**ニュースは `bandItems` を通さない**（2026-09-18・第122巡）――
   //   あちらは `AppState` だけから作る純粋な関数で、**ニュースは外の世界のもの**
   //   （非同期に届き、`AppState` に入れない。理由は `lib/newsFeed.ts` の頭）。

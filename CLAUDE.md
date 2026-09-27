@@ -1072,6 +1072,14 @@
   ★★★**`AppState` に入れない**（自分のデータではない／30分で古くなる／消えても壊れない）。
   ★★**日付を割り当てる引き下ろしには載せない**（`row={2}` に `pull` を渡さない）。
   ★★**AI を通さない**（見出しはもう人が書いた1行）。
+- ★★★`lib/bandCurate.ts` ＋ `lib/bandCurateClient.ts` ＋ `app/api/curate-band/route.ts` —
+  **帯の下の段を AI が評価して選ぶ**（第133巡。プロンプトはユーザー承認の第3稿。**1文字も
+  変えない**。変えるなら文面を見せて承認）。★★AI は**観点ごとの点（時機・必要性・好み・余裕・
+  放置 0〜3）と理由**だけを出し、**順位はコードの重み**（`CURATE_WEIGHTS` 3/3/2/1/1）で決める。
+  上位5件・提案は2件まで・**留め金と `keepId` は落とさない**。点が無ければ規則の並び。
+  ★★頼み直すのは 60分／時間帯が変わった／候補の顔ぶれが変わった時（1.5秒 落ち着いてから）。
+  結果は `localStorage`（**顔ぶれの署名が同じときだけ使う** ―― 違う顔ぶれの点を当てると
+  点の無い新しい候補が帯から消える）。
 - ★★★`lib/prepSuggest.ts` — **準備タスクを AI に頼む「きっかけ」**（第133巡）。
   期日が `PREP_DAYS`(14) 日以内・未完了・`suggestedAt` が無いタスクを `PER_RUN`(3) 件ずつ
   `/api/suggest-subtasks` へ（プロンプトは `lib/taskSuggest.ts` の承認済みのまま）。
@@ -1091,7 +1099,7 @@
 - `lib/myBrainPaths.ts` — **my-brain のパスを知っている唯一の場所**。`myBrain.ts` / `myBrainWrite.ts` / `myBrainSyncClient.ts`。
 
 ## サーバー関数（app/api）
-- `cron/build-brief` 夜間生成 / `generate-brief` 実験 / `generate-plan` / `transcribe` / `suggest-subtasks` / `resolve-place` / **`news`**（第133巡から Yahoo!ニュースの主要トピックス＋記事の写真と概要） / `mybrain/*`。
+- `cron/build-brief` 夜間生成 / `generate-brief` 実験 / **`curate-band`**（第133巡。帯の AI 評価） / `generate-plan` / `transcribe` / `suggest-subtasks` / `resolve-place` / **`news`**（第133巡から Yahoo!ニュースの主要トピックス＋記事の写真と概要） / `mybrain/*`。
 
 # デザインシステム（2026-08-23・第33巡に確定）
 

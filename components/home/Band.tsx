@@ -18,6 +18,7 @@ import {
   bandHoleDone, bandHoleRelease, bandResume, stepBandMotion,
 } from "./bandMotion";
 import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
+import { haptic } from "@/lib/helpers";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
 //
@@ -189,7 +190,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
     // ★★★**動かさずに離した ＝ タップ → 札を開く**（第133巡）。段は札のあいだ止める。
     if (g && commit && !g.live && !g.pan && !g.armed) {
       const r = boxEl.current?.getBoundingClientRect();
-      if (r) { onHold(true); setCard({ x: r.x, y: r.y, w: r.width, h: r.height }); }
+      if (r) { haptic(6); onHold(true); setCard({ x: r.x, y: r.y, w: r.width, h: r.height }); }
     }
   }, [item, pull, onTake, onArm, onFlow, onHold]);
 

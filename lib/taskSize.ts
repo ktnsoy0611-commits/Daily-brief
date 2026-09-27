@@ -2,6 +2,7 @@ import { SIDE_KEYS } from "./types";
 import { MAX_ROWS, STACK_INK, type SolidSpec } from "./solid";
 // ★★箱の比は「字をどう詰めるか」から出る（`rowAspect`）。**数を2度書かない**。
 import { LINE_H, ROW_FILL, ROW_SIDE } from "./textFit";
+import { splitReadable } from "./lineBreak";
 import type { InboxCandidate, SideKey, Task, TaskWeight } from "./types";
 
 // ★タスク → 図形の寸法。**純粋関数だけ**。単体テストで検証する。
@@ -199,6 +200,11 @@ export const TASK_COLS_MAX = 4;
 export const FOCUS_COLS = 4;
 export const FOCUS_ROWS = 2;
 
+/**
+ * ★★山の2行のタスクは「読める切れ目」で割る（第133巡。ユーザー指摘「名刺を刷／り直す」）。
+ * 真ん中から題の字数の 1/5 までずれてよい（帯の 1/4 より狭い ―― 箱の幅がずれに引っ張られる）。
+ */
+export const TASK_SLACK = 0.2;
 /** 題のおおよその幅（全角 ＝ 1）。★欧文・数字は半分強。**純粋な関数**（書体の到着で箱が変わらない）。 */
 const emOf = (s: string): number =>
   [...s].reduce((a, c) => a + (c.charCodeAt(0) < 0x2e80 ? 0.55 : 1), 0);
@@ -227,8 +233,8 @@ function pillWidthFor(em: number, lines: number): number {
 export interface TaskCells { cols: number; rows: number; lines: number }
 export function taskCellsOf(title: string, focus = false): TaskCells {
   const em = Math.max(1, emOf((title ?? "").trim()));
-  // ★2行のときの長いほうの行（`splitLines` は字数で揃えるので、半分 ＋ 1字ぶんの揺れ）。
-  const em2 = em / 2 + 0.5;
+  // ★2行のときの長いほうの行 ＝ **実際に割る所**（`lib/lineBreak.ts`。絵の割り付けと同じ規則）。
+  const em2 = Math.max(1, ...splitReadable((title ?? "").trim(), TASK_SLACK).map(emOf));
   // ★焦点は 4×2 マス ＝ 刻みが 1 マス。幅は刻み 4 つぶん。
   if (focus) return { cols: FOCUS_COLS, rows: FOCUS_ROWS, lines: pillWidthFor(em, 1) <= FOCUS_COLS ? 1 : 2 };
   // ★1 マスの高さ ＝ 刻み 2 つ ＝ **1 マスの幅も刻み 2 つぶん**。

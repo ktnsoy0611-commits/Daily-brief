@@ -19,7 +19,7 @@ import { halfWidthAtStack } from "@/lib/solid";
 import { ensureGlyphs } from "@/lib/textFit";
 import { SHAPE_FACE } from "@/lib/constants";
 import {
-  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile, prewarmPile,
+  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile, pileLookBusy, prewarmPile, setPileLook,
 } from "./pilePaint";
 import {
   BAND_CATCH, BAND_NEAR, PILL_HINT, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey,
@@ -788,6 +788,8 @@ export function Pile({
         //   止まった図形は、そのままだと**最後に描いた位置のまま**残る。全員が眠ったら
         //   `PAINT_EPS` を越えたぶんだけ描き直してからループを止める。
         const asleep = now2.length > 0 && now2.every((p) => p.body.isSleeping);
+        // ★★押した・掴んだ図形の見え方が動いているあいだは全面を描き直す（`setPileLook`）。
+        if (pileLookBusy()) dirtyRef.current = true;
         if (dirtyRef.current || gMoved || drift >= REST_EPS || (asleep && drift > PAINT_EPS)) {
           // ★★★**塗るのは「変わった矩形」だけ**（2026-09-15・第106巡）。
           //   ★★これまでは**1つでも動けば約300万画素を全部**消して描き直していた
@@ -1162,7 +1164,7 @@ export function Pile({
     return null;
   };
 
-  const press = useRef<{ id: number; x: number; y: number; timer: number } | null>(null);
+  const press = useRef<{ id: number; x: number; y: number; timer: number; pid?: string } | null>(null);
   // ★長押しの途中で外れたら、タイマーを必ず落とす（消えた画面へ触りに行かない）。
   useEffect(() => () => { if (press.current) window.clearTimeout(press.current.timer); }, []);
 
@@ -1206,10 +1208,17 @@ export function Pile({
       //     `dragRef` を立てても**誰も見に来ない＝図形が1px も動かない**。
       //   ★★第108巡に眠りが速くなった（門を消した）ので、**ここを忘れると
       //     「落ち着いた山は掴めない」**になる。実測でそうなった。
+      // ★★★**掴めた合図 ＝ 持ち上がって影が落ちる ＋ 振動**（第133巡「触っていて気持ちいい」）。
+      setPileLook(p.id, "lift");
+      haptic(8);
+      dirtyRef.current = true;
       wake();
       setHolding(true);
     }, HOLD_MS);
-    press.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer };
+    // ★★★**押した瞬間に沈む**（第133巡。押下は即座・戻りはゆっくり）。
+    const hit = pickAt(e.clientX, e.clientY);
+    if (hit) { setPileLook(hit.id, "press"); dirtyRef.current = true; }
+    press.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer, pid: hit?.id };
     (capture ?? (e.target as HTMLElement)).setPointerCapture?.(e.pointerId);
     wake();                              // ★掴むかもしれないので回し始める
   };
@@ -1242,6 +1251,7 @@ export function Pile({
       // ★掴む前に動いたら、それはスワイプ（ホームは横スワイプで隣のアプリへ）。
       if (Math.hypot(e.clientX - pr.x, e.clientY - pr.y) > TAP_MOVE) {
         window.clearTimeout(pr.timer);
+        if (pr.pid) { setPileLook(pr.pid, "rest"); dirtyRef.current = true; wake(); }
         press.current = null;
       }
       return;
@@ -1337,6 +1347,9 @@ export function Pile({
     const pr = press.current;
     if (pr) window.clearTimeout(pr.timer);
     press.current = null;
+    // ★★離したら**ゆっくり戻る**（沈んだだけでも、持ち上がっていても）。
+    const lifted = dragRef.current?.piece.id ?? pr?.pid;
+    if (lifted) { setPileLook(lifted, "rest"); dirtyRef.current = true; }
     const dragged = dragRef.current;
     dragRef.current = null;
     setHolding(false);

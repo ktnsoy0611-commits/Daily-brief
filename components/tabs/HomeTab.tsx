@@ -19,6 +19,7 @@ import {
 import { keepCard } from "@/lib/keepCard";
 import { useNewsBand } from "@/lib/newsFeed";
 import { usePrepSuggest } from "@/lib/prepSuggest";
+import { useTravelHints } from "@/lib/travelHint";
 import { useBandCuration } from "@/lib/bandCurateClient";
 import { OFFER_PICKS, pickOffers } from "@/lib/offerPick";
 import { haptic, todayKey } from "@/lib/helpers";
@@ -55,6 +56,8 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   const news = useNewsBand();
   // ★★★**近い予定の準備タスクを AI に頼む**（第133巡。`lib/prepSuggest.ts`）。結果は帯の下の段へ。
   usePrepSuggest(appState, persist);
+  // ★★行き先と時刻があるタスクに「出発の目安」を準備として足す（第133巡。`lib/travelHint.ts`）。
+  useTravelHints(appState, persist);
   // ★★★**帯の下の段を AI が評価して選ぶ**（第133巡。`lib/bandCurate.ts`）。点が無ければ規則の並び。
   const curated = useBandCuration(appState);
   const rows = useMemo(

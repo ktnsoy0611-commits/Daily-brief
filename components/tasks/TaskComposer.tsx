@@ -18,7 +18,7 @@ import { ms, surfaceOrigin, T_OUT } from "@/lib/motion";
 import { haptic } from "@/lib/helpers";
 import { specOf } from "@/lib/taskSize";
 import type { SolidPaint } from "@/lib/solidPaint";
-import type { SubTask, TaskSuggestion, TaskWeight } from "@/lib/types";
+import type { SubTask, TaskPlace, TaskSuggestion, TaskWeight } from "@/lib/types";
 
 // ★タスクの入力画面(2026-08-16にユーザー指定で作り直し。旧 TaskSheet.tsx =
 // 方眼の展開図は削除した)。
@@ -67,6 +67,8 @@ export interface ComposerData {
   dueTime?: string;
   /** 終了時刻("HH:MM")。期間で終日オフのときだけ。 */
   endTime?: string;
+  /** 行き先（第133巡）。時刻と一緒にあれば「出発の目安」が準備として帯に出る（`lib/travelHint.ts`）。 */
+  place?: TaskPlace;
   /** メモ(道具・場所)。3番目の面。 */
   context?: string;
   /** 持ち物。4番目の面。 */
@@ -105,7 +107,7 @@ const STAGE_DELAY_MS = 460;
 const POP_OUT_MS = ms(T_OUT);
 
 /** 開くと自分の入力欄へフォーカスするもの。ここは行へ戻さない。 */
-const TAKES_FOCUS: ToolKey[] = ["context", "belongings"];
+const TAKES_FOCUS: ToolKey[] = ["place", "context", "belongings"];
 
 const newSub = (title: string): SubTask =>
   ({ id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title, done: false });
@@ -771,6 +773,7 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
 
   const filled: Record<ToolKey, boolean> = {
     due: !!draft.dueDate,
+    place: !!(draft.place?.name ?? "").trim(),
     context: !!(draft.context ?? "").trim(),
     belongings: !!(draft.belongings ?? "").trim(),
     // ★既定は**中**。既定のままなら灯さない(最初から設定済みに見えてしまう)。
@@ -887,6 +890,11 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             タブの下に潜り、下へスワイプしないと触れなかった(2026-08-17に指摘)。 */}
         {shownTool && (
           <Popover label={TOOL_LABEL[shownTool]} closing={!tool} onClose={closeTool}>
+            {shownTool === "place" && (
+              // ★名前を書き直したら座標を捨てる（`lib/travelHint.ts` が引き直す）。マップのリンクも可。
+              <TextField placeholder="行き先（店名・住所・マップのリンク）" value={draft.place?.name ?? ""}
+                onChange={(v) => set({ place: v.trim() ? { name: v } : undefined })} />
+            )}
             {shownTool === "context" && (
               <TextField multiline placeholder="どこで・何を使って" value={draft.context ?? ""}
                 onChange={(v) => set({ context: v.trim() ? v : undefined })} />

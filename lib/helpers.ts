@@ -35,8 +35,41 @@ export function daysBetween(iso: string) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
+/**
+ * ★★★**振動**（2026-09-27・第133巡に iPhone でも鳴るようにした）。
+ * ★★★**iPhone の Safari には `navigator.vibrate` が無い** ―― アプリ中の約 100 か所の `haptic()` は
+ *   **iPhone では1つも鳴っていなかった**。iOS 18 から、`<input type="checkbox" switch>` を
+ *   **その `<label>` の `click()` で切り替えると**システムの振動が1回鳴る。見えない1組を1度だけ作り、
+ *   それを押す（指の操作の中で呼ばれたときに鳴る。タイマーの中からは鳴らないことがある）。
+ * ★★鳴らせる環境（Android など）は今までどおり `vibrate(ms)`。★続けて呼ばれても `GAP_MS` に1回。
+ */
+let hapticLabel: HTMLLabelElement | null = null;
+let hapticAt = 0;
+const HAPTIC_GAP_MS = 40;
 export function haptic(ms = 10) {
-  if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(ms);
+  if (typeof navigator === "undefined" || typeof document === "undefined") return;
+  const now = performance.now();
+  if (now - hapticAt < HAPTIC_GAP_MS) return;
+  hapticAt = now;
+  if (navigator.vibrate) { navigator.vibrate(ms); return; }
+  try {
+    if (!hapticLabel) {
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.setAttribute("switch", "");
+      input.id = "haptic-switch";
+      input.tabIndex = -1;
+      input.setAttribute("aria-hidden", "true");
+      const label = document.createElement("label");
+      label.htmlFor = input.id;
+      label.setAttribute("aria-hidden", "true");
+      const hide = "position:fixed;left:-100px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;";
+      input.style.cssText = hide; label.style.cssText = hide;
+      document.body.append(input, label);
+      hapticLabel = label;
+    }
+    hapticLabel.click();
+  } catch { /* 鳴らないだけ */ }
 }
 
 export function ratingLabel(r: 1 | 2 | 3 | null | undefined) {

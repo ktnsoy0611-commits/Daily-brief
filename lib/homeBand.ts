@@ -5,6 +5,7 @@ import { BAND_BEZEL, BAND_H, INK, TASK_FACE } from "./constants";
 import { LEAD, SPACE, TYPE } from "./tokens";
 import { pickTodayItems } from "./todayPick";
 import { rankCurated, type CurateScore } from "./bandCurate";
+import { breakIndex } from "./lineBreak";
 
 // ★★★**帯に何が並ぶかを決める唯一の場所**（2026-09-07・ホームの帯）。
 //
@@ -162,33 +163,13 @@ export const BAND_OFFER_TEXT = (BAND_H.photo - BAND_BEZEL * 2) / (2 * LEAD.snug)
  *   Chromium 32px 対 WebKit 30px になった（実測）。px なら両方 32px。
  */
 export const BAND_OFFER_LINE = (BAND_H.photo - BAND_BEZEL * 2) / 2;
-const BREAK_AFTER = new Set([
-  " ", "　", "、", "。", "・", "」", "』", "）", ")", "／", "—", "─", "―", "–", "：", ":",
-  "の", "が", "を", "に", "と", "で", "へ", "は", "も",
-]);
-/** ★★**開き括弧の「前」でも折ってよい**（「スズキユウリ」／「Music As…」）。 */
-const BREAK_BEFORE = new Set(["「", "『", "（", "(", "“", "【", "〈"]);
-/** ★英数字（単語の途中で折らないために見る）。 */
-const isWordChar = (c: string | undefined) => !!c && /[A-Za-z0-9]/.test(c);
 export function bandLines(text: string, head: boolean): string[] {
   const t = (text ?? "").trim();
   const chars = [...t];
   const n = chars.length;
   if (!head || n < 2) return [t];
-  const target = Math.min(Math.ceil(n / 2), BAND_LINE_CH);
-  let cut = target;
-  let best = Infinity;
-  for (let i = 1; i <= Math.min(n - 1, BAND_LINE_CH); i++) {
-    if (!BREAK_AFTER.has(chars[i - 1]) && !BREAK_BEFORE.has(chars[i])) continue;
-    const d = Math.abs(i - target);
-    if (d < best && d <= Math.max(1, n / 4)) { best = d; cut = i; }
-  }
-  // ★★**英単語の途中では折らない**（字数で割ったときだけ起きる。単語の頭まで戻す）。
-  if (best === Infinity) {
-    let k = cut;
-    while (k > 1 && isWordChar(chars[k - 1]) && isWordChar(chars[k])) k--;
-    if (k > 1) cut = k;
-  }
+  // ★★切れ目の規則は `lib/lineBreak.ts` の1か所（山の2行のタスクと同じ）。
+  const cut = breakIndex(chars, BAND_LINE_CH);
   const a = chars.slice(0, cut).join("").trim();
   const r = chars.slice(cut);
   const b = (r.length <= BAND_LINE_CH ? r.join("") : `${r.slice(0, BAND_LINE_CH - 1).join("")}…`).trim();
@@ -377,7 +358,10 @@ export function bandItems(state: AppState): BandItem[] {
   const picks = pickTodayItems(state.items ?? [], now, kept);
   for (const { it, when } of picks) {
     out.push({
-      id: `today-${it.id}`, kind: "today", text: it.title, itemKind: it.kind,
+      // ★★★**明日の分は題の頭に「明日・」**（第133巡。第130巡に帯の文章を消してから、夜に流れる
+      //   「明日なら行ける」ものが今日の分と見分けられなかった ―― 札の「なぜ」だけでは流れている
+      //   ピルからは読めない）。
+      id: `today-${it.id}`, kind: "today", text: when === "tomorrow" ? `明日・${it.title}` : it.title, itemKind: it.kind,
       // ★★焼き込まれた `it.color` は信じない（`cardFace` と同じ理由）。
       face: colorOfKind(it.kind), photo: it.images?.[0], label: categoryOfKind(it.kind),
       genre: genreOfKind(it.kind),

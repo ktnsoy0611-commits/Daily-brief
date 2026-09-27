@@ -80,7 +80,8 @@ export function usePrepSuggest(state: AppState | null, persist: (next: AppState)
       for (const t of next.tasks ?? []) {
         const s = got[t.id];
         if (!s) continue;
-        t.suggestions = s;
+        // ★★「出発の目安」（`travel-`。`lib/travelHint.ts` が作る）は残す ―― 丸ごと差し替えると消える。
+        t.suggestions = [...(t.suggestions ?? []).filter((x) => x.id.startsWith("travel-")), ...s];
         t.suggestedAt = at;
       }
       persist(next);

@@ -517,6 +517,8 @@ export function layoutInRows(
   text: string, face: number, rows: number,
   boxW: number, boxH: number, halfWidth: (t: number) => number,
   basePx: number, minPx = 7,
+  /** ★行の割り方を渡すとき（山のタスク。`lib/lineBreak.ts`）。無ければ字数で揃える。 */
+  given?: string[],
 ): (FitResult & { ys: number[] }) | null {
   const chars = [...(text ?? "").trim()];
   if (!chars.length || boxW <= 1 || boxH <= 1) return null;
@@ -525,7 +527,7 @@ export function layoutInRows(
   const pitch = boxH / n;
   // ★行は**必ず段の数だけ**に割る（文字数がなるべく揃うように）。
   //   ★文字が段より少ないときは行が足りないので、**使う段を上下の中央へ寄せる**。
-  const parts = splitLines(text.trim(), n);
+  const parts = given && given.length ? given.slice(0, n) : splitLines(text.trim(), n);
   const k = parts.length;
   const off = (n - k) / 2;
   const ys = parts.map((_, i) => -boxH / 2 + pitch * (i + off + 0.5));

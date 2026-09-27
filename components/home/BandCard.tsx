@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { groundOf } from "@/components/AppBackdrop";
 import { INK, PAPER, SANS, SOFT_SHADOW_LG, mixHex } from "@/lib/constants";
-import { img } from "@/lib/helpers";
+import { haptic, img } from "@/lib/helpers";
 import { PillContent, pillBoxStyle } from "./BandPill";
 import { PAN_SLOP, PILL_EDGE } from "@/lib/pullDrag";
 import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
@@ -311,7 +311,7 @@ export function NewsPill({ item, h, onHold }: {
     setGrab(null);
     function openTap() {
       const r = ref.current?.getBoundingClientRect();
-      if (r) { lock(true); setCard({ from: { x: r.x, y: r.y, w: r.width, h: r.height }, tap: true }); }
+      if (r) { haptic(6); lock(true); setCard({ from: { x: r.x, y: r.y, w: r.width, h: r.height }, tap: true }); }
     }
   }, [lock]);
 

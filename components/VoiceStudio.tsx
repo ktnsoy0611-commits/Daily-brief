@@ -5,9 +5,9 @@ import { ms, T_OUT, T_STEP } from "@/lib/motion";
 import { drawPixelScreen, waveCols, type Tone } from "@/lib/pixelScreen";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CARD_RADIUS, CHARCOAL, INK, JOURNAL_FACE, MUTED, SANS, SCHEME, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
+import { CARD_RADIUS, CHARCOAL, INK, JOURNAL_FACE, MUTED, SANS, SCHEME, SOFT_SHADOW_LG, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { hubPath } from "@/lib/reelHub";
-import { RECORDER_AR, RECORDER_BEZEL_PER_W, RECORDER_DECK_GAP_PER_H, RECORDER_DECK_H_PER_W, RECORDER_DECK_Y_PER_W, RECORDER_KEY_LIP_PER_H, RECORDER_REEL_CY_PER_W, RECORDER_REEL_D_PER_W } from "@/lib/recorder";
+import { RECORDER_AR, RECORDER_BEZEL_PER_W, RECORDER_DECK_GAP_PER_H, RECORDER_DECK_H_PER_W, RECORDER_DECK_Y_PER_W, RECORDER_INNER_W_PER_W, RECORDER_KEY_LIP_PER_H, RECORDER_REEL_CY_PER_W, RECORDER_REEL_D_PER_W, RECORDER_SCREEN_H_PER_W, RECORDER_SCREEN_Y_PER_W } from "@/lib/recorder";
 import { PILE_INSET } from "@/lib/pileBox";
 import { bodyInkOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
@@ -339,7 +339,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
 
   // キーの段（左の円＝REC の穴／右のバー＝残り3つの穴）。★幅は円の直径と同じ。
   const deckH = bodyW * RECORDER_DECK_H_PER_W;
-  const deckW = RD;
+  const deckW = bodyW * RECORDER_INNER_W_PER_W;
   const deckLeft = bodyLeft + bezel;
   const deckTop = bodyTop + bodyW * RECORDER_DECK_Y_PER_W;
   const keyLip = deckH * RECORDER_KEY_LIP_PER_H;
@@ -361,9 +361,13 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // ★★★**ドット表示の窓**（第133巡にユーザー指定「**円盤とボタンの間に黒い、ドット絵が表示されるような
   //   スクリーン**」）。幅は段と同じ（円の直径）。上は円から `SPACE.sm`、下はキーのラベルの上に `SPACE.sm`。
   //   ★中身（時間・状態・波形・合図）は全部この窓の点が描く（`lib/pixelScreen.ts`）。
-  const scrTop = cy + RD / 2 + SPACE.sm;
-  const scrBottom = deckTop - SPACE.xs - TYPE.nano * LEAD.flat - SPACE.sm;
-  const scrH = Math.max(SPACE.xxl, scrBottom - scrTop);
+  const scrTop = bodyTop + bodyW * RECORDER_SCREEN_Y_PER_W;
+  // ★★キーのラベル（段の上 `SPACE.xs`・字高 `TYPE.nano`）とは必ず `SPACE.xs` 空ける（小さい画面の安全網）。
+  const scrH = Math.max(SPACE.xxl, Math.min(bodyW * RECORDER_SCREEN_H_PER_W,
+    deckTop - SPACE.xs * 2 - TYPE.nano * LEAD.flat - scrTop));
+  // ★★★**窓の角は本体の角と同心**（第133巡にユーザー指定「**窓の角のカーブを外側の枠の角丸の四角と合わせて**」）
+  //   ＝ 本体の角丸 − 左右のベゼル（358 幅で 32 − 24 ＝ 8）。同じ中心の弧になるので、縁の幅がどこでも揃う。
+  const scrR = Math.max(RADIUS.sm, CARD_RADIUS - bezel);
 
   // ---- 波形を描く ------------------------------------------------------------
   const draw = useCallback(() => {
@@ -679,6 +683,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             left: bodyLeft, top: bodyTop, width: bodyW, height: bodyH,
             background: JOURNAL_FACE,
             borderRadius: CARD_RADIUS,   /* ★札と同じ角（タブバーのピルの半径） */
+            boxShadow: SOFT_SHADOW_LG,   /* ★★Explore の札と同じ影（第133巡にユーザー指定） */
           }}
         />
       )}
@@ -747,7 +752,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       <div aria-hidden style={{
         position: "absolute", zIndex: 2, pointerEvents: "none",
         left: deckLeft, top: scrTop, width: deckW, height: scrH,
-        background: INK, borderRadius: RADIUS.lg,
+        background: INK, borderRadius: scrR,
         opacity: shown && !leaving ? 1 : 0,
         transition: "opacity var(--t-item) var(--ease-settle)",
       }}>

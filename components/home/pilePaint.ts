@@ -651,7 +651,48 @@ function traceSilhouette(c: CanvasRenderingContext2D, p: Piece): void {
  * ★影の canvas を丸ごと描き直す（細かさ `PILE_SHADOW.res`。山の絵を描いたフレームだけ呼ぶ）。
  * ★持ち上がった図形の影は**濃く・遠く**、押した図形の影は図形と一緒に潰れる。
  */
-export function drawPileShadows(cv: HTMLCanvasElement, pieces: Piece[], w: number, h: number, skip?: string | null): void {
+/**
+ * ★★★**床と壁の接地の影**（第133巡にユーザー指定「**図形が床や壁に近づいた部分に少しだけ影を落として**」）。
+ * 体の輪郭の点のうち床（壁）から `CONTACT` 以内のものを集め、その範囲の床（壁）の上に**細い楕円**を置く。
+ * 近いほど濃い（離れると消える）。平らに寝たピルは広く、角だけ触れた図形は小さく落ちる。
+ * ★ぼかしは影の canvas の CSS がまとめて掛ける。★目盛りの外（絵の寸法）。
+ */
+const CONTACT = 14;
+const CONTACT_A = 0.2;
+const CONTACT_T = 2.5;
+const CONTACT_PAD = 6;
+export interface PileBounds { floor: number; left: number; right: number }
+function contactShadows(c: CanvasRenderingContext2D, p: Piece, env: PileBounds): void {
+  const vs = p.body.vertices;
+  const near = (gap: number) => (gap < CONTACT ? 1 - Math.max(0, gap) / CONTACT : 0);
+  // ★床
+  let x0 = Infinity; let x1 = -Infinity; let k = 0;
+  for (const v of vs) { const a = near(env.floor - v.y); if (a > 0) { x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); k = Math.max(k, a); } }
+  if (k > 0) {
+    c.fillStyle = `rgba(${SHADOW_RGB},${(CONTACT_A * k).toFixed(3)})`;
+    c.beginPath();
+    c.ellipse((x0 + x1) / 2, env.floor, (x1 - x0) / 2 + CONTACT_PAD, CONTACT_T, 0, 0, Math.PI * 2);
+    c.fill();
+  }
+  // ★左右の壁
+  for (const side of [-1, 1] as const) {
+    const wx = side < 0 ? env.left : env.right;
+    let y0 = Infinity; let y1 = -Infinity; let kw = 0;
+    for (const v of vs) {
+      const a = near(side < 0 ? v.x - wx : wx - v.x);
+      if (a > 0) { y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y); kw = Math.max(kw, a); }
+    }
+    if (kw <= 0) continue;
+    c.fillStyle = `rgba(${SHADOW_RGB},${(CONTACT_A * kw).toFixed(3)})`;
+    c.beginPath();
+    c.ellipse(wx, (y0 + y1) / 2, CONTACT_T, (y1 - y0) / 2 + CONTACT_PAD, 0, 0, Math.PI * 2);
+    c.fill();
+  }
+}
+
+export function drawPileShadows(
+  cv: HTMLCanvasElement, pieces: Piece[], w: number, h: number, skip?: string | null, env?: PileBounds,
+): void {
   const res = PILE_SHADOW.res;
   const pw = Math.max(1, Math.round(w * res)); const ph = Math.max(1, Math.round(h * res));
   if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
@@ -675,6 +716,7 @@ export function drawPileShadows(cv: HTMLCanvasElement, pieces: Piece[], w: numbe
     traceSilhouette(c, p);
     c.fill();
     c.restore();
+    if (env) contactShadows(c, p, env);
   }
 }
 

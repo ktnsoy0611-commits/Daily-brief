@@ -10,7 +10,7 @@ import {
   GRAVITY_Y, MASS_K, UNIT, buildPieces, clearOverlap, focusOf, ghostBodyOf, isLost, makeWalls,
   refitPile, respawn, sink, type Piece,
 } from "./pileWorld";
-import { floorYOf } from "@/lib/pileBox";
+import { PILE_INSET, floorYOf } from "@/lib/pileBox";
 import { SPACE } from "@/lib/tokens";
 import { bandAim, bandBus } from "./bandMotion";
 import { inCardShape } from "@/lib/cardShape";
@@ -929,7 +929,9 @@ export function Pile({
             ctx.restore();
           }
           // ★★影は別の canvas（細かさ 1/2・ぼかしは CSS）。絵を描いたフレームだけ丸ごと描き直す。
-          if (shRef.current) drawPileShadows(shRef.current, now2, w, h, hide);
+          if (shRef.current) {
+            drawPileShadows(shRef.current, now2, w, h, hide, { floor: floorY, left: PILE_INSET, right: w - PILE_INSET });
+          }
           // ★★焼き切れなかったぶんは次のフレームで焼く（代役のまま残さない）。
           if (bakeDeferred()) { dirtyRef.current = true; wake(); }
         } else {

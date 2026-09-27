@@ -1,6 +1,6 @@
-import { BAND_BEZEL, BAND_H, BD_GREY, DISPLAY, MUTED, mixHex } from "@/lib/constants";
+import { BAND_BEZEL, BAND_H, BD_GREY, DISPLAY, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
-import { CASSETTE_R_PER_H, CASSETTE_TAB_H_PER_H, drawCassette } from "@/lib/cassette";
+import { traceHub } from "@/lib/reelHub";
 import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
 import { clampRows, halfWidthAtStack, stackOutline } from "@/lib/solid";
 import { rowsOf } from "@/lib/taskSize";
@@ -218,37 +218,34 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
 }
 
 /**
- * カセットを1枚焼く（★合成の絵なので毎フレーム描かない。`taskBitmap` と同じ作法）。
+ * ★★★JOURNAL の円を1枚焼く（第133巡）。**墨の円に `MUTED` の芯**（録音画面の回る円と
+ * 同じ ―― 芯の形は `lib/reelHub.ts` の1か所）。★芯の点の列を毎フレーム引かないよう焼く。
  * 返る `w`/`h` は**余白を含む整数の箱**。
  */
-export function cassetteBitmap(p: Piece, dpr: number): Baked | undefined {
-  if (!p.w || !p.h) return undefined;
-  const pw = Math.ceil(p.w); const ph = Math.ceil(p.h);
-  // ★★★**左上の突起は本体の外へ出る**（第99巡）ので、焼き箱を**四方に広げる**。
-  //   `BAKE_PAD`(1) のままだと突起の頭が切れる（実機の山で切れていた）。
-  //   ★四方に同じだけ広げるので、**本体の中心は箱の中心のまま**＝貼る位置は変わらない。
-  const pad = Math.ceil(ph * CASSETTE_TAB_H_PER_H) + BAKE_PAD;
-  const w = pw + pad * 2; const h = ph + pad * 2;
-  const key = ["cassette", w, h, p.face, p.ink, dpr.toFixed(2)].join("|");
+export function reelBitmap(p: Piece, dpr: number): Baked | undefined {
+  if (!p.r) return undefined;
+  const d = Math.ceil(p.r * 2) + BAKE_PAD * 2;
+  const key = ["reel", d, p.face, p.ink, dpr.toFixed(2)].join("|");
   const hit = bakeCache.get(key);
   if (hit) return hit;
   // ★★**1フレームの予算を使い切ったら、今回は代役で描く**（上の `BAKE_PER_FRAME`）。
   if (bakeLeft <= 0) { bakeSkipped = true; return undefined; }
   bakeLeft -= 1;
   const cv = document.createElement("canvas");
-  cv.width = Math.max(2, Math.round(w * dpr));
-  cv.height = Math.max(2, Math.round(h * dpr));
+  cv.width = Math.max(2, Math.round(d * dpr));
+  cv.height = Math.max(2, Math.round(d * dpr));
   const ctx = cv.getContext("2d");
   if (!ctx) return undefined;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingQuality = "high";
-  // ★原点を絵の中心へ（`drawCassette` は中心に描く）。
-  ctx.translate(w / 2, h / 2);
-  // ★★★**芯はグレー**（2026-09-13・第101巡にユーザー指定「円の中の線は白ではなく
-  //   グレーにしてあまり目立たないように」）。★★**ここだけ `bodyInkOn` から外れる**
-  //   ―― 芯は「面の上で読ませる文字」ではなく**控えめに在る部品**だから。
-  //   墨の円の上で比 4.3（白は 11.25）。
-  drawCassette(ctx, pw, ph, p.face, p.ink, MUTED);
+  ctx.translate(d / 2, d / 2);
+  ctx.fillStyle = p.face;
+  ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill();
+  // ★★★**芯はグレー**（第101巡にユーザー指定「白ではなくグレーにしてあまり目立たないように」）。
+  ctx.fillStyle = p.ink;
+  traceHub(ctx, p.r * 2);
+  ctx.fill();
+  const w = d; const h = d;
   const made = { canvas: cv, w, h };
   if (bakeCache.size > 80) bakeCache.clear();
   bakeCache.set(key, made);
@@ -495,8 +492,6 @@ export function drawBoxOf(p: Piece): Box {
   //     歪んだ形ではなく**前のフレームの拭き残し**だった。
   //   ★倍率は `lib/cardShape.ts` の `cardShapeReach`（**点の列から導く**）。
   if (p.kind === "offer" && p.shape) r *= cardShapeReach(p.shape);
-  // ★★カセットだけは**突起が本体の外へ出る**ので、焼き箱と同じだけ広げる。
-  if (p.kind === "cassette" && p.h) r += p.h * CASSETTE_TAB_H_PER_H;
   r += PAINT_PAD;
   return { x0: x - r, y0: y - r, x1: x + r, y1: y + r };
 }
@@ -561,16 +556,14 @@ export function drawPile(
         ctx.closePath();
         ctx.fill();
       }
-    } else if (p.kind === "cassette" && p.w && p.h) {
-      // ★★**タブのアイコンと同じカセット**（`lib/cassette.ts`。タブの SVG と
-      //   同じ数を読む）。★合成の絵なので**焼いてから貼る**。
-      const bmp = cassetteBitmap(p, dpr);
+    } else if (p.kind === "reel" && p.r) {
+      // ★★**録音画面の回る円そのもの**（第133巡）。★合成の絵なので**焼いてから貼る**。
+      const bmp = reelBitmap(p, dpr);
       if (bmp) ctx.drawImage(bmp.canvas, -bmp.w / 2, -bmp.h / 2, bmp.w, bmp.h);
       else {
-        // ★★焼く前の代役は**本体の面だけ**（第131巡）。全部を直に描くと、焼く予算が
-        //   尽きているあいだ毎フレーム芯の点の列まで引き直すことになる。
+        // ★焼く前の代役は**墨の面だけ**（芯の点の列を毎フレーム引かない）。
         ctx.beginPath();
-        ctx.roundRect(-p.w / 2, -p.h / 2, p.w, p.h, p.h * CASSETTE_R_PER_H);
+        ctx.arc(0, 0, p.r, 0, Math.PI * 2);
         ctx.fill();
       }
     } else if (p.kind === "word") {

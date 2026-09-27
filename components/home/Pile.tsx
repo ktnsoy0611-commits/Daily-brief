@@ -1067,7 +1067,7 @@ export function Pile({
     const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
     const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
     // ★★★**円で描くものは半径で見る**（忘れると押しても飛ばない）。
-    //   ★★カセット（`cassette`）は**四角**なので下の枝（箱で見る）へ入る。
+    //   ★★JOURNAL の円（`reel`。第133巡）も半径で見る。
     if (p.kind === "offer" && p.r && p.shape) {
       // ★★★**提案は「絵と同じ形」で見る**（2026-09-18・第121巡）。絵は
       //   `traceCardShape(…, p.r * 2)` ＝ **2r 四方いっぱい**なので、`p.r` の円で
@@ -1077,7 +1077,7 @@ export function Pile({
       const k = p.r * 2 + slop * 2;
       return inCardShape(p.shape, lx / k, ly / k);
     }
-    if (p.kind === "offer" && p.r) {
+    if ((p.kind === "offer" || p.kind === "reel") && p.r) {
       return Math.hypot(dx, dy) <= p.r + slop;
     }
     const pw = p.w ?? 0; const ph = p.h ?? 0;

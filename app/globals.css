@@ -397,38 +397,8 @@ button:active {
 @keyframes vs-spin { to { transform: rotate(360deg); } }
 .vs-reel-spin { animation: vs-spin var(--t-amb-reel) linear infinite; }
 
-/* ★円が左右から入ってくる。画面を開いたときと、録音を始めた瞬間に流す。
-   ★fill-mode は **backwards**。both にすると、入場が終わったあとも最後の
-   コマの transform が残り続け、切り出しのときに JS がインラインで書く
-   rotate() を上書きしてしまう(§21 で踏んだのと同じ罠)。 */
-@keyframes vs-dial-in-l {
-  from { transform: translateX(-46%); opacity: 0; }
-  to   { transform: translateX(0); opacity: 1; }
-}
-@keyframes vs-dial-in-r {
-  from { transform: translateX(46%); opacity: 0; }
-  to   { transform: translateX(0); opacity: 1; }
-}
-.vs-dial-in-l, .vs-dial-in-r {
-  animation-duration: var(--t-in);
-  animation-timing-function: var(--ease-settle);
-  animation-fill-mode: backwards;
-}
-.vs-dial-in-l { animation-name: vs-dial-in-l; }
-.vs-dial-in-r { animation-name: vs-dial-in-r; }
-/* 回転(録音中)と入場が同時に掛かるときは、入場を先に見せてから回す。 */
-.vs-dial-in-l.vs-reel-spin, .vs-dial-in-r.vs-reel-spin {
-  animation-name: vs-dial-in-l, vs-spin;
-  animation-duration: var(--t-in), var(--t-amb-reel);
-  animation-timing-function: var(--ease-settle), linear;
-  animation-delay: 0ms, var(--t-in);
-  animation-iteration-count: 1, infinite;
-  animation-fill-mode: backwards, none;
-}
-.vs-dial-in-r.vs-reel-spin { animation-name: vs-dial-in-r, vs-spin; }
-
-/* ★★★カセットの本体(円の後ろの青い面)。**左右へは動かさない** ――
-   本体は画面より広いので横に動かしても何も見えない。不透明度だけ円に合わせる。 */
+/* ★★★録音機の本体・キーの段・回る円(第133巡)。**不透明度だけで入退場する**。
+   ★第132巡までの「円が左右から入る/出ていく」(vs-dial-*)は円が1つになったので削除した。 */
 @keyframes vs-plate-in  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes vs-plate-out { from { opacity: 1; } to { opacity: 0; } }
 .vs-plate-in {
@@ -437,29 +407,6 @@ button:active {
 .vs-plate-out {
   animation: vs-plate-out var(--t-out) var(--ease-press) forwards;
 }
-
-/* ★円が左右へ出ていく(入場の逆)。オーバーレイを CANCEL で閉じるときに流す。
-   `animation-direction: reverse` では再生し直されない(名前が変わったときだけ
-   頭から走る)ので、専用のキーフレームを別名で用意している。
-   fill-mode は **forwards**。閉じ切って実際にアンマウントされるまで、
-   円が画面の外に留まっている必要があるため。 */
-@keyframes vs-dial-out-l {
-  from { transform: translateX(0); opacity: 1; }
-  to   { transform: translateX(-46%); opacity: 0; }
-}
-@keyframes vs-dial-out-r {
-  from { transform: translateX(0); opacity: 1; }
-  to   { transform: translateX(46%); opacity: 0; }
-}
-.vs-dial-out-l, .vs-dial-out-r {
-  animation-duration: var(--t-out);
-  /* ★ここだけ加速して消える(4本の語彙の例外)。ダイヤルは画面の外へ**捨てる**
-     動きで、`--ease-press` より深く沈ませたい。 */
-  animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
-  animation-fill-mode: forwards;
-}
-.vs-dial-out-l { animation-name: vs-dial-out-l; }
-.vs-dial-out-r { animation-name: vs-dial-out-r; }
 
 /* テープの帯。縞は repeating-linear-gradient(直線だけ)で、録音中は
    背景の位置を動かして流れて見せる。 */
@@ -484,8 +431,6 @@ button:active {
 
 @media (prefers-reduced-motion: reduce) {
   .vs-reel-spin, .vs-tape-run, .vs-blink, .vs-in,
-  .vs-dial-in-l, .vs-dial-in-r,
-  .vs-dial-out-l, .vs-dial-out-r,
   .vs-plate-in, .vs-plate-out { animation: none; }
 }
 

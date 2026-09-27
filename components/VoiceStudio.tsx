@@ -6,7 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, MUTED, PAPER, SANS, SCHEME, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { hubPath } from "@/lib/reelHub";
-import { CASSETTE, CASSETTE_ASPECT, CASSETTE_BOX_H_PER_H, CASSETTE_DECK_H, CASSETTE_DECK_W_PER_W, CASSETTE_DECK_X, CASSETTE_DECK_Y_PER_H, CASSETTE_KEY_LIP_PER_H, CASSETTE_R_PER_H, CASSETTE_REEL_CY_PER_H, CASSETTE_REEL_D_PER_H, CASSETTE_REEL_GAP_PER_W, CASSETTE_WAVE_CY_PER_D, CASSETTE_WAVE_H_PER_D, topRoundRadii } from "@/lib/cassette";
+import { RECORDER_AR, RECORDER_BEZEL_PER_W, RECORDER_DECK_GAP_PER_H, RECORDER_DECK_H_PER_W, RECORDER_DECK_Y_PER_W, RECORDER_KEY_LIP_PER_H, RECORDER_R_PER_W, RECORDER_REEL_CY_PER_W, RECORDER_REEL_D_PER_W } from "@/lib/recorder";
 import { PILE_INSET } from "@/lib/pileBox";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
@@ -16,31 +16,28 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 
 // ★声の記録の画面(2026-08-11)。純粋幾何学ミニマリズム。
 //
-// ■ 構図
-//   ・地は暖かみのある中間グレー。円はほぼ白で、地よりはっきり明るい
-//     (差が小さいと「背景に見える」と言われた)。
-//   ・画面の外に中心を置いた**巨大な円が2つ**、左右から寄ってくる。
-//     2つの円のあいだに残る細い縦の帯(砂時計の腰)がテープの通り道。
-//     腰の高さ=掴む高さ。タブの中では下寄り、全画面のオーバーレイでは
-//     画面の真ん中あたりに置く。
-//   ・波形は**円に重ならない**よう、腰の少し上に細く狭く置く。録音中は
-//     赤い線が立ち、録れた棒がその左へ流れる(線の右は点線=まだ録っていない)。
+// ■ 構図（★★★第133巡に組み直した）
+//   ・**縦長の角丸の四角（録音機の本体）に、回る円が1つ**。比・ベゼル・角丸は
+//     Explore の札と同じ（`lib/recorder.ts`）。札の写真の場所に円、題と本文の場所に
+//     「数字 → 波形」、下の1列の場所に「キーの段（左の円＝REC・右のバー＝3キー）」。
+//   ・録音中は赤い線が立ち、録れた棒がその左へ流れる(線の右は点線=まだ録っていない)。
 //     止めても**帯の大きさは変えず**、中心の線が左右2本へ分かれて全体表示
 //     (トリミング)になる。
-//   ・最下部にカセットの操作キーが4つ。
+//   ・切り出しは**円の左半分を回すと頭、右半分を回すと尻**（第132巡までの
+//     「左の円・右の円」の役を、1つの円の左右へ移した）。
 //
 // ■ 数字の扱い(ユーザー指定)
 //   ・**どれも強調しない**。録音中の経過も、録音後の長さも、細く小さく
 //     字間を広げて置くだけ。
-//   ・切り出し中の秒数は、**触っている円にだけ**出す。
+//   ・切り出し中の秒数は、**触っている半分の側にだけ**出す。
 //
 // ■ 手触り
-//   ・この画面が**ほぼ完全に見えた**ときに、円が左右から入ってくる
+//   ・この画面が**ほぼ完全に見えた**ときに、本体と円が浮かび上がる
 //     (★録音の開始では流さない。半分見えた時点で流すと、遷移の途中で
 //     円が既に定位置に見えているのに外へ飛んで入り直すことになる)。
 //   ・録音の開始/停止は **REC キーか円をタップしたときだけ**。余白は無反応。
 //   ・録音中は円がゆっくり回る。縁の目盛りで回転が読める。
-//   ・円を掴むと**その円だけ少しふくらむ**(縁の線の色は変えない)。
+//   ・円を掴むと**少しふくらむ**(縁の線の色は変えない)。
 //     iPhoneのWebアプリでは手応えが返らないので、目で分かる反応にしてある。
 //   ・指を離すと**惰性**で回り続け、摩擦で止まる。止まったところで長さを確定。
 //
@@ -78,17 +75,8 @@ const NOTCH = (15 * Math.PI) / 180;
 const TAP_SLOP = 0.05;
 /** 開始と終了が潰れないよう、最低これだけは残す。 */
 const MIN_SPAN = 0.04;
-// ★★★**円の大きさも位置も、もうここには無い**（2026-09-13・第96巡）。
-//   ユーザー指摘「**円と四角は大きさや位置関係が、アイコンの図形と違いすぎる**」。
-//   → **録音画面は「アイコンを拡大して画面に嵌めた絵」**になり、リールの直径・
-//   中心間・中心の高さは**全部 `lib/cassette.ts` の比から導く**。
-//   ★第95巡の `DIAL_RATIO` / `DIAL_CX` / `DIAL_WAIST`（腰を式で縛る仕掛け）は
-//   **役目を終えたので消した** ―― 腰＝リールの隙間も、いまはアイコンの比が決める。
-// ★★★**帯の高さと位置は `lib/cassette.ts` の比から導く**（2026-09-13・第100巡）。
-//   生の 58 / 136 はもう無い。`CASSETTE_WAVE_H_PER_D` / `CASSETTE_WAVE_CY_PER_D`。
-/** 録音中の帯は、円に**絶対に重ならない**幅までしか広げない（左右のベゼル）。
- *  ★★第100巡に 6 → `SPACE.lg`（ユーザー指定「ちゃんとベゼルもとって」）。 */
-const WAVE_MARGIN = SPACE.lg;
+// ★★★**円の大きさも位置も、ここには無い**（第96巡・第133巡）。録音機の比は
+//   `lib/recorder.ts`（Explore の札と同じ比・ベゼル・角丸）から導く。
 /** 録音中の赤い線を帯のどこに立てるか(左からの割合)。左が録れた分、
  *  右がまだ録っていない分(点線)。真ん中より右に置いて履歴を長く見せる。 */
 const REC_LINE_AT = 0.66;
@@ -108,10 +96,8 @@ const DECK_LIFT = SPACE.xl;
 //   → いまラベルは**キーと同じ中心の x へ絶対配置**（`bottom: calc(100% + …)`）なので、
 //   **ラベルの高さを誰も知らなくていい**。知らなければ食い違えない。
 // ★リールの芯（3本の太い線）の形は `lib/reelHub.ts`（ホームの山と共有）。
-// ★★★**キーが段の中に空ける黒い縁（`KEY_LIP`）も、径も、`lib/cassette.ts` から
-//   導く**（2026-09-13・第98巡）。第97巡は `SPACE.sm`（生の 8）だったが、
-//   **バーの幅がキーの数から決まるようになった**ので、縁も同じ式の中に居ないと
-//   3つのキーがバーに収まらない（`CASSETTE_KEY_LIP_PER_H` ＝ 段の高さの 1/8）。
+// ★★★**キーが段の中に空ける黒い縁（`KEY_LIP`）も、径も、`lib/recorder.ts` から
+//   導く**（第98巡）。`RECORDER_KEY_LIP_PER_H` ＝ 段の高さの 1/8。
 //   ★★**この1つの値が四方に回る** … バーの上下の縁・バーの端の丸のまわり・
 //   REC の穴のまわりが全部同じ値になる。
 /** キーが沈む深さ。★出っ張り(depth)ぶん浮いて見える。 */
@@ -131,7 +117,7 @@ const CROSS_LINE_PER_KEY = 1.5 / 42;
  *  **この幅だけ外へ広げて**、四方に影が回るようにする。下に三日月が出るだけでは
  *  実機で物として読めない。 */
 const WELL_LIP = 3;   // ★目盛りの外（部品の座標系）
-/** 円が外へ出ていくアニメーションの長さ(globals.css の vs-dial-out-* と揃える)。 */
+/** 閉じるアニメーションの長さ(globals.css の vs-plate-out と揃える)。 */
 const DIAL_OUT_MS = ms(T_OUT);
 /** ★これ未満の音は棒として描かない。小さい点が並ぶと汚く見えるため
  *  (ユーザー指定)。 */
@@ -183,14 +169,8 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // アプリの遷移中にどちらかがズレて必ず境目が出る。
   // 全画面のオーバーレイだけは列の外なので、自分で暗い地を塗る。
   const ground = dim ? DIM_GROUND : undefined;
-  // ★★★**カセットになった**（2026-09-13・第94巡にユーザー指定「円と角丸の四角が
-  //   組み合わさった形にする。**円の大きさや配置は絶対に変えない** ―― 円の後ろに
-  //   ブルーの四角が来る」）。タブのアイコン（`cassette`）と同じ塗り分け ――
-  //   **本体の四角＝青／リールの丸＝黒**。
-  //   ★★第93巡に円を青にしたが、アイコンでは四角が青・丸が黒なので**円は黒へ戻す**。
-  //     副産物として地とのコントラストが **2.02 → 11.25** に戻り、円の輪郭が
-  //     はっきり読めるようになった。
-  //   ・キーの面 `cap` … **どちらの画面でも白**（ユーザー指定・反転しない）。
+  // ★★★**本体は青・回る円は墨**（第94巡の塗り分けを第133巡の録音機でも保つ）。
+  //   墨の円と地の比は **11.25**。・キーの面 `cap` … **どちらの画面でも白**。
   const dial = INK;
   const cap = STUDIO.cap;
   //  地の上に直接いる文字（キーのラベル）は地から決まる。
@@ -202,7 +182,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // ★★★**リールの芯はグレー**（2026-09-13・第101巡にユーザー指定「円の中の線は
   //   白ではなくグレーにしてあまり目立たないように」）。★★**ここだけ `bodyInkOn`
   //   から外れる** ―― 芯は「面の上で読ませる文字」ではなく**控えめに在る部品**。
-  //   ★ホームの山のカセット（`pilePaint.ts`）と**同じ色**。
+  //   ★ホームの山の円（`pilePaint.ts` の `reelBitmap`）と**同じ色**。
   const tick = MUTED;
   // ★★★**ラベルは「青い本体」の上に載る**（2026-09-13・第96巡にラベルを段の外へ
   //   出した）。★面から導く ―― 地から決めていた `fg` も、第95巡に墨の段から
@@ -227,8 +207,8 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
 
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** ★回る円の芯の層（第133巡に円は1つになった）。 */
   const reelL = useRef<SVGSVGElement>(null);
-  const reelR = useRef<SVGSVGElement>(null);
   const timeRef = useRef<HTMLDivElement>(null);
   const markL = useRef<HTMLDivElement>(null);
   const markR = useRef<HTMLDivElement>(null);
@@ -322,70 +302,41 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   const w = size.w || 390;
   const h = size.h || 620;
 
-  // ---- カセット ── **アイコンを拡大して画面に嵌める** ------------------------
-  // ★★★**組み立ての向きが第95巡からまた変わった**（2026-09-13・第96巡）。
-  //   前は「キーの列 → 下の段 → 本体 → 円」と**下から積んで**いたので、
-  //   円と本体の比が**アイコンと似ても似つかなかった**（実測 … リールの直径 ÷
-  //   本体の高さ が、アイコン 0.457 に対して録音画面は 0.78）。
-  //   いまは **「下の段の幅 → 本体 → リール」**。本体から下は**全部アイコンの比**
-  //   （`lib/cassette.ts` の `CASSETTE_*_PER_*`）で、ここでは1つも数を持たない。
-  // ★★★**大きさは2つの見張りの小さいほうで決まる** ――
-  //   ① 下の段が画面に収まること（左右 `SPACE.lg`）
-  //   ② 本体が**題の `SPACE.lg` 下**から始まること
-  //   ★★★**第98巡に段が痩せた**（本体幅の 50% → **38.3%**。キー3つが詰まる幅に
-  //   なったため）ので、**②が勝つ**ようになった。その結果 ――
-  //   ・本体は**題のすぐ下から始まる**（ユーザー指摘「全体的に下によりすぎ」が消える）
-  //   ・段は**画面の端まで届かない**（ユーザー指摘「四角に対する穴の大きさが違う」。
-  //     第97巡は段が 358px ＝ 画面いっぱいで、アイコンの「四角の中の小さな機構」に
-  //     見えなかった）
-  //   ・本体は段の 2.6 倍の幅なので**やはり画面からはみ出す**
-  //     ＝ ユーザー指定「**画面外にはみ出している感じは維持**」は保たれる。
-  // ★`navHeightPx()` を使う ―― `.app-nav` の矩形は `NAV_H` と一致しない
-  //   （Chromium 81px／実機 132px）。自分で測らない。
-  const deckWWant = Math.max(120, w - PILE_INSET * 2);
+  // ---- 録音機 ── **縦長の角丸の四角に、回る円が1つ**（2026-09-27・第133巡） ----
+  // ★★★ユーザー指定「**今ある二つの円を一つにして、その分横幅を狭めて、Explore の
+  //   カードとデザインを統一し、縦長の角丸の四角に、回転する円が付いているデバイス**」。
+  //   ★比・ベゼル・角丸は**札と同じ**（`lib/recorder.ts`）。札の写真の正方形の場所に
+  //   回る円、写真の下の「題・本文・下の1列」の場所に「数字・波形・キーの段」。
+  // ★★第94〜132巡のカセット（横長の本体・リール2つ・突起）は削除した。復活させない。
+  // ★★大きさは**札と同じ決め方** … 幅は列の内寸（左右 `SPACE.lg`）、高さが足りなければ
+  //   高さから幅を決める。余った高さは上下に等分する。
+  // ★`navHeightPx()` を使う ―― `.app-nav` の矩形は `NAV_H` と一致しない。自分で測らない。
   const bodyBottom = h - navHeightPx() - DECK_LIFT;
-  // ★★**上の見張り** … 本体が題（Masthead）に掛かるなら、そこまでで頭を押さえる。
-  const plateH = Math.min(
-    (deckWWant / CASSETTE_DECK_W_PER_W) / CASSETTE_ASPECT,
-    // ★★★**見張るのは本体ではなく「突起を含む外接箱」**（2026-09-13・第99巡）。
-    //   左上の突起は本体の上へ出るので、本体だけで測ると突起が題に掛かる。
-    Math.max(200, (bodyBottom - BAND_TOP - SPACE.lg) / CASSETTE_BOX_H_PER_H),
-  );
-  const plateW = plateH * CASSETTE_ASPECT;
-  const plateTop = bodyBottom - plateH;
-  const plateCx = w / 2;
+  const topLimit = BAND_TOP + SPACE.lg;
+  const availH = Math.max(200, bodyBottom - topLimit);
+  const bodyW = Math.min(Math.max(120, w - PILE_INSET * 2), availH * RECORDER_AR);
+  const bodyH = bodyW / RECORDER_AR;
+  const bodyTop = topLimit + Math.max(0, (availH - bodyH) / 2);
+  const bodyLeft = (w - bodyW) / 2;
+  const bezel = bodyW * RECORDER_BEZEL_PER_W;
 
-  // リール（大きな円2つ）。★直径も中心もアイコンの比が決める。
-  const RD = plateH * CASSETTE_REEL_D_PER_H;
-  const cy = plateTop + plateH * CASSETTE_REEL_CY_PER_H;
-  const reelGap = plateW * CASSETTE_REEL_GAP_PER_W;
-  const cxL = plateCx - reelGap / 2;
-  const cxR = plateCx + reelGap / 2;
+  // 回る円（1つ）。★直径 ＝ 札の写真の正方形（幅 − ベゼル×2）。
+  const RD = bodyW * RECORDER_REEL_D_PER_W;
+  const cx = w / 2;
+  const cy = bodyTop + bodyW * RECORDER_REEL_CY_PER_W;
 
-  // 下の段（左の円＝REC の穴／右のバー＝残り3つの穴）。
-  // ★★★**本体の下の縁には接していない**（2026-09-13・第98巡にユーザー指定
-  //   「**バーは図形の端に余白をとってください**」）。段の高さぶん浮いている。
-  //   だから `bodyBottom − deckH` ではなく**比から置く**。
-  const deckH = plateH * (CASSETTE_DECK_H / CASSETTE.body.h);
-  const deckW = plateW * CASSETTE_DECK_W_PER_W;
-  const deckLeft = plateCx - plateW / 2 + plateW * (CASSETTE_DECK_X / CASSETTE.body.w);
-  const deckTop = plateTop + plateH * CASSETTE_DECK_Y_PER_H;
-  const keyLip = deckH * CASSETTE_KEY_LIP_PER_H;
+  // キーの段（左の円＝REC の穴／右のバー＝残り3つの穴）。★幅は円の直径と同じ。
+  const deckH = bodyW * RECORDER_DECK_H_PER_W;
+  const deckW = RD;
+  const deckLeft = bodyLeft + bezel;
+  const deckTop = bodyTop + bodyW * RECORDER_DECK_Y_PER_W;
+  const keyLip = deckH * RECORDER_KEY_LIP_PER_H;
   const knobD = deckH;
-  const barLeft = deckLeft + knobD
-    + plateW * ((CASSETTE.bar.x - (CASSETTE.knob.x + CASSETTE.knob.r)) / CASSETTE.body.w);
+  const barLeft = deckLeft + knobD + deckH * RECORDER_DECK_GAP_PER_H;
   const barW = deckLeft + deckW - barLeft;
-  // ★★★**キーの径は段の高さから導く**（2026-09-13・第97巡）。四方の黒い縁が
-  //   `keyLip` で揃う（上下＝段の縁、左右＝バーの端の丸）。生の 42 は捨てた。
+  // ★★★**キーの径は段の高さから導く**（第97巡）。四方の黒い縁が `keyLip` で揃う。
   const keyD = Math.max(24, deckH - keyLip * 2);
   // ★★★**3つのキーはバーの「端の丸」と「中心」に同心で置く**（第97巡）。
-  //   `space-evenly` をやめた理由 ―― 端の余白が 28.8 になり、上下の 8 と揃わず、
-  //   バーの丸い端とキーの丸が**別の中心**を持ってしまう（ユーザー指摘
-  //   「ボタンの位置がバーの線とアラインされていない」）。
-  //   ★★★**バーの幅が `2.75 × deckH` になった**（第98巡）ので、端の丸と同心に
-  //   置くだけで**3つの隔がちょうど `keyLip`** になる ―― ユーザー指摘
-  //   「ボタンとボタンの間隔を取りすぎ。もっと詰めて」（実測の隔 33.6 → 約 10）。
-  //   ★バーの角丸は `deckH/2` なので、端の丸の中心は端から `deckH/2`。
   const barX = barLeft - deckLeft;
   const keyCx = {
     rec: knobD / 2,                       // 左の円（REC の穴）の中心
@@ -394,26 +345,14 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
     cancel: barX + barW - deckH / 2,      // バーの右の端の丸の中心
   };
 
-  // ---- 波形の帯の置き場 ------------------------------------------------------
-  // ★★★**リールとリールのあいだの「上あたり」**（2026-09-13・第100巡にユーザー指定。
-  //   第99巡はリールより上へ出ていた）。位置も高さも**リールの直径から**導く。
-  // ★幅は円の式から。中心から dy 離れた高さでの左右の隙間
-  //   = (cxR - cxL) - 2*sqrt(R^2 - dy^2)。帯の上端/下端のうち中心に近い方で決まる。
-  //   ★★だから帯を**リールの上寄り**に置くほど隙間が広く取れる（生の 136 の正体）。
-  const waveH = Math.round(RD * CASSETTE_WAVE_H_PER_D);
-  const waveCy = cy - RD * CASSETTE_WAVE_CY_PER_D;
-  const gapAt = (dy: number) => {
-    const s = (RD / 2) * (RD / 2) - dy * dy;
-    return (cxR - cxL) - 2 * (s > 0 ? Math.sqrt(s) : 0);
-  };
-  const nearDy = Math.max(0, Math.abs(waveCy - cy) - waveH / 2);
-  const waveW = Math.max(90, Math.min(w - 52, gapAt(nearDy) - 2 * WAVE_MARGIN));
-  // ★★★**数字はリールの下の隙間へ**（2026-09-13・第98巡）。リールが上がり本体が
-  //   伸びたので、上の隙間（本体の上の縁〜リールの上端）は**帯だけで埋まる**。
-  //   上下の隙間は**どちらも本体の高さの 1.6/14** なので、**帯は上・数字は下**に
-  //   置くと左右対称ならぬ上下対称になる（カセットデッキのカウンタの位置）。
+  // ---- 数字と波形 ── 円と段のあいだ（札の「題と本文」の場所） ------------------
+  // ★上から「数字 → 波形」。段の上にはキーのラベルが乗るので `SPACE.lg` 空ける。
   const timeH = TYPE.head * LEAD.flat;   // ★数字1行の高さ（下の `<div>` と同じ組み）
-  const timeTop = (cy + RD / 2 + deckTop) / 2 - timeH / 2;
+  const gapTop = cy + RD / 2;
+  const timeTop = gapTop + SPACE.sm;
+  const waveH = Math.max(SPACE.lg, deckTop - SPACE.lg - (timeTop + timeH + SPACE.sm) - SPACE.sm);
+  const waveCy = timeTop + timeH + SPACE.sm + waveH / 2;
+  const waveW = RD;
 
   // ---- 波形を描く ------------------------------------------------------------
   const draw = useCallback(() => {
@@ -625,7 +564,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
     let vel = vel0;
     let notch = 0;
     setCoasting(true);
-    const el = side === "L" ? reelL.current : reelR.current;
+    const el = reelL.current;
     const step = () => {
       vel *= COAST_FRICTION;
       const delta = vel * 16;
@@ -651,18 +590,19 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
 
   useEffect(() => stopCoast, [stopCoast]);
 
-  /** ★指がどちらの円の上にあるか。器の左上からの座標で見る。
-   *  円は中心が画面の外にあるので、矩形ではなく円の式で判定すること。 */
+  /** ★★★指が円の**どちらの半分**の上にあるか（第133巡。円は1つになった）。
+   *  **左半分を回すと頭（start）、右半分を回すと尻（end）**を切り出す ――
+   *  第132巡までの「左の円・右の円」の役を、1つの円の左右へそのまま移した。
+   *  ★矩形ではなく円の式で判定すること。 */
   const dialAt = useCallback((clientX: number, clientY: number): "L" | "R" | null => {
     const box = boxRef.current;
     if (!box) return null;
     const r = box.getBoundingClientRect();
     const x = clientX - r.left, y = clientY - r.top;
     const rr = RD / 2;
-    if ((x - cxL) ** 2 + (y - cy) ** 2 <= rr * rr) return "L";
-    if ((x - cxR) ** 2 + (y - cy) ** 2 <= rr * rr) return "R";
-    return null;
-  }, [RD, cxL, cxR, cy]);
+    if ((x - cx) ** 2 + (y - cy) ** 2 > rr * rr) return null;
+    return x < cx ? "L" : "R";
+  }, [RD, cx, cy]);
 
   /** ★円の上で指を下ろしたとき。**録音していなくても回して遊べる**
    *  (ユーザー指定)。切り出しに反映するのは review のときだけで、
@@ -672,9 +612,9 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
     const box = boxRef.current;
     if (!box) return;
     const r = box.getBoundingClientRect();
-    const ox = r.left + (side === "L" ? cxL : cxR);
+    const ox = r.left + cx;
     const oy = r.top + cy;
-    const el = side === "L" ? reelL.current : reelR.current;
+    const el = reelL.current;
     stopCoast();
     dragRef.current = {
       id: e.pointerId, side, ang: Math.atan2(e.clientY - oy, e.clientX - ox),
@@ -703,7 +643,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       d.vel = d.vel * 0.6 + (delta / dt) * 0.4;
       if (Math.abs(d.notch) >= NOTCH) { haptic(9); d.notch = 0; }
       d.moved += Math.abs(delta);
-      applyDial(d.side === "L" ? reelL.current : reelR.current, d.rot);
+      applyDial(reelL.current, d.rot);
       // 切り出しに効くのは review のときだけ。それ以外はただ回るだけ。
       if (reviewRef.current) advanceTrim(d.side, delta);
     };
@@ -711,7 +651,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       const d = dragRef.current;
       if (d && ev.pointerId !== d.id) return;
       if (d) {
-        const el = d.side === "L" ? reelL.current : reelR.current;
+        const el = reelL.current;
         if (el) el.dataset.rot = String(d.rot);
       }
       dragRef.current = null;
@@ -728,14 +668,14 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
-  }, [cxL, cxR, cy, advanceTrim, startCoast, stopCoast]);
+  }, [cx, cy, advanceTrim, startCoast, stopCoast]);
 
   // ★いつでも押せる取り消し。録音中でも切り出し中でも、その録音を捨てて
   // 最初の状態へ戻す(hook 側の cancel が状態に応じて処理を分ける)。
   const cancelAll = useCallback(() => {
     stopCoast();
     trimRef.current = { start: 0, end: 1 };
-    for (const el of [reelL.current, reelR.current]) {
+    for (const el of [reelL.current]) {
       if (!el) continue;
       el.dataset.rot = "0";
       el.style.transform = "";
@@ -795,13 +735,10 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         pointerEvents: leaving ? "none" as const : undefined,
       } : null),
     }}>
-      {/* ★★★**カセットの本体**（2026-09-13・第94巡）。円の**後ろ**（`zIndex: 0`）に
-          敷く青い角丸の面。★★**円の `div` の中に入れないこと** ―― 円はそれ自身が
-          `background` ＋ `borderRadius: 50%` の面で、録音中は `.vs-reel-spin` が
-          掛かるので、中に入れた本体も**一緒に回ってしまう**。
-          ★入退場は円と同じ曲線で、**左右へは動かさない**（本体は画面より広いので
-          横に動かしても何も起きない）。不透明度だけ合わせる。
-          ★`pointerEvents: none` … 掴めるのは**円だけ**（`dialAt` は円の式で判定する）。 */}
+      {/* ★★★**録音機の本体**（2026-09-27・第133巡）。**縦長の角丸の四角** ――
+          Explore の札と同じ比・同じ角丸（`lib/recorder.ts`）。面は JOURNAL の青。
+          ★★**円の `div` の中に入れないこと** ―― 録音中は円の芯が回るので、中に
+          入れると一緒に回る。★`pointerEvents: none` … 掴めるのは**円だけ**。 */}
       {shown && (
         <div
           key={`plate-${enterKey}`}
@@ -809,43 +746,14 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           aria-hidden
           style={{
             position: "absolute", zIndex: 0, pointerEvents: "none",
-            width: plateW, height: plateH,
-            left: plateCx - plateW / 2, top: plateTop,
+            left: bodyLeft, top: bodyTop, width: bodyW, height: bodyH,
             background: JOURNAL_FACE,
-            borderRadius: plateH * CASSETTE_R_PER_H,   /* ★目盛りの外（図形の座標系＝アイコンの比） */
+            borderRadius: bodyW * RECORDER_R_PER_W,   /* ★目盛りの外（札の RADIUS.xl を幅の比で） */
           }}
         />
       )}
-      {/* ★★★**左上の四角い突起2つ**（2026-09-13・第99巡にユーザー指定）。
-          **本体の上の縁から上へ出る**ので、高さの見張りは外接箱を見ている
-          （`CASSETTE_BOX_H_PER_H`）。★寸法も位置もアイコンの比から導く。 */}
-      {shown && CASSETTE.tabs.map((t, i) => (
-        <div
-          key={`tab-${i}-${enterKey}`}
-          className={leaving ? "vs-plate-out" : "vs-plate-in"}
-          aria-hidden
-          style={{
-            position: "absolute", zIndex: 0, pointerEvents: "none",
-            width: plateW * (t.w / CASSETTE.body.w),
-            height: plateH * (t.h / CASSETTE.body.h),
-            /* ★目盛りの外（図形の座標系＝アイコンの比） */
-            left: plateCx - plateW / 2 + plateW * ((t.x - CASSETTE.body.x) / CASSETTE.body.w),
-            /* ★目盛りの外（同上） */
-            top: plateTop + plateH * ((t.y - CASSETTE.body.y) / CASSETTE.body.h),
-            background: INK,
-            // ★★**丸めるのは上の2隅だけ**（第100巡）。形は `lib/cassette.ts` の1か所から。
-            borderRadius: topRoundRadii(plateH * (t.r / CASSETTE.body.h))
-              .map((v) => `${v}px`).join(" "),
-          }}
-        />
-      ))}
-      {/* ★★★**下の段 ―― 左の円とバー**（2026-09-13・第95巡にユーザー指定
-          「下のバーの部分を…全体の幅を変えず、**左側に円を置いて、その右に
-          今のバーを置いて**もう少しレコーダーっぽく」）。
-          ★★★**これはそのまま「キーの穴」になる** ―― キーは「白い面・黒い穴・
-          墨の窓」（`design.md` §3-3・第79巡）で、輪郭は**黒い穴**が作っている。
-          下の段が穴になるので、**新しい材料を1つも足していない**。
-          ★寸法はアイコンの比（`lib/cassette.ts`）から導く。 */}
+      {/* ★★★**キーの段 ―― 左の円とバー**（第95巡）。**これがそのまま「キーの穴」**。
+          ★幅は**回る円の直径と同じ**（札の下の1列が写真の幅に収まるのと同じ）。 */}
       {shown && (
         <div
           key={`deck-${enterKey}`}
@@ -863,88 +771,59 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           <div style={{
             position: "absolute", left: barLeft - deckLeft, top: 0,
             width: barW, height: deckH,
-            borderRadius: deckH / 2,   /* ★目盛りの外（図形の座標系＝アイコンの比） */
+            borderRadius: deckH / 2,   /* ★目盛りの外（図形の座標系＝段の高さの半分） */
             background: INK,
           }} />
         </div>
       )}
 
-      {/* 巨大な円ふたつ。ただの塗り面＋縁の目盛り。
-          ★指を受けるのはこの円ではなく、**上にある舞台**。円は波形や数字より
-          下に描かれる必要がある(zIndex 1)のに、指は上から受けたい——という
-          矛盾を、舞台が「どちらの円の上か」を円の式で判定して振り分けることで
-          解いている。円自身は pointerEvents:none。 */}
-      {shown && (["L", "R"] as const).map((side) => (
+      {/* ★★★**回る円は1つ**（第133巡）。直径は札の写真と同じ。**左半分を回すと頭、
+          右半分を回すと尻**を切り出す（`dialAt`）。
+          ★指を受けるのはこの円ではなく**上にある舞台**（円の式で振り分ける）。 */}
+      {shown && (
         <div
-          key={`${side}-${enterKey}`}
-          // ★出ていく側は入場の**逆**。`animation-direction: reverse` では
-          // 再生し直されない(名前が変わったときだけ頭から走る)ので、専用の
-          // キーフレームを別名で用意してある(§29.1 と同じ理由)。
-          className={leaving
-            ? (side === "L" ? "vs-dial-out-l" : "vs-dial-out-r")
-            : (side === "L" ? "vs-dial-in-l" : "vs-dial-in-r")}
+          key={`reel-${enterKey}`}
+          className={leaving ? "vs-plate-out" : "vs-plate-in"}
           style={{
             position: "absolute", width: RD, height: RD, borderRadius: RADIUS.circle,
-            // ★掴んだ反応で**塗りの色は変えない**。直径が画面幅の約2倍
-            // あるため、背景色を変えるだけで巨大な面が塗り直され、
-            // transition を付けるとそれが十数フレーム続く(実測でこれだけで
-            // 1ドラッグ約500msのコスト)。
             background: dial,
-            left: (side === "L" ? cxL : cxR) - RD / 2, top: cy - RD / 2,
+            left: cx - RD / 2, top: cy - RD / 2,
             zIndex: 1, pointerEvents: "none",
-            // ★掴んだ合図は「一瞬ふくらむ」。iPhoneのWebアプリでは
-            // navigator.vibrate が無く手応えが返らないため、目で分かる
-            // 反応にする(ユーザー指定)。**transform だけ**を動かし、
-            // will-change で合成レイヤーへ上げてあるので、塗り直しは
-            // 起きず合成のやり直しだけで済む。
-            // ★合成レイヤーへ上げておく。ふくらみ(scale)を塗り直しではなく
-            // 合成だけで済ませるため。掴んだ瞬間に付けると、そのフレームで
-            // 昇格が間に合わず一度カクつくので**常時**にしてある
-            // (2枚で約2MB。録音中の描画コストに差が出ないことは実測済み)。
             willChange: "transform",
-            transform: active === side ? "scale(1.028)" : "scale(1)",
+            transform: active ? "scale(1.028)" : "scale(1)",
             transition: "transform var(--t-item) var(--ease-settle)",
           }}
         >
-          {/* ★回るのはこの層だけ。塗りつぶしの円は回転対称なので静止させる。
-              芯は div を入れ子にせず **SVG 1枚**にしてある(同じ
-              大きさのレイヤーでも、ラスタライズが桁違いに安い)。 */}
+          {/* ★回るのはこの層だけ。芯は `lib/reelHub.ts` の1か所（ホームの山の円と共有）。 */}
           <svg
-            ref={side === "L" ? reelL : reelR}
+            ref={reelL}
             data-rot="0"
             className={recording ? "vs-reel-spin" : undefined}
             viewBox="0 0 100 100"
             aria-hidden
             style={{
               position: "absolute", inset: 0, width: "100%", height: "100%",
-              // 合成レイヤーへ上げて、回転を「塗り直し」ではなく「合成」にする。
               willChange: "transform", transform: "translateZ(0)",
             }}
           >
-            {/* ★★★**リールの芯**（2026-09-13・第100巡にユーザー指定で、縁の白い点5つ
-                から差し替えた）。中心から 120° ずつ、半径の 1/3 ほどの**とても太い
-                丸い線が3本**、中心では**曲線で滑らかに繋がる**。
-                ★★★**形は `lib/reelHub.ts` の1か所**（2026-09-13）―― 同じ芯を
-                ホームの山が **canvas** で描くので、数を2度書くと必ず食い違う。
-                ★★**回る層の中に置く**ので、録音中は芯が回って分かる（点と同じ役目）。 */}
             <path d={hubPath()} fill={tick} />
           </svg>
         </div>
-      ))}
+      )}
 
-      {/* 切り出し中の秒数。★触っている円にだけ出す(ユーザー指定)。 */}
+      {/* 切り出し中の秒数。★触っている半分にだけ出す(ユーザー指定)。
+          ★数字の行の左端（頭）と右端（尻）＝段の両端に揃える。 */}
       {review && (["L", "R"] as const).map((side) => (
         <div
           key={side}
           ref={side === "L" ? markL : markR}
           style={{
             position: "absolute", zIndex: 2, pointerEvents: "none",
-            left: side === "L" ? w * 0.21 : w * 0.79, top: cy + 26,
-            transform: "translate(-50%, 0)",
+            ...(side === "L" ? { left: deckLeft } : { right: w - (deckLeft + deckW) }),
+            top: timeTop,
             fontFamily: SANS, fontVariantNumeric: "tabular-nums",
             // ★font-size は遷移させない(遷移中ずっとレイアウトが走る)。
-            // 反応は色と太さだけで見せる。
-            fontSize: TYPE.lead, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, color: fg,
+            fontSize: TYPE.lead, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, color: plateInk,
             opacity: active === side ? 1 : 0,
             transition: "opacity var(--t-item) var(--ease-settle)",
           }}
@@ -982,7 +861,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         position: "absolute", zIndex: 2, pointerEvents: "none",
         left: 0, right: 0, top: timeTop, textAlign: "center",
         fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.bold, lineHeight: LEAD.flat,
-        letterSpacing: TRACK.wide, color: mute, fontVariantNumeric: "tabular-nums",
+        letterSpacing: TRACK.wide, color: plateInk, fontVariantNumeric: "tabular-nums",
         opacity: (recording || review || sending) ? 1 : 0,
         transition: "opacity var(--t-item) var(--ease-settle)",
       }}>{mmss(0)}</div>
@@ -1077,7 +956,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
 }
 
 /**
- * カセットプレイヤーの操作キー。出っ張り(KEY_DEPTH)を持ち、押されると沈む。
+ * 録音機の操作キー。出っ張り(KEY_DEPTH)を持ち、押されると沈む。
  *
  * ★★★第79巡に**グレーアウトをやめた**（ユーザー指定）。押せる／押せないを
  * 面の色で言うのをやめ、**2つの語彙**だけで表す:

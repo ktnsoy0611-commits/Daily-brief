@@ -1,6 +1,5 @@
-import { DISPLAY, INK, JOURNAL_FACE, KIND_DOMAIN, PAPER, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
+import { DISPLAY, INK, KIND_DOMAIN, MUTED, PAPER, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
-import { CASSETTE_ASPECT } from "@/lib/cassette";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { categoryOfKind } from "@/lib/deckStyle";
 import { rowSpecOf, rowsOf } from "@/lib/taskSize";
@@ -197,9 +196,12 @@ const INSET = PILE_INSET;
  * 9個で最上段が **-1571px ＝ 器の 2.7 枚ぶん上**。着地が叩きつけになった。
  */
 export const DROP_EVERY_MS = 60;
-/** ★カセットの本体の高さ ÷ 日付の板の高さ。★第131巡に 2 にしたのを第132巡に 1 へ戻した
- *  （形の規則の都合で大きくしただけで、意味から決めた大きさではなかった）。 */
-const CASSETTE_PER_PLATE = 1;
+/**
+ * ★★★**JOURNAL の円の直径 ÷ 日付の板の高さ**（2026-09-27・第133巡）。
+ * ★2 ＝ **4 段 ＝ 提案の円（`OFFER_D`）と同じ直径**。録音画面でも回る円は
+ *   Explore の札の**写真と同じ 310** なので、山でも**円と提案の写真が同じ大きさ**になる。
+ */
+const REEL_PER_PLATE = 2;
 /**
  * ★★★**焦点 … 時刻が一番近い「これから」のタスク1件だけを大きく落とす**（2026-09-24・第132巡に
  * ユーザー承認「**山に最初に見る場所を1つ作る**」）。★大きさは 1.3倍の1段だけ（中間を作らない）。
@@ -422,7 +424,7 @@ export function respawn(m: M, body: Body, w: number, seed: string, bh?: number):
 export interface Piece {
   id: string;
   body: Body;
-  kind: "task" | "offer" | "word" | "cassette";
+  kind: "task" | "offer" | "word" | "reel";
   /**
    * ★★★**提案だけが持つ「ジャンルの形」**（2026-09-13・第96巡にユーザー指定
    * 「ホームに落とす図形も、このマスクの形にします」）。BRIEF の札と**同じ写真が
@@ -630,21 +632,13 @@ export function buildPieces(
   const kOf = (t: { id: string }) => (t.id === focus ? FOCUS_K : 1);
 
   // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**（2026-09-09）。
-  // ★★★**形は JOURNAL のタブのアイコン（カセット）そのもの**（2026-09-13・第94巡に
-  //   ユーザー指定「現在の journal のタブのアイコンを図形にして落として。四角い
-  //   部分がブルーで他が黒」）。第93巡の「録音の円」からさらに一歩 ――
-  //   **行き先の顔をそのまま持ってくる**ので、何が起きるか説明が要らない。
-  //   ★寸法は `lib/cassette.ts`（タブの SVG と同じ数を読む）。
-  // ★★★**大きさは「日付と曜日の板」に揃える**（2026-09-19・第123巡にユーザー指定
-  //   「**Journal の図形の大きさは日付と曜日ぐらいにして**」）。
-  //   ★★★**だから `unit` の倍数ではなく、板と同じ「px の固定の箱」**として扱う
-  //     ―― 板も `wordFs` から px で決まるので、**同じ物差しに乗せるには、
-  //     倍率の側ではなく px の側へ移すしかない**（`unit` は予算から出るので、
-  //     混み具合や件数で板との比が毎回ずれる）。
-  //   ★★**第116巡の `CASSETTE_ROWS`(2.2) は削除した。復活させない**
-  //     （`lib/taskSize.ts` の注釈も同時に直した）。
-  //   ★★高さは**板の高さそのもの**（`CASSETTE_PER_PLATE` 1）、幅は `CASSETTE_ASPECT` から導く。
-  //   ★★予算では**板と同じ扱い**（`fixed` へ足す。`areas` には入れない）。
+  // ★★★**形は「墨の円が1つ」**（2026-09-27・第133巡にユーザー指定「**円が一つの
+  //   デバイスみたいな見た目にして、図形としては一つのその円を出す**」「**黒い円を
+  //   出して**」）。録音画面の**回る円そのもの**（墨の面・`MUTED` の芯。`lib/reelHub.ts`）。
+  //   ★★第94〜132巡のカセット（`lib/cassette.ts`）は**削除した。復活させない。**
+  // ★★大きさは**板と同じ「px の固定の箱」**（第123巡の理由のまま ―― `unit` は予算から
+  //   出るので、混み具合で板との比がずれる）。直径 ＝ 板の高さ × `REEL_PER_PLATE`。
+  // ★★予算では**板と同じ扱い**（`fixed` へ足す。`areas` には入れない）。
 
   // ★★★**文字の板は先に決めて、器の予算から差し引く**（2026-09-10）。
   //   板は器の幅の `WORD_W` を取る**いちばん大きな塊**なので、予算に数えないと
@@ -687,10 +681,7 @@ export function buildPieces(
   let plates = platesAt(crowd);
   /** カセットの箱（px）。★**高さは板と同じ**（上の注釈）。0 ＝ 出さない。 */
   // ★★★**高さは板と同じ**（第123巡のユーザー指定「日付と曜日ぐらい」。第131巡の 2 倍は第132巡に撤回）。
-  const cassetteOf = (pl: typeof plates) => {
-    const jh = journal ? pl[0].bh * CASSETTE_PER_PLATE : 0;
-    return { jH: jh, jW: jh * CASSETTE_ASPECT };
-  };
+  const reelOf = (pl: typeof plates) => (journal ? pl[0].bh * REEL_PER_PLATE : 0);
 
   /**
    * ★★★**ホームの図形は、重要度でも切迫度でも大きさが変わらない**
@@ -727,8 +718,8 @@ export function buildPieces(
   // ★★**px で大きさが決まっているものは「固定」側**（板・未読の数・カセット）。
   // ★★**`crowd` は「長さ」の倍率なので、面積の予算には2乗で効かせる**（第118巡）。
   const budgetOf = (pl: typeof plates): number => {
-    const { jH: jh, jW: jw } = cassetteOf(pl);
-    const fixed = pl.reduce((a, x) => a + x.w * x.h, 0) + jw * jh;
+    const jd = reelOf(pl);
+    const fixed = pl.reduce((a, x) => a + x.w * x.h, 0) + Math.PI * (jd / 2) ** 2;
     const room2 = w * usableH * FILL * crowd * crowd;
     return Math.max(room2 * 0.25, room2 - fixed);
   };
@@ -766,7 +757,7 @@ export function buildPieces(
       plateUnit = plates[0].bh / PLATE_ROWS;
     }
   }
-  const { jH, jW } = cassetteOf(plates);
+  const jD = reelOf(plates);
   // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。
   //   ★★★**この頭打ちは予算とは別に出す**（第110巡）―― 据え置きのときも効かせる。
   //   ★★カセットは `unit` の倍数ではないので、**頭打ちの相手はタスクだけ**。
@@ -919,28 +910,24 @@ export function buildPieces(
     });
   });
 
-  if (jH > 0) {
-    // ★★**タブのアイコンと同じカセット**。文字は載せない（ユーザー指定）。
-    // ★★**体は四角**（円ではない）。当たり判定も `Pile.tsx` の四角の枝へ入る。
-    // ★★★**大きさは px で決まっている**（＝板と同じ高さ）。
-    const pw = Math.max(32, jW);
-    const ph = Math.max(24, jH);
-    const sig = `cassette|${pw.toFixed(2)}|${ph.toFixed(2)}`;
+  if (jD > 0) {
+    // ★★**録音画面の回る円そのもの**（墨の面・`MUTED` の芯）。文字は載せない。
+    // ★★体は円（`PHYS_VERTS` 角で打ち切る ―― matter の円は半径に応じて最大 25 角形に
+    //   なり、SAT の費用が倍になる。第131巡の未読の円と同じ作法）。
+    const r = Math.max(16, jD / 2);
+    const sig = `reel|${r.toFixed(2)}`;
     const kept = same("journal", sig);
-    // ★体は矩形（本体が矩形なので絵と合う）。★★**絵より `PHYS_GAP` 外側**（第101巡）。
-    const body = kept
-      ?? m.Bodies.rectangle(0, 0, pw + PHYS_GAP * 2, ph + PHYS_GAP * 2, BODY);
+    const body = kept ?? m.Bodies.circle(0, 0, r + PHYS_GAP, BODY, PHYS_VERTS);
     let fresh = false;
     if (!kept) {
-      // ★★**密度は全部の体で同じ**（箱の面積 ÷ `unit²`）。板・未読と同じ式。
-      m.Body.setMass(body, (pw * ph) / (unit * unit) * MASS_K);
-      fresh = toss(body, "journal", ph);
+      // ★★**密度は全部の体で同じ**（面積 ÷ `unit²`）。
+      m.Body.setMass(body, (Math.PI * r * r) / (unit * unit) * MASS_K);
+      fresh = toss(body, "journal", r * 2);
       stamp(body, sig);
     }
     pieces.push({
-      id: "journal", body, kind: "cassette", w: pw, h: ph, fresh,
-      // ★**本体の面が青／リールと帯が黒**（タブのアイコンの塗り分け）。
-      face: JOURNAL_FACE, ink: INK,
+      id: "journal", body, kind: "reel", w: r * 2, h: r * 2, r, fresh,
+      face: INK, ink: MUTED,
       nav: "journal-record",
     });
   }

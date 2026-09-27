@@ -1,7 +1,7 @@
 "use client";
 
 import { TYPE, LEAD, TRACK, WEIGHT } from "@/lib/tokens";
-import { CASSETTE, topRoundRectPath } from "@/lib/cassette";
+import { RECORDER_ICON } from "@/lib/recorder";
 import { SANS } from "@/lib/constants";
 
 // ★タブバーのアイコン(2026-08-03)。ユーザー提供の幾何アイコン集
@@ -17,7 +17,7 @@ import { SANS } from "@/lib/constants";
 export type TabIconName =
   | "list" | "pie" | "layers" | "pin"
   | "drift" | "pile"
-  | "pen" | "dots" | "cassette"
+  | "pen" | "dots" | "recorder"
   | "sparkle" | "plus" | "gear" | "record" | "ticket";
 
 const S = 24;
@@ -141,35 +141,25 @@ function shapes(name: TabIconName, c: string) {
           </g>
         </>
       );
-    // レコード = カセット(角丸の面に、リールの丸が2つ)。
-    case "cassette":
-      // ★★★**寸法は `lib/cassette.ts` の1か所**（2026-09-13・第94巡）。同じ形を
-      //   ホームの山が **canvas** で、録音画面が **DOM** で描くので、数を3度
-      //   書くと必ず食い違う。
-      // ★ここだけは**1色＋`PALE` の濃淡2段**のまま（タブバーの地は選択状態で
-      //   変わるので、青と黒に決め打ちできない）。色で塗り分けるのは山だけ。
+    // レコード = 録音機（縦長の角丸の面に、回る円が1つ・下にキーの段）。
+    case "recorder":
+      // ★★★**寸法は `lib/recorder.ts` の1か所**（2026-09-27・第133巡）。録音画面が
+      //   **DOM** で同じ比を読む。★第94〜132巡のカセットは削除した。
+      // ★ここだけは**1色＋`PALE` の濃淡2段**（タブバーの地は選択状態で変わるので、
+      //   青と黒に決め打ちできない）。
       return (
         <>
           <rect
-            x={CASSETTE.body.x} y={CASSETTE.body.y}
-            width={CASSETTE.body.w} height={CASSETTE.body.h} rx={CASSETTE.body.r}
+            x={RECORDER_ICON.body.x} y={RECORDER_ICON.body.y}
+            width={RECORDER_ICON.body.w} height={RECORDER_ICON.body.h} rx={RECORDER_ICON.body.r}
             fill={c} opacity={PALE}
           />
           <g fill={c}>
-            {/* ★左上の四角い突起2つ（第99巡）。本体の上の縁から上へ出る。
-                ★★**丸めるのは上の2隅だけ**（第100巡。`rx` は四隅を丸めるので
-                `<rect>` では書けない）。形は `lib/cassette.ts` の1か所から。 */}
-            {CASSETTE.tabs.map((t) => (
-              <path key={t.x} d={topRoundRectPath(t.x, t.y, t.w, t.h, t.r)} />
-            ))}
-            {CASSETTE.reels.map((reel) => (
-              <circle key={reel.x} cx={reel.x} cy={reel.y} r={CASSETTE.reelR} />
-            ))}
-            {/* ★下の段は「左に円・右にバー」（第95巡）。総幅は変わっていない。 */}
-            <circle cx={CASSETTE.knob.x} cy={CASSETTE.knob.y} r={CASSETTE.knob.r} />
+            <circle cx={RECORDER_ICON.reel.x} cy={RECORDER_ICON.reel.y} r={RECORDER_ICON.reel.r} />
+            <circle cx={RECORDER_ICON.knob.x} cy={RECORDER_ICON.knob.y} r={RECORDER_ICON.knob.r} />
             <rect
-              x={CASSETTE.bar.x} y={CASSETTE.bar.y}
-              width={CASSETTE.bar.w} height={CASSETTE.bar.h} rx={CASSETTE.bar.r}
+              x={RECORDER_ICON.bar.x} y={RECORDER_ICON.bar.y}
+              width={RECORDER_ICON.bar.w} height={RECORDER_ICON.bar.h} rx={RECORDER_ICON.bar.r}
             />
           </g>
         </>

@@ -45,7 +45,7 @@ export const APPS: AppDef[] = [
     label: "ジャーナル",
     en: "JOURNAL",
     tabs: [
-      { id: "journal-record", label: "レコード", en: "RECORD", icon: "cassette" },
+      { id: "journal-record", label: "レコード", en: "RECORD", icon: "recorder" },
       { id: "journal-today", label: "今日", en: "TODAY", icon: "pen" },
       { id: "journal-archive", label: "アーカイブ", en: "ARCHIVE", icon: "dots" },
     ],

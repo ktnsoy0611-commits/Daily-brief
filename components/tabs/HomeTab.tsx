@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Masthead } from "@/components/common";
 import { pillLook } from "@/components/home/BandPill";
 import { AssignRail } from "@/components/home/AssignRail";
 import { AssignSheet } from "@/components/home/AssignSheet";
+import { RemindCard } from "@/components/home/RemindCard";
 import { Band } from "@/components/home/Band";
 import { Pile } from "@/components/home/Pile";
 import { pillWidth } from "@/components/home/pillGhost";
@@ -19,6 +20,8 @@ import {
 import { keepCard } from "@/lib/keepCard";
 import { useNewsBand } from "@/lib/newsFeed";
 import { usePrepSuggest } from "@/lib/prepSuggest";
+import { answerRemind, pickReminders, type Remind } from "@/lib/remind";
+import { ms, T_IN } from "@/lib/motion";
 import { useBandCuration } from "@/lib/bandCurateClient";
 import { OFFER_PICKS, pickOffers } from "@/lib/offerPick";
 import { haptic, todayKey } from "@/lib/helpers";
@@ -41,7 +44,13 @@ import type { AppState, Item, Task, TabProps } from "@/lib/types";
 // 帯のピルを掴んで引き下ろすと、図形に変わって山へ落ちる ―― この一続きの
 // 動きが軸（★引き下ろしはこの次に作る）。
 
-export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
+/** ★★通知の札で「あとで」にした問い（この起動の間は聞かない）と、この起動で聞いた数。 */
+const remindLater = new Set<string>();
+let remindAsked = 0;
+/** ★1回の起動で聞くのは `REMIND_PER_RUN` 件まで（しつこくしない）。★目盛りの外（仕様の数）。 */
+const REMIND_PER_RUN = 3;
+
+export function HomeTab({ appState, goTab, persist, showToast, appActive = true }: TabProps & { appActive?: boolean }) {
   const day = todayKey();
   const today = useMemo(() => new Date(), []);
   /**
@@ -369,6 +378,31 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
     });
   }, [appState, persist, day, showToast]);
 
+  // ★★★**忘れ防止の通知**（第133巡。`lib/remind.ts`）。ホームが見えてから少し置いて（山が落ち着く頃）、
+  //   近い予定の準備を1件ずつ「済んだ？」と聞く。
+  const [remindReady, setRemindReady] = useState(false);
+  const [remindTick, setRemindTick] = useState(0);
+  useEffect(() => {
+    if (!appActive) return;
+    const id = window.setTimeout(() => setRemindReady(true), ms(T_IN) * 2);
+    return () => window.clearTimeout(id);
+  }, [appActive]);
+  const reminder = useMemo(() => {
+    if (!remindReady || !appActive || remindAsked >= REMIND_PER_RUN) return null;
+    return pickReminders(appState).find((r) => !remindLater.has(`${r.taskId}|${r.sugId}`)) ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState.tasks, appState.remindStats, remindReady, appActive, remindTick]);
+  const onRemind = useCallback((r: Remind, done: boolean) => {
+    remindAsked += 1;
+    persist(answerRemind(appState, r, done));
+    showToast(done ? "済みにしました" : "また聞きます");
+  }, [appState, persist, showToast]);
+  const onRemindLater = useCallback((r: Remind) => {
+    remindAsked += 1;
+    remindLater.add(`${r.taskId}|${r.sugId}`);
+    setRemindTick((n) => n + 1);
+  }, []);
+
   // ★★★**口とブラックホールは置かない**（2026-09-09 ユーザー指定で削除）。
   //   山で図形にできるのは**掴んで運ぶこと**だけ。完了も削除もここでは起こさない
   //   ―― 何をどうやって片づけるかは、引き下ろしの動きと一緒に決める。
@@ -378,6 +412,7 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       {/* ★左上の名前。**3アプリとまったく同じ組み方**（幾何アルファベットの
           `Masthead`）。ホームも列の1つなので、顔を揃える。 */}
       <Masthead title={appTitle("home")} />
+      <RemindCard item={reminder} onAnswer={onRemind} onLater={onRemindLater} />
       {/* ★★★**帯は山の上に重ねる**（2026-09-10 ユーザー指定「ピルの後ろに背景が
           あって図形が落ちてくるのが見えない」）。縦に並べると、山の器は帯の
           **下から**始まるので、**図形は帯の高さぶん見えないところを落ちてくる**。

@@ -487,8 +487,8 @@ export interface Box { x0: number; y0: number; x1: number; y1: number }
  */
 const PAINT_PAD = 4;
 
-export function drawBoxOf(p: Piece): Box {
-  const { x, y } = p.body.position;
+/** ★図形の中心から、絵のいちばん遠い点まで（見え方・影・余白を含まない）。 */
+function reachOf(p: Piece): number {
   let r: number;
   if (p.r) r = p.r;
   else if (p.w && p.h) r = Math.hypot(p.w, p.h) / 2;
@@ -504,8 +504,15 @@ export function drawBoxOf(p: Piece): Box {
   //     歪んだ形ではなく**前のフレームの拭き残し**だった。
   //   ★倍率は `lib/cardShape.ts` の `cardShapeReach`（**点の列から導く**）。
   if (p.kind === "offer" && p.shape) r *= cardShapeReach(p.shape);
-  // ★持ち上がっている図形は、大きくなったぶんと影のぶんだけ広く塗る（拭き残しを出さない）。
-  if (look && look.id === p.id) r = r * LOOK_MAX + LIFT_BLUR + LIFT_DROP;
+  return r;
+}
+
+export function drawBoxOf(p: Piece): Box {
+  const { x, y } = p.body.position;
+  let r = reachOf(p);
+  // ★持ち上がっている図形は、大きくなったぶんだけ広く塗る（拭き残しを出さない）。
+  // ★影は別の画面（`drawPileShadows`）なので、ここには足さない。
+  if (look && look.id === p.id) r = r * LOOK_MAX;
   r += PAINT_PAD;
   return { x0: x - r, y0: y - r, x1: x + r, y1: y + r };
 }
@@ -559,10 +566,9 @@ const PRESS_Q = 0.07;
 const LIFT_K = 1.1;
 /** 見え方の倍率の上限（塗り直す箱の余白）。★ばねの行き過ぎを含む。 */
 const LOOK_MAX = 1.25;
-/** 持ち上がったときの影（ぼかし・下へのずれ。図形の外にはみ出す量 ＝ 塗り直す箱の余白）。 */
-const LIFT_BLUR = 30;
-const LIFT_DROP = 16;
-const LIFT_SHADOW = "rgba(26,26,24,0.36)";
+/** 持ち上がったとき、影がさらに下へ離れる量と、濃くなる倍率。 */
+const LIFT_DROP = 14;
+const LIFT_DARK = 0.6;
 type Look = { id: string; mode: "press" | "lift" | "rest"; k: Spring; q: Spring; s: Spring };
 let look: Look | null = null;
 /** ★見え方を切り替える（`"press"` 沈む／`"lift"` 持ち上がる／`"rest"` 戻る）。 */
@@ -602,6 +608,74 @@ export function pileLookBusy(): boolean {
   return false;
 }
 
+/**
+ * ★★★**山の図形の影**（2026-09-27・第133巡にユーザー指定「**シャドウはもう少し強調し、ガウスブラーを
+ * 使って**」「**やりすぎると安っぽい昔の UI になる。もっと洗練された感じに**」）。
+ * ★★**艶・粒子・縁の光は足さない**（第133巡の見本 P1〜P3 は「安っぽい」と却下）。足すのは**大きく
+ *   ぼかした柔らかい影だけ**。色は墨（黒ではない）。光は真上（ずれは画面の下向き）。
+ * ★★★**影は山の絵とは別の、細かさ 1/2 の canvas に「ぼかさずに」塗り、ぼかしは CSS の `filter: blur()`
+ *   （＝ GPU）に任せる**（`Pile.tsx` の影の canvas）。canvas の `shadowBlur` や、焼いた影の絵を毎フレーム
+ *   引き伸ばして貼る作りは**実測で落下中のフレームが 1/2〜1/4 に落ちた**（CPU×4 の 12秒で 430 → 96〜190）。
+ * ★★影は**地の上にだけ**落ちる（別の画面なので下の図形には落ちない）。
+ * ★目盛りの外（絵の寸法）。
+ */
+export const PILE_SHADOW = { blur: 11, drop: 9, a: 0.3, res: 0.5 } as const;
+/** ★影の絵に使う墨。 */
+const SHADOW_RGB = "26,26,24";
+/** ★回していない図形の外接箱。 */
+function boxOf(p: Piece): { w: number; h: number } {
+  if (p.kind === "word" && p.plate) return { w: p.plate.bw, h: p.plate.bh };
+  if (p.kind === "task" && p.w && p.h) return { w: p.w, h: p.h };
+  const r = reachOf(p);
+  return { w: r * 2, h: r * 2 };
+}
+/** ★影の形 ＝ 絵の輪郭（ピル・円・札の形）。 */
+function traceSilhouette(c: CanvasRenderingContext2D, p: Piece): void {
+  c.beginPath();
+  if (p.kind === "offer" && p.r) {
+    if (p.shape) traceCardShape(c, p.shape, p.r * 2);
+    else c.arc(0, 0, p.r, 0, Math.PI * 2);
+  } else if (p.kind === "reel" && p.r) {
+    c.arc(0, 0, p.r, 0, Math.PI * 2);
+  } else {
+    const { w, h } = boxOf(p);
+    stackOutline(1, w / h).forEach((q, i) => {
+      if (i === 0) c.moveTo(q.x * w, q.y * h); else c.lineTo(q.x * w, q.y * h);
+    });
+  }
+  c.closePath();
+}
+/**
+ * ★影の canvas を丸ごと描き直す（細かさ `PILE_SHADOW.res`。山の絵を描いたフレームだけ呼ぶ）。
+ * ★持ち上がった図形の影は**濃く・遠く**、押した図形の影は図形と一緒に潰れる。
+ */
+export function drawPileShadows(cv: HTMLCanvasElement, pieces: Piece[], w: number, h: number, skip?: string | null): void {
+  const res = PILE_SHADOW.res;
+  const pw = Math.max(1, Math.round(w * res)); const ph = Math.max(1, Math.round(h * res));
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+  const c = cv.getContext("2d");
+  if (!c) return;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, pw, ph);
+  c.setTransform(res, 0, 0, res, 0, 0);
+  for (const p of pieces) {
+    if (skip && p.id === skip) continue;
+    const b = p.body;
+    const mine = !!look && look.id === p.id;
+    const lift = mine && look ? Math.max(0, look.s.p) : 0;
+    const sx = mine && look ? look.k.p * (1 + look.q.p) : 1;
+    const sy = mine && look ? look.k.p * (1 - look.q.p) : 1;
+    c.save();
+    c.translate(b.position.x, b.position.y + PILE_SHADOW.drop + LIFT_DROP * lift);
+    c.scale(sx, sy);
+    c.rotate(b.angle);
+    c.fillStyle = `rgba(${SHADOW_RGB},${(PILE_SHADOW.a * (1 + LIFT_DARK * lift)).toFixed(3)})`;
+    traceSilhouette(c, p);
+    c.fill();
+    c.restore();
+  }
+}
+
 export function drawPile(
   ctx: CanvasRenderingContext2D, pieces: Piece[], dpr: number, onPhoto: () => void,
   clip?: Box | null, skip?: string | null,
@@ -611,18 +685,13 @@ export function drawPile(
     if (skip && p.id === skip) continue;
     if (clip && !boxHits(clip, drawBoxOf(p))) continue;
     const b = p.body;
+    const mine = !!lk && lk.id === p.id;
+    const sx = mine ? lk.k.p * (1 + lk.q.p) : 1;
+    const sy = mine ? lk.k.p * (1 - lk.q.p) : 1;
     ctx.save();
     ctx.translate(b.position.x, b.position.y);
-    if (lk && lk.id === p.id) {
-      const s = Math.max(0, lk.s.p);
-      if (s > 0.01) {
-        ctx.shadowColor = LIFT_SHADOW;
-        ctx.shadowBlur = LIFT_BLUR * s;
-        ctx.shadowOffsetY = LIFT_DROP * s;
-      }
-      // ★★潰れは画面の縦横で掛ける（回す前）＝どの向きの図形も「上から押されて」潰れる。
-      ctx.scale(lk.k.p * (1 + lk.q.p), lk.k.p * (1 - lk.q.p));
-    }
+    // ★★潰れは画面の縦横で掛ける（回す前）＝どの向きの図形も「上から押されて」潰れる。
+    if (mine) ctx.scale(sx, sy);
     ctx.rotate(b.angle);
     ctx.fillStyle = p.face;
 

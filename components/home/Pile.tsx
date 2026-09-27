@@ -4,13 +4,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { haptic } from "@/lib/helpers";
 import { GATE_MS, onFontsReady } from "@/lib/textFit";
 import { ensureWordFont } from "@/lib/wordPlate";
-import { DISPLAY } from "@/lib/constants";
+import { DISPLAY, NAV_H, PILE_FLOOR_SHADOW } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
   GRAVITY_Y, MASS_K, UNIT, buildPieces, clearOverlap, focusOf, ghostBodyOf, isLost, makeWalls,
   refitPile, respawn, sink, type Piece,
 } from "./pileWorld";
-import { floorYOf } from "@/lib/pileBox";
+import { GROUND_LIFT, floorYOf } from "@/lib/pileBox";
 import { SPACE } from "@/lib/tokens";
 import { bandAim, bandBus } from "./bandMotion";
 import { inCardShape } from "@/lib/cardShape";
@@ -19,7 +19,7 @@ import { halfWidthAtStack } from "@/lib/solid";
 import { ensureGlyphs } from "@/lib/textFit";
 import { SHAPE_FACE } from "@/lib/constants";
 import {
-  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile, pileLookBusy, prewarmPile, setPileLook, stepPileLook,
+  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile, drawPileShadows, PILE_SHADOW, pileLookBusy, prewarmPile, setPileLook, stepPileLook,
 } from "./pilePaint";
 import {
   BAND_CATCH, BAND_NEAR, PILL_HINT, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey,
@@ -251,6 +251,8 @@ export function Pile({
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
+  /** ★影の canvas（山の絵の下）。 */
+  const shRef = useRef<HTMLCanvasElement | null>(null);
   const piecesRef = useRef<Piece[]>([]);
   const matterRef = useRef<typeof import("matter-js") | null>(null);
   const engineRef = useRef<Engine | null>(null);
@@ -926,6 +928,8 @@ export function Pile({
             if (g) drawGhost(ctx, g, dpr);
             ctx.restore();
           }
+          // ★★影は別の canvas（細かさ 1/2・ぼかしは CSS）。絵を描いたフレームだけ丸ごと描き直す。
+          if (shRef.current) drawPileShadows(shRef.current, now2, w, h, hide);
           // ★★焼き切れなかったぶんは次のフレームで焼く（代役のまま残さない）。
           if (bakeDeferred()) { dirtyRef.current = true; wake(); }
         } else {
@@ -1418,6 +1422,18 @@ export function Pile({
       {/* ★★**CSS の大きさは器そのもの**（`width/height: 100%`）。canvas は
           置換要素なので、`inset: 0` だけだと**内在の 300×150 のまま**になり得る
           ―― 実解像度（`width`/`height` 属性）と食い違うと絵が伸びる。 */}
+      {/* ★★床の影（第133巡）。静かな絵なので canvas ではなく DOM に置く（部分の描き直しに巻き込まない）。
+          ★中心を物理の床の線に合わせる（`floorYOf` ＝ 器の下端から タブバー ＋ `GROUND_LIFT`）。 */}
+      <div aria-hidden style={{
+        position: "absolute", left: SPACE.lg, right: SPACE.lg, height: SPACE.xl,
+        bottom: `calc(${NAV_H} + ${GROUND_LIFT - SPACE.xl / 2}px)`,
+        background: PILE_FLOOR_SHADOW, pointerEvents: "none",
+      }} />
+      {/* ★★影の canvas（第133巡。`pilePaint.drawPileShadows`）。塗りはぼかさず、ぼかしと濃さは GPU。 */}
+      <canvas ref={shRef} aria-hidden style={{
+        position: "absolute", inset: 0, width: "100%", height: "100%", display: "block",
+        filter: `blur(${PILE_SHADOW.blur}px)`, pointerEvents: "none",
+      }} />
       <canvas ref={cvRef} style={{
         position: "absolute", inset: 0, width: "100%", height: "100%", display: "block",
         // ★★★**絵は帯より上**（第132巡）。指は器（この親）と上の横取りが受ける。

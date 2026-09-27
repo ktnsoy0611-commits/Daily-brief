@@ -17,7 +17,7 @@ import {
   bandSettling,
   bandHoleDone, bandHoleRelease, bandResume, stepBandMotion,
 } from "./bandMotion";
-import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
+import { EASE_SETTLE, T_IN, T_ITEM, easeAt, ms } from "@/lib/motion";
 import { haptic } from "@/lib/helpers";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
@@ -454,10 +454,10 @@ const RESUME = 0.5;
 const STEP_MIN_PX = BAND_H.photo / 2;
 /** ★止まっている時間（ms）。持ち主は `app/globals.css` の `--t-amb-band-hold`。 */
 function bandHoldMs(): number {
-  if (typeof window === "undefined") return 5000;
+  if (typeof window === "undefined") return 8000;
   const v = getComputedStyle(document.documentElement).getPropertyValue("--t-amb-band-hold").trim();
   const n = parseFloat(v);
-  return Number.isFinite(n) ? (v.endsWith("ms") ? n : n * 1000) : 5000;
+  return Number.isFinite(n) ? (v.endsWith("ms") ? n : n * 1000) : 8000;
 }
 
 function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
@@ -477,6 +477,8 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
    * ★送りは1周で循環するので、`% lap` で読み替えられる。
    */
   const phaseRef = useRef(0);
+  /** ★最初に組んだ時刻（起動の直後だけピルを左の余白の線へ揃える）。 */
+  const alignedRef = useRef(0);
   /** ★いま走っているアニメを組んだときの1周の幅（px）。★`snapPhase` が読む。 */
   const lapRef = useRef(0);
   /**
@@ -566,7 +568,7 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
 
   /**
    * ★★★**帯は「止まって送る」**（2026-09-27・第133巡。ユーザー要望「**5秒ぐらい止まって、パーッと
-   * 切り替わる**」）。**`--t-amb-band-hold`(5s) 止まり、`T_ITEM`(0.42s) で次のピルの端まで送る。**
+   * 切り替わる**」）。**`--t-amb-band-hold`(8s) 止まり、`T_ITEM`(0.42s) で次のピルの端まで送る。**
    * ★★★**流れの時計（`anim.currentTime`）はそのまま使い、アニメは止めておく** ―― 位置・指の送り
    *   （`pan`）・滑り（`glide`）・位相の引き継ぎ（`snapPhase`）はどれも時計を読み書きしているので、
    *   **時計を自分で進めれば、それらは1行も変えずに効く**。
@@ -606,17 +608,22 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     const lap = lapRef.current;
     if (!a || !st.on) return;
     if (!lapEl || !d || !lap) { armSteps(1); return; }
-    const L = lapEl.getBoundingClientRect().left;
+    // ★★★**止まる所は「画面の左の余白」の線**（第133巡にユーザー指摘「**帯のピルが止まる場所が、画面の
+    //   左端にくっついてしまっている**」）。第133巡の最初は「1周の頭 ＝ 段の左端」へ揃えていたので、
+    //   全幅に広がる段ではピルが画面の縁に触れていた。→ 他の部品と同じ `SPACE.lg` の線へ。
+    //   ★画面上の位置で測る（2周ぶんのピルを全部見る）。上の段は左へ、下の段は右へ流れる。
+    const rowEl = trackRef.current?.parentElement;
+    const edge = (rowEl?.getBoundingClientRect().left ?? 0) + SPACE.lg;
     const rev = bandReverse(row);
-    const f0 = ((((a.currentTime as number) ?? 0) / d) % 1 + 1) % 1;
-    let df = Infinity;
+    let dx = Infinity;
+    //   ★★1周ぶんで折り返して測る（帯は輪。下の段は左に何も無い位置から始まることがある）。
     for (const el of lapEl.querySelectorAll<HTMLElement>("[data-pill-id]")) {
-      const x = (el.getBoundingClientRect().left - L) / lap;
-      const f = rev ? 1 - x : x;
-      const k = (((f - f0) % 1) + 1) % 1;
-      if (k * lap > STEP_MIN_PX && k < df) df = k;
+      const x = el.getBoundingClientRect().left;
+      const k = ((((rev ? edge - x : x - edge)) % lap) + lap) % lap;
+      if (k > STEP_MIN_PX && k < dx) dx = k;
     }
-    if (!Number.isFinite(df)) { armSteps(1); return; }
+    if (!Number.isFinite(dx)) { armSteps(1); return; }
+    const df = dx / lap;
     const t0 = performance.now();
     let done = 0;
     const frame = () => {
@@ -701,6 +708,25 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     animRef.current = anim;
     // ★★★**アニメは止めておき、時計は `armSteps` が進める**（上の「止まって送る」）。
     anim.pause();
+    // ★★**最初に組んだときだけ、いちばん近いピルを左の余白の線へ揃える**（第133巡）―― 揃えないと
+    //   最初の送りまでの数秒、ピルが画面の縁から 5〜8px の所に止まって見えた（実測）。
+    //   ★書体や写真が届いて組み直すうちは揃え直す（起動の直後 `ms(T_IN) * 3` のあいだだけ）。
+    const bornAt = alignedRef.current || (alignedRef.current = performance.now());
+    if (performance.now() - bornAt < ms(T_IN) * 3) {
+      const edge = (track.parentElement?.getBoundingClientRect().left ?? 0) + SPACE.lg;
+      const rev = bandReverse(row);
+      let k = Infinity;
+      for (const el of lapEl.querySelectorAll<HTMLElement>("[data-pill-id]")) {
+        const x = el.getBoundingClientRect().left;
+        let d = ((((rev ? edge - x : x - edge)) % lap) + lap) % lap;
+        if (d > lap / 2) d -= lap;
+        if (Math.abs(d) < Math.abs(k)) k = d;
+      }
+      if (Number.isFinite(k)) {
+        const c = ((anim.currentTime as number) ?? 0) + (k / lap) * duration;
+        anim.currentTime = ((c % duration) + duration) % duration;
+      }
+    }
     if (stepRef.current.on && lockRef.current === 0) armSteps(0);
     // ★★**送りへ畳んだのと同じ瞬間に `transform` から外す**（別のフレームに
     //   分かれると、そのあいだ二重に効く／二重に抜ける）。
@@ -1089,7 +1115,13 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
       //   「上が row0・下が row1」と決め打ちできない（`HomeTab.bandRowAt`）。
       data-band-row={row}
       // ★★帯は山の上に重ねてある。**触れるのはこの段だけ**（外側の器は透かす）。
-      style={{ height: HEIGHT[row], touchAction: "pan-y", pointerEvents: "auto" }}
+      // ★★**左の余白の中は見せない**（第133巡）―― ピルは余白の線（`SPACE.lg`）で止まるので、前のピルの
+      //   端が余白の中に 8px のぞいて「縁にくっついて」見えた。余白の手前で消し、線の上で出し切る。
+      style={{
+        height: HEIGHT[row], touchAction: "pan-y", pointerEvents: "auto",
+        maskImage: `linear-gradient(to right, transparent ${SPACE.sm}px, black ${SPACE.lg}px)`,
+        WebkitMaskImage: `linear-gradient(to right, transparent ${SPACE.sm}px, black ${SPACE.lg}px)`,
+      }}
       // ★指が触れている間だけ止める。離しても**位置は戻さない**。
       onPointerDown={onPanDown}
       onPointerMove={onPanMove}

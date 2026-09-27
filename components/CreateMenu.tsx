@@ -4,7 +4,7 @@ import { SPACE, TYPE, WEIGHT, RADIUS, LEAD, TRACK } from "@/lib/tokens";
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Press } from "@/components/Button";
-import { INK, LATIN, PAPER } from "@/lib/constants";
+import { INK, LATIN, PAPER, SCRIM_BLUR, SCRIM_TINT } from "@/lib/constants";
 import { TabIcon } from "@/components/TabIcons";
 import { haptic } from "@/lib/helpers";
 import { ms, T_OUT } from "@/lib/motion";
@@ -59,6 +59,8 @@ export function CreateMenu({ at, onRecord, onTask, onSetting, onClose }: {
   onClose: () => void;
 }) {
   const discRef = useRef<HTMLDivElement | null>(null);
+  /** ★★後ろをぼかす幕（第133巡）。輪と一緒に現れ、吸い込みと一緒に消える。 */
+  const scrimRef = useRef<HTMLDivElement | null>(null);
   /** 二重に閉じ始めない(タップ連打・選択と外タップの競合)よう見張る。 */
   const closingRef = useRef(false);
   const cx = at.x + at.w / 2;
@@ -74,6 +76,8 @@ export function CreateMenu({ at, onRecord, onTask, onSetting, onClose }: {
     void el.offsetWidth;
     el.dataset.rev = "in";
     el.style.setProperty("--rev", `circle(${R}px at 50% 50%)`);
+    const sc = scrimRef.current;
+    if (sc) { void sc.offsetWidth; sc.style.opacity = "1"; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [at.w]);
 
@@ -89,6 +93,8 @@ export function CreateMenu({ at, onRecord, onTask, onSetting, onClose }: {
       el.dataset.rev = "out";
       el.style.setProperty("--rev", `circle(${btnR}px at 50% 50%)`);
     }
+    const sc = scrimRef.current;
+    if (sc) { sc.style.transitionDuration = "var(--t-out)"; sc.style.opacity = "0"; }
     window.setTimeout(onClose, ms(T_OUT));
   };
 
@@ -131,6 +137,12 @@ export function CreateMenu({ at, onRecord, onTask, onSetting, onClose }: {
       data-paint
       style={{ position: "fixed", inset: 0, zIndex: 58 }}
     >
+      {/* ★★後ろの画面をぼかす（第133巡）。触るのは外側の器（閉じる）なので、幕は指を通す。 */}
+      <div ref={scrimRef} aria-hidden style={{
+        position: "absolute", inset: 0, pointerEvents: "none", opacity: 0,
+        background: SCRIM_TINT, backdropFilter: SCRIM_BLUR, WebkitBackdropFilter: SCRIM_BLUR,
+        transition: "opacity var(--t-in) var(--ease-settle)",
+      }} />
       <div ref={discRef} data-create-menu style={{
         position: "absolute",
         left: Math.round(cx - R), top: Math.round(cy - R), width: R * 2, height: R * 2,

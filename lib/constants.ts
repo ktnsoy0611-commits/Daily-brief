@@ -342,6 +342,21 @@ export const GREEN_TINT = "rgba(162,185,240,0.24)";
 export const HAIRLINE = "rgba(26,26,24,0.08)";
 // カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
 export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";
+/**
+ * ★★ホームの山の**床の影**（第133巡にユーザー指摘「**図形が落ちてくるところの底の部分が何もないのが
+ * 違和感**」）。床の線に沿って中央が濃く・端と上下へ消える楕円のぼかし。図形の影と同じ墨。
+ */
+export const PILE_FLOOR_SHADOW =
+  "radial-gradient(50% 50% at 50% 50%, rgba(26,26,24,0.13) 0%, rgba(26,26,24,0.05) 55%, rgba(26,26,24,0) 100%)";
+/**
+ * ★★★**重なる画面の下をぼかす幕**（第133巡にユーザー指定「**ニュースを開いた時とかもガウスブラーに**」）。
+ * 下の画面を**ぼかして少しだけ沈める**。★暗くしすぎない（明るい地のまま、手前の札だけが浮く）。
+ */
+export const SCRIM_BLUR = "blur(18px) saturate(1.2)";
+export const SCRIM_TINT = "rgba(26,26,24,0.16)";
+/** ★★忘れ防止の通知の札（第133巡）… すりガラスの白（後ろをぼかして透かす。iOS の通知と同じ作り）。 */
+export const NOTE_GLASS = "rgba(255,255,255,0.88)";
+export const NOTE_BLUR = "blur(24px) saturate(1.4)";
 export const SOFT_SHADOW_LG = "0 12px 32px rgba(28,28,30,0.12)";
 /**
  * ★★★**券の影**（第80巡）。`box-shadow` ではなく **`filter: drop-shadow`**。
@@ -573,8 +588,11 @@ export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";
 // タスクアプリは4層を1本の縦の空間に積むので、アプリ名の札は**層ではなく
 // カメラの器が画面に固定して**持つ(components/tasks/TaskSpace.tsx)。層の側は
 // このぶんだけ下げてから自分の見出し(層の名前・ビュー切替)を置く。
-// 内訳 = 上下の padding(12 + 16) + GeoText の size(30)。
-export const MAST_H = 58;
+// 内訳 = 上下の padding(12 + 16) + GeoText の size(`MAST_SIZE`)。
+// ★★第133巡に 30 → 44（ユーザー指定「**左上のHomeとかのタイトルをもっと大きく**」）。
+//   7文字（EXPLORE・JOURNAL）でも 358 の柵の中に収まる大きさ。★目盛りの外（幾何アルファベットの字高）。
+export const MAST_SIZE = 44;
+export const MAST_H = 28 + MAST_SIZE;
 
 // ---- 興味の自動検出（プロトタイプ: キーワード頻度。現在は未使用） --
 // 好み/興味は「興味・好み」1リストへ統合し、チップ本体はCoworkの週次分析が

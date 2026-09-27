@@ -226,7 +226,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 paddingBottom: "var(--nav-h)",
                 ...(scrollLocked ? { position: "relative" as const, zIndex: 16 } : null),
               }}>
-                {tab === "home" && <HomeTab {...tabProps} />}
+                {tab === "home" && <HomeTab {...tabProps} appActive={active} />}
                 {tab === "brief" && <BriefTab {...tabProps} />}
                 {tab === "stock" && <StockTab {...tabProps} />}
                 {tab === "goals" && <GoalsTab {...tabProps} />}

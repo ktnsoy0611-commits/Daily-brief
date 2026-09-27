@@ -227,6 +227,10 @@ export interface TaskSuggestion {
   id: string;
   title: string;
   why?: string;   // なぜ今それを確認するのか(1文)
+  /** ★忘れ防止の通知（`lib/remind.ts`）で「まだ」と答えた回数。 */
+  notYet?: number;
+  /** ★この時刻（ISO）より前は通知で聞かない（「まだ」のあとの待ち）。 */
+  askAfter?: string;
 }
 
 // ★タスクの「側面の情報」。立体の側面になる4つ(2026-08-13にユーザー確定)。
@@ -377,6 +381,11 @@ export interface AppState {
   // ほとんどが消えた id の列**になる。留め金なら、隣が消えても自然な位置へ戻る。
   // ★並びの規則を知っているのは `lib/homeBand.ts` だけ。
   bandPins?: { id: string; after: string }[];
+  /**
+   * ★忘れ防止の通知の答えの数（第133巡。`lib/remind.ts`）。「まだ」が多い人ほど**早めに**聞き始める
+   * （後回しの癖を先読みする）。
+   */
+  remindStats?: { done: number; notYet: number };
   // ★その日のまとめ(Coworkが自動生成した日記)。キーは日付(YYYY-MM-DD)。
   // その日の声のメモ・実行したカード・行った場所・済ませたタスクをまとめて
   // 書かれたもので、アプリの記録の一番上に出る(HANDOFF §12)。

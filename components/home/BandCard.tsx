@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { groundOf } from "@/components/AppBackdrop";
-import { INK, PAPER, SANS, SOFT_SHADOW_LG, mixHex } from "@/lib/constants";
+import { INK, PAPER, SANS, SCRIM_BLUR, SCRIM_TINT, SOFT_SHADOW_LG, mixHex } from "@/lib/constants";
 import { haptic, img } from "@/lib/helpers";
 import { PillContent, pillBoxStyle } from "./BandPill";
 import { PAN_SLOP, PILL_EDGE } from "@/lib/pullDrag";
@@ -196,12 +196,16 @@ export function BandCard({ item, from, grab, autoOpen, onClose }: {
           visibility: "hidden", pointerEvents: "none",
         }}
       >{body}</div>
-      {/* ★地を覆う幕。**開き切るまでは薄い**（後ろの帯が見えていてほしい）。 */}
+      {/* ★地を覆う幕。**開き切るまでは薄い**（後ろの帯が見えていてほしい）。
+          ★★★第133巡に「墨で暗くする」→「**ぼかして少し沈める**」（ユーザー指定「**ニュースを開いた時とかも
+          ガウスブラーに**」）。ぼかしの強さは一定で、幕ごと `e` で現れる（ぼかしの半径を毎フレーム
+          変えると iPhone で重い）。 */}
       <div
         onClick={() => run(0, onClose)}
         style={{
-          position: "absolute", inset: 0, background: INK,
-          opacity: e * 0.5, transition: "none",
+          position: "absolute", inset: 0, background: SCRIM_TINT,
+          backdropFilter: SCRIM_BLUR, WebkitBackdropFilter: SCRIM_BLUR,
+          opacity: e, transition: "none",
         }}
       />
       <div data-news-sheet style={{

@@ -3,7 +3,7 @@
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-react";
 import { memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, BLUE_INK, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MUTED, PAPER, SANS, SOFT_SHADOW, SECOND, WHITE } from "@/lib/constants";
+import { BLUE, BLUE_INK, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MAST_SIZE, MUTED, PAPER, SANS, SOFT_SHADOW, SECOND, WHITE } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
 import { GeoText } from "./GeoType";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
@@ -28,7 +28,7 @@ export function Masthead({ title, dateline }: {
     <header style={{ padding: `${SPACE.md}px 0 ${SPACE.lg}px` }}>
       <div style={{ minWidth: 0 }}>
         {/* ★色は地が決める（`AppShell` が `--ink-on` を置く）。既定は明るい地。 */}
-        <GeoText text={title} size={30} color={`var(--ink-on, ${INK})`} />
+        <GeoText text={title} size={MAST_SIZE} color={`var(--ink-on, ${INK})`} />
         {dateline && <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: `var(--muted-on, ${MUTED})`, marginTop: SPACE.md }}>{dateline}</div>}
       </div>
     </header>

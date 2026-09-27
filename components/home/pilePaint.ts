@@ -2,9 +2,8 @@ import { BAND_BEZEL, BAND_H, BD_GREY, DISPLAY, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { traceHub } from "@/lib/reelHub";
 import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
-import { clampRows, halfWidthAtStack, stackOutline } from "@/lib/solid";
-import { rowsOf } from "@/lib/taskSize";
-import { canvasFont, drawFitted, ensureGlyphs, layoutInRows, missingGlyphs, warmGlyphs } from "@/lib/textFit";
+import { halfWidthAtStack, stackOutline } from "@/lib/solid";
+import { ROW_FILL, canvasFont, drawFitted, ensureGlyphs, layoutInRows, missingGlyphs, warmGlyphs } from "@/lib/textFit";
 import { drawWordPlate } from "@/lib/wordPlate";
 import { WORD_WEIGHT } from "@/lib/solidPaint";
 import { type Piece } from "./pileWorld";
@@ -119,12 +118,27 @@ const OFFER_BEZEL = (BAND_BEZEL * 2) / BAND_H.photo;
 const blit = (ctx: CanvasRenderingContext2D, b: Baked) =>
   ctx.drawImage(b.canvas, -b.w / 2, -b.h / 2, b.w, b.h);
 
+/**
+ * ★★★**タスクの字の割り付け**（2026-09-27・第133巡。山の絵と引き下ろしの幽霊が同じ1本を読む）。
+ * ★★**行は必ず「箱の高さ ÷ 2」の刻みで組む** ―― 1行の題も2行の題も**同じ字の大きさ**で、
+ *   1行なら上下の中央に置く。刻み 2 つぶんの高さに 1 行だと字が倍になるので、
+ *   **組む箱の高さを「行の数 × 刻み」に絞り**、角丸の幅は**本当の高さで**測る。
+ */
+export function fitTask(title: string, face: number, lines: number, pw: number, ph: number) {
+  const n = Math.max(1, Math.min(2, Math.round(lines)));
+  const bh = (ph / 2) * n;
+  return layoutInRows(
+    title, face, n, pw, bh,
+    (t) => halfWidthAtStack(1, pw / ph, (t * bh) / ph), (ph / 2) * ROW_FILL,
+  );
+}
+
 /** タスク（角丸の四角）を1枚焼く。返る `w`/`h` は**余白を含む整数の箱**。 */
 export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   if (!p.w || !p.h || p.face_ === undefined || !p.title) return undefined;
   const pw = Math.ceil(p.w); const ph = Math.ceil(p.h);
   const w = pw + BAKE_PAD * 2; const h = ph + BAKE_PAD * 2;
-  const key = [p.id, w, h, p.face, p.ink, p.face_, p.title, dpr.toFixed(2), p.outlined ? "o" : "-"].join("|");
+  const key = [p.id, w, h, p.face, p.ink, p.face_, p.title, p.lines ?? 1, dpr.toFixed(2), p.outlined ? "o" : "-"].join("|");
   const hit = bakeCache.get(key);
   if (hit) return hit;
   // ★★**1フレームの予算を使い切ったら、今回は代役で描く**（上の `BAKE_PER_FRAME`）。
@@ -133,20 +147,12 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   //   山だけ角丸の四角を別に描いていたのをやめた ―― **同じタスクが画面によって
   //   違う形**に見えていた（ユーザー確定で TASK アプリと山の両方を揃える）。
   ensureGlyphs(p.face_, p.title);
-  // ★★★**段の数は題の文字数から**（`rowsOf`。第99巡）。TASK アプリと**同じ関数**。
-  //   ★書体の到着で段数が変わらないよう、行数の実測ではなく純粋な関数から引く。
-  const rows = clampRows(rowsOf(p.title));
-  // ★★★**割り付けも TASK アプリと同じ `layoutInRows`**（2026-09-13・第100巡）。
-  //   第99巡は `fitText(..., pw * 0.82, ph * 0.7, rows)` で組んでいた ―― 矩形に
-  //   詰めるので**段の中心と行の中心が一致せず**、`0.7` のぶん山と TASK で
-  //   **同じタスクの絵が違っていた**。段の profile（`halfWidthAtStack`）を渡す。
+  // ★★★**行の数は格子の箱と同じ1本から**（`taskCellsOf` → `Piece.lines`。第133巡）。
+  //   ★書体の到着で行の数が変わらないよう、実測ではなく純粋な関数から引く（第99巡）。
   // ★割り付けは覚える（字が焼き上がるまで数フレーム待つことがあるので）。
   let fit = fitMemo.get(key);
   if (fit === undefined) {
-    fit = layoutInRows(
-      p.title, p.face_, rows, pw, ph,
-      (t) => halfWidthAtStack(rows, pw / ph, t), ph / rows,
-    );
+    fit = fitTask(p.title, p.face_, p.lines ?? 1, pw, ph);
     if (fitMemo.size > 80) fitMemo.clear();
     fitMemo.set(key, fit);
   }
@@ -176,7 +182,7 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   if (!ctx) return undefined;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingQuality = "high";
-  const outline = stackOutline(rows, pw / ph);
+  const outline = stackOutline(1, pw / ph);
   const trace = (sw: number, sh: number) => {
     ctx.beginPath();
     outline.forEach((q, i) => {
@@ -455,10 +461,8 @@ function ghostFit(g: Ghost) {
   const key = [g.title, g.faceIdx, g.rows, Math.round(g.w1), Math.round(g.h1)].join("|");
   if (key === fitKey) return fitVal;
   fitKey = key;
-  fitVal = layoutInRows(
-    g.title, g.faceIdx, g.rows, g.w1, g.h1,
-    (y) => halfWidthAtStack(g.rows, g.w1 / g.h1, y), g.h1 / g.rows,
-  );
+  // ★★★**山の絵と同じ割り付け**（`fitTask`）。`g.rows` は**字の行の数**（`taskCellsOf` の `lines`）。
+  fitVal = fitTask(g.title, g.faceIdx, g.rows, g.w1, g.h1);
   return fitVal;
 }
 
@@ -604,15 +608,28 @@ export function drawPile(
         trace(c, r * 2);
         c.fill();
         if (!im) return;
-        // ★★★**ベゼルは半径の `OFFER_BEZEL`＝帯のピルと同じ比**（第131巡に太くし、
-        //   第132巡に帯の比へ揃えた）。第130巡までは 6px 固定 ＝ 半径の 9% だった。
-        const inner = Math.max(4, r * (1 - OFFER_BEZEL));
+        // ★★★**ベゼルは「輪郭から内側へ一定の幅」**（2026-09-27・第133巡にユーザー指摘
+        //   「**そのまま縮小して内側に写真があるせいで、細い部分と太い部分ができていて、
+        //   ベゼルがオフセットになっていない**」）。
+        //   ★★★**第130〜132巡は「同じ形を一回り小さく」**（`trace(c, inner * 2)`）だった ――
+        //     拡大縮小は中心からの距離を一律に縮めるので、**縁までの距離が遠い出っ張りほど
+        //     ベゼルが太く、中心に近いへこみほど細くなる**（四つ葉の谷・三つ葉の付け根）。
+        //   → **写真は形いっぱいに切り抜き、同じ輪郭を `2 × 幅` の太さで引く**。線の半分は
+        //     切り抜きの外へ出て消え、**内側の半分 ＝ 輪郭から一定の距離の帯**だけが残る
+        //     （＝ 本当のオフセット。谷では線の角が丸く繋がる ―― `lineJoin: round`）。
+        //   ★幅は今までの「半径の `OFFER_BEZEL`」（帯のピルと同じ比）のまま。
+        const bez = r * OFFER_BEZEL;
         c.save();
-        trace(c, inner * 2);
+        trace(c, r * 2);
         c.clip();
-        const s2 = Math.max((inner * 2) / im.naturalWidth, (inner * 2) / im.naturalHeight);
+        const s2 = Math.max((r * 2) / im.naturalWidth, (r * 2) / im.naturalHeight);
         const iw = im.naturalWidth * s2; const ih = im.naturalHeight * s2;
         c.drawImage(im, -iw / 2, -ih / 2, iw, ih);
+        c.lineWidth = bez * 2;
+        c.lineJoin = "round";
+        c.strokeStyle = face;
+        trace(c, r * 2);
+        c.stroke();
         c.restore();
       };
       // ★★★**焼くのは写真があるときだけ**（第131巡に測った）。写真は毎フレーム

@@ -181,46 +181,68 @@ export function specOf(t: Partial<Task> & { title: string }, today = new Date())
 }
 
 /**
- * ★★★**段の高さを物差しにした外接箱**（2026-09-17・第116巡にユーザー指定
- * 「**1段ごとのピルの大きさは同じで、2段の時はそれが2個、3段の時はそれが3個、
- * そのまま積み上がったような形にしてください。で文字の大きさを揃えてください**」）。
- *
- * ★★★**`specOf` との違いはここだけ** ―― あちらは**面積**（＝重要度）を先に決めて
- *   比で割るので、**段が増えるほど段の高さが痩せ、字も小さくなる**
- *   （実測 … 同じ面積で 1段の段の高さ `0.511√A` に対し 3段は `0.256√A` ＝ **ちょうど半分**。
- *   これが「1段と2段と3段で大きさが全く違う」の正体）。
- *   こちらは**段の高さを 1 に固定**し、箱がそれに従う:
- *     `h = 段の数` ／ `w = rowAspect`（＝その段が抱える文字数）。
- *   → **どの図形でも段の厚みが同じ＝字の大きさも同じ**（字は `pitch × ROW_FILL` で、
- *     `pitch = h / rows = 1`）。
- * ★★**幅だけは題の長さで伸びる** ―― 字を同じ大きさで折り返さずに収めるには、
- *   文字数ぶんの幅が要る。**幅も固定にすると、字が縮むか `…` で消える**かの
- *   どちらかになり、ユーザーの「文字の大きさを揃えて」と両立しない。
- * ★★★**`specOf` は 1 行も変えない** ―― TASK（GRAVITY）は重要度で大きさが変わるまま。
- *   **読み替えるのはホームの山だけ**（`components/home/pileWorld.ts`）。
- * ★★★**幅は `ROW_WIDE` 倍**（2026-09-19・第124巡にユーザー指定「**もう少し横幅を
- *   今の2倍くらい大きくしてください**」）。★★**`rowAspect` の側ではなく、ここで
- *   掛ける** ―― `rowAspect` は `ratioOf` 経由で **GRAVITY の `specOf`** も読むので、
- *   向こうで掛けると**ホームと無関係な画面の図形まで横に伸びる**。
+ * ★★★**ホームの山の格子**（2026-09-27・第133巡にユーザー指定「**図形の大きさと形は、
+ * それぞれで勝手に調整するのではなく、デザインシステムを統一してください。正方形の
+ * グリッドを設定して…**」）。**1マス ＝ 山の内寸の幅 ÷ `GRID_COLS`**。図形の外枠は
+ * 必ずマスの整数倍 … 提案 2×2／JOURNAL の円 2×2／日付 3×1／タスク 2〜4×1／
+ * **焦点のタスク 4×2**。★格子の線は画面に出さない。★目盛りの外（図形の座標系）。
+ * ★★★**第116〜132巡の `rowSpecOf`（段の高さ ＝ 板の半分を物差しにした箱）は削除した。
+ *   復活させない** ―― 図形ごとに別の物差し（段・板・px 固定の円）を持っていたので、
+ *   ユーザーの言う「それぞれで勝手に調整」になっていた。**物差しはマス1つ。**
+ * ★★**`specOf`（GRAVITY）は触っていない。**
  */
-export function rowSpecOf(t: Partial<Task> & { title: string }): SolidSpec {
-  const rows = rowsOf(t.title);
-  // ★★★**`ROW_WIDE` は「下限」に掛ける。文字の項には掛けない**（第125巡）。
-  //   `rowAspect` は**その段が抱える文字数ぶんの幅**をもう返しているので、
-  //   そこへ掛けると**二重に広がる**（実測 … 10文字の題で 13.9 単位 ＝ 514px。
-  //   山の内寸 358px を超えて `cap` が全体を押し下げ、**図形が小さくなる**）。
-  //   → **短い題は下限で横長に、長い題は文字数で自然に伸びる。**
-  const w = Math.max(ROW_AR * ROW_WIDE, rowAspect(t.title, rows));
-  const h = rows;
-  return {
-    sides: sidesOf(t),
-    // ★**塗られる**面積（物理の重さ・予算の割り当てが読む）。塗り率は積みと同じ。
-    area: w * h * STACK_INK,
-    w,
-    h,
-    slabs: slabsOf(t as Pick<Task, "subtasks">),
-  };
+export const GRID_COLS = 5;
+/** ★タスクの幅（マス）の下限と上限。★上限を `GRID_COLS` にしない（壁に挟まって動けない）。 */
+export const TASK_COLS_MIN = 2;
+export const TASK_COLS_MAX = 4;
+/** ★焦点のタスクの箱（マス）。 */
+export const FOCUS_COLS = 4;
+export const FOCUS_ROWS = 2;
+
+/** 題のおおよその幅（全角 ＝ 1）。★欧文・数字は半分強。**純粋な関数**（書体の到着で箱が変わらない）。 */
+const emOf = (s: string): number =>
+  [...s].reduce((a, c) => a + (c.charCodeAt(0) < 0x2e80 ? 0.55 : 1), 0);
+
+/**
+ * `lines` 行を組むのに要る**ピルの幅**（刻み ＝ 高さ ÷ 2 を 1 とする）。
+ * ★`lib/textFit.ts` の `layoutInRows` と同じ幾何 ―― 字は刻みの `ROW_FILL`、上下の余りを
+ *   `ROW_SIDE` 倍して左右にも取り、**行の上端・下端が角丸に食い込むぶん**を足す。
+ */
+function pillWidthFor(em: number, lines: number): number {
+  const lh = LINE_H * ROW_FILL;
+  const bezel = (1 - lh) / 2;
+  const cy = lines > 1 ? 0.5 : 0;           // 行の中心（刻み。角丸の半径 ＝ 1）
+  const e = Math.min(1, cy + lh / 2);
+  const loss = 1 - Math.sqrt(Math.max(0, 1 - e * e));
+  return ROW_FILL * em + 2 * loss + 2 * bezel * ROW_SIDE;
 }
+
+/**
+ * ★★★**タスクの格子の箱（マス）と行の数**。ホームの山・引き下ろしの幽霊・戻す幽霊が
+ * **同じ1本**を読む（2か所で数えると、落ちた瞬間に大きさが飛ぶ）。
+ * ★★**字の大きさは全部のタスクで同じ** ―― 行は必ず「箱の高さ ÷ 2」の刻みで組む
+ *   （1行の題も同じ字で、上下の中央に置く）。焦点は箱が 2 マスなので字も 2倍。
+ * ★★幅は**2行で収まる最小のマス**と**1行で収まる最小のマス**の狭いほう（同じなら1行）。
+ */
+export interface TaskCells { cols: number; rows: number; lines: number }
+export function taskCellsOf(title: string, focus = false): TaskCells {
+  const em = Math.max(1, emOf((title ?? "").trim()));
+  // ★2行のときの長いほうの行（`splitLines` は字数で揃えるので、半分 ＋ 1字ぶんの揺れ）。
+  const em2 = em / 2 + 0.5;
+  // ★焦点は 4×2 マス ＝ 刻みが 1 マス。幅は刻み 4 つぶん。
+  if (focus) return { cols: FOCUS_COLS, rows: FOCUS_ROWS, lines: pillWidthFor(em, 1) <= FOCUS_COLS ? 1 : 2 };
+  // ★1 マスの高さ ＝ 刻み 2 つ ＝ **1 マスの幅も刻み 2 つぶん**。
+  const c1 = Math.max(TASK_COLS_MIN, Math.ceil(pillWidthFor(em, 1) / 2 - 1e-6));
+  const c2 = Math.max(TASK_COLS_MIN, Math.ceil(pillWidthFor(em2, 2) / 2 - 1e-6));
+  const one = c1 <= c2;
+  const cols = one ? c1 : c2;
+  // ★上限を越える長い題は 2 行・上限の幅（字は `layoutInRows` が入るまで縮める）。
+  if (cols > TASK_COLS_MAX) return { cols: TASK_COLS_MAX, rows: 1, lines: 2 };
+  return { cols, rows: 1, lines: one ? 1 : 2 };
+}
+
+/** ★ピル（角丸 ＝ 高さの半分）の塗り率。`ar` ＝ 幅 ÷ 高さ。予算と重さが読む。 */
+export const pillInk = (ar: number): number => 1 - (4 - Math.PI) / (4 * Math.max(1, ar));
 
 /** 物理の重さ。**塗られる面積 = 重要度**にそのまま比例させる。 */
 export const massOf = (spec: SolidSpec): number => spec.area;

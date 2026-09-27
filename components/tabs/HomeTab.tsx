@@ -8,7 +8,7 @@ import { AssignSheet } from "@/components/home/AssignSheet";
 import { Band } from "@/components/home/Band";
 import { Pile } from "@/components/home/Pile";
 import { pillWidth } from "@/components/home/pillGhost";
-import { OFFER_AREA, fitUnit, offerRadiusOf, type Piece } from "@/components/home/pileWorld";
+import { OFFER_AREA, OFFER_CELLS, type Piece } from "@/components/home/pileWorld";
 import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
 import { BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
@@ -27,8 +27,7 @@ import {
   pullBus,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
-import { clampRows } from "@/lib/solid";
-import { rowSpecOf, rowsOf } from "@/lib/taskSize";
+import { pillInk, taskCellsOf } from "@/lib/taskSize";
 import type { AppState, Item, Task, TabProps } from "@/lib/types";
 
 // ★★★**ホーム**（2026-09-07）。起動して最初に見る画面で、3アプリの**玄関**。
@@ -134,15 +133,14 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
 
   /** そのピルが山で持つ姿（大きさ・形・色）。★`null` なら引けない。 */
   const seed = useCallback((it: BandItem): GhostSeed | null => {
-    const box = boxRef.current?.getBoundingClientRect();
-    const bw = box?.width ?? 390; const bh = box?.height ?? 600;
+    // ★★★**行き先の大きさは山の格子のマス**（`pullBus.unit` ＝ 1マスの一辺。第133巡）。
     const unit = pullBus.unit;
     if (it.kind === "offer" || it.kind === "today") {
       // ★★**提案（`offer`）にはまだ `Item` が無い**ので、`kind` は**帯が持っている
       //   ほうを先に見る**（`BandItem.itemKind`。第118巡）。無いと札の形が付かない。
       const src = srcOf(it).item;
       const kind = it.itemKind ?? src?.kind;
-      const d = Math.min(offerRadiusOf(unit) * 2, bw * 0.52);   // ★同じ頭打ち
+      const d = unit * OFFER_CELLS;                               // ★2×2 マス
       const face = kind ? colorOfKind(kind) : it.face;
       return {
         kind: "offer", title: it.text, rows: 1, outlined: false,
@@ -154,20 +152,18 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
         photo: it.photo, label: it.label,
       };
     }
-    // ★★★**ホームは重要度を持たない**（第116巡）。段の高さを物差しにした箱
-    //   （`rowSpecOf`）を、山とまったく同じ式で読む。
-    const spec = rowSpecOf({ title: it.text });
-    // ★★**器より大きく出さない**（`buildPieces` と同じ頭打ち）。まだ山に居ないものは
-    //   一括の倍率の計算に入っていないので、抑えないと壁からはみ出した姿になる。
-    const u = fitUnit(unit, spec.w, spec.h, bw, bh);
+    // ★★★**ホームは重要度を持たない**（第116巡）。箱は**山とまったく同じ格子の式**
+    //   （`taskCellsOf`。第133巡）―― 2か所で数えると、落ちた瞬間に大きさが飛ぶ。
+    const cl = taskCellsOf(it.text);
+    const w = cl.cols * unit; const h = cl.rows * unit;
     return {
-      kind: "task", title: it.text, rows: clampRows(rowsOf(it.text)),
+      kind: "task", title: it.text, rows: cl.lines,
       // ★★**落ちた先は「日付あり」＝塗り**（帯では輪郭だった）。変形の行き先は
       //   山での姿なので、ここで塗りへ切り替わるのが正しい。
       outlined: false, face: TASK_FACE, ink: bodyInkOn(TASK_FACE), faceIdx: SHAPE_FACE,
-      w: Math.max(28, spec.w * u), h: Math.max(24, spec.h * u),
-      // ★★**`buildPieces` のタスクとまったく同じ数**（`spec.area`）。上の注釈。
-      area: spec.area,
+      w, h,
+      // ★★**`buildPieces` のタスクとまったく同じ数**（塗る面積 ÷ マス²）。代理の体の重さ。
+      area: cl.cols * cl.rows * pillInk(w / h),
     };
   }, [srcOf]);
 

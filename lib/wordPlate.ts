@@ -213,6 +213,42 @@ export function joinSplitPlate(left: WordPlate, right: WordPlate): WordPlate {
   };
 }
 
+/**
+ * ★★★**割れたピルを「決まった箱」に収める**（2026-09-27・第133巡。ホームの山の格子 ――
+ * 日付の板は **3×1 マス**）。字は**箱に入るいちばん大きな大きさ**（高さと幅の両方で測る）。
+ * 余った幅は左右の半分へ**それぞれの幅の比で**配る（字はそれぞれの半分の中央のまま）。
+ * ★★横の遊びだけ `SPLIT_PAD`（字の高さの比）へ詰める ―― 箱の幅が 3 マスに決まったので、
+ *   `PILL_PAD`(0.46) のままだと遊びに幅を取られて**字が 58 → 46px に縮んだ**（第133巡の実測）。
+ *   端の角丸に字が触れない下限は 0.15 前後（半径 ＝ 高さの半分に対して字の高さ 5割強）。
+ */
+export const SPLIT_PAD = 0.3;
+export function fitSplitPlate(
+  left: string, right: string, W: number, H: number, fam: string,
+  leftInk: string, rightInk: string, edge: string,
+): WordPlate {
+  const at = (fs: number, word: string, ink: string) => {
+    const P = measureWordPlate(word, fs, W, ink, fam, undefined, undefined, edge);
+    return { ...P, bw: P.w + P.h * SPLIT_PAD * 2 };
+  };
+  let fs = H;
+  let L = at(fs, left, leftInk);
+  let R = at(fs, right, rightInk);
+  // ★寸法は字の大きさにほぼ比例するので、2〜3回で収まる。
+  for (let i = 0; i < 4; i++) {
+    const k = Math.min(H / Math.max(L.bh, R.bh), W / (L.bw + R.bw));
+    if (Math.abs(k - 1) < 0.004) break;
+    fs *= k * (k < 1 ? 0.998 : 1);
+    L = at(fs, left, leftInk);
+    R = at(fs, right, rightInk);
+  }
+  // ★★箱は**厳密に W × H**（格子の整数倍）。余り（か、収束の誤差 0.4% 以内の足りなさ）は
+  //   左右の半分へ幅の比で配る。
+  const sum = L.bw + R.bw;
+  L = { ...L, bw: (W * L.bw) / sum, bh: H };
+  R = { ...R, bw: (W * R.bw) / sum, bh: H };
+  return joinSplitPlate(L, R);
+}
+
 /** 語 → 板の寸法。★`GravityTab.makeWordPiece` の前半そのまま。 */
 export function measureWordPlate(
   word: string, fs: number, room: number, ink: string, fam: string,

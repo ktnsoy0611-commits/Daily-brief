@@ -15,8 +15,7 @@ import { SPACE } from "@/lib/tokens";
 import { bandAim, bandBus } from "./bandMotion";
 import { inCardShape } from "@/lib/cardShape";
 import type { BandRowId } from "@/lib/homeBand";
-import { clampRows, halfWidthAtStack } from "@/lib/solid";
-import { rowsOf } from "@/lib/taskSize";
+import { halfWidthAtStack } from "@/lib/solid";
 import { ensureGlyphs } from "@/lib/textFit";
 import { SHAPE_FACE } from "@/lib/constants";
 import {
@@ -168,7 +167,8 @@ function homeGhost(p: Piece, look: PillLook, owner: number): Ghost {
     t: 1, tTo: 0,
     w0: look.w, h0: look.h, w1: p.w ?? d, h1: p.h ?? d,
     bend: 0, gx: 0, look,
-    rows: clampRows(rowsOf(p.title ?? "")), outlined: !!p.outlined,
+    // ★★字の行の数（`taskCellsOf` の `lines`）。山の絵と同じ割り付けで戻っていく。
+    rows: p.lines ?? 1, outlined: !!p.outlined,
     // ★戻す幽霊は**山に居る本物**なので、重さはその体からそのまま引く。
     area: p.body.mass / MASS_K,
     face: p.face, ink: p.ink, faceIdx: p.face_ ?? 0,
@@ -1085,7 +1085,7 @@ export function Pile({
     // ★★★**タスクは「絵と同じ輪郭」で見る**（2026-09-14・第104巡）。
     //   ★★**式は `halfWidthAtStack`**（絵と物理と同じ1か所。`lib/solid.ts`）。
     if (p.kind === "task" && pw > 0 && ph > 0) {
-      const hw = halfWidthAtStack(clampRows(rowsOf(p.title ?? "")), pw / ph, ly / ph);
+      const hw = halfWidthAtStack(1, pw / ph, ly / ph);
       return Math.abs(lx) <= hw * pw + slop;
     }
     // ★★★**板も「絵と同じ形」で見る**（2026-09-18・第122巡）。板は**角丸が

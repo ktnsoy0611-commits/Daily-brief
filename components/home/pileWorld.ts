@@ -2,12 +2,10 @@ import { DISPLAY, INK, KIND_DOMAIN, MUTED, PAPER, SHAPE_FACE, TASK_FACE } from "
 import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { categoryOfKind } from "@/lib/deckStyle";
-import { rowSpecOf, rowsOf } from "@/lib/taskSize";
+import { GRID_COLS, pillInk, taskCellsOf } from "@/lib/taskSize";
 import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
-import {
-  WD_FULL, WD_SHORT, joinSplitPlate, makeWordBody, measureWordPlate, wordFontSize, type WordPlate,
-} from "@/lib/wordPlate";
+import { WD_SHORT, fitSplitPlate, makeWordBody, type WordPlate } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
 import type { BriefCard, Item, ItemKind, TabId, Task } from "@/lib/types";
@@ -54,64 +52,25 @@ const VERT_MIN = 2;
  *  ★★**帯が厚いほど山の取り分が減る**ので、帯の厚み（`BAND_H`）とセットで決める。
  *  ★2026-09-10 に **0.36** ―― 文字の板と未読の図形を予算に数えるようにしたぶん。 */
 const FILL = 0.5;
-/** ★★**1つの図形が器に対して取ってよい上限**（`GravityTab` の `FIT_W`/`FIT_H` と
- *  同じ考え方）。面積の予算だけだと、重要度の高い1枚が器の半分を覆ってしまう。
- *  ★★★**第124巡に 0.52 → 0.86**（ユーザー指定「**横幅を今の2倍くらい大きく**」）。
- *  ★★★**幅を2倍にしたら、上限も同じだけ広げないと「上限のほうが先に効く」** ――
- *    0.52 のままだと `cap` が全体を 26.4 まで押し下げ、**タスクは大きくなるどころか
- *    小さくなった**（実測 … 4件で unit 26.4 ＝ 板の 37.0 に届かない）。
- *  ★★**0.86 は「いちばん幅を取る3段の題が器に収まる」上限**（実測 … 284px 対
- *    山の内寸 358px）。★第90巡の「0.68 では塔になる」は**幅が半分だった頃の話**で、
- *    いまは figure そのものが横長なので塔にはならない。
- *  ★★**高さの上限（`FIT_H`）は変えない** ―― 段の数は増やしていない。 */
-const FIT_W = 0.86;
+/**
+ * ★★★**1マスが器の高さに対して取ってよい上限**（横画面などの低い器の安全網）。
+ * ★焦点のタスク（2 マスの高さ）でも器の 56% まで。★目盛りの外（詰め込み具合）。
+ * ★★★**第124〜132巡の `FIT_W`/`fitUnit`（いちばん大きな図形が器に入るまで全体を縮める）は
+ *   第133巡に削除した** ―― 格子ではタスクの幅が `TASK_COLS_MAX`(4) マス ＝ 器の 4/5 で
+ *   頭打ちなので、横にはみ出す図形が原理的に無い。
+ */
 const FIT_H = 0.28;
-
 /**
- * ★★★**1つの図形が器に対して取ってよい上限で倍率を抑える**（`buildPieces` と同じ式）。
- * 引き下ろしの行き先の大きさにも要る（第102巡）―― まだ山に居ないものは
- * `buildPieces` の `unit` の計算に**入っていない**ので、抑えないと器より大きく出る。
+ * ★★★**格子のマス数**（2026-09-27・第133巡。規則の正は `lib/taskSize.ts` の `GRID_COLS`）。
+ * 提案 2×2／JOURNAL の円 2×2／日付の板 3×1。タスクは `taskCellsOf`。
+ * ★★★**第116〜132巡の物差し（提案の直径 `OFFER_D` 4 段・板の半分 ＝ 1段の `PLATE_ROWS`・
+ *   JOURNAL の円 ＝ 板の高さ × `REEL_PER_PLATE`・焦点 × `FOCUS_K` 1.3・板の字の上限
+ *   `PILE_WORD_MAX`/`WORD_W`）は全部削除した。復活させない** ―― 図形ごとに別の物差しで
+ *   大きさを決めていたので、ユーザーの言う「**それぞれで勝手に調整**」になっていた。
  */
-export function fitUnit(unit: number, sw: number, sh: number, bw: number, bh: number): number {
-  const usableH = Math.max(120, floorYOf(bh));
-  return Math.max(10, Math.min(unit,
-    (bw * FIT_W) / Math.max(1, sw), (usableH * FIT_H) / Math.max(1, sh)));
-}
-/**
- * ★★★**提案の直径は「段の高さの何倍か」**（2026-09-17・第116巡）。
- * ★★**`unit` の意味が「段の高さ」に変わった**（`rowSpecOf`）ので、重要度の目盛り
- *   （`weightArea(3) × 1.6`）からは引けない ―― **ホームの図形はもう重要度を持たない**。
- * ★3.2 は移行前の実測から … 旧 `unit` で提案の直径は `4.04 unit`、1段のタスクの
- *   段の高さは `1.49 unit` だったので **2.7倍**、3段だと 5.4倍。**その間を取る。**
- * ★★★**第124巡に「カーブから逆算する数」へ変わった**（ユーザー指定
- *   「**ピルの角のカーブを基準に形を構成できますか。ピルのカーブに対して提案の
- *   図形のカーブが合っていない。うまく調整し、図形で調和をとってください**」）。
- *
- * ★★★**札の形のカーブの半径は「形の箱に対する比」で決まる**（`lib/cardShape.ts`
- *   の実測 … 四つ葉 0.2778 ／ 六角形 0.2665 ／ 波打つ四角 0.2436 ／
- *   トゲトゲ 0.2563。**平均 0.2611**）。
- * ★★★**ピルの角の半径は「段の高さ」そのもの**（`lib/solid.ts` ―― 角丸 ＝
- *   高さの半分、2段 ＝ `2 × unit`）。**だから `OFFER_D = 1 / 0.2611` にすれば、
- *   提案のカーブとタスク・板・帯のカーブが px で一致する。**
- * ★★★**だからこの数を手で振らない** ―― 大きさを変えたいなら、変えるのは
- *   `lib/cardShape.ts` の凹凸の数（＝カーブの比）のほう。振ると調和が崩れる。
- * ★★**4つを完全に揃えることはできない** ―― 四つ葉は `k > 1` の制約で 0.25 より
- *   下へ行けない（`QUATREFOIL_R` の注釈）。幅は 1.14倍（第123巡は 2.55倍）。
- */
-// ★★★**第128巡に「実機の写真の 1.5倍」へ**（ユーザー指定「**提案の図形は最大2個に
-//   減らし、一つあたりの大きさを1.5倍くらいに**」）。
-//   ★★★**3.83 × 1.5 ではない** ―― 同じ巡に**段の高さそのもの**も上がった
-//     （予算の頭打ちを外して `unit` ＝ 板の半分。下の `raw`）ので、掛け算すると
-//     **2.2倍**になる（試して実測 … 直径 212px で山が帯の裏まで積み上がった）。
-//   ★★**写真から解いた** … 実機の写真で 提案の直径 ≒ **95px**・板の高さ ≒ 70.5px
-//     （段の高さ 35.2px）。目標 95 × 1.5 ＝ 143px ÷ 35.2 ＝ **4.05 段**。
-//   ★★**上の「カーブが一致する」は崩れる**（提案のカーブは約 1.06 unit）。
-//     ユーザー指定の上での選択。**カーブの比（`lib/cardShape.ts`）は触っていない。**
-// ★★★**第131巡に 4.05 → 4**（案①「円とカプセルの文法」… 大きさは段の 1・2・4 倍だけ）。
-//   直径 4 段 ＝ **半径 2 段**。形の凹凸の半径は箱の 0.25〜0.28 なので、**1〜1.1 段**
-//   ＝ タスクの角・板の角・未読の円と同じ「単位円」になる（`lib/cardShape.ts`）。
-//   ★4.05 との差は 1.2%（写真から解いた大きさはほぼそのまま）。
-const OFFER_D = 4;
+export const OFFER_CELLS = 2;
+const REEL_CELLS = 2;
+const PLATE_COLS = 3;
 /**
  * ★★★**提案の体だけ光線を増やす**（2026-09-18・第121巡にユーザー指摘
  * 「**他の図形と干渉してなんかめり込んでしまったり**」）。
@@ -159,26 +118,17 @@ const OFFER_VERTS = 28;
  *     （実測 … 4／9／14／22 件で余裕 104／164／168／220px・塗った面積はほぼ一定）。
  * ★目盛りの外（詰め込み具合）。
  */
-/**
- * ★★★**日付と曜日の板の高さ ＝ 何段ぶんか**（2026-09-19・第124巡にユーザー指定
- * 「**2段の時の大きさを日付と曜日の図形の高さと合わせ**」）。
- * ★★**段の高さ（`unit`）はここから導く**ので、**画面側に数を置かない**。
- * ★目盛りの外（図形の座標系）。
- */
-const PLATE_ROWS = 2;
 const CROWD_N0 = 18;
 const CROWD_MIN = 0.94;
 /** ★落とす体の数 → 長さの倍率（1 以下）。 */
 const crowdOf = (n: number): number =>
   Math.max(CROWD_MIN, Math.min(1, Math.sqrt(CROWD_N0 / Math.max(1, n))));
 /**
- * ★★★**提案の面積**（段の高さ²。2026-09-15・第110巡に名前を付けた）。
+ * ★★★**提案の面積**（マス²。提案は 2×2 マスの箱で、半径 1 マスの円と同じ重さ）。
  * ★**`HomeTab.seed` も代理の体もここを読む** ―― 重さの目盛りは1つ。
+ * ★★**重さは全部の体で「塗る面積 ÷ マス²」**（密度を揃える。第109巡の理由）。
  */
-export const OFFER_AREA = Math.PI * (OFFER_D / 2) ** 2;
-/** ★提案の半径（px）。★引き下ろしの行き先の大きさにも要るので **export**（第102巡）。 */
-export const offerRadiusOf = (unit: number): number =>
-  Math.max(28, Math.sqrt((OFFER_AREA * unit * unit) / Math.PI));
+export const OFFER_AREA = Math.PI * (OFFER_CELLS / 2) ** 2;
 /** ★★★落とし方は `GravityTab` と**同じ**（傾き・回り・横の初速）。
  *  ★★★2026-09-09 に**回り慣性の細工を全部やめた**（ユーザー指定「ひっくり返っても
  *  なんでもいいので自然に落としてください」）。`setInertia` で回りにくくすると、
@@ -196,17 +146,6 @@ const INSET = PILE_INSET;
  * 9個で最上段が **-1571px ＝ 器の 2.7 枚ぶん上**。着地が叩きつけになった。
  */
 export const DROP_EVERY_MS = 60;
-/**
- * ★★★**JOURNAL の円の直径 ÷ 日付の板の高さ**（2026-09-27・第133巡）。
- * ★2 ＝ **4 段 ＝ 提案の円（`OFFER_D`）と同じ直径**。録音画面でも回る円は
- *   Explore の札の**写真と同じ 310** なので、山でも**円と提案の写真が同じ大きさ**になる。
- */
-const REEL_PER_PLATE = 2;
-/**
- * ★★★**焦点 … 時刻が一番近い「これから」のタスク1件だけを大きく落とす**（2026-09-24・第132巡に
- * ユーザー承認「**山に最初に見る場所を1つ作る**」）。★大きさは 1.3倍の1段だけ（中間を作らない）。
- */
-const FOCUS_K = 1.3;
 /** 焦点のタスク（時刻 `dueTime` が今以降でいちばん早い1件）。時刻のあるものが無ければ null。 */
 export function focusOf(tasks: { id: string; dueTime?: string }[], now: number): string | null {
   const d = new Date(now); const cur = d.getHours() * 60 + d.getMinutes();
@@ -228,31 +167,6 @@ const QUEUED = -1;
  */
 const DROP_ABOVE = 24;
 const DROP_SCATTER = 200;
-/**
- * 板の字を組む幅（山の**内寸**に対する割合）。★GRAVITY は 0.66。
- * ★★★**第122巡に 0.84 → 0.67**（ユーザー指定「**日付と曜日のもの自体も
- *   小さくしてください**」）。**上限（`PILE_WORD_MAX`）と同じ比で下げる** ――
- *   字は `min(幅に収まる値, 上限)` なので、**片方だけ下げるとその画面幅では
- *   1px も変わらない**（第120巡に踏んだ。あちらの注釈を参照）。
- */
-const WORD_W = 0.67;
-/**
- * ★★★**ホームの日付・曜日の大きさの上限**。
- *
- * ★★★**`SWISS_XL`(72) を下げてはいけない** ―― あれは TIMELINE の巨大な曜日と
- *   **共有**なので、下げると TASK 側も縮む。**ホームだけの上限をここに置く**
- *   （いまはたまたま同じ値だが、**別の摘み**。片方だけ動かせるように残す）。
- * ★★塗りの箱（`WEDNESDAY`・WebKit 390 幅）の移り変わり …
- *   第99巡 300.7×52（Archivo を横 63% に潰していた）→ 第100巡 192.7×44（49）→
- *   第101巡 240×54（61）→ **いま 283×64（72）**。
- *   ★第100巡に「縦が 0.85 倍」を狙って 49 にしたら**横が 0.64 倍まで縮み**、
- *   2度「小さすぎる」と差し戻された。**縦だけを見て決めないこと。**
- * ★★★**第122巡に 72 → 58**（ユーザー指定「**日付と曜日のもの自体も小さく**」）。
- *   **`WORD_W` と同じ 0.80 倍**（理由はあちらの注釈 ―― 片方だけでは効かない）。
- *   ★第100巡の失敗とは別件 ―― あのときは**横だけが 0.64 倍**になっていた。
- *     今回は**縦も横も揃って 0.80 倍**（`fs` を下げるだけなので比は変わらない）。
- */
-const PILE_WORD_MAX = 58;
 /**
  * ★★★**絵と同じ輪郭で体を作り、`PHYS_GAP` だけ外側へ出す**（2026-09-13・第101巡に
  * ユーザー指定「**各図形と文字の当たり判定がおかしい**。図形も**表示されている
@@ -435,6 +349,8 @@ export interface Piece {
   shape?: CardShape;
   /** 角丸の四角の外接箱（タスク）。円は `r`。 */
   w?: number; h?: number; r?: number;
+  /** ★タスクの字の行の数（1 か 2。`taskCellsOf`）。★字は必ず「高さ ÷ 2」の刻みで組む。 */
+  lines?: number;
   face: string;
   ink: string;
   title?: string;
@@ -629,145 +545,44 @@ export function buildPieces(
   bandH = 0,
 ): PileBuild {
   const { tasks, offers, picks, today, journal, focus } = c;
-  const kOf = (t: { id: string }) => (t.id === focus ? FOCUS_K : 1);
 
-  // ★★★**その日まだ声を録っていなければ、JOURNAL の図形も落とす**（2026-09-09）。
-  // ★★★**形は「墨の円が1つ」**（2026-09-27・第133巡にユーザー指定「**円が一つの
-  //   デバイスみたいな見た目にして、図形としては一つのその円を出す**」「**黒い円を
-  //   出して**」）。録音画面の**回る円そのもの**（墨の面・`MUTED` の芯。`lib/reelHub.ts`）。
-  //   ★★第94〜132巡のカセット（`lib/cassette.ts`）は**削除した。復活させない。**
-  // ★★大きさは**板と同じ「px の固定の箱」**（第123巡の理由のまま ―― `unit` は予算から
-  //   出るので、混み具合で板との比がずれる）。直径 ＝ 板の高さ × `REEL_PER_PLATE`。
-  // ★★予算では**板と同じ扱い**（`fixed` へ足す。`areas` には入れない）。
-
-  // ★★★**文字の板は先に決めて、器の予算から差し引く**（2026-09-10）。
-  //   板は器の幅の `WORD_W` を取る**いちばん大きな塊**なので、予算に数えないと
-  //   山の総面積が跳ね上がる（実測 80%）。詰まった山は解けずに押し合って震える。
-  // ★★字の大きさは**長いほう（曜日）で決めた1つの値**を両方に使う（第67巡）。
-  // ★★★**日付は `9.15`・曜日は `WED`**（2026-09-16・第114巡にユーザー指定）。
-  //   ★★**どちらも黒いピルに白い文字**（面 ＝ `INK` ／ 字 ＝ `PAPER`）。
-  //     形は帯のピルとまったく同じ（角丸 ＝ 高さの半分）なので、**同じものが
-  //     同じ形で居続ける**。遊びの比は `lib/wordPlate.ts` の `PILL_PAD`。
-  //   ★★★**TASK（GRAVITY）の板は変えていない** ―― あちらは「文字そのものが
-  //     図形」のままで、ユーザーの指定はホームの山についてのもの。
-  // ★★★**混み具合の倍率は、板を測る前に出す**（第118巡）―― 板の大きさにも
-  //   同じ倍率を掛けるため（掛けないと、混むほど板だけが相対的に巨大になる）。
-  //   ★数えるのは**落とす体の全部**（タスク・提案・カセット・未読・板2枚）。
-  const crowd = crowdOf(
-    tasks.length + offers.length + picks.length
-    + (journal ? 1 : 0) + 2);
-  const words = [`${today.getMonth() + 1}.${today.getDate()}`, WD_SHORT[today.getDay()]];
-  // ★★大きな欧文は `DISPLAY`（Anton。第100巡）。canvas に焼くので可変の軸は届かない。
-  // ★★★**大きさの物差しは長いほうの綴り（`WD_FULL`）のまま**（ユーザー
-  //   「**サイズは今の文字くらいでよく**」）―― 3文字で測ると器いっぱいまで
-  //   太ってしまい、**今までの倍近い字**になる。物差しだけ据え置く。
-  // ★★★**上限にも倍率を掛ける**（第120巡。理由は `CROWD_N0` の注釈）――
-  //   掛けないと、上限が効いている幅（実測 390）では板だけが縮まない。
-  // ★★★**板は「長さの倍率 c」の関数**（第128巡）―― 混んだ日は下の安全網が
-  //   **板ごと**縮める（段の高さは板から導くので、板を縮めれば全員が同じ比で縮む）。
-  // ★★★**第130巡から板は1枚 ―― 「割れたピル」**（ユーザー承認「**日付と曜日は C 案**」）。
-  //   左 ＝ 曜日（墨の面・紙の字）／右 ＝ 日付（紙の面・墨の字）。**1つの物体**なので、
-  //   2枚がばらばらに転がって離れることがもう無い。★寸法は2枚を測ってから繋ぐ
-  //   （`joinSplitPlate`）ので、字の大きさ・遊び・段の高さの式（`PLATE_ROWS`）は変わらない。
-  const platesAt = (c: number) => {
-    const room = pileWOf(w) * WORD_W * c;
-    const fs = wordFontSize([WD_FULL[today.getDay()]], room, DISPLAY, PILE_WORD_MAX * c);
-    const [date, day] = words;
-    return [joinSplitPlate(
-      measureWordPlate(day, fs, room, PAPER, DISPLAY, undefined, undefined, INK),
-      measureWordPlate(date, fs, room, INK, DISPLAY, undefined, undefined, INK),
-    )];
-  };
-  let plates = platesAt(crowd);
-  /** カセットの箱（px）。★**高さは板と同じ**（上の注釈）。0 ＝ 出さない。 */
-  // ★★★**高さは板と同じ**（第123巡のユーザー指定「日付と曜日ぐらい」。第131巡の 2 倍は第132巡に撤回）。
-  const reelOf = (pl: typeof plates) => (journal ? pl[0].bh * REEL_PER_PLATE : 0);
-
-  /**
-   * ★★★**ホームの図形は、重要度でも切迫度でも大きさが変わらない**
-   * （2026-09-16・第115巡にユーザー指定「**ホームでは今日に割り当てられている
-   * タスクが集まっているから、重要度や優先度によって大きさが変わる機能はやめます**」）。
-   *
-   * ★★★**第116巡に「段の高さを固定する」へ作り直した**（ユーザー指定
-   *   「**1段ごとのピルの大きさは同じで、2段の時はそれが2個、3段の時はそれが3個。
-   *   文字の大きさを揃えてください**」）―― 第115巡は**面積**を1つにしていたので、
-   *   段が増えるほど段が痩せ、**1段と3段で字が2倍違った**（`rowSpecOf` の注釈に実測）。
-   * ★★**`unit` の意味が変わった** … solid 座標の倍率 → **段の高さ（px）**。
-   *   `rowSpecOf` の `w`/`h` が段の高さを 1 とした箱なので、掛け算はそのままでよい。
-   * ★★★**`specOf` は 1 行も変えない** ―― TASK（GRAVITY）は重要度で大きさが
-   *   変わるまま。**変えるのはホームの読み方だけ。**
-   * ★★おまけに**焼くのが速くなる** ―― 字の大きさが1つなので、焼いた字
-   *   （`lib/textFit.ts` の `glyphCache`）が**全部の図形で使い回せる**。
-   */
-  const flat = (t: { title?: string }) => ({ title: t.title ?? "" });
+  // ★★★**大きさは「格子の1マス」1つで決める**（2026-09-27・第133巡にユーザー指定「**正方形の
+  //   グリッドを設定して、提案やジャーナルなどは2段2列、タスクは一段4列、日付は一段3列…
+  //   そこら辺を統一してください**」）。★★**`unit` の意味は「1マスの一辺（px）」**。
+  //   図形の外枠は全部 `unit` の整数倍 … 提案 2×2／JOURNAL の円 2×2／日付の板 3×1／
+  //   タスク 2〜4×1（`taskCellsOf`）／焦点のタスク 4×2。
+  // ★★★**1マス ＝ 山の内寸の幅 ÷ 5**（390 幅で 71.6px）。**混む日は1マスごと縮む**
+  //   （面積の予算。第118巡の「一律で少しだけ小さく」と同じ作法）ので、**比はどの日も同じ**。
+  // ★★★**第116〜132巡は図形ごとに物差しが違った** ―― タスク ＝ 段の高さ（板の半分）、
+  //   提案 ＝ 段 × 4、JOURNAL の円 ＝ 板の高さ × 2（px 固定）、板 ＝ 器の幅 × 0.67 と字の上限。
+  //   だから混んだ日の縮み方も図形ごとに違った。**物差しは1つにした。**
+  const cells = tasks.map((t) => taskCellsOf(t.title ?? "", t.id === focus));
   // ★★★**予算は「図形が居られる高さ」で取る**（第118巡に**帯のぶんも引いた**）。
-  //
-  // ★★★**帯は山の器へ `position: absolute; top: 0` で重ねてある**
-  //   （`components/tabs/HomeTab.tsx`）。第117巡まではその帯状の面積まで
-  //   「図形が居られる場所」として数えていたので、件数が増えると**山が帯の裏へ
-  //   伸び**、そこは `pointerEvents` を帯に取られているため**指で触れなくなった**
-  //   ―― ユーザー報告「**特にピルのあたりまで高さがくると操作できなくなる**」。
+  //   帯は山の器へ `position: absolute; top: 0` で**重ねてある**（`HomeTab.tsx`）ので、
+  //   その面積まで数えると**山が帯の裏へ伸びて指で触れなくなる**。
   // ★`bandH` は `Pile` が `bandBottom()`（DOM の実測）から渡す。0 なら今までどおり。
   const usableH = Math.max(120, floorYOf(h) - bandH);
-  const areas = [
-    ...tasks.map((t) => rowSpecOf(flat(t)).area * kOf(t) ** 2),
-    ...offers.map(() => OFFER_AREA),
-    ...picks.map(() => OFFER_AREA),
-  ];
-  const total = areas.reduce((a, b) => a + b, 0) || 1;
-  // ★★**px で大きさが決まっているものは「固定」側**（板・未読の数・カセット）。
-  // ★★**`crowd` は「長さ」の倍率なので、面積の予算には2乗で効かせる**（第118巡）。
-  const budgetOf = (pl: typeof plates): number => {
-    const jd = reelOf(pl);
-    const fixed = pl.reduce((a, x) => a + x.w * x.h, 0) + Math.PI * (jd / 2) ** 2;
-    const room2 = w * usableH * FILL * crowd * crowd;
-    return Math.max(room2 * 0.25, room2 - fixed);
-  };
-  // ★★★**段の高さは「日付と曜日の板の半分」**（2026-09-19・第124巡にユーザー指定
-  //   「**2段の時の大きさを日付と曜日の図形の高さと合わせ**」）。
-  //   ★★**タスクの箱は `h = 段の数`** なので、2段 ＝ `2 × unit` ＝ 板の高さ。
-  //     角丸は高さの半分（`lib/solid.ts`）なので、**2段のタスクの角の半径と
-  //     板の角の半径が px で厳密に一致する**（＝カーブが揃う）。
-  //
-  // ★★★**第128巡に「予算で段だけ小さくする」をやめた**（ユーザー指定「**何度も
-  //   言っているのですが、タスクの図形の縦の高さと横幅が小さすぎます。高さは一段の
-  //   時は、日付と曜日の図形の高さの半分にしてください**」）。
-  //   ★★★**真因は `min(板の半分, 予算)`** ―― 件数が多い日は面積の予算が先に効き、
-  //     **板はそのままで段だけが縮んでいた**（実機の写真で 段 ≒ 25px 対 板の半分
-  //     ≒ 35px ＝ **7割**）。第124巡に「板の半分」を決めたのに、**安全網のほうが
-  //     毎日効いていた**。
-  //   ★★★**予算は捨てない。板ごと縮める** ―― 予算を外すだけだと 9件で山が帯の裏へ
-  //     110px 伸びた（実測）。予算が足りない日だけ**板の倍率 c を下げて測り直す**
-  //     ので、**どの件数でも「1段 ＝ 板の半分」**のまま、全部が一律に縮む
-  //     （第118巡の「一律で少しだけ小さく」と同じ作法）。
-  //   ★板の字は倍率に比例する（幅と上限の両方に掛けてある）ので、2〜3回で収まる。
-  let plateUnit = plates[0].bh / PLATE_ROWS;
-  if (hold && hold > 0) {
-    // ★★据え置き（第110巡）… 段の高さは変えない。**板もその段に合わせて測り直す**
-    //   （件数が変わって `crowd` が動いても、「1段 ＝ 板の半分」を崩さない）。
-    if (Math.abs(hold - plateUnit) > 0.5) plates = platesAt(crowd * (hold / plateUnit));
-    plateUnit = hold;
-  } else {
-    let c = crowd;
-    for (let i = 0; i < 3; i++) {
-      const fit = Math.min(UNIT, Math.sqrt(budgetOf(plates) / total));
-      if (fit >= plateUnit * 0.99) break;
-      c *= fit / plateUnit;
-      plates = platesAt(c);
-      plateUnit = plates[0].bh / PLATE_ROWS;
-    }
-  }
-  const jD = reelOf(plates);
-  // ★★いちばん大きな図形が器からはみ出さないところまで、**全体を**縮める。
-  //   ★★★**この頭打ちは予算とは別に出す**（第110巡）―― 据え置きのときも効かせる。
-  //   ★★カセットは `unit` の倍数ではないので、**頭打ちの相手はタスクだけ**。
-  let cap = UNIT;
-  for (const t of tasks) {
-    const sp = rowSpecOf(flat(t)); const k = kOf(t);
-    cap = Math.min(cap, (w * FIT_W) / Math.max(1, sp.w * k), (usableH * FIT_H) / Math.max(1, sp.h * k));
-  }
-  // ★★★**安全網は `cap`（いちばん大きな図形が器に入るか）の1つだけ**。
-  const unit = Math.max(10, Math.min(plateUnit, cap));
+  // ★★塗る面積（マス²）。★`crowd` は「長さ」の倍率なので、面積の予算には2乗で効かせる。
+  const crowd = crowdOf(tasks.length + offers.length + picks.length + (journal ? 1 : 0) + 2);
+  const inkCells = cells.reduce((a, c) => a + c.cols * c.rows * pillInk(c.cols / c.rows), 0)
+    + (offers.length + picks.length) * OFFER_AREA
+    + (journal ? Math.PI * (REEL_CELLS / 2) ** 2 : 0)
+    + PLATE_COLS * pillInk(PLATE_COLS);
+  // ★★★**据え置き（`hold`）なら決め直さない**（第110巡。1枚増えるたびに全員が作り直され、
+  //   山が丸ごと浮くため）。
+  const unit = hold && hold > 0 ? hold : Math.max(16, Math.min(
+    pileWOf(w) / GRID_COLS,
+    Math.sqrt((w * usableH * FILL * crowd * crowd) / Math.max(1, inkCells)),
+    usableH * FIT_H,
+  ));
+  // ★★★**日付と曜日は「割れたピル」1枚を 3×1 マスの箱に収める**（第130巡の見え方のまま。
+  //   字は箱に入るいちばん大きな大きさ ―― `lib/wordPlate.ts` の `fitSplitPlate`）。
+  //   左 ＝ 曜日（墨の面・紙の字）／右 ＝ 日付（紙の面・墨の字）。
+  const plates = [fitSplitPlate(
+    WD_SHORT[today.getDay()], `${today.getMonth() + 1}.${today.getDate()}`,
+    unit * PLATE_COLS, unit, DISPLAY, PAPER, INK, INK,
+  )];
+  const jD = journal ? unit * REEL_CELLS : 0;
 
   const pieces: Piece[] = [];
   let nth = 0;
@@ -880,30 +695,28 @@ export function buildPieces(
     });
   });
 
-  tasks.forEach((t) => {
-    const spec = rowSpecOf(flat(t));
-    // ★★★**焦点の1件だけ `FOCUS_K` 倍**（第132巡）。形・段の数・字の組み方は同じで、
-    //   箱が一様に大きくなるだけ（字も同じ比で大きくなる）。
-    const k = kOf(t);
-    const pw = Math.max(28, spec.w * unit * k);
-    const ph = Math.max(24, spec.h * unit * k);
-    // ★★**絵と同じ「ピルの積み」で当たる**（第101巡。GRAVITY／DRIFT と同じ形）。
-    const rows = clampRows(rowsOf(t.title));
-    const sig = `task|${pw.toFixed(2)}|${ph.toFixed(2)}|${rows}`;
+  tasks.forEach((t, i) => {
+    // ★★★**箱は格子のマス**（`taskCellsOf`。焦点は 4×2）。字の行の数も同じ1本から。
+    const cl = cells[i];
+    const pw = cl.cols * unit;
+    const ph = cl.rows * unit;
+    // ★★**絵と同じピルで当たる**（第101巡。GRAVITY／DRIFT と同じ `stackOutline`）。
+    const sig = `task|${pw.toFixed(2)}|${ph.toFixed(2)}|${cl.lines}`;
     const kept = same(t.id, sig);
-    const body = kept ?? bodyFromOutline(m, stackOutline(rows, pw / ph), pw, ph, BODY);
+    const body = kept ?? bodyFromOutline(m, stackOutline(1, pw / ph), pw, ph, BODY);
     let fresh = false;
     if (!kept) {
       // ★★★**質量だけ与えて、回り慣性は触らない**（2026-09-09）。`setMass` は
       //   慣性も一緒に比例させるので、形と重さから正しい回りにくさが出る。
-      m.Body.setMass(body, spec.area * k * k * MASS_K);
+      // ★★密度は全部の体で同じ（塗る面積 ÷ マス²）。
+      m.Body.setMass(body, cl.cols * cl.rows * pillInk(pw / ph) * MASS_K);
       fresh = toss(body, t.id, ph);
       stamp(body, sig);
     }
     // ★★**日付が無ければ輪郭**（塗り／輪郭の1軸。字も縁と同じ色になる）。
     const outlined = !(t.dueDate ?? "").trim();
     pieces.push({
-      id: t.id, body, kind: "task", w: pw, h: ph,
+      id: t.id, body, kind: "task", w: pw, h: ph, lines: cl.lines,
       // ★★★**字は塗りでも輪郭でも黒**（第117巡にユーザー指定「グレーの塗りに黒の字」）。
       face: TASK_FACE, ink: bodyInkOn(TASK_FACE),
       title: t.title, face_: SHAPE_FACE, outlined, fresh,
@@ -943,7 +756,8 @@ export function buildPieces(
     nav?: TabId, card?: string, ed?: string,
   ) => {
     const area = OFFER_AREA;
-    const r = offerRadiusOf(unit);
+    // ★★★**2×2 マスの箱**（半径 ＝ 1 マス）。
+    const r = (unit * OFFER_CELLS) / 2;
     const shape = cardShapeOf(KIND_DOMAIN[kind]);
     const sig = `offer|${r.toFixed(2)}|${shape}`;
     const kept = same(seed, sig);

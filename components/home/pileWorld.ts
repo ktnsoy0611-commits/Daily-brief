@@ -38,7 +38,18 @@ export const GRAVITY_Y = 1.4;
 /** 一括の倍率の上限（solid 座標 → px）。★引き下ろしの初期値にも使う。 */
 export const UNIT = 64;
 export const MASS_K = 1.6;
-const BODY = { restitution: 0.04, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.012 };
+/**
+ * ★★★**摩擦はホームだけ GRAVITY より低い**（2026-09-27・第133巡にユーザー指定「**もう少し摩擦を
+ * 少なくして、下まで詰めて落ちるように。しかしいつまでも滑って止まらないのは避けたい**」）。
+ * ★matter は組の摩擦を `min`（動）・`max`（静）で決めるので、**床と壁も一緒に下げないと効かない**。
+ * ★実測（4/6/11/14件×4回）… 山の中の隙間 **24% → 15〜20%**・山の高さ 約 −10%／
+ *   落ち着くまで 3.6〜5.6s → **3.2〜5.7s**（変わらない）。0.1 まで下げると 7.5s の回が出た。
+ * ★★GRAVITY（`GravityTab`）は 0.55／0.9 のまま（別の画面。ユーザーの指定はホーム）。
+ * ★目盛りの外（物理の場）。
+ */
+const BODY = { restitution: 0.04, friction: 0.15, frictionStatic: 0.25, frictionAir: 0.012 };
+const FLOOR_FRICTION = { friction: 0.15, frictionStatic: 0.2 };
+const WALL_FRICTION = { friction: 0.08, frictionStatic: 0.12 };
 const WALL_T = 200;
 /** ★左右の壁の最低の長さ（器が低くても図形が抜けない）。★目盛りの外（物理の場）。 */
 const WALL_MIN_H = 1200;
@@ -66,7 +77,7 @@ const FILL = 0.5;
 const FIT_H = 0.28;
 /**
  * ★★★**格子のマス数**（2026-09-27・第133巡。規則の正は `lib/taskSize.ts` の `GRID_COLS`）。
- * 提案 2×2／JOURNAL の円 2×2／日付の板 3×1。タスクは `taskCellsOf`。
+ * 提案 2×2／JOURNAL の円 2×2／日付の板 2×1。タスクは `taskCellsOf`。
  * ★★★**第116〜132巡の物差し（提案の直径 `OFFER_D` 4 段・板の半分 ＝ 1段の `PLATE_ROWS`・
  *   JOURNAL の円 ＝ 板の高さ × `REEL_PER_PLATE`・焦点 × `FOCUS_K` 1.3・板の字の上限
  *   `PILE_WORD_MAX`/`WORD_W`）は全部削除した。復活させない** ―― 図形ごとに別の物差しで
@@ -74,7 +85,8 @@ const FIT_H = 0.28;
  */
 export const OFFER_CELLS = 2;
 const REEL_CELLS = 2;
-const PLATE_COLS = 3;
+/** ★日付の板は 2×1（第133巡に 3 → 2。ユーザー指定「**右側があまり過ぎている。グリッド分狭めて**」）。 */
+const PLATE_COLS = 2;
 /**
  * ★★★**混み具合で全体を縮める**（2026-09-17・第118巡にユーザー指定
  * 「**図形が多すぎると操作しづらくなる（特にピルのあたりまで高さがくると
@@ -370,15 +382,15 @@ export interface Piece {
 export function makeWalls(m: M, bw: number, bh: number): Body[] {
   const floorY = floorYOf(bh);
   return [
-    m.Bodies.rectangle(bw / 2, floorY + WALL_T / 2, bw + WALL_T * 2, WALL_T, { isStatic: true, friction: 0.6 }),
+    m.Bodies.rectangle(bw / 2, floorY + WALL_T / 2, bw + WALL_T * 2, WALL_T, { isStatic: true, ...FLOOR_FRICTION }),
     // ★★**高さに下限を掛ける** ―― `bh` が 0 だと面積 0 の壁になり、重心が NaN に
     //   なって**当たらない壁**が出来る（第101巡に踏んだ「図形が出なくなる」の一因）。
     // ★★★**下限は `WALL_MIN_H`（2026-09-14・第103巡）** ―― `bh` に比例させて
     //   いたので、**横画面では器が低いぶん壁も短く**（250 × 3 ＝ 750）、
     //   縦画面で積まれていた図形が**壁の下端より下に居て横から抜けた**。
     //   壁は「器の高さ」ではなく「**図形が居得る範囲**」を覆うもの。
-    m.Bodies.rectangle(INSET - WALL_T / 2, bh / 2, WALL_T, Math.max(bh, WALL_MIN_H) * 3, { isStatic: true, friction: 0.4 }),
-    m.Bodies.rectangle(bw - INSET + WALL_T / 2, bh / 2, WALL_T, Math.max(bh, WALL_MIN_H) * 3, { isStatic: true, friction: 0.4 }),
+    m.Bodies.rectangle(INSET - WALL_T / 2, bh / 2, WALL_T, Math.max(bh, WALL_MIN_H) * 3, { isStatic: true, ...WALL_FRICTION }),
+    m.Bodies.rectangle(bw - INSET + WALL_T / 2, bh / 2, WALL_T, Math.max(bh, WALL_MIN_H) * 3, { isStatic: true, ...WALL_FRICTION }),
   ];
 }
 
@@ -520,7 +532,7 @@ export function buildPieces(
   // ★★★**大きさは「格子の1マス」1つで決める**（2026-09-27・第133巡にユーザー指定「**正方形の
   //   グリッドを設定して、提案やジャーナルなどは2段2列、タスクは一段4列、日付は一段3列…
   //   そこら辺を統一してください**」）。★★**`unit` の意味は「1マスの一辺（px）」**。
-  //   図形の外枠は全部 `unit` の整数倍 … 提案 2×2／JOURNAL の円 2×2／日付の板 3×1／
+  //   図形の外枠は全部 `unit` の整数倍 … 提案 2×2／JOURNAL の円 2×2／日付の板 2×1／
   //   タスク 2〜4×1（`taskCellsOf`）／焦点のタスク 4×2。
   // ★★★**1マス ＝ 山の内寸の幅 ÷ 5**（390 幅で 71.6px）。**混む日は1マスごと縮む**
   //   （面積の予算。第118巡の「一律で少しだけ小さく」と同じ作法）ので、**比はどの日も同じ**。
@@ -546,8 +558,9 @@ export function buildPieces(
     Math.sqrt((w * usableH * FILL * crowd * crowd) / Math.max(1, inkCells)),
     usableH * FIT_H,
   ));
-  // ★★★**日付の板は「帯のピルと同じ作り」を 3×1 マスの箱に**（第133巡にユーザー承認「**B**」。
+  // ★★★**日付の板は「帯のピルと同じ作り」を 2×1 マスの箱に**（第133巡にユーザー承認「**B**」。
   //   左に墨の円 ＝ 日にち／右に2行 ＝ 曜日と月。版面は `lib/wordPlate.ts` の `badgePlate`）。
+  //   ★箱は `PLATE_COLS`(2)×1 マス。
   const plates = [badgePlate(today, unit * PLATE_COLS, unit, BD_GREY, INK)];
   const jD = journal ? unit * REEL_CELLS : 0;
 

@@ -6,7 +6,7 @@
 //   リール2つ・突起2つ ＝ `lib/cassette.ts`）は**削除した。復活させない。**
 //
 // ★★★**Explore の札と同じ比・同じベゼル・同じ角丸**（`BRIEF_CARD_ASPECT` ＝ 2:3・
-//   `SPACE.xl`・`RADIUS.xl`）。札の**写真の正方形**がちょうど入る場所に、録音機では
+//   `SPACE.xl`・`CARD_RADIUS`）。札の**写真の正方形**がちょうど入る場所に、録音機では
 //   **回る円**が入る ―― 358 幅なら写真も円も **310**。
 // ★★写真の下の「題・本文・下の1列の円」の場所に、録音機では「数字・波形・キーの段」。
 //
@@ -15,8 +15,8 @@
 //
 // ★比は**本体の幅 ＝ 1** に対して持つ（札の幅が画面で決まるので、幅が物差し）。
 
-import { BRIEF_CARD_ASPECT } from "./constants";
-import { RADIUS, SPACE } from "./tokens";
+import { BRIEF_CARD_ASPECT, CARD_RADIUS } from "./constants";
+import { SPACE } from "./tokens";
 
 /** ★比を測った札の幅（タブの列の内寸 ＝ 390 − `SPACE.lg`×2）。★目盛りの外（比の分母）。 */
 const REF_W = 358;
@@ -26,9 +26,9 @@ export const RECORDER_AR = (() => {
   const [a, b] = BRIEF_CARD_ASPECT.split("/").map((n) => Number(n.trim()));
   return a / b;
 })();
-/** ベゼル（札の `SPACE.xl`）と角丸（札の `RADIUS.xl`）を幅に対する比で。 */
+/** ベゼル（札の `SPACE.xl`）と角丸（札の `CARD_RADIUS`）を幅に対する比で。★画面の録音機は px の `CARD_RADIUS` そのもの（アイコンだけが比を読む）。 */
 export const RECORDER_BEZEL_PER_W = SPACE.xl / REF_W;
-export const RECORDER_R_PER_W = RADIUS.xl / REF_W;
+export const RECORDER_R_PER_W = CARD_RADIUS / REF_W;
 /** 回る円の直径（＝札の写真の正方形 ＝ 幅 − ベゼル×2）。 */
 export const RECORDER_REEL_D_PER_W = 1 - RECORDER_BEZEL_PER_W * 2;
 /** 円の中心の高さ（本体の上の縁から）。 */

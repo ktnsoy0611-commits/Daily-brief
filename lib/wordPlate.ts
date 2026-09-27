@@ -190,7 +190,7 @@ export interface WordPlate {
   pill?: string;
   /**
    * ★★★**ホームの日付の板 ＝「帯のピルと同じ作り」**（2026-09-27・第133巡にユーザー承認「**B**」）。
-   * 左に墨の円（日にち）、右に2行（曜日／月）、地の面に墨の細い線。`bw`/`bh` は格子の 3×1 マス。
+   * 左に墨の円（日にち）、右に2行（曜日／月）、地の面に墨の細い線。`bw`/`bh` は格子の 2×1 マス。
    * ★第130〜133巡の「割れたピル」（`split`・`joinSplitPlate`・`fitSplitPlate`・`SPLIT_EDGE`・
    *   `SPLIT_PAD`）は削除した。復活させない。
    */
@@ -209,13 +209,15 @@ export const MON_SHORT = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG"
 const BADGE_BEZEL = BAND_BEZEL / BAND_H.photo;
 const BADGE_GAP = SPACE.sm / BAND_H.photo;
 const BADGE_EDGE = 1 / BAND_H.photo;
+/** ★右の余白 ＝ 帯のピルの右の余白（`SPACE.lg`）の比。第133巡に板を 2×1 へ詰めたときに、半径ぶん空けていたのを改めた。 */
+const BADGE_PAD_R = SPACE.lg / BAND_H.photo;
 /** 右の2行 … 行の中心は丸の上下の ±1/4、字の高さ（大文字）は 1行ぶん（丸の半分）の 0.74。 */
 const BADGE_CAP = 0.74;
 /** 丸の中の日にち … 字の高さは丸の 0.46、幅は丸の 0.62 まで。 */
 const BADGE_NUM_H = 0.46;
 const BADGE_NUM_W = 0.62;
 
-/** ★★ホームの日付の板（`bw`×`bh` ＝ 格子の 3×1 マス）。字は描くときに箱へ合わせて組む。 */
+/** ★★ホームの日付の板（`bw`×`bh` ＝ 格子の 2×1 マス）。字は描くときに箱へ合わせて組む。 */
 export function badgePlate(
   date: Date, W: number, H: number, ground: string, ink: string,
 ): WordPlate {
@@ -340,7 +342,7 @@ function drawBadgePlate(
   ctx.fillText(b.num, cx - mn.width / 2, mid(mn));
   ctx.fillStyle = plate.ink;
   const x0 = cx + D / 2 + H * BADGE_GAP;
-  const room = W / 2 - H / 2 - x0;
+  const room = W / 2 - H * BADGE_PAD_R - x0;
   // ★2行は同じ大きさ（長いほうで測る）。
   const longer = b.top.length >= b.bottom.length ? b.top : b.bottom;
   const m = fitCap(ctx, longer, room, (D / 2) * BADGE_CAP);

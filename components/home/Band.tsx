@@ -17,6 +17,7 @@ import {
   bandSettling,
   bandHoleDone, bandHoleRelease, bandResume, stepBandMotion,
 } from "./bandMotion";
+import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
 
 // ★★★**帯**（2026-09-07）。AI が差し出したものが横に流れる列。
 //
@@ -441,6 +442,23 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
  * 作ると周と周のあいだにも隙間が1つ入り、1周ぶん送っても**隙間の半分だけずれる**。
  * だから隙間は周の内側だけが持ち、**末尾にも同じ幅の隙間**を置く。
  */
+/** ★段ごとの送りの時刻のずれ（周期に対する割合）。上の段（ニュース）と下の段は半分ずらす。 */
+const ROW_LAG: Record<number, number> = { 2: 0, 1: 0.5, 0: 0.25 };
+/** ★触ったあと送りを再開するまで（止まる時間に対する割合）。★目盛りの外（帯の環境の動き）。 */
+const RESUME = 0.5;
+/**
+ * ★これより近い縁は飛ばして次の縁まで送る（px）。★始めの位置は縁に揃っていないので、揃えるだけの
+ *   数 px の送りが「ぴくっ」と見えた（実測 −8px）。ピルの半分の高さ（`BAND_H.photo / 2`）未満は飛ばす。
+ */
+const STEP_MIN_PX = BAND_H.photo / 2;
+/** ★止まっている時間（ms）。持ち主は `app/globals.css` の `--t-amb-band-hold`。 */
+function bandHoldMs(): number {
+  if (typeof window === "undefined") return 5000;
+  const v = getComputedStyle(document.documentElement).getPropertyValue("--t-amb-band-hold").trim();
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? (v.endsWith("ms") ? n : n * 1000) : 5000;
+}
+
 function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
   row: Row; items: BandItem[]; pull?: PullHost;
   taken: string | null; onTake: (id: string | null) => void;
@@ -545,6 +563,89 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     }
   }, [row]);
 
+  /**
+   * ★★★**帯は「止まって送る」**（2026-09-27・第133巡。ユーザー要望「**5秒ぐらい止まって、パーッと
+   * 切り替わる**」）。**`--t-amb-band-hold`(5s) 止まり、`T_ITEM`(0.42s) で次のピルの端まで送る。**
+   * ★★★**流れの時計（`anim.currentTime`）はそのまま使い、アニメは止めておく** ―― 位置・指の送り
+   *   （`pan`）・滑り（`glide`）・位相の引き継ぎ（`snapPhase`）はどれも時計を読み書きしているので、
+   *   **時計を自分で進めれば、それらは1行も変えずに効く**。
+   * ★★送るあいだは**毎フレームの差分を足す**（絶対値を書かない）―― 滑りの足し算と喧嘩しない。
+   * ★★行き先は「**次のピルの左の縁が、いまのピルの左の縁の位置へ来る**」ところ（件数・幅に依らず
+   *   必ず1つぶん）。下の段は `direction: "reverse"` なので、測る向きを折り返す。
+   * ★★2つの段は**周期の半分ずらす**（同時に動かない）。触られたら止まり、離して `RESUME` 経ってから。
+   * ★★★第108〜132巡の「一定の速さで流れ続ける」（`a.play()`）は削除した。
+   */
+  const lockRef = useRef(0);
+  const stepRef = useRef({ on: true, timer: 0, raf: 0 });
+  const stopSteps = useCallback(() => {
+    const st = stepRef.current;
+    st.on = false;
+    window.clearTimeout(st.timer); cancelAnimationFrame(st.raf);
+    st.timer = 0; st.raf = 0;
+  }, []);
+  const runStepRef = useRef<() => void>(() => {});
+  /** ★次の送りを予約する（`minWait` ms より後の、段ごとの刻みの時刻へ）。 */
+  const armSteps = useCallback((minWait: number) => {
+    const st = stepRef.current;
+    st.on = true;
+    window.clearTimeout(st.timer); st.timer = 0;
+    if (st.raf) return;                       // ★送っている最中はそのまま
+    const cycle = bandHoldMs() + ms(T_ITEM);
+    const now = performance.now();
+    const lag = (ROW_LAG[row] ?? 0) * cycle;
+    const at = lag + Math.ceil((now + minWait - lag) / cycle) * cycle;
+    st.timer = window.setTimeout(() => runStepRef.current(), Math.max(0, at - now));
+  }, [row]);
+  runStepRef.current = () => {
+    const st = stepRef.current;
+    st.timer = 0;
+    const a = animRef.current;
+    const lapEl = trackRef.current?.firstElementChild as HTMLElement | null;
+    const d = a?.effect ? (a.effect.getTiming().duration as number) || 0 : 0;
+    const lap = lapRef.current;
+    if (!a || !st.on) return;
+    if (!lapEl || !d || !lap) { armSteps(1); return; }
+    const L = lapEl.getBoundingClientRect().left;
+    const rev = bandReverse(row);
+    const f0 = ((((a.currentTime as number) ?? 0) / d) % 1 + 1) % 1;
+    let df = Infinity;
+    for (const el of lapEl.querySelectorAll<HTMLElement>("[data-pill-id]")) {
+      const x = (el.getBoundingClientRect().left - L) / lap;
+      const f = rev ? 1 - x : x;
+      const k = (((f - f0) % 1) + 1) % 1;
+      if (k * lap > STEP_MIN_PX && k < df) df = k;
+    }
+    if (!Number.isFinite(df)) { armSteps(1); return; }
+    const t0 = performance.now();
+    let done = 0;
+    const frame = () => {
+      const aa = animRef.current;
+      if (!aa || !st.on) { st.raf = 0; return; }
+      const p = Math.min(1, (performance.now() - t0) / ms(T_ITEM));
+      const e = easeAt(EASE_SETTLE, p);
+      const dd = aa.effect ? (aa.effect.getTiming().duration as number) || 0 : 0;
+      if (dd) {
+        const c = ((aa.currentTime as number) ?? 0) + (e - done) * df * dd;
+        aa.currentTime = ((c % dd) + dd) % dd;
+      }
+      done = e;
+      if (p < 1) { st.raf = requestAnimationFrame(frame); return; }
+      st.raf = 0;
+      armSteps(1);
+    };
+    st.raf = requestAnimationFrame(frame);
+  };
+  // ★★★**後始末はタイマーを捨てるだけ。`on` は触らない** ―― 開発時の StrictMode は付けて・外して・
+  //   付け直すので、外すときに `on` を落とすと**付け直したあと二度と送らない**（実測 … 時計が 0 のまま）。
+  useEffect(() => {
+    const st = stepRef.current;
+    if (st.on && animRef.current && lockRef.current === 0) armSteps(0);
+    return () => {
+      window.clearTimeout(st.timer); cancelAnimationFrame(st.raf);
+      st.timer = 0; st.raf = 0;
+    };
+  }, [armSteps]);
+
   const build = useCallback(() => {
     const track = trackRef.current;
     if (!track) return;
@@ -597,10 +698,13 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     anim.currentTime = (bandReverse(row) ? 1 - gone : gone) * duration;
     lapRef.current = lap;
     animRef.current = anim;
+    // ★★★**アニメは止めておき、時計は `armSteps` が進める**（上の「止まって送る」）。
+    anim.pause();
+    if (stepRef.current.on && lockRef.current === 0) armSteps(0);
     // ★★**送りへ畳んだのと同じ瞬間に `transform` から外す**（別のフレームに
     //   分かれると、そのあいだ二重に効く／二重に抜ける）。
     paint();
-  }, [row, snapPhase, paint]);
+  }, [row, snapPhase, paint, armSteps]);
 
   // ★★★**組み直す引き金は「中身の署名」**（2026-09-15・第109巡）。
   //   ★★★`items` は `HomeTab` の `useMemo(() => bandRows(appState), [appState])` が
@@ -624,19 +728,17 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
    * **札が戻る先（開いた瞬間のピルの矩形）がもう別の場所**なので、閉じるときに
    * 札が横へ飛ぶ。★数で持つのは、2周ぶんのピルが同時に掛けうるため。
    */
-  const lockRef = useRef(0);
   // ★★★**触っても跳ねさせない**（2026-09-20・第126巡）―― 第109〜125巡は
   //   ここで `bandStop`（行き過ぎ 11.5px の一発）を入れていた。**帯を掴むたびに
   //   必ず1回 跳ねる**ので、指で送り始める前の「**変な挙動**」になっていた。
   //   ★**引き抜いたときの再開の一発（`bandResume`）は残っている** ―― あちらは
   //     「席が空いて流れ出す」合図で、指が触れているあいだの話ではない。
+  // ★★★第133巡から「流す／止める」は**送りの予約を入れる／捨てる**（上の `armSteps`）。
+  //   ★戻すときは `RESUME` 置いてから（離した直後に送り出さない。払った滑りも終わっている）。
   const flow = useCallback((on: boolean) => {
-    const a = animRef.current;
-    if (!a) return;
-    if (on) { if (lockRef.current > 0) return; a.play(); return; }
-    if (a.playState === "paused") return;    // ★二度入れない
-    a.pause();
-  }, []);
+    if (on) { if (lockRef.current > 0) return; armSteps(bandHoldMs() * RESUME); return; }
+    stopSteps();
+  }, [armSteps, stopSteps]);
   /** ★掛け金の上げ下げ（`NewsPill` が札の寿命に合わせて呼ぶ）。 */
   const hold = useCallback((on: boolean) => {
     lockRef.current = Math.max(0, lockRef.current + (on ? 1 : -1));
@@ -828,7 +930,7 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     //     **引き抜いたのが段の最後のピルだと、再開ごと落ちていた**（段に1〜2枚
     //     しか無い日は必ずこれ）。**席が畳まれるかとは無関係の合図**なので分ける。
     //   ★指はまだ触れているが、掴んでいるのは山の幽霊なので帯は動いてよい。
-    animRef.current?.play();
+    if (lockRef.current === 0) armSteps(ms(T_ITEM));
     bandResume(row);
     // ★★畳む幅は**そのピルの実測**（`.band-slot` は押下の縮みを受けない）。
     //   ★★**畳んでいる最中は測り直さない**（自分が縮めた値を読んでしまう）。

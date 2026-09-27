@@ -4,9 +4,9 @@ import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BD_GREY, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, MUTED, PAPER, SANS, SCHEME, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
+import { BD_GREY, CARD_RADIUS, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, MUTED, PAPER, SANS, SCHEME, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { hubPath } from "@/lib/reelHub";
-import { RECORDER_AR, RECORDER_BEZEL_PER_W, RECORDER_DECK_GAP_PER_H, RECORDER_DECK_H_PER_W, RECORDER_DECK_Y_PER_W, RECORDER_KEY_LIP_PER_H, RECORDER_R_PER_W, RECORDER_REEL_CY_PER_W, RECORDER_REEL_D_PER_W } from "@/lib/recorder";
+import { RECORDER_AR, RECORDER_BEZEL_PER_W, RECORDER_DECK_GAP_PER_H, RECORDER_DECK_H_PER_W, RECORDER_DECK_Y_PER_W, RECORDER_KEY_LIP_PER_H, RECORDER_REEL_CY_PER_W, RECORDER_REEL_D_PER_W } from "@/lib/recorder";
 import { PILE_INSET } from "@/lib/pileBox";
 import { bodyInkOn, redOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
@@ -748,7 +748,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
             position: "absolute", zIndex: 0, pointerEvents: "none",
             left: bodyLeft, top: bodyTop, width: bodyW, height: bodyH,
             background: JOURNAL_FACE,
-            borderRadius: bodyW * RECORDER_R_PER_W,   /* ★目盛りの外（札の RADIUS.xl を幅の比で） */
+            borderRadius: CARD_RADIUS,   /* ★札と同じ角（タブバーのピルの半径） */
           }}
         />
       )}

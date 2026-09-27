@@ -113,7 +113,10 @@ function spriteOf(
  * 写真の径 ÷ 外の径 ＝ 1 − 2·縁 ÷ 高さ。山の図形も同じ比にすると、**引き下ろして形が
  * 変わっても、写真と黄色の縁の関係は変わらない**（同じ物だと分かる）。
  */
-const OFFER_BEZEL = (BAND_BEZEL * 2) / BAND_H.photo;
+// ★★★**第133巡に半分へ**（ユーザー指定「**提案の図形のベゼルはもう少し細く**」）。帯のピルの縁の比
+//   （`BAND_BEZEL` ÷ 高さ）を**1マス**に掛けた値 ＝ 日付の板の丸のまわりの縁と同じ幅（4件で 9.6px）。
+//   提案の半径 ＝ 1マスなので、式は「半径 × 6/44」。★第132巡は直径に掛けていた（19.3px）。
+const OFFER_BEZEL = BAND_BEZEL / BAND_H.photo;
 
 const blit = (ctx: CanvasRenderingContext2D, b: Baked) =>
   ctx.drawImage(b.canvas, -b.w / 2, -b.h / 2, b.w, b.h);

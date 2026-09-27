@@ -8,7 +8,7 @@ import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "
 //   34px に固定されて左右が非対称になっていた）。
 import { HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
 import { appTitle } from "@/lib/apps";
-import { BRIEF_CARD_ASPECT, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP } from "@/lib/constants";
+import { BRIEF_CARD_ASPECT, CARD_RADIUS, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP } from "@/lib/constants";
 import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
 import { BRIEF_POOL_CAP } from "@/lib/homeBand";
 import { CardDetail } from "@/components/explore/CardDetail";
@@ -126,7 +126,7 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
   const shape = cardShapeOf(KIND_DOMAIN[card.kind ?? "place"] ?? "info");
   return (
     <div style={{
-      width: "100%", height: "100%", background: face, borderRadius: RADIUS.sheet, overflow: "hidden",
+      width: "100%", height: "100%", background: face, borderRadius: CARD_RADIUS, overflow: "hidden",
       display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
       // セレンディピティ枠も特別な縁取りを付けず、他のカードと同じ見た目に
       // 馴染ませる(「思いがけない提案」であることを声高にラベルしない方が

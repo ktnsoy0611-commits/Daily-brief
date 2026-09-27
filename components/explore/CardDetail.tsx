@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { SANS } from "@/lib/constants";
+import { CARD_RADIUS, SANS } from "@/lib/constants";
 import type { CardShape } from "@/lib/cardShape";
 import { cardMorph } from "@/lib/cardMorph";
 import { img } from "@/lib/helpers";
@@ -93,7 +93,7 @@ export function CardDetail({ card, shape, face, from, onClose }: {
   const run = useRef((dir: 1 | -1, box: Box, from0: Box, done: () => void) => {
     const morph = cardMorph(shape,
       { cx: from0.x + from0.w / 2, cy: from0.y + from0.h / 2, size: from0.w },
-      { cx: box.x + box.w / 2, cy: box.y + box.h / 2, w: box.w, h: box.h, r: RADIUS.sheet });
+      { cx: box.x + box.w / 2, cy: box.y + box.h / 2, w: box.w, h: box.h, r: CARD_RADIUS });
     const span = ms(dir > 0 ? T_IN : T_OUT);
     const draw = (p: number) => {
       pathRef.current?.setAttribute("d", morph(p));
@@ -221,7 +221,7 @@ export function CardDetail({ card, shape, face, from, onClose }: {
           style={{
             position: "relative", marginLeft: to.x, marginTop: to.y,
             width: to.w, height: to.h,
-            borderRadius: RADIUS.sheet, overflow: "hidden",
+            borderRadius: CARD_RADIUS, overflow: "hidden",
           }}
         >{landed ? picture({}) : null}</div>
         <div style={{

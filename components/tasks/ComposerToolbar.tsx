@@ -8,10 +8,10 @@ import { haptic } from "@/lib/helpers";
 // (components/TabIcons.tsx と同じ作り — 線ではなく面だけ)。
 // 値が入っているものはアプリのメインカラーで灯り、空のものは沈む。
 
-export type ToolKey = "due" | "place" | "context" | "belongings" | "weight";
+export type ToolKey = "due" | "context" | "belongings" | "weight";
 
 export const TOOL_LABEL: Record<ToolKey, string> = {
-  due: "日付", place: "場所", context: "メモ", belongings: "持ち物", weight: "重要度",
+  due: "日付", context: "メモ", belongings: "持ち物", weight: "重要度",
 };
 
 const S = 18;
@@ -31,15 +31,6 @@ function Glyph({ name, c }: { name: ToolKey; c: string }) {
         </svg>
       );
     // メモ = 紙に3本の帯。
-    case "place":
-      // ★行き先（第133巡）。ピン ＝ 淡い円 ＋ 芯の点 ＋ 下へ伸びる脚。
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="9.5" r="6.5" opacity={0.34} />
-          <circle cx="12" cy="9.5" r="2.6" />
-          <rect x="10.8" y="15" width="2.4" height="6.5" />
-        </svg>
-      );
     case "context":
       return (
         <svg {...common}>
@@ -93,7 +84,7 @@ export function ComposerToolbar({ open, filled, onOpen, on, onInk, off }: {
   /** 沈んでいるときのアイコンの色。 */
   off: string;
 }) {
-  const keys: ToolKey[] = ["due", "place", "context", "belongings", "weight"];
+  const keys: ToolKey[] = ["due", "context", "belongings", "weight"];
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: SPACE.xs }}>
       {keys.map((k) => {

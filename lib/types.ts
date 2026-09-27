@@ -223,17 +223,6 @@ export interface SubTask {
 // ユーザーの言葉: 「旅行に行くというタスクを登録した時に、新幹線はとった？
 // とか、朝何時に出るか確認した？とか、そういうことを提案してサポートして
 // 欲しい」(HANDOFF §12)。
-/**
- * ★★★**タスクの行き先**（2026-09-27・第133巡）。入力画面の「場所」で書く。座標は
- * `lib/travelHint.ts` が `/api/resolve-place` で埋める（`miss` ＝ 引けなかった。頼み直さない）。
- */
-export interface TaskPlace {
-  name: string;
-  lat?: number;
-  lng?: number;
-  miss?: boolean;
-}
-
 export interface TaskSuggestion {
   id: string;
   title: string;
@@ -307,8 +296,6 @@ export interface Task extends TaskSides {
   suggestedAt?: string;
   // 重要度。未設定は中扱い。
   weight?: TaskWeight;
-  // 行き先（第133巡）。時刻と一緒にあれば「出発の目安」が準備として帯に出る。
-  place?: TaskPlace;
 }
 
 // ★ジャーナルの1件。日付ごとに書き足していくログ。

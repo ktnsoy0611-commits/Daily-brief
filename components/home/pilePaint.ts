@@ -9,7 +9,7 @@ import { splitReadable } from "@/lib/lineBreak";
 import { TASK_SLACK } from "@/lib/taskSize";
 import { WORD_WEIGHT } from "@/lib/solidPaint";
 import { type Piece } from "./pileWorld";
-import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
+import { D_CATCH, D_OPEN, D_SWING, K_CATCH, K_OPEN, K_SWING, type Spring, settled, spring, springTo } from "@/lib/spring";
 import { drawPillGhost, inkMix } from "./pillGhost";
 import type { Ghost } from "@/lib/pullDrag";
 
@@ -505,7 +505,7 @@ export function drawBoxOf(p: Piece): Box {
   //   ★倍率は `lib/cardShape.ts` の `cardShapeReach`（**点の列から導く**）。
   if (p.kind === "offer" && p.shape) r *= cardShapeReach(p.shape);
   // ★持ち上がっている図形は、大きくなったぶんと影のぶんだけ広く塗る（拭き残しを出さない）。
-  if (look && look.id === p.id) r = r * Math.max(look.k0, look.k1, 1) + LIFT_BLUR + LIFT_DROP;
+  if (look && look.id === p.id) r = r * LOOK_MAX + LIFT_BLUR + LIFT_DROP;
   r += PAINT_PAD;
   return { x0: x - r, y0: y - r, x1: x + r, y1: y + r };
 }
@@ -544,46 +544,69 @@ export function prewarmPile(pieces: Piece[], dpr: number): void {
  * ★★`clip` を渡すと、**その矩形に掛からない図形は飛ばす**（第106巡）。
  */
 /**
- * ★★★**押した・掴んだ図形の見え方**（2026-09-27・第133巡。ユーザー要望「**触っていて気持ちいい**」）。
- * ★押した瞬間に**沈む**（`PRESS_K`・即座）→ 掴めたら**持ち上がって影が落ちる**（`LIFT_K`・`T_ITEM`）→
- *   離したら**ゆっくり戻る**（`T_ITEM`）。★押下だけが非対称（即座に沈み、ゆっくり戻る。`design.md` §4）。
+ * ★★★**押した・掴んだ図形の見え方**（第133巡。ユーザー要望「**触っていて気持ちいい**」
+ * 「**もうちょっと誇張して…面白い感じに**」「**持ち上げた時の影ももうちょっと強く**」）。
+ * ★押した瞬間に**潰れて沈む**（横に広がり縦に縮む・即座）→ 離すと**ばねで跳ね返ってぷるんと揺れる**
+ *   （`K_SWING` ＝ 周期 0.5秒・行き過ぎ 36%）→ 掴めたら**ぽんと膨らんで浮き、濃い影が落ちる**
+ *   （`K_CATCH` ＝ 行き過ぎ 10.5%／影は `K_OPEN` ＝ 行き過ぎない）。
+ * ★押下だけが非対称（即座に沈み、ゆっくり戻る。`design.md` §4）。
+ * ★★★**ばねは山のループの固定の刻みで進める**（`stepPileLook`）。rAF ごとだと 120Hz で2倍速。
  * ★★1体だけなので module のただ1つの入れ物（`pullBus` と同じ作法）。★目盛りの外（絵の寸法）。
  */
-const PRESS_K = 0.96;
-const LIFT_K = 1.05;
+const PRESS_K = 0.9;
+/** 押したときの潰れ（横 `1 + q`・縦 `1 − q`）。 */
+const PRESS_Q = 0.07;
+const LIFT_K = 1.1;
+/** 見え方の倍率の上限（塗り直す箱の余白）。★ばねの行き過ぎを含む。 */
+const LOOK_MAX = 1.25;
 /** 持ち上がったときの影（ぼかし・下へのずれ。図形の外にはみ出す量 ＝ 塗り直す箱の余白）。 */
-const LIFT_BLUR = 18;
-const LIFT_DROP = 8;
-const LIFT_SHADOW = "rgba(26,26,24,0.28)";
-type Look = { id: string; k0: number; k1: number; s0: number; s1: number; t0: number; dur: number };
+const LIFT_BLUR = 30;
+const LIFT_DROP = 16;
+const LIFT_SHADOW = "rgba(26,26,24,0.36)";
+type Look = { id: string; mode: "press" | "lift" | "rest"; k: Spring; q: Spring; s: Spring };
 let look: Look | null = null;
-const lookAt = (l: Look, now: number) => {
-  const p = l.dur <= 0 ? 1 : Math.min(1, (now - l.t0) / l.dur);
-  const e = easeAt(EASE_SETTLE, p);
-  return { k: l.k0 + (l.k1 - l.k0) * e, s: l.s0 + (l.s1 - l.s0) * e, done: p >= 1 };
-};
 /** ★見え方を切り替える（`"press"` 沈む／`"lift"` 持ち上がる／`"rest"` 戻る）。 */
 export function setPileLook(id: string, to: "press" | "lift" | "rest"): void {
-  const now = performance.now();
-  const cur = look && look.id === id ? lookAt(look, now) : { k: 1, s: 0 };
-  if (to === "rest" && (!look || look.id !== id)) return;
-  const k1 = to === "press" ? PRESS_K : to === "lift" ? LIFT_K : 1;
-  const s1 = to === "lift" ? 1 : 0;
-  look = { id, k0: cur.k, k1, s0: cur.s, s1, t0: now, dur: to === "press" ? 0 : ms(T_ITEM) };
+  // ★★★**「戻る」は id を問わない**（第133巡の不具合）―― 押した図形と掴んだ図形が食い違っても、
+  //   いま沈んでいる / 浮いている図形を必ず戻す。
+  if (to === "rest") { if (look) look.mode = "rest"; return; }
+  if (to === "press") {
+    // ★押下は即座（ばねを通さない）。
+    look = { id, mode: "press", k: spring(PRESS_K), q: spring(PRESS_Q), s: spring(0) };
+    return;
+  }
+  const cur = look && look.id === id ? look : { k: spring(1), q: spring(0), s: spring(0) };
+  look = { id, mode: "lift", k: cur.k, q: cur.q, s: cur.s };
 }
-/** ★見え方が動いている最中か（ループはこのあいだ全面を描き直す）。戻り切ったら片づける。 */
+/** ★ばねを1刻み進める（山のループの `STEP_MS` の歩の中から呼ぶ）。 */
+export function stepPileLook(): void {
+  if (!look || look.mode === "press") return;
+  if (look.mode === "lift") {
+    springTo(look.k, LIFT_K, K_CATCH, D_CATCH);
+    springTo(look.q, 0, K_CATCH, D_CATCH);
+    springTo(look.s, 1, K_OPEN, D_OPEN);
+  } else {
+    springTo(look.k, 1, K_SWING, D_SWING);
+    springTo(look.q, 0, K_SWING, D_SWING);
+    springTo(look.s, 0, K_OPEN, D_OPEN);
+  }
+}
+/** ★見え方が動いている最中か（ループはこのあいだ止まらず全面を描き直す）。戻り切ったら片づける。 */
 export function pileLookBusy(): boolean {
   if (!look) return false;
-  const v = lookAt(look, performance.now());
-  if (v.done && look.k1 === 1) { look = null; return true; }   // ★戻り切った最後の1枚は描く
-  return !v.done;
+  if (look.mode === "press") return false;       // ★沈んだまま待つ（指が離れるまで絵は変わらない）
+  const calm = settled(look.k, look.mode === "lift" ? LIFT_K : 1)
+    && settled(look.q, 0) && settled(look.s, look.mode === "lift" ? 1 : 0);
+  if (!calm) return true;
+  if (look.mode === "rest") { look = null; return true; }   // ★戻り切った最後の1枚は描く
+  return false;
 }
 
 export function drawPile(
   ctx: CanvasRenderingContext2D, pieces: Piece[], dpr: number, onPhoto: () => void,
   clip?: Box | null, skip?: string | null,
 ) {
-  const lk = look ? { id: look.id, ...lookAt(look, performance.now()) } : null;
+  const lk = look;
   for (const p of pieces) {
     if (skip && p.id === skip) continue;
     if (clip && !boxHits(clip, drawBoxOf(p))) continue;
@@ -591,12 +614,14 @@ export function drawPile(
     ctx.save();
     ctx.translate(b.position.x, b.position.y);
     if (lk && lk.id === p.id) {
-      if (lk.s > 0) {
+      const s = Math.max(0, lk.s.p);
+      if (s > 0.01) {
         ctx.shadowColor = LIFT_SHADOW;
-        ctx.shadowBlur = LIFT_BLUR * lk.s;
-        ctx.shadowOffsetY = LIFT_DROP * lk.s;
+        ctx.shadowBlur = LIFT_BLUR * s;
+        ctx.shadowOffsetY = LIFT_DROP * s;
       }
-      ctx.scale(lk.k, lk.k);
+      // ★★潰れは画面の縦横で掛ける（回す前）＝どの向きの図形も「上から押されて」潰れる。
+      ctx.scale(lk.k.p * (1 + lk.q.p), lk.k.p * (1 - lk.q.p));
     }
     ctx.rotate(b.angle);
     ctx.fillStyle = p.face;

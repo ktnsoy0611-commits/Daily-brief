@@ -19,7 +19,7 @@ import { halfWidthAtStack } from "@/lib/solid";
 import { ensureGlyphs } from "@/lib/textFit";
 import { SHAPE_FACE } from "@/lib/constants";
 import {
-  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile, pileLookBusy, prewarmPile, setPileLook,
+  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile, pileLookBusy, prewarmPile, setPileLook, stepPileLook,
 } from "./pilePaint";
 import {
   BAND_CATCH, BAND_NEAR, PILL_HINT, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey,
@@ -680,6 +680,7 @@ export function Pile({
             M.Body.setAngle(dr.piece.body, dr.angle);
           }
           M.Engine.update(engine, STEP_MS);
+          stepPileLook();
           // ★★★**絵は体そのもの**（`pin`）。渡さないと「壁で止まる」が絵に出ない。
           if (gh) {
             stepGhost(motion, gh, px && !gh.home
@@ -789,7 +790,8 @@ export function Pile({
         //   `PAINT_EPS` を越えたぶんだけ描き直してからループを止める。
         const asleep = now2.length > 0 && now2.every((p) => p.body.isSleeping);
         // ★★押した・掴んだ図形の見え方が動いているあいだは全面を描き直す（`setPileLook`）。
-        if (pileLookBusy()) dirtyRef.current = true;
+        const lookBusy = pileLookBusy();
+        if (lookBusy) dirtyRef.current = true;
         if (dirtyRef.current || gMoved || drift >= REST_EPS || (asleep && drift > PAINT_EPS)) {
           // ★★★**塗るのは「変わった矩形」だけ**（2026-09-15・第106巡）。
           //   ★★これまでは**1つでも動けば約300万画素を全部**消して描き直していた
@@ -945,7 +947,10 @@ export function Pile({
         //   受け渡しの窓では幽霊も `dragRef` も無く、山は眠っている ―― ここで
         //   止めると**代理を消せる唯一のコードも止まる**＝山の中に**見えない体が
         //   永久に刺さる**。
-        if (!g && !dragRef.current && !dirtyRef.current && !proxyRef.current && asleep) {
+        // ★★★**見え方のばねが動いているあいだも止めない**（第133巡の不具合「**何回か触ると
+        //   沈み込んだまま戻らない**」の真因）。山が眠ったあとに離すと、戻りの1枚目を描いた直後に
+        //   ここで止まり、**沈みかけの絵のまま**残っていた（落ち着く前の数回はうまくいく）。
+        if (!g && !dragRef.current && !dirtyRef.current && !proxyRef.current && !lookBusy && asleep) {
           runningRef.current = false;
           return;
         }
@@ -1334,7 +1339,7 @@ export function Pile({
   // ★★**軽く押したら開く**（2026-09-09）。長押し（`HOLD_MS`）を過ぎる前に、
   //   `TAP_MOVE` より動かさずに離したときだけ。**掴んだあとは走らない**
   //   ―― 運んで戻しただけで画面が飛ぶのは事故になる。
-  const onUp = (e: React.PointerEvent) => {
+  const onUp = (e: React.PointerEvent, cancel = false) => {
     // ★★★**指が指していた挿し口は、消す前に控える**（2026-09-16・第112巡）。
     //   `bandAim(null)` は `bandBus.slot` も一緒に落とすので、**先に読む**。
     //   ★★**このジェスチャで実際に挿し口が出ていたときだけ**（前の巡の残りを拾わない）。
@@ -1381,7 +1386,7 @@ export function Pile({
       // ★★掴んだものを右端で離した＝**日付を付け直す**（ユーザー確定）。
       if (dragged) { haptic(10); onAssign?.(dragged.piece); return; }
     }
-    if (dragged || !pr) return;
+    if (dragged || !pr || cancel) return;
     if (Math.hypot(e.clientX - pr.x, e.clientY - pr.y) > TAP_MOVE) return;
     const p = pickAt(e.clientX, e.clientY);
     if (p?.nav) { haptic(6); onOpen(p.nav, p.card); }
@@ -1404,7 +1409,11 @@ export function Pile({
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
-      onPointerCancel={onUp}
+      onPointerCancel={(e) => onUp(e, true)}
+      // ★★★**捕捉を他所に取られたら（離上が届かない）、ここで終わらせる**（第133巡）。
+      //   届かないと `press` が残り、図形は沈んだまま・次の指は `onDown` の門で弾かれる。
+      //   ★ふつうの離上では `onUp` が先に `press` を消しているので何もしない。
+      onLostPointerCapture={(e) => { if (press.current?.id === e.pointerId) onUp(e, true); }}
     >
       {/* ★★**CSS の大きさは器そのもの**（`width/height: 100%`）。canvas は
           置換要素なので、`inset: 0` だけだと**内在の 300×150 のまま**になり得る

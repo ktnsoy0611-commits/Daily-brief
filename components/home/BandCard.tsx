@@ -4,17 +4,21 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { groundOf } from "@/components/AppBackdrop";
 import { INK, PAPER, SANS, SOFT_SHADOW_LG, mixHex } from "@/lib/constants";
+import { img } from "@/lib/helpers";
+import { PillContent, pillBoxStyle } from "./BandPill";
 import { PAN_SLOP, PILL_EDGE } from "@/lib/pullDrag";
 import { EASE_SETTLE, T_ITEM, easeAt, ms } from "@/lib/motion";
 import { bodyInkOn } from "@/lib/palette";
 import { rubber } from "@/lib/spring";
 import { LEAD, RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
-import { BAND_TEXT } from "@/lib/homeBand";
+import { BAND_EDGE } from "@/lib/homeBand";
 
-// ★★★**ニュースのピルを引き出すと、角丸の四角に広がって詳細が出る**
-//   （2026-09-19・第123巡にユーザー指定「**ニュースもピルにしてください。そして
-//   引き出した時にそのピルが画面上で広がって角丸の四角になって展開し、ニュースの
-//   詳細が見れるようにして**」）。
+// ★★★**帯のピルを引く・タップすると、角丸の四角に広がって中身が出る**
+//   （2026-09-19・第123巡にニュースで作り、**2026-09-27・第133巡に全部のピルへ**広げた。
+//   ユーザー指定「**帯のピルはタップすると、なぜそれがおすすめなのか、時間なのか、
+//   もうすぐ終わるイベントだからとか、そう言うのと、その簡単な内容が出てくる**」）。
+//   ★★札の中身 … 写真（あれば）／**なぜ**（`BandItem.why`）／題／**簡単な内容**（`detail`）／
+//     記事へのリンク（ニュースだけ）。★なぜ・内容は `lib/homeBand.ts` が**規則で**作る。
 //
 // ★★★**絵は「1枚の箱」だけ**（`lib/cardMorph.ts` のような形の補間は要らない）――
 //   両端が**どちらも角丸の四角**（ピル ＝ 角丸が高さの半分の四角）なので、
@@ -35,25 +39,29 @@ const PULL_TRIP = 0.45;
 /** ★開いた札の高さの上限（画面の高さに対する割合）。★目盛りの外（版面の寸法）。 */
 const CARD_MAX = 0.6;
 
-export interface NewsDetail {
+export interface BandDetail {
   id: string;
   title: string;
-  source: string;
-  link: string;
-  at: string;
+  /** ★ピルの左の丸の色（写真が無いとき）。 */
+  face: string;
+  photo?: string;
+  /** ★なぜいまこれか（1行）。 */
+  why?: string;
+  /** ★簡単な内容。 */
+  detail?: string;
+  /** ★記事へのリンク（ニュースだけ）。 */
+  link?: string;
 }
 
 /** ピルの画面上の矩形（`getBoundingClientRect` そのもの）。 */
-export interface NewsFrom { x: number; y: number; w: number; h: number }
+export interface BandFrom { x: number; y: number; w: number; h: number }
 
 /** ★2つの矩形を混ぜる（`t` は 0〜1）。 */
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-function NewsCard({ item, from, face, grab, autoOpen, onClose }: {
-  item: NewsDetail;
-  from: NewsFrom;
-  /** ★ピルの面の色。★★**閉じ切ったときに札がこの色へ戻る**（第129巡）。 */
-  face: string;
+export function BandCard({ item, from, grab, autoOpen, onClose }: {
+  item: BandDetail;
+  from: BandFrom;
   /**
    * ★★**指が引いている距離（px）。`null` ＝ もう指は離れている。**
    * 引いているあいだは `t` を指が決め、離したら曲線が引き取る。
@@ -135,14 +143,29 @@ function NewsCard({ item, from, face, grab, autoOpen, onClose }: {
   /** ★札の中身（**本物と、高さを測る写しが同じものを読む**）。 */
   const body = (
     <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
-      <span style={{
-        fontFamily: SANS, fontSize: TYPE.nano, fontWeight: WEIGHT.bold,
-        letterSpacing: TRACK.wide, lineHeight: LEAD.flat, color: ink, opacity: 0.62,
-      }}>{[item.source, whenText(item.at)].filter(Boolean).join("  ")}</span>
+      {item.photo && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={img(item.photo, 800, 450)} alt="" style={{
+          width: "100%", aspectRatio: "16 / 9", objectFit: "cover",
+          borderRadius: RADIUS.lg, display: "block",
+        }} />
+      )}
+      {item.why && (
+        <span style={{
+          fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
+          letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
+        }}>{item.why}</span>
+      )}
       <span style={{
         fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.bold,
         letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
       }}>{item.title}</span>
+      {item.detail && (
+        <span style={{
+          fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text,
+          letterSpacing: TRACK.normal, lineHeight: LEAD.body, color: ink,
+        }}>{item.detail}</span>
+      )}
       {item.link && (
         <span style={{
           marginTop: SPACE.sm,
@@ -201,22 +224,21 @@ function NewsCard({ item, from, face, grab, autoOpen, onClose }: {
         //   ★影は既存の1つ（`SOFT_SHADOW_LG`）。**新しい影を作らない。**
         //   ★★ピルには影が無いので、**閉じるほど影も消える**（同じ理由）。
         boxShadow: [
-          `inset 0 0 0 ${PILL_EDGE}px ${mixHex(face, PAPER, Math.min(1, e / 0.35))}`,
+          `inset 0 0 0 ${PILL_EDGE}px ${mixHex(BAND_EDGE, PAPER, Math.min(1, e / 0.35))}`,
           ...(e > 0.02 ? [SOFT_SHADOW_LG] : []),
         ].join(","), opacity: 1,
       }}>
         {/* ★★★**ピルの写し**（第129巡）… 閉じるほど現れ、閉じ切ったときに帯の
             ピルと同じ字・同じ位置になる。★`NewsPill` の版面と同じトークンを読む。 */}
         <div aria-hidden style={{
-          position: "absolute", inset: 0, display: "flex", alignItems: "center",
-          padding: `0 ${SPACE.lg}px`, pointerEvents: "none",
+          ...pillBoxStyle(from.h, !!item.photo),
+          position: "absolute", inset: 0, height: "100%", maxWidth: "none",
+          // ★★線と面は札が持つ（`boxShadow` の縁・`background`）。写しは余白だけ借りる。
+          backgroundColor: "transparent", borderColor: "transparent",
+          pointerEvents: "none",
           opacity: Math.max(0, 1 - e / 0.35),
         }}>
-          <span style={{
-            fontFamily: SANS, fontSize: BAND_TEXT, fontWeight: WEIGHT.heavy,
-            letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: face,
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          }}>{item.title}</span>
+          <PillContent text={item.title} face={item.face} photo={item.photo} h={from.h} />
         </div>
         {/* ★★**中身は開くほど現れる**（版面が崩れたまま見えない）。
             ★★**幅は開いたときの幅で固定**（途中で折り返しが変わらない）。 */}
@@ -235,17 +257,6 @@ function NewsCard({ item, from, face, grab, autoOpen, onClose }: {
 
   if (typeof document === "undefined") return null;
   return createPortal(view, document.body);
-}
-
-/** ★「3時間前」。★出どころが空なら何も出さない（嘘を書かない）。 */
-function whenText(at: string): string {
-  const ts = Date.parse(at);
-  if (Number.isNaN(ts)) return "";
-  const min = Math.max(0, Math.round((Date.now() - ts) / 60000));
-  if (min < 60) return `${min}分前`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}時間前`;
-  return `${Math.round(hr / 24)}日前`;
 }
 
 /**
@@ -268,14 +279,12 @@ function whenText(at: string): string {
  *   流れ去って**列に穴が動いて見える**。**止めれば札が帯から持ち上がったように読める。**
  * ★★掛け金は `onHold`（段が数で持つ）。**閉じる・消えるの両方で必ず下ろす。**
  */
-export function NewsPill({ item, h, face, onHold }: {
-  item: NewsDetail; h: number;
-  /** ★ニュースの色（`NEWS_FACE`。第129巡から黒）。ピルの面。 */
-  face: string;
+export function NewsPill({ item, h, onHold }: {
+  item: BandDetail; h: number;
   onHold: (on: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [card, setCard] = useState<{ from: NewsFrom; tap: boolean } | null>(null);
+  const [card, setCard] = useState<{ from: BandFrom; tap: boolean } | null>(null);
   const [grab, setGrab] = useState<number | null>(null);
   // ★★`pan` ＝ 横へ送った指（帯のスクロール）。**タップとして札を出さない。**
   const hold = useRef<{ id: number; x: number; y: number; moved: boolean; pan: boolean } | null>(null);
@@ -286,10 +295,9 @@ export function NewsPill({ item, h, face, onHold }: {
     held.current = on;
     onHold(on);
   }, [onHold]);
-  // ★★★**墨の輪郭だけのピル**（2026-09-24・第132巡にユーザー承認「帯の3段に強弱を」）。
-  //   帯の強さの順は「提案 → タスク → ニュース」。ニュースがいちばん強い墨のベタだったのを、
-  //   **地の面・墨の細い縁・墨の字**へ下げた。★`face` は線と字の色（`NEWS_FACE`）。
-  const ink = face;
+  // ★★★**第133巡から帯の他のピルと同じ版面**（`BandPill.tsx`。写真の丸 ＋ 2段組・墨の線）。
+  const [badPhoto, setBadPhoto] = useState<string | null>(null);
+  const shown = item.photo && item.photo !== badPhoto ? { ...item } : { ...item, photo: undefined };
 
   /** ★指を離した（引き切っていれば `NewsCard` が開き、足りなければ閉じる）。 */
   const end = useCallback(() => {
@@ -357,26 +365,17 @@ export function NewsPill({ item, h, face, onHold }: {
         onPointerCancel={() => end()}
         onLostPointerCapture={() => end()}
         style={{
-          display: "flex", alignItems: "center", flexShrink: 0,
-          height: h, borderRadius: RADIUS.pill,
-          padding: `0 ${SPACE.lg}px`, maxWidth: "84vw",
-          backgroundColor: groundOf("home"),
-          boxShadow: `inset 0 0 0 ${PILL_EDGE}px ${face}`,
+          ...pillBoxStyle(h, !!shown.photo),
           touchAction: "none", pointerEvents: "auto",
           // ★引いているあいだは元のピルを消す（札と二重に見えない）。
           opacity: card ? 0 : 1,
         }}
       >
-        <span style={{
-          // ★★字は帯の他のピルと同じ「太い墨」（第128巡）。
-          fontFamily: SANS, fontSize: BAND_TEXT, fontWeight: WEIGHT.heavy,
-          letterSpacing: TRACK.normal, lineHeight: LEAD.snug, color: ink,
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        }}>{item.title}</span>
+        <PillContent text={shown.title} face={shown.face} photo={shown.photo} h={h} onBadPhoto={setBadPhoto} />
       </div>
       {card && (
-        <NewsCard
-          item={item} from={card.from} face={face}
+        <BandCard
+          item={shown} from={card.from}
           grab={card.tap ? null : grab} autoOpen={card.tap}
           onClose={() => { setCard(null); setGrab(null); lock(false); }}
         />

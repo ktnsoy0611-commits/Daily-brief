@@ -4,18 +4,19 @@ import { NextResponse } from "next/server";
 //   「**上の帯にもう一列追加して、API とか無料のもので、ニュースを取ってこれるような
 //   ものを探して組み込んで、私が確認するべきニュースみたいなものを表示するように**」）。
 //
-// ★★★**出どころは Google ニュースの RSS**（2026-09-18 にユーザーが選んだ）。
-//   ・**鍵が要らない**（登録も課金も無い＝止まる理由が1つも無い）。
-//   ・**好みの語で絞れる**（`/rss/search?q=…`）ので「私が確認するべき」に寄せられる。
-//   ・日本語・日本向けの見出しがそのまま返る（`hl=ja&gl=JP&ceid=JP:ja`）。
-//   ★★**要約も本文も無い**（題と出典だけ）。帯に流すのは1行なので、それで足りる。
+// ★★★**出どころは Yahoo!ニュースの「主要」トピックスの RSS**（2026-09-27・第133巡に
+//   Google ニュースから替えた）。ユーザー指定「**ニュースは普通にその日の最新のものを
+//   出してくれればよく、できれば写真を一緒にとってきて、提案のピルとデザインを統一**」。
+//   ★★Google ニュースの RSS は**写真を持たず**、記事の URL も JS でしか解けない転送なので、
+//     写真を取る道が無かった。Yahoo!ニュースは**題が 13字前後**（ピルの2段に収まる）で、
+//     各記事の頁が **`og:image` と `og:description`** を持つ ―― 写真と札の本文がそこから取れる。
+//   ★★**鍵が要らない**（登録も課金も無い）。★好みで寄せるのはやめた（「普通にその日の最新」）。
 //
-// ★★★**サーバーで取る**（ブラウザから直接ではない）―― Google ニュースは
+// ★★★**サーバーで取る**（ブラウザから直接ではない）―― 他所のサイトは
 //   `Access-Control-Allow-Origin` を返さないので、**ブラウザからは原理的に読めない**。
 //   ★★ここを通せば**キャッシュも1か所**で持てる（下の `revalidate`）。
 //
-// ★★★**AI を通さない** ―― `lib/todayPick.ts`・`lib/offerPick.ts`・`lib/bandNotes.ts`
-//   と同じ約束。見出しはもう人が書いた1行なので、**書き換えると嘘が混じるだけ**。
+// ★★★**AI を通さない** ―― 見出しはもう人が書いた1行なので、**書き換えると嘘が混じるだけ**。
 
 export const runtime = "nodejs";
 /**
@@ -25,30 +26,24 @@ export const runtime = "nodejs";
  */
 export const revalidate = 1800;
 
-/** 1回に返す件数。★帯の1段はこれで一周する（`BAND_LIMIT_NEWS` と揃える）。 */
+/** 1回に返す件数。★帯の1段はこれで一周する。 */
 const LIMIT = 8;
-/** ★出どころ。**日本語・日本向け**で固定（このアプリは日本で使う）。 */
-const LOCALE = "hl=ja&gl=JP&ceid=JP:ja";
-/** ★好みの語を何語まで混ぜるか。★多すぎると検索が絞られすぎて 0 件になる。 */
-const TOPIC_MAX = 3;
-/**
- * ★★★**好みに寄せた見出しの割合**（2026-09-19・第124巡にユーザー指定
- *   「**ニュースはもう少し一般的なニュースを基本的に流して、2割くらいだけ
- *   私に合わせたニュースにしてください**」）。
- * ★★**第122巡は「好みの語が1つでもあれば全件を検索に振る」**だった ―― だから
- *   帯が**趣味の話だけ**になり、世の中の見出しが1本も流れなかった。
- * ★8件のうち **2件**（0.2 × 8 = 1.6 → 四捨五入）。★最低 1 件は入れる
- *   ―― 0 だと「私に合わせた」が消えるので、混ぜる意味が無くなる。
- */
-const TOPIC_SHARE = 0.2;
-const topicTake = () => Math.max(1, Math.round(LIMIT * TOPIC_SHARE));
+/** ★出どころ（主要のトピックス）。 */
+const FEED = "https://news.yahoo.co.jp/rss/topics/top-picks.xml";
+/** ★記事の頁を待つ締切（ms）。★目盛りの外（外の世界の遅さ）。遅い1件で全部を待たせない。 */
+const PAGE_MS = 4000;
+const UA = { "user-agent": "Mozilla/5.0 (compatible; daily-brief/1.0)" };
 
 export interface NewsHeadline {
   /** ★RSS の `guid`（無ければリンク）。**帯の id になる**ので一意であること。 */
   id: string;
   title: string;
-  /** 出典（「NHK」など）。RSS の `<source>`。 */
+  /** 出典（いまは「Yahoo!ニュース」だけ）。 */
   source: string;
+  /** ★写真（記事の頁の `og:image`）。取れなければ無い。 */
+  image?: string;
+  /** ★札の本文（記事の頁の `og:description`）。取れなければ無い。 */
+  summary?: string;
   link: string;
   /** ISO の文字列（`<pubDate>`）。 */
   at: string;
@@ -72,28 +67,17 @@ function plain(s: string): string {
     .trim();
 }
 
-/**
- * ★★**題の末尾の「 - 出典」を落とす**。Google ニュースの `<title>` は
- *   「見出し - NHKニュース」の形で来るが、出典は `<source>` に別に在るので、
- *   **同じことを2回言わない**（帯は1行なので字数がそのまま効く）。
- */
-function trimSource(title: string, source: string): string {
-  const tail = ` - ${source}`;
-  return source && title.endsWith(tail) ? title.slice(0, -tail.length).trim() : title;
-}
-
 function parse(xml: string): NewsHeadline[] {
   const out: NewsHeadline[] = [];
   for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
     const it = m[1];
-    const source = plain(tagOf(it, "source"));
-    const title = trimSource(plain(tagOf(it, "title")), source);
+    const title = plain(tagOf(it, "title"));
     const link = plain(tagOf(it, "link"));
     if (!title || !link) continue;
     const at = plain(tagOf(it, "pubDate"));
     out.push({
-      id: plain(tagOf(it, "guid")) || link,
-      title, source, link,
+      id: (link.match(/pickup\/(\d+)/)?.[1]) ?? link,
+      title, source: "Yahoo!ニュース", link,
       at: at ? new Date(at).toISOString() : "",
     });
     if (out.length >= LIMIT) break;
@@ -101,56 +85,37 @@ function parse(xml: string): NewsHeadline[] {
   return out;
 }
 
-/**
- * @param topics 好みの語（`profile.interests`）。**空なら主要ニュース**。
- *   ★★`OR` でつなぐ ―― `AND` だと1語でも外れた瞬間に 0 件になる。
- */
-function feedUrl(topics: string[]): string {
-  const q = topics.slice(0, TOPIC_MAX).map((t) => t.trim()).filter(Boolean);
-  if (!q.length) return `https://news.google.com/rss?${LOCALE}`;
-  const term = encodeURIComponent(q.map((t) => `"${t}"`).join(" OR "));
-  // ★★**新しいものだけ**（`when:2d`）。帯に何日も前の見出しが混ざると嘘に近い。
-  return `https://news.google.com/rss/search?q=${term}+when:2d&${LOCALE}`;
-}
-
-async function feed(topics: string[]): Promise<NewsHeadline[]> {
-  const res = await fetch(feedUrl(topics), {
-    headers: { "user-agent": "Mozilla/5.0 (compatible; daily-brief/1.0)" },
-    next: { revalidate },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parse(await res.text());
+/** `<meta property="og:…" content="…">` を1つ読む。 */
+function ogOf(html: string, prop: string): string {
+  const m = html.match(new RegExp(`<meta[^>]+property="og:${prop}"[^>]+content="([^"]*)"`));
+  return m ? plain(m[1]) : "";
 }
 
 /**
- * ★★★**一般を土台に、好みを等間隔で差し込む**。
- * ★★**まとめて後ろに付けない** ―― 帯は輪なので、末尾に固めると**趣味の塊が
- *   1周に1度だけ通り過ぎる**。差し込めば「たまに1本だけ自分向け」になる。
- * ★同じ記事は落とす（検索と主要は重なることがある）。
+ * ★★記事の頁から写真と本文を取る。**落ちても見出しは出す**（写真と札の本文が無いだけ）。
+ * ★★締切 `PAGE_MS` ―― 1件が遅いと帯の段ごと遅れる。
  */
-function blend(base: NewsHeadline[], mine: NewsHeadline[]): NewsHeadline[] {
-  const seen = new Set(base.map((h) => h.link));
-  const extra = mine.filter((h) => !seen.has(h.link)).slice(0, topicTake());
-  if (!extra.length) return base.slice(0, LIMIT);
-  const keep = base.slice(0, Math.max(0, LIMIT - extra.length));
-  const out = keep.slice();
-  const step = Math.max(1, Math.floor((keep.length + 1) / (extra.length + 1)));
-  extra.forEach((h, i) => out.splice(Math.min(out.length, step * (i + 1) + i), 0, h));
-  return out.slice(0, LIMIT);
-}
-
-export async function GET(req: Request) {
-  const topics = (new URL(req.url).searchParams.get("q") ?? "")
-    .split(",").map((s) => s.trim()).filter(Boolean);
+async function enrich(h: NewsHeadline): Promise<NewsHeadline> {
   try {
-    // ★★**2本 同時に取る**（直列だと待ちが2倍。どちらも 30分キャッシュ）。
-    const [base, mine] = await Promise.all([
-      feed([]).catch(() => [] as NewsHeadline[]),
-      topics.length ? feed(topics).catch(() => [] as NewsHeadline[]) : Promise.resolve([]),
-    ]);
-    // ★★★**主要が取れなかったときだけ、好みで全部を埋める**（段が空のまま
-    //   残るほうが悪い）。逆は起きない ―― 好みが 0 件でも主要で埋まる。
-    const items = base.length ? blend(base, mine) : mine.slice(0, LIMIT);
+    const res = await fetch(h.link, {
+      headers: UA, next: { revalidate }, signal: AbortSignal.timeout(PAGE_MS),
+    });
+    if (!res.ok) return h;
+    const html = await res.text();
+    const image = ogOf(html, "image");
+    const summary = ogOf(html, "description");
+    return { ...h, image: image || undefined, summary: summary || undefined };
+  } catch {
+    return h;
+  }
+}
+
+export async function GET() {
+  try {
+    const res = await fetch(FEED, { headers: UA, next: { revalidate } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // ★★**頁は同時に取る**（直列だと 8 倍待つ。どれも 30分キャッシュ）。
+    const items = await Promise.all(parse(await res.text()).map(enrich));
     if (!items.length) return NextResponse.json({ items: [], error: "empty" });
     return NextResponse.json({ items });
   } catch (e) {

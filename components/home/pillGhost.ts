@@ -54,7 +54,8 @@ export function pillWidth(L: Omit<PillLook, "w">, screenW: number): number {
   }
   // ★★**第127巡に `PILL_KNOCK`（字の後ろの抜き）が消えたので、幅からも外した**
   //   ―― DOM 側も同じ抜きを外している。**片方だけ直すとピルの幅が食い違う。**
-  const w = L.padL + (L.photo ? L.dia + L.gap : 0) + Math.ceil(text) + L.padR;
+  const lead = L.photo ? L.dia + L.gap : L.dot && L.dotD ? L.dotD + L.gap : 0;
+  const w = L.padL + lead + Math.ceil(text) + L.padR;
   return Math.min(w, screenW * PILL_MAX_VW);
 }
 
@@ -149,7 +150,7 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
   if (mix < 1) {
     // ★線は**内側に**引く（CSS の `border` と同じ。`pilePaint.ts` と同じ作法）。
     ctx.globalAlpha = 1 - mix;
-    ctx.strokeStyle = L.face;
+    ctx.strokeStyle = L.edge ?? L.face;
     ctx.lineWidth = PILL_EDGE;
     tracePill(ctx, w - PILL_EDGE, h - PILL_EDGE, gx, give);
     ctx.stroke();
@@ -175,6 +176,15 @@ export function drawPillGhost(ctx: CanvasRenderingContext2D, g: Ghost): void {
     ctx.drawImage(im, cx - iw / 2, dy - ih / 2, iw, ih);
     ctx.restore();
     x += L.dia + L.gap;
+  } else if (L.dot && L.dotD) {
+    // ★★写真が無いときの種類の色の丸（第133巡。DOM の `BAND_DOT` と同じ）。
+    const cx = x + L.dotD / 2;
+    const dy = bendAt(cx, gx, reach, give, weightAt(0, h));
+    ctx.fillStyle = L.dot;
+    ctx.beginPath();
+    ctx.arc(cx, dy, L.dotD / 2, 0, Math.PI * 2);
+    ctx.fill();
+    x += L.dotD + L.gap;
   }
   // ★文字の列は**縦に中央**（DOM の `align-items: center`）。
   //   行の高さは `fontSize × lineHeight` そのもの。

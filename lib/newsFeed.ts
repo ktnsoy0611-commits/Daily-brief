@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import { NEWS_FACE } from "./constants";
 import type { BandItem } from "./homeBand";
-import type { AppState } from "./types";
 
 // ★★★**ニュースの段の中身はここ1つ**（2026-09-18・第122巡）。
-//   取ってくるのは `app/api/news/route.ts`（Google ニュースの RSS）。
+//   取ってくるのは `app/api/news/route.ts`（Yahoo!ニュースの主要トピックス。第133巡）。
 //   **ここがやるのは「いつ取りに行くか」と「帯の1件に直すこと」だけ。**
 //
 // ★★★**`AppState` に入れない** ―― ニュースは
@@ -19,27 +18,19 @@ import type { AppState } from "./types";
 //   ★取り直しは**ページを開き直したとき** ―― サーバー側が 30分キャッシュしている
 //   ので、短い間に何度開いても外へは出て行かない。
 
-/** 好みの語を何語まで送るか。★サーバー側の `TOPIC_MAX` と同じ意味（向こうが正）。 */
-const TOPIC_MAX = 3;
-
-interface Headline { id: string; title: string; source: string; link: string; at: string }
+interface Headline {
+  id: string; title: string; source: string; link: string; at: string;
+  image?: string; summary?: string;
+}
 
 /** ★★module のただ1つの入れ物（`pullBus`・`bandBus` と同じ作法）。 */
 let cache: Headline[] | null = null;
 let inflight: Promise<Headline[]> | null = null;
 
-/** ★好みの語（2文字以上のものだけ。`lib/offerPick.ts` の `interestHit` と同じ門）。 */
-const topicsOf = (state: AppState): string[] =>
-  (state.profile?.interests ?? [])
-    .map((i) => (i.label ?? "").trim())
-    .filter((s) => s.length >= 2)
-    .slice(0, TOPIC_MAX);
-
-async function load(topics: string[]): Promise<Headline[]> {
+async function load(): Promise<Headline[]> {
   if (cache) return cache;
   if (inflight) return inflight;
-  const q = encodeURIComponent(topics.join(","));
-  inflight = fetch(`/api/news?q=${q}`)
+  inflight = fetch("/api/news")
     .then((r) => (r.ok ? r.json() : { items: [] }))
     .then((j) => (Array.isArray(j?.items) ? (j.items as Headline[]) : []))
     // ★★**落ちても空で返す**（帯のこの段が出ないだけ）。
@@ -48,28 +39,33 @@ async function load(topics: string[]): Promise<Headline[]> {
   return inflight;
 }
 
+/** ★届いた時刻を「14:05」のように（札の小さな添え書き）。 */
+const hhmm = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
 /**
- * ★★★**帯の3段目に流すニュース**（`components/tabs/HomeTab.tsx` が呼ぶ）。
- * ★★**絵と手つきは `components/home/NewsCard.tsx` の `NewsPill`**（第123巡）――
- *   **輪郭のピル**で流れ、**下へ引くと角丸の四角に広がって詳細が出る**。
+ * ★★★**帯の上の段に流すニュース**（第133巡に上の段へ移した。`components/tabs/HomeTab.tsx` が呼ぶ）。
+ * ★★★**その日の最新の主要ニュース**（ユーザー指定「**普通にその日の最新のもの**」）。
+ *   第124巡の「好み 2割」はやめた。★写真と本文は記事の頁から（`app/api/news/route.ts`）。
+ * ★★**絵と手つきは `components/home/NewsCard.tsx` の `NewsPill`** ―― 提案のピルと同じ形
+ *   （写真の丸 ＋ 2行）で流れ、**下へ引くかタップで札に広がる**。
  */
-export function useNewsBand(state: AppState): BandItem[] {
+export function useNewsBand(): BandItem[] {
   const [items, setItems] = useState<Headline[]>(cache ?? []);
-  // ★★**好みの語は「文字列1本」で見る** ―― 配列の同一性で見ると毎回取りに行く。
-  const key = topicsOf(state).join(",");
   useEffect(() => {
     let live = true;
-    load(key ? key.split(",") : []).then((got) => { if (live) setItems(got); });
+    load().then((got) => { if (live) setItems(got); });
     return () => { live = false; };
-  }, [key]);
+  }, []);
   return items.map((h) => ({
     id: `news-${h.id}`, kind: "news" as const, text: h.title,
-    // ★★**輪郭のピルの線の色**（第123巡に字だけからピルへ）。
-    // ★★★**ニュースの色**（第125巡）。**縁の線にだけ出る**（ピルは輪郭だけ）。
     face: NEWS_FACE,
-    // ★★**出典は `genre` の枠を借りる**（帯が「小さく添える語」として持っている枠）。
+    photo: h.image,
     genre: h.source,
-    // ★★**広がった札が読む**（`components/home/NewsCard.tsx`）。
     link: h.link, at: h.at,
+    why: [h.source, hhmm(h.at)].filter(Boolean).join(" ・ "),
+    detail: h.summary,
   }));
 }

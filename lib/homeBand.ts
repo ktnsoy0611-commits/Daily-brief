@@ -1,8 +1,8 @@
 import type { AppState, BriefCard, ItemKind } from "./types";
 import { categoryOfKind, genreOfKind } from "./deckStyle";
 import { colorOfKind } from "./palette";
-import { BAND_BEZEL, BAND_H, TASK_FACE } from "./constants";
-import { LEAD, TYPE } from "./tokens";
+import { BAND_BEZEL, BAND_H, INK, TASK_FACE } from "./constants";
+import { LEAD, SPACE, TYPE } from "./tokens";
 import { pickTodayItems } from "./todayPick";
 
 // ★★★**帯に何が並ぶかを決める唯一の場所**（2026-09-07・ホームの帯）。
@@ -62,6 +62,14 @@ export interface BandItem {
   link?: string;
   at?: string;
   /**
+   * ★★★**タップして開く札の中身**（2026-09-27・第133巡にユーザー指定「**帯のピルは
+   * タップすると、なぜそれがおすすめなのか…と、その簡単な内容が出てくる**」）。
+   * `why` ＝ なぜいまこれか（1行）／`detail` ＝ 簡単な内容（数行）。
+   * ★★**規則で作る**（`lib/bandWhy.ts`）。嘘を言わない ―― 材料が無ければ出さない。
+   */
+  why?: string;
+  detail?: string;
+  /**
    * ★★**1・2 だけが持つ。`ItemKind`**（2026-09-17・第118巡）。
    * ★★★**提案（`offer`）にはまだ `Item` が無い**ので、`HomeTab.srcOf` から
    *   `kind` を引けない ―― 幽霊の**札の形**（`lib/cardShape.ts`）がそれで
@@ -89,8 +97,12 @@ export type BandKind =
 export type BandRowId = 0 | 1 | 2;
 
 /** どの段に置くか。★**段の数の正はここ**（`BAND_ROWS`）。 */
+// ★★★**第133巡に2段へ**（ユーザー指定「**ニュースのピルが上で、他が下の2段にしたい**」）。
+//   ニュースだけが段 2（上に描く）、他は全部 段 1（下に描く）。**段 0 はもう空**
+//   ―― 番号を詰めないのは、`bandMotion` の `rows[段]` と引き下ろしの狙い（`rowCenter`）が
+//   段の番号で動いているから（番号を振り直すと、帯の隙間の仕掛けを全部直すことになる）。
 export const BAND_ROW: Record<BandKind, BandRowId> = {
-  offer: 0, today: 0, voice: 1, followup: 1, someday: 1, news: 2,
+  offer: 1, today: 1, voice: 1, followup: 1, someday: 1, news: 2,
 };
 /** 段の数。★`bandRows` の戻り値も `bandMotion` の `rows` もこれで揃える。 */
 export const BAND_ROWS = 3;
@@ -184,7 +196,17 @@ export function bandLines(text: string, head: boolean): string[] {
 //   戻してください**」）―― 帯のピルは全部**ベタ塗り＋太い墨の字**。
 //   **山の図形と同じ見え方**なので、引き下ろしても**面の量は 1 のまま**
 //   （`inkMix` の両端がどちらも塗り）。★関数を残す理由は上の①②のまま。
-export const isOutlined = (kind: BandKind): boolean => { void kind; return false; };
+// ★★★**第133巡に A3 へ**（ユーザー承認「**A3が見た目は良い**」）―― **帯は全部 墨の線**。
+//   色が大きく出るのは山だけ（＝今日に入れたもの）。帯から山へ引き下ろした瞬間に色が付く。
+export const isOutlined = (kind: BandKind): boolean => { void kind; return true; };
+
+/** ★★★**帯のピルの縁の色は墨の1色**（第133巡・A3）。種類の色は左の丸だけに出る。 */
+export const BAND_EDGE = INK;
+/**
+ * ★★★**写真が無いときの「種類の色の小さな丸」の直径**（第133巡にユーザー指定
+ * 「**写真がない時は色付きの小さい丸とかをピルの左に少し置いておく**」）。
+ */
+export const BAND_DOT = SPACE.md;
 
 /**
  * ★段ごとの件数の上限（2026-09-07 ユーザー確定）。★目盛りの外（部品の寸法）。
@@ -286,6 +308,33 @@ export function unreadEntries(state: AppState): { ed: string; card: BriefCard }[
   return pool;
 }
 
+// ── 札の「なぜ」（第133巡）。★★**規則で作る。材料が無ければ書かない（嘘を言わない）**。
+/** ★準備を「急ぎ」と見なす親の期日までの日数。 */
+const PREP_URGENT_DAYS = 3;
+/** ★帯に出す準備の上限。★目盛りの外（件数）。 */
+const PREP_IN_BAND = 3;
+const WHEN_WHY = { now: "いま行ける時間", later: "今日このあと行ける", tomorrow: "明日なら行ける" } as const;
+const join = (...xs: (string | undefined)[]) => xs.filter(Boolean).join(" ・ ");
+/** ★今日から何日後か（今日 ＝ 0。日付が無ければ `null`）。 */
+function daysUntil(ymd: string | undefined, now: Date): number | null {
+  if (!ymd) return null;
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const a = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.round((new Date(y, m - 1, d).getTime() - a) / 86400000);
+}
+const dueText = (n: number | null) =>
+  n === null ? "" : n < 0 ? "期日を過ぎている" : n === 0 ? "今日まで" : n === 1 ? "明日まで" : `あと${n}日`;
+/** ★会期が1週間以内に終わるなら言う。 */
+function endsSoon(iso: string | undefined, now: Date): string {
+  if (!iso) return "";
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return "";
+  const n = daysUntil(`${t.getFullYear()}-${t.getMonth() + 1}-${t.getDate()}`, now);
+  if (n === null || n < 0 || n > 7) return "";
+  return n === 0 ? "今日で終わる" : `あと${n}日で終わる`;
+}
+
 /** 帯の中身（種類ごと）。★**出どころだけで決める**（切実さで混ぜない）。 */
 export function bandItems(state: AppState): BandItem[] {
   const out: BandItem[] = [];
@@ -316,37 +365,65 @@ export function bandItems(state: AppState): BandItem[] {
   for (const p of state.bandPins ?? []) {
     if (p.id.startsWith("today-")) kept.add(p.id.slice("today-".length));
   }
-  const picks = pickTodayItems(state.items ?? [], new Date(), kept);
-  for (const { it } of picks) {
+  const now = new Date();
+  const picks = pickTodayItems(state.items ?? [], now, kept);
+  for (const { it, when } of picks) {
     out.push({
       id: `today-${it.id}`, kind: "today", text: it.title, itemKind: it.kind,
       // ★★焼き込まれた `it.color` は信じない（`cardFace` と同じ理由）。
       face: colorOfKind(it.kind), photo: it.images?.[0], label: categoryOfKind(it.kind),
       genre: genreOfKind(it.kind),
+      why: join(WHEN_WHY[when], endsSoon(it.expiresAt, now)),
+      detail: it.summary,
     });
   }
 
   // 3 JOURNAL のデータから抽出されたタスクの候補。
   for (const c of state.inbox ?? []) {
     if (c.dueDate) continue;                       // 日付が付いたものは帯に居ない
-    out.push({ id: `voice-${c.id}`, kind: "voice", text: c.title, face: taskFace() });
+    out.push({
+      id: `voice-${c.id}`, kind: "voice", text: c.title, face: taskFace(),
+      why: "声のメモから", detail: c.note || c.sourceText,
+    });
   }
 
-  // 4 既存のタスクへのフォローアップ（`lib/taskSuggest.ts` が作る）。
+  // 4 既存のタスクへの準備（`lib/taskSuggest.ts` が作る。`lib/prepSuggest.ts` が頼む）。
+  // ★★★**期日が近い親ほど前へ**（第133巡）―― 準備は「間に合うか」がいちばんの理由。
+  const preps: { it: BandItem; due: number }[] = [];
   for (const t of state.tasks ?? []) {
     if (t.done) continue;
-    for (const s of t.suggestions ?? []) {
-      out.push({
-        id: `follow-${s.id}`, kind: "followup", text: s.title,
-        face: taskFace(), parentId: t.id,
+    const due = daysUntil(t.dueDate, now);
+    for (const sg of t.suggestions ?? []) {
+      preps.push({
+        due: due ?? 99,
+        it: {
+          id: `follow-${sg.id}`, kind: "followup", text: sg.title,
+          face: taskFace(), parentId: t.id,
+          why: join(`「${t.title}」の準備`, dueText(due)),
+          detail: sg.why,
+        },
       });
     }
   }
+  preps.sort((a, b) => a.due - b.due);
+  // ★★**帯に出す準備は `PREP_IN_BAND` 件まで**（近い予定から）―― 準備だけで段が埋まると、
+  //   提案もタスクも1件も流れない（実測 … 5件の予定 × 2 で段の上限 9 が全部 準備だった）。
+  const shown = preps.slice(0, PREP_IN_BAND);
+  // ★★**3日以内の準備は提案より前**（それ以外は後ろ）。
+  const urgent = shown.filter((p) => p.due <= PREP_URGENT_DAYS).map((p) => p.it);
+  const later = shown.filter((p) => p.due > PREP_URGENT_DAYS).map((p) => p.it);
+  out.unshift(...urgent);
+  out.push(...later);
 
   // 5 期日を割り当てていないタスク。
   for (const t of state.tasks ?? []) {
     if (t.done || t.dueDate) continue;
-    out.push({ id: `someday-${t.id}`, kind: "someday", text: t.title, face: taskFace() });
+    const age = t.createdAt ? Math.floor((now.getTime() - Date.parse(t.createdAt)) / 86400000) : 0;
+    out.push({
+      id: `someday-${t.id}`, kind: "someday", text: t.title, face: taskFace(),
+      why: join("日付がまだ無いタスク", age >= 7 ? `${age}日前に登録` : ""),
+      detail: t.note,
+    });
   }
 
   return out;
@@ -384,9 +461,10 @@ export function bandRows(
     const at = keepId ? list.findIndex((it) => it.id === keepId) : -1;
     return list.slice(0, at >= lim ? at + 1 : lim);
   };
+  // ★★★**第133巡に2段**（上 ＝ ニュース／下 ＝ 他の全部）。段 0 は空のまま返す。
   return [
-    cut(rows[0], BAND_LIMIT),
-    cut(rows[1], BAND_LIMIT_TASKS),
+    [],
+    cut([...rows[0], ...rows[1]], BAND_LIMIT_TASKS),
     rows[2],
   ];
 }

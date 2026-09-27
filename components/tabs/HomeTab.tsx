@@ -2,32 +2,32 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Masthead } from "@/components/common";
+import { pillLook } from "@/components/home/BandPill";
 import { AssignRail } from "@/components/home/AssignRail";
 import { AssignSheet } from "@/components/home/AssignSheet";
 import { Band } from "@/components/home/Band";
 import { Pile } from "@/components/home/Pile";
 import { pillWidth } from "@/components/home/pillGhost";
 import { OFFER_AREA, fitUnit, offerRadiusOf, type Piece } from "@/components/home/pileWorld";
-import { groundOf } from "@/components/AppBackdrop";
 import { appTitle } from "@/lib/apps";
 import { cardShapeOf } from "@/lib/cardShape";
-import { BAND_BEZEL, BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
+import { BAND_H, KIND_DOMAIN, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import {
-  BAND_OFFER_TEXT, BAND_TEXT, bandLines, bandRows, isOutlined, pinBand, unreadEntries,
+  bandRows, pinBand, unreadEntries,
   type BandItem, type BandRowId,
 } from "@/lib/homeBand";
 import { keepCard } from "@/lib/keepCard";
 import { useNewsBand } from "@/lib/newsFeed";
+import { usePrepSuggest } from "@/lib/prepSuggest";
 import { OFFER_PICKS, pickOffers } from "@/lib/offerPick";
 import { haptic, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import {
-  PILL_EDGE, pullBus,
+  pullBus,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
 import { clampRows } from "@/lib/solid";
 import { rowSpecOf, rowsOf } from "@/lib/taskSize";
-import { SPACE } from "@/lib/tokens";
 import type { AppState, Item, Task, TabProps } from "@/lib/types";
 
 // ★★★**ホーム**（2026-09-07）。起動して最初に見る画面で、3アプリの**玄関**。
@@ -52,7 +52,9 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   // ★★★**帯の3段目＝ニュース**（2026-09-18・第122巡）。**中身は `lib/newsFeed.ts`**。
   //   ★★**`AppState` に入れない**（外の世界のもの。理由はあのファイルの頭）ので、
   //     ここだけが非同期に届く ―― 届くまでは段そのものが出ない。
-  const news = useNewsBand(appState);
+  const news = useNewsBand();
+  // ★★★**近い予定の準備タスクを AI に頼む**（第133巡。`lib/prepSuggest.ts`）。結果は帯の下の段へ。
+  usePrepSuggest(appState, persist);
   const rows = useMemo(
     () => bandRows(appState, keepId, news), [appState, keepId, news]);
 
@@ -293,20 +295,10 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
    */
   const pillOf = useCallback((p: Piece): PillLook | null => {
     if (p.kind !== "task" && p.kind !== "offer") return null;   // ★板・カセット・未読は戻せない
-    const head = p.kind === "offer";
-    const face = head ? p.face : TASK_FACE;
-    // ★★第128巡から帯のピルは全部ベタ塗り（`isOutlined` は常に偽）。
-    const outlined = isOutlined(head ? "offer" : "someday");
-    const base = {
-      h: head ? BAND_H.photo : BAND_H.plain, press: 1,
-      face, ink: outlined ? bodyInkOn(groundOf("home")) : bodyInkOn(face),
-      outlined, ground: groundOf("home"),
-      text: p.title ?? "", textSize: head ? BAND_OFFER_TEXT : BAND_TEXT,
-      lines: bandLines(p.title ?? "", head),
-      photo: undefined, dia: BAND_H.photo - BAND_BEZEL * 2, gap: SPACE.sm,
-      padL: (outlined ? PILL_EDGE : 0) + SPACE.lg,
-      padR: (outlined ? PILL_EDGE : 0) + SPACE.lg,
-    };
+    const face = p.kind === "offer" ? p.face : TASK_FACE;
+    // ★★★第133巡から帯のピルは全部 A3（墨の線・色の丸・2段組）。版面は `BandPill.tsx` の1か所。
+    //   ★戻す図形には写真の `<img>` が無い（帯にまだ居ない）ので、色の丸で組む。
+    const base = { ...pillLook(p.title ?? "", face, false, BAND_H.photo), h: BAND_H.photo, press: 1, photo: undefined };
     return { ...base, w: pillWidth(base, window.innerWidth) };
   }, []);
 

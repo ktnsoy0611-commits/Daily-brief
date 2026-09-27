@@ -62,6 +62,10 @@ export interface PillLook {
   padL: number; padR: number;
   /** 写真と文字のあいだ。 */
   gap: number;
+  /** ★★縁の色（第133巡。帯は墨の1色 `BAND_EDGE`）。無ければ `face`。 */
+  edge?: string;
+  /** ★★写真が無いときの種類の色の丸と直径（第133巡。`BAND_DOT`）。 */
+  dot?: string; dotD?: number;
 }
 
 /** 引き下ろしの1つの「幽霊」（＝指に付いてくる、まだ物体でないもの）。 */

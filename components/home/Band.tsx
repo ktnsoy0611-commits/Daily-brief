@@ -1,15 +1,13 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { groundOf } from "@/components/AppBackdrop";
-import { BAND_BEZEL, BAND_H, SANS } from "@/lib/constants";
-import { img } from "@/lib/helpers";
-import { BAND_OFFER_LINE, BAND_OFFER_TEXT, BAND_ROW, BAND_TEXT, type BandItem, type BandRowId, bandLines, isOutlined } from "@/lib/homeBand";
-import { bodyInkOn } from "@/lib/palette";
-import { NewsPill } from "./NewsCard";
-import { LEAD, RADIUS, SPACE, TRACK, WEIGHT } from "@/lib/tokens";
+import { BAND_H } from "@/lib/constants";
+import { BAND_ROW, type BandItem, type BandRowId } from "@/lib/homeBand";
+import { BandCard, NewsPill, type BandDetail, type BandFrom } from "./BandCard";
+import { PillContent, pillBoxStyle, pillLook } from "./BandPill";
+import { SPACE } from "@/lib/tokens";
 import {
-  BAND_CATCH, PAN_SLOP, PILL_EDGE, PILL_HINT, PILL_PRESS, RAIL_HYST, RAIL_NEAR,
+  BAND_CATCH, PAN_SLOP, PILL_HINT, PILL_PRESS, RAIL_HYST, RAIL_NEAR,
   pullBus, pullFrame,
   type GhostSeed, type LandingAt, type PillLook, type PullHost,
 } from "@/lib/pullDrag";
@@ -43,7 +41,7 @@ type Row = BandRowId;
  * ★★**ニュースの段（2）は輪郭だけのピル**なので、いちばん薄い（第123巡）。
  */
 const HEIGHT: Record<Row, number> = {
-  0: BAND_H.photo, 1: BAND_H.plain, 2: BAND_H.news,
+  0: BAND_H.photo, 1: BAND_H.photo, 2: BAND_H.photo,
 };
 
 /**
@@ -87,21 +85,16 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
   onHold: (on: boolean) => void;
 }) {
   const face = item.face;
-  // ★★★**線と文字だけのピル**（2026-09-09 ユーザー指定）。すでに登録してある
-  //   タスクは「もう自分のもの」なので、**塗らずに輪郭だけ**にする ―― 塗りの
-  //   ピル（AI がまだ差し出している最中のもの）と1段に混ざっても、
-  //   **面の量**で受け取り済みかどうかが読める。
-  const outline = isOutlined(item.kind);
-  // ★★★**線だけのピルも中は塗る**（2026-09-11 ユーザー指定）。**地と同じ色**で
-  //   塗るので見た目は「線だけ」のままだが、**後ろを落ちてくる図形が透けない**
-  //   （帯は山の上に重ねてあるので、透明だと図形がピルの中を通って見える）。
-  // ★★★**字は塗りでも輪郭でも黒**（2026-09-17・第117巡にユーザー指定
-  //   「グレーの塗りに黒の字」）。第116巡までは輪郭のピルだけ**線と同じ色**の字に
-  //   していたが、無彩色になると地の上で **3.2** しか出ず 13px の本文が読めない。
-  //   ★`bodyInkOn(地)` は墨を返す（**15.5**）。
-  const ink = outline ? bodyInkOn(groundOf("home")) : bodyInkOn(face);
+  // ★★★**帯のピルは全部 墨の線**（第133巡・A3。`isOutlined` は常に真）。版面は
+  //   `BandPill.tsx` の1か所。中は地の色で塗る（後ろを落ちる図形を透かさない）。
   const h = HEIGHT[row];
-  const head = row === 0;                              // 提案の段
+  /** ★★★タップで開く札の中身（第133巡。なぜ・内容は `lib/homeBand.ts` が規則で作る）。 */
+  const detail: BandDetail = {
+    id: item.id, title: item.text, face, photo: item.photo,
+    why: item.why, detail: item.detail, link: item.link,
+  };
+  const boxEl = useRef<HTMLDivElement>(null);
+  const [card, setCard] = useState<BandFrom | null>(null);
   /**
    * ★★★**届かなかった写真は「無かったこと」にする**（2026-09-18・第122巡に
    * ユーザー指摘「**提案のピルの、写真がないものの見た目が崩れている。角に文字が
@@ -117,9 +110,7 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
    *   **URL が変われば自動で元に戻る**（真偽値だと落ちたまま固まる）。
    */
   const [badPhoto, setBadPhoto] = useState<string | null>(null);
-  const photo = head && item.photo && item.photo !== badPhoto ? item.photo : undefined;
-  // ★丸の直径 ＝ ピルの高さ − 縁取り2つぶん。
-  const dia = h - BAND_BEZEL * 2;
+  const photo = item.photo && item.photo !== badPhoto ? item.photo : undefined;
   // ── 引き下ろし（2026-09-14・第102巡） ───────────────────────
   // ★★★**触る → 輪ゴム → ばちん → 図形へ**。算数は `lib/pullDrag.ts`、
   //   絵は山の canvas（`components/home/pillGhost.ts` と `pilePaint.ts`）。
@@ -194,7 +185,12 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
     //   落とさない（引き戻した・取り消した）なら、**ここで穴を開け直す**。
     if (!drop) onArm(null);
     if (drop) pull.drop(item, g!.rail, at);
-  }, [item, pull, onTake, onArm, onFlow]);
+    // ★★★**動かさずに離した ＝ タップ → 札を開く**（第133巡）。段は札のあいだ止める。
+    if (g && commit && !g.live && !g.pan && !g.armed) {
+      const r = boxEl.current?.getBoundingClientRect();
+      if (r) { onHold(true); setCard({ x: r.x, y: r.y, w: r.width, h: r.height }); }
+    }
+  }, [item, pull, onTake, onArm, onFlow, onHold]);
 
   // ★★★**最後の砦**（2026-09-15・第106巡）。`window` で指が離れたのを拾う ――
   //   捕捉が外れても、要素が消えても、**指が離れれば必ずここへ来る**。
@@ -232,14 +228,9 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
       // ★★★**見た目を写し取る**（2026-09-14・第105巡）。**色と余白と書体は
       //   このピルが描くのに使ったものそのまま** ―― 数を二重に持たない。
       look: {
+        // ★★★**版面の数は `BandPill.tsx` の1か所**（第133巡）。DOM と同じトークン。
+        ...pillLook(item.text, face, !!photo, h),
         w: pr.width, h: pr.height, press: PILL_PRESS,
-        face, ink, outlined: outline, ground: groundOf("home"),
-        text: item.text, textSize: head ? BAND_OFFER_TEXT : BAND_TEXT,
-        lines: bandLines(item.text, head),
-        // ★★**線のぶんだけ中身が内へ寄る**（`border` は余白の外側に積まれる）。
-        dia, gap: SPACE.sm,
-        padL: (outline ? PILL_EDGE : 0) + (photo ? BAND_BEZEL : SPACE.lg),
-        padR: (outline ? PILL_EDGE : 0) + SPACE.lg,
       },
       armed: false, rail: false, live: false, aim: false,
       // ★横へ払う指を見分けるための出発点と掛け金（上の `onMove`）。
@@ -392,26 +383,22 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
     return (
       <NewsPill
         h={h}
-        face={face}
         onHold={onHold}
-        item={{
-          id: item.id, title: item.text, source: item.genre ?? "",
-          link: item.link ?? "", at: item.at ?? "",
-        }}
+        item={detail}
       />
     );
   }
 
   return (
+    <>
     <div
+      ref={boxEl}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={() => end(true)}
       onPointerCancel={() => end(false)}
       onLostPointerCapture={() => { if (grab.current) end(false); }}
       style={{
-      display: "flex", alignItems: "center", gap: SPACE.sm, flexShrink: 0,
-      height: h, borderRadius: RADIUS.pill,
       // ★★引き下ろしのため、**縦も横もこちらで受ける**（段の `pan-y` を上書き）。
       touchAction: pull ? "none" : undefined,
       // ★★★**触ると少し沈む**（2026-09-14 ユーザー指定「少し柔らかいような感触」）。
@@ -431,45 +418,19 @@ function Pill({ item, row, pull, taken, onTake, onArm, onFlow, onHold }: {
       //   **捕捉している当の要素を消した瞬間に捕捉が外れ得る** ―― そうなると
       //   `pointerup` が別の要素へ行き、後始末が走らずに**幽霊が残る**。
       //   `opacity: 0` は当たり判定も捕捉もそのままで、見た目だけ消える。
-      opacity: taken ? 0 : 1,
-      // ★★★**ベタ塗り**（2026-09-24・第128巡にユーザー指定「**帯のピルも図形と
-      //   同じような塗りに戻してください**」）。第126巡のハーフトーン・第127巡の
-      //   半透明（`lib/pillFill.ts`）は**どちらも削除した。復活させない。**
-      backgroundColor: outline ? groundOf("home") : face,
-      // ★輪郭は `Button` の secondary と同じ引き方（押せるものの縁）。
-      border: outline ? `${PILL_EDGE}px solid ${face}` : "none",
-      // ★丸があるときは、左の余白を縁取りぶんだけにする（丸が余白を持つ）。
-      // ★★第128巡に `xl` → `lg`（ユーザー「**帯は全体的にもっと小さく**」）。
-      padding: photo ? `0 ${SPACE.lg}px 0 ${BAND_BEZEL}px` : `0 ${SPACE.lg}px`,
-      maxWidth: "84vw",
+      opacity: taken || card ? 0 : 1,
+      // ★★★**版面は `BandPill.tsx` の1か所**（第133巡。A3 ＝ 墨の線・写真か色の丸・2段組）。
+      ...pillBoxStyle(h, !!photo),
     }}>
-      {photo && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={img(photo, 200, 200)} alt=""
-          // ★★**丸だけを消さない。`photo` ごと落とす**（上の `badPhoto` の注釈）。
-          onError={() => setBadPhoto(photo)}
-          style={{
-            width: dia, height: dia, borderRadius: RADIUS.circle,
-            objectFit: "cover", display: "block", flexShrink: 0,
-          }} />
-      )}
-      {/* ★★★**提案の段は「題の2段組」**（2026-09-24・第128巡にユーザー指定
-          「**提案の帯の文字は2段にしてできる限り帯の文字が短くなるように**」）。
-          ★★**行は `bandLines()` が切る**（canvas の写し取りと同じ所で折るため。
-          DOM の自動折り返しに任せない）。★第109〜127巡の「ジャンルの2行目」は外した
-          （2段組と両立しない。ジャンルは写真と山の図形の**形**が言う）。
-          ★★★**字は太い墨**（第128巡にユーザー指定「**文字は太めの黒で良い**」）。 */}
-      <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-        {bandLines(item.text, head).map((ln, i) => (
-          <span key={i} style={{
-            // ★★提案の段は「2行 ＝ 丸の直径」から解いた大きさ（`BAND_OFFER_TEXT`）。
-            fontFamily: SANS, fontSize: head ? BAND_OFFER_TEXT : BAND_TEXT, fontWeight: WEIGHT.heavy,
-            letterSpacing: TRACK.normal, lineHeight: head ? `${BAND_OFFER_LINE}px` : LEAD.snug, color: ink,
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          }}>{ln}</span>
-        ))}
-      </div>
+      <PillContent text={item.text} face={face} photo={photo} h={h} onBadPhoto={setBadPhoto} />
     </div>
+    {card && (
+      <BandCard
+        item={{ ...detail, photo }} from={card} grab={null} autoOpen
+        onClose={() => { setCard(null); onHold(false); }}
+      />
+    )}
+    </>
   );
 }
 
@@ -874,7 +835,7 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     const track = trackRef.current;
     const el = track?.querySelector<HTMLElement>(`[data-pill-id="${CSS.escape(armed)}"]`);
     holeRef.current = armed;
-    bandHole(row, armed, el?.getBoundingClientRect().width || BAND_H.plain);
+    bandHole(row, armed, el?.getBoundingClientRect().width || BAND_H.photo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armed, sig, row, paint]);
 
@@ -1084,13 +1045,17 @@ export function Band({ rows, pull }: {
   const [armed, setArmed] = useState<string | null>(null);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
-      <BandRow row={0} items={rows[0]} pull={pull} taken={taken} onTake={setTaken}
-        armed={armed} onArm={setArmed} />
-      <BandRow row={1} items={rows[1]} pull={pull} taken={taken} onTake={setTaken}
-        armed={armed} onArm={setArmed} />
-      {/* ★★ニュースの段。**`pull` を渡さない** ―― 日付を割り当てる相手ではない。
-          ★ニュースの手つき（下へ引くと広がる）は `NewsPill` が自分で持つ。 */}
+      {/* ★★★**第133巡に2段**（ユーザー指定「**ニュースのピルが上で、他が下の2段**」）。
+          ★段の番号は変えない（ニュース ＝ 段 2・他 ＝ 段 1。段 0 は空）―― 番号で動く
+          仕掛け（`bandMotion` の `rows[段]`・引き下ろしの狙い）をそのまま使うため。
+          ★ニュースの段には `pull` を渡さない（日付を割り当てる相手ではない）。 */}
       <BandRow row={2} items={rows[2]} taken={taken} onTake={setTaken}
+        armed={armed} onArm={setArmed} />
+      {rows[0].length > 0 && (
+        <BandRow row={0} items={rows[0]} pull={pull} taken={taken} onTake={setTaken}
+          armed={armed} onArm={setArmed} />
+      )}
+      <BandRow row={1} items={rows[1]} pull={pull} taken={taken} onTake={setTaken}
         armed={armed} onArm={setArmed} />
     </div>
   );

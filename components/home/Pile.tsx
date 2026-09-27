@@ -1272,7 +1272,8 @@ export function Pile({
       // ★★★**着地点はその図形が入る段の中心・指の x**（2026-09-15・第110巡）。
       //   ★★**「下の段」と決め打ちしない** ―― 空の段は描かれないので、
       //     提案しか無い日は下の段そのものが存在しない（`bandRowAt` が実測して返す）。
-      const row: 0 | 1 = dragRef.current.piece.kind === "offer" ? 0 : 1;
+      // ★★★第133巡から、帯へ戻せるものは全部 段 1（下の段）に居る（`BAND_ROW`）。
+      const row = 1 as const;
       const cy = rowCenter?.(row) ?? null;
       // ★★★**`aim` は合図だけ。座標は渡さない**（2026-09-17・第118巡）。
       //   位置は最後まで指 ―― 理由は `lib/pullDrag.ts` の `Ghost.aim` の注釈。

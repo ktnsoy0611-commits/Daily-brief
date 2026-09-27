@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { PATHS } from "@/lib/myBrainPaths";
 import { readMyBrainFile } from "@/lib/myBrainWrite";
-import { patternsFromMd, suggestSubtasks } from "@/lib/taskSuggest";
+import { findSimilarTasks, patternsFromMd, suggestSubtasks } from "@/lib/taskSuggest";
 
 // 付随タスクの提案。タスクを登録した直後・タスクを開いたときにクライアントが
 // 叩く。この人の傾向(my-brain の me/patterns.md、Coworkが育てる)はサーバー
@@ -14,7 +14,7 @@ export const maxDuration = 30;
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : undefined);
 
 export async function POST(req: Request) {
-  let body: { title?: unknown; dueDate?: unknown; note?: unknown; existing?: unknown; pastSimilar?: unknown };
+  let body: { title?: unknown; dueDate?: unknown; note?: unknown; existing?: unknown; pastSimilar?: unknown; history?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -26,7 +26,19 @@ export async function POST(req: Request) {
   const existing = Array.isArray(body.existing)
     ? body.existing.map((x) => str(x, 60)).filter((x): x is string => !!x).slice(0, 20)
     : [];
-  const pastSimilar = Array.isArray(body.pastSimilar)
+  // ★★★**済んだタスクの一覧（`history`）を受けたら、似たものはここで探す**（第133巡）。
+  //   `lib/taskSuggest.ts` は Gemini の呼び出しを抱えるのでクライアントへ持ち込まない。
+  const history = Array.isArray(body.history)
+    ? body.history.slice(0, 200).map((h) => {
+        const o = (h && typeof h === "object" ? h : {}) as { title?: unknown; subtasks?: unknown };
+        const subs = Array.isArray(o.subtasks) ? o.subtasks : [];
+        return {
+          title: str(o.title, 80) ?? "", done: true,
+          subtasks: subs.map((x) => ({ title: str(x, 60) ?? "", done: true })).filter((x) => x.title),
+        };
+      }).filter((h) => h.title)
+    : [];
+  const pastSimilar = history.length ? findSimilarTasks(title, history) : Array.isArray(body.pastSimilar)
     ? body.pastSimilar
         .map((p) => (p && typeof p === "object" ? (p as { title?: unknown; steps?: unknown }) : null))
         .map((p) => {

@@ -3,9 +3,9 @@ import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { categoryOfKind } from "@/lib/deckStyle";
 import { GRID_COLS, pillInk, taskCellsOf } from "@/lib/taskSize";
-import { PHYS_GAP, PHYS_VERTS, clampRows, stackOutline } from "@/lib/solid";
+import { PHYS_GAP } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
-import { WD_SHORT, fitSplitPlate, makeWordBody, type WordPlate } from "@/lib/wordPlate";
+import { WD_SHORT, fitSplitPlate, type WordPlate } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
 import type { BriefCard, Item, ItemKind, TabId, Task } from "@/lib/types";
@@ -46,8 +46,12 @@ const WALL_MIN_H = 1200;
 const LOST_BELOW = 900;
 /** ★左右の壁よりこれだけ外に出たら「外へ出た」。★同上。 */
 const LOST_SIDE = 120;
-/** ★当たり判定の頂点どうしがこれより近ければ1つに畳む（px）。★目盛りの外（物理の場）。 */
-const VERT_MIN = 2;
+/**
+ * ★★★**体の輪郭を絵から間引くときの許し（px）**（2026-09-27・第133巡）。絵の輪郭の点を
+ * この距離までなら飛ばしてよい ―― 飛ばしたぶんは**外側へ同じだけ押し出す**ので、体は必ず
+ * 絵を包む。★小さいほど頂点が増える（ピル 1段で約 20・円で約 26）。★目盛りの外（物理の刻み）。
+ */
+const HULL_EPS = 0.5;
 /** 山が器に占める割合。★目盛りの外（詰め込み具合）。
  *  ★★**帯が厚いほど山の取り分が減る**ので、帯の厚み（`BAND_H`）とセットで決める。
  *  ★2026-09-10 に **0.36** ―― 文字の板と未読の図形を予算に数えるようにしたぶん。 */
@@ -71,22 +75,6 @@ const FIT_H = 0.28;
 export const OFFER_CELLS = 2;
 const REEL_CELLS = 2;
 const PLATE_COLS = 3;
-/**
- * ★★★**提案の体だけ光線を増やす**（2026-09-18・第121巡にユーザー指摘
- * 「**他の図形と干渉してなんかめり込んでしまったり**」）。
- *
- * ★★★**タスクの `PHYS_VERTS`(12) は「ピルの積み」に合わせた本数** ―― 縁が
- *   なめらかな形なので 12 で足りる。ところが**札の4つの形は縁に山と谷がある**
- *   （波打つ四角は 16 個の円の外縁）ので、12 本では谷ばかり拾って**体が絵より
- *   小さくなる**。実測 体÷絵 … 四つ葉 0.988／六角形 0.973／**波打つ四角 0.900**／
- *   トゲトゲ 1.014 ―― 波打つ四角は **10% 小さい**ので、隣とめり込んで見えた。
- * ★**28 本にすると** 1.034／0.990／**1.011**／1.014 に収まる（頂点 16／21／12／20）。
- * ★★**偶数**であること（左右の対称性を式に保証させる。`PHYS_VERTS` と同じ約束）。
- * ★★**費用は「軸の本数 × 頂点数」**だが、提案は多くて数体なので効かない
- *   （タスクは 12 のまま ―― こちらは十数体あるので上げない）。
- * ★目盛りの外（物理の刻み）。
- */
-const OFFER_VERTS = 28;
 /**
  * ★★★**混み具合で全体を縮める**（2026-09-17・第118巡にユーザー指定
  * 「**図形が多すぎると操作しづらくなる（特にピルのあたりまで高さがくると
@@ -167,135 +155,118 @@ const QUEUED = -1;
  */
 const DROP_ABOVE = 24;
 const DROP_SCATTER = 200;
+type Pt = { x: number; y: number };
+
 /**
- * ★★★**絵と同じ輪郭で体を作り、`PHYS_GAP` だけ外側へ出す**（2026-09-13・第101巡に
- * ユーザー指定「**各図形と文字の当たり判定がおかしい**。図形も**表示されている
- * 部分**に当たり判定を。その当たり判定は**1ピクセルだけ外側にオフセット**し、
- * **図形同士が隣り合った時にもそれぞれの形がはっきり分かる**ように」）。
+ * ★★★**体は「絵の輪郭の凸包」を `PHYS_GAP` だけ外へ出したもの**（2026-09-27・第133巡に
+ * ユーザー指摘「**当たり判定が不安定。ピルの平らな部分は普通だけどカーブの部分がおかしい**」
+ * 「**見た目とヒットボックスを必ずずれないようにしてほしい**」）。
  *
- * ★★★**第100巡までホームの山だけ体が「矩形」だった** ―― GRAVITY と DRIFT は
- *   第99巡から `stackOutline` を使っているのに、山は `Bodies.rectangle` のまま。
- *   ピルの丸い端のぶん**絵より広い箱**で当たるので、隣り合うと**離れて見え**、
- *   角では**重なって見えた**。
- * ★★**頂点は原点へ揃えてから渡す** ―― `fromVertices` は**重心**を (x,y) に置くが、
- *   絵は `body.position` を**箱の中心**として描く。間引きで重心がわずかに
- *   ずれるので、渡す前に引いておく（ずれを持ち回らない）。
+ * ★★★**第101〜132巡の「中心から光線を等角に飛ばし、当たった点を頂点にする」
+ *   （`bodyFromOutline`／`radialVerts`／`rayHit`・光線 `PHYS_VERTS` 12 本・提案だけ
+ *   `OFFER_VERTS` 28 本）は削除した。復活させない。** 真因は2つ ――
+ *   ① **光線の当たった点は絵の縁の上にあり、点と点のあいだは弦** ―― 横長のピルでは光線の
+ *     大半が平らな辺に当たり、**丸い端には 0°・約 34°・90° の3点しか残らない**。弦は弧より
+ *     **最大 4px 内側**（半径 35px のとき）なので、**カーブ同士がめり込んで見えた**。
+ *   ② **`fromVertices` は重心を `body.position` に置くが、絵は外接箱の中心に描く** ――
+ *     上下が対称でない形（アーチ・三つ葉）では**体が絵から最大 6px ずれていた**。
+ * → ① **絵の輪郭の点を細かく取り、凸包を取り、`HULL_EPS` まで間引き、間引いた
+ *     ぶん＋`PHYS_GAP` だけ各辺を外へ出す**（＝体は必ず絵を包み、はみ出しは 1〜1.5px）。
+ *   ② **`Body.setCentre` で `position` を外接箱の中心へ戻す**（回る軸も絵の中心になる。
+ *     重心との差は物理として見えない程度）。
  * ★★**くびれ・切れ込みは凸包に潰れる**（`poly-decomp` が無い）。**それでよい**
  *   ―― GRAVITY で確定済みの判断で、山として引っ掛からないほうが正しい。
+ * @param pts 絵の輪郭（px・外接箱の中心が原点）。細かいほど正確（間引きはここでやる）。
  */
-function bodyFromOutline(
-  m: M, pts: { x: number; y: number }[], w: number, h: number, opts: object,
-  rays = PHYS_VERTS,
-): Body {
-  // ★★★**光線は「正規化した空間」で飛ばし、そのあと w/h を掛ける**
-  //   （2026-09-16・第108巡）。
-  //
-  // ★★★**px の空間で等角に飛ばすと、横長の形は縁の点が足りなくなる** ――
-  //   3:1 のピルだと 12本のうち大半が**長い上下の辺**に当たり（そこは直線なので
-  //   凸包が捨てる）、**肝心の丸い端に 1〜2点しか残らない**。
-  //   実測（180×60 の1段）… 頂点が **6個**まで潰れ、**体は絵より 10% 小さかった**
-  //   （＝第101巡の「1ピクセルだけ外側」の約束が破れている）。端が1枚の平らな面に
-  //   なるので、**角が面に乗る置き方**＝ゆらゆら揺れ続ける接触ができる。
-  // ★★**正規化の空間ではどの形もほぼ円**なので、光線は縁を均等に拾う。
-  //   実測（9形）… 体÷絵 **0.90〜1.02 → 0.96〜1.02**、180×60 の頂点 **6 → 16**。
-  // ★★**大きさに依らなくなる**のも効く ―― `VERT_MIN` は px の閾値なので、
-  //   px の空間だと**同じ形でも大きさで頂点の数が変わっていた**（実測 … 同じ1段の
-  //   ピルが 180×60 で 6個、130×34 で 16個）。正規化すれば**形だけで決まる**。
-  // ★★**左右の対称は保たれる**（縦横に拡大するだけ）ので、**重心と外接箱の中心は
-  //   一致したまま**（実測 9形とも ずれ 0.0000px）。`pilePaint.drawPile` は絵の
-  //   中心を `body.position` に描くので、ここがずれると絵と体が食い違う。
-  //   ★参考 … `GravityTab` の「順番どおりの間引き」をそのまま持ってくると、
-  //     **重心が最大 2.87px ずれる**（あちらは `ox/oy` を別に持ち回っている）。
-  //     **借りないのが正しい。**
-  /** 正規化の物差し（px の `VERT_MIN` がここでは「1%」の意味になる）。 */
-  const REF = 100;
-  const N = pts.map((q) => ({ x: q.x * REF, y: q.y * REF }));
-  const nx = N.map((q) => q.x); const ny = N.map((q) => q.y);
-  const cx = (Math.min(...nx) + Math.max(...nx)) / 2;
-  const cy = (Math.min(...ny) + Math.max(...ny)) / 2;
-  const C = radialVerts(N.map((q) => ({ x: q.x - cx, y: q.y - cy })), rays)
-    .map((q) => ({ x: (q.x / REF) * w, y: (q.y / REF) * h }));
-  const body = m.Bodies.fromVertices(0, 0, [C], opts);
-  if (w > 1 && h > 1) {
-    m.Body.scale(body, 1 + (PHYS_GAP * 2) / w, 1 + (PHYS_GAP * 2) / h);
-  }
+function hullBody(m: M, pts: Pt[], opts: object): Body {
+  const verts = hullOutline(pts);
+  const body = m.Bodies.fromVertices(0, 0, [verts], opts);
+  // ★`fromVertices` は重心を (0,0) に置く＝絵の中心（元の原点）は −重心 の所に居る。
+  const c = m.Vertices.centre(verts);
+  m.Body.setCentre(body, { x: -c.x, y: -c.y });
   return body;
 }
 
-/**
- * ★★★**原点から角 `th` の光線と、閉じた輪郭との「いちばん遠い」交点**。
- * ★輪郭は原点について星形（どの向きにも縁が1つ）なので、これで必ず縁が取れる。
- */
-function rayHit(C: { x: number; y: number }[], th: number): { x: number; y: number } | null {
-  const dx = Math.cos(th); const dy = Math.sin(th);
-  let best = -1;
-  for (let i = 0; i < C.length; i++) {
-    const a = C[i]; const b = C[(i + 1) % C.length];
-    const ex = b.x - a.x; const ey = b.y - a.y;
-    const den = dx * ey - dy * ex;
-    if (Math.abs(den) < 1e-12) continue;
-    const t = (a.x * ey - a.y * ex) / den;
-    const u = (a.x * dy - a.y * dx) / den;
-    if (t >= 0 && u >= -1e-9 && u <= 1 + 1e-9 && t > best) best = t;
+/** 輪郭の点 → 体の頂点（凸包 → 間引き → 外へ出す）。★純粋な関数（検証がそのまま呼べる）。 */
+export function hullOutline(pts: Pt[]): Pt[] {
+  // ① 凸包（単調連鎖）。
+  const P = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lo: Pt[] = []; const up: Pt[] = [];
+  for (const q of P) {
+    while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop();
+    lo.push(q);
   }
-  return best < 0 ? null : { x: dx * best, y: dy * best };
+  for (let i = P.length - 1; i >= 0; i--) {
+    const q = P[i];
+    while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop();
+    up.push(q);
+  }
+  const H = [...lo.slice(0, -1), ...up.slice(0, -1)];
+  // ② 間引き … 飛ばす点が弦から `HULL_EPS` 以内なら飛ばす（凸なので点は弦の外側に居る）。
+  const off = (a: Pt, b: Pt, q: Pt) => {
+    const L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return Math.abs(cross(a, b, q)) / L;
+  };
+  const n = H.length;
+  const keep: Pt[] = [];
+  let i = 0;
+  while (i < n) {
+    keep.push(H[i]);
+    let j = i + 1;
+    while (j + 1 <= n) {
+      const b = H[(j + 1) % n];
+      let ok = true;
+      for (let k = i + 1; k <= j; k++) if (off(H[i], b, H[k % n]) > HULL_EPS) { ok = false; break; }
+      if (!ok) break;
+      j++;
+    }
+    i = j;
+  }
+  // ③ 各辺を外へ `HULL_EPS + PHYS_GAP` 出し、隣どうしの交点を頂点にする。
+  //   ★外向きの法線は並びの向き（符号付き面積）で決まる。
+  const d = HULL_EPS + PHYS_GAP;
+  const K = keep.length;
+  let area2 = 0;
+  for (let t = 0; t < K; t++) {
+    const a = keep[t]; const b = keep[(t + 1) % K];
+    area2 += a.x * b.y - b.x * a.y;
+  }
+  const sg = area2 > 0 ? 1 : -1;
+  const lines = keep.map((a, t) => {
+    const b = keep[(t + 1) % K];
+    const dx = b.x - a.x; const dy = b.y - a.y;
+    const L = Math.hypot(dx, dy) || 1;
+    return { x: a.x + (sg * dy / L) * d, y: a.y + (-sg * dx / L) * d, dx, dy };
+  });
+  const out: Pt[] = [];
+  for (let t = 0; t < K; t++) {
+    const l1 = lines[(t + K - 1) % K]; const l2 = lines[t];
+    const den = l1.dx * l2.dy - l1.dy * l2.dx;
+    if (Math.abs(den) < 1e-9) { out.push({ x: l2.x, y: l2.y }); continue; }
+    const u = ((l2.x - l1.x) * l2.dy - (l2.y - l1.y) * l2.dx) / den;
+    out.push({ x: l1.x + l1.dx * u, y: l1.y + l1.dy * u });
+  }
+  return out;
 }
 
-/**
- * ★★★**当たり判定の多角形は「等角に測り直す」**（2026-09-14・第105巡）。
- *
- * ★★★**第104巡の「添字で間引いて左右へ折り返す」は重すぎた** ―― 折り返した点は
- *   元の点と重ならないので**細かい辺が大量に生まれ**、SAT の費用
- *   （＝**軸の本数 × 頂点数**）が**1段のピルで 16倍**になった。
- *   **接触の対が一気に増える着地の瞬間**に効いて、フレームが落ちた
- *   （ユーザー報告「図形が地面にぶつかった時フレームレートが急に低下する」）。
- *
- * → **外接箱の中心から `n` 本の光線を等角に飛ばし、交点を頂点にする**
- *   （`lib/cardShape.ts` と同じ極座標の作法）。
- *   ★★**`n` が偶数なら左右の対称性は式が保証する** ―― 角 `θ` の相手が必ず
- *     `π − θ` に居るので、**折り返して倍にする必要が無い**。
- *     対称なら**重心と外接箱の中心が一致する**（`fromVertices` は重心を
- *     `body.position` に置き、絵は外接箱の中心に描く。ここがずれると絵と体が食い違う）。
- *   ★★★**輪郭のいちばん外の点は別に足す** ―― **2段の積みは真ん中がくびれ**なので、
- *     角 0 の光線は**いちばん広い点を通らない**（実測で幅が 0.93 倍になった）。
- *     外の点も左右対称な集合なので、足しても対称は崩れない。
- *
- * ★実測（費用＝軸×頂点。第103巡 → 第104巡 → いま）… 1段 ar3 で 66 → 288 → **18**、
- *   2段 ar1.5 で 81 → 280 → **72**、3段 ar1 で 64 → 176 → **50**（6件）。
- *   ★**第104巡の 2.2〜16.0 倍軽い。**
- * ★★**体÷絵は6件とも縦横 1.0000、重心のずれは 6件とも 0.0000px**
- *   （第103巡は絵より 0.98 倍しか無く、重心が最大 1.76px ずれていた）。
- */
-function radialVerts(C: { x: number; y: number }[], n: number): { x: number; y: number }[] {
-  const out: { x: number; y: number }[] = [];
-  for (let k = 0; k < n; k++) {
-    const q = rayHit(C, (Math.PI * 2 * k) / n);
-    if (q) out.push(q);
+/** ★ピル（角丸 ＝ 高さの半分）の輪郭の点（px・中心が原点）。端の半円は 2° 刻み。 */
+export function pillPoints(w: number, h: number): Pt[] {
+  const r = Math.min(w, h) / 2;
+  const hx = w / 2 - r; const hy = h / 2 - r;
+  const pts: Pt[] = [];
+  for (let a = 0; a < 360; a += 2) {
+    const t = (a * Math.PI) / 180;
+    const cx = Math.cos(t) >= 0 ? hx : -hx;
+    const cy = Math.sin(t) >= 0 ? hy : -hy;
+    pts.push({ x: cx + Math.cos(t) * r, y: cy + Math.sin(t) * r });
   }
-  const mx = Math.max(...C.map((q) => Math.abs(q.x)));
-  const my = Math.max(...C.map((q) => Math.abs(q.y)));
-  for (const q of C) {
-    if (Math.abs(Math.abs(q.x) - mx) < 1e-6 || Math.abs(Math.abs(q.y) - my) < 1e-6) out.push(q);
-  }
-  // ★★★**必ず角度の順に並べてから渡す**（2026-09-14・第105巡）。
-  //   ★★★**並べ忘れると多角形が自己交差し、SAT が「当たっていない」と答える**
-  //     ―― 実測で、小さい図形1つが**床をすり抜けて落ち続け、衝突の対が 0 のまま**
-  //     だった（矩形の体に替えると 10個全部が眠った）。**ここが今回いちばん怖い罠。**
-  //   ★`Bodies.fromVertices` は凸なら `clockwiseSort`、凹なら凸包を取る ―― どちらも
-  //     並べ直してくれる**はず**だが、**交差した列は「凸」と誤判定され得る**ので、
-  //     **渡す前にこちらで並べる**。
-  // ★★**近すぎる点は捨てる**（当たり判定の費用は**軸の本数 × 頂点数**。同じ所に
-  //   2点あると、辺が1本増えるだけで形は変わらない）。
-  out.sort((a, b) => Math.atan2(a.y, a.x) - Math.atan2(b.y, b.x));
-  const keep: { x: number; y: number }[] = [];
-  for (const q of out) {
-    const last = keep[keep.length - 1];
-    if (!last || Math.hypot(q.x - last.x, q.y - last.y) > VERT_MIN) keep.push(q);
-  }
-  if (keep.length > 2 && Math.hypot(keep[0].x - keep[keep.length - 1].x,
-    keep[0].y - keep[keep.length - 1].y) <= VERT_MIN) keep.pop();
-  return keep.length >= 3 ? keep : out;
+  return pts;
 }
+
+/** ★提案の札の形の輪郭の点（px・外接箱 `size` 四方の中心が原点）。点の列は `lib/cardShape.ts`。 */
+const offerPoints = (shape: CardShape, size: number): Pt[] =>
+  cardShapePoints(shape).map(([x, y]) => ({ x: (x - 0.5) * size, y: (y - 0.5) * size }));
 
 const frac = (s: string) => {
   let h = 0;
@@ -658,7 +629,13 @@ export function buildPieces(
     const sig = `word|${plate.bw.toFixed(2)}|${plate.bh.toFixed(2)}|${plate.word}`;
     let fresh = false;
     const kept = same(`word${i}`, sig);
-    const body = kept ?? makeWordBody(m, plate, 0, 0);
+    // ★★★**板の体も「絵と同じピル」**（第133巡）。`makeWordBody` の矩形のままだと**丸い端の
+    //   外の何も無い所で当たり、上の図形が宙に浮いて見えた**。回り慣性を重くするのは同じ。
+    let body = kept;
+    if (!body) {
+      body = hullBody(m, pillPoints(plate.bw, plate.bh), BODY);
+      m.Body.setInertia(body, body.inertia * 5);
+    }
     // ★★★**板の重さも「実際の箱」から出す＝全部の体を同じ密度にする**
     //   （2026-09-15・第109巡）。
     //
@@ -703,7 +680,7 @@ export function buildPieces(
     // ★★**絵と同じピルで当たる**（第101巡。GRAVITY／DRIFT と同じ `stackOutline`）。
     const sig = `task|${pw.toFixed(2)}|${ph.toFixed(2)}|${cl.lines}`;
     const kept = same(t.id, sig);
-    const body = kept ?? bodyFromOutline(m, stackOutline(1, pw / ph), pw, ph, BODY);
+    const body = kept ?? hullBody(m, pillPoints(pw, ph), BODY);
     let fresh = false;
     if (!kept) {
       // ★★★**質量だけ与えて、回り慣性は触らない**（2026-09-09）。`setMass` は
@@ -725,12 +702,12 @@ export function buildPieces(
 
   if (jD > 0) {
     // ★★**録音画面の回る円そのもの**（墨の面・`MUTED` の芯）。文字は載せない。
-    // ★★体は円（`PHYS_VERTS` 角で打ち切る ―― matter の円は半径に応じて最大 25 角形に
-    //   なり、SAT の費用が倍になる。第131巡の未読の円と同じ作法）。
+    // ★★体は円の輪郭の凸包（`hullBody`。頂点は許し `HULL_EPS` で決まる ―― 第131巡の
+    //   `PHYS_VERTS` 角は 12 角形で、辺の中ほどが絵より 2.4px 内側だった）。
     const r = Math.max(16, jD / 2);
     const sig = `reel|${r.toFixed(2)}`;
     const kept = same("journal", sig);
-    const body = kept ?? m.Bodies.circle(0, 0, r + PHYS_GAP, BODY, PHYS_VERTS);
+    const body = kept ?? hullBody(m, pillPoints(r * 2, r * 2), BODY);
     let fresh = false;
     if (!kept) {
       // ★★**密度は全部の体で同じ**（面積 ÷ `unit²`）。
@@ -761,9 +738,7 @@ export function buildPieces(
     const shape = cardShapeOf(KIND_DOMAIN[kind]);
     const sig = `offer|${r.toFixed(2)}|${shape}`;
     const kept = same(seed, sig);
-    const body = kept ?? bodyFromOutline(
-      m, cardShapePoints(shape).map(([x, y]) => ({ x: x - 0.5, y: y - 0.5 })),
-      r * 2, r * 2, BODY, OFFER_VERTS);
+    const body = kept ?? hullBody(m, offerPoints(shape, r * 2), BODY);
     let fresh = false;
     if (!kept) {
       m.Body.setMass(body, area * MASS_K);
@@ -891,10 +866,11 @@ export function ghostBodyOf(
   m: M, g: { kind: "task" | "offer"; rows: number; shape?: CardShape; area: number },
   w: number, h: number,
 ): { body: Body; inertia: number } {
+  // ★★山の本番と同じ輪郭（`hullBody`）。提案の絵は `max(w, h)` 四方の正方形（`drawGhost`）。
   const pts = g.kind === "offer" && g.shape
-    ? cardShapePoints(g.shape).map(([x, y]) => ({ x: x - 0.5, y: y - 0.5 }))
-    : stackOutline(clampRows(g.rows), w / h);
-  const body = bodyFromOutline(m, pts, w, h, BODY);
+    ? offerPoints(g.shape, Math.max(w, h))
+    : pillPoints(w, h);
+  const body = hullBody(m, pts, BODY);
   m.Body.setMass(body, g.area * MASS_K);
   const inertia = body.inertia;
   m.Body.setInertia(body, Infinity);

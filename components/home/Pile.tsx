@@ -105,6 +105,14 @@ const DPR_MAX = 2;
 const FLOOR_CHECK_MS = 2000;
 /** ★これ未満の動きは**塗り直さない**（px）。★実機の倍率 3 で 1デバイス画素より細かい。 */
 const REST_EPS = 0.25;
+/**
+ * ★★★**描き直すと決めたフレームで「動いた」と見なす下限（px）**（2026-09-27・第133巡）。
+ * `REST_EPS` は「そもそも描くか」の門。**門が開いたフレームでは、少しでも動いた図形は
+ * 全部描き直す**（`REST_EPS` 未満の図形を描かずに「描いた」と記録していたのが、
+ * ユーザー報告「**図形がところどころでずれて表示される／線がガタガタ／一回触ると治る**」の
+ * 真因。下の `moved` の注釈）。★目盛りの外（絵の寸法）。
+ */
+const PAINT_EPS = 0.02;
 /** ★角度を px へ直す目安（この長さの腕の先がどれだけ動くか）。★目盛りの外（絵の寸法）。 */
 const REST_ANG = 120;
 /**
@@ -777,7 +785,11 @@ export function Pile({
         //   第105〜107巡はここで**前のフレームとの差を自分で測って**眠りの門に
         //   使っていたが、門ごと削除したので**この走査も要らない**（毎フレームの
         //   O(n) がもう1本減る）。眠りは matter が体ごとに判定する。
-        if (dirtyRef.current || gMoved || drift >= REST_EPS) {
+        // ★★★**眠りに入る前の最後の1枚**（第133巡）… 門（`REST_EPS`）の下で少しずつ動いて
+        //   止まった図形は、そのままだと**最後に描いた位置のまま**残る。全員が眠ったら
+        //   `PAINT_EPS` を越えたぶんだけ描き直してからループを止める。
+        const asleep = now2.length > 0 && now2.every((p) => p.body.isSleeping);
+        if (dirtyRef.current || gMoved || drift >= REST_EPS || (asleep && drift > PAINT_EPS)) {
           // ★★★**塗るのは「変わった矩形」だけ**（2026-09-15・第106巡）。
           //   ★★これまでは**1つでも動けば約300万画素を全部**消して描き直していた
           //     ―― 実測で、落下の3秒は**毎回きっかり画面の 100%**、3秒で 35M画素。
@@ -800,16 +812,26 @@ export function Pile({
             boxes.push(x0, y0, x1, y1);
           };
           const nextBox: number[] = [];
+          const curBox: number[] = [];
+          // ★★描き直さなかった図形は、記録も前のまま（画素と記録を必ず一致させる）。
+          const keepPose = new Uint8Array(now2.length);
           for (let i = 0; i < now2.length; i++) {
             const p = now2[i];
             const nb = drawBoxOf(p);
             nextBox.push(nb.x0, nb.y0, nb.x1, nb.y1);
+            curBox.push(nb.x0, nb.y0, nb.x1, nb.y1);
             if (full) continue;
             const b = p.body;
-            const moved = Math.abs(b.position.x - drawn[i * 3]) >= REST_EPS
-              || Math.abs(b.position.y - drawn[i * 3 + 1]) >= REST_EPS
-              || Math.abs(b.angle - drawn[i * 3 + 2]) * REST_ANG >= REST_EPS;
-            if (!moved) continue;
+            // ★★★**少しでも動いた図形は描き直す**（第133巡。`PAINT_EPS`）。
+            //   ★★★**第106〜132巡は `REST_EPS`(0.25px) 未満の図形を描かずに、下で「描いた」と
+            //     記録していた** ―― 落ち着きかけの山は 0.1〜0.2px ずつ滑るので、**画素は古い
+            //     位置のまま、記録だけが進み**、ずれが数 px まで積もった。そこへ隣が描き直されると
+            //     **切り抜きの中だけ新しい位置で重ね描き**され、**図形が直線で切れる・縁が二重に
+            //     なる**。触ると全面を描き直すので「一回触ると治る」。
+            const moved = Math.abs(b.position.x - drawn[i * 3]) > PAINT_EPS
+              || Math.abs(b.position.y - drawn[i * 3 + 1]) > PAINT_EPS
+              || Math.abs(b.angle - drawn[i * 3 + 2]) * REST_ANG > PAINT_EPS;
+            if (!moved) { keepPose[i] = 1; continue; }
             const ox0 = drawnBox[i * 4]; const oy0 = drawnBox[i * 4 + 1];
             const ox1 = drawnBox[i * 4 + 2]; const oy1 = drawnBox[i * 4 + 3];
             // ★★**前の箱と重なっていれば1つに畳む**（ゆっくり動くものは毎フレーム
@@ -837,6 +859,11 @@ export function Pile({
           }
           drawn.length = now2.length * 3;
           for (let i = 0; i < now2.length; i++) {
+            if (!full && keepPose[i]) {
+              // ★★描いていない図形の箱も前のまま（次に動いたとき、古い絵を消す箱になる）。
+              for (let k = 0; k < 4; k++) nextBox[i * 4 + k] = drawnBox[i * 4 + k];
+              continue;
+            }
             const b = now2[i].body;
             drawn[i * 3] = b.position.x; drawn[i * 3 + 1] = b.position.y; drawn[i * 3 + 2] = b.angle;
           }
@@ -861,6 +888,12 @@ export function Pile({
             ctx.clearRect(0, 0, w, h);
             drawPile(ctx, now2, dpr, onPhoto, null, hide);
             if (g) drawGhost(ctx, g, dpr);
+            // ★★全面を描いたので、全員が「いまの位置で描いた」（上で残した記録を上書き）。
+            for (let i = 0; i < now2.length; i++) {
+              const b = now2[i].body;
+              drawn[i * 3] = b.position.x; drawn[i * 3 + 1] = b.position.y; drawn[i * 3 + 2] = b.angle;
+            }
+            drawnBox = curBox;
           } else {
             const box = {
               x0: Math.max(0, Math.floor(bx0)), y0: Math.max(0, Math.floor(by0)),
@@ -911,8 +944,7 @@ export function Pile({
         //   受け渡しの窓では幽霊も `dragRef` も無く、山は眠っている ―― ここで
         //   止めると**代理を消せる唯一のコードも止まる**＝山の中に**見えない体が
         //   永久に刺さる**。
-        if (!g && !dragRef.current && !dirtyRef.current && !proxyRef.current
-          && now2.length > 0 && now2.every((p) => p.body.isSleeping)) {
+        if (!g && !dragRef.current && !dirtyRef.current && !proxyRef.current && asleep) {
           runningRef.current = false;
           return;
         }

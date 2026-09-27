@@ -1,5 +1,7 @@
 import type { Body } from "matter-js";
 import { canvasFont, primaryFamily } from "./textFit";
+import { BAND_BEZEL, BAND_H, SANS } from "./constants";
+import { SPACE, WEIGHT } from "./tokens";
 import { WORD_WEIGHT, trackedWidth, wordBitmap } from "./solidPaint";
 
 // ★★★**「文字そのものが図形」の板 ―― 作り方はここ1つ**（2026-09-10・第89巡）。
@@ -187,66 +189,45 @@ export interface WordPlate {
    */
   pill?: string;
   /**
-   * ★★★**「割れたピル」**（2026-09-24・第130巡にユーザー承認「**日付と曜日は C 案**」）。
-   * 左 ＝ 墨の面に紙の字（曜日）／右 ＝ 紙の面に墨の字（日付）が**1本のピル**に繋がり、
-   * 外周を墨の縁 `SPLIT_EDGE` が巡る。★2枚の板を**1つの物体**にする（第114〜129巡は
-   * 別々の2体だった）。★`bw`/`bh` は2つの和と大きいほう、`pill` は外周の墨。
+   * ★★★**ホームの日付の板 ＝「帯のピルと同じ作り」**（2026-09-27・第133巡にユーザー承認「**B**」）。
+   * 左に墨の円（日にち）、右に2行（曜日／月）、地の面に墨の細い線。`bw`/`bh` は格子の 3×1 マス。
+   * ★第130〜133巡の「割れたピル」（`split`・`joinSplitPlate`・`fitSplitPlate`・`SPLIT_EDGE`・
+   *   `SPLIT_PAD`）は削除した。復活させない。
    */
-  split?: { left: WordPlate; right: WordPlate };
+  badge?: { num: string; top: string; bottom: string; ground: string };
 }
 
-/**
- * ★割れたピルの外周の縁の太さ（**板の高さに対する比**）。★目盛りの外（絵の寸法）。
- * ★承認した見本（高さ 72px に縁 4px）と同じ比。生の px にしないのは、混んだ日に
- *   板ごと縮めても（`pileWorld.platesAt`）縁と字の関係が動かないため。
- */
-export const SPLIT_EDGE = 0.055;
-
-/** ★★2枚の板 → 割れたピル1枚（`measureWordPlate` で測った2枚を渡す）。 */
-export function joinSplitPlate(left: WordPlate, right: WordPlate): WordPlate {
-  const bh = Math.max(left.bh, right.bh);
-  return {
-    word: `${left.word} ${right.word}`, fs: left.fs, sx: 1, ink: left.ink, fam: left.fam,
-    dx: 0, dy: 0, w: left.bw + right.bw, h: bh,
-    bw: left.bw + right.bw, bh,
-    pill: left.pill ?? right.pill, split: { left, right },
-  };
-}
+/** ★月の略号（`WD_SHORT` と同じ3文字の語彙）。 */
+export const MON_SHORT = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] as const;
 
 /**
- * ★★★**割れたピルを「決まった箱」に収める**（2026-09-27・第133巡。ホームの山の格子 ――
- * 日付の板は **3×1 マス**）。字は**箱に入るいちばん大きな大きさ**（高さと幅の両方で測る）。
- * 余った幅は左右の半分へ**それぞれの幅の比で**配る（字はそれぞれの半分の中央のまま）。
- * ★★横の遊びだけ `SPLIT_PAD`（字の高さの比）へ詰める ―― 箱の幅が 3 マスに決まったので、
- *   `PILL_PAD`(0.46) のままだと遊びに幅を取られて**字が 58 → 46px に縮んだ**（第133巡の実測）。
- *   端の角丸に字が触れない下限は 0.15 前後（半径 ＝ 高さの半分に対して字の高さ 5割強）。
+ * ★★★**日付の板（B 案）の寸法の比**。**帯のピルの比をそのまま使う**（高さ `BAND_H.photo` 44 の中に
+ * 縁 `BAND_BEZEL` 6 を残して丸、丸と字の間 `SPACE.sm`、線 1px）―― だから板の高さが変わっても
+ * 帯のピルと同じ形の拡大になる。★字の大きさだけは承認した見本の値（丸に対する比）。
+ * ★目盛りの外（絵の寸法）。
  */
-export const SPLIT_PAD = 0.3;
-export function fitSplitPlate(
-  left: string, right: string, W: number, H: number, fam: string,
-  leftInk: string, rightInk: string, edge: string,
+const BADGE_BEZEL = BAND_BEZEL / BAND_H.photo;
+const BADGE_GAP = SPACE.sm / BAND_H.photo;
+const BADGE_EDGE = 1 / BAND_H.photo;
+/** 右の2行 … 行の中心は丸の上下の ±1/4、字の高さ（大文字）は 1行ぶん（丸の半分）の 0.74。 */
+const BADGE_CAP = 0.74;
+/** 丸の中の日にち … 字の高さは丸の 0.46、幅は丸の 0.62 まで。 */
+const BADGE_NUM_H = 0.46;
+const BADGE_NUM_W = 0.62;
+
+/** ★★ホームの日付の板（`bw`×`bh` ＝ 格子の 3×1 マス）。字は描くときに箱へ合わせて組む。 */
+export function badgePlate(
+  date: Date, W: number, H: number, ground: string, ink: string,
 ): WordPlate {
-  const at = (fs: number, word: string, ink: string) => {
-    const P = measureWordPlate(word, fs, W, ink, fam, undefined, undefined, edge);
-    return { ...P, bw: P.w + P.h * SPLIT_PAD * 2 };
+  const num = String(date.getDate());
+  const top = WD_SHORT[date.getDay()];
+  const bottom = MON_SHORT[date.getMonth()];
+  return {
+    word: `${top} ${bottom} ${num}`, fs: 0, sx: 1, ink, fam: SANS,
+    dx: 0, dy: 0, w: W, h: H, bw: W, bh: H,
+    // ★`pill` は「角丸 ＝ 高さの半分のピル」の印（指の当たり判定が読む）。色は線の墨。
+    pill: ink, badge: { num, top, bottom, ground },
   };
-  let fs = H;
-  let L = at(fs, left, leftInk);
-  let R = at(fs, right, rightInk);
-  // ★寸法は字の大きさにほぼ比例するので、2〜3回で収まる。
-  for (let i = 0; i < 4; i++) {
-    const k = Math.min(H / Math.max(L.bh, R.bh), W / (L.bw + R.bw));
-    if (Math.abs(k - 1) < 0.004) break;
-    fs *= k * (k < 1 ? 0.998 : 1);
-    L = at(fs, left, leftInk);
-    R = at(fs, right, rightInk);
-  }
-  // ★★箱は**厳密に W × H**（格子の整数倍）。余り（か、収束の誤差 0.4% 以内の足りなさ）は
-  //   左右の半分へ幅の比で配る。
-  const sum = L.bw + R.bw;
-  L = { ...L, bw: (W * L.bw) / sum, bh: H };
-  R = { ...R, bw: (W * R.bw) / sum, bh: H };
-  return joinSplitPlate(L, R);
 }
 
 /** 語 → 板の寸法。★`GravityTab.makeWordPiece` の前半そのまま。 */
@@ -289,7 +270,7 @@ export function drawWordPlate(
   ctx: CanvasRenderingContext2D, plate: WordPlate,
   x: number, y: number, angle: number, dpr: number,
 ): void {
-  if (plate.split) { drawSplitPlate(ctx, plate, x, y, angle, dpr); return; }
+  if (plate.badge) { drawBadgePlate(ctx, plate, x, y, angle); return; }
   const wb = wordBitmap(plate.word, plate.fs, plate.sx, plate.ink, plate.fam,
     plate.w, plate.h, plate.dx, plate.dy, dpr, PLATE_TRACK);
   ctx.save();
@@ -307,39 +288,63 @@ export function drawWordPlate(
   ctx.restore();
 }
 
+/** 字を箱（幅・大文字の高さ）へ収まるいちばん大きな大きさにして返す。 */
+function fitCap(ctx: CanvasRenderingContext2D, text: string, maxW: number, capH: number): TextMetrics {
+  let fs = capH;
+  for (let i = 0; i < 5; i++) {
+    ctx.font = canvasFont(WEIGHT.heavy, fs, SANS);
+    const m = ctx.measureText(text);
+    const h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    const k = Math.min(maxW / Math.max(1, m.width), capH / Math.max(1, h));
+    if (Math.abs(k - 1) < 0.01) return m;
+    fs *= k;
+  }
+  ctx.font = canvasFont(WEIGHT.heavy, fs, SANS);
+  return ctx.measureText(text);
+}
+
 /**
- * ★★★**割れたピルを描く**（第130巡）。外周を墨で塗り、縁のぶん内側へ寄せたピルで
- * 切り抜いて**右の半分だけ紙**を敷く ―― 縁が左右で1本に繋がる（2枚を並べて描くと
- * 継ぎ目に縁が二重に出る）。字は**それぞれの半分の中心**へ置く。
+ * ★★★**日付の板（B 案）を描く**。帯のピルと同じ版面 ―― 地の面・墨の細い線・左に墨の丸・
+ * 右に2行。★丸の中の日にちは紙の字、右の2行は墨の字（どちらも `SANS` の `WEIGHT.heavy`）。
  */
-function drawSplitPlate(
-  ctx: CanvasRenderingContext2D, plate: WordPlate,
-  x: number, y: number, angle: number, dpr: number,
+function drawBadgePlate(
+  ctx: CanvasRenderingContext2D, plate: WordPlate, x: number, y: number, angle: number,
 ): void {
-  const sp = plate.split;
-  if (!sp) return;
-  const { bw, bh } = plate;
-  const e = bh * SPLIT_EDGE;
-  const x0 = -bw / 2;
-  const mid = x0 + sp.left.bw;
+  const b = plate.badge;
+  if (!b) return;
+  const W = plate.bw; const H = plate.bh;
+  const e = H * BADGE_EDGE;
+  const bezel = H * BADGE_BEZEL;
+  const D = H - bezel * 2;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
   ctx.beginPath();
-  ctx.roundRect(-bw / 2, -bh / 2, bw, bh, bh / 2);
-  ctx.fillStyle = plate.pill ?? sp.right.ink;
+  ctx.roundRect(-W / 2, -H / 2, W, H, H / 2);
+  ctx.fillStyle = b.ground;
   ctx.fill();
-  ctx.save();
+  // ★線は内側に引く（`EDGE` と同じ作法）。
   ctx.beginPath();
-  ctx.roundRect(-bw / 2 + e, -bh / 2 + e, bw - e * 2, bh - e * 2, bh / 2 - e);
-  ctx.clip();
-  ctx.fillStyle = sp.left.ink;           // ★右の面 ＝ 左の字の色（紙）
-  ctx.fillRect(mid, -bh / 2, bw / 2 - mid + e, bh);
-  ctx.restore();
-  for (const [pl, cx] of [[sp.left, x0 + sp.left.bw / 2], [sp.right, mid + sp.right.bw / 2]] as const) {
-    const wb = wordBitmap(pl.word, pl.fs, pl.sx, pl.ink, pl.fam,
-      pl.w, pl.h, pl.dx, pl.dy, dpr, PLATE_TRACK);
-    ctx.drawImage(wb.canvas, cx - wb.w / 2, -wb.h / 2, wb.w, wb.h);
-  }
+  ctx.roundRect(-W / 2 + e / 2, -H / 2 + e / 2, W - e, H - e, (H - e) / 2);
+  ctx.lineWidth = e;
+  ctx.strokeStyle = plate.ink;
+  ctx.stroke();
+  const cx = -W / 2 + bezel + D / 2;
+  ctx.beginPath();
+  ctx.arc(cx, 0, D / 2, 0, Math.PI * 2);
+  ctx.fillStyle = plate.ink;
+  ctx.fill();
+  const mid = (m: TextMetrics) => (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+  ctx.fillStyle = b.ground;
+  const mn = fitCap(ctx, b.num, D * BADGE_NUM_W, D * BADGE_NUM_H);
+  ctx.fillText(b.num, cx - mn.width / 2, mid(mn));
+  ctx.fillStyle = plate.ink;
+  const x0 = cx + D / 2 + H * BADGE_GAP;
+  const room = W / 2 - H / 2 - x0;
+  // ★2行は同じ大きさ（長いほうで測る）。
+  const longer = b.top.length >= b.bottom.length ? b.top : b.bottom;
+  const m = fitCap(ctx, longer, room, (D / 2) * BADGE_CAP);
+  ctx.fillText(b.top, x0, -D / 4 + mid(m));
+  ctx.fillText(b.bottom, x0, D / 4 + mid(m));
   ctx.restore();
 }

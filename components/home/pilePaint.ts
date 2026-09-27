@@ -578,7 +578,7 @@ export function drawPile(
         // ★★焼いて貼る（`spriteOf`）。★箱は面と字のどちらか大きいほう＋余白。
         const bw = Math.max(pl.bw, pl.w) + BAKE_PAD * 2;
         const bh = Math.max(pl.bh, pl.h) + BAKE_PAD * 2;
-        const key = ["plate", pl.word, pl.split ? `${pl.split.left.word}/${pl.split.right.word}` : "",
+        const key = ["plate", pl.word, pl.badge?.ground ?? "",
           pl.bw.toFixed(2), pl.bh.toFixed(2), pl.fs.toFixed(2), pl.ink, pl.pill ?? "", dpr.toFixed(2)].join("|");
         const bmp = spriteOf(key, bw, bh, dpr, (c) => drawWordPlate(c, pl, 0, 0, 0, dpr));
         if (bmp) blit(ctx, bmp);

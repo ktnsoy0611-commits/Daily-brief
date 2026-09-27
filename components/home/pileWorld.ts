@@ -1,11 +1,11 @@
-import { DISPLAY, INK, KIND_DOMAIN, MUTED, PAPER, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
+import { BD_GREY, INK, KIND_DOMAIN, MUTED, PAPER, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
 import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { categoryOfKind } from "@/lib/deckStyle";
 import { GRID_COLS, pillInk, taskCellsOf } from "@/lib/taskSize";
 import { PHYS_GAP } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
-import { WD_SHORT, fitSplitPlate, type WordPlate } from "@/lib/wordPlate";
+import { badgePlate, type WordPlate } from "@/lib/wordPlate";
 
 import type { Body, Engine } from "matter-js";
 import type { BriefCard, Item, ItemKind, TabId, Task } from "@/lib/types";
@@ -546,13 +546,9 @@ export function buildPieces(
     Math.sqrt((w * usableH * FILL * crowd * crowd) / Math.max(1, inkCells)),
     usableH * FIT_H,
   ));
-  // ★★★**日付と曜日は「割れたピル」1枚を 3×1 マスの箱に収める**（第130巡の見え方のまま。
-  //   字は箱に入るいちばん大きな大きさ ―― `lib/wordPlate.ts` の `fitSplitPlate`）。
-  //   左 ＝ 曜日（墨の面・紙の字）／右 ＝ 日付（紙の面・墨の字）。
-  const plates = [fitSplitPlate(
-    WD_SHORT[today.getDay()], `${today.getMonth() + 1}.${today.getDate()}`,
-    unit * PLATE_COLS, unit, DISPLAY, PAPER, INK, INK,
-  )];
+  // ★★★**日付の板は「帯のピルと同じ作り」を 3×1 マスの箱に**（第133巡にユーザー承認「**B**」。
+  //   左に墨の円 ＝ 日にち／右に2行 ＝ 曜日と月。版面は `lib/wordPlate.ts` の `badgePlate`）。
+  const plates = [badgePlate(today, unit * PLATE_COLS, unit, BD_GREY, INK)];
   const jD = journal ? unit * REEL_CELLS : 0;
 
   const pieces: Piece[] = [];

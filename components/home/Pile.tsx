@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { haptic } from "@/lib/helpers";
 import { GATE_MS, onFontsReady } from "@/lib/textFit";
-import { ensureWordFont, wordFontReady } from "@/lib/wordPlate";
+import { ensureWordFont } from "@/lib/wordPlate";
 import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
@@ -273,7 +273,6 @@ export function Pile({
   /** ★★**山が空のまま取り残されたときに入れ直す合図**（第101巡）。 */
   const [seedGen, setSeedGen] = useState(0);
   /** ★板を組んだ時点で、板の書体が本当に届いていたか（第101巡）。 */
-  const plateFontRef = useRef(false);
   /** ★★中身を組んだときの床（＝そのとき図形の大きさを決めた高さ）。第103巡。 */
   const builtFloorRef = useRef(0);
   /**
@@ -999,9 +998,6 @@ export function Pile({
     //   未解決）。★体そのものは作り直すしかない（一括の倍率 `unit` は**全体の
     //   面積の予算**から出るので、1つ増えれば全部の大きさが変わる）。
     const prev = new Map(piecesRef.current.map((p) => [p.id, p]));
-    // ★★板を組む前に「板の書体が届いていたか」を控える（届いていなければ
-    //   `onFontsReady` が測り直しを撃つ）。
-    plateFontRef.current = wordFontReady(DISPLAY);
     // ★★**引き下ろして指を離した所は1度だけ使って捨てる**（`lib/pullDrag.ts`）。
     const landing = pullBus.landing;
     pullBus.landing = null;
@@ -1080,11 +1076,8 @@ export function Pile({
   useEffect(() => onFontsReady(() => {
     clearPileBitmaps(); clearSolidBitmaps();
     dirtyRef.current = true; wake();   // ★焼き直したので、絵が同じでも描き直す
-    // ★★★**板の書体だけは「焼き直し」では足りない。測り直す**（第101巡）。
-    //   板の大きさは**実際に組んだ字を測って**決まるので、代替の書体で測った
-    //   板に本物を焼くと**箱から溢れる**（Anton は em に対して背が高い）。
-    //   ★**間に合わなかったときに1度だけ**撃つ（毎回だと山が落ち直して目に付く）。
-    if (!plateFontRef.current && wordFontReady(DISPLAY)) setSeedGen((n) => n + 1);
+    // ★★第101〜133巡はここで「板の書体が遅れて届いたら山を組み直す」を撃っていた。第133巡に
+    //   板が格子のマス（3×1）で決まり、字を測らなくなったので削除した（焼き直しだけで足りる）。
   }), [wake]);
 
   // ── 掴む ──────────────────────────────────────────────────

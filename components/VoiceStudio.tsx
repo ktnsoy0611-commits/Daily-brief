@@ -1,14 +1,15 @@
 "use client";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { ms, T_OUT } from "@/lib/motion";
+import { ms, T_OUT, T_STEP } from "@/lib/motion";
+import { drawPixelScreen, waveCols, type Tone } from "@/lib/pixelScreen";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BD_GREY, CARD_RADIUS, CHARCOAL, INK, JOURNAL_FACE, JOURNAL_MUTED, MUTED, PAPER, SANS, SCHEME, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
+import { CARD_RADIUS, CHARCOAL, INK, JOURNAL_FACE, MUTED, SANS, SCHEME, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { hubPath } from "@/lib/reelHub";
 import { RECORDER_AR, RECORDER_BEZEL_PER_W, RECORDER_DECK_GAP_PER_H, RECORDER_DECK_H_PER_W, RECORDER_DECK_Y_PER_W, RECORDER_KEY_LIP_PER_H, RECORDER_REEL_CY_PER_W, RECORDER_REEL_D_PER_W } from "@/lib/recorder";
 import { PILE_INSET } from "@/lib/pileBox";
-import { bodyInkOn, redOn } from "@/lib/palette";
+import { bodyInkOn } from "@/lib/palette";
 import { LEVEL_MS } from "@/components/VoiceRecorder";
 import { pushGround } from "@/lib/ground";
 import { haptic } from "@/lib/helpers";
@@ -63,10 +64,6 @@ import type { VoiceControls, VoiceTrim } from "@/lib/types";
 //   → だから掴んだ合図は**視覚**(円がふくらむ)で持たせている。haptic の
 //     呼び出しはAndroid向けの付け足しとして残してあるだけ。
 
-/** 波形の棒の間隔と太さ(px)。★録音中もトリミング中も**同じ寸法**
- *  (ユーザー指定。止めても帯は大きくしない)。 */
-const BAR_PITCH = 5;
-const BAR_W = 3;
 /** ダイヤル1回転で動かす割合。小さいほど「重い」。 */
 const TURN_RATIO = 0.5;
 /** 手応えを返す刻み(rad)。15度ごと。 */
@@ -128,6 +125,11 @@ const DIM_GROUND = CHARCOAL;
 /** ランプの色。トリミングの縦線もこの赤を使う。 */
 /** 指を離したあとの惰性。1フレームごとに速度へ掛ける摩擦と、止まる閾値。 */
 const COAST_FRICTION = 0.94;
+/** ★窓の合図の1拍（点く／消える）と拍の数（点く3回 ＝ 6拍）。時間の語彙の `T_STEP` の倍数。 */
+const FLASH_BEAT = ms(T_STEP) * 3;
+const FLASH_BEATS = 6;
+/** ★録音中の赤い丸・一時停止の字の明滅（1拍）。 */
+const BLINK_MS = ms(T_STEP) * 10;
 const COAST_STOP = 0.00035;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -173,9 +175,6 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   //   墨の円と地の比は **11.25**。・キーの面 `cap` … **どちらの画面でも白**。
   const dial = INK;
   const cap = STUDIO.cap;
-  //  地の上に直接いる文字（キーのラベル）は地から決まる。
-  const fg = dim ? PAPER : INK;
-  const mute = dim ? "rgba(255,251,245,0.52)" : JOURNAL_MUTED;
   // ★★★**縁の目盛りは円の面から導く**（`bodyInkOn`）。**半透明にしないこと** ――
   //   第93巡に実測 … `rgba(44,38,39,0.38)` を面に合成すると**比 1.94 で消える**。
   //   ベタなら黒い円の上で紙色が **11.89** 出る。
@@ -202,16 +201,11 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   //   待機＝墨 14.41／録音中＝**危険の色**（第128巡からオレンジ。参照画像に赤が無い）。
   const ringIdle = bodyInkOn(cap);
   const ringRec = SCHEME.danger;
-  // ★★波形の線は**地**の上なので、こちらは面が2通りある。`redOn()` に導かせる。
-  const lineRec = redOn(dim ? DIM_GROUND : BD_GREY);
 
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** ★回る円の芯の層（第133巡に円は1つになった）。 */
   const reelL = useRef<SVGSVGElement>(null);
-  const timeRef = useRef<HTMLDivElement>(null);
-  const markL = useRef<HTMLDivElement>(null);
-  const markR = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   // ★波形のcanvasの実寸は **ref に控えておく**。draw() の中で clientWidth /
   // clientHeight を読むと、その瞬間に同期レイアウトが走る。ダイヤルの
@@ -219,6 +213,8 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // ページ全体のレイアウトを毎回やり直すことになり、実測(4倍スロットリング)で
   // 1ドラッグあたり clientWidth の取得だけで 374ms 使っていた。
   const cvSizeRef = useRef({ w: 0, h: 0 });
+  /** ★いまの描き方（寸法を測った所から呼ぶ）。 */
+  const drawRef = useRef<() => void>(() => {});
   // ★切り出しの位置は **ref**。ダイヤルを回すたびに setState すると
   // 1ジェスチャーで数十回の再レンダーになる(§14)。
   const trimRef = useRef<VoiceTrim>({ start: 0, end: 1 });
@@ -226,6 +222,18 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
    *  ここも ref。毎フレーム setState すると再レンダーの嵐になる。 */
   const splitRef = useRef(1);
   const [splitting, setSplitting] = useState(false);
+  // ★★★**窓の合図**（第133巡にユーザー指定「**stop などのボタンを押すと、その文字が画面に中央揃えで表示され
+  //   3回点滅する**」）。★時刻は ref（描くのは rAF）、回すかどうかだけ state。
+  const flashRef = useRef<{ text: string; t0: number } | null>(null);
+  const [flashing, setFlashing] = useState(false);
+  const flashTimer = useRef(0);
+  const flash = useCallback((text: string) => {
+    flashRef.current = { text, t0: performance.now() };
+    setFlashing(true);
+    window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => { flashRef.current = null; setFlashing(false); }, FLASH_BEAT * FLASH_BEATS);
+  }, []);
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   /** いま掴んでいる円。掴んでいなければ null。 */
   const [active, setActive] = useState<"L" | "R" | null>(null);
   /** 円が左右から入ってくるアニメーションの再生キー。 */
@@ -289,7 +297,11 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
       // 全体が再レンダーされ、画面がちらつく。
       setSize((prev) => (prev.w === el.clientWidth && prev.h === el.clientHeight
         ? prev : { w: el.clientWidth, h: el.clientHeight }));
+      const was = cvSizeRef.current;
       cvSizeRef.current = { w: cv.clientWidth, h: cv.clientHeight };
+      // ★★窓の寸法が決まった／変わったら描き直す（止まっている間は rAF が回っていないので、
+      //   測る前の寸法で描いた絵が残る ―― 実測で待機中の字が拡大されて重なっていた）。
+      if (was.w !== cv.clientWidth || was.h !== cv.clientHeight) drawRef.current();
     };
     const ro = new ResizeObserver(read);
     ro.observe(el);
@@ -345,14 +357,13 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
     cancel: barX + barW - deckH / 2,      // バーの右の端の丸の中心
   };
 
-  // ---- 数字と波形 ── 円と段のあいだ（札の「題と本文」の場所） ------------------
-  // ★上から「数字 → 波形」。段の上にはキーのラベルが乗るので `SPACE.lg` 空ける。
-  const timeH = TYPE.head * LEAD.flat;   // ★数字1行の高さ（下の `<div>` と同じ組み）
-  const gapTop = cy + RD / 2;
-  const timeTop = gapTop + SPACE.sm;
-  const waveH = Math.max(SPACE.lg, deckTop - SPACE.lg - (timeTop + timeH + SPACE.sm) - SPACE.sm);
-  const waveCy = timeTop + timeH + SPACE.sm + waveH / 2;
-  const waveW = RD;
+  // ---- 窓 ── 円と段のあいだ（札の「題と本文」の場所） ------------------------------
+  // ★★★**ドット表示の窓**（第133巡にユーザー指定「**円盤とボタンの間に黒い、ドット絵が表示されるような
+  //   スクリーン**」）。幅は段と同じ（円の直径）。上は円から `SPACE.sm`、下はキーのラベルの上に `SPACE.sm`。
+  //   ★中身（時間・状態・波形・合図）は全部この窓の点が描く（`lib/pixelScreen.ts`）。
+  const scrTop = cy + RD / 2 + SPACE.sm;
+  const scrBottom = deckTop - SPACE.xs - TYPE.nano * LEAD.flat - SPACE.sm;
+  const scrH = Math.max(SPACE.xxl, scrBottom - scrTop);
 
   // ---- 波形を描く ------------------------------------------------------------
   const draw = useCallback(() => {
@@ -361,146 +372,66 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
     // ★実寸は ref から。ここで clientWidth を読むと毎フレーム同期レイアウトが走る。
     const { w: cw, h: ch } = cvSizeRef.current;
     if (cw === 0 || ch === 0) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) {
-      cv.width = Math.round(cw * dpr);
-      cv.height = Math.round(ch * dpr);
-    }
-    const c = cv.getContext("2d");
-    if (!c) return;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, cw, ch);
-
+    const now = performance.now();
+    const n = waveCols(cw);
     const all = levelsRef.current;
     const t = trimRef.current;
-    const mid = ch / 2;
-    const bar = (x: number, v: number, color: string, bw: number) => {
-      // ★小さい音は棒にしない(ユーザー指定)。丸い端(lineCap:"round")の
-      // せいで、短い線は**点**として描かれ、それが中心線に沿って数珠つなぎに
-      // 並ぶと汚く見える。しきい値未満は中心線だけを残す。
-      if (v < LEVEL_FLOOR) return;
-      const hgt = Math.max(bw * 1.6, v * (ch - bw));
-      c.lineWidth = bw;
-      c.strokeStyle = color;
-      c.beginPath();
-      c.moveTo(x, mid - hgt / 2);
-      c.lineTo(x, mid + hgt / 2);
-      c.stroke();
-    };
-
+    // ★★合図（ボタンの1語）… `FLASH_BEAT` ごとに点く／消えるを3回。
+    const fl = flashRef.current;
+    const beat = Math.floor((now - (fl?.t0 ?? 0)) / FLASH_BEAT);
+    const flash = fl && beat < FLASH_BEATS ? fl.text : null;
+    let bars: number[] = [];
+    let barTone: (i: number) => Tone = () => 2;
+    let marks: number[] = [];
+    let left = "READY"; let right = mmss(0);
+    let leftTone: Tone = 2; let rightTone: Tone = 1; let dot = false;
     if (recording) {
-      // ── 録音中 ──────────────────────────────────────────────
-      // 赤い線が真ん中に立ち、録れた棒はその左へ流れていく。線の右は
-      // 「まだ録っていない」ので点線だけ(参考画像と同じ構え)。
-      const lineX = Math.round(cw * REC_LINE_AT);
-      // ★棒は「本数を数えて等間隔」ではなく、**測った時刻から実際の位置**を
-      // 出す。setInterval(45ms) はぴったり45msでは来ない(端末や負荷で
-      // 40〜70msに揺れる)ので、等間隔に並べると、そのズレがそのまま
-      // 「ガクつき・点滅」として見える。時刻で置けば、間隔が揺れても
-      // 位置は常に連続で、1フレームぶんも飛ばない。
-      const now = elapsedMs();
-      const pxPerMs = BAR_PITCH / LEVEL_MS;
-      // 中心線(左は実線、右は点線)。
-      c.lineCap = "butt";
-      c.lineWidth = 1;
-      c.strokeStyle = mute;
-      c.beginPath();
-      c.moveTo(0, mid);
-      c.lineTo(lineX, mid);
-      c.stroke();
-      c.save();
-      c.setLineDash([2, 4]);
-      c.beginPath();
-      c.moveTo(lineX, mid);
-      c.lineTo(cw, mid);
-      c.stroke();
-      c.restore();
-      // 棒。線のところが「いま」で、左へ行くほど過去。
-      c.lineCap = "round";
+      // ★録音中 … 新しい音ほど右。列は**測った時刻**から決める（間隔の揺れで飛ばない）。
+      bars = new Array(n).fill(0);
       const times = timesRef.current;
+      const tNow = elapsedMs();
       for (let k = all.length - 1; k >= 0; k--) {
         const at = times[k];
         if (at == null) continue;
-        const x = lineX - (now - at) * pxPerMs;
-        if (x < -BAR_W) break;      // 左端より外はもう描かない
-        if (x > lineX) continue;
-        bar(x, all[k], fg, BAR_W);
+        const col = n - 1 - Math.floor((tNow - at) / LEVEL_MS);
+        if (col < 0) break;
+        if (col < n) bars[col] = Math.max(bars[col], all[k] < LEVEL_FLOOR ? 0 : all[k]);
       }
-      // 赤い線。帯より少し高く出して、参考画像と同じく主役にする。
-      c.lineCap = "round";
-      c.lineWidth = 2.5;
-      c.strokeStyle = lineRec;
-      c.beginPath();
-      c.moveTo(lineX, 2);
-      c.lineTo(lineX, ch - 2);
-      c.stroke();
-      return;
+      const blinkOn = Math.floor(now / BLINK_MS) % 2 === 0;
+      left = paused ? "PAUSE" : "REC";
+      leftTone = paused && !blinkOn ? 1 : 2;
+      dot = !paused && blinkOn;
+      right = mmss(tNow); rightTone = 2;
+    } else if (all.length > 0 && (review || sending)) {
+      // ★止めたあと … 全体を1画面に。切り出した内側は点灯、外側は控えめ、端は赤い縦線。
+      bars = resample(all, n).map((v) => (v < LEVEL_FLOOR ? 0 : v));
+      barTone = (i) => { const r = n <= 1 ? 0 : i / (n - 1); return r >= t.start && r <= t.end ? 2 : 1; };
+      const sp = splitRef.current;
+      marks = [REC_LINE_AT + (t.start - REC_LINE_AT) * sp, REC_LINE_AT + (t.end - REC_LINE_AT) * sp]
+        .map((r) => Math.round(r * (n - 1)));
+      left = mmss(durationMs * t.start); right = mmss(durationMs * t.end);
+      // ★回している側だけ明るく（頭 ＝ 左半分・尻 ＝ 右半分）。
+      leftTone = active === "R" ? 1 : 2; rightTone = active === "L" ? 1 : 2;
+      if (sending) { left = "SENDING"; right = mmss(durationMs * Math.max(0, t.end - t.start)); leftTone = 2; rightTone = 2; }
     }
+    drawPixelScreen(cv, cw, ch, {
+      flash, flashOn: beat % 2 === 0, left, leftTone, dot, right, rightTone, bars, barTone, marks,
+    });
+  }, [recording, review, sending, paused, active, levelsRef, timesRef, elapsedMs, durationMs]);
 
-    // ★録音していない・波形も無い(=まだ何も録っていない)ときは**何も描かない**。
-    // 以前は横線だけが残り、それが円の上を横切って見えていた。
-    if (all.length === 0) return;
-
-    // ── 止めたあと(全体表示・トリミング) ─────────────────────
-    const n = Math.max(1, Math.floor((cw - BAR_W) / BAR_PITCH) + 1);
-    const bars = resample(all, n);
-    c.lineCap = "butt";
-    c.lineWidth = 1;
-    c.strokeStyle = mute;
-    c.beginPath();
-    c.moveTo(0, mid);
-    c.lineTo(cw, mid);
-    c.stroke();
-    c.lineCap = "round";
-    for (let i = 0; i < n; i++) {
-      const r = n <= 1 ? 0 : i / (n - 1);
-      bar(BAR_W / 2 + i * BAR_PITCH, bars[i], (r >= t.start && r <= t.end) ? fg : mute, BAR_W);
-    }
-    {
-      // ★切り出しの2本。止めた直後は真ん中で重なっていて、split が 0→1 に
-      // 進むにつれて左右へ分かれていく(ユーザー指定の「線が2つに分離する」)。
-      const s = splitRef.current;
-      c.lineCap = "butt";
-      c.lineWidth = 2.5;
-      c.strokeStyle = lineRec;
-      for (const r of [REC_LINE_AT + (t.start - REC_LINE_AT) * s, REC_LINE_AT + (t.end - REC_LINE_AT) * s]) {
-        const x = Math.min(cw - 1.5, Math.max(1.5, r * cw));
-        c.beginPath();
-        c.moveTo(x, 0);
-        c.lineTo(x, ch);
-        c.stroke();
-      }
-    }
-  }, [fg, mute, lineRec, recording, levelsRef, timesRef, elapsedMs]);
-
-  // ★同じ文字列なら書かない。textContent への代入は、値が同じでもその
-  // 要素のレイアウトを汚す。毎フレームやると、巨大な円を含むページの
-  // レイアウトを繰り返すことになり、実測(4倍スロットリング)で1ドラッグ
-  // あたり Layout だけで 508ms 使っていた。
-  const setText = (el: HTMLElement | null, v: string) => {
-    if (el && el.textContent !== v) el.textContent = v;
-  };
-  const drawAll = useCallback(() => {
-    draw();
-    const t = trimRef.current;
-    // 録音中の経過時間だけ、この控えめな数字に出す。
-    if (recording) setText(timeRef.current, mmss(elapsedMs()));
-    else setText(timeRef.current, mmss(durationMs * Math.max(0, t.end - t.start)));
-    // ★切り出し中は、それぞれの円の上にその位置の秒数を出す。
-    setText(markL.current, mmss(durationMs * t.start));
-    setText(markR.current, mmss(durationMs * t.end));
-  }, [draw, recording, elapsedMs, durationMs]);
+  const drawAll = draw;
+  useLayoutEffect(() => { drawRef.current = draw; });
 
   // rAF を回すのは「録音中」「ダイヤルを回している間」「線が分かれる間」だけ。
   useEffect(() => {
     let raf = 0;
     const loop = () => { drawAll(); raf = requestAnimationFrame(loop); };
-    if (recording || active || coasting || splitting) raf = requestAnimationFrame(loop);
+    if (recording || active || coasting || splitting || flashing) raf = requestAnimationFrame(loop);
     else drawAll();
     return () => cancelAnimationFrame(raf);
   // ★state を依存に入れること。取り消して idle へ戻ったとき、drawAll の
   // 参照が変わらないと effect が動かず、**前の録音の波形が残ったまま**になる。
-  }, [drawAll, state, recording, active, coasting, splitting, size.w, size.h]);
+  }, [drawAll, state, recording, active, coasting, splitting, flashing, size.w, size.h]);
 
   // ★録音を止めた瞬間、帯が広がるのに合わせて中心の1本を左右2本へ分ける。
   // 進み具合は ref に書き、rAF が読んで描く(setState では毎フレーム
@@ -709,13 +640,12 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // CANCEL キー。オーバーレイでは「元の画面へ戻る」も兼ねる(右上の閉じるは
   // もう置いていない)。タブの中では録音を捨てるだけ。
   const onCancelKey = useCallback(() => {
+    flash("CANCEL");
     if (onClose) { beginExit(); return; }
     cancelAll();
-  }, [onClose, beginExit, cancelAll]);
+  }, [onClose, beginExit, cancelAll, flash]);
 
   const canToggle = recording || state === "idle";
-  // 波形の帯を出すか。何も録っていない待機中は出さない。
-  const waveOn = recording || review || sending;
 
   return (
     <div ref={boxRef} style={{
@@ -811,60 +741,24 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         </div>
       )}
 
-      {/* 切り出し中の秒数。★触っている半分にだけ出す(ユーザー指定)。
-          ★数字の行の左端（頭）と右端（尻）＝段の両端に揃える。 */}
-      {review && (["L", "R"] as const).map((side) => (
-        <div
-          key={side}
-          ref={side === "L" ? markL : markR}
-          style={{
-            position: "absolute", zIndex: 2, pointerEvents: "none",
-            ...(side === "L" ? { left: deckLeft } : { right: w - (deckLeft + deckW) }),
-            top: timeTop,
-            fontFamily: SANS, fontVariantNumeric: "tabular-nums",
-            // ★font-size は遷移させない(遷移中ずっとレイアウトが走る)。
-            fontSize: TYPE.lead, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal, color: plateInk,
-            opacity: active === side ? 1 : 0,
-            transition: "opacity var(--t-item) var(--ease-settle)",
-          }}
-        >00:00</div>
-      ))}
-
-      {/* ★波形の帯。録音中は「真ん中の少し上」に細く狭く置き、円に重ならない。
-          止めると幅も高さも広がり、全体表示(トリミング)へ移る。
-          ★flex の並びには入れず**絶対配置**にしてある。幅を遷移させても
-          周りをレイアウトし直さずに済むため。 */}
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: "absolute", zIndex: 2, pointerEvents: "none",
-          left: "50%",
-          width: waveW, height: waveH, top: waveCy - waveH / 2,
-          // ★録音を始めると、横に伸びながら現れる。何も録っていない間は
-          // 出さない(以前は横線だけが残り、円の上を横切って見えていた)。
-          opacity: waveOn ? 1 : 0,
-          transform: `translateX(-50%) scaleX(${waveOn ? 1 : 0.5}) translateZ(0)`,
-          transition: waveOn
-            ? "opacity var(--t-item) var(--ease-settle), transform var(--t-item) var(--ease-settle)"
-            : "opacity 200ms ease-in, transform 240ms ease-in",
-          // ★自分だけの合成レイヤーへ上げる。こうしないと、毎フレームの
-          // 描き直しが**巨大な円と同じレイヤー**を汚し、円ごと塗り直しになる
-          // (実機で「点滅しているように見える」の一因)。
-          willChange: "transform",
-          display: "block",
-        }}
-      />
-
-      {/* 数字。録音中は経過、止めたあとは切り出した長さ。どちらも控えめに。
-          ★中身は rAF から textContent で書く(再レンダーしない)。 */}
-      <div ref={timeRef} style={{
+      {/* ★★★**ドット表示の窓**（第133巡）。墨の窓の中に点の格子（`lib/pixelScreen.ts`）。
+          ★時間・状態・波形・ボタンの合図は全部ここ。★触らない（指は下の舞台が受ける）。
+          ★canvas は**いつも置いておく**（寸法を測る `ResizeObserver` が見ている）。 */}
+      <div aria-hidden style={{
         position: "absolute", zIndex: 2, pointerEvents: "none",
-        left: 0, right: 0, top: timeTop, textAlign: "center",
-        fontFamily: SANS, fontSize: TYPE.head, fontWeight: WEIGHT.bold, lineHeight: LEAD.flat,
-        letterSpacing: TRACK.wide, color: plateInk, fontVariantNumeric: "tabular-nums",
-        opacity: (recording || review || sending) ? 1 : 0,
+        left: deckLeft, top: scrTop, width: deckW, height: scrH,
+        background: INK, borderRadius: RADIUS.lg,
+        opacity: shown && !leaving ? 1 : 0,
         transition: "opacity var(--t-item) var(--ease-settle)",
-      }}>{mmss(0)}</div>
+      }}>
+        <canvas
+          ref={canvasRef}
+          style={{
+            position: "absolute", inset: SPACE.xs, width: `calc(100% - ${SPACE.xs * 2}px)`,
+            height: `calc(100% - ${SPACE.xs * 2}px)`, display: "block",
+          }}
+        />
+      </div>
 
       {/* 舞台。指を受ける唯一の面。円の上なら回転、それ以外(と、円の上でも
           ほとんど動かさなかったとき)はタップとして録音の開始/停止。 */}
@@ -880,7 +774,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           if (draggedRef.current) { draggedRef.current = false; return; }
           // ★録音の開始/停止は **REC キーか円をタップしたときだけ**
           // (ユーザー指定)。それ以外の余白は何も反応しない。
-          if (onDialRef.current && canToggle) voice.toggle();
+          if (onDialRef.current && canToggle) { flash(recording ? "STOP" : "REC"); voice.toggle(); }
         }}
         role={canToggle ? "button" : undefined}
         aria-label={recording ? "録音を停止" : "録音を開始"}
@@ -916,7 +810,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         <TransportKey
           label="REC" ring={ringRec} ringOff={ringIdle}
           pressed={recording} enabled={!sending}
-          onPress={() => voice.toggle()}
+          onPress={() => { flash(recording ? "STOP" : "REC"); voice.toggle(); }}
           fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
           cx={keyCx.rec} keyD={keyD} deckH={deckH}
         />
@@ -925,14 +819,14 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
         <TransportKey
           label="PAUSE" lamp={acc.pause} bars
           pressed={paused} enabled={recording}
-          onPress={voice.togglePause}
+          onPress={() => { flash(paused ? "PLAY" : "PAUSE"); voice.togglePause(); }}
           fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
           cx={keyCx.pause} keyD={keyD} deckH={deckH}
         />
         <TransportKey
           label="SEND" lamp={acc.send}
           pressed={sending} enabled={review}
-          onPress={() => voice.send(trimRef.current)}
+          onPress={() => { flash("SEND"); voice.send(trimRef.current); }}
           fg={plateInk} cap={cap} well="transparent" socket={socket} lampOff={lampOff}
           cx={keyCx.send} keyD={keyD} deckH={deckH}
         />

@@ -567,7 +567,7 @@ const LIFT_K = 1.1;
 /** 見え方の倍率の上限（塗り直す箱の余白）。★ばねの行き過ぎを含む。 */
 const LOOK_MAX = 1.25;
 /** 持ち上がったとき、影がさらに下へ離れる量と、濃くなる倍率。 */
-const LIFT_DROP = 14;
+const LIFT_DROP = 8;
 const LIFT_DARK = 0.6;
 type Look = { id: string; mode: "press" | "lift" | "rest"; k: Spring; q: Spring; s: Spring };
 let look: Look | null = null;
@@ -619,7 +619,9 @@ export function pileLookBusy(): boolean {
  * ★★影は**地の上にだけ**落ちる（別の画面なので下の図形には落ちない）。
  * ★目盛りの外（絵の寸法）。
  */
-export const PILE_SHADOW = { blur: 11, drop: 9, a: 0.3, res: 0.5 } as const;
+// ★★第133巡の2度目にユーザー指摘「**やり過ぎ・上品さが足りない。もっとミニマルに、抑えて、シャープに**」
+//   「**床の影はずっとあるのではなく、図形の下に若干シャープめな影**」→ ぼかし 11 → 4・ずれ 9 → 4・濃さ 0.3 → 0.16。
+export const PILE_SHADOW = { blur: 4, drop: 4, a: 0.16, res: 0.5 } as const;
 /** ★影の絵に使う墨。 */
 const SHADOW_RGB = "26,26,24";
 /** ★回していない図形の外接箱。 */

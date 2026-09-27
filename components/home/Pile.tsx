@@ -4,13 +4,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { haptic } from "@/lib/helpers";
 import { GATE_MS, onFontsReady } from "@/lib/textFit";
 import { ensureWordFont } from "@/lib/wordPlate";
-import { DISPLAY, NAV_H, PILE_FLOOR_SHADOW } from "@/lib/constants";
+import { DISPLAY } from "@/lib/constants";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
   GRAVITY_Y, MASS_K, UNIT, buildPieces, clearOverlap, focusOf, ghostBodyOf, isLost, makeWalls,
   refitPile, respawn, sink, type Piece,
 } from "./pileWorld";
-import { GROUND_LIFT, floorYOf } from "@/lib/pileBox";
+import { floorYOf } from "@/lib/pileBox";
 import { SPACE } from "@/lib/tokens";
 import { bandAim, bandBus } from "./bandMotion";
 import { inCardShape } from "@/lib/cardShape";
@@ -1422,13 +1422,6 @@ export function Pile({
       {/* ★★**CSS の大きさは器そのもの**（`width/height: 100%`）。canvas は
           置換要素なので、`inset: 0` だけだと**内在の 300×150 のまま**になり得る
           ―― 実解像度（`width`/`height` 属性）と食い違うと絵が伸びる。 */}
-      {/* ★★床の影（第133巡）。静かな絵なので canvas ではなく DOM に置く（部分の描き直しに巻き込まない）。
-          ★中心を物理の床の線に合わせる（`floorYOf` ＝ 器の下端から タブバー ＋ `GROUND_LIFT`）。 */}
-      <div aria-hidden style={{
-        position: "absolute", left: SPACE.lg, right: SPACE.lg, height: SPACE.xl,
-        bottom: `calc(${NAV_H} + ${GROUND_LIFT - SPACE.xl / 2}px)`,
-        background: PILE_FLOOR_SHADOW, pointerEvents: "none",
-      }} />
       {/* ★★影の canvas（第133巡。`pilePaint.drawPileShadows`）。塗りはぼかさず、ぼかしと濃さは GPU。 */}
       <canvas ref={shRef} aria-hidden style={{
         position: "absolute", inset: 0, width: "100%", height: "100%", display: "block",

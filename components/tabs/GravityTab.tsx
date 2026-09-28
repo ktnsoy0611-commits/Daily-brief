@@ -20,7 +20,7 @@ import { demoTasks } from "@/lib/taskDemo";
 import { areaOf, daysUntil, dropOrder, massOf, specOf } from "@/lib/taskSize";
 import { BD_GREY, DISPLAY, INK, LATIN, MUTED, NAV_H, navHeightPx, RUST, SANS, SWISS_XL, SECOND, TASK_FACE } from "@/lib/constants";
 import { ms, T_IN, T_ITEM, T_OUT } from "@/lib/motion";
-import { flick, flickStep, flickThrow, type Flick } from "@/lib/scroll";
+import { chainSpring, flick, flickStep, flickThrow, type Flick } from "@/lib/scroll";
 import { D_SETTLE, K_SETTLE, K_TRAVEL, settled, spring, springTo, type Spring, rubber } from "@/lib/spring";
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT } from "@/lib/tokens";
 import type { AppState, TabProps, Task } from "@/lib/types";
@@ -179,22 +179,8 @@ function arcInv(s: number): number {
   for (let k = 0; k < 5; k += 1) d -= (arcLen(d) - a) / arcRate(d);
   return sign * Math.max(0, d);
 }
-/** ★★連鎖の減衰。焦点からの距離ぶんだけ**やわらかく**なるので、中央の間隔がまず
- *  縮み、それに次が追い、さらに次が追う ― という伝わり方になる(第58巡にユーザー指定)。
- *  ★★★第61・62巡に**続けて控えめへ**(「間隔が遅れて追従するモーションも控えめに」)。
- *  0.72^6 = 0.14 だと外の行が柔らかすぎて、払うたびに全部が寄り集まって見えた。
- *  0.93^3 = 0.80 なら、伝わる順番は残ったまま、詰まりはほとんど目に立たない。 */
-/** ★★焦点の行の硬さ。指に**1:1**で付いてくる強さ(数フレームで着く)。 */
-const CHAIN_K = 0.34;
-/** 1つ離れるごとにこの割合だけやわらかくなる。3つ離れると `K_TRAVEL` まで落ちる。 */
-const CHAIN = 0.36;
-/** ★第67巡に 3 → 2。3 だと遠い行の硬さが焦点の 1/21 になり、
- *  吸着のあと**行が一斉に着かず**「ガクガク」に見えていた。 */
-const CHAIN_MAX = 2;
-/** 減衰は臨界(`2√k`)のこの割合。1 未満なので**わずかに行き過ぎて**慣性が出る。 */
-const D_CHAIN = 0.86;
-/** 硬い側で減衰が効きすぎて重くならないよう頭打ちにする。 */
-const D_CHAIN_MAX = 0.9;
+// ★★連鎖のバネ（`CHAIN_K` など）は第134巡に `lib/scroll.ts` の `chainSpring` へ持ち上げた
+//   （モジュール送りと同じ数を読むため）。
 /** ★★★連なりの間隔は**等間隔**(2026-08-26・第64巡)。第63巡までは
  *  `LEAD_GAP · GAP_DECAY^i` の**等比級数**で、150 / 258 / 336 / 392 / 432 / 461 /
  *  482 / 497 … と 536 へ収束していた ― **7番目以降は数ミリ秒差でしか出発しない**。
@@ -881,8 +867,8 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
       //   「連鎖」は遠い行が遅れることで出るのだから、**触っている行まで
       //   遅らせる必要は無い**。硬さを距離で落として、両方を成立させる。
       //   ★減衰は硬さに合わせて臨界の手前に置く(`2√k` が臨界。行き過ぎが慣性に見える)。
-      const k = Math.max(K_TRAVEL, CHAIN_K * Math.pow(CHAIN, Math.min(CHAIN_MAX, Math.abs(d))));
-      springTo(sp, want, k, Math.min(D_CHAIN_MAX, 2 * Math.sqrt(k) * D_CHAIN));
+      const ch = chainSpring(d);
+      springTo(sp, want, ch.k, ch.d);
       const pt = arcAt(sp.p);
       // 大きさ・濃さは**バネの位置**で決める(遅れた行は遅れて大きくなる)。
       const dd = sp.p / PITCH_TIGHT;

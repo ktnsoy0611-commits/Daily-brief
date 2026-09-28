@@ -929,7 +929,14 @@
   CSS の transition には使わない。★★**ゴムの手ざわり `rubber(raw, max)` もここ1つ**
   （第102巡に `GravityTab` の `rubberRise` から持ち上げた）。閾値で傾き 1 ＝**継ぎ目が
   無い**。引き下ろしと TIMELINE の伸びが**同じ1本**を読む。
+- ★★★`lib/moduleRail.ts` ＋ `components/ModuleRail.tsx` — **モジュール送り（アプリの中の縦の送り）**（第134巡。
+  ユーザー指定「**スワイプするとモジュールごとにスナップ**」「**タスク一覧（ALIGN）のスクロールの柔らかい慣性を
+  アプリ全体に**」）。先頭は指に 1:1・離した瞬間に行き先を決めて臨界のバネで運ぶ／1枚ずつは**ALIGN と同じ連鎖の
+  バネ**（`lib/scroll.ts` の `chainSpring`）で追う／重ならないよう隙間の 1/4 までで押す。止まる所は**各1枚の上端**。
+  ★縦はこの器が自分で送る（`touch-action: pan-x`）。縦が勝ったときだけ指を奪う。`data-rail-lock` の中は見ない。
+  ★いまは `components/dev/RailDemo.tsx`（`DEV` タブの「送り」＝ JOURNAL の見本）だけが使う。本物へ移したら見本は消す。
 - `lib/scroll.ts` — **スクロールの語彙はここだけ**（指の 1:1 ＋投げ＋減衰＋最寄りへ吸着）。
+  ★★第134巡に**連鎖のバネ `chainSpring`** を `GravityTab` から持ち上げた（ALIGN とモジュール送りが同じ数を読む）。
   強さを触るのは `SCROLL_GAIN` と `FLICK_K` の2つだけ。いまは ALIGN の縦送りが使う。
 - `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋の丸の場所）**。
   CSS 側は `app/globals.css` の `:root`。数字はこの2つだけ。増やさない。

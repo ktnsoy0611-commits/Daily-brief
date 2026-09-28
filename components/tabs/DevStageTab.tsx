@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import {
-  BG, BRIEF_CARD_ASPECT, INK, LATIN, MUTED, PAPER, SANS, SECOND, TICKET_H_PER_W, navHeightPx,
+  BG, BRIEF_CARD_ASPECT, INK, LATIN, MAST_H, MUTED, PAPER, SANS, SECOND, TICKET_H_PER_W, navHeightPx,
 } from "@/lib/constants";
 import { TicketStage } from "@/components/explore/TicketStage";
+import { RailDemo } from "@/components/dev/RailDemo";
 import { CardFace } from "@/components/tabs/BriefTab";
 import { cardShapeOf } from "@/lib/cardShape";
 import { TICKET_SAMPLES } from "@/components/explore/samples";
@@ -21,7 +22,7 @@ import type { BriefCard, ItemDomain, ItemKind } from "@/lib/types";
 //
 // 見るものは2つ … 「券」＝版面の見本帳（第71巡の主役）／「場」＝券と鋏の3D。
 
-type Mode = "sheet" | "stage" | "card";
+type Mode = "sheet" | "stage" | "card" | "rail";
 
 /** 見本帳の券の幅（画面の幅に対する割合）。★本番の提案と同じ寸法で見る。 */
 const BOOK_W = 300 / 390;
@@ -124,7 +125,7 @@ function ModeSwitch({ mode, onPick, style }: {
       display: "flex", gap: SPACE.xs, padding: SPACE.xs,
       background: PAPER, borderRadius: RADIUS.pill, ...style,
     }}>
-      {([["sheet", "券"], ["card", "札"], ["stage", "場"]] as const).map(([id, label]) => (
+      {([["sheet", "券"], ["card", "札"], ["stage", "場"], ["rail", "送り"]] as const).map(([id, label]) => (
         <button key={id} type="button" onClick={() => onPick(id)} style={{
           appearance: "none", border: 0, cursor: "pointer",
           padding: `${SPACE.xs}px ${SPACE.md}px`, borderRadius: RADIUS.pill,
@@ -323,12 +324,14 @@ function Stage() {
 export function DevStageTab() {
   const [mode, setMode] = useState<Mode>("sheet");
 
-  if (mode === "stage") {
+  if (mode === "stage" || mode === "rail") {
     return (
       <div style={{ position: "relative" }}>
-        <Stage />
+        {mode === "stage" ? <Stage /> : <RailDemo />}
         <ModeSwitch mode={mode} onPick={setMode} style={{
-          position: "absolute", zIndex: 20, right: 0, top: "var(--pad-top)",
+          // ★「送り」は見出しと重ならないよう、見出しの下の段（名前の右）へ。
+          position: "absolute", zIndex: 20, right: 0,
+          top: mode === "rail" ? `calc(var(--pad-top) + ${MAST_H}px)` : "var(--pad-top)",
         }} />
       </div>
     );

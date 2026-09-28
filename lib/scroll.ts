@@ -18,6 +18,34 @@
 // ★これは canvas と物理の座標系の道具(`lib/spring.ts` と同じ扱い)。
 //   CSS の transition には持ち込まない。
 
+import { K_TRAVEL } from "./spring";
+
+// ★★★**連鎖（ALIGN の「全体が柔らかく、慣性がある」手ざわり）**（2026-09-28・第134巡に
+//   `components/tabs/GravityTab.tsx` から持ち上げた。ユーザー指定「**タスク一覧のスクロールの
+//   アニメーションを、アプリ全体のアプリ内のスクロールに応用したい**」）。
+//   並んだものが1つずつ自分のバネで位置を追い、**触っているもの（焦点）から離れるほど柔らかい**
+//   ので、焦点がまず動き、隣がそれに追い、さらに次が追う。減衰は臨界の手前なので、わずかに
+//   行き過ぎて戻る ―― それが慣性に見える。★ALIGN（`GravityTab`）とモジュール送り
+//   （`lib/moduleRail.ts`）が**同じ数を読む**。片方だけ直さない。
+// ★★第61・62巡に「間隔が遅れて追従するモーションも控えめに」で弱めた値。
+/** ★★焦点の硬さ。指に**1:1**で付いてくる強さ(数フレームで着く)。 */
+const CHAIN_K = 0.34;
+/** 1つ離れるごとにこの割合だけやわらかくなる。 */
+const CHAIN = 0.36;
+/** ★第67巡に 3 → 2。3 だと遠いものの硬さが焦点の 1/21 になり、吸着のあと**一斉に着かず**
+ *  「ガクガク」に見えていた。 */
+const CHAIN_MAX = 2;
+/** 減衰は臨界(`2√k`)のこの割合。1 未満なので**わずかに行き過ぎて**慣性が出る。 */
+const D_CHAIN = 0.86;
+/** 硬い側で減衰が効きすぎて重くならないよう頭打ちにする。 */
+const D_CHAIN_MAX = 0.9;
+
+/** 焦点から `dist` 個はなれたもののバネ（`springTo` に渡す `k` と `d`）。 */
+export function chainSpring(dist: number): { k: number; d: number } {
+  const k = Math.max(K_TRAVEL, CHAIN_K * Math.pow(CHAIN, Math.min(CHAIN_MAX, Math.abs(dist))));
+  return { k, d: Math.min(D_CHAIN_MAX, 2 * Math.sqrt(k) * D_CHAIN) };
+}
+
 /** 位置(いくつ目)と、離したあとの速さ、着地させる先、そして
  *  **いま投げの最中か**(`armed`)。★指を置いている間は投げではないので、
  *  吸着を働かせてはいけない(働かせると指の下で元の位置へ戻る)。 */
@@ -73,8 +101,8 @@ export function flickThrow(f: Flick, vPx: number, pitch: number): void {
  *  → **離した瞬間に「この投げならここまで届く」を計算して整数へ丸め、
  *     そこへ**ちょうど収束するバネ**(`d = 2√k`)で運ぶ。自由減速の区間を
  *     作らないので、止まる瞬間も反転する瞬間も存在しない。 */
-const SNAP_K = 0.055;
-const SNAP_D = 2 * Math.sqrt(SNAP_K);
+export const SNAP_K = 0.055;
+export const SNAP_D = 2 * Math.sqrt(SNAP_K);
 /** これより近く・遅くなったら、その整数に置いて終わる。 */
 const SNAP_EPS = 0.0015;
 /** 投げの速さ1あたり、何個ぶん先へ届かせるか。 */

@@ -102,6 +102,11 @@
   ★★**操作（旗・記事を読む・黒い円）は下の1列**に集め、**高さは `LINK_D` で固定**
   （`isTop` で中身が増減しても本文の折り返しが動かないため）。
 - `components/tabs/StockTab.tsx` — 候補の一覧・追加シート・ウィッシュ一覧。
+  ★★★**第134巡に「束」の UI へ**（ユーザー指定「**貼った画像のような UI に**」「**ストックの札をホームの図形と同じに**」）。
+  ドメインごとの束（`components/explore/StockGroup.tsx` ＝ 少し傾いて横に重なる4枚・最後はぼかして「+N」・下に題と
+  件数・日付・右上の白い丸の＋）。1枚は**ホームの山の提案と同じ形**（`components/explore/ShapeCard.tsx` ＝ SVG。写真を
+  形で切り、同じ輪郭を縁の2倍で引いて内側の半分だけ残す。縁の比は `lib/constants.ts` の `OFFER_BEZEL` ＝ 山と同じ1つ）。
+  押すとドメインの一覧（同じ形の2列）。空の束は形そのものが＋。
 - `components/tabs/ExecuteTab.tsx` — 地図（Leaflet）・プラン生成・4ドメインの棚。
 - ★★★**ゴールは EXPLORE のタブではない**（第134巡にユーザー指定で GOALS タブを削除）。聞くのは BRIEF の札
   （`components/explore/GrowthFace.tsx` ＝ CHECK-IN／MILESTONE／**NEW GOAL**。今の札と同じ作り・青の面・ボタンは札の中。

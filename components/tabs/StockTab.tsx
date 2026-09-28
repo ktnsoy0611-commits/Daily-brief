@@ -2,15 +2,19 @@
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Package, Palette, UtensilsCrossed } from "lucide-react";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
 import { Button } from "@/components/Button";
-import { BinderModal, CardStack, type IconType, Masthead, PosterCard, SectionLabel } from "@/components/common";
+import { BinderModal, type IconType, Masthead, SectionLabel } from "@/components/common";
+import { ShapeCard } from "@/components/explore/ShapeCard";
+import { StockGroup } from "@/components/explore/StockGroup";
+import { cardShapeOf } from "@/lib/cardShape";
+import { categoryOfKind } from "@/lib/deckStyle";
 import { TabIcon } from "@/components/TabIcons";
 import { appTitle } from "@/lib/apps";
 import { BLUE, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
-import { domainOf, haptic, isWishBound, originBadge, shortDate } from "@/lib/helpers";
-import { colorOfKind } from "@/lib/palette";
+import { domainOf, haptic, img, isWishBound } from "@/lib/helpers";
+import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
 
 // 種類ごとのアイコン。Itemの全kindをここで引ける。
@@ -21,13 +25,8 @@ export const KIND_ICON: Record<ItemKind, IconType> = {
   thing: Package,
 };
 
-// ルーズリーフの穴+切り取り線が小さすぎるカードだと窮屈に見えるため、
-// スタック表示時の1枚幅を広めに確保する。
-const STACK_CARD_WIDTH = 132;
-// 1行に重ねる枚数(ユーザー指定で10枚)。CardStackの既定(5)より深く重なるため、
-// 1枚あたり見えるのは端の細い帯だけになるが、束としての厚みが出て行数も減る。
-// これを超えたぶんは次の行へ折り返す。
-const STACK_ROW_CAP = 10;
+/** 束と束のあいだ。★目盛りの外（段の2倍 ＝ 参照画像の束の間。束は大きいので `xxl` では詰まる）。 */
+const GROUP_GAP = SPACE.xxl * 2;
 
 // GoogleマップのURLかどうか(表示ラベルの出し分け用の軽い判定)。座標・名前の
 // 実際の解決はサーバー関数(/api/resolve-place)が担う。
@@ -177,23 +176,6 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
 
 // 束1つぶんの棚。★content-visibility:auto を付けてある: 画面外にある棚は
 // ブラウザがレイアウトとペイントを丸ごと省く。ストックはカード1枚が
-// グラデーション＋影＋パンチ穴＋アイコンで構成されていて塗りが重く、
-// 4つの棚を一度に全部描くと開くたびに数百msかかっていた(CPUプロファイルでも
-// JSは40ms程度で、残りはすべてスタイル/レイアウト/ペイントだった)。
-// contain-intrinsic-size で画面外の高さを見積もらせ、スクロールバーが
-// 暴れないようにしている。未対応のブラウザでは単に無視されるだけ。
-const SHELF_INTRINSIC = "1px 260px";
-
-function StackSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section style={{ marginBottom: SPACE.xxl, contentVisibility: "auto", containIntrinsicSize: SHELF_INTRINSIC }}>
-      {/* 棚の見出し。件数は情報として意味が薄いので出さない。 */}
-      <SectionLabel text={title} style={{ marginBottom: SPACE.md }} />
-      {children}
-    </section>
-  );
-}
-
 // ストックタブ: 未実行のItemを、願望の4ドメイン(モノ・バショ・タイケン・
 // ジョウホウ)ごとに「カードのグリッド」で並べる。カードが増えると行が下へ
 // 増えていき(以前は最大4枚を重ねる束だった)、各ドメインの＋タイルは常に
@@ -268,33 +250,53 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
     showToast("アーカイブに移しました");
   };
 
-  const itemCard = (i: Item, size?: number) => (
-    <PosterCard key={i.id} image={i.images?.[0]} color={i.color} title={i.title}
-      sub={i.area && i.area !== "—" ? i.area : (i.creator || i.category || i.price || i.summary || shortDate(i.addedAt))}
-      label={domainDefOf(domainOf(i)).label}
-      icon={KIND_ICON[i.kind]} badge={originBadge(i.origin)} size={size}
-      action={size ? undefined : { label: itemKindOf(i.kind).doneActionLabel, onClick: () => markItemDone(i.id) }}
-      onClick={size ? undefined : () => setItemDetail(i)}
-      planSelected={size ? undefined : selection.itemIds.includes(i.id)}
-      onTogglePlanSelect={size ? undefined : () => toggleItemSelection(i.id)} />
-  );
-
+  // ★★★**1枚 ＝ ホームの山の提案と同じ形**（第134巡。`ShapeCard`）。題は下に2行まで。押すと詳細。
+  const shapeTile = (i: Item) => {
+    const face = colorOfKind(i.kind);
+    const on = selection.itemIds.includes(i.id);
+    return (
+      <button key={i.id} type="button" onClick={() => setItemDetail(i)} style={{
+        display: "flex", flexDirection: "column", alignItems: "center", gap: SPACE.sm, padding: 0, width: "100%", minWidth: 0,
+        background: "none", border: "none", cursor: "pointer", textAlign: "center",
+      }}>
+        <ShapeCard shape={cardShapeOf(domainOf(i))} face={face} ink={bodyInkOn(face)}
+          photo={i.images?.[0] ? img(i.images[0], 400, 400) : undefined} label={categoryOfKind(i.kind)} />
+        <span style={{
+          fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: WHITE,
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+        }}>{on ? "＋ " : ""}{i.title}</span>
+      </button>
+    );
+  };
+  // ★束の幅は列の実寸（束の中の札の大きさは幅に比例する）。
+  const mainRef = useRef<HTMLElement>(null);
+  const [colW, setColW] = useState(0);
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const read = () => setColW(el.clientWidth);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const openItems = openDomain ? domainItems[openDomain] : [];
 
   return (
     <>
       <Masthead title={appTitle("life")} />
 
-      <main style={{ flex: 1, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl }}>
-        {ITEM_DOMAINS.map((d) => (
-          <StackSection key={d.id} title={d.label}>
-            <CardStack cardWidth={STACK_CARD_WIDTH} rowCap={STACK_ROW_CAP}
-              items={domainItems[d.id].slice().reverse().map((i) => ({ key: i.id, node: itemCard(i, STACK_CARD_WIDTH) }))}
+      <main ref={mainRef} style={{ flex: 1, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl }}>
+        {/* ★★★**束の列**（第134巡。参照画像の UI）。束と束のあいだは広く（`xxl` × 2）。 */}
+        <div style={{ display: "flex", flexDirection: "column", gap: GROUP_GAP, marginBottom: GROUP_GAP }}>
+          {/* ★並びは「いちばん新しく入れた束」から。空の束は後ろ。 */}
+          {colW > 0 && ITEM_DOMAINS.slice().sort((a, b) =>
+            (domainItems[b.id][0]?.addedAt ?? "").localeCompare(domainItems[a.id][0]?.addedAt ?? "")).map((d) => (
+            <StockGroup key={d.id} title={d.label} domain={d.id} items={domainItems[d.id]} width={colW}
               onOpen={() => setOpenDomain(d.id)}
-              onAdd={() => { haptic(); setAdding(d.id); }}
-              addLabel={`${d.label}を追加`} />
-          </StackSection>
-        ))}
+              onAdd={() => { haptic(); setAdding(d.id); }} />
+          ))}
+        </div>
 
         {/* ★ウィッシュ。棚(4ドメイン)の下に、書いたものすべてを新しい順に
             並べる平たいリスト。左のチェックは「派生カードが実際に実行された
@@ -345,8 +347,8 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
           {(requestClose) => (
             <>
               <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: WHITE, margin: `${SPACE.sm}px ${SPACE.xs}px ${SPACE.lg}px`, textShadow: "0 2px 8px rgba(0,0,0,0.35)" }}>{ITEM_DOMAINS.find((d) => d.id === openDomain)?.label}</div>
-              <div onPointerDown={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: SPACE.md, padding: `0 ${SPACE.xs}px ${SPACE.sm}px` }}>
-                {openItems.length === 0 ? <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : openItems.map((i) => itemCard(i))}
+              <div onPointerDown={closeOnSelfClick(requestClose)} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: SPACE.xl, columnGap: SPACE.md, padding: `0 ${SPACE.xs}px ${SPACE.sm}px`, justifyItems: "center" }}>
+                {openItems.length === 0 ? <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: "rgba(255,255,255,0.7)" }}>まだありません。</p> : openItems.map((i) => shapeTile(i))}
               </div>
             </>
           )}

@@ -1,4 +1,4 @@
-import { BAND_BEZEL, BAND_H, BD_GREY, DISPLAY, mixHex } from "@/lib/constants";
+import { BD_GREY, DISPLAY, OFFER_BEZEL, OFFER_LABEL_CAP, OFFER_LABEL_W, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { traceHub } from "@/lib/reelHub";
 import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
@@ -119,7 +119,7 @@ function spriteOf(
 // ★★★**第133巡に半分へ**（ユーザー指定「**提案の図形のベゼルはもう少し細く**」）。帯のピルの縁の比
 //   （`BAND_BEZEL` ÷ 高さ）を**1マス**に掛けた値 ＝ 日付の板の丸のまわりの縁と同じ幅（4件で 9.6px）。
 //   提案の半径 ＝ 1マスなので、式は「半径 × 6/44」。★第132巡は直径に掛けていた（19.3px）。
-const OFFER_BEZEL = BAND_BEZEL / BAND_H.photo;
+// ★値は `lib/constants.ts` の `OFFER_BEZEL`（ストックの札と同じ1つ）。
 
 const blit = (ctx: CanvasRenderingContext2D, b: Baked) =>
   ctx.drawImage(b.canvas, -b.w / 2, -b.h / 2, b.w, b.h);
@@ -312,9 +312,9 @@ function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLI
 
 /** 字面の顔が版面として使える幅（直径に対する割合）。★目盛りの外（絵の寸法）。
  *  ★凹凸の内側に収める値 ―― 形は器いっぱいに広がるので、1 だと谷で字が欠ける。 */
-const LABEL_W = 0.62;
+const LABEL_W = OFFER_LABEL_W;
 /** 字面の顔の高さの上限（直径に対する割合）。★目盛りの外（絵の寸法）。 */
-const LABEL_CAP = 0.30;
+const LABEL_CAP = OFFER_LABEL_CAP;
 
 /**
  * ★★★**写真が無い提案の顔は「英語の1語」**（2026-09-19・第124巡にユーザー指定

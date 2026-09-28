@@ -462,6 +462,12 @@ export const BAND_H = { photo: 44 } as const;
  *  ★高さいっぱいにすると丸とピルの輪郭が接し、「はめ込んだ」ではなく
  *  「はみ出した」に見える（2026-09-07 のユーザー指摘）。 */
 export const BAND_BEZEL = 6;
+/** ★★提案の図形の写真のまわりの縁（半径に対する比 ＝ 帯のピルの縁の比）。ホームの山（canvas）と
+ *  ストックの札（SVG。第134巡）が**同じ1つ**を読む。 */
+export const OFFER_BEZEL = BAND_BEZEL / BAND_H.photo;
+/** 写真の無い提案に置く英語の1語 … 幅は径のこの割合まで・字の大きさは径のこの割合まで。 */
+export const OFFER_LABEL_W = 0.62;
+export const OFFER_LABEL_CAP = 0.30;
 
 
 // 背景(AppBackdrop)の地と図形。画面より下(iOSでツールバーが引っ込んだ

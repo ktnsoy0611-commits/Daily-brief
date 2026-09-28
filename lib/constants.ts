@@ -85,6 +85,12 @@ export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, s
 //   ★和文のグリフは無いので、**和文に当てないこと**（TIMELINE の「自由」は `SANS`）。
 export const DISPLAY = 'var(--font-anton), "Anton", var(--font-archivo), "Archivo", sans-serif';
 
+// ★★★**アプリ名の見出し（`Masthead`）だけの書体**（2026-09-28・第134巡にユーザー指定「**参考の画面で
+//   使っているタイトルの文字がいい感じなので、それに置き換えて**」）。見本の画面は `Arial` の太字で
+//   描いていた（iPhone に最初から入っている＝読み込みが要らない）。第133巡までの幾何アルファベット
+//   （`GeoText`）はここから外した。★見出し以外に使わない。
+export const TITLE = 'Arial, "Helvetica Neue", Helvetica, sans-serif';
+
 // ★スイス見出し(**表示専用の大きな欧文**)。`TYPE` の目盛りは本文のためのもので
 // display(26)止まり。ブルータリズム/スイスの大きな見出しはその外に居る ―
 // `TAB_MARK`(52) などと同じ「部品の寸法」の例外(2026-08-24 にユーザーがこの
@@ -602,9 +608,9 @@ export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";
 // タスクアプリは4層を1本の縦の空間に積むので、アプリ名の札は**層ではなく
 // カメラの器が画面に固定して**持つ(components/tasks/TaskSpace.tsx)。層の側は
 // このぶんだけ下げてから自分の見出し(層の名前・ビュー切替)を置く。
-// 内訳 = 上下の padding(12 + 16) + GeoText の size(`MAST_SIZE`)。
+// 内訳 = 上下の padding(12 + 16) + 見出しの字の大きさ(`MAST_SIZE`。行間 1 なので箱の高さ ＝ 字の大きさ)。
 // ★★第133巡に 30 → 44（ユーザー指定「**左上のHomeとかのタイトルをもっと大きく**」）。
-//   7文字（EXPLORE・JOURNAL）でも 358 の柵の中に収まる大きさ。★目盛りの外（幾何アルファベットの字高）。
+//   7文字（EXPLORE・JOURNAL）でも 358 の柵の中に収まる大きさ。★目盛りの外（見出しだけの字の大きさ）。
 export const MAST_SIZE = 44;
 export const MAST_H = 28 + MAST_SIZE;
 

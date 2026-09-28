@@ -3,32 +3,33 @@
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Bookmark, Check, ExternalLink, Plus, Sparkles, Star } from "lucide-react";
 import { memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { BLUE, BLUE_INK, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MAST_SIZE, MUTED, PAPER, SANS, SOFT_SHADOW, SECOND, WHITE } from "@/lib/constants";
+import { BLUE, BLUE_INK, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_CARD_ASPECT, MAST_SIZE, MUTED, PAPER, SANS, SOFT_SHADOW, SECOND, TITLE, WHITE } from "@/lib/constants";
 import { hashStr, img, shade } from "@/lib/helpers";
-import { GeoText } from "./GeoType";
 import { BottomSheet, OverlayCard } from "./BottomSheet";
 
 export type IconType = ComponentType<{ size?: number | string; strokeWidth?: number; color?: string }>;
 
-// ★各タブの見出し(2026-08-03)。名前は**英語＋幾何アルファベット**
-// (components/GeoType.tsx)で大きく置く。以前ここに出していた「〇件」の
+// ★各タブの見出し(2026-08-03)。名前は**英語**で大きく置く。★★第134巡に幾何アルファベット
+// (components/GeoType.tsx)から `TITLE`（Arial の太字）へ替えた（ユーザー指定）。以前ここに出していた「〇件」の
 // 数字は、情報としてほとんど意味を成していなかったので撤去した。
 // ★★右肩の器(`right` / `corner`)は**廃した**(2026-08-26・第68巡)。唯一の
 // 住人だった設定の歯車が右下の輪(`components/CreateMenu.tsx` の SETTING)へ
 // 移ったので、空の flex が7画面ぶん残るのを避ける。
 export function Masthead({ title, dateline }: {
-  /** 見出しの英語表記。幾何アルファベットで描くのでA-Z・0-9のみ。 */
+  /** 見出しの英語表記。 */
   title: string;
   dateline?: ReactNode;
 }) {
   // ★左右のパディングを持たない。持ち主は AppShell(16px)だけ(design.md §2)。
-  //   幾何アルファベットは**縦の軸が垂直な平筆**なので光学補正が要らず、
-  //   柵の 16 に置くと本文の1文字目とインクの線がそのまま一致する。
   return (
     <header style={{ padding: `${SPACE.md}px 0 ${SPACE.lg}px` }}>
       <div style={{ minWidth: 0 }}>
         {/* ★色は地が決める（`AppShell` が `--ink-on` を置く）。既定は明るい地。 */}
-        <GeoText text={title} size={MAST_SIZE} color={`var(--ink-on, ${INK})`} />
+        <h1 style={{
+          margin: 0, fontFamily: TITLE, fontSize: MAST_SIZE, fontWeight: WEIGHT.bold,
+          lineHeight: LEAD.flat, letterSpacing: TRACK.tight, color: `var(--ink-on, ${INK})`,
+          whiteSpace: "nowrap",
+        }}>{title}</h1>
         {dateline && <div style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: `var(--muted-on, ${MUTED})`, marginTop: SPACE.md }}>{dateline}</div>}
       </div>
     </header>

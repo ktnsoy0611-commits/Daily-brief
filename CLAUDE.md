@@ -319,7 +319,7 @@
   ★★ここには**4つの実機の不具合を生き延びた作り**が入っている（3か月を横に並べて送る／
   軸の固定 8px ／戻り跳ねの1フレーム対策／隣の月は触るまで作らない／1マスに丸と札は
   2つまで）。**素朴に書き直すと全部戻る。**
-- `components/GeoType.tsx` — 幾何アルファベット。`components/TabIcons.tsx` — 面で描いたアイコン。
+- `components/GeoType.tsx` — 幾何アルファベット（★第134巡から**どこからも使われていない**。見出しを戻すときのために残す）。`components/TabIcons.tsx` — 面で描いたアイコン。
 - `components/BottomSheet.tsx` / `PlanSelectionBar.tsx` / `PlanGenerateSheet.tsx` / `AddWishSheet.tsx` / `SignInGate.tsx` / `LeafletMap.tsx` / `Binder.tsx`（ゴールのみ）。
 
 ## データ・ロジック
@@ -384,8 +384,9 @@
   断片配信（`unicode-range`）の Noto と釣り合わなかった。
   ★★**Zen Kaku Gothic New も読み込みごと外した** ―― 図形の字が `JP` になって
   誰も読まなくなった（残すと実機で取りに行くだけの重さ）。
-- ★★★`lib/constants.ts` の書体は**3つ** … `SANS`（和欧）／`LATIN`（欧文だけ）／
-  ★`DISPLAY`（**大きな欧文と数字だけ**。Anton。第100巡）。**線は `SWISS_XL` 級と
+- ★★★`lib/constants.ts` の書体は**4つ** … `SANS`（和欧）／`LATIN`（欧文だけ）／
+  ★`DISPLAY`（**大きな欧文と数字だけ**。Anton。第100巡）／★`TITLE`（**左上のアプリ名だけ**。Arial の太字。
+  第134巡にユーザー指定「見本の画面のタイトルの文字に置き換えて」。幾何アルファベットから替えた）。**線は `SWISS_XL` 級と
   未読の数**に引く（`TYPE.head`(20) 以下は触らない。タブの文字は「良い」と言われている）。
   ★★★**canvas は `font-variation-settings` を受けない** ―― だから大きな欧文は
   **書体そのもので縦長にする**。`lib/wordPlate.ts` の**偽コンデンスは第100巡に撤回**

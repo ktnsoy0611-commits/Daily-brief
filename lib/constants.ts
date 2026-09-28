@@ -27,6 +27,9 @@ export const DEFAULT_STATE: AppState = {
 export const CHECKIN_INTERVAL_DAYS = 14;
 // 「できるようになったこと」を評価つきで振り返る間隔(1〜2ヶ月)
 export const MILESTONE_INTERVAL_DAYS = 45;
+// ★★「最近、達成したいことは？」（ゴールを増やす札）の間隔（第134巡にユーザー指定「**二、三ヶ月に一回ぐらい**」）。
+//   進行中のゴールが1つも無いときは間隔を待たずに聞く。
+export const GOAL_ASK_INTERVAL_DAYS = 75;
 // 場所を持つItemの自動失効: expiresAtがなければaddedAtからこの日数で削除
 export const KEEP_MAX_AGE_DAYS = 30;
 // ブリーフの記録(briefs[日付])はその日を過ぎたら二度と参照されない

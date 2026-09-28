@@ -111,7 +111,8 @@ export interface CheckIn {
   at: string;
   text: string;
   source: "prompted" | "manual";
-  kind?: "milestone";
+  /** ★第134巡に `achieved`（達成した）／`dropped`（諦めた）／`added`（札から立てた）を足した。 */
+  kind?: "milestone" | "achieved" | "dropped" | "added";
   rating?: 1 | 2 | 3;
 }
 
@@ -126,6 +127,9 @@ export interface Goal {
    *  ★`checkIns` に空の記録を積む手は採らない ― ゴールのバインダーに
    *  中身の無い記録が並んでしまう。 */
   snoozedAt?: { checkin?: string; milestone?: string };
+  /** ★★第134巡 … 札の「達成した／諦める」で閉じる。閉じたゴールには育成の札が届かない。無い ＝ 進行中。 */
+  status?: "achieved" | "dropped";
+  endedAt?: string;
 }
 
 // 興味・好み(関心を持ち好んでいるテーマ)。以前は好み(taste)/興味(interest)を
@@ -386,6 +390,8 @@ export interface AppState {
    * （後回しの癖を先読みする）。
    */
   remindStats?: { done: number; notYet: number };
+  /** ★★「最近、達成したいことは？」の札を最後にさばいた時刻（第134巡。2〜3か月ごとに聞く）。 */
+  goalAskedAt?: string;
   // ★その日のまとめ(Coworkが自動生成した日記)。キーは日付(YYYY-MM-DD)。
   // その日の声のメモ・実行したカード・行った場所・済ませたタスクをまとめて
   // 書かれたもので、アプリの記録の一番上に出る(HANDOFF §12)。
@@ -479,7 +485,8 @@ export interface BriefCard {
 
 export interface GrowthCard {
   id: string;
-  type: "checkin" | "milestone";
+  /** ★`goal-new` ＝ ゴールを増やす札（第134巡。`goalId`/`goalTitle` は空）。 */
+  type: "checkin" | "milestone" | "goal-new";
   goalId: string;
   goalTitle: string;
 }
@@ -487,7 +494,8 @@ export interface GrowthCard {
 export type DeckCard = BriefCard | GrowthCard;
 
 export function isGrowthCard(card: DeckCard): card is GrowthCard {
-  return (card as GrowthCard).type === "checkin" || (card as GrowthCard).type === "milestone";
+  const t = (card as GrowthCard).type;
+  return t === "checkin" || t === "milestone" || t === "goal-new";
 }
 
 // ★アプリは3つ(タスク / 今のアプリ / ジャーナル)。タブバーの上を左右に
@@ -500,7 +508,7 @@ export type AppId = "home" | "tasks" | "life" | "journal";
 
 // ★`life-dev` は**確認用**（第70巡）。刷新した券と鋏を実機で見るためだけの
 //   タブなので、Explore の刷新が終わったら**型ごと消す**。
-export type LifeTabId = "brief" | "stock" | "goals" | "execute" | "life-dev";
+export type LifeTabId = "brief" | "stock" | "execute" | "life-dev";
 // ★タスクは2タブ(2026-08-12にユーザー確定)。日付での区切り(今日/すべて)は
 // 廃止した。「何が差し迫っているか」は日付の文字ではなく**物体の大きさと
 // 山の高さ**が語る。drift=未確定の候補が無重力で漂う / gravity=確定した

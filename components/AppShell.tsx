@@ -16,7 +16,6 @@ import { VoiceOverlay } from "@/components/VoiceStudio";
 import { BriefTab } from "@/components/tabs/BriefTab";
 import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { DevStageTab } from "@/components/tabs/DevStageTab";
-import { GoalsTab } from "@/components/tabs/GoalsTab";
 import { HomeTab } from "@/components/tabs/HomeTab";
 import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
@@ -229,7 +228,6 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
                 {tab === "home" && <HomeTab {...tabProps} appActive={active} />}
                 {tab === "brief" && <BriefTab {...tabProps} />}
                 {tab === "stock" && <StockTab {...tabProps} />}
-                {tab === "goals" && <GoalsTab {...tabProps} />}
                 {tab === "execute" && <ExecuteTab {...tabProps} />}
                 {/* ★確認用（第70巡）。刷新した券と鋏を実機で見るためだけのタブ。
                     Explore の刷新が終わったら**この行ごと消す**。 */}

@@ -5,10 +5,11 @@ import { Check } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { Masthead, SectionLabel } from "@/components/common";
+import { GoalsSection } from "@/components/journal/GoalsSection";
 import { appTitle } from "@/lib/apps";
 import { GREEN, GREEN_INK, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf, SECOND } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
-import { dayInfo, img, todayKey } from "@/lib/helpers";
+import { dayInfo, img, ratingLabel, todayKey } from "@/lib/helpers";
 import type { JournalEntry, JournalTabId, TabProps, VoiceNote } from "@/lib/types";
 
 // ★ジャーナルアプリ。アーカイブ(旧・独立タブ)をここへ統合した。
@@ -152,9 +153,15 @@ function DaySheet({ day, summary, onClose }: { day: DayRecord; summary?: string;
           </div>
           {summary && <SummaryBlock text={summary} />}
           {(day.items.length > 0 || day.tasks.length > 0) && (
-            <section style={{ marginBottom: day.entries.length > 0 ? SPACE.xl : 0 }}>
+            <section style={{ marginBottom: day.entries.length + day.goals.length > 0 ? SPACE.xl : 0 }}>
               <SectionLabel text="やったこと" style={{ marginBottom: SPACE.md }} />
               <DoneList day={day} />
+            </section>
+          )}
+          {day.goals.length > 0 && (
+            <section style={{ marginBottom: day.entries.length > 0 ? SPACE.xl : 0 }}>
+              <SectionLabel text="ゴール" style={{ marginBottom: SPACE.md }} />
+              <GoalNotes day={day} />
             </section>
           )}
           {day.entries.length > 0 && (
@@ -196,13 +203,31 @@ function SummaryBlock({ text, compact }: { text: string; compact?: boolean }) {
   );
 }
 
-export function JournalTab({ appState, tab }: TabProps & { tab: JournalTabId }) {
+/** ★★その日のゴールの記録（第134巡）。ゴールの名前・何をしたか・書いたこと。 */
+function GoalNotes({ day }: { day: DayRecord }) {
+  const what = (k?: string, r?: 1 | 2 | 3) =>
+    k === "achieved" ? "達成" : k === "dropped" ? "諦めた" : k === "added" ? "立てた" : k === "milestone" ? ratingLabel(r) : "記録";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
+      {day.goals.map(({ goal, ci }) => (
+        <div key={ci.id}>
+          <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.bold, lineHeight: LEAD.flat, letterSpacing: TRACK.normal, color: MUTED, marginBottom: SPACE.xs }}>
+            {goal} ・ {what(ci.kind, ci.rating)}
+          </div>
+          <p style={{ margin: 0, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: INK }}>{ci.text}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function JournalTab({ appState, persist, tab }: TabProps & { tab: JournalTabId }) {
   const [openDay, setOpenDay] = useState<DayRecord | null>(null);
   const days = buildDayRecords(appState);
   const summaries = appState.daySummaries ?? {};
   const today = todayKey();
   const todayRec = days.find((d) => d.dateKey === today)
-    ?? { dateKey: today, label: dayInfo(new Date().toISOString()).label, items: [], tasks: [], entries: [] };
+    ?? { dateKey: today, label: dayInfo(new Date().toISOString()).label, items: [], tasks: [], entries: [], goals: [] };
   const past = days.filter((d) => d.dateKey !== today);
   const months = groupByMonth(past);
 
@@ -222,11 +247,17 @@ export function JournalTab({ appState, tab }: TabProps & { tab: JournalTabId }) 
               </section>
             )}
             {todayRec.entries.length > 0 && (
-              <section style={{ marginBottom: notes.length > 0 ? SPACE.xl : 0 }}>
+              <section style={{ marginBottom: notes.length + todayRec.goals.length > 0 ? SPACE.xl : 0 }}>
                 <SectionLabel text="記録" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
                 <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
                   {todayRec.entries.map((e) => <EntryCard key={e.id} entry={e} />)}
                 </div>
+              </section>
+            )}
+            {todayRec.goals.length > 0 && (
+              <section style={{ marginBottom: notes.length > 0 ? SPACE.xl : 0 }}>
+                <SectionLabel text="ゴール" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
+                <GoalNotes day={todayRec} />
               </section>
             )}
             {notes.length > 0 && (
@@ -246,6 +277,10 @@ export function JournalTab({ appState, tab }: TabProps & { tab: JournalTabId }) 
   return (
     <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
       <Masthead title={appTitle("journal")} />
+      {/* ★★★ゴールはログの節（第134巡。EXPLORE の GOALS タブを畳んだ先）。 */}
+      <div style={{ marginBottom: SPACE.xl }}>
+        <GoalsSection appState={appState} persist={persist} />
+      </div>
       {past.length === 0 ? null : (
         <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xl }}>
           {months.map((m) => (

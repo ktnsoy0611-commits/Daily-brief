@@ -103,7 +103,11 @@
   （`isTop` で中身が増減しても本文の折り返しが動かないため）。
 - `components/tabs/StockTab.tsx` — 候補の一覧・追加シート・ウィッシュ一覧。
 - `components/tabs/ExecuteTab.tsx` — 地図（Leaflet）・プラン生成・4ドメインの棚。
-- `components/tabs/GoalsTab.tsx` — ゴールのバインダーとチェックイン。
+- ★★★**ゴールは EXPLORE のタブではない**（第134巡にユーザー指定で GOALS タブを削除）。聞くのは BRIEF の札
+  （`components/explore/GrowthFace.tsx` ＝ CHECK-IN／MILESTONE／**NEW GOAL**。今の札と同じ作り・青の面・ボタンは札の中。
+  進捗の札は**続ける／達成した／諦める**を選べる。NEW GOAL は **`GOAL_ASK_INTERVAL_DAYS`(75) ごと**、進行中が0件なら1週間ごと）。
+  一覧と書き足しは **JOURNAL の ARCHIVE の頭の節**（`components/journal/GoalsSection.tsx`）。記録は日のログにも出る
+  （`lib/dayRecords.ts` の `goals`）。閉じたゴール（`Goal.status`）には札が届かない。
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
   入口は**右下の輪の SETTING だけ**（`CreateMenu`）。
 - ★`components/tabs/DevStageTab.tsx` — **開発用の `DEV` タブ**（第70巡）。中身は

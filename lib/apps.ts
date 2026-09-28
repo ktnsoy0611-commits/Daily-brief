@@ -68,7 +68,6 @@ export const APPS: AppDef[] = [
     en: "EXPLORE",
     tabs: [
       { id: "brief", label: "ブリーフ", en: "BRIEF", icon: "list" },
-      { id: "goals", label: "ゴール", en: "GOALS", icon: "pie" },
       { id: "stock", label: "ストック", en: "STOCK", icon: "layers" },
       { id: "execute", label: "プラン", en: "PLAN", icon: "pin" },
       // ★★**確認用**（第70巡）。刷新した券と鋏を実機で見るためだけのタブ。

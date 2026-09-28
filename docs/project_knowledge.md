@@ -1049,6 +1049,24 @@ Appleは`apple-mobile-web-app-status-bar-style`に`default`(白地に黒文字�
 > Chromium は Safari 専用の `-webkit-touch-callout` を `getComputedStyle` にも
 > `cssRules` にも出さない。検証は**配られた CSS の本文**を `fetch` して見る。
 
+### ★★★ゴール ＝ BRIEF の札で聞き、JOURNAL のログに残す（2026-09-28・第134巡）
+
+- ユーザー指定 …「Explore のゴールはセクションとしては削除。ブリーフの札として2〜3か月に1回ぐらい聞いてきて、
+  ゴールを増やしたり進捗を尋ねて勝手に記録され、それもログに行く。ゴールはジャーナルのログの方に節を作る」
+  「check-in の札が今のデザインに整合していない。あとで／記録するが札からはみ出している」
+  「ゴールを増やす札」「進捗を聞く札で、諦める・達成したを選べるように」。
+- **札** `components/explore/GrowthFace.tsx` … CHECK-IN（14日）／MILESTONE（45日・評価つき）／**NEW GOAL**
+  （`GOAL_ASK_INTERVAL_DAYS` 75日。進行中が0件なら「あとで」から1週間）。作りは提案の札と同じ（角 32・ベゼル 24・
+  影・面は JOURNAL の青・字は面から導く墨）。**ボタンは札の中の下の1列**（高さ 44）。「記録する」は押せないとき
+  輪郭・押せるとき塗り（薄くしない）。綴じ穴・芽のアイコン・緑の面は外した。
+- **進捗の札の3択** … 続ける（今までどおり記録）／達成した／諦める（書かなくても記録できる。`Goal.status` ＝
+  `achieved`/`dropped`・`endedAt`、`CheckIn.kind` に同じ語を残す）。閉じたゴールには札が届かない。
+- **NEW GOAL** は `goalnew-<号>` の id で1号1枚まで。答えても「あとで」でも `AppState.goalAskedAt` を打つ。
+  立てたゴールには `kind: "added"` の記録を1件置く（ログに「立てた」が出る）。
+- **ログ** … `lib/dayRecords.ts` の `DayRecord.goals`（その日のゴールの記録）。TODAY と日の札に「ゴール」の節。
+- **一覧** … JOURNAL の ARCHIVE の頭の節（`components/journal/GoalsSection.tsx`）。進行中 → おわったゴール。
+  押すと記録の一覧・書き足し・達成した／諦める／進行中に戻す・削除。旧 `GoalsTab.tsx`（バインダー）は削除。
+
 ### ★★★モジュール送り（2026-09-28・第134巡。試作は `DEV` タブの「送り」）
 
 - **方向（ユーザー確定）** … 円を回す案は却下。**アプリの中はスクロールし、モジュールごとにスナップ**する

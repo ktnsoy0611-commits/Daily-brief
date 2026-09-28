@@ -1,15 +1,14 @@
 "use client";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { BookOpen, ExternalLink, Flag, Sprout } from "lucide-react";
+import { BookOpen, ExternalLink, Flag } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "react";
-// ★`HOLE_CLEAR`/`PunchHoles` は**成長カードだけ**が使う（第94巡に提案カードからは
-//   綴じ穴を外した。ユーザー確定 ―― 参照デザインに穴が無く、穴の逃げで左の余白が
-//   34px に固定されて左右が非対称になっていた）。
-import { HOLE_CLEAR, Masthead, PunchHoles, SectionLabel } from "@/components/common";
+// ★綴じ穴（`PunchHoles`）は第134巡に育成の札からも外した（今の札の語彙に無い）。
+import { Masthead, SectionLabel } from "@/components/common";
+import { GrowthFace, type GoalOutcome } from "@/components/explore/GrowthFace";
 import { appTitle } from "@/lib/apps";
-import { BRIEF_CARD_ASPECT, CARD_RADIUS, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GREEN, GREEN_INK, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SECOND, SHADE_DEEP } from "@/lib/constants";
-import { daysBetween, haptic, img, ratingLabel, shade, todayKey } from "@/lib/helpers";
+import { BRIEF_CARD_ASPECT, CARD_RADIUS, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GOAL_ASK_INTERVAL_DAYS, GREEN, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SHADE_DEEP } from "@/lib/constants";
+import { daysBetween, haptic, img, shade, todayKey } from "@/lib/helpers";
 import { BRIEF_POOL_CAP } from "@/lib/homeBand";
 import { CardDetail } from "@/components/explore/CardDetail";
 import { keepCard } from "@/lib/keepCard";
@@ -23,7 +22,7 @@ import { isGrowthCard } from "@/lib/types";
  * 札の面。★★**見本帳（`DevStageTab` の「札」）も本番のこれをそのまま並べる**
  * ―― 見本用に別実装を作ると、形の割り当てが2か所になる（第94巡）。
  */
-export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange, milestoneText, onMilestoneTextChange, milestoneRating, onMilestoneRatingChange, flagged, onFlag, onRead }: {
+export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onCheckinChange, milestoneText, onMilestoneTextChange, milestoneRating, onMilestoneRatingChange, outcome = "keep", onOutcome, canRecord = false, onSkip, onRecord, flagged, onFlag, onRead }: {
   card: DeckCard;
   dx: number;
   isTop: boolean;
@@ -35,6 +34,12 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
   onMilestoneTextChange: (v: string) => void;
   milestoneRating: 1 | 2 | 3 | null;
   onMilestoneRatingChange: (r: 1 | 2 | 3) => void;
+  /** ★育成の札だけ（第134巡）… 続ける／達成した／諦める と、札の中の「あとで」「記録する」。 */
+  outcome?: GoalOutcome;
+  onOutcome?: (o: GoalOutcome) => void;
+  canRecord?: boolean;
+  onSkip?: () => void;
+  onRecord?: () => void;
   flagged?: boolean;
   onFlag?: () => void;
   onRead?: () => void;
@@ -47,65 +52,16 @@ export function CardFace({ card, dx, isTop, onOpenBinder, checkinValue, onChecki
   const skipOpacity = isTop ? Math.min(Math.max(-dx / SWIPE_THRESHOLD, 0), 1) : 0;
 
   if (isGrowthCard(card)) {
-    if (card.type === "checkin") {
-      return (
-        <div style={{
-          width: "100%", height: "100%", background: PAPER, borderRadius: RADIUS.xl, overflow: "hidden",
-          display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
-          border: `2px solid ${GREEN}`, position: "relative", userSelect: "none",
-        }}>
-          <div style={{ flex: "0 0 38%", background: GREEN, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.md, color: GREEN_INK }}>
-            <Sprout size={32} strokeWidth={1.5} />
-            <span style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.wide, opacity: 0.8 }}>CHECK-IN</span>
-          </div>
-          <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.xl}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
-            <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.head, lineHeight: LEAD.snug, color: INK }}>最近は、どうですか？</h2>
-            <textarea
-              value={checkinValue}
-              onChange={(e) => onCheckinChange(e.target.value)}
-              onPointerDown={(e) => e.stopPropagation()}
-              placeholder="今取り組んでいることを、ひとことで"
-              style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, outline: "none", background: PAPER, color: INK }}
-            />
-          </div>
-          <PunchHoles />
-        </div>
-      );
-    }
-
+    // ★★★版面は `components/explore/GrowthFace.tsx`（第134巡に今の札の作りへ作り直した）。
+    const ms = card.type === "milestone";
     return (
-      <div style={{
-        width: "100%", height: "100%", background: PAPER, borderRadius: RADIUS.xl, overflow: "hidden",
-        display: "flex", flexDirection: "column", boxShadow: SOFT_SHADOW_LG,
-        border: `2px solid ${RUST}`, position: "relative", userSelect: "none",
-      }}>
-        <div style={{ flex: "0 0 34%", background: RUST, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: SPACE.md, color: PAPER }}>
-          <Sprout size={30} strokeWidth={1.5} />
-          <span style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.wide, opacity: 0.85 }}>MILESTONE</span>
-        </div>
-        <div style={{ flex: 1, padding: `${SPACE.lg}px ${SPACE.xl}px ${SPACE.xl}px`, paddingLeft: HOLE_CLEAR, display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, letterSpacing: TRACK.caps, color: MUTED, marginBottom: SPACE.sm }}>{card.goalTitle}</div>
-          <h2 style={{ margin: `0 0 ${SPACE.md}px`, fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, lineHeight: LEAD.snug, color: INK }}>できるようになったこと、ありますか？</h2>
-          <textarea
-            value={milestoneText}
-            onChange={(e) => onMilestoneTextChange(e.target.value)}
-            onPointerDown={(e) => e.stopPropagation()}
-            placeholder="この1〜2ヶ月で、できるようになったこと"
-            style={{ flex: 1, resize: "none", border: `1px solid ${HAIRLINE}`, borderRadius: RADIUS.lg, padding: SPACE.md, fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, outline: "none", background: PAPER, color: INK, marginBottom: SPACE.md }}
-          />
-          <div style={{ display: "flex", gap: SPACE.sm }} onPointerDown={(e) => e.stopPropagation()}>
-            {([1, 2, 3] as const).map((r) => (
-              <button key={r} onClick={() => onMilestoneRatingChange(r)} style={{
-                flex: 1, padding: `${SPACE.sm}px ${SPACE.xs}px`, borderRadius: RADIUS.lg, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold,
-                background: milestoneRating === r ? RUST : "transparent", color: milestoneRating === r ? PAPER : SECOND,
-                border: `1.5px solid ${milestoneRating === r ? RUST : "rgba(26,26,24,0.2)"}`,
-              }}>{ratingLabel(r)}</button>
-            ))}
-          </div>
-        </div>
-        <PunchHoles />
-      </div>
+      <GrowthFace
+        card={card} isTop={isTop}
+        value={ms ? milestoneText : checkinValue} onValue={ms ? onMilestoneTextChange : onCheckinChange}
+        rating={milestoneRating} onRating={onMilestoneRatingChange}
+        outcome={outcome} onOutcome={onOutcome ?? (() => {})}
+        canRecord={canRecord} onSkip={onSkip} onRecord={onRecord}
+      />
     );
   }
 
@@ -361,6 +317,7 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
   const [checkinAnswer, setCheckinAnswer] = useState("");
   const [milestoneText, setMilestoneText] = useState("");
   const [milestoneRating, setMilestoneRating] = useState<1 | 2 | 3 | null>(null);
+  const [outcome, setOutcome] = useState<GoalOutcome>("keep");
   const startRef = useRef({ x: 0, y: 0 });
   // commit()の二重発火を防ぐ同期ロックと、その保留中setTimeoutの参照。
   // タブを離れる等でこのコンポーネントがアンマウントされた場合、生の
@@ -466,8 +423,9 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
   // 評価つきの振り返り(milestone, 45日毎)。同じ日に何件も届くと煩わしいので、
   // 全目標×両方の種類の中から「間隔に対してもっとも待たせている1件」だけを選ぶ。
   const dueCandidate = useMemo(() => {
-    const goals = appState.goals ?? [];
-    const candidates: { g: (typeof goals)[number]; kind: "checkin" | "milestone"; urgency: number }[] = [];
+    // ★★第134巡 … **閉じたゴール（達成・諦め）には届かない**。
+    const goals = (appState.goals ?? []).filter((g) => !g.status);
+    const candidates: { g: (typeof goals)[number] | null; kind: GrowthCard["type"]; urgency: number }[] = [];
     // ★★「記録した」だけでなく「あとで(=skip)で流した」時刻からも数える
     //   (2026-08-26・第64巡にユーザー確定「あとでを押したら次の間隔まで出さない」)。
     //   第63巡までは skip で何も残らなかったので、そのゴールは**永久に期限到来のまま**
@@ -483,9 +441,17 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
       if (sinceCheckin >= CHECKIN_INTERVAL_DAYS) candidates.push({ g, kind: "checkin", urgency: sinceCheckin / CHECKIN_INTERVAL_DAYS });
       if (sinceMilestone >= MILESTONE_INTERVAL_DAYS) candidates.push({ g, kind: "milestone", urgency: sinceMilestone / MILESTONE_INTERVAL_DAYS });
     });
+    // ★★★**ゴールを増やす札**（第134巡にユーザー指定「**二、三ヶ月に一回ぐらい聞いてきて、ゴールを増やしたり**」）。
+    //   数え始めは「最後にこの札をさばいた時刻」、無ければ「いちばん新しいゴールを立てた時刻」。
+    //   ★進行中のゴールが1つも無いなら間隔を待たない（ただし「あとで」から1週間は聞かない）。
+    const askedFrom = appState.goalAskedAt ?? latest(...goals.map((g) => g.addedAt));
+    const sinceAsk = askedFrom ? daysBetween(askedFrom) : Infinity;
+    if (goals.length === 0 ? sinceAsk >= 7 : sinceAsk >= GOAL_ASK_INTERVAL_DAYS) {
+      candidates.push({ g: null, kind: "goal-new", urgency: goals.length === 0 ? 99 : sinceAsk / GOAL_ASK_INTERVAL_DAYS });
+    }
     candidates.sort((a, b) => b.urgency - a.urgency);
     return candidates[0] ?? null;
-  }, [appState.goals]);
+  }, [appState.goals, appState.goalAskedAt]);
 
   // デッキは夜間Cronが生成した generatedDecks[editionKey] のみを使う。その号が
   // まだ無い間は空(休刊表示)にする。以前はダミー(CARDS)へフォールバックして
@@ -495,7 +461,7 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
   // 今日すでに育成カード(checkin/milestone)を1枚さばいたか。育成カードの
   // 決定キーは "checkin-..."/"milestone-..." で始まる。
   const growthDecidedThisEdition = Object.keys(decisions).some(
-    (k) => k.startsWith("checkin-") || k.startsWith("milestone-"),
+    (k) => k.startsWith("checkin-") || k.startsWith("milestone-") || k.startsWith("goalnew-"),
   );
   // このコンポーネントのマウント時点で「既に消化済み(keep/skip)」だったカードidを
   // 固定スナップショットしておく。プールからはこれらを除く(=既に片付けたカードは
@@ -540,7 +506,9 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
     // カードが延々とループして先へ進めなくなっていた(実機で発見)。
     if (dueCandidate && !growthDecidedThisEdition) {
       const { g, kind } = dueCandidate;
-      const growthCard: GrowthCard = { id: `${kind}-${g.id}`, type: kind, goalId: g.id, goalTitle: g.title };
+      const growthCard: GrowthCard = g
+        ? { id: `${kind}-${g.id}`, type: kind, goalId: g.id, goalTitle: g.title }
+        : { id: `goalnew-${editionKey}`, type: "goal-new", goalId: "", goalTitle: "" };
       base.splice(3, 0, growthCard);
     }
     // ★★★**指名されたカードを「次に出る1枚」の席へ動かす**（第119巡）。
@@ -553,7 +521,7 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
       if (at >= 0 && next >= 0 && at !== next) base.splice(next, 0, ...base.splice(at, 1));
     }
     return base;
-  }, [dueCandidate, appState.generatedDecks, growthDecidedThisEdition,
+  }, [dueCandidate, appState.generatedDecks, growthDecidedThisEdition, editionKey,
     pinned, decisions, allDecisions]);
 
   // ★★育成カードは**今日の号だけ**を見る(2026-08-26・第64巡)。育成カードの id は
@@ -583,7 +551,11 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
   const isCheckin = currentCard?.type === "checkin";
   const isMilestone = currentCard?.type === "milestone";
   const isGrowth = !!currentCard && isGrowthCard(currentCard);
-  const canRecord = isCheckin ? !!checkinAnswer.trim() : isMilestone ? !!(milestoneText.trim() && milestoneRating) : true;
+  const isGoalNew = currentCard?.type === "goal-new";
+  // ★★「達成した／諦める」を選んだら、書かなくても記録できる（それ自体が記録）。
+  const canRecord = isGoalNew ? !!checkinAnswer.trim()
+    : outcome !== "keep" ? true
+    : isCheckin ? !!checkinAnswer.trim() : isMilestone ? !!(milestoneText.trim() && milestoneRating) : true;
 
   const commit = (dir: "keep" | "skip") => {
     // exit(state)だけでの再入防止は、Reactの再レンダーが挟まるまでの間
@@ -610,22 +582,46 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
 
       if (isGrowthCard(card)) {
         brief.decisions[card.id] = dir === "keep" ? "answered" : "skipped";
-        if (dir === "skip") {
+        const now = new Date().toISOString();
+        if (card.type === "goal-new") {
+          // ★★ゴールを増やす札 … 「追加する」で立てる。どちらでも次の間隔まで聞かない。
+          next.goalAskedAt = now;
+          const title = checkinAnswer.trim();
+          if (dir === "keep" && title) {
+            next.goals = next.goals ?? [];
+            next.goals.push({
+              id: `goal-${Date.now()}`, title, addedAt: now,
+              // ★ログ（日の記録）に「立てた」が残るように、最初の記録を1つ置く。
+              checkIns: [{ id: `ci-${Date.now()}`, at: now, text: "ゴールを立てた", source: "prompted", kind: "added" }],
+            });
+          }
+        } else if (dir === "skip") {
           // ★★「あとで」＝**次の間隔まで出さない**(第64巡にユーザー確定)。
           //   ここに時刻を残さないと、そのゴールは期限到来のままなので毎日また届く。
           const g = (next.goals ?? []).find((x) => x.id === card.goalId);
           if (g) {
-            g.snoozedAt = { ...g.snoozedAt, [card.type]: new Date().toISOString() };
+            g.snoozedAt = { ...g.snoozedAt, [card.type]: now };
           }
-        }
-        if (dir === "keep") {
+        } else {
           const g = (next.goals ?? []).find((x) => x.id === card.goalId);
           if (g) {
             g.checkIns = g.checkIns ?? [];
-            if (card.type === "checkin" && checkinAnswer.trim()) {
-              g.checkIns.unshift({ id: `ci-${Date.now()}`, at: new Date().toISOString(), text: checkinAnswer.trim(), source: "prompted" });
-            } else if (card.type === "milestone" && milestoneText.trim() && milestoneRating) {
-              g.checkIns.unshift({ id: `ci-${Date.now()}`, at: new Date().toISOString(), text: milestoneText.trim(), rating: milestoneRating, kind: "milestone", source: "prompted" });
+            const text = (card.type === "milestone" ? milestoneText : checkinAnswer).trim();
+            const rating = card.type === "milestone" ? milestoneRating ?? undefined : undefined;
+            if (outcome === "keep") {
+              if (card.type === "checkin" && text) {
+                g.checkIns.unshift({ id: `ci-${Date.now()}`, at: now, text, source: "prompted" });
+              } else if (card.type === "milestone" && text && rating) {
+                g.checkIns.unshift({ id: `ci-${Date.now()}`, at: now, text, rating, kind: "milestone", source: "prompted" });
+              }
+            } else {
+              // ★★★**達成した／諦める**（第134巡にユーザー指定）… ゴールを閉じ、ログへ1件残す。
+              g.checkIns.unshift({
+                id: `ci-${Date.now()}`, at: now, source: "prompted", kind: outcome, rating,
+                text: text || (outcome === "achieved" ? "達成した" : "諦めた"),
+              });
+              g.status = outcome;
+              g.endedAt = now;
             }
           }
         }
@@ -661,6 +657,7 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
       setCheckinAnswer("");
       setMilestoneText("");
       setMilestoneRating(null);
+      setOutcome("keep");
       committingRef.current = false;
       persist(next);
     }, 320);
@@ -741,7 +738,7 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
       <Masthead title={appTitle("life")} />
       <div style={{ display: "flex", gap: SPACE.xs, padding: `${SPACE.md}px ${SPACE.xs}px ${SPACE.lg}px` }}>
         {deck.map((c, i) => (
-          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: RADIUS.sm, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (c.type === "checkin" || c.type === "milestone" ? GREEN : BLUE) : allDecisions[c.id] ? SHADE_DEEP : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background var(--t-item) var(--ease-settle)" }} />
+          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: RADIUS.sm, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (isGrowthCard(c) ? GREEN : BLUE) : allDecisions[c.id] ? SHADE_DEEP : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background var(--t-item) var(--ease-settle)" }} />
         ))}
       </div>
 
@@ -789,6 +786,10 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
                     checkinValue={isTop ? checkinAnswer : ""} onCheckinChange={isTop ? setCheckinAnswer : () => {}}
                     milestoneText={isTop ? milestoneText : ""} onMilestoneTextChange={isTop ? setMilestoneText : () => {}}
                     milestoneRating={isTop ? milestoneRating : null} onMilestoneRatingChange={isTop ? setMilestoneRating : () => {}}
+                    outcome={isTop ? outcome : "keep"} onOutcome={isTop ? setOutcome : undefined}
+                    canRecord={isTop && canRecord}
+                    onSkip={isTop && isGrowthCard(card) ? () => commit("skip") : undefined}
+                    onRecord={isTop && isGrowthCard(card) ? () => commit("keep") : undefined}
                     flagged={isTop ? !!allFeedback[card.id] : undefined} onFlag={isTop ? () => toggleFlag(card.id) : undefined}
                     onRead={isTop && !isGrowthCard(card) && (card as BriefCard).isInfo ? () => setReadItem(card as BriefCard) : undefined} />
                 </div>
@@ -831,15 +832,9 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
               もやが出る領域=26px分)は引き続き完全に不透明なままにして
               いるため、もやを隙間から通す構造的な穴は生まれない。 */}
           <footer style={{
-            position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, paddingBottom: isGrowth ? SPACE.sm : 0, flexShrink: 0,
-            background: isGrowth ? `linear-gradient(to bottom, ${BD_GREY}00 0, ${BD_GREY} 20px, ${BD_GREY} 100%)` : "transparent",
+            position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, flexShrink: 0,
           }}>
-            {isGrowth && (
-              <div style={{ display: "flex", gap: SPACE.md }}>
-                <button onClick={() => commit("skip")} style={{ flex: 1, padding: `${SPACE.md}px 0`, background: "transparent", border: "1.5px solid rgba(26,26,24,0.3)", borderRadius: RADIUS.pill, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: SECOND, cursor: "pointer" }}>あとで</button>
-                <button onClick={() => commit("keep")} disabled={!canRecord} style={{ flex: 1.4, padding: `${SPACE.md}px 0`, background: isMilestone ? RUST : GREEN, border: "none", borderRadius: RADIUS.pill, fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: isMilestone ? PAPER : GREEN_INK, cursor: canRecord ? "pointer" : "default", opacity: canRecord ? 1 : 0.4 }}>記録する</button>
-              </div>
-            )}
+            {/* ★★第134巡に「あとで／記録する」は札の中の下の1列へ移した（`GrowthFace`）。枠の高さだけ残す。 */}
           </footer>
         </div>
       ) : deck.length === 0 ? (

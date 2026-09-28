@@ -621,7 +621,8 @@ export function pileLookBusy(): boolean {
  */
 // ★★第133巡の2度目にユーザー指摘「**やり過ぎ・上品さが足りない。もっとミニマルに、抑えて、シャープに**」
 //   「**床の影はずっとあるのではなく、図形の下に若干シャープめな影**」→ ぼかし 11 → 4・ずれ 9 → 4・濃さ 0.3 → 0.16。
-export const PILE_SHADOW = { blur: 4, drop: 4, a: 0.16, res: 0.5 } as const;
+// ★★第133巡の3度目「全体的にもう少しシャープに」→ ぼかし 4 → 2・ずれ 4 → 3。
+export const PILE_SHADOW = { blur: 2, drop: 3, a: 0.16, res: 0.5 } as const;
 /** ★影の絵に使う墨。 */
 const SHADOW_RGB = "26,26,24";
 /** ★回していない図形の外接箱。 */

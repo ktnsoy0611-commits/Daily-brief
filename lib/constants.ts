@@ -341,7 +341,8 @@ export const RUST_EDGE = "rgba(244,123,81,0.50)";
 export const GREEN_TINT = "rgba(162,185,240,0.24)";
 export const HAIRLINE = "rgba(26,26,24,0.08)";
 // カードの縁取りは基本的にこの柔らかい影1つに統一する(枠線は使わない)。
-export const SOFT_SHADOW = "0 4px 16px rgba(28,28,30,0.07)";
+// ★★第133巡にユーザー指定「**全体的にシャドウはもう少しシャープに**」… ぼかしを半分以下・ずれを半分に（濃さはほぼ据え置き）。
+export const SOFT_SHADOW = "0 2px 6px rgba(28,28,30,0.08)";
 /**
  * ★★★**重なる画面の下をぼかす幕**（第133巡にユーザー指定「**ニュースを開いた時とかもガウスブラーに**」）。
  * 下の画面を**ぼかして少しだけ沈める**。★暗くしすぎない（明るい地のまま、手前の札だけが浮く）。
@@ -351,7 +352,7 @@ export const SCRIM_TINT = "rgba(26,26,24,0.16)";
 /** ★★忘れ防止の通知の札（第133巡）… すりガラスの白（後ろをぼかして透かす。iOS の通知と同じ作り）。 */
 export const NOTE_GLASS = "rgba(255,255,255,0.88)";
 export const NOTE_BLUR = "blur(24px) saturate(1.4)";
-export const SOFT_SHADOW_LG = "0 12px 32px rgba(28,28,30,0.12)";
+export const SOFT_SHADOW_LG = "0 5px 14px rgba(28,28,30,0.13)";
 /**
  * ★★★**券の影**（第80巡）。`box-shadow` ではなく **`filter: drop-shadow`**。
  *
@@ -549,31 +550,50 @@ export const NAV_H = `calc(77px + ${NAV_BOTTOM_GAP})`;
  *   その合図でだけ測り直せばよい。★合図は1度だけ張る（呼び手は5か所ある）。
  */
 let navPx = 0;
-let navWatching = false;
-
-function measureNav(): number {
-  const shell = document.querySelector("[data-app-shell]") ?? document.documentElement;
-  const v = getComputedStyle(shell).getPropertyValue("--nav-h").trim();
-  if (!v) return 96;
-  const probe = document.createElement("div");
-  probe.style.cssText = `position:absolute;visibility:hidden;height:${v}`;
-  document.body.appendChild(probe);
-  const px = probe.getBoundingClientRect().height;
-  probe.remove();
-  return px || 96;
+/**
+ * ★★★**タブバーの高さは「置きっぱなしの測り板」で見張る**（2026-09-28・第133巡にユーザー報告「**開いた時に、床の
+ * 位置がずれる**」）。第106〜133巡は1度測った値を憶え、`resize` 系の合図でだけ測り直していた。ところが
+ * アプリを開くたびに `kickViewport()` が `viewport-fit` を一瞬 `auto` にするので、そのあいだは
+ * `env(safe-area-inset-bottom)` が 0 になり、**そこで測った低い値が憶えられたまま**になる（元へ戻るときに
+ * `resize` が来ないことがある）。→ 床（`floorYOf`）がタブバーの高さの食い違いぶんずれて残った。
+ * ★いまは高さが `NAV_H` の見えない板を1枚だけ置き、`ResizeObserver` で**変わった瞬間に**値を替えて知らせる
+ * （`onNavHeight`）。測るのは板の寸法が変わったときだけなので、ループから呼んでもレイアウトを強制しない。
+ */
+let navProbe: HTMLDivElement | null = null;
+const navListeners = new Set<() => void>();
+function ensureNavProbe(): HTMLDivElement | null {
+  if (navProbe || typeof document === "undefined" || !document.body) return navProbe;
+  const el = document.createElement("div");
+  el.setAttribute("aria-hidden", "true");
+  el.style.cssText = `position:fixed;left:0;top:0;width:0;visibility:hidden;pointer-events:none;height:${NAV_H}`;
+  document.body.appendChild(el);
+  navProbe = el;
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => {
+      const px = el.getBoundingClientRect().height;
+      if (px > 0 && Math.abs(px - navPx) > 0.5) {
+        navPx = px;
+        navListeners.forEach((f) => f());
+      }
+    }).observe(el);
+  }
+  return el;
 }
 
 export function navHeightPx(): number {
   if (typeof window === "undefined") return 96;
-  if (!navWatching) {
-    navWatching = true;
-    const stale = () => { navPx = 0; };
-    window.addEventListener("resize", stale);
-    window.addEventListener("orientationchange", stale);
-    window.visualViewport?.addEventListener("resize", stale);
+  if (!navPx) {
+    const el = ensureNavProbe();
+    navPx = el?.getBoundingClientRect().height || 96;
   }
-  if (!navPx) navPx = measureNav();
   return navPx;
+}
+
+/** ★タブバーの高さが変わったら呼ぶ（戻り値で外す）。 */
+export function onNavHeight(cb: () => void): () => void {
+  navListeners.add(cb);
+  ensureNavProbe();
+  return () => { navListeners.delete(cb); };
 }
 
 export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";

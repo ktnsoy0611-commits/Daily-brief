@@ -4,7 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { haptic } from "@/lib/helpers";
 import { GATE_MS, onFontsReady } from "@/lib/textFit";
 import { ensureWordFont } from "@/lib/wordPlate";
-import { DISPLAY } from "@/lib/constants";
+import { DISPLAY, onNavHeight } from "@/lib/constants";
+import { ms, T_ITEM } from "@/lib/motion";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
   GRAVITY_Y, MASS_K, UNIT, buildPieces, clearOverlap, focusOf, ghostBodyOf, isLost, makeWalls,
@@ -260,6 +261,8 @@ export function Pile({
   /** ★★★器の寸法は**ref で持つ**（state ではない）。state にすると、iOS で器が
    *  1px 揺れるたびに React が作り直し、**山が落ち直して震え続ける**。 */
   const sizeRef = useRef({ w: 0, h: 0 });
+  /** ★タブバーの高さの見張りを外す（世界を片づけるとき）。 */
+  const unsubNavRef = useRef<(() => void) | null>(null);
   /** ★★★**器の伸び縮みに応えるのはこの1本だけ。** 世界の effect がここへ
    *  「canvas と壁を直す」を置き、器を見る observer がそれを呼ぶ。
    *  **observer を2つ付けない**（付けると先に走ったほうが番人を黙らせる）。 */
@@ -518,6 +521,17 @@ export function Pile({
         wake();
       };
       buildWalls(sizeRef.current.w, sizeRef.current.h);
+      // ★★★**タブバーの高さが変わったら、床を作り直す**（第133巡の「開いた時に床がずれる」）。
+      //   開くたびの `kickViewport` で高さは2フレームだけ揺れるので、`T_ITEM` 待って落ち着いた値で見る。
+      //   ★山が眠ってループが止まっていても効く（2秒ごとの見回りはループの中でしか走らない）。
+      let navTimer = 0;
+      const offNav = onNavHeight(() => {
+        window.clearTimeout(navTimer);
+        navTimer = window.setTimeout(() => {
+          if (Math.abs(floorYOf(sizeRef.current.h) - floorY) > 0.5) buildWalls(sizeRef.current.w, sizeRef.current.h);
+        }, ms(T_ITEM));
+      });
+      unsubNavRef.current = () => { offNav(); window.clearTimeout(navTimer); };
 
       // ★★**器が伸び縮みしたら、壁だけ作り直す**（山は落とし直さない）。
       //   iOS はツールバーや安全域で器の高さが常に少し動くので、そのたびに
@@ -972,6 +986,8 @@ export function Pile({
       stop = true;
       cancelAnimationFrame(rafRef.current);
       onResizeRef.current = null;
+      unsubNavRef.current?.();
+      unsubNavRef.current = null;
       piecesRef.current = [];
       // ★★代理の体も手放す（世界ごと捨てるので除くまでもないが、**残っていると
       //   次の世界が「もう持っている」と思い込む**）。

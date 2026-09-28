@@ -23,7 +23,8 @@
 
 ### ★★★第134巡 ── 見出しの書体／ナビの方向が決まった
 
-- 左上のアプリ名を `TITLE`（Arial の太字・44・-0.02em）へ（見本の画面の字。ユーザー指定）。`GeoType.tsx` は未使用で残す。
+- 左上のアプリ名を `TITLE`（**Arimo** の太字・**56**・-0.02em）へ（見本の画面の字 ＝ Liberation Sans ＝ Arimo。ユーザー指定）。`GeoType.tsx` は未使用で残す。
+- モジュール送りの取りこぼし … 止まっている間は iOS が先にパンを始めて `pointercancel` → 最初の `touchmove` で縦なら `preventDefault`。
 - **モジュール送りの試作**（`lib/moduleRail.ts`・`components/ModuleRail.tsx`）。ALIGN の連鎖のバネを `lib/scroll.ts` へ持ち上げて共有。
   `DEV` タブの「送り」で JOURNAL の見本（録音機 → 日のタイル）を触れる。
 - ナビの方向（ユーザー確定）… **円を回す案は却下**。**アプリの中はスクロールし、モジュールごとにスナップ**

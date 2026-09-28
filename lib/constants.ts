@@ -86,10 +86,11 @@ export const LATIN = 'var(--font-archivo), "Archivo", "Helvetica Neue", Arial, s
 export const DISPLAY = 'var(--font-anton), "Anton", var(--font-archivo), "Archivo", sans-serif';
 
 // ★★★**アプリ名の見出し（`Masthead`）だけの書体**（2026-09-28・第134巡にユーザー指定「**参考の画面で
-//   使っているタイトルの文字がいい感じなので、それに置き換えて**」）。見本の画面は `Arial` の太字で
-//   描いていた（iPhone に最初から入っている＝読み込みが要らない）。第133巡までの幾何アルファベット
+//   使っているタイトルの文字がいい感じなので、それに置き換えて**」）。第133巡までの幾何アルファベット
 //   （`GeoText`）はここから外した。★見出し以外に使わない。
-export const TITLE = 'Arial, "Helvetica Neue", Helvetica, sans-serif';
+//   ★★見本の画面の「Arial」は Chromium では **Liberation Sans（＝ Arimo と同じ図案）**で描かれていて、
+//   iPhone の Arial とは字形が違った（ユーザー指摘「**見本と違う**」）→ **Arimo を配る**（`app/layout.tsx`）。
+export const TITLE = 'var(--font-arimo), "Arimo", Arial, sans-serif';
 
 // ★スイス見出し(**表示専用の大きな欧文**)。`TYPE` の目盛りは本文のためのもので
 // display(26)止まり。ブルータリズム/スイスの大きな見出しはその外に居る ―
@@ -611,7 +612,8 @@ export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";
 // 内訳 = 上下の padding(12 + 16) + 見出しの字の大きさ(`MAST_SIZE`。行間 1 なので箱の高さ ＝ 字の大きさ)。
 // ★★第133巡に 30 → 44（ユーザー指定「**左上のHomeとかのタイトルをもっと大きく**」）。
 //   7文字（EXPLORE・JOURNAL）でも 358 の柵の中に収まる大きさ。★目盛りの外（見出しだけの字の大きさ）。
-export const MAST_SIZE = 44;
+// ★★第134巡に 44 → 56（ユーザー指摘「**見本より小さい**」。書体を替えて字の高さが 32 → 40 に）。
+export const MAST_SIZE = 56;
 export const MAST_H = 28 + MAST_SIZE;
 
 // ---- 興味の自動検出（プロトタイプ: キーワード頻度。現在は未使用） --

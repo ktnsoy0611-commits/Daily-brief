@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { SPACE } from "@/lib/tokens";
 import { BD_GREY, INK, GREEN, RUST } from "@/lib/constants";
-import { Anton, Archivo, Noto_Sans_JP } from "next/font/google";
+import { Anton, Archivo, Arimo, Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
 
 // ★★★**Zen Kaku Gothic New は第126巡に外した** ―― ユーザー指定「**帯のピルに
@@ -56,6 +56,16 @@ const anton = Anton({
   weight: "400",
   subsets: ["latin"],
   preload: false,
+});
+
+// ★★★**左上のアプリ名だけ Arimo の太字**（2026-09-28・第134巡にユーザー指定「**見本の画面のタイトルの
+//   文字に置き換えて**」「**フォントが見本と違う・小さい**」）。見本の画面は Chromium の `Arial` が
+//   Liberation Sans（＝ Arimo と同じ図案）で描いていた。iPhone の Arial とは字形が違うので、**同じ図案を配る**。
+//   ★太さは 700 の1つだけ・欧文だけ（役は `lib/constants.ts` の `TITLE`）。
+const arimo = Arimo({
+  variable: "--font-arimo",
+  weight: "700",
+  subsets: ["latin"],
 });
 
 // ★第73巡に一度 **Anton を撤去**していた（そのときは使い手 0 件だった）。
@@ -133,7 +143,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja" className={[
-      archivo.variable, anton.variable, notoSansJP.variable,
+      archivo.variable, anton.variable, arimo.variable, notoSansJP.variable,
     ].join(" ")}>
       {/* ★色の持ち主は `lib/constants.ts` の1か所だけ。CSS には**変数で配る**。
           第66巡まで globals.css が地色・墨・緑・赤の4色を

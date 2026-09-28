@@ -93,6 +93,38 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, style }
   }, [pieces, gap, endPad, paint]);
 
   useLayoutEffect(() => { measure(); }, [measure]);
+  // ★★★**iOS に先にパンを始めさせない**（第134巡。ユーザー報告「**全く反応しない時がかなり頻発する。一度動かすと
+  //   何回かは続けて成功する**」）。止まっている間は遊び `SLOP` を越えるまで指を奪わないので、そのあいだに
+  //   iOS が祖先の列のスクロールを始め、**`pointercancel` で指ごと取り上げていた**（動いている最中は押した瞬間に
+  //   奪うので成功する ―― 「続けて成功する」の正体）。`touch-action: pan-x` は iOS では当てにならない。
+  //   → 最初の `touchmove` で**縦が勝っていたら `preventDefault`**（`passive: false` でないと効かない）。
+  //   横が勝ったら何もしない（棚の横スクロール・札の束はそのまま）。`data-rail-lock` の中も触らない。
+  useEffect(() => {
+    const b = box.current;
+    if (!b) return;
+    let x0 = 0; let y0 = 0; let axis: "x" | "y" | null = null;
+    const start = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      x0 = t.clientX; y0 = t.clientY;
+      axis = (e.target as HTMLElement).closest?.("[data-rail-lock]") ? "x" : null;
+    };
+    const move = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t || axis === "x") return;
+      if (axis === null) {
+        const dx = Math.abs(t.clientX - x0); const dy = Math.abs(t.clientY - y0);
+        if (dx < 1 && dy < 1) return;
+        axis = dx > dy ? "x" : "y";
+        if (axis === "x") return;
+      }
+      if (e.cancelable) e.preventDefault();
+    };
+    b.addEventListener("touchstart", start, { passive: true });
+    b.addEventListener("touchmove", move, { passive: false });
+    return () => { b.removeEventListener("touchstart", start); b.removeEventListener("touchmove", move); };
+  }, []);
+
   useEffect(() => {
     const ro = new ResizeObserver(() => measure());
     if (box.current) ro.observe(box.current);

@@ -1,7 +1,7 @@
 "use client";
 
 import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { ms as msOf, T_ITEM } from "@/lib/motion";
+import { ms as msOf, T_ITEM, T_OUT } from "@/lib/motion";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop, groundOf } from "@/components/AppBackdrop";
@@ -26,6 +26,7 @@ import { TaskSpace } from "@/components/tasks/TaskSpace";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
+import { whenPileSettled } from "@/lib/bootQuiet";
 import { BD_GREY, CHARCOAL, INK, NAV_BOTTOM_GAP, NAV_CREATE_SLOT, NAV_H, NAV_PILL_PAD, NAV_ROW_MAX, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { unreadCards } from "@/lib/homeBand";
@@ -762,9 +763,11 @@ export function AppShell() {
     const MIN_MS = 2200;
     /** どんなに忙しくても、ここまで待ったら載せる（ms）。 */
     const GIVE_UP_MS = 6000;
+    /** ★★★**山が落ち終わるのを待つ上限**（第134巡）。山が何かで止まらなくても、ここで諦めて先へ進む。 */
+    const SETTLE_LIMIT_MS = 12000;
     const rest = APPS.map((a) => a.id);
     let raf = 0; let calm = 0; let prev = 0;
-    const t0 = performance.now();
+    let t0 = performance.now();
     const tick = (t: number) => {
       if (prev) calm = t - prev < CALM_MS ? calm + 1 : 0;
       prev = t;
@@ -776,8 +779,15 @@ export function AppShell() {
       }
       raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    // ★★★**山が落ち終わってから数え始める**（第134巡。ユーザー指摘「**起動直後に図形が落ちてくる時にフレームレートが
+    //   低下する**」）。第115巡の `MIN_MS`(2.2s) は「落ちている時間」の見積もりで、遅い端末では落下がそれより長く、
+    //   `GIVE_UP_MS`(6s) で**落下の最中に**アプリを1つ組み上げていた（実測 CPU×4 で 6〜8s に 200ms 級の長い仕事）。
+    //   → 山の合図（`lib/bootQuiet.ts`）を待ってから、軽いフレームが続くのを待つ。
+    const cancel = whenPileSettled(() => {
+      t0 = performance.now() - MIN_MS + msOf(T_OUT);
+      raf = requestAnimationFrame(tick);
+    }, SETTLE_LIMIT_MS);
+    return () => { cancel(); cancelAnimationFrame(raf); };
   }, [appState, mountApp]);
   const onNavPointerDown = useCallback((e: ReactPointerEvent) => {
     const COMMIT_RATIO = 0.18;   // 横: 画面幅のこの割合を超えたら隣へ送る

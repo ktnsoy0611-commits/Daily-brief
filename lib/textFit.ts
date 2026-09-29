@@ -171,8 +171,12 @@ export function textDrawable(face: number, text: string): boolean {
   const fi = clampFace(face);
   if (fontReady(fi, text)) return true;
   const t0 = askedAt.get(fi);
-  return t0 !== undefined && Date.now() - t0 > GATE_MS;
+  const open = t0 !== undefined && Date.now() - t0 > GATE_MS;
+  if (!open) blocked.add(fi);
+  return open;
 }
+/** ★門の前で待たされた面（門が開いたら描き直してもらう）。 */
+const blocked = new Set<number>();
 
 /** 門が開く時刻に1度だけ知らせる(割り付けのキャッシュを捨ててもらうため)。 */
 function armGate(fi: number) {
@@ -180,8 +184,22 @@ function armGate(fi: number) {
   askedAt.set(fi, Date.now());
   window.setTimeout(() => {
     readyCache.clear();
-    for (const cb of listeners) cb();
+    // ★★★**まだ届いていない頼みが残っているときだけ知らせる**（2026-09-29・第134巡）。届いたものは
+    //   `load().then` → `scheduleFlush` がもう知らせている。無条件に知らせると、聞いた側（山）が
+    //   **焼いた絵を全部捨てて焼き直す**ので、起動の 640ms 後 ＝ 図形が落ちている最中に必ず重くなっていた。
+    //   ★門の前で待たされた字があったときも知らせる（開いた門で描き直してもらうため）。
+    if ((pending.get(fi) ?? 0) > 0 || blocked.delete(fi)) for (const cb of listeners) cb();
   }, GATE_MS + 40);
+}
+
+/** ★面ごとの「頼んで、まだ返事が来ていない」数。 */
+const pending = new Map<number, number>();
+const settle = (fi: number) => pending.set(fi, Math.max(0, (pending.get(fi) ?? 0) - 1));
+/** ★★頼んだ書体が全部返事をして、焼き直しの知らせも出し終えたか（山の下焼きが待つ）。 */
+export function fontsSettled(): boolean {
+  if (flushTimer) return false;
+  for (const n of pending.values()) if (n > 0) return false;
+  return true;
 }
 
 /** その (書体, 文字) の組を取りに行く。**焼く直前に必ず呼ぶこと。** */
@@ -203,9 +221,10 @@ export function ensureGlyphs(face: number, text: string) {
   try {
     // ★**先頭の family だけ**で頼む(上記の理由。スタックごと渡すと取りに行かない)。
     // load() の Promise は必ず握りつぶす(unhandled rejection で pageerror)。
+    pending.set(fi, (pending.get(fi) ?? 0) + 1);
     document.fonts.load(loadFont(FONT_FACES[fi], GLYPH_PX), need)
-      .then(() => { if (!had && checkFace(fi, need)) scheduleFlush(fi); })
-      .catch(() => {});
+      .then(() => { settle(fi); if (!had && checkFace(fi, need)) scheduleFlush(fi); })
+      .catch(() => { settle(fi); });
   } catch { /* noop */ }
 }
 

@@ -71,6 +71,11 @@ export function beginPileFrame(): void {
 const GLYPH_MS = 4;
 let frameT0 = 0;
 let glyphsNow = 0;
+/** ★下焼き（`warmPile`）の最中だけ、1回に使ってよい時間（ms）。0 ならふだんの予算。 */
+let warmMs = 0;
+/** ★描いた中で、まだ届いていない写真の数（`warmPile` が読む）。 */
+let photosWaiting = 0;
+const overWarm = () => warmMs > 0 && performance.now() - frameT0 > warmMs;
 const fitMemo = new Map<string, ReturnType<typeof layoutInRows>>();
 /** ★このフレームで焼き切れなかったか（真なら次のフレームも塗り直す）。 */
 export function bakeDeferred(): boolean { return bakeSkipped; }
@@ -92,7 +97,7 @@ function spriteOf(
 ): Baked | undefined {
   const hit = bakeCache.get(key);
   if (hit) return hit;
-  if (bakeLeft <= 0) { bakeSkipped = true; return undefined; }
+  if (bakeLeft <= 0 || overWarm()) { bakeSkipped = true; return undefined; }
   bakeLeft -= 1;
   const bw = Math.ceil(w); const bh = Math.ceil(h);
   const cv = document.createElement("canvas");
@@ -150,7 +155,7 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   const hit = bakeCache.get(key);
   if (hit) return hit;
   // ★★**1フレームの予算を使い切ったら、今回は代役で描く**（上の `BAKE_PER_FRAME`）。
-  if (bakeLeft <= 0) { bakeSkipped = true; return undefined; }
+  if (bakeLeft <= 0 || overWarm()) { bakeSkipped = true; return undefined; }
   // ★★★**形は `lib/solid.ts` の「ピルの積み」から引く**（2026-09-13・第99巡）。
   //   山だけ角丸の四角を別に描いていたのをやめた ―― **同じタスクが画面によって
   //   違う形**に見えていた（ユーザー確定で TASK アプリと山の両方を揃える）。
@@ -176,7 +181,7 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
     const need = missingGlyphs(text, p.face_, p.ink, fit.size * dpr);
     let left = need;
     // ★1字は必ず進める（時計だけで止めると、遅い端末では永久に焼けない）。
-    while (left > 0 && (glyphsNow === 0 || performance.now() - frameT0 < GLYPH_MS)) {
+    while (left > 0 && (glyphsNow === 0 || performance.now() - frameT0 < (warmMs || GLYPH_MS))) {
       if (warmGlyphs(text, p.face_, p.ink, fit.size * dpr, 1) === 0) break;
       glyphsNow += 1; left -= 1;
     }
@@ -243,7 +248,7 @@ export function reelBitmap(p: Piece, dpr: number): Baked | undefined {
   const hit = bakeCache.get(key);
   if (hit) return hit;
   // ★★**1フレームの予算を使い切ったら、今回は代役で描く**（上の `BAKE_PER_FRAME`）。
-  if (bakeLeft <= 0) { bakeSkipped = true; return undefined; }
+  if (bakeLeft <= 0 || overWarm()) { bakeSkipped = true; return undefined; }
   bakeLeft -= 1;
   const cv = document.createElement("canvas");
   cv.width = Math.max(2, Math.round(d * dpr));
@@ -275,6 +280,8 @@ export function reelBitmap(p: Piece, dpr: number): Baked | undefined {
 const photoCache = new Map<string, HTMLImageElement>();
 /** ★★来なかった写真（もう頼まない。字面へ落とす）。 */
 const photoBad = new Set<string>();
+/** ★解き終わった写真（`photoOf` の注釈）。 */
+const decoded = new WeakSet<HTMLImageElement>();
 const photoPx = (r: number, dpr: number) =>
   Math.min(720, Math.max(120, Math.ceil((r * 2 * dpr) / 120) * 120));
 
@@ -287,7 +294,7 @@ function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLI
   const key = `${url}|${px}`;
   if (photoBad.has(key)) return undefined;
   const hit = photoCache.get(key);
-  if (hit) return hit.complete && hit.naturalWidth > 0 ? hit : undefined;
+  if (hit) return decoded.has(hit) ? hit : undefined;
   const el = new Image();
   // ★★★**`crossOrigin` を付けないこと**（2026-09-18・第122巡にユーザー報告
   //   「**山に落ちてきている提案の図形に写真がついてきていない**」の真因）。
@@ -300,7 +307,13 @@ function photoOf(url: string, r: number, dpr: number, onLoad: () => void): HTMLI
   //     このアプリはどこでもやっていない（実測 … 0 件）。**汚染されても困らない。**
   //   ★★もし将来 canvas を読み返すなら、**そのときは代理（プロキシ）が要る**。
   //     ここへ `crossOrigin` を戻しても、写真が消えるだけで解決しない。
-  el.onload = onLoad;
+  // ★★★**使ってよいのは「解き終わった」写真だけ**（2026-09-29・第134巡）。`onload` の時点では画素がまだ
+  //   解かれておらず、最初の `drawImage` が**その場で同期に解く**（実測 CPU×4 で 1枚 約 20ms が落下中の
+  //   フレームに入っていた）。`decode()` は別の糸で解くので、解き終わってから描く。
+  el.onload = () => {
+    const ok = () => { decoded.add(el); onLoad(); };
+    if (typeof el.decode === "function") el.decode().then(ok, ok); else ok();
+  };
   // ★★★**来なかったら諦めて字面へ**（`onerror` が無いと、`complete` が真で
   //   `naturalWidth` が 0 のまま**永久に `undefined` を返し続け**、字面にも
   //   落ちないので**色ベタの図形**になる。第121巡までがその状態）。
@@ -547,6 +560,31 @@ export function prewarmPile(pieces: Piece[], dpr: number): void {
 }
 
 /**
+ * ★★★**落とす前の下焼き**（2026-09-29・第134巡。ユーザー指摘「**やはり起動直後にホームに図形が落ちてくる時に
+ *   フレームレートが低下する**」）。
+ * ★`prewarmPile` は1回きりで、字は `GLYPH_MS`(4ms) しか焼かない ―― 実測（本番・CPU×4）で落ち始めの 700ms に
+ *   **タスクの絵 101回・字 119枚**を落下中のフレームで焼いていた（ループの1回 78〜105ms）。
+ * → 山を落とし始める前に、**数フレームに分けて全部焼き切る**（1回 `ms` まで）。まだ何も動いていないので、
+ *   1回が 10ms 余分でも見えない。★焼き切ったら真。
+ */
+export function warmPile(pieces: Piece[], dpr: number, ms: number): boolean {
+  if (typeof document === "undefined") return true;
+  if (!scratch) {
+    const cv = document.createElement("canvas");
+    cv.width = 1; cv.height = 1;
+    scratch = cv.getContext("2d");
+  }
+  if (!scratch) return true;
+  beginPileFrame();
+  bakeLeft = Number.POSITIVE_INFINITY; warmMs = ms; photosWaiting = 0;
+  drawPile(scratch, pieces, dpr, () => {});
+  // ★写真もまだ届いていなければ「焼き切った」と言わない（届いた瞬間の焼きと解きが落下に入る）。
+  const done = !bakeSkipped && photosWaiting === 0;
+  bakeLeft = BAKE_PER_FRAME; warmMs = 0; bakeSkipped = false;
+  return done;
+}
+
+/**
  * 山を1フレームぶん描く。★`ctx` は**呼ぶ側が `setTransform(dpr,…)` 済み**。
  * ★★`clip` を渡すと、**その矩形に掛からない図形は飛ばす**（第106巡）。
  */
@@ -622,7 +660,8 @@ export function pileLookBusy(): boolean {
 // ★★第133巡の2度目にユーザー指摘「**やり過ぎ・上品さが足りない。もっとミニマルに、抑えて、シャープに**」
 //   「**床の影はずっとあるのではなく、図形の下に若干シャープめな影**」→ ぼかし 11 → 4・ずれ 9 → 4・濃さ 0.3 → 0.16。
 // ★★第133巡の3度目「全体的にもう少しシャープに」→ ぼかし 4 → 2・ずれ 4 → 3。
-export const PILE_SHADOW = { blur: 2, drop: 3, a: 0.16, res: 0.5 } as const;
+// ★★第134巡「影が全体的にもう少し薄く」→ 濃さ 0.16 → 0.11。
+export const PILE_SHADOW = { blur: 2, drop: 3, a: 0.11, res: 0.5 } as const;
 /** ★影の絵に使う墨。 */
 const SHADOW_RGB = "26,26,24";
 /** ★回していない図形の外接箱。 */
@@ -658,10 +697,17 @@ function traceSilhouette(c: CanvasRenderingContext2D, p: Piece): void {
  * 近いほど濃い（離れると消える）。平らに寝たピルは広く、角だけ触れた図形は小さく落ちる。
  * ★ぼかしは影の canvas の CSS がまとめて掛ける。★目盛りの外（絵の寸法）。
  */
-const CONTACT = 14;
-const CONTACT_A = 0.2;
+// ★★★**第134巡に「触れている所だけ」へ**（ユーザー指摘「**円であれば、壁に触れていない部分にも影が出てしまっている。
+//   触れている部分だけほんのり**」）。第133巡は輪郭の点のうち床・壁から **14px 以内**を全部数えていたので、
+//   丸い図形は壁に沿って長い帯になり、触れていない図形にも影が出ていた。→ **体の縁（`PHYS_GAP` の外）から
+//   `CONTACT`(1px) 以内 ＝ 実際に接している点だけ**。長さは接している点の幅そのもの（丸なら短い点、寝たピルは長い線）。
+//   ★2.5px では丸い端（円・ピルの端）の弧が 2/3 ほど数えられて長い棒になった（実測）。体の点は輪郭の凸包を
+//   1〜1.5px 外へ出したものなので、接している点は壁から 1px 以内・隣の点はそれより外に出る。
+//   濃さ 0.2 → 0.13。
+const CONTACT = 1;
+const CONTACT_A = 0.13;
 const CONTACT_T = 2.5;
-const CONTACT_PAD = 6;
+const CONTACT_PAD = 5;
 export interface PileBounds { floor: number; left: number; right: number }
 function contactShadows(c: CanvasRenderingContext2D, p: Piece, env: PileBounds): void {
   const vs = p.body.vertices;
@@ -793,6 +839,7 @@ export function drawPile(
         else { c.beginPath(); c.arc(0, 0, size / 2, 0, Math.PI * 2); c.closePath(); }
       };
       const im = p.photo ? photoOf(p.photo, r, dpr, onPhoto) : undefined;
+      if (p.photo && !im && !photoFailed(p.photo, r, dpr)) photosWaiting += 1;
       // ★★**写真の状態も鍵に入れる**（届いたら焼き直す。1枚ぶんだけ）。
       const key = ["offer", shape ?? "o", r.toFixed(2), p.face, im ? p.photo : "-", dpr.toFixed(2)].join("|");
       const box = r * 2 + BAKE_PAD * 2;

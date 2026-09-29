@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { haptic } from "@/lib/helpers";
-import { GATE_MS, onFontsReady } from "@/lib/textFit";
+import { GATE_MS, fontsSettled, onFontsReady } from "@/lib/textFit";
 import { ensureWordFont } from "@/lib/wordPlate";
 import { DISPLAY, onNavHeight } from "@/lib/constants";
 import { ms, T_ITEM } from "@/lib/motion";
@@ -12,6 +12,7 @@ import {
   refitPile, respawn, sink, type Piece,
 } from "./pileWorld";
 import { PILE_INSET, floorYOf } from "@/lib/pileBox";
+import { pileDropping, pileSettled } from "@/lib/bootQuiet";
 import { SPACE } from "@/lib/tokens";
 import { bandAim, bandBus } from "./bandMotion";
 import { inCardShape } from "@/lib/cardShape";
@@ -20,7 +21,7 @@ import { halfWidthAtStack } from "@/lib/solid";
 import { ensureGlyphs } from "@/lib/textFit";
 import { SHAPE_FACE } from "@/lib/constants";
 import {
-  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile, drawPileShadows, PILE_SHADOW, pileLookBusy, prewarmPile, setPileLook, stepPileLook,
+  bakeDeferred, beginPileFrame, clearPileBitmaps, drawBoxOf, drawGhost, drawPile, drawPileShadows, PILE_SHADOW, pileLookBusy, prewarmPile, setPileLook, stepPileLook, warmPile,
 } from "./pilePaint";
 import {
   BAND_CATCH, BAND_NEAR, PILL_HINT, RAIL_HYST, RAIL_NEAR, THROW_MAX, armOffset, ghostKey,
@@ -91,6 +92,10 @@ const GRAB_MAX = 34;
  *   ★★**同じ値を2か所から取らないこと。** それが唯一の再発の道。
  */
 const DPR_MAX = 2;
+/** ★★落とす前の下焼き（`pilePaint.warmPile`）… 1フレームに使う時間と、待つ上限（ms）。
+ *  ★目盛りの外（フレームの予算と締切。動きの時間ではない）。 */
+const WARM_MS = 10;
+const WARM_LIMIT_MS = 1500;
 /**
  * ★★★**床が動いていないか見に行く間隔**（2026-09-14・第103巡）。★目盛りの外（物理の場）。
  *
@@ -271,6 +276,8 @@ export function Pile({
   const releaseRef = useRef<{ at: number; done: Set<string> }>(
     { at: 0, done: new Set() },
   );
+  /** ★落とす前の下焼きの rAF（`warmPile`）。 */
+  const warmRafRef = useRef(0);
   /** 最初に測れたら1度だけ真になる（世界を組む合図）。以後は動かさない。 */
   const [measured, setMeasured] = useState(false);
   /** ★世界ができた合図（中身の effect はこれを待つ）。 */
@@ -616,6 +623,7 @@ export function Pile({
           //   ★**着地の1枚にも掛けない** ―― 指を離した所がそのまま正しい。
           if (p.fresh) clearOverlap(M, p.body, M.Composite.allBodies(engine.world));
           M.Composite.add(engine.world, p.body);
+          pileDropping();
           // ★★★**入れたフレームで全員を起こす**（2026-09-16・第108巡）。
           //   ★★matter は「支えていた物体が転がって居なくなった」では眠った体を
           //     起こさない（起きるのは**新しい衝突**のときだけ）。落下中に世界が
@@ -972,6 +980,8 @@ export function Pile({
         //   ここで止まり、**沈みかけの絵のまま**残っていた（落ち着く前の数回はうまくいく）。
         if (!g && !dragRef.current && !dirtyRef.current && !proxyRef.current && !lookBusy && asleep) {
           runningRef.current = false;
+          // ★★起動直後の落下が終わった合図（`lib/bootQuiet.ts`）。ついでの仕事はこれを待つ。
+          if (piecesRef.current.length) pileSettled();
           return;
         }
         rafRef.current = requestAnimationFrame(loop);
@@ -985,6 +995,7 @@ export function Pile({
     return () => {
       stop = true;
       cancelAnimationFrame(rafRef.current);
+      cancelAnimationFrame(warmRafRef.current);
       onResizeRef.current = null;
       unsubNavRef.current?.();
       unsubNavRef.current = null;
@@ -1090,6 +1101,28 @@ export function Pile({
     // ★据え置きは `releaseAt: 0` なので、次のフレームで全部が世界へ入る。
     // ★★`done` は作り直す（体そのものは別のものになっている）。
     releaseRef.current = { at: performance.now(), done: held };
+    // ★★★**山を最初から落とすときは、焼き切ってから落とす**（2026-09-29・第134巡。`pilePaint.warmPile` の注釈）。
+    //   ★着地の1枚・据え置きの山の組み直しでは待たない（指を離した所へすぐ落ちるのが正しい）。
+    //   ★書体の返事（`fontsSettled`）も待つ ―― 届いた知らせは「焼いた絵を全部捨てて焼き直す」なので、
+    //     落ちている最中に来ると1から焼き直しになる。★締切 `WARM_LIMIT_MS` を必ず持つ（写真が来ない等）。
+    cancelAnimationFrame(warmRafRef.current);
+    if (!landing && held.size === 0 && pieces.length) {
+      releaseRef.current = { at: Number.POSITIVE_INFINITY, done: held };
+      const t0 = performance.now();
+      const dpr = Math.min(DPR_MAX, window.devicePixelRatio || 1);
+      const step = () => {
+        const done = warmPile(pieces, dpr, WARM_MS) && fontsSettled();
+        if (!done && performance.now() - t0 < WARM_LIMIT_MS) {
+          warmRafRef.current = requestAnimationFrame(step);
+          return;
+        }
+        if (piecesRef.current !== pieces) return;
+        releaseRef.current = { at: performance.now(), done: held };
+        dirtyRef.current = true;
+        wake();
+      };
+      warmRafRef.current = requestAnimationFrame(step);
+    }
     // ★deps は**署名と世界の世代と入れ直しの合図**だけ。配列の同一性では見ない。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, worldGen, seedGen]);

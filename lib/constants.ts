@@ -690,10 +690,11 @@ export interface ItemDomainDef {
   en: string;
 }
 export const ITEM_DOMAINS: ItemDomainDef[] = [
-  { id: "thing", label: "モノ", en: "THING" },
-  { id: "place", label: "バショ", en: "PLACE" },
-  { id: "experience", label: "タイケン", en: "EXPERIENCE" },
-  { id: "info", label: "ジョウホウ", en: "INFO" },
+  // ★★第134巡にユーザー指定「**バショやタイケンなどの語も全部英語に**」で `label` も英語へ（カタカナの符丁は廃止）。
+  { id: "thing", label: "THING", en: "THING" },
+  { id: "place", label: "PLACE", en: "PLACE" },
+  { id: "experience", label: "EXPERIENCE", en: "EXPERIENCE" },
+  { id: "info", label: "INFO", en: "INFO" },
 ];
 export const domainDefOf = (id: string) => ITEM_DOMAINS.find((d) => d.id === id) ?? ITEM_DOMAINS[0];
 
@@ -720,7 +721,7 @@ export const ITEM_KINDS: ItemKindDef[] = [
   { id: "book", domain: "info", label: "本", en: "BOOK", creatorPlaceholder: "著者（任意）", doneActionLabel: "読んだ" },
   { id: "album", domain: "info", label: "音楽", en: "MUSIC", creatorPlaceholder: "アーティスト（任意）", doneActionLabel: "聴いた" },
   { id: "info", domain: "info", label: "知識・記事", en: "INFO", doneActionLabel: "知った" },
-  { id: "thing", domain: "thing", label: "モノ", en: "THING", doneActionLabel: "買った" },
+  { id: "thing", domain: "thing", label: "THING", en: "THING", doneActionLabel: "買った" },
 ];
 export const itemKindOf = (id: string) => ITEM_KINDS.find((k) => k.id === id) ?? ITEM_KINDS[0];
 // kind→domainの規格化ルックアップ本体。helpers.tsのdomainOf()から使う。

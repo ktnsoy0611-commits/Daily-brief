@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { whenPileSettled } from "@/lib/bootQuiet";
 import type { CurateCandidate, CurateInput, CurateScore } from "./bandCurate";
 import { genreOfKind } from "./deckStyle";
 import { bandItems, type BandItem } from "./homeBand";
@@ -24,6 +25,8 @@ const RECENT_DAYS = 14;
 const AHEAD_DAYS = 7;
 /** ★顔ぶれが変わってから頼むまで待つ時間（ms）。★目盛りの外（呼ぶ回数を抑える）。 */
 const SETTLE_MS = 1500;
+/** ★山が落ち終わるのを待つ上限（ms。`lib/bootQuiet.ts`）。★目盛りの外（締切）。 */
+const SETTLE_LIMIT_MS = 10000;
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 
 const KIND_LABEL: Record<string, string> = {
@@ -120,7 +123,11 @@ export function useBandCuration(state: AppState | null): CurateScore[] | null {
     if (inflight === sig) return;
     // ★★**顔ぶれが落ち着いてから頼む**（`SETTLE_MS`）―― 準備タスクが3件ずつ届くなど、
     //   続けざまに変わるたびに1回ずつ頼まない。
-    const timer = window.setTimeout(() => {
+    // ★★★**起動直後は山が落ち終わってから頼む**（2026-09-29・第134巡）。頼む中身を組む（`inputOf`）だけで
+    //   CPU×4 で 46ms あり、それが落下中のフレームに入っていた。★返事で帯が組み直るのも落下の後になる。
+    let cancelWait = () => {};
+    const timer = window.setTimeout(() => { cancelWait = whenPileSettled(send, SETTLE_LIMIT_MS); }, SETTLE_MS);
+    const send = () => {
     inflight = sig;
     const body = inputOf(state, items, now);
     fetch("/api/curate-band", {
@@ -135,8 +142,8 @@ export function useBandCuration(state: AppState | null): CurateScore[] | null {
       })
       .catch(() => { /* 規則の並びのまま */ })
       .finally(() => { if (inflight === sig) inflight = null; });
-    }, SETTLE_MS);
-    return () => window.clearTimeout(timer);
+    };
+    return () => { window.clearTimeout(timer); cancelWait(); };
   // ★`state` 全体ではなく顔ぶれの署名で頼み直す（題を1文字直すたびに頼まない）。
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);

@@ -508,7 +508,7 @@ export type AppId = "home" | "tasks" | "life" | "journal";
 
 // ★`life-dev` は**確認用**（第70巡）。刷新した券と鋏を実機で見るためだけの
 //   タブなので、Explore の刷新が終わったら**型ごと消す**。
-export type LifeTabId = "brief" | "stock" | "execute" | "life-dev";
+export type LifeTabId = "brief" | "stock";
 // ★タスクは2タブ(2026-08-12にユーザー確定)。日付での区切り(今日/すべて)は
 // 廃止した。「何が差し迫っているか」は日付の文字ではなく**物体の大きさと
 // 山の高さ**が語る。drift=未確定の候補が無重力で漂う / gravity=確定した
@@ -524,13 +524,6 @@ export type JournalTabId = "journal-record" | "journal-today" | "journal-archive
 //   タブを覚える）がタブ id を要求するので、名前だけの1つを置く。
 export type HomeTabId = "home";
 export type TabId = LifeTabId | TasksTabId | JournalTabId | HomeTabId;
-
-// プラン(実行タブ)へバインドする候補の選択。タブを跨いで持ち回せるよう
-// AppShellへ状態を引き上げ、ストックタブ・プランタブどちらからも同じ
-// 選択を読み書きする。Itemの統一により、単一のid配列になった。
-export interface PlanSelection {
-  itemIds: string[];
-}
 
 // 録音の状態。タブバー右の丸ボタンの長押し(origin:"hold")と、ジャーナルの
 // レコードタブのタップ(origin:"tab")のどちらからでも同じ録音を動かす。
@@ -596,10 +589,6 @@ export interface TabProps {
    */
   focusCard?: string | null;
   clearFocusCard?: () => void;
-  selection: PlanSelection;
-  toggleItemSelection: (id: string) => void;
-  addItemIds: (ids: string[]) => void;
-  setSelection: (next: PlanSelection) => void;
   /** ✨ウィッシュの入力シートを開く。タブバー右端は録音に譲ったので、
    *  いまはストックタブ(ウィッシュの一覧がある場所)から開く。 */
   openWishSheet: () => void;

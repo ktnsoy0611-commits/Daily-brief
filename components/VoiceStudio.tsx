@@ -5,6 +5,7 @@ import { ms, T_OUT, T_STEP } from "@/lib/motion";
 import { drawPixelScreen, waveCols, type Tone } from "@/lib/pixelScreen";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { claimFromRail } from "@/lib/moduleRail";
 import { CARD_RADIUS, CHARCOAL, INK, JOURNAL_FACE, MUTED, SANS, SCHEME, SOFT_SHADOW_LG, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { hubPath } from "@/lib/reelHub";
 import { RECORDER_AR, RECORDER_BEZEL_PER_W, RECORDER_DECK_GAP_PER_H, RECORDER_DECK_H_PER_W, RECORDER_DECK_Y_PER_W, RECORDER_INNER_W_PER_W, RECORDER_KEY_LIP_PER_H, RECORDER_REEL_CY_PER_W, RECORDER_REEL_D_PER_W, RECORDER_SCREEN_H_PER_W, RECORDER_SCREEN_Y_PER_W } from "@/lib/recorder";
@@ -154,8 +155,10 @@ function resample(levels: number[], n: number): number[] {
   return out;
 }
 
-export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
+export function VoiceStudio({ voice, dim, onClose, active: appActive = true, fit }: {
   voice: VoiceControls;
+  /** ★★モジュールの中に置くとき（第134巡）。見出しもタブバーも器の外なので、器いっぱいに組む。 */
+  fit?: boolean;
   /** オーバーレイとして幕の上に出すか。 */
   dim?: boolean;
   /** 幕を閉じる(オーバーレイのときだけ)。CANCEL・送信の完了で呼ぶ。 */
@@ -323,8 +326,8 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
   // ★★大きさは**札と同じ決め方** … 幅は列の内寸（左右 `SPACE.lg`）、高さが足りなければ
   //   高さから幅を決める。余った高さは上下に等分する。
   // ★`navHeightPx()` を使う ―― `.app-nav` の矩形は `NAV_H` と一致しない。自分で測らない。
-  const bodyBottom = h - navHeightPx() - DECK_LIFT;
-  const topLimit = BAND_TOP + SPACE.lg;
+  const bodyBottom = fit ? h : h - navHeightPx() - DECK_LIFT;
+  const topLimit = fit ? 0 : BAND_TOP + SPACE.lg;
   const availH = Math.max(200, bodyBottom - topLimit);
   const bodyW = Math.min(Math.max(120, w - PILE_INSET * 2), availH * RECORDER_AR);
   const bodyH = bodyW / RECORDER_AR;
@@ -772,7 +775,8 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true }: {
           draggedRef.current = false;
           const side = dialAt(e.clientX, e.clientY);
           onDialRef.current = !!side;
-          if (side) onDialDown(e, side);
+          // ★★円の上の指はモジュールの送りへ渡さない（回すのと送るのを取り合わない）。
+          if (side) { claimFromRail(e.pointerId); onDialDown(e, side); }
         }}
         onClick={() => {
           // 回した直後の click は無視する(マウスでは drag のあとにも来る)。

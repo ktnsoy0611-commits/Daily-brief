@@ -25,6 +25,16 @@ import { chainSpring, SNAP_D, SNAP_K } from "./scroll";
 
 export const RAIL_STEP_MS = 1000 / 60;
 
+/**
+ * ★★**この指は送りに使わない**と宣言する（録音機の円など、同じ指で別の操作をする部品が呼ぶ）。
+ * ★送りの器は `pointerdown` を**捕獲相**で受ける（札の写真のように `stopPropagation` する部品の上から
+ *   始めた指も拾うため）ので、`stopPropagation` では止められない。代わりにこれで降りてもらう。
+ */
+const claimed = new Set<number>();
+export const claimFromRail = (pointerId: number): void => { claimed.add(pointerId); };
+export const railClaimed = (pointerId: number): boolean => claimed.has(pointerId);
+export const railUnclaim = (pointerId: number): void => { claimed.delete(pointerId); };
+
 /** 端を越えて引いたときに伸びる最大（px）。 */
 const OVER = 96;
 /** 離したときの速さ（px/刻み）× この数 ＝ 届く見込みの距離。 */
@@ -63,8 +73,16 @@ export const makeRail = (): Rail => ({
   ys: [], tops: [], heights: [], gap: 0, snaps: [0], max: 0,
 });
 
-/** 1枚ずつの高さから並びと止まる所を決め直す。★位置は保つ（寸法が変わっても飛ばない）。 */
-export function railLayout(r: Rail, heights: number[], gap: number, viewH: number, endPad: number): void {
+/** 止まる所と止まる所の間がこれより開いたら、あいだに止まる所を足す（見る窓の高さに対する比）。 */
+const FILL_GAP = 0.8;
+
+/**
+ * 1枚ずつの高さから並びと止まる所を決め直す。★位置は保つ（寸法が変わっても飛ばない）。
+ * @param inner 1枚の中の「ここでも止まる」位置（その1枚の上端からの距離。`data-rail-snap` の印）。
+ *   ★★長いモジュール（STOCK・LOG）は**1行ずつ止まる**（第134巡の約束）―― 印の無い長い区間は
+ *   `FILL_GAP` ごとに止まる所を足して、どこも読めない所が残らないようにする。
+ */
+export function railLayout(r: Rail, heights: number[], gap: number, viewH: number, endPad: number, inner: number[][] = []): void {
   r.heights = heights;
   r.gap = gap;
   const tops: number[] = [];
@@ -72,13 +90,21 @@ export function railLayout(r: Rail, heights: number[], gap: number, viewH: numbe
   for (const h of heights) { tops.push(y); y += h + gap; }
   r.tops = tops;
   const total = Math.max(0, y - gap) + endPad;
-  r.max = Math.max(0, total - viewH);
+  // ★★**最後のモジュールの上端も必ず線まで上がれる**（第134巡）。中身が短いとき（STOCK の検索の結果など）に
+  //   `total − viewH` で止めると、線の上に**前のモジュールの尻**が残って見えた。下の余りは地のまま。
+  r.max = Math.max(0, total - viewH, tops.length ? tops[tops.length - 1] : 0);
+  const raw: number[] = [];
+  tops.forEach((t, i) => { raw.push(t); for (const o of inner[i] ?? []) if (o > 1 && o < heights[i]) raw.push(t + o); });
+  raw.push(r.max);
+  raw.sort((a, b) => a - b);
   const snaps: number[] = [];
-  for (const t of tops) {
-    const s = Math.min(t, r.max);
-    if (!snaps.length || s - snaps[snaps.length - 1] > 1) snaps.push(s);
+  const step = Math.max(1, viewH * FILL_GAP);
+  for (const v of raw) {
+    const s = Math.min(v, r.max);
+    const last = snaps.length ? snaps[snaps.length - 1] : null;
+    if (last !== null) for (let k = last + step; k < s - step * 0.25; k += step) snaps.push(k);
+    if (last === null || s - snaps[snaps.length - 1] > 1) snaps.push(s);
   }
-  if (r.max - snaps[snaps.length - 1] > 1) snaps.push(r.max);
   r.snaps = snaps;
   while (r.ys.length < heights.length) r.ys.push(spring(r.x.p));
   r.ys.length = heights.length;
@@ -148,6 +174,15 @@ function railIndexAt(r: Rail, x: number): number {
   let best = 0;
   for (let i = 1; i < r.tops.length; i += 1) if (Math.abs(r.tops[i] - x) < Math.abs(r.tops[best] - x)) best = i;
   return best;
+}
+
+/** その1枚の上端まで運ぶ（バーの印をもう一度押した・HOME から直行した）。 */
+export function railGoTo(r: Rail, i: number): void {
+  if (!r.tops.length) return;
+  const k = Math.max(0, Math.min(r.tops.length - 1, i));
+  r.held = false;
+  r.target = Math.min(r.tops[k], r.max);
+  r.focus = k;
 }
 
 /** 1枚の上端（器の上端から）。 */

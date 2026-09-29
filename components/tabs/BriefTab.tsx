@@ -295,7 +295,10 @@ const BRIEF_AR = (() => {
 // 構造的に起こらないようにする。
 const GROWTH_FOOTER_SLOT = 58;
 
-export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }: TabProps) {
+export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard, bare }: TabProps & {
+  /** ★モジュールの中に置くとき（見出しは `AppModules` が持つ）。 */
+  bare?: boolean;
+}) {
   /**
    * ★★★**ホームの山の「おすすめの提案」を押して来たときは、そのカードを先に出す**
    * （2026-09-17・第119巡にユーザー指定「**タップするとExploreのそのカードに
@@ -679,7 +682,16 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!drag.active || exit) return;
-    setDrag({ dx: e.clientX - startRef.current.x, dy: (e.clientY - startRef.current.y) * 0.25, active: true });
+    const dx = e.clientX - startRef.current.x;
+    const dy = e.clientY - startRef.current.y;
+    // ★★★**縦が勝ったら札を放す**（第134巡）。上下の払いはモジュールの送り（STOCK へ）のもの。
+    //   札は横（KEEP／SKIP）だけを受ける。★遊びは送りの `SLOP` と同じ 8px。
+    if (Math.abs(dx) < 8 && Math.abs(dy) > 8) { // ★目盛りの外（指の遊び）
+      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* noop */ }
+      setDrag({ dx: 0, dy: 0, active: false });
+      return;
+    }
+    setDrag({ dx, dy: dy * 0.25, active: true });
   };
   const onPointerUp = () => {
     if (!drag.active || exit) return;
@@ -735,8 +747,8 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
 
   return (
     <>
-      <Masthead title={appTitle("life")} />
-      <div style={{ display: "flex", gap: SPACE.xs, padding: `${SPACE.md}px ${SPACE.xs}px ${SPACE.lg}px` }}>
+      {!bare && <Masthead title={appTitle("life")} />}
+      <div style={{ display: "flex", gap: SPACE.xs, padding: `${bare ? 0 : SPACE.md}px ${SPACE.xs}px ${SPACE.lg}px` }}>
         {deck.map((c, i) => (
           <span key={c.id} style={{ flex: 1, height: 3, borderRadius: RADIUS.sm, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (isGrowthCard(c) ? GREEN : BLUE) : allDecisions[c.id] ? SHADE_DEEP : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background var(--t-item) var(--ease-settle)" }} />
         ))}
@@ -773,7 +785,7 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
               {visibleCards.map(({ card, isTop }) => (
                 <div
                   key={card.id}
-                  {...(isTop ? { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp } : {})}
+                  {...(isTop ? { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp, onLostPointerCapture: onPointerUp } : {})}
                   style={isTop ? {
                     position: "absolute", inset: 0, zIndex: 2, transform: topTransform, transition: topTransition,
                     touchAction: isGrowth ? "auto" : "none", cursor: isGrowth ? "default" : drag.active ? "grabbing" : "grab",
@@ -856,8 +868,8 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard }
               <div style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead }}>{c.title}</div>
             </div>
           ))}
-          <button onClick={() => goTab("execute")} style={{ marginTop: SPACE.xl, width: "100%", padding: `${SPACE.md}px 0`, background: INK, border: "none", borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: PAPER }}>
-            プランタブで地図を見る
+          <button onClick={() => goTab("stock")} style={{ marginTop: SPACE.xl, width: "100%", padding: `${SPACE.md}px 0`, background: INK, border: "none", borderRadius: RADIUS.pill, cursor: "pointer", fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, letterSpacing: TRACK.caps, color: PAPER }}>
+            ストックを見る
           </button>
         </main>
       )}

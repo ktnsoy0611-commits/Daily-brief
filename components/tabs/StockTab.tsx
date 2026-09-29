@@ -1,7 +1,7 @@
 "use client";
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Package, Palette, UtensilsCrossed } from "lucide-react";
+import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Package, Palette, Search, Sparkles, UtensilsCrossed, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
 import { Button } from "@/components/Button";
@@ -13,7 +13,8 @@ import { categoryOfKind } from "@/lib/deckStyle";
 import { TabIcon } from "@/components/TabIcons";
 import { appTitle } from "@/lib/apps";
 import { BLUE, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
-import { domainOf, haptic, img, isWishBound } from "@/lib/helpers";
+import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
+import { domainOf, haptic, hasPlace, img, isWishBound, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
 
@@ -27,6 +28,17 @@ export const KIND_ICON: Record<ItemKind, IconType> = {
 
 /** 束と束のあいだ。★目盛りの外（段の2倍 ＝ 参照画像の束の間。束は大きいので `xxl` では詰まる）。 */
 const GROUP_GAP = SPACE.xxl * 2;
+/** ★★RECENTLY ADDED に並べる数（第134巡にユーザー指定「**直近追加した20個程度**」）。 */
+const RECENT_N = 20;
+/** RECENTLY ADDED の1枚の一辺（px）。★目盛りの外（札の実寸。3枚半が見えて横に送れると分かる幅）。 */
+const RECENT_TILE = 96;
+
+/** 検索の当たり。題・要約・場所・作り手・種類の名前・ドメインの名前のどれかに含まれていれば当たり。 */
+function matchItem(i: Item, q: string): boolean {
+  const hay = [i.title, i.summary, i.area, i.creator, itemKindOf(i.kind).label, domainDefOf(domainOf(i)).label, categoryOfKind(i.kind)]
+    .filter(Boolean).join(" ").toLowerCase();
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
+}
 
 // GoogleマップのURLかどうか(表示ラベルの出し分け用の軽い判定)。座標・名前の
 // 実際の解決はサーバー関数(/api/resolve-place)が担う。
@@ -183,7 +195,15 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
 // 書く自由文の受信箱で、ブリーフが形にして返したカードだけがここに並ぶ)。
 // ブリーフのKEEP由来のカードにはKEEP、ウィッシュが形になったカードには
 // WISHのバッジが付き、手動追加したものと見分けられる。
-export function StockTab({ appState, persist, showToast, selection, toggleItemSelection, openWishSheet }: TabProps) {
+export function StockTab({ appState, persist, showToast, openWishSheet, bare }: TabProps & {
+  /** ★EXPLORE のモジュールの中に置くとき（見出しは `AppModules` が持つ）。 */
+  bare?: boolean;
+}) {
+  // ★★`data-rail-snap` … モジュールの送りが「ここでも止まる」印（長い一覧は1行ずつ止まる）。
+  const snap = bare ? { "data-rail-snap": "" } : {};
+  const [planSheet, setPlanSheet] = useState(false);
+  /** ★検索（`null` ＝ 閉じている）。 */
+  const [query, setQuery] = useState<string | null>(null);
   const [openDomain, setOpenDomain] = useState<ItemDomain | null>(null);
   const [adding, setAdding] = useState<ItemDomain | null>(null);
   const [itemDetail, setItemDetail] = useState<Item | null>(null);
@@ -231,6 +251,16 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
     persist(next);
     showToast("ゴールにしました");
   };
+  // ★★★**「今日に入れる」＝ `plannedFor` を今日に**（第134巡）。ホームの山に落ちる（`HomeTab` が拾う）。
+  //   ★第133巡までの「プランに追加」（選択 → ダッシュボードの「今日を終える」で綴じる）はバインドの廃止で撤去した。
+  const today = todayKey();
+  const planToday = (ids: string[], on: boolean) => {
+    haptic(10);
+    const next = structuredClone(appState);
+    for (const it of next.items) if (ids.includes(it.id)) { if (on) it.plannedFor = today; else delete it.plannedFor; }
+    persist(next);
+    showToast(on ? `${ids.length}件を今日に入れました` : "今日から外しました");
+  };
   const removeItem = (id: string) => {
     const next = structuredClone(appState);
     next.items = next.items.filter((x) => x.id !== id);
@@ -251,9 +281,8 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
   };
 
   // ★★★**1枚 ＝ ホームの山の提案と同じ形**（第134巡。`ShapeCard`）。題は下に2行まで。押すと詳細。
-  const shapeTile = (i: Item) => {
+  const shapeTile = (i: Item, ink: string = WHITE) => {
     const face = colorOfKind(i.kind);
-    const on = selection.itemIds.includes(i.id);
     return (
       <button key={i.id} type="button" onClick={() => setItemDetail(i)} style={{
         display: "flex", flexDirection: "column", alignItems: "center", gap: SPACE.sm, padding: 0, width: "100%", minWidth: 0,
@@ -262,12 +291,15 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
         <ShapeCard shape={cardShapeOf(domainOf(i))} face={face} ink={bodyInkOn(face)}
           photo={i.images?.[0] ? img(i.images[0], 400, 400) : undefined} label={categoryOfKind(i.kind)} />
         <span style={{
-          fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: WHITE,
+          fontFamily: SANS, fontSize: TYPE.small, fontWeight: WEIGHT.bold, lineHeight: LEAD.snug, letterSpacing: TRACK.normal, color: ink,
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-        }}>{on ? "＋ " : ""}{i.title}</span>
+        }}>{i.title}</span>
       </button>
     );
   };
+  // ★★★**RECENTLY ADDED**（第134巡にユーザー指定「**stock の一番上に、直近追加した20個程度の欄**」）。
+  const recent = stocked.slice(0, RECENT_N);
+  const hits = query && query.trim() ? stocked.filter((i) => matchItem(i, query.trim())) : [];
   // ★束の幅は列の実寸（束の中の札の大きさは幅に比例する）。
   const mainRef = useRef<HTMLElement>(null);
   const [colW, setColW] = useState(0);
@@ -284,24 +316,83 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
 
   return (
     <>
-      <Masthead title={appTitle("life")} />
+      {!bare && <Masthead title={appTitle("life")} />}
 
-      <main ref={mainRef} style={{ flex: 1, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl }}>
+      <main ref={mainRef} style={{ flex: 1, paddingTop: bare ? 0 : SPACE.lg, paddingBottom: SPACE.xxl }}>
+        {/* ★★★**頭の列 ―― プランを作るピル ＋ その右に検索**（第134巡にユーザー指定「**プラン生成は stock の上に
+            ピル状のボタンをつけ、そのボタンの右に検索アイコンを付けて、容易に stock が検索できるように**」）。
+            ★PLAN のタブ（地図・バインド）は撤去した。プランはここから作る。★検索を開くと、ピルが検索の欄に替わる。 */}
+        <div style={{ display: "flex", gap: SPACE.sm, alignItems: "center", marginBottom: SPACE.xl }}>
+          {query === null ? (
+            <>
+              <Button variant="primary" size="lg" onClick={() => { haptic(6); setPlanSheet(true); }} style={{ flex: 1 }}>
+                <Sparkles size={16} strokeWidth={2.2} />
+                プランを作る
+              </Button>
+              <Button variant="icon" size="lg" aria-label="ストックを検索" onClick={() => { haptic(5); setQuery(""); }}
+                style={{ border: `1px solid ${HAIRLINE}`, background: PAPER }}>
+                <Search size={18} strokeWidth={2} />
+              </Button>
+            </>
+          ) : (
+            <>
+              <label style={{
+                flex: 1, display: "flex", alignItems: "center", gap: SPACE.sm, height: SPACE.xxl + SPACE.lg,
+                padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.pill, background: PAPER, border: `1px solid ${HAIRLINE}`,
+              }}>
+                <Search size={16} strokeWidth={2} color={MUTED} />
+                <input
+                  autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ストックを検索"
+                  enterKeyHint="search"
+                  style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, color: INK }}
+                />
+              </label>
+              <Button variant="icon" size="lg" aria-label="検索を閉じる" onClick={() => setQuery(null)}
+                style={{ border: `1px solid ${HAIRLINE}`, background: PAPER }}>
+                <X size={18} strokeWidth={2} />
+              </Button>
+            </>
+          )}
+        </div>
+
+        {query !== null && query.trim() !== "" ? (
+          // ★検索の結果。束をほどいて、当たったものだけを同じ形の3列で並べる。
+          <section style={{ marginBottom: GROUP_GAP }}>
+            <SectionLabel text={`${hits.length}件`} style={{ marginBottom: SPACE.md }} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", rowGap: SPACE.lg, columnGap: SPACE.md }}>
+              {hits.map((i) => shapeTile(i, INK))}
+            </div>
+          </section>
+        ) : (<>
+        {recent.length > 0 && (
+          <section {...snap} style={{ marginBottom: GROUP_GAP }}>
+            <SectionLabel text="RECENTLY ADDED" style={{ marginBottom: SPACE.md }} />
+            {/* ★横に送る1列。★目盛りの外（札の実寸 `RECENT_TILE`）。 */}
+            <div className="no-scrollbar bleed-x" style={{ display: "flex", gap: SPACE.md, overflowX: "auto", paddingInline: SPACE.lg, WebkitOverflowScrolling: "touch" }}>
+              {recent.map((i) => (
+                <div key={i.id} style={{ flex: "none", width: RECENT_TILE }}>{shapeTile(i, INK)}</div>
+              ))}
+            </div>
+          </section>
+        )}
         {/* ★★★**束の列**（第134巡。参照画像の UI）。束と束のあいだは広く（`xxl` × 2）。 */}
         <div style={{ display: "flex", flexDirection: "column", gap: GROUP_GAP, marginBottom: GROUP_GAP }}>
           {/* ★並びは「いちばん新しく入れた束」から。空の束は後ろ。 */}
           {colW > 0 && ITEM_DOMAINS.slice().sort((a, b) =>
             (domainItems[b.id][0]?.addedAt ?? "").localeCompare(domainItems[a.id][0]?.addedAt ?? "")).map((d) => (
-            <StockGroup key={d.id} title={d.label} domain={d.id} items={domainItems[d.id]} width={colW}
-              onOpen={() => setOpenDomain(d.id)}
-              onAdd={() => { haptic(); setAdding(d.id); }} />
+            <div key={d.id} {...snap}>
+              <StockGroup title={d.label} domain={d.id} items={domainItems[d.id]} width={colW}
+                onOpen={() => setOpenDomain(d.id)}
+                onAdd={() => { haptic(); setAdding(d.id); }} />
+            </div>
           ))}
         </div>
+        </>)}
 
         {/* ★ウィッシュ。棚(4ドメイン)の下に、書いたものすべてを新しい順に
             並べる平たいリスト。左のチェックは「派生カードが実際に実行された
             か」の自動判定(isWishBound)で、タップでの手動トグルは持たない。 */}
-        <section style={{ marginTop: SPACE.md }}>
+        <section {...snap} style={{ marginTop: SPACE.md }}>
           {/* ★ウィッシュを書く入口。タブバーの右端は録音に譲ったので、
               一覧のあるここに置いた(見出しの右の丸ボタン)。 */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: SPACE.md }}>
@@ -386,17 +477,34 @@ export function StockTab({ appState, persist, showToast, selection, toggleItemSe
         } : null}
         onClose={() => setItemDetail(null)}
         actionSlot={(close) => {
-          const selected = selection.itemIds.includes(itemDetail!.id);
+          const selected = itemDetail!.plannedFor === today;
           return (
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
-              <Button variant={selected ? "secondary" : "primary"} tone={selected ? BLUE : undefined} onClick={() => toggleItemSelection(itemDetail!.id)}>
-                {selected ? "＋ 追加済み" : "＋ プランに追加"}
+              <Button variant={selected ? "secondary" : "primary"} tone={selected ? BLUE : undefined}
+                onClick={() => { planToday([itemDetail!.id], !selected); close(); }}>
+                {selected ? "今日から外す" : "今日に入れる"}
               </Button>
               <Button variant="secondary" tone={INK} onClick={() => { markItemDone(itemDetail!.id); close(); }}>{itemKindOf(itemDetail!.kind).doneActionLabel}</Button>
               <Button variant="secondary" tone={RUST} onClick={() => { removeItem(itemDetail!.id); close(); }}>削除</Button>
             </div>
           );
         }} />
+
+      {planSheet && (
+        <PlanGenerateSheet
+          pool={stocked.filter(hasPlace)}
+          plans={appState.generatedPlans?.plans ?? null}
+          area={appState.generatedPlans?.area ?? null}
+          interests={appState.profile.interests}
+          onGenerated={(plans, area) => {
+            const next = structuredClone(appState);
+            next.generatedPlans = plans ? { plans, area, at: new Date().toISOString() } : null;
+            persist(next);
+          }}
+          onApply={(ids) => planToday(ids, true)}
+          onClose={() => setPlanSheet(false)}
+        />
+      )}
 
       <BinderModal
         item={wishDetail ? {

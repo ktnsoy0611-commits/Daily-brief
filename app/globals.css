@@ -198,62 +198,8 @@ body {
    アニメーションもすべて撤去してある(components/AppBackdrop.tsx)。
    色の切り替えだけをそこで transition している。 */
 
-/* 指で引いている間は、追従を1:1にするためtransitionを切る。 */
-[data-dragging="1"] .app-track { transition: none; }
-
-/* ダッシュボードを引き上げている間は、本物のタブバーを消して
-   portal側のモーフ用ピルへ役目を渡す(見た目が同一の位置で入れ替わる)。 */
-[data-dash-active="1"] .app-nav { opacity: 0; }
-
-/* ダッシュボード。--dash(0〜1)から算出する値にだけtransitionを掛ける。
-   ★時間は固定値ではなく --dash-ms(AppShellが離した瞬間の指の速さから
-   計算して書く)。速く払えば短く、そっと離せば長くなり、指の勢いが
-   そのまま続きの動きへ引き継がれる=慣性がある。減速は指数のease-out
-   なので、勢いよく動き出して静かに止まる。 */
-.dash-scrim, .dash-sheet, .dash-grip, .dash-pill, .dash-pill-paper, .dash-write {
-  transition-duration: var(--dash-ms, var(--t-item));
-  transition-timing-function: var(--ease-settle);
-  transition-property: transform, opacity, width, height, bottom, margin-left, backdrop-filter, -webkit-backdrop-filter, background-color;
-}
-
-/* シートの中身は、開くのに合わせて下から少し起き上がる。上から順に
-   ずらしてあるので、1枚の板が出るのではなく、中身が組み上がって見える。
-   マウントは指が縦だと決まった瞬間なので、引き上げている間に進む。 */
-@keyframes dash-rise {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.dash-rise, .dash-stagger > * {
-  animation: dash-rise var(--t-item) var(--ease-settle) both;
-}
-.dash-rise { animation-delay: var(--t-step); }
-.dash-stagger > *:nth-child(1) { animation-delay: calc(var(--t-step) * 2); }
-.dash-stagger > *:nth-child(2) { animation-delay: calc(var(--t-step) * 3); }
-.dash-stagger > *:nth-child(n+3) { animation-delay: calc(var(--t-step) * 4); }
-.dash-rise-3 { animation-delay: calc(var(--t-step) * 5); }
-@media (prefers-reduced-motion: reduce) {
-  .dash-rise, .dash-stagger > * { animation: none; }
-}
-[data-dash-dragging="1"] .dash-scrim,
-[data-dash-dragging="1"] .dash-sheet,
-[data-dash-dragging="1"] .dash-grip,
-[data-dash-dragging="1"] .dash-pill,
-[data-dash-dragging="1"] .dash-pill-paper,
-[data-dash-dragging="1"] .dash-write { transition: none; }
-
-/* ★閉じている間の背景(scrim)を完全に無力化する。この要素は画面全体を覆う
-   position:fixedで、opacity:0でも**タップは受け取ってしまう**ため、
-   一度ダッシュボードを開いて閉じたあと、実際にアンマウントされるまでの
-   340msの間ずっと下のUIへのタップを飲み込んでいた(BottomSheetで同じ
-   不具合を踏んだ記録が §7.7/§7.30 にある)。あわせてbackdrop-filterも
-   切る: 画面全体を覆うぼかしのレイヤーが生き続けると、アプリを横へ
-   スライドさせるtransformのたびに合成をやり直すことになり、実機で
-   描画が乱れる余地を残すため。 */
-[data-dash-active="0"] .dash-scrim {
-  pointer-events: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
+/* ★★第134巡に**指で横へ払うアプリの切り替え**と**下から引き上げるダッシュボード**を撤去した
+   （バーを押すだけ。`components/AppNav.tsx`）。`--drag` は 0 のまま残っている。 */
 
 /* オーバーレイのスクロール領域でOS標準のスクロールバーを隠すための
    ユーティリティ。スクロール自体は無効化しない。 */

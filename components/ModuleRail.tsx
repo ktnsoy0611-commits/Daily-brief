@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import {
-  makeRail, pieceY, railDrag, railHold, railIndex, railLayout, railPieceAt, railRelease, railStep, RAIL_STEP_MS,
+  makeRail, pieceY, railClaimed, railDrag, railGoTo, railHold, railIndex, railLayout, railPieceAt, railRelease, railStep, railUnclaim, RAIL_STEP_MS,
 } from "@/lib/moduleRail";
 
 // ★★★**モジュール送りの器**（2026-09-28・第134巡）。算数は `lib/moduleRail.ts`。ここは器・指・ループだけ。
@@ -25,7 +25,7 @@ export interface RailPiece {
   node: ReactNode;
 }
 
-export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, style }: {
+export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, jump, style }: {
   pieces: RailPiece[];
   /** 1枚と1枚のあいだ（px）。 */
   gap: number;
@@ -35,6 +35,8 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, style }
   endPad?: number;
   /** 線の上の1枚が替わったら。 */
   onIndex?: (i: number) => void;
+  /** ★その1枚へ運ぶ合図（`n` が変わるたびに1回）。 */
+  jump?: { piece: number; n: number };
   style?: CSSProperties;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -86,13 +88,30 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, style }
     const b = box.current;
     if (!b) return;
     els.current.length = pieces.length;
+    // ★★1枚ぶんの見る窓の高さを配る（`--rail-h`）。1画面で完結するモジュール（BRIEF・RECORD）が
+    //   自分の高さをこれから決める。
+    b.style.setProperty("--rail-h", `${b.clientHeight}px`);
     const hs = pieces.map((_, i) => els.current[i]?.offsetHeight ?? 0);
-    railLayout(rail.current, hs, gap, b.clientHeight, endPad);
+    // ★1枚の中の「ここでも止まる」印（`data-rail-snap`）。読むのは測り直すときだけ。
+    const inner = pieces.map((_, i) => {
+      const el = els.current[i];
+      if (!el) return [];
+      const top = el.getBoundingClientRect().top;
+      return [...el.querySelectorAll<HTMLElement>("[data-rail-snap]")].map((m) => m.getBoundingClientRect().top - top);
+    });
+    railLayout(rail.current, hs, gap, b.clientHeight, endPad, inner);
     paint();
     wakeRef.current();
   }, [pieces, gap, endPad, paint]);
 
   useLayoutEffect(() => { measure(); }, [measure]);
+  const jumpN = jump?.n ?? 0;
+  const jumpPiece = jump?.piece ?? 0;
+  useEffect(() => {
+    if (!jumpN) return;
+    railGoTo(rail.current, jumpPiece);
+    wakeRef.current();
+  }, [jumpN, jumpPiece]);
   // ★★★**iOS に先にパンを始めさせない**（第134巡。ユーザー報告「**全く反応しない時がかなり頻発する。一度動かすと
   //   何回かは続けて成功する**」）。止まっている間は遊び `SLOP` を越えるまで指を奪わないので、そのあいだに
   //   iOS が祖先の列のスクロールを始め、**`pointercancel` で指ごと取り上げていた**（動いている最中は押した瞬間に
@@ -150,6 +169,7 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, style }
   const onMove = (e: React.PointerEvent) => {
     const g = grab.current;
     if (!g || g.id !== e.pointerId || g.lost) return;
+    if (!g.won && railClaimed(e.pointerId)) { g.lost = true; return; }
     const b = box.current;
     if (!b) return;
     if (!g.won) {
@@ -170,6 +190,7 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, style }
     wake();
   };
   const onUp = (e: React.PointerEvent) => {
+    railUnclaim(e.pointerId);
     const g = grab.current;
     if (!g || g.id !== e.pointerId) return;
     grab.current = null;
@@ -188,8 +209,13 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, style }
     <div
       ref={box}
       data-rail=""
-      onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-      onLostPointerCapture={onUp}
+      // ★★★**押し始めは捕獲相で受ける**（第134巡）―― 札の写真は押し始めを `stopPropagation` する
+      //   （写真を押すと詳細が開くので、札のドラッグを始めないため）。泡立ちで受けると、**札の大半を占める
+      //   写真の上から上下に払っても送りが動かなかった**。降りてほしい部品は `claimFromRail` を呼ぶ。
+      onPointerDownCapture={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+      // ★★★**自分の捕捉が外れたときだけ**（第134巡）。`lostpointercapture` は泡立つので、札が縦に払われて
+      //   自分の捕捉を手放した瞬間の知らせまでここへ上がり、**送りが指を離したことにされて止まっていた**。
+      onLostPointerCapture={(e) => { if (e.target === box.current) onUp(e); }}
       // ★送ったあとの離上で、中のボタンが押されたことにしない。
       onClickCapture={(e) => { if (justDragged.current) { e.stopPropagation(); e.preventDefault(); } }}
       style={{ position: "relative", overflow: "hidden", touchAction: "pan-x", ...style }}

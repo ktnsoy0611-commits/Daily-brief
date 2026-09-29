@@ -1,40 +1,35 @@
 "use client";
 
 import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { ms as msOf, T_ITEM, T_OUT } from "@/lib/motion";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { ms as msOf, T_OUT } from "@/lib/motion";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop, groundOf } from "@/components/AppBackdrop";
 import { inkVarsOn } from "@/lib/palette";
 import { CreateMenu, type MenuAt } from "@/components/CreateMenu";
-import { TabGlyph, TabIcon } from "@/components/TabIcons";
-import { Dashboard } from "@/components/Dashboard";
-import { SelectionMarker } from "@/components/PlanSelectionBar";
+import { AppModules } from "@/components/AppModules";
+import { AppNav } from "@/components/AppNav";
 import { SignInGate } from "@/components/SignInGate";
 import { useVoiceRecorder } from "@/components/VoiceRecorder";
 import { VoiceOverlay } from "@/components/VoiceStudio";
-import { BriefTab } from "@/components/tabs/BriefTab";
-import { ExecuteTab } from "@/components/tabs/ExecuteTab";
 import { DevStageTab } from "@/components/tabs/DevStageTab";
 import { HomeTab } from "@/components/tabs/HomeTab";
-import { JournalTab } from "@/components/tabs/JournalTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
-import { RecordTab } from "@/components/tabs/RecordTab";
-import { StockTab } from "@/components/tabs/StockTab";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { TaskSpace } from "@/components/tasks/TaskSpace";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
-import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
+import { APPS, DEFAULT_TAB, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
 import { whenPileSettled } from "@/lib/bootQuiet";
-import { BD_GREY, CHARCOAL, INK, NAV_BOTTOM_GAP, NAV_CREATE_SLOT, NAV_H, NAV_PILL_PAD, NAV_ROW_MAX, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP, TAB_ICON_OFF } from "@/lib/constants";
+import { BD_GREY, CHARCOAL, INK, NAV_H, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { unreadCards } from "@/lib/homeBand";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { kickViewport } from "@/lib/viewportKick";
-import { syncDayRecordsToMyBrain, syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
+import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
-import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, JournalTabId, PlanSelection, TabId, TabProps, Task, VoiceControls } from "@/lib/types";
+import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, TabId, TabProps, Task, VoiceControls } from "@/lib/types";
 
 // 読み込み待機画面。2x2のグリッドの上を、黒い幾何学が動き回る
 // (globals.css の load-rect / load-dot / load-fan)。背景と同じ語彙で、
@@ -52,30 +47,6 @@ function LoadingScreen() {
       </div>
     </div>
   );
-}
-
-// 隣のアプリへ落ち着くまでの時間は globals.css の .app-track が持つ(--t-item)。
-// ダッシュボードのシートの高さ(画面に対する割合)と、落ち着くまでの時間。
-// components/Dashboard.tsx / globals.css と揃えること。
-const DASH_SHEET_RATIO = 0.84;
-// ★指の速さが取れないときの既定。globals.css の `--dash-ms` の既定値
-//   (= `--t-item`)と**同じ**にする(第33巡)。
-const DASH_MS = msOf(T_ITEM);
-// 指を離したあとの時間の下限・上限(慣性で伸び縮みする)。
-const DASH_MIN_MS = 190;
-const DASH_MAX_MS = 560;
-
-// ★一周ループのための折り返し量(列の幅の倍数)。
-// 列 j は本来トラックの j 番目に居るが、いまの通し番号 pos から見て
-// 「いちばん近い、同じ余りの位置」へ置き直す。たとえば pos が末尾(2)のとき、
-// 先頭の列(0)は右隣(位置3)へ回り込む。これで列を増やさずに、どちらの向きへ
-// 払っても必ず隣に列がいる状態が作れる。
-function wrapOf(j: number, pos: number): number {
-  const n = APPS.length;
-  const cur = ((pos % n) + n) % n;
-  // -1(左隣) / 0(自分) / 1(右隣) のどれか。
-  const d = ((j - cur + n + 1) % n) - 1;
-  return pos + d - j;
 }
 
 function Toast({ text }: { text: string }) {
@@ -98,320 +69,72 @@ interface AppColumnProps {
   tab: TabId;
   active: boolean;
   mounted: boolean;
-  /** 一周ループのための折り返し量(列の幅の倍数)。0なら本来の場所。 */
+  /** ★列を置く場所のずれ（列の幅の倍数）。0なら本来の場所。 */
   wrap: number;
   memoryMode: boolean;
   tabProps: TabProps;
-  goTab: (id: TabId) => void;
-  /** ★ホームの列だけが使う ―― タブバーが「3アプリの名前」になるので、
-   *  押されたらその列へ移る。 */
-  goApp: (id: AppId) => void;
-  onNavPointerDown: (e: ReactPointerEvent) => void;
+  /** ★★モジュールへ運ぶ合図（`goTab` とバーの再タップ）。 */
+  jump: { tab: TabId; n: number };
+  unread: number;
+  onGo: (id: AppId) => void;
   onRecord: (from: HTMLElement) => void;
-  navDragged: React.MutableRefObject<boolean>;
 }
 
-const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, goTab, goApp, onNavPointerDown, onRecord, navDragged }: AppColumnProps) {
-  // ★1画面で完結し、スクロールさせないタブ。
-  // ★ホームは1枚きり（帯と山）なのでスクロールさせない。
-  const scrollLocked = tab === "brief" || tab === "journal-record" || tab === "home";
-  // ★★ホームだけタブバーの中身が「3アプリの名前」になる ―― ホームは3アプリの
-  //   **入口**で、自分のタブを持たないため。
-  const isHome = a.id === "home";
-  // ★★★**未読の提案の数は EXPLORE のタブの角に出す**（2026-09-24・第132巡）。
-  //   第131巡までは山に「数の円」として落としていたが、数は「今日やること」ではない。
-  const unread = useMemo(() => (isHome ? unreadCards(tabProps.appState).length : 0), [isHome, tabProps.appState]);
-  // ★タスクアプリは4層が1本の縦の空間に積まれているので、タブごとの
-  //   入場アニメーションも作り直しもしない(下の枠を参照)。
+const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, jump, unread, onGo, onRecord }: AppColumnProps) {
+  // ★★★**アプリの中身は3通り**（第134巡）… HOME ＝ 1枚きり／TASK ＝ 作り直すまで1枚（中で縦の払いを使う）／
+  //   EXPLORE・JOURNAL ＝ 縦のモジュール（`AppModules`）。どれも列そのものはスクロールさせない。
   const isTasks = a.id === "tasks";
+  const isModules = a.id === "life" || a.id === "journal";
   return (
         <div style={{
           position: "relative", isolation: "isolate", width: `${100 / APPS.length}%`, height: "100%",
           display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden",
-          // ★一周ループのための折り返し。列は本来トラックの中の自分の場所に
-          // 並んでいるが、通し番号が端を越えたときは、この列を1周ぶん(±300%)
-          // ずらして反対側へ回り込ませる。こうすると、どちらの向きへ払っても
-          // 必ず隣に列がいる状態を、列を増やさずに作れる。値が変わるのは
-          // アプリが切り替わった瞬間だけなので、ドラッグ中は静止している。
+          // ★列を置く場所のずれ。バーで離れたアプリへ移るとき、行き先の列を**隣へ**置いて
+          //   1枚ぶんだけ滑らせる（あいだのアプリを素通りさせない）。値が変わるのは切り替えの瞬間だけ。
           transform: wrap ? `translateX(${wrap * 100}%)` : undefined,
-          // ★★アプリの地色は**この列が持つ**(2026-08-12)。
-          // 以前は画面全体に1枚だけ敷いた帆布(AppBackdrop)が現在のアプリの色を
-          // 塗り、アプリが切り替わるときにその1枚が**クロスフェード**していた。
-          // 列は横へスライドするのに、地色だけがその場で混ざるので、遷移中は
-          // 「新しいアプリの領域に古い地色が残っている」状態になり、タブバーの
-          // 下など、中身が自分で地を塗っている所との境目が見えていた
-          // (実測: 払っている間ずっと 179、離すと 206→233→236 と混ざる)。
-          // 地色を列に持たせると、A の地が出ていって B の地が入ってくるだけに
-          // なるので、混ざる瞬間そのものが無くなる。**背景を変えても同じ**。
-          // ★タブや中身の側で地色を塗らないこと。塗ると出どころが2つになり、
-          // 遷移中にどちらかがズレて必ず境目が出る。
+          // ★★アプリの地色は**この列が持つ**(2026-08-12)。タブや中身の側で地色を塗らないこと。
           background: groundOf(a.id),
           // ★★★**地の上に直接いる文字の色を、ここで決めて配る**（第77巡）。
-          //   JOURNAL の地が暗くなったので、`Masthead` と `SectionLabel` は
-          //   地によって墨／紙を切り替える必要がある。プロップを配ると呼び出し側
-          //   （3アプリ・十数か所）を全部触ることになるので、**地を敷いている
-          //   この1か所で変数を置く**。色は `bodyInkOn()` が導く＝判断を増やさない。
           ...inkVarsOn(groundOf(a.id)),
         }}>
           <div data-tab-scroll-root style={{
             width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
-            overflowY: scrollLocked ? "hidden" : "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "contain",
-            // ★★★**横は決してスクロールさせない**（2026-09-14・第103巡）。
-            // CSS の規則で「片方が `visible` でもう片方がそうでないなら、`visible` は
-            // `auto` になる」ので、**`overflowY` だけ書くと横にもスクロールできる**。
-            // 第102巡の ASSIGN の帯（右端で `translateX(100%)`）が 48px はみ出した
-            // だけで、**列を指で横へ送れて帯が見えた**（ユーザー報告。タブバーは
-            // 列の外に浮いているので動かず、中身だけがずれた）。
-            // ★`hidden` ではなく **`clip`** ―― `hidden` はスクロール容器を作るので、
-            //   上の `scrollLocked` の切り替えと噛み合わせを増やす。`clip` は
-            //   容器を作らずに切るだけ。
-            // ★★これは**2本目の防波堤**。はみ出す面の側（`AssignRail`）も
-            //   `overflow: hidden` の器で包んである（`components/tabs/HomeTab.tsx`）。
-            //   第26巡に `scrollLeft` が 320 で固まった件と同じ趣旨の、構造の守り。
+            // ★★縦の送りはモジュールの器（`ModuleRail`）が自分でやる。列はスクロールしない。
+            overflowY: "hidden",
+            // ★★★**横は決してスクロールさせない**（第103巡）。`hidden` ではなく `clip`（容器を作らない）。
             overflowX: "clip",
-            // ★スクロール中に要素がサイズ変化(プランタブの地図の縮小など)しても、
-            // ブラウザのスクロールアンカリングがscrollTopを勝手に補正して
-            // 「グイッと引っ張られる」ジャンプを起こさないよう無効化する。
             overflowAnchor: "none",
-            // ★下の逃がしはここではなく、中身の枠(下の tab-in)が持つ。
-            // スクロールコンテナ自身の padding-bottom は、flex の中身が
-            // 伸びたときに scrollHeight へ正しく入らないことがあり、
-            // 実際に最後の項目がタブバーの裏へ潜って止まった。
             padding: `var(--pad-top) ${SPACE.lg}px 0`,
           }}>
             {active && memoryMode && <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
-
-            <>
-            {/* minHeight:0が無いと、flexアイテムのデフォルトのmin-height:auto
-                (=中身の実サイズより縮められない)により、実行タブの確定
-                ビューのような「自分の内側だけがoverflow-y:autoでスクロール
-                する」子要素がいくら正しく組んであっても、この外側のdiv
-                自体が中身の全高までズルズル伸びてしまい、結局スクロール
-                の主体が想定と違う一番外側の(この上の)コンテナ側にすり
-                替わってしまっていた。実行タブの「バインドボタンを押すと
-                リスト先頭へ戻す」処理は内側のスクロール要素を対象に
-                scrollTopを操作していたため、実際にスクロールしていたのが
-                外側だったこの状態では効かず、「直したはずなのに直って
-                いない」という不具合の実際の原因になっていた。 */}
-            {/* ★タブを切り替えたときの入場アニメーション(globals.css の
-                tab-in)。以前これを廃止したのは、opacity/transformを
-                アニメーションする要素が新しい重なりコンテキストを作り、
-                内側のzIndexを持つ要素(ブリーフの育成カードのフッター、
-                zIndex:26)が、外側のnav手前の帯(zIndex:15)より手前に
-                出せなくなったため。
-                いまは**そのフッターを持つブリーフタブだけ**、この枠自体に
-                zIndex:16を与えて帯より手前へ出している。ブリーフは中身を
-                スクロールしない(scrollLocked)ので、帯のぼかしが効かなく
-                なっても失うものが無い。他のタブは枠にzIndexを付けないため、
-                従来どおり帯の下に潜り、ぼかしが正しく効く。 */}
             {mounted && (
-              // ★★タスクアプリだけ **key を固定し、`tab-in` を外す**(第38巡)。
-              //   4層は1本の縦の空間にまとめて居るので、タブが変わっても
-              //   中身は作り直さない — 作り直すと matter.js の山が毎回崩れ、
-              //   カメラが動く先に何も無い状態になる。opacity のフェードも
-              //   カメラのパンと二重になるので掛けない。
-              <div key={isTasks ? "tasks" : tab} className={isTasks ? undefined : "tab-in"} style={{
+              // ★★key はアプリで固定する（モジュールを送っても・`goTab` でも中身を作り直さない ――
+              //   matter.js の山や送りの位置が崩れるため）。
+              <div key={a.id} style={{
                 display: "flex", flexDirection: "column", minHeight: 0,
-                // ★flex-basis は auto(=中身の高さ)。`flex: 1`(basis 0)にすると、
-                // この枠は「空いている高さ」に固定され、中身が長いタブでは
-                // 中身がこの枠から**はみ出して**しまう。はみ出した分は枠の
-                // padding-bottom の外側なので、下の逃がしが効かず、最後の項目が
-                // タブバーの裏に潜って止まる(実測で 38px 隠れていた)。
-                // basis:auto なら「中身が短ければ空きいっぱいに伸び、長ければ
-                // 中身の高さになる」ので、padding-bottom が必ず効く。
                 flex: "1 0 auto",
-                // ★タブバーのぶんの逃がし。タブバーはフローから外して浮かせて
-                // あるので、中身がその裏で止まらないようここで空けておく。
-                // 画面の四隅まで敷きたいタブは `.full-bleed` がこれを打ち消す。
+                // ★タブバーのぶんの逃がし。画面の四隅まで敷く中身は `.full-bleed` がこれを打ち消す。
                 paddingBottom: "var(--nav-h)",
-                ...(scrollLocked ? { position: "relative" as const, zIndex: 16 } : null),
+                position: "relative", zIndex: 16,
               }}>
-                {tab === "home" && <HomeTab {...tabProps} appActive={active} />}
-                {tab === "brief" && <BriefTab {...tabProps} />}
-                {tab === "stock" && <StockTab {...tabProps} />}
-                {tab === "execute" && <ExecuteTab {...tabProps} />}
-                {/* ★確認用（第70巡）。刷新した券と鋏を実機で見るためだけのタブ。
-                    Explore の刷新が終わったら**この行ごと消す**。 */}
-                {tab === "life-dev" && <DevStageTab />}
-                {/* ★タスクアプリは**4層をまとめて持つ1枚の器**(縦のカメラ)。
-                    タブを押しても指で払っても、起きるのはカメラの上下移動だけ。
-                    active(このアプリが表示中か)は、物理の rAF と候補の揺れを
-                    「表示中のときだけ」回すために各層まで降りていく。 */}
+                {a.id === "home" && <HomeTab {...tabProps} appActive={active} />}
                 {isTasks && <TaskSpace {...tabProps} tab={tab} appActive={active} />}
-                {/* ★active(このアプリが表示中か)を明示的に渡す。円の入場アニメーションの
-                    合図に使う。IntersectionObserver で見え方から推測する方式は、実機で
-                    一度も発火せず「円が出てこない」不具合になった。 */}
-                {tab === "journal-record" && <RecordTab {...tabProps} appActive={active} />}
-                {(tab === "journal-today" || tab === "journal-archive") && <JournalTab {...tabProps} tab={tab as JournalTabId} />}
+                {isModules && <AppModules app={a.id as "life" | "journal"} tabProps={tabProps} active={active} jump={jump} />}
               </div>
             )}
-          </>
-      </div>
+          </div>
 
-      {/* ★★タブバーは**フローから外して画面の上に浮かせる**(2026-08-12)。
-          以前はスクロールルートの中に flex の兄弟として置いていたため、
-          「本文の領域がタブバーの上端で終わる」構造になっていた。その結果、
-          全面に敷きたい背景や大きな図形は必ずタブバーの手前で途切れ、
-          タブの側が negative margin でタブバーの高さぶん食い込ませる、という
-          帳尻合わせが要った。高さの数字がどこかでずれるたびに
-          「タブバーの上下に境目が出る」「背景が途中で切れる」不具合が
-          再発し、そのたびに直す羽目になっていた。
-          いまはタブバーが**列の中の絶対配置**で、本文の領域は常に画面いっぱい。
-          中身はタブバーの下へそのまま continue し、タブバーはその上に浮く。
-          スクロールする中身がタブバーの裏に隠れて止まらないよう、逃がしは
-          スクロールルートの padding-bottom(= --nav-h)で一元的に行う。
-          画面の四隅まで敷きたいタブは globals.css の `.full-bleed` を付ける
-          だけでよい(高さの計算はそこ1箇所にしかない)。
-          ★position:fixed にはしないこと。iOS SafariのURLバー伸縮中に実際の
-          ビューポートとズレて下に隙間が生まれる(過去に再発済み)。列は
-          シェル(100svh)の中の普通の要素なので、その中の absolute なら
-          ビューポートの都合に影響されない。
-          下地へ溶け込むグラデーションは、以前はnavの内側(nav自身のzIndex
-          =25)に敷いていたが、それだとPlanSelectionBar/ExecuteTabの
-          バインド！ボタンのような「それ自体は不透明な独立UI」の上にまで
-          このグラデーションが被さり、その下端が白っぽく洗われて見える
-          事故があった。グラデーションは「素通しのスクロールコンテンツ」
-          だけを対象にしたいので、nav本体(タップ対象のピル、zIndex=25)とは
-          別レイヤー(zIndex=15)に分離している。バインド！系のボタンは
-          さらにnavのピルの影の滲みでうっすら覆われて見える不具合もあった
-          ため、両方ともnavより高いzIndex=26にして常に手前に出している。 */}
-          {/* ★nav手前のぼかしの帯は**撤去した**(2026-08-03)。
-              backdrop-filter + mask-image の組み合わせは Safari がマスクを
-              無視することがあり、その場合ぼかしが矩形いっぱいに効いて硬い
-              境目が出る。実機で「タブバーのあたりの画面が途切れて見える・
-              タブバー下部に画面の端が見える」と報告されたのがこれ。
-              画面全体を覆うぼかし層は、スクロールのたびに合成をやり直すため
-              ちらつきの原因にもなる。ピル自体が不透明な紙色で影も持っている
-              ので、帯が無くても下を流れる中身とは十分に見分けが付く。 */}
-          {/* ダッシュボードを引き上げている間は、globals.css の
-              [data-dash-active="1"] .app-nav がこれを消し、portal側の
-              モーフ用ピルへ役目を渡す(見た目が同一の位置で入れ替わる)。
-              CSS側でやるのは、そのためだけに列を再レンダーしないため。 */}
+          {/* ★★タブバーは**フローから外して画面の上に浮かせる**(2026-08-12)。
+              ★position:fixed にはしないこと(iOS Safari の URL バー伸縮でずれる)。列の中の absolute。
+              ★★★第134巡に**4つのアプリを同じ格で並べるバー**へ（`components/AppNav.tsx`）。
+              アプリの中のタブ・横に払う切り替え・上へ引き上げるダッシュボードは撤去した。 */}
           <nav className="app-nav" style={{
             position: "absolute", left: 0, right: 0, bottom: 0,
             display: "flex", flexDirection: "column", alignItems: "center",
             padding: `0 ${SPACE.lg}px`, zIndex: 25, pointerEvents: "none",
-            // ★★タブバーは列の**外**にいるので、変数をここでも置く（出どころの
-            //   関数は1つ）。JOURNAL の地が暗くなり、「作る」の黒い丸が地に
-            //   溶けたため（第77巡）。
             ...inkVarsOn(groundOf(a.id)),
           }}>
-            {/* いま3つのアプリのどこにいるか。文字は出さず、点だけの控えめな
-                目印にしている。この目印もトラックに乗っているので、指で
-                引いている最中に「次のアプリの目印」が一緒に流れ込んでくる
-                (だから遷移のアニメーションを別に付ける必要が無い)。 */}
-            {/* ★この行の高さ(丸 5 + 下の余白 8 = 13)は `NAV_H` の 77px に
-                **組み込まれている**。ここを動かしたら `lib/constants.ts` の
-                `NAV_H` も必ず一緒に直すこと(第33巡に 7 → 8 で 76 → 77)。 */}
-            <div style={{ display: "flex", gap: SPACE.xs, paddingBottom: SPACE.sm }}>
-              {APPS.map((d) => (
-                <span key={d.id} style={{
-                  width: d.id === a.id ? 14 : 5, height: 5, borderRadius: RADIUS.pill,
-                  background: d.id === a.id ? INK : "rgba(26,26,24,0.22)",
-                }} />
-              ))}
-            </div>
-            {/* SOFT_SHADOW_LG(ぼかし32px)をそのまま使うと、NAV_BOTTOM_GAPで
-                画面下端ぎりぎりまで詰めたこのピルの下側は、影が滲みきる前に
-                画面の外(=物理的な限界)へ突き当たり、途中でスパッと切れた
-                ような不自然な見た目になっていた。ピルだけは控えめな専用の
-                影に差し替え、余白が数pxしか無くても中で滲み切るようにする。 */}
-            {/* ★タブバーの上を左右に払うと、この帯ごと(=中身も背景の図形も)
-                横へスライドして隣のアプリへ移る。上へ引き上げるとダッシュ
-                ボードが開く。判定をこのタブバーの帯だけに閉じ込めているのは、
-                タブの中身(ブリーフのカードのスワイプ、アーカイブの棚の横
-                スクロール、地図のパン)と一切ぶつからないようにするため。 */}
-            <div
-              onPointerDown={onNavPointerDown}
-              style={{
-                /* ★隙間と右の丸は `NAV_CREATE_SLOT`（= TAB_MARK + SPACE.md）で1つ。 */
-                display: "flex", alignItems: "center", gap: NAV_CREATE_SLOT - TAB_MARK, width: "100%", maxWidth: NAV_ROW_MAX, pointerEvents: "auto",
-                touchAction: "none",
-              }}
-            >
-              {/* ★ピルの高さは以前と同じ64px(内側 TAB_MARK=52 + 上下の余白6)。
-                  選択中の印はその内側にぴったり収まる**正円**で、直径が
-                  そのままピルの内側の高さになる。文字は出さず、読み上げ用の
-                  ラベルは aria-label に残す。 */}
-              <div style={{ position: "relative", flex: 1, display: "flex", background: PAPER, borderRadius: RADIUS.pill, boxShadow: "0 2px 7px rgba(26,26,24,0.14)", padding: NAV_PILL_PAD, marginBottom: NAV_BOTTOM_GAP }}>
-                {/* ★★★**ホームのタブバーは「3アプリの入口」**（2026-09-07）。
-                    アイコンではなく**名前だけ**を並べ、押すとその列へ移る。
-                    ★選択中の丸を置かない ―― ホームは「いまどのタブか」ではなく
-                    **どこへ行くか**を出す場所で、選ばれているものが無い。
-                    ★並びはユーザー指定の EXPLORE / TASK / JOURNAL の順。 */}
-                {isHome && (["life", "tasks", "journal"] as AppId[]).map((id) => (
-                  <button
-                    key={id}
-                    aria-label={appDef(id).label}
-                    onClick={() => { if (navDragged.current) return; haptic(5); goApp(id); }}
-                    style={{ position: "relative", zIndex: 1, flex: 1, height: TAB_MARK, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  >
-                    {/* ★★タブバーの組み方は3アプリと**まったく同じ**（`TabGlyph`＝面の
-                        アイコン＋その下の短い英語）。中身が「タブ」から「アプリの
-                        名前」に変わるだけで、部品も高さも余白も共有する。
-                        ★アイコンはそのアプリを開いたとき最初に出るタブのもの
-                        （`DEFAULT_TAB`）を使う ―― そこへ着くのだから同じ顔でよい。
-                        ★色は `INK` … ホームには「選ばれているタブ」が無いので、
-                        非活性の灰にすると3つとも押せないように見える。 */}
-                    <TabGlyph
-                      name={appDef(id).tabs.find((t) => t.id === DEFAULT_TAB[id])?.icon ?? appDef(id).tabs[0].icon}
-                      label={appDef(id).en}
-                      color={INK}
-                    />
-                    {/* ★★未読の提案の数（第132巡）。アイコンの右肩に小さな墨の丸。0 なら出さない。 */}
-                    {id === "life" && unread > 0 && (
-                      <span aria-label={`未読 ${unread}`} style={{
-                        position: "absolute", top: 0, left: `calc(50% + ${SPACE.sm}px)`,
-                        minWidth: SPACE.lg, height: SPACE.lg, padding: `0 ${SPACE.xs}px`, boxSizing: "border-box",
-                        borderRadius: RADIUS.pill, background: INK, color: PAPER,
-                        fontFamily: SANS, fontSize: TYPE.micro, fontWeight: WEIGHT.bold, lineHeight: `${SPACE.lg}px`,
-                        letterSpacing: TRACK.normal, textAlign: "center", pointerEvents: "none",
-                      }}>{unread}</span>
-                    )}
-                  </button>
-                ))}
-                {/* 選択中の印。1枚だけ置いて隣のタブへ滑らせる。 */}
-                {!isHome && <div aria-hidden style={{
-                  position: "absolute", top: NAV_PILL_PAD, left: NAV_PILL_PAD, height: TAB_MARK,
-                  width: `calc((100% - ${NAV_PILL_PAD * 2}px) / ${a.tabs.length})`,
-                  transform: `translateX(${Math.max(0, a.tabs.findIndex((t) => t.id === tab)) * 100}%)`,
-                  transition: "transform var(--t-item) var(--ease-sheet)",
-                  display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
-                }}>
-                  <div style={{ width: TAB_MARK, height: TAB_MARK, borderRadius: RADIUS.circle, background: INK }} />
-                </div>}
-                {!isHome && a.tabs.map((t) => {
-                  const active = tab === t.id;
-                  return (
-                    <button key={t.id} aria-label={t.label} onClick={() => { if (navDragged.current) return; haptic(5); goTab(t.id); }} style={{ position: "relative", zIndex: 1, flex: 1, height: TAB_MARK, padding: 0, background: "none", border: "none", cursor: "pointer", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <TabGlyph name={t.icon} label={t.en} color={active ? PAPER : TAB_ICON_OFF} />
-                    </button>
-                  );
-                })}
-              </div>
-              {/* ★★右端の丸ボタンは**作るものを選ぶ入口**(2026-08-19・第28巡に
-                  ユーザー指定)。押すとこの丸から円が広がって RECORD と TASK が
-                  出る(`components/CreateMenu.tsx`)。3つのアプリすべてで同じ
-                  位置・同じ意味の常設ボタンで、**タスクの追加もどのアプリからでも
-                  できる**ようになった。 */}
-              <button
-                onClick={(e) => { if (navDragged.current) return; onRecord(e.currentTarget); }}
-                aria-label="作る"
-                // ★★全画面の面(入力画面・録音)が**帰っていく先**。控えが無いときの
-                //   行き先をここから引くので、印を外さないこと(`lib/motion.ts` の
-                //   `surfaceOrigin`)。黒い丸なので、吸い込まれた円がそのまま
-                //   このボタンに重なって消える ― どこか途中で消えるのではなく。
-                data-create-anchor
-                style={{
-                  // ★地が明るければ黒い丸、暗ければ白い丸（`--ink-on`）。
-                  flexShrink: 0, width: 52, height: 52, borderRadius: RADIUS.circle,
-                  background: `var(--ink-on, ${INK})`, border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 7px rgba(26,26,24,0.14)", marginBottom: NAV_BOTTOM_GAP, padding: 0,
-                }}
-              >
-                <TabIcon name="record" color={`var(--on-ink, ${PAPER})`} size={22} />
-              </button>
-            </div>
+            <AppNav current={a.id} unread={unread} onGo={onGo} onCreate={onRecord} />
           </nav>
         </div>
   );
@@ -419,65 +142,33 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
 
 export function AppShell() {
   const [appState, setAppState] = useState<AppState | null>(null);
-  // ★いま開いているアプリ(タスク / 今のアプリ / ジャーナル)。タブバーの上を
-  // 左右にスワイプすると APPS の順に循環して切り替わる。アプリごとに最後に
-  // 見ていたタブを覚えておき、戻ってきたときそこへ帰れるようにする。
-  // ★いま何番目にいるかは、0〜2に丸めない**通し番号**で持つ。右端からさらに
-  // 右へ払うと3, 4… と増え、左へ払うと -1, -2… と減る。丸めてしまうと端で
-  // 位置が飛んでしまい、一周ループのアニメーションが繋がらない。
-  // 実際のアプリは pos を3で割った余りで決まる(下の appId)。
+  // ★★★**いま開いているアプリ**（第134巡に作り直し）。バーで押したアプリへ**1枚ぶんだけ**滑って移る ――
+  //   行き先の列を「いまの列の隣」（並びの向きの側）へ置き直してから、トラックを1つ送る（`slots`）。
+  //   あいだのアプリを素通りさせない。★横に払って替える操作は撤去した（帯・札・一覧の横の払いと取り合う）。
   // ★★★起動して最初に見るのは**ホーム**（2026-09-07 ユーザー確定）。
-  const [pos, setPos] = useState(() => APPS.findIndex((a) => a.id === "home"));
-  const appId = APPS[((pos % APPS.length) + APPS.length) % APPS.length].id;
+  const homeIdx = APPS.findIndex((a) => a.id === "home");
+  const [pos, setPos] = useState(homeIdx);
+  /** ★列ごとに、いまトラックのどの位置に置いてあるか（通し番号）。 */
+  const [slots, setSlots] = useState<Record<AppId, number>>(() => Object.fromEntries(APPS.map((a, j) => [a.id, j])) as Record<AppId, number>);
+  const appId = (Object.entries(slots).find(([, p]) => p === pos)?.[0] ?? "home") as AppId;
   const setAppId = useCallback((id: AppId) => {
-    setPos((prev) => {
-      const cur = ((prev % APPS.length) + APPS.length) % APPS.length;
-      const next = APPS.findIndex((a) => a.id === id);
-      if (next < 0 || next === cur) return prev;
-      // いまの通し番号から、いちばん近い同じ余りの位置へ動かす。
-      const d = ((next - cur + APPS.length + 1) % APPS.length) - 1;
-      return prev + (d === 0 ? APPS.length : d);
+    setSlots((sl) => {
+      const curId = (Object.entries(sl).find(([, p]) => p === pos)?.[0] ?? "home") as AppId;
+      if (curId === id) return sl;
+      const dir = APPS.findIndex((a) => a.id === id) > APPS.findIndex((a) => a.id === curId) ? 1 : -1;
+      const nextPos = pos + dir;
+      const out = { ...sl };
+      // ★行き先の位置に居座っている別の列は、画面の外（さらに先）へ退かす。
+      for (const k of Object.keys(out) as AppId[]) if (k !== id && out[k] === nextPos) out[k] = nextPos + dir * APPS.length;
+      out[id] = nextPos;
+      setPos(nextPos);
+      return out;
     });
-  }, []);
+  }, [pos]);
   const [tabByApp, setTabByApp] = useState<Record<AppId, TabId>>({ ...DEFAULT_TAB });
-  // ★ダッシュボード(画面下から引き上げる引き出し)。3つのアプリのどこからでも
-  // 開ける共通のUIなので、タブではなくここに持つ。
-  // 開き具合(0〜1)は指の位置と1対1で繋がっているが、**Reactのstateには持たない**。
-  // documentElementの --dash に書くだけにして、指を動かしている間はレンダーを
-  // 1回も起こさない(下のsetDashVar)。stateとして持つのは「いま出ているか」だけ。
-  const [dashMounted, setDashMounted] = useState(false);
-  const dashPRef = useRef(0);
-  const setDashVar = useCallback((v: number, dragging: boolean) => {
-    const root = document.documentElement;
-    dashPRef.current = v;
-    root.style.setProperty("--dash", String(v));
-    root.dataset.dashDragging = dragging ? "1" : "0";
-    root.dataset.dashActive = v > 0 ? "1" : "0";
-  }, []);
-  // ★指を離したあとの動きに「慣性」を持たせる(2026-08-04)。以前は速さに
-  // 関わらず必ず340msの一定時間で運んでいたため、勢いよく払っても、そっと
-  // 離しても同じ速さで動き、「ぎこちない・慣性がない」と報告された。
-  // 残りの距離を、離した瞬間の指の速さでそのまま運びきる時間を求めて
-  // --dash-ms に書く(速く払えば短く、そっと離せば長く)。減速の効き方も
-  // 指数のease-out(0.16,1,0.3,1)にして、勢いが自然に収束するようにした。
-  const settleDash = useCallback((open: boolean, vpx = 0) => {
-    if (open) setDashMounted(true);
-    const travel = Math.max(200, (window.innerHeight || 844) * DASH_SHEET_RATIO);
-    const distPx = Math.abs((open ? 1 : 0) - dashPRef.current) * travel;
-    const speed = Math.min(3.2, Math.abs(vpx)); // px/ms
-    const ms = speed > 0.12
-      ? Math.round(Math.min(DASH_MAX_MS, Math.max(DASH_MIN_MS, (distPx / speed) * 1.15)))
-      : DASH_MS;
-    document.documentElement.style.setProperty("--dash-ms", `${ms}ms`);
-    // 開くときは、マウントされた次のフレームに --dash を1へ動かす
-    // (同じフレームで0→1にするとtransitionが発火しない)。
-    requestAnimationFrame(() => setDashVar(open ? 1 : 0, false));
-    if (!open) window.setTimeout(() => { if (dashPRef.current === 0) setDashMounted(false); }, ms + 60);
-  }, [setDashVar]);
-  // ジェスチャーのハンドラはwindowへ張る都合で作り直したくない(useCallbackの
-  // 依存を空にしてある)ため、いま何番目のアプリかはrefで読む。
-  const posRef = useRef(pos);
-  posRef.current = pos;
+  /** ★★モジュールへ運ぶ合図（アプリごと。`n` が変わるたびに1回運ぶ）。 */
+  const [jumps, setJumps] = useState<Record<AppId, { tab: TabId; n: number }>>(
+    () => Object.fromEntries(APPS.map((a) => [a.id, { tab: DEFAULT_TAB[a.id], n: 0 }])) as Record<AppId, { tab: TabId; n: number }>);
   const shellRef = useRef<HTMLDivElement>(null);
   // ★★シェルは絶対に横へも縦へもずれない(2026-08-19・第26巡)。
   // overflow:hidden でも、ブラウザは「画面の外にある要素へ焦点が移った」とき
@@ -518,11 +209,6 @@ export function AppShell() {
     document.documentElement.style.setProperty("--app-offset", `${(-p * 100) / APPS.length}%`);
   }, []);
   useEffect(() => { setTrackVars(pos); }, [pos, setTrackVars]);
-  const setDragVar = useCallback((px: number, dragging: boolean) => {
-    const root = document.documentElement;
-    root.style.setProperty("--drag", `${px}px`);
-    root.dataset.dragging = dragging ? "1" : "0";
-  }, []);
   const [showProfile, setShowProfile] = useState(false);
   const [storageMode, setStorageMode] = useState(DataStore.mode);
   // 認証状態。Supabase未構成(環境変数なし)のときは認証ゲートを一切出さず、
@@ -534,11 +220,6 @@ export function AppShell() {
   // ウィッシュはどのタブにいても書ける「受信箱」。タブバー横の独立した
   // ボタンから開くため、タブ固有の状態ではなくここに置く。
   const [addingWish, setAddingWish] = useState(false);
-  // プランへバインドする候補の選択。タブを切り替えてもAppShell自体は
-  // 常にマウントされたままなので(key={tab}で差し替わるのは中身のタブ
-  // だけ)、ここに置くだけでストックタブ⇄プランタブを跨いで選択が
-  // 保持される。
-  const [selection, setSelection] = useState<PlanSelection>({ itemIds: [] });
 
   // 認証状態の監視(Supabase構成済みのときだけ)。初回セッションを確認して
   // authReady を立て、以後 onAuthStateChange でサインイン/アウトを追う。
@@ -701,30 +382,12 @@ export function AppShell() {
     const owner = APPS.find((a) => a.tabs.some((t) => t.id === id));
     setAppId(owner?.id ?? "life");
     setTabByApp((prev) => ({ ...prev, [owner?.id ?? "life"]: id }));
+    // ★★そのモジュールまで運ぶ（EXPLORE・JOURNAL の縦の送り）。
+    setJumps((prev) => ({ ...prev, [owner?.id ?? "life"]: { tab: id, n: prev[owner?.id ?? "life"].n + 1 } }));
     // ★★**`undefined` で消さない** ―― 普通のタブ切り替えでも降ろしたいので、
     //   **渡されなければ `null`**（＝「開いておきたいカードは無い」）。
     setFocusCard(card ?? null);
   }, [setAppId]);
-  // ★タブバーのジェスチャー。横に払えばアプリの切り替え、上へ引き上げれば
-  // ダッシュボード。最初の10pxでどちらの軸かを決め、決まった軸だけを見る
-  // (斜めの動きで両方が中途半端に反応するのを防ぐ)。指を離すまでに一度でも
-  // 動いていたら、ジェスチャーの終わりに合成されるclick(タブの切り替え)は
-  // 無視する(navDraggedRef)。
-  //
-  // 追従は要素のReactハンドラではなく **windowへ直接張ったリスナー** で行う。
-  // 指がタブバーの外(上方向へのドラッグでは必ず外へ出る)へ移動した瞬間に
-  // 要素側のonPointerMoveは呼ばれなくなり、ジェスチャーが途中で死ぬため
-  // (アーカイブの長押しドラッグで同じ罠を踏んでいる。docs/archive/ui-binder-2026-07.md §7.26)。
-  //
-  // ★横は「中身ごと横スライド」(ページング)になった。3アプリを横一列の
-  // トラックに並べ、指の動きに1:1で追従させる。以前は地の色が変わるだけで
-  // 何も動かず、タブバーだけが4割の量で申し訳程度にずれていた。
-  // 端(タスク/ジャーナル)では循環をやめ、ゴムのように抵抗して戻る
-  // (ページングで端から反対の端へ飛ぶと、2画面ぶん逆走する見た目になり
-  // 「スワイプしている」感覚と矛盾するため。lifeが真ん中なので、どのアプリへも
-  // 最大2回で行ける)。
-  const navPressRef = useRef<{ id: number; x: number; y: number; axis: "" | "x" | "y" } | null>(null);
-  const navDraggedRef = useRef(false);
   // ★どのアプリの中身をマウント済みにしてあるか。**増えるだけで減らさない**。
   // 以前は pointerdown のたびに両隣をマウントし、460ms後に外していた。つまり
   // タブを普通にタップしただけでアプリ2つのマウントとアンマウントが往復し、
@@ -789,178 +452,16 @@ export function AppShell() {
     }, SETTLE_LIMIT_MS);
     return () => { cancel(); cancelAnimationFrame(raf); };
   }, [appState, mountApp]);
-  const onNavPointerDown = useCallback((e: ReactPointerEvent) => {
-    const COMMIT_RATIO = 0.18;   // 横: 画面幅のこの割合を超えたら隣へ送る
-    const FLICK_PX_PER_MS = 0.5; // 短く速く払ったときは距離が足りなくても送る
-    const width = window.innerWidth || 390;
-    navPressRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: "" };
-    navDraggedRef.current = false;
-    // 速度の見積り用に直近の位置と時刻を持つ。
-    let lastX = e.clientX;
-    let lastY = e.clientY;
-    let lastT = performance.now();
-    let vx = 0;
-    let vy = 0;
-    // 1フレームに1回だけCSS変数へ書く(pointermoveは1フレームに複数回来ることがある)。
-    let raf = 0;
-    let pending: (() => void) | null = null;
-    const schedule = (fn: () => void) => {
-      pending = fn;
-      if (raf) return;
-      raf = requestAnimationFrame(() => { raf = 0; pending?.(); pending = null; });
-    };
-    const finish = () => {
-      navPressRef.current = null;
-      if (raf) { cancelAnimationFrame(raf); raf = 0; pending = null; }
-      setDragVar(0, false);
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", cancel);
-    };
-    // ポインタを取り上げられたとき。縦に引きかけていたなら、開き具合も
-    // 必ず閉じ切ってから終わる(上のaddEventListenerのコメント参照)。
-    const cancel = () => {
-      const axis = navPressRef.current?.axis;
-      finish();
-      if (axis === "y") settleDash(false);
-    };
-    function move(ev: PointerEvent) {
-      const pr = navPressRef.current;
-      if (!pr || pr.id !== ev.pointerId) return;
-      const dx = ev.clientX - pr.x;
-      const dy = ev.clientY - pr.y;
-      const now = performance.now();
-      const dt = now - lastT;
-      if (dt > 0) { vx = (ev.clientX - lastX) / dt; vy = (ev.clientY - lastY) / dt; }
-      lastX = ev.clientX; lastY = ev.clientY; lastT = now;
-      if (!pr.axis) {
-        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-        pr.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-        navDraggedRef.current = true;
-        // 縦だと決まった瞬間にダッシュボードを用意する(1回だけのstate更新)。
-        if (pr.axis === "y") setDashMounted(true);
-        if (pr.axis === "x") {
-          // 左へ払うと --p は増える(0〜2 が基準でよい)。右へ払うと減るので、
-          // 先頭に居るときだけ1周ぶん先(3)を基準にして 0 を下回らないようにする。
-        }
-      }
-      if (pr.axis === "x") {
-        // 一周ループするので、どちらの向きにも必ず隣がいる(端のゴムは無い)。
-        schedule(() => setDragVar(dx, true));
-        return;
-      }
-      // 縦: 引き上げた量をそのまま開き具合にする(1対1)。シートの上端が
-      // 指についてくるので、travelは「シートの上端が動く距離」に合わせる。
-      const travel = Math.max(200, (window.innerHeight || 844) * DASH_SHEET_RATIO);
-      schedule(() => setDashVar(Math.min(1, Math.max(0, -dy / travel)), true));
-    }
-    function up(ev: PointerEvent) {
-      const pr = navPressRef.current;
-      const dx = pr ? ev.clientX - pr.x : 0;
-      const axis = pr?.axis;
-      // ★指を止めてから離したときは「速さ0」として扱う。vx/vy は
-      // pointermove でしか更新されないので、止まっている間は最後に動いた
-      // ときの速さが残り続ける。そのまま慣性に使うと、そっと置いたのに
-      // 勢いよく飛んでいくことになる(実測でそうなっていた)。
-      if (performance.now() - lastT > 70) { vx = 0; vy = 0; }
-      finish();
-      if (axis === "y") {
-        // 上向きに速く払ったら、距離が足りなくても開く。
-        const flickUp = vy <= -FLICK_PX_PER_MS;
-        const open = flickUp || dashPRef.current >= 0.3;
-        if (open) haptic(12);
-        // 離した瞬間の速さをそのまま渡し、続きの動きへ引き継ぐ(慣性)。
-        settleDash(open, vy);
-        return;
-      }
-      if (axis !== "x") return;
-      const far = Math.abs(dx) >= width * COMMIT_RATIO;
-      // 速さで送るのは、指の向きと払った向きが一致しているときだけ。
-      const flick = Math.abs(vx) >= FLICK_PX_PER_MS && Math.sign(vx) === Math.sign(dx);
-      // 送らないときは、--drag が0へ戻るのに合わせて背景の figure も
-      // そのまま戻ってくる(--outp が同じ書き込みで0になる)。
-      if (!far && !flick) return;
-      // 通し番号を素直に±1する。丸めないので端が無く、そのまま一周する。
-      const step = dx < 0 ? 1 : -1;
-      const next = posRef.current + step;
-      haptic(10);
-      // ★--drag(0へ)と--app-offset(隣のアプリへ)は必ず同じ同期の書き込みで
-      // 揃える。offsetをReactのuseEffect任せにすると、「dragは0に戻ったが
-      // offsetはまだ元のアプリ」という中途半端な状態が1フレーム描かれ得る
-      // (＝一瞬だけ元の画面へ戻ってから隣へ動く)。
-      setTrackVars(next);
-      posRef.current = next;
-      setPos(next);
-      mountApp(APPS[((next % APPS.length) + APPS.length) % APPS.length].id);
-    }
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    // ★pointercancelでも finish() だけでは足りない。縦(ダッシュボード)を
-    // 引いている最中にiOSがポインタを取り上げると、--dash が途中の値のまま
-    // 残り、data-dash-active="1" が効いたまま = **タブバーが opacity:0 で
-    // 消え、画面全体を覆うscrimがタップを飲み続ける**という壊れた状態に
-    // なっていた(pointerupが来ないので settleDash が呼ばれないため)。
-    // 取り上げられたら必ず閉じ切る。
-    window.addEventListener("pointercancel", cancel);
-  }, [setDragVar, setDashVar, settleDash, mountApp, setTrackVars]);
+  // ★★★**バーを押した**（第134巡）。別のアプリならそこへ移る（最後に見ていたモジュールのまま）。
+  //   ★選んでいるアプリの印をもう一度押したら、そのアプリの**先頭のモジュール**へ戻る。
+  const onGo = useCallback((id: AppId) => {
+    if (id !== appId) { mountApp(id); setAppId(id); return; }
+    const first = DEFAULT_TAB[id];
+    setTabByApp((prev) => ({ ...prev, [id]: first }));
+    setJumps((prev) => ({ ...prev, [id]: { tab: first, n: prev[id].n + 1 } }));
+  }, [appId, mountApp, setAppId]);
   // トースト。他のコールバックが依存するので先に定義しておく。
   const showToast = useCallback((msg: string) => { setToast(msg); window.setTimeout(() => setToast(""), 1600); }, []);
-  const toggleItemSelection = useCallback((id: string) => {
-    haptic(8);
-    setSelection((s) => ({ itemIds: s.itemIds.includes(id) ? s.itemIds.filter((x) => x !== id) : [...s.itemIds, id] }));
-  }, []);
-  const addItemIds = useCallback((ids: string[]) => {
-    haptic(10);
-    setSelection((s) => ({ itemIds: Array.from(new Set([...s.itemIds, ...ids])) }));
-  }, []);
-  // ★1日を締める操作(ダッシュボードの「今日を終える」)。
-  // 選んでいたカードは実行済み(done)としてアーカイブのバインダーへまとめて
-  // 移り、その日に済ませたタスクも同じ記録に添える。以前はこれを2段階
-  // (プランの「バインダーへ」→確定ビューの「バインド！」)に分けていたが、
-  // 確定ビューごと撤去してこの1操作に集約した(docs/archive/shell-redesign-2026-08.md §9)。
-  const finishDay = useCallback(() => {
-    if (!appState) return;
-    const next = structuredClone(appState);
-    const boundAt = new Date().toISOString();
-    // 実際にdoneへ変わったItemだけを記録する(設定画面から確認・元に戻せる
-    // ようにするため)。タイトル等をスナップショットしておくので、後でItem
-    // 自体が消えてもログの表示は壊れない。
-    const boundItems: typeof next.bindLog[number]["items"] = [];
-    // ★★★**今日に割り当てた提案も一緒に綴じる**（2026-09-14・第102巡にユーザー確定
-    //   「**割り当てて実行することでログに残る**」）。ホームで引き下ろすと
-    //   `Item.plannedFor` が入るので、**その場で選んだもの**と同じ扱いにする。
-    //   ★★**綴じ方は1行も変えていない** ―― `done` ＋ `doneAt` ＋ `bindLog` のまま。
-    const planned = (next.items ?? [])
-      .filter((x) => x.plannedFor === todayKey() && x.status !== "done")
-      .map((x) => x.id);
-    [...new Set([...selection.itemIds, ...planned])].forEach((id) => {
-      const item = next.items.find((x) => x.id === id);
-      if (item && item.status !== "done") {
-        item.status = "done";
-        item.doneAt = boundAt;
-        boundItems.push({ id: item.id, title: item.title, kind: item.kind, color: item.color, images: item.images });
-      }
-    });
-    // その日のうちに済ませたタスクも同じ記録へ添える(タスクの状態自体は
-    // 変えない。まだ終わっていないタスクを締めの操作で勝手に完了扱いに
-    // すると、記録が事実と食い違うため)。
-    const today = todayKey();
-    const doneTasks = (next.tasks ?? [])
-      .filter((t) => t.dueDate === today && t.done)
-      .map((t) => ({ id: t.id, title: t.title }));
-    if (boundItems.length > 0 || doneTasks.length > 0) {
-      next.bindLog = next.bindLog ?? [];
-      next.bindLog.unshift({ id: `bindlog-${Date.now()}`, boundAt, items: boundItems, tasks: doneTasks.length > 0 ? doneTasks : undefined, undone: false });
-    }
-    persist(next);
-    // 記録はアプリの中だけでなく my-brain 側にも揃えて、いつでも読めるように
-    // する(ユーザー指定)。Coworkはこれと声のメモを材料に、その日のまとめを書く。
-    syncDayRecordsToMyBrain(next);
-    setSelection({ itemIds: [] });
-    settleDash(false);
-    showToast(boundItems.length > 0 ? `${boundItems.length}件をアーカイブへ綴じました` : "今日を終えました");
-    if (boundItems.length > 0) goTab("journal-archive");
-  }, [appState, selection, persist, settleDash, showToast, goTab]);
   // ★声のメモ。タブバー右の丸ボタンを長押ししている間だけ録音し、離すと
   // 文字起こしへ送る。結果はここへ溜まり、夜間にCoworkが読んで
   // インボックスの候補(タスク・ジャーナル・ウィッシュ等)へ分類する。
@@ -1026,17 +527,6 @@ export function AppShell() {
   // オーバーレイが一瞬で消え、円が左右へ出ていくアニメーションが
   // 一度も見えないため。VoiceStudio が演出を終えてから onClose を呼ぶ。
 
-  // ダッシュボードからのタスクのチェック。
-  const toggleTask = useCallback((id: string) => {
-    if (!appState) return;
-    haptic(8);
-    const next = structuredClone(appState);
-    const t = next.tasks.find((x) => x.id === id);
-    if (!t) return;
-    t.done = !t.done;
-    t.doneAt = t.done ? new Date().toISOString() : undefined;
-    persist(next);
-  }, [appState, persist]);
   // ウィッシュの追加。ストックには入らず(ウィッシュはカテゴリーではない)、
   // ブリーフの生成材料になるだけの自由文として保存する。ここで選んだ
   // ドメインは、ブリーフがどんな種類の提案として返すかの手がかりになる。
@@ -1082,9 +572,14 @@ export function AppShell() {
   // ストックタブ(ウィッシュの一覧がある場所)から開く。
   const openWishSheet = useCallback(() => { haptic(5); setAddingWish(true); }, []);
   const tabProps = useMemo(
-    () => (appState ? { appState, persist, showToast, goTab, selection, toggleItemSelection, addItemIds, setSelection, voice, openWishSheet, focusCard, clearFocusCard } as TabProps : null),
-    [appState, persist, showToast, goTab, selection, toggleItemSelection, addItemIds, voice, openWishSheet, focusCard, clearFocusCard],
+    () => (appState ? { appState, persist, showToast, goTab, voice, openWishSheet, focusCard, clearFocusCard } as TabProps : null),
+    [appState, persist, showToast, goTab, voice, openWishSheet, focusCard, clearFocusCard],
   );
+
+  // ★★未読の提案の数（バーの EXPLORE の印の右肩。第132巡）。
+  const unread = useMemo(() => (appState ? unreadCards(appState).length : 0), [appState]);
+  // ★★確認用の `DEV`（第134巡に EXPLORE のタブから設定の中へ移した）。
+  const [showDev, setShowDev] = useState(false);
 
   // 認証ゲート(Supabase構成済みのときだけ)。未構成なら以下の2分岐は素通り。
   if (isSupabaseConfigured && !authReady) {
@@ -1139,6 +634,30 @@ export function AppShell() {
   // (execMapModeはロックの判定にはもう使わないが、選択編集の状態管理
   // 自体はExecuteTab内で引き続き必要)。
   // 設定画面は3アプリ共通の1枚なので、横スライドのトラックとは別に出す。
+  // ★★確認用の見本帳。3アプリ共通の1枚なので、設定と同じくトラックとは別に出す。
+  if (showDev) {
+    return (
+      <div data-app-shell style={{
+        height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center",
+        fontFamily: SANS, color: INK, background: BD_GREY, position: "relative",
+        ...({ "--nav-h": NAV_H, "--pad-top": TAB_PAD_TOP } as React.CSSProperties),
+      }}>
+        <div data-tab-scroll-root style={{
+          width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+          overflowY: "auto", overflowX: "clip", padding: `var(--pad-top) ${SPACE.lg}px 0`,
+        }}>
+          <DevStageTab />
+        </div>
+        <button onClick={() => setShowDev(false)} aria-label="DEV を閉じる" style={{
+          // ★右下（タブバーの「作る」の丸と同じ場所）。上は見本の切り替えが使う。
+          position: "absolute", bottom: `calc(${SPACE.lg}px + env(safe-area-inset-bottom))`, right: SPACE.lg, zIndex: 40,
+          width: TAB_MARK, height: TAB_MARK, borderRadius: RADIUS.circle, border: "none", cursor: "pointer",
+          background: INK, color: PAPER, display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+        }}><X size={20} strokeWidth={2} /></button>
+      </div>
+    );
+  }
+
   if (showProfile) {
     return (
       // ★★設定は**全画面のオーバーレイ**。第78巡にユーザー指定で**暗い地**へ
@@ -1150,7 +669,8 @@ export function AppShell() {
           padding: `max(${SPACE.lg}px, env(safe-area-inset-top)) ${SPACE.lg}px ${SPACE.xl}px`,
         }}>
           {storageMode === "memory" && <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
-          <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)} />
+          <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)}
+            onOpenDev={() => { setShowProfile(false); setShowDev(true); }} />
         </div>
         {toast && <Toast text={toast} />}
 
@@ -1198,25 +718,18 @@ export function AppShell() {
           tab={tabByApp[a.id]}
           active={a.id === appId}
           mounted={mountedApps.includes(a.id)}
-          wrap={wrapOf(j, pos)}
+          wrap={slots[a.id] - j}
           memoryMode={storageMode === "memory"}
           tabProps={tabProps}
-          goTab={goTab}
-          goApp={setAppId}
-          onNavPointerDown={onNavPointerDown}
+          jump={jumps[a.id]}
+          unread={unread}
+          onGo={onGo}
           onRecord={onRecord}
-          navDragged={navDraggedRef}
         />
       ))}
       </div>
 
       {toast && <Toast text={toast} />}
-
-      {/* タブ・アプリを跨いで持ち回す選択の目印。件数だけを示し、タップで
-          ダッシュボードが開く(確定の操作はダッシュボードに集約した)。 */}
-      {!dashMounted && (
-        <SelectionMarker appState={appState} selection={selection} onOpen={() => settleDash(true)} />
-      )}
 
       {addingWish && <AddWishSheet onAdd={addWish} onClose={() => setAddingWish(false)} />}
 
@@ -1244,24 +757,6 @@ export function AppShell() {
           onConfirm={(d) => saveNewTask(newTask, d, true)}
           onDelete={() => setNewTask(null)}
           onClose={(d) => saveNewTask(newTask, d, false)}
-        />
-      )}
-
-      {/* ★ダッシュボード。タブバーを上へ引き上げる(または選択の目印をタップ
-          する)と、3つのアプリのどこからでも開く共通の引き出し。選んでいる
-          カードとその日のタスクを1枚で見渡し、「今日を終える」で1日を締める。 */}
-      {dashMounted && (
-        <Dashboard
-          appState={appState}
-          selection={selection}
-          app={appDef(appId)}
-          tab={tabByApp[appId]}
-          onDrag={setDashVar}
-          onSettle={settleDash}
-          onToggleItem={toggleItemSelection}
-          onClearSelection={() => setSelection({ itemIds: [] })}
-          onToggleTask={toggleTask}
-          onFinishDay={finishDay}
         />
       )}
 

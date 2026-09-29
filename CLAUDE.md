@@ -68,19 +68,28 @@
 # ファイル地図
 
 ## 骨格
-- `components/AppShell.tsx` — 3アプリの横スライド・タブ・共有state・ダッシュボードの司令塔。
-  ★ホームのタブバーの EXPLORE に**未読の数の丸**（第132巡。山から移した）。
+- `components/AppShell.tsx` — 4アプリの列・共有state・オーバーレイの司令塔。
+  ★★★**第134巡に骨組みを作り直した**（ユーザー承認の構成）… **バーを押すだけでアプリが替わる**（横に払う切り替え・
+  上へ引き上げるダッシュボード「今日を終える」・アプリの中のタブは**撤去した。復活させない**）。離れたアプリへは
+  行き先の列を隣へ置き直して**1枚ぶんだけ**滑らせる（`slots`）。選んでいる印の再タップ ＝ 先頭のモジュールへ
+  （`jumps`）。`goTab(id)` もモジュールまで運ぶ。確認用の `DEV` は**設定（その他）から**開く。
+- ★★★`components/AppNav.tsx` — **下のバー**（第134巡）。HOME／EXPLORE／TASK／JOURNAL を同じ格で並べ、選んでいる
+  アプリだけ**アイコンの右に名前を出して墨のピルで囲う**。墨1色・線のアイコン（`AppMark`）。右端は「作る」の丸。
+  EXPLORE の印の右肩に**未読の数の丸**（第132巡）。★アプリの目印の点の行は外した（`NAV_H` 77 → 64）。
+- ★★★`components/AppModules.tsx` — **アプリの中の縦のモジュール**（EXPLORE ＝ BRIEF → STOCK／JOURNAL ＝ RECORD → LOG）。
+  見出しと**今のモジュール名**は動かず、その下を `ModuleRail` が送る。右端に**位置の目盛り**。1画面のモジュールは
+  `calc(var(--rail-h) − var(--nav-h) − PEEK)`（次のモジュールの頭がタブバーの上に覗く）。HOME と TASK は通らない
+  （HOME は1枚きり・TASK は作り直すまで中で縦の払いを使う）。
   ★★★**残りのアプリの先読みは「落ち着いてから、1つずつ」**（第115巡）。
   `requestIdleCallback(..., {timeout})` で**まとめて**載せていたので、**ホームの山が
   落ちている最中に必ず割り込み**、全文書のレイアウトが1回 400ms 超になっていた
   （実測 348/516 個）。**`MIN_MS` を過ぎて、軽いフレームが続いてから、1つずつ。**
   ★指が先に触れたら `mountApp` が即座に載せるので、待ちは体感に出ない。
 - `components/AppBackdrop.tsx` — アプリごとの地色（`groundOf` が唯一の出どころ）。
-- `components/Dashboard.tsx` — 下から引き上げる引き出し。「今日を終える」。
 - `components/CreateMenu.tsx` — タブバー右端の丸から広がる輪
   （RECORD / TASKS / SETTING。**文字だけ・半径の線上**）。
   **タスクの追加も設定もどのアプリからでもここから**（第68巡に歯車を廃止）。
-- `lib/apps.ts` — アプリとタブの定義（**タブ構成の正**）。
+- `lib/apps.ts` — アプリの並び（＝バーの並び）と、`goTab` の索引としての `tabs`（**バーには出さない**）。
 
 ## ブリーフ（EXPLORE）
 - `components/tabs/BriefTab.tsx` — カードのデッキ（右=KEEP / 左=SKIP）。
@@ -101,13 +110,18 @@
   ―― あちらを変えるとストック・ゴールが動くのに、**札は 1px も動かない**。
   ★★**操作（旗・記事を読む・黒い円）は下の1列**に集め、**高さは `LINK_D` で固定**
   （`isTop` で中身が増減しても本文の折り返しが動かないため）。
-- `components/tabs/StockTab.tsx` — 候補の一覧・追加シート・ウィッシュ一覧。
+- `components/tabs/StockTab.tsx` — 候補の一覧・追加シート・ウィッシュ一覧（EXPLORE の2つ目のモジュール）。
+  ★★★**頭の列 ＝ 墨のピル「プランを作る」＋その右に検索の丸**（第134巡にユーザー指定）。検索を開くとピルが欄に替わり、
+  当たったもの（題・要約・場所・作り手・種類・ドメイン）を同じ形の3列で出す。その下に **RECENTLY ADDED**（直近 `RECENT_N`(20) 件を
+  横に送る1列）、その下に束。★詳細の「今日に入れる」＝ `plannedFor` を今日に（第133巡までの「プランに追加」＝選択は撤去）。
   ★★★**第134巡に「束」の UI へ**（ユーザー指定「**貼った画像のような UI に**」「**ストックの札をホームの図形と同じに**」）。
   ドメインごとの束（`components/explore/StockGroup.tsx` ＝ 少し傾いて横に重なる4枚・最後はぼかして「+N」・下に題と
   件数・日付・右上の白い丸の＋）。1枚は**ホームの山の提案と同じ形**（`components/explore/ShapeCard.tsx` ＝ SVG。写真を
   形で切り、同じ輪郭を縁の2倍で引いて内側の半分だけ残す。縁の比は `lib/constants.ts` の `OFFER_BEZEL` ＝ 山と同じ1つ）。
   押すとドメインの一覧（同じ形の2列）。空の束は形そのものが＋。
-- `components/tabs/ExecuteTab.tsx` — 地図（Leaflet）・プラン生成・4ドメインの棚。
+- ★★★**PLAN のタブ（`ExecuteTab`・地図・バインド）は第134巡に削除した**（バインドは廃止。PLAN は作り直す）。
+  プランは **STOCK の頭のピル「プランを作る」**から（`PlanGenerateSheet`）。採った案 ＝ その行き先を**今日に入れる**
+  （`Item.plannedFor` ＝ 今日 → ホームの山に落ちる）。★`LeafletMap.tsx` は PLAN の作り直しのために残してある（いまは誰も使わない）。
 - ★★★**ゴールは EXPLORE のタブではない**（第134巡にユーザー指定で GOALS タブを削除）。聞くのは BRIEF の札
   （`components/explore/GrowthFace.tsx` ＝ CHECK-IN／MILESTONE／**NEW GOAL**。今の札と同じ作り・青の面・ボタンは札の中。
   進捗の札は**続ける／達成した／諦める**を選べる。NEW GOAL は **`GOAL_ASK_INTERVAL_DAYS`(75) ごと**、進行中が0件なら1週間ごと）。
@@ -115,7 +129,7 @@
   （`lib/dayRecords.ts` の `goals`）。閉じたゴール（`Goal.status`）には札が届かない。
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
   入口は**右下の輪の SETTING だけ**（`CreateMenu`）。
-- ★`components/tabs/DevStageTab.tsx` — **開発用の `DEV` タブ**（第70巡）。中身は
+- ★`components/tabs/DevStageTab.tsx` — **開発用の `DEV`**（第70巡。★第134巡から**設定の「その他」から開く**全画面）。中身は
   「**券**」＝版面の見本帳と「**札**」＝BRIEF の札の4ドメイン（第94巡）と
   「**場**」＝券と鋏の3D。**実機で見るためだけ**に在る。
   ★★「札」は**本番の `CardFace`（`BriefTab` から export）をそのまま**並べる
@@ -291,7 +305,8 @@
   ★★★**見えていない間は寸法を測らない**（第115巡）―― タブは全部載ったままなので、
   ホームを見ている間も `ResizeObserver` が鳴り、`clientWidth` が**全文書のレイアウトを
   強制**していた（実測 **524ms**・全体の 12.8%）。`appActive` で観測を止める。
-- `components/tabs/RecordTab.tsx` / `JournalTab.tsx` — レコード / 今日・アーカイブ。
+- `components/tabs/JournalTab.tsx` — LOG の中身（今日・アーカイブ。**LOG は作り直す**）。★RECORD は `AppModules` が
+  `VoiceStudio` を `fit`（器いっぱい）で置く（第134巡に `RecordTab.tsx` を削除）。★円の上の指は `claimFromRail` で送りに渡さない。
   ★★★**録音の画面は「縦長の角丸の四角に、回る円が1つ」の録音機**（第133巡にユーザー指定
   「**二つの円を一つにして、その分横幅を狭めて、Explore のカードとデザインを統一し、
   縦長の角丸の四角に、回転する円が付いているデバイス**」）。比・ベゼル・角丸は
@@ -329,7 +344,7 @@
   軸の固定 8px ／戻り跳ねの1フレーム対策／隣の月は触るまで作らない／1マスに丸と札は
   2つまで）。**素朴に書き直すと全部戻る。**
 - `components/GeoType.tsx` — 幾何アルファベット（★第134巡から**どこからも使われていない**。見出しを戻すときのために残す）。`components/TabIcons.tsx` — 面で描いたアイコン。
-- `components/BottomSheet.tsx` / `PlanSelectionBar.tsx` / `PlanGenerateSheet.tsx` / `AddWishSheet.tsx` / `SignInGate.tsx` / `LeafletMap.tsx` / `Binder.tsx`（ゴールのみ）。
+- `components/BottomSheet.tsx` / `PlanGenerateSheet.tsx` / `AddWishSheet.tsx` / `SignInGate.tsx` / `LeafletMap.tsx` / `Binder.tsx`（ゴールのみ）。
 
 ## データ・ロジック
 - `lib/types.ts` — **データモデルの正**。`lib/constants.ts` — 色・書体・部品の寸法。
@@ -911,7 +926,7 @@
   **タブバーは右下の「作る」の丸まで含めて** `[SPACE.lg, w − SPACE.lg]` ―― 帯（白い
   ピル）の右端 310 に合わせてはいけない。**第101巡に右を寄せたのは誤り。もう振らない**
   （`pileLeftOf`/`pileRightOf`/`pileSpanOf` は削除した。**復活させない**）。
-  ★`NAV_CREATE_SLOT`(64) は**行の寸法**として残る（`AppShell` と `Dashboard` が読む）。
+  ★`NAV_CREATE_SLOT`(64) は**行の寸法**として残る（`AppNav` が読む）。
 - ★★★`lib/wordPlate.ts` — **「文字そのものが図形」の板の作り方はここ1つ**（第89巡）。
   ★★★**ホームの日付は**帯のピルと同じ作り**（第133巡にユーザー承認「**B**」。左に墨の円＝日にち／右に2行＝曜日と月／地の面に墨の細い線。寸法は帯のピルの比 `BAND_BEZEL`/`SPACE.sm`/1px を板の高さへ比例させる。`lib/wordPlate.ts` の `badgePlate`）。★★★**第130〜133巡の「割れたピル」（`split`・`joinSplitPlate`・
   `fitSplitPlate`・`SPLIT_EDGE`・`SPLIT_PAD`）は削除した。復活させない。** 以下は経緯 ――
@@ -953,7 +968,11 @@
   アプリ全体に**」）。先頭は指に 1:1・離した瞬間に行き先を決めて臨界のバネで運ぶ／1枚ずつは**ALIGN と同じ連鎖の
   バネ**（`lib/scroll.ts` の `chainSpring`）で追う／重ならないよう隙間の 1/4 までで押す。止まる所は**各1枚の上端**。
   ★縦はこの器が自分で送る（`touch-action: pan-x`）。縦が勝ったときだけ指を奪う。`data-rail-lock` の中は見ない。
-  ★いまは `components/dev/RailDemo.tsx`（`DEV` タブの「送り」＝ JOURNAL の見本）だけが使う。本物へ移したら見本は消す。
+  ★★第134巡に本物へ（`components/AppModules.tsx`）。長いモジュールは中の `data-rail-snap` の印で**1行ずつ止まる**
+  （印の無い長い区間は窓の 0.8 ごとに止まる所を足す）。最後のモジュールの上端も必ず線まで上がる。
+  ★★★**押し始めは捕獲相で受ける**（札の写真は押し始めを `stopPropagation` するので、泡立ちでは写真の上から送れなかった）。
+  降りてほしい部品は `claimFromRail(pointerId)`。★★★**`lostpointercapture` は自分の器の分だけ**（泡立って来た札の知らせで
+  送りが止まっていた）。★`components/dev/RailDemo.tsx`（`DEV` の「送り」）は見本として残っている。
 - `lib/scroll.ts` — **スクロールの語彙はここだけ**（指の 1:1 ＋投げ＋減衰＋最寄りへ吸着）。
   ★★第134巡に**連鎖のバネ `chainSpring`** を `GravityTab` から持ち上げた（ALIGN とモジュール送りが同じ数を読む）。
   強さを触るのは `SCROLL_GAIN` と `FLICK_K` の2つだけ。いまは ALIGN の縦送りが使う。

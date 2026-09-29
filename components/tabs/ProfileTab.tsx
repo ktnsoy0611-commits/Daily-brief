@@ -109,7 +109,7 @@ function SettingsCard({ label, icon: Icon, children }: { label: string; icon?: I
   );
 }
 
-// 削除・取り消しの丸いアイコンボタン。PlanSelectionBarの「選択を外す」と
+// 削除・取り消しの丸いアイコンボタン。（旧 PlanSelectionBar の）「選択を外す」と
 // 同じ語彙(DANGER_TINT 地 + DANGER)に揃え、テキストの「削除」
 // 「元に戻す」のような素のテキストボタンをやめて画面内のボタンをすべて
 // 同じ形式にする。
@@ -238,10 +238,12 @@ function InterestChips({ items, onRemove, inputValue, onInputChange, onAdd, plac
   );
 }
 
-export function ProfileTab({ appState, persist, onClose }: {
+export function ProfileTab({ appState, persist, onClose, onOpenDev }: {
   appState: AppState;
   persist: (next: AppState) => void;
   onClose: () => void;
+  /** ★★確認用の `DEV`（券・札・場・送りの見本）を開く（第134巡に EXPLORE のタブから移した）。 */
+  onOpenDev?: () => void;
 }) {
   // ★地は `lib/ground.ts` が唯一の窓口（html と theme-color をセットで塗る）。
   //   入力画面（`TaskComposer`）と同じ積み方 ―― `"overlay"` の段に積む。
@@ -768,6 +770,20 @@ export function ProfileTab({ appState, persist, onClose }: {
             </>
           )}
         </SettingsCard>
+
+        {/* ★★確認用の見本帳（第134巡に EXPLORE の `DEV` タブから移した）。 */}
+        {onOpenDev && (
+          <SettingsCard label="DEV（確認用の見本）" icon={Sparkles}>
+            <p style={{ fontSize: TYPE.small, fontWeight: WEIGHT.text, color: ON_MUTE, lineHeight: LEAD.body, margin: `0 0 ${SPACE.md}px` }}>
+              券・札・場・送りの見本を実機で見るための画面です。
+            </p>
+            <button onClick={onOpenDev} style={{
+              width: "100%", padding: `${SPACE.md}px 0`, background: "transparent", color: ON,
+              border: `1.5px solid ${ON_DEAD}`, borderRadius: RADIUS.pill, cursor: "pointer",
+              fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, letterSpacing: TRACK.normal,
+            }}>DEV を開く</button>
+          </SettingsCard>
+        )}
 
         {/* ★開発用。タスク入力画面の隅に、キーボードと矩形の実測値を出す。
             実機の崩れを数字で見るためのもの。**直ったら撤去する。** */}

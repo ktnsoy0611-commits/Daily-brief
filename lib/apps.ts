@@ -1,13 +1,10 @@
 import type { TabIconName } from "@/components/TabIcons";
 import type { AppId, TabId } from "./types";
 
-// ★3つのアプリの定義。タブバーの上を左右にスワイプすると、この配列の順に
-// **無限に循環**して切り替わる(右端からさらに右へ払うと先頭へ回り込む)。
-// 並びは左からジャーナル・タスク・ブリーフ。
-//
-// 3アプリはデザイン言語(PAPER/INK/影/角丸/カードの語彙)も**地の色(BG)**も
-// すべて共有する。背景(components/AppBackdrop.tsx)は3アプリで1枚のグリッドを
-// 共有し、アプリを移るとマスの大きさだけが変わる。
+// ★★★**4つのアプリの定義**（第134巡に作り直し）。並びは**下のバーの並び**そのもの
+// （HOME／EXPLORE／TASK／JOURNAL。ユーザー確定）。横に払ってアプリを替える操作は無い。
+// ★`tabs` は**バーに出さない**。アプリの中の区分けは縦のモジュール（`components/AppModules.tsx`）で、
+//   ここの `tabs` は「`goTab(id)` でどのアプリのどのモジュールへ行くか」の索引として残っている。
 
 export interface AppTabDef {
   id: TabId;
@@ -29,50 +26,44 @@ export interface AppDef {
 }
 
 export const APPS: AppDef[] = [
-  // ★★★**ホームは4つ目の列**（2026-09-07）。3アプリの入口で、3アプリの枠を越えて
-  //   情報が集まる場所。**自分のタブを持たない** ―― タブバーの中身が
-  //   「3アプリの名前」に変わる（`components/AppShell.tsx` の `isHome`）。
-  //   ★循環は HOME → JOURNAL → TASK → EXPLORE → HOME。**列の仕組みは足していない。**
   {
     id: "home",
     label: "ホーム",
     en: "HOME",
-    // ★このアイコンは出ない（ホームのタブバーは文字だけ）。型を満たすために置く。
+    // ★1枚きり（送らない）。
     tabs: [{ id: "home", label: "ホーム", en: "HOME", icon: "list" }],
   },
   {
-    id: "journal",
-    label: "ジャーナル",
-    en: "JOURNAL",
+    id: "life",
+    label: "エクスプロア",
+    en: "EXPLORE",
+    // ★★モジュールは BRIEF → STOCK の2つ（第134巡にユーザー確定）。★PLAN の枠は無い ―― プランは
+    //   STOCK の頭のピルから作る。★`DEV`（確認用）は設定の中へ移した。
     tabs: [
-      { id: "journal-record", label: "レコード", en: "RECORD", icon: "recorder" },
-      { id: "journal-today", label: "今日", en: "TODAY", icon: "pen" },
-      { id: "journal-archive", label: "アーカイブ", en: "ARCHIVE", icon: "dots" },
+      { id: "brief", label: "ブリーフ", en: "BRIEF", icon: "list" },
+      { id: "stock", label: "ストック", en: "STOCK", icon: "layers" },
     ],
   },
   {
     id: "tasks",
     label: "タスク",
     en: "TASK",
+    // ★TASK は作り直すまで1枚のまま（中で縦の払いを使っているので、送りを掛けない）。
+    //   DRIFT ⇄ GRAVITY は中の払いで行き来する。
     tabs: [
-      // ★第52巡に TOP/UNDER を破棄。タスク図形は常に GRAVITY にだけ在り、詳細リスト
-      //   (ALIGN)・俯瞰(TIMELINE)は GRAVITY 内の物理モードで見せる(GravityTab)。
-      //   DRIFT(候補の無重力の場)は当面タブとして残す(GRAVITY への集約は別途)。
-      { id: "tasks-drift", label: "候補", en: "DRIFT", icon: "drift" },
       { id: "tasks-gravity", label: "タスク", en: "GRAVITY", icon: "pile" },
+      { id: "tasks-drift", label: "候補", en: "DRIFT", icon: "drift" },
     ],
   },
   {
-    id: "life",
-    label: "ブリーフ",
-    en: "EXPLORE",
+    id: "journal",
+    label: "ジャーナル",
+    en: "JOURNAL",
+    // ★★モジュールは RECORD → LOG の2つ。いまの TODAY と ARCHIVE は LOG の中身（LOG は作り直す）。
     tabs: [
-      { id: "brief", label: "ブリーフ", en: "BRIEF", icon: "list" },
-      { id: "stock", label: "ストック", en: "STOCK", icon: "layers" },
-      { id: "execute", label: "プラン", en: "PLAN", icon: "pin" },
-      // ★★**確認用**（第70巡）。刷新した券と鋏を実機で見るためだけのタブ。
-      //   Explore の刷新が終わったら**この行ごと消す**。
-      { id: "life-dev", label: "確認", en: "DEV", icon: "ticket" },
+      { id: "journal-record", label: "レコード", en: "RECORD", icon: "recorder" },
+      { id: "journal-today", label: "今日", en: "LOG", icon: "pen" },
+      { id: "journal-archive", label: "アーカイブ", en: "LOG", icon: "dots" },
     ],
   },
 ];
@@ -82,17 +73,10 @@ export const appDef = (id: AppId): AppDef => APPS.find((a) => a.id === id) ?? AP
 /** 画面左上に出すアプリの名前。どのタブでもアプリ名を出す。 */
 export const appTitle = (id: AppId): string => appDef(id).en;
 
-// 左右スワイプでの循環。dir=1で右隣、-1で左隣。端は反対の端へ回る。
-export function cycleApp(id: AppId, dir: 1 | -1): AppId {
-  const i = APPS.findIndex((a) => a.id === id);
-  const next = (i + dir + APPS.length) % APPS.length;
-  return APPS[next].id;
-}
-
 // 各アプリを開いたとき最初に見せるタブ。
 export const DEFAULT_TAB: Record<AppId, TabId> = {
   home: "home",
-  tasks: "tasks-drift",
+  tasks: "tasks-gravity",
   life: "brief",
   journal: "journal-record",
 };

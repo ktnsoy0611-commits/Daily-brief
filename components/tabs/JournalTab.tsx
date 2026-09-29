@@ -221,7 +221,14 @@ function GoalNotes({ day }: { day: DayRecord }) {
   );
 }
 
-export function JournalTab({ appState, persist, tab }: TabProps & { tab: JournalTabId }) {
+export function JournalTab({ appState, persist, tab, bare }: TabProps & {
+  tab: JournalTabId;
+  /** ★LOG のモジュールの中に置くとき（見出しとタブバーの逃がしは `AppModules` が持つ）。 */
+  bare?: boolean;
+}) {
+  // ★★`data-rail-snap` … モジュールの送りが「ここでも止まる」印（長い一覧は1行ずつ止まる）。
+  const snap = bare ? { "data-rail-snap": "" } : {};
+  const mainPad = bare ? undefined : `calc(${NAV_OFFSET} + 12px)`;
   const [openDay, setOpenDay] = useState<DayRecord | null>(null);
   const days = buildDayRecords(appState);
   const summaries = appState.daySummaries ?? {};
@@ -235,19 +242,19 @@ export function JournalTab({ appState, persist, tab }: TabProps & { tab: Journal
     const notes = (appState.voiceNotes ?? []).slice(0, 12);
     const empty = dayRecordCount(todayRec) === 0 && !summaries[todayRec.dateKey] && notes.length === 0;
     return (
-      <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-        <Masthead title={appTitle("journal")} />
+      <main style={{ paddingBottom: mainPad }}>
+        {!bare && <Masthead title={appTitle("journal")} />}
         {empty ? null : (
           <>
             {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
             {(todayRec.items.length > 0 || todayRec.tasks.length > 0) && (
-              <section style={{ marginBottom: SPACE.xl }}>
+              <section {...snap} style={{ marginBottom: SPACE.xl }}>
                 <SectionLabel text="やったこと" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
                 <DoneList day={todayRec} />
               </section>
             )}
             {todayRec.entries.length > 0 && (
-              <section style={{ marginBottom: notes.length + todayRec.goals.length > 0 ? SPACE.xl : 0 }}>
+              <section {...snap} style={{ marginBottom: notes.length + todayRec.goals.length > 0 ? SPACE.xl : 0 }}>
                 <SectionLabel text="記録" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
                 <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
                   {todayRec.entries.map((e) => <EntryCard key={e.id} entry={e} />)}
@@ -255,13 +262,13 @@ export function JournalTab({ appState, persist, tab }: TabProps & { tab: Journal
               </section>
             )}
             {todayRec.goals.length > 0 && (
-              <section style={{ marginBottom: notes.length > 0 ? SPACE.xl : 0 }}>
+              <section {...snap} style={{ marginBottom: notes.length > 0 ? SPACE.xl : 0 }}>
                 <SectionLabel text="ゴール" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
                 <GoalNotes day={todayRec} />
               </section>
             )}
             {notes.length > 0 && (
-              <section>
+              <section {...snap}>
                 <SectionLabel text="声のメモ" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
                 <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
                   {notes.map((n) => <VoiceNoteCard key={n.id} note={n} />)}
@@ -275,19 +282,19 @@ export function JournalTab({ appState, persist, tab }: TabProps & { tab: Journal
   }
 
   return (
-    <main style={{ paddingBottom: `calc(${NAV_OFFSET} + 12px)` }}>
-      <Masthead title={appTitle("journal")} />
+    <main style={{ paddingBottom: mainPad }}>
+      {!bare && <Masthead title={appTitle("journal")} />}
       {/* ★★★ゴールはログの節（第134巡。EXPLORE の GOALS タブを畳んだ先）。 */}
-      <div style={{ marginBottom: SPACE.xl }}>
+      <div {...snap} style={{ marginBottom: SPACE.xl }}>
         <GoalsSection appState={appState} persist={persist} />
       </div>
       {past.length === 0 ? null : (
         <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xl }}>
           {months.map((m) => (
-            <section key={m.month}>
+            <section key={m.month} {...snap}>
               <div style={{ fontSize: TYPE.small, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, margin: `0 ${SPACE.xs}px ${SPACE.md}px`, borderTop: `1px solid ${HAIRLINE}`, paddingTop: SPACE.md }}>{m.label}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
-                {m.days.map((d) => <DayCard key={d.dateKey} day={d} summary={summaries[d.dateKey]?.text} onOpen={() => setOpenDay(d)} />)}
+                {m.days.map((d) => <div key={d.dateKey} {...snap}><DayCard day={d} summary={summaries[d.dateKey]?.text} onOpen={() => setOpenDay(d)} /></div>)}
               </div>
             </section>
           ))}

@@ -165,13 +165,6 @@ export interface Source {
   addedAt: string;
 }
 
-// マガジン(プランの確定リスト)はItemのidを参照するだけの薄い層。
-export interface Magazine {
-  dateKey: string;
-  decidedAt: string;
-  itemIds: string[];
-}
-
 // バインド！(確定ビューの下部、registerBinder)を押してItemをdoneに
 // 確定するたびに1件記録するログ。プロフィール(設定)画面から確認でき、
 // 誤操作時に元に戻す(doneをcandidateへ戻す)ための材料になる。
@@ -192,10 +185,6 @@ export interface BriefState {
   decisions: Record<string, string>;
   feedback?: Record<string, boolean>;
   completedAt?: string;
-}
-
-export interface WeekendMeta {
-  lastSeenBundleWeek: string | null;
 }
 
 // ---- プラン生成(プランタブの「プランを生成」)の型 --------------------------
@@ -354,11 +343,8 @@ export interface AppState {
   wishes: Wish[];
   items: Item[];
   briefs: Record<string, BriefState>;
-  magazine: Magazine | null;
   profile: Profile;
-  weekendMeta: WeekendMeta;
   goals: Goal[];
-  pendingReview: string[];
   sources: Source[];
   // 規定の情報源(展覧会・イベント・映画などアプリ内蔵のFIXED_SOURCES)を
   // ユーザーが編集した結果。未定義なら内蔵のFIXED_SOURCESをそのまま使う
@@ -367,10 +353,6 @@ export interface AppState {
   // これを読み、あれば内蔵より優先して巡回する。
   fixedSources?: string[];
   bindLog: BindLogEntry[];
-  // アーカイブの棚(バショ/タイケン/ジョウホウ/モノ/ゴール)を長押しドラッグで
-  // 並べ替えた結果。棚の識別子(例: "place","experience")をキーに、その棚の
-  // BinderShelfItem.keyを並び順どおりに並べた配列を持つ。
-  shelfOrder: Record<string, string[]>;
   // ★タスクアプリ・ジャーナルアプリのデータ。今はUIの器だけを作っている
   // 段階なので、どちらも空配列から始まる。
   tasks: Task[];

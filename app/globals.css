@@ -29,8 +29,6 @@
      ここも**増やさない**。対称な ease-in-out を許すのはこの5つだけ。 */
   --t-amb-load:  3.6s;    /* 読み込み中の3つの図形 */
   --t-amb-reel:  3.2s;    /* 録音のリールが回る */
-  --t-amb-tape:  260ms;   /* テープの送り目 */
-  --t-amb-blink: 1.15s;   /* 録音中の赤 */
   --t-amb-bob:   5.4s;    /* 候補が浮遊してゆれる */
   /* ★★★ホームの帯（2026-09-07）。**ゆっくり流れ続けて循環する**（ユーザー確定）。
      ★★数字は「**画面の幅ぶん流れるのにかかる時間**」で持つ ―― 一周の時間で
@@ -178,6 +176,14 @@ body {
   margin-bottom: calc(-1 * var(--nav-h));
 }
 
+/* ★★★アプリを替えたとき、新しい列はバーの印から円く広がって現れる（第135巡。`AppShell` の `AppColumn`）。
+   起点 `--rx`/`--ry` と半径 `--rr` は JS が置く。長さは `REVEAL_K`(0.8) × `--t-in`。 */
+@keyframes app-reveal {
+  from { clip-path: circle(0px at var(--rx) var(--ry)); }
+  to   { clip-path: circle(var(--rr) at var(--rx) var(--ry)); }
+}
+.app-reveal { animation: app-reveal calc(var(--t-in) * 0.8) var(--ease-settle) both; }
+@media (prefers-reduced-motion: reduce) { .app-reveal { animation: none; } }
 /* ★★第134巡に**アプリの列を横に並べて送るトラック（`.app-track`）を撤去**した。列は同じ場所に重ね、
    不透明度だけで入れ替える（`components/AppShell.tsx` の `AppColumn`）。 */
 /* ★背景は「ベタ塗りの1色」だけになった(2026-08-11)。図形も、去る/来るの
@@ -228,28 +234,6 @@ button:active {
 @keyframes toast-in {
   from { opacity: 0; transform: translate(-50%, -10px); }
   to { opacity: 1; transform: translate(-50%, 0); }
-}
-
-/* ★★タブを切り替えたときの入場。**opacity だけ。**
-   transform をここに乗せると、願望・実行タブ内の position:fixed な下部バーが
-   この祖先要素を新しい containing block と見なしてしまい(CSS仕様上、transform
-   を持つ要素は fixed 子要素の基準になる)、アニメーション中だけ画面外の位置に
-   基準が移ってガクつく。
-   ★2026-08-23・第33巡 … このファイルの下の方に **`@keyframes tab-in` の2つめ**
-   があり、`translateY(7px)` 付きで**こちらを丸ごと上書きしていた**(後勝ち)。
-   上の理由が効かなくなっていたので、2つめを削除してここへ一本化した。
-   ★この枠は一時的に新しい重なりコンテキストを作るため、内側にzIndexで前へ
-   出したい要素があるタブ(ブリーフの育成カードのフッター)では、枠自体に
-   zIndex を与えて帯より手前へ出している(AppShell.tsx のコメント)。 */
-@keyframes tab-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.tab-in {
-  animation: tab-in var(--t-item) var(--ease-sheet);
-}
-@media (prefers-reduced-motion: reduce) {
-  .tab-in { animation: none; }
 }
 
 /* RecordsTabの棚(BinderCoverflowRow)の各バインダーが、左からサッと
@@ -343,54 +327,13 @@ button:active {
   animation: vs-plate-out var(--t-out) var(--ease-press) forwards;
 }
 
-/* テープの帯。縞は repeating-linear-gradient(直線だけ)で、録音中は
-   背景の位置を動かして流れて見せる。 */
-.vs-tape {
-  background-image: repeating-linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0) 0 14px,
-    rgba(0, 0, 0, 0.22) 14px 18px
-  );
-  background-size: 18px 100%;
-}
-@keyframes vs-tape { to { background-position-x: 18px; } }
-.vs-tape-run { animation: vs-tape var(--t-amb-tape) linear infinite; }
-
-/* 録音中の印。ベタ塗りの円がゆっくり明滅するだけ。 */
-@keyframes vs-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
-.vs-blink { animation: vs-blink var(--t-amb-blink) ease-in-out infinite; }
-
 /* オーバーレイが出るとき。 */
 @keyframes vs-in { from { opacity: 0; } to { opacity: 1; } }
 .vs-in { animation: vs-in var(--t-item) var(--ease-settle); }
 
 @media (prefers-reduced-motion: reduce) {
-  .vs-reel-spin, .vs-tape-run, .vs-blink, .vs-in,
+  .vs-reel-spin, .vs-in,
   .vs-plate-in, .vs-plate-out { animation: none; }
-}
-
-/* インボックスの候補がふわふわ漂う動き。上下にゆっくり揺れるだけの
-   控えめなもの(飛び回ると読めなくなるため)。
-   ★候補は DRIFT 層に**散らして浮かべて**ある(第38巡に円環をやめた)。
-   散らす位置(JSがleft/topを書く外側のdiv)とぶつからないよう、**内側のdiv**へ
-   掛ける。CSSのkeyframesなので毎フレームの計算はゼロ。1つずつ
-   animation-delay を id からずらして、揃って揺れないようにする。 */
-@keyframes drift-bob {
-  0%, 100% { transform: translate3d(0, -7px, 0) rotate(-1.1deg); }
-  50%      { transform: translate3d(0, 7px, 0) rotate(1.1deg); }
-}
-.drift-bob { animation: drift-bob var(--t-amb-bob) ease-in-out infinite; will-change: transform; }
-@media (prefers-reduced-motion: reduce) {
-  .drift-bob { animation: none; }
-}
-
-@keyframes inbox-drift {
-  0%, 100% { transform: translate(0, 0); }
-  33% { transform: translate(10px, -12px); }
-  66% { transform: translate(-8px, 8px); }
-}
-@media (prefers-reduced-motion: reduce) {
-  @keyframes inbox-drift { 0%, 100% { transform: none; } }
 }
 
 /* ── GRAVITY の物理モードの重なり(components/tabs/GravityTab.tsx) ──────
@@ -706,6 +649,25 @@ button:active {
   will-change: clip-path;
 }
 [data-composer-plate][data-rev="out"], [data-create-menu][data-rev="out"] { transition-duration: var(--t-out); }
+/* ★★★作るの輪の閉じ方（第135巡）。**縮みは「去る」曲線**（始めも終わりも緩い）で、文字と白い輪が引っ込んでから
+   （`--t-step` × 3）縮み始める。★第134巡までは開くのと同じ `--ease-sheet`（初めに速く終わりに長く這う）だったので、
+   白い輪の付いた丸がボタンの大きさの手前で長く止まって見え、「縮む」が読めなかった（ユーザー指摘）。 */
+[data-create-menu][data-rev="out"] {
+  transition-timing-function: var(--ease-exit);
+  transition-delay: calc(var(--t-step) * 3);
+}
+.cm-ring { stroke-dasharray: 1; stroke-dashoffset: 1; }
+[data-create-menu][data-rev="in"] .cm-ring {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset var(--t-item) var(--ease-settle) calc(var(--t-step) * 4);
+}
+[data-create-menu][data-rev="out"] .cm-ring {
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset calc(var(--t-step) * 3) var(--ease-exit);
+}
+/* 文字は半径に沿って中心へ引っ込みながら消える（開くときの逆）。 */
+@keyframes tc-cue-out { to { opacity: 0; transform: translate3d(-12px, 0, 0); } }
+[data-create-menu][data-rev="out"] .tc-cue { animation: tc-cue-out calc(var(--t-step) * 3) var(--ease-exit) forwards; }
 /* ★第21〜22巡の「出入りの最中は帯と図形の追従を止める」規則は撤去した
    (第24巡)。器が見えている矩形そのものになり、帯も図形も**キーボード追従の
    transform を持たなくなった**ので、止めるものがもう無い。 */
@@ -805,6 +767,7 @@ button:active {
   .tc-solid-in, .tc-solid-swap-in, .tc-solid-swap-out, .tc-cue { animation: none; }
   [data-overlay] [data-app-shell] { filter: none; }
   [data-composer-plate], [data-create-menu] { clip-path: none !important; }
+  .cm-ring { transition: none !important; }
   .press, .tc-lamp { transition: none; }
   [data-composer-shell] { transition: none !important; }
 }

@@ -7,7 +7,7 @@ import type { RailPiece } from "@/components/ModuleRail";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { SectionLabel } from "@/components/common";
 import { GoalsSection } from "@/components/journal/GoalsSection";
-import { GREEN, GREEN_INK, INK, MUTED, PAPER, SANS, SOFT_SHADOW, itemKindOf, SECOND } from "@/lib/constants";
+import { GREEN, GREEN_INK, INK, MUTED, SANS, TILE, itemKindOf, SECOND } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
 import { dayInfo, img, ratingLabel, todayKey } from "@/lib/helpers";
 import type { JournalEntry, JournalTabId, TabProps, VoiceNote } from "@/lib/types";
@@ -19,7 +19,7 @@ import type { JournalEntry, JournalTabId, TabProps, VoiceNote } from "@/lib/type
 
 function EntryCard({ entry }: { entry: JournalEntry }) {
   return (
-    <div style={{ background: PAPER, borderRadius: RADIUS.xl, padding: `${SPACE.lg}px ${SPACE.lg}px ${SPACE.lg}px`, boxShadow: SOFT_SHADOW }}>
+    <div style={{ ...TILE }}>
       <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>
         {new Date(entry.createdAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
       </div>
@@ -32,7 +32,7 @@ function EntryCard({ entry }: { entry: JournalEntry }) {
 // 完結させる(スクロールさせない)ことにしたので、こちらへ移した。
 function VoiceNoteCard({ note }: { note: VoiceNote }) {
   return (
-    <div style={{ background: PAPER, borderRadius: RADIUS.xl, padding: `${SPACE.md}px ${SPACE.lg}px ${SPACE.lg}px`, boxShadow: SOFT_SHADOW }}>
+    <div style={{ ...TILE }}>
       <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>
         {new Date(note.at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
         {note.durationMs ? ` ・ ${mmssOf(note.durationMs)}` : ""}
@@ -55,8 +55,8 @@ function DoneList({ day }: { day: DayRecord }) {
       {day.items.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm, marginBottom: day.tasks.length > 0 ? SPACE.lg : 0 }}>
           {day.items.map((i) => (
-            <div key={i.id} style={{ display: "flex", alignItems: "center", gap: SPACE.md, background: PAPER, borderRadius: RADIUS.lg, padding: `${SPACE.sm}px ${SPACE.md}px ${SPACE.sm}px ${SPACE.sm}px`, boxShadow: SOFT_SHADOW }}>
-              <div style={{ width: 42, height: 42, borderRadius: RADIUS.md, overflow: "hidden", flexShrink: 0, background: i.color ?? SECOND }}>
+            <div key={i.id} style={{ ...TILE, display: "flex", alignItems: "center", gap: SPACE.md, padding: SPACE.md }}>
+              <div style={{ width: 42, height: 42, borderRadius: RADIUS.lg, overflow: "hidden", flexShrink: 0, background: i.color ?? SECOND }}>
                 {i.images?.[0] && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={img(i.images[0], 100, 100)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -99,10 +99,10 @@ function DayCard({ day, summary, onOpen }: { day: DayRecord; summary?: string; o
   return (
     <button onClick={onOpen} style={{
       display: "block", width: "100%", textAlign: "left", cursor: "pointer",
-      background: PAPER, border: "none", borderRadius: RADIUS.xl, padding: `${SPACE.lg}px ${SPACE.lg}px ${SPACE.lg}px`, boxShadow: SOFT_SHADOW,
+      ...TILE, border: "none",
     }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: SPACE.md, marginBottom: thumbs.length > 0 || excerpt || day.tasks.length > 0 ? SPACE.md : 0 }}>
-        <span style={{ fontFamily: SANS, fontWeight: WEIGHT.heavy, fontSize: TYPE.lead, color: INK }}>{day.label}</span>
+        <span style={{ fontFamily: SANS, fontWeight: WEIGHT.bold, fontSize: TYPE.lead, color: INK }}>{day.label}</span>
         <span style={{ fontSize: TYPE.small, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold }}>{dayRecordCount(day)}件</span>
       </div>
       {thumbs.length > 0 && (
@@ -191,12 +191,11 @@ function DaySheet({ day, summary, onClose }: { day: DayRecord; summary?: string;
 function SummaryBlock({ text, compact }: { text: string; compact?: boolean }) {
   return (
     <div style={{
-      background: PAPER, borderRadius: RADIUS.xl, padding: compact ? "12px 14px" : "16px 18px 18px",
-      boxShadow: SOFT_SHADOW, marginBottom: compact ? SPACE.md : SPACE.xl,
+      ...TILE, padding: compact ? SPACE.md : SPACE.lg, marginBottom: compact ? SPACE.md : SPACE.xl,
     }}>
       <div style={{ fontSize: TYPE.micro, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, marginBottom: SPACE.sm }}>その日のまとめ</div>
       <p style={{
-        fontFamily: SANS, fontSize: compact ? 12 : 13, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap",
+        fontFamily: SANS, fontSize: compact ? TYPE.small : TYPE.body, fontWeight: WEIGHT.text, lineHeight: LEAD.body, color: INK, whiteSpace: "pre-wrap",
         ...(compact ? { display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical" as const, overflow: "hidden" } : {}),
       }}>{text}</p>
     </div>

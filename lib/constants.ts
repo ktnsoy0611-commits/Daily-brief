@@ -1,5 +1,5 @@
 import type { AppState, ItemDomain, ItemKind } from "./types";
-import { SPACE } from "./tokens";
+import { RADIUS, SPACE } from "./tokens";
 
 export const STORAGE_KEY = "qol-app-state-v1";
 
@@ -7,14 +7,10 @@ export const DEFAULT_STATE: AppState = {
   wishes: [],
   items: [],
   briefs: {},
-  magazine: null,
   profile: { interests: [] },
-  weekendMeta: { lastSeenBundleWeek: null },
   goals: [],
-  pendingReview: [],
   sources: [],
   bindLog: [],
-  shelfOrder: {},
   tasks: [],
   journal: [],
   voiceNotes: [],
@@ -363,20 +359,6 @@ export const SCRIM_TINT = "rgba(26,26,24,0.16)";
 export const NOTE_GLASS = "rgba(255,255,255,0.88)";
 export const NOTE_BLUR = "blur(24px) saturate(1.4)";
 export const SOFT_SHADOW_LG = "0 5px 14px rgba(28,28,30,0.13)";
-/**
- * ★★★**券の影**（第80巡）。`box-shadow` ではなく **`filter: drop-shadow`**。
- *
- * ★★★**券にはマスクが掛かっているので `box-shadow` は出ない** ―― マスクは
- *   要素の描画結果を切り抜くので、枠の外へ出る影ごと消える。第78巡にギザギザと
- *   切り欠きを入れて以来、券の影は**ずっと出ていなかった**（色の紙のうちは
- *   色で縁が分かるので気づかなかった。第80巡に紙を白にして露見した）。
- * ★★`drop-shadow` は**描いたあとの α の形**に落ちるので、ギザギザと切り欠きの
- *   輪郭にそのまま沿う。**マスクした要素の親**に掛けること。
- * ★2枚組 … 近くて濃い影（縁を立てる）＋ 遠くて薄い影（浮かせる）。
- */
-export const TICKET_SHADOW =
-  "drop-shadow(0 1px 1px rgba(28,28,30,0.22)) drop-shadow(0 10px 22px rgba(28,28,30,0.16))";
-
 // ヘッダー行に並ぶ「丸いアイコンボタン」と「件数ピル」の高さを揃えるための
 // 共通サイズ。形(円/ピル)は違っても高さを合わせることで、同じ行の部品として
 // 統一感を持たせる。
@@ -407,7 +389,8 @@ export const BRIEF_CARD_ASPECT = "2 / 3";
 // ピルの高さ = TAB_MARK + NAV_PILL_PAD * 2。
 // ★★第134巡に 52 → 60（ユーザー指定「アイコンはもっと大きく。タブバー自体も大きくして構わない」）。
 //   バーの高さは 64 → 72（`NAV_H`）。札の角（`CARD_RADIUS`）はこの半径に揃う約束なので 32 → 36。
-export const TAB_MARK = 60;
+// ★★第135巡に 60 → 52 へ戻した（ユーザー指定「タブバーの大きさはやはりもう少し小さく」）。バー 64・札の角 32。
+export const TAB_MARK = 52;
 export const NAV_PILL_PAD = 6;
 /**
  * ★★★**札の角の半径 ＝ タブバーのピルの角の半径**（2026-09-27・第133巡にユーザー指定「**Explore の
@@ -416,6 +399,30 @@ export const NAV_PILL_PAD = 6;
  * ★どちらの画面にも常に在るタブバーのピル（高さ 64）の半径 **32** を1つの値にする。
  */
 export const CARD_RADIUS = (TAB_MARK + NAV_PILL_PAD * 2) / 2;
+/**
+ * ★★★**大きな札の上の帯**（第135巡）。BRIEF の札の上の進みの目盛り（高さ `HERO_DASH` ＋ 下に `SPACE.lg`）の
+ * ぶんを、JOURNAL の録音機も**同じだけ空ける** ―― 2つの画面の大きな札が同じ高さ・同じ幅になる
+ * （ユーザー指摘「Explore のカードが Journal に比べて小さい」）。
+ */
+export const HERO_DASH = 3;
+export const HERO_HEAD = HERO_DASH + SPACE.lg;
+
+/**
+ * ★★★**タイルは2種類だけ**（第135巡にユーザー承認「タイルは統一してください」）。形・面・影・余白を**ここで1度だけ**
+ * 決め、部品は `...TILE` ／ `...HERO` と広げて使う（部品ごとに書くと、また1つずつ違っていく）。
+ * ・`HERO` … 大きな札とシート（BRIEF の札・ゴールの札・録音機・忘れ防止の札・帯のピルから開く札・下からのシート）。
+ *   角は `CARD_RADIUS`（タブバーのピルの半径）・大きい影・余白 `SPACE.xl`。面の色は札ごと（ドメインの色・紙）。
+ * ・`TILE` … 一覧の札（LOG の札・ゴールの行・ウィッシュ・完了の行・その日のまとめ）。角 `RADIUS.xl`・紙の面・
+ *   小さい影・余白 `SPACE.lg`。★札の中の部品（写真・入力欄・小さな絵）は `RADIUS.lg`。
+ * ★第134巡までは角が 36／28／26／18／12、影が既定の2つ＋7つの生の値、余白もばらばらだった。
+ */
+export const TILE = { background: PAPER, borderRadius: RADIUS.xl, padding: SPACE.lg, boxShadow: SOFT_SHADOW } as const;
+export const HERO = { borderRadius: CARD_RADIUS, padding: SPACE.xl, boxShadow: SOFT_SHADOW_LG } as const;
+/** ★暗い面（タスクの入力・設定）の上のタイルの塗りと、浮いた暗い面の影。★2か所で 0.07／0.08 と違っていたのを1つに。 */
+export const CELL_DARK = "rgba(250,250,249,0.08)";
+export const DARK_SHADOW = "0 16px 40px rgba(0,0,0,0.4)";
+/** ★下から上がる暗いシート（タスクの入力）の影 ―― 同じ影を上へ向けたもの。 */
+export const DARK_SHADOW_UP = "0 -16px 40px rgba(0,0,0,0.4)";
 
 /**
  * ★★★**タブバーの行のうち「作る」の丸が取る幅**（2026-09-13・第101巡）。
@@ -528,8 +535,11 @@ export const BD_LIGHT = "#F3F3F1";
 // 比が変わるので合わなくなる。ずれたら「画面の数値を出す」の
 // `safe` の値と実機の写真を見比べて、
 // `目標(旧の55px相当) ÷ 実測のsafe-bottom` へこの数字を計算し直すこと。
+// ★★★第135巡に**下げた**（ユーザー指定「もっと位置を下に下げて」）。実機でバーの下端が画面の下から 55pt だったのを
+//   約 22pt（ホームインジケーターのすぐ上）へ。★実機の写真で、いまの式ではステータスバーのずれ（上の 47pt の話）は
+//   もう乗っていない（バーの下端 ＝ 画面の下から 55pt ＝ 式の値そのもの）と確かめた。検証環境（安全域 0）は 4px のまま。
 export const NAV_BOTTOM_GAP =
-  "max(4px, calc(env(safe-area-inset-bottom) * 2.382 - 26px))";
+  "max(4px, calc(env(safe-area-inset-bottom) * 0.65))";
 
 // タブ本文やストック/目標/実行タブの下部固定バーが、フローティングの
 // タブバー(AppShellのnav)の直上に収まるためのオフセット。表示領域を
@@ -539,7 +549,8 @@ export const NAV_BOTTOM_GAP =
 // から浮く量が変わればここに揃えるUIが下端に近づく量も連動させるため。
 // ★第33巡: `NAV_H` が 76 → 77 になったぶん、ここも 82 → 83(差の 6px は据え置き)。
 // ★第134巡: アプリの目印の行(13)を外し、バーを 72 にしたので `NAV_H` 77 → 72 に合わせて 83 → 78。
-export const NAV_OFFSET = `calc(78px + ${NAV_BOTTOM_GAP})`;
+// ★第135巡: バーを 64 に戻したので 78 → 70。
+export const NAV_OFFSET = `calc(70px + ${NAV_BOTTOM_GAP})`;
 
 // ★タブバーの実高さ(画面の下端からタブバーの上端まで)。
 // ピル(TAB_MARK + NAV_PILL_PAD*2 = 72) + 下の浮き。
@@ -549,7 +560,8 @@ export const NAV_OFFSET = `calc(78px + ${NAV_BOTTOM_GAP})`;
 // ★★タブバーは**フローから外して**画面の上に浮かせてある(AppShell参照)ので、
 // 「タブバーのぶんの余白」が要る場所はすべてこの値を見ること。ここと
 // globals.css の --nav-h だけが、タブバーの高さを知っている場所。
-export const NAV_H = `calc(72px + ${NAV_BOTTOM_GAP})`;
+// ★★第135巡にバーを 64 へ戻した（`TAB_MARK` 52）。
+export const NAV_H = `calc(64px + ${NAV_BOTTOM_GAP})`;
 // タブ本文の上の余白(セーフエリア込み)。--pad-top として全体へ配る。
 /**
  * ★タブバーの実際の高さ(px)。`NAV_H` は `env()` を含む CSS の式なので、JS 側は
@@ -627,28 +639,6 @@ export const TAB_PAD_TOP = "max(16px, env(safe-area-inset-top))";
 // ★★第134巡に 44 → 56（ユーザー指摘「**見本より小さい**」。書体を替えて字の高さが 32 → 40 に）。
 export const MAST_SIZE = 56;
 export const MAST_H = 28 + MAST_SIZE;
-
-// ---- 興味の自動検出（プロトタイプ: キーワード頻度。現在は未使用） --
-// 好み/興味は「興味・好み」1リストへ統合し、チップ本体はCoworkの週次分析が
-// taste-state.md で所有する(HANDOFF §8.14 優先度3)。この頻度検出ルールは
-// 現在どこからも参照されていない(lib/helpers.tsのdetectInterests参照)。
-export interface InterestRule {
-  match: RegExp;
-  label: string;
-}
-export const INTEREST_RULES: InterestRule[] = [
-  { match: /カフェ|コーヒー|焙煎/, label: "カフェ巡り" },
-  { match: /古着|ヴィンテージ/, label: "古着収集" },
-  { match: /映画|シネマ/, label: "映画鑑賞" },
-  { match: /展覧会|美術館|ギャラリー/, label: "アート鑑賞" },
-  { match: /建築/, label: "建築巡り" },
-  { match: /陶芸|工芸|手仕事/, label: "ものづくり" },
-  { match: /銭湯|温泉|サウナ/, label: "温泉・サウナ" },
-  { match: /古書|本屋|書店/, label: "本屋巡り" },
-  { match: /雑貨/, label: "雑貨集め" },
-  { match: /ボルダリング|クライミング|筋トレ|ヨガ|ランニング/, label: "運動習慣" },
-];
-export const AUTO_THRESHOLD = 2;
 
 // ---- 地図の座標（スタイライズド。旧・自作地図のピン配置用。実地図(Leaflet)
 //      導入後もbuildRecommendedPlansの近接クラスタリングで内部的に使う） ----
@@ -752,23 +742,6 @@ export const kindsOfDomain = (domain: ItemDomain) => ITEM_KINDS.filter((k) => k.
 // ★★第73巡に**`lib/palette.ts` の `DOMAIN_COLOR` へ引っ越した**。
 //   券もブリーフもバインダーもマップも、ドメインの色は**そこ1か所**から引く。
 //   この名前は呼び出し側の互換のために残してあるだけ。
-// 券の紙。★第33巡で暖色のクリームは廃止したので戻さない。
-// 紙らしさは**本物の写真**(`public/paper-kraft.webp`・`lib/paperTexture.ts`)で
-// 出す。★★テクスチャは**色のすぐ上・文字の下**に multiply で敷く(下地)。
-// 最前面に overlay で乗せると写真も文字も霞む(第69巡2巡目に実際にそうなった)。
-export const TICKET_PAPER = PAPER;
-// 券が乗る台。切り欠きから透けて見えるのはこの色。
-export const TICKET_DECK = "#26251F";
-// 券の縦横比。★★第72巡に **13/21(高さ 1.62倍) → 3/4(1.33倍)** へ
-// (ユーザー指定「縦の比率が大きいのがあまり可愛くない」)。
-// ★背が低くなったぶん、写真は**余りを全部取る**形で大きく取れる
-// (`components/explore/samples/TicketParts.tsx` の `Figure`)。
-export const TICKET_ASPECT = "3 / 4";
-// ★数で要るとき用。`TICKET_ASPECT` と**同じ比**をここから引く(2か所に書かない)。
-export const TICKET_H_PER_W = 4 / 3;
-// ミシン目の穿孔。★彩度の高い紙の上に置くので、黒の薄めで足りる。
-export const TICKET_PERF = "rgba(26,26,24,0.34)";
-
 /**
  * 2つの色を混ぜる(0=a, 1=b)。★金属の段を**地の色から**作るのに使う。
  * ★★**混ぜる式はここ1つ**(2026-09-16・第113巡に `components/home/pillGhost.ts` の
@@ -780,59 +753,3 @@ export function mixHex(a: string, b: string, t: number) {
     .toString(16).padStart(2, "0");
   return `#${ch(1)}${ch(3)}${ch(5)}`;
 }
-/** 金属の暗いほうの端。★無彩色よりわずかに暖色(青くしない)。 */
-const STEEL_DARK = "#2E2D2B";
-
-// ★改札鋏の彩色。**図形専用のパレット**で、UI のグレーの語彙(INK/CHARCOAL/
-// SECOND/MUTED)とは混ぜない。
-//
-// ★★★**輪郭線を引かない**(第69巡3巡目・Sony Walkman のイラストが正)。
-// 面は**明暗だけ**で分かれる。
-// ★★★9巡目に**ローポリ(面取りした多角柱の集合)＋フラットシェーディング**へ
-// 作り替えた。それまでは「輪郭を掃引して階調を塗る」作りで、面を持たないので
-// 稜線が立たず、どう直しても塗り絵に見えた(ユーザー評:「すごくチープ」)。
-// いまは**面の向きだけ**が階調を決めるので、名前付きの役(lit/face/side)は
-// 要らない ― **明るさの段の並び**だけを持つ。
-export const NIPPER_PAINT = {
-  /**
-   * ★フラットシェーディングの6段。**暗い順**。面の法線と固定光の内積を
-   * この段に量子化する ― 手で塗らない。
-   * ★★★第70巡に**地の色から導出**するようにした（ユーザー指定
-   *   「アプリの背景の地の色が反射している感じの色味が良い」）。金属は環境を
-   *   映すので、明るいほうの端は EXPLORE の地 `BD_GREY` へ寄っていく。
-   *   ★手で置いた寒色の灰（`#33353A` など）は**青が7ほど強く**、金属ではなく
-   *     青みがかったプラスチックに見えていた。
-   */
-  ramp: [0.14, 0.29, 0.45, 0.62, 0.80, 0.94].map((t) => mixHex(STEEL_DARK, BD_GREY, t)),
-  /**
-   * ★**光沢**（段の上に重ねる、なめらかなハイライト）。`shine` が大きいほど鋭い。
-   * ★山は2つ重ねる ―― 鋭い芯（`shine`）と、そのまわりの広い明るみ（`shine/6`）。
-   * ★★★第72巡に **0.85 → 0.14** へ落とした（ユーザー指定「カードの2D感に対して
-   *   改札鋏が浮いている」）。券は**平らな刷り物**なので、鋏だけが濡れたように
-   *   光ると「写真の中の金属」に見えてしまう。**段と傷は残す** ―― 形は読めるまま、
-   *   照りだけを引いてマットにする。
-   */
-  gloss: 0.14,
-  shine: 30,
-  /** ★**すり傷**の強さ（0 で無し）。多方向の短い線として法線と照りに入る。 */
-  scratch: 0.55,
-  /** ★**券の色の映り込み**の強さ。券のほうを向いた面にだけ乗る。 */
-  bounce: 0.30,
-  /**
-   * ★**隙間の色**（ダイのスリットなど、光の届かない凹み）。段の外に置く。
-   * 凹みには当たる光が無いので、面の向きで塗ってはいけない ― 段の中でいちばん
-   * 暗い色を当てても、暗く落とした部品の上では**1段しか差が付かず溝に見えない**
-   * （10巡目に実測）。指定の「ディープシャドウ（隙間）」がこれに当たる。
-   */
-  gap: "#26241F",
-  /** 地に落ちる影。★ぼかさない1枚の面。 */
-  cast: "#3B3934",
-  /** 落ち影の濃さ。★面ごとではなく**群に1度だけ**掛ける(重ねても濃くしない)。 */
-  castAlpha: 0.26,
-} as const;
-// 券の切り口の陰（紙の厚み）と、切り欠きの中に落ちる券の影。
-// ★★券の紙(#FAFAF9)と地(#F0F0EE)はほとんど同じ明るさなので、**地の色だけでは
-//   切り欠きが見えない**（第69巡に実際に見えなかった）。切り口は
-//   「地＋券の縁が落とす影」で読ませる。
-export const TICKET_CUT = "rgba(52,44,28,0.5)";
-export const TICKET_SHADE = "rgba(52,44,28,0.16)";

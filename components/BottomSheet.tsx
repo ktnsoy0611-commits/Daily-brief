@@ -1,10 +1,10 @@
 "use client";
 
-import { SPACE, RADIUS } from "@/lib/tokens";
+import { SPACE } from "@/lib/tokens";
 import { ms, T_OUT } from "@/lib/motion";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { PAPER, SOFT_SHADOW_LG } from "@/lib/constants";
+import { HERO, PAPER } from "@/lib/constants";
 
 interface BottomSheetProps {
   onClose: () => void;
@@ -220,7 +220,7 @@ export function closeOnSelfClick(handler: () => void) {
 // それ自体が完結したビジュアルを持つ中身は、これを使わずそのまま浮かせる。
 export function OverlayCard({ children }: { children: ReactNode }) {
   return (
-    <div style={{ background: PAPER, borderRadius: RADIUS.xl, padding: `${SPACE.lg}px ${SPACE.lg}px ${SPACE.xl}px`, boxShadow: SOFT_SHADOW_LG }}>
+    <div style={{ background: PAPER, ...HERO }}>
       {children}
     </div>
   );

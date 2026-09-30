@@ -7,7 +7,7 @@ import { Press } from "@/components/Button";
 import { INK, LATIN, PAPER, SCRIM_BLUR, SCRIM_TINT } from "@/lib/constants";
 import { TabIcon } from "@/components/TabIcons";
 import { haptic } from "@/lib/helpers";
-import { ms, T_OUT } from "@/lib/motion";
+import { ms, T_OUT, T_STEP } from "@/lib/motion";
 
 // ★★**このアプリの入口の輪**(2026-08-19・第28巡にユーザー指定)。
 //
@@ -41,6 +41,11 @@ import { ms, T_OUT } from "@/lib/motion";
 
 /** 押した丸の場所。ここを中心に円が広がる。 */
 export interface MenuAt { x: number; y: number; w: number; h: number }
+
+/** ★閉じるとき、黒い円が縮み始める前に文字と白い輪が引っ込む時間（ms）。`app/globals.css` の遅れと同じ。 */
+const CLOSE_LEAD = ms(T_STEP) * 3;
+/** 白い輪の太さ。★目盛りの外（線の太さ）。 */
+const RING_W = 1.5;
 
 /** 円の大きさ。中の3つが収まるだけ。★目盛りの外（極座標の半径） */
 const R = 172;
@@ -95,7 +100,8 @@ export function CreateMenu({ at, onRecord, onTask, onSetting, onClose }: {
     }
     const sc = scrimRef.current;
     if (sc) { sc.style.transitionDuration = "var(--t-out)"; sc.style.opacity = "0"; }
-    window.setTimeout(onClose, ms(T_OUT));
+    // ★★閉じる動きは2拍（第135巡）… 文字と白い輪が先に引っ込み（`CLOSE_LEAD`）、そのあと黒い円が縮む。
+    window.setTimeout(onClose, ms(T_OUT) + CLOSE_LEAD);
   };
 
   if (typeof document === "undefined") return null;
@@ -166,19 +172,22 @@ export function CreateMenu({ at, onRecord, onTask, onSetting, onClose }: {
             position: "absolute", /* ★目盛りの外（極座標の中心＝押した丸の場所） */
             left: R - btnR, top: R - btnR, width: btnR * 2, height: btnR * 2,
             borderRadius: RADIUS.circle, padding: 0, cursor: "pointer",
-            // ★★輪と同じ色なので、**縁の線だけ**で「ボタンがそこに在る」ことを出す。
-            //   面まで反転させると、閉じるとき（輪が丸へ吸い込まれる）に
-            //   明→暗が一瞬光って見える。線なら輪と一緒に消える。
-            border: `1.5px solid ${PAPER}`,
-            // ★タブバーの丸と**同じ見え方**にする。★★ただしこれは
-            //   `document.body` へのポータルなので**列の外**にいて、`--ink-on` は
-            //   届かない ―― いま3アプリの地はすべてクリームなので、既定の
-            //   `INK` がそのまま正しい。地を暗くするアプリを作るなら、
-            //   ここへ `inkVarsOn()` を渡すこと。
+            // ★★輪と同じ色なので、**白い輪（線）だけ**で「ボタンがそこに在る」ことを出す。
+            //   ★タブバーの丸と**同じ見え方**にする（`document.body` へのポータルなので `--ink-on` は届かない ――
+            //   いま地はすべてクリームなので既定の `INK` がそのまま正しい）。
+            border: "none",
             background: `var(--ink-on, ${INK})`,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}
         >
+          {/* ★★★**白い輪は「描かれて・ほどける」**（第135巡にユーザー指摘「閉じた時に白い輪っかがギリギリまで残って、
+              縮小する感じが分からない」）。開くときは円が広がったあと輪が円周に沿って描かれ、閉じるときは円が縮む前に
+              ほどけて消える ―― 縮み終わりはタブバーの丸とまったく同じ姿（輪なし）なので、吸い込まれて見える。 */}
+          <svg aria-hidden viewBox={`0 0 ${btnR * 2} ${btnR * 2}`} width={btnR * 2} height={btnR * 2}
+            style={{ position: "absolute", inset: 0, overflow: "visible", transform: "rotate(-90deg)" }}>
+            <circle className="cm-ring" cx={btnR} cy={btnR} r={btnR - RING_W / 2} pathLength={1}
+              fill="none" stroke={PAPER} strokeWidth={RING_W} strokeLinecap="round" />
+          </svg>
           <TabIcon name="record" color={`var(--on-ink, ${PAPER})`} size={22} />
         </button>
       </div>

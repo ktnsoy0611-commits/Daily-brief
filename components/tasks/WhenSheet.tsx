@@ -5,7 +5,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "rea
 import { Press } from "@/components/Button";
 import { CAP } from "@/components/tasks/Popover";
 import { TimeRange } from "@/components/tasks/TimeRange";
-import { PAPER, RUST, SANS } from "@/lib/constants";
+import { DARK_SHADOW, PAPER, RUST, SANS } from "@/lib/constants";
 import { bodyInkOn } from "@/lib/palette";
 import { haptic } from "@/lib/helpers";
 import {
@@ -363,7 +363,7 @@ function Float({ anchor, fit, onClose, children }: {
         maxWidth: `calc(100% - ${FLOAT_PAD * 2}px)`,
         top: pos ? pos.top : -9999, visibility: pos ? "visible" : "hidden",
         background: FLOAT, borderRadius: RADIUS.xl, padding: SPACE.md,
-        boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
+        boxShadow: DARK_SHADOW,
         display: "flex", flexDirection: "column",
       }}>{children}</div>
     </>

@@ -104,7 +104,7 @@ export function GrowthFace({ card, isTop, value, onValue, rating, onRating, outc
         readOnly={!isTop}
         style={{
           flex: "1 1 auto", minHeight: 0, marginTop: SPACE.lg, resize: "none", border: "none", outline: "none",
-          borderRadius: CARD_RADIUS - PAD, padding: SPACE.md, background: PAPER, color: INK,
+          borderRadius: RADIUS.lg, padding: SPACE.md, background: PAPER, color: INK,
           fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, lineHeight: LEAD.body, letterSpacing: TRACK.normal,
         }}
       />

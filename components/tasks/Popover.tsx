@@ -1,7 +1,7 @@
 "use client";
 
 import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { PAPER, SANS, CHARCOAL } from "@/lib/constants";
+import { PAPER, SANS, CHARCOAL, DARK_SHADOW } from "@/lib/constants";
 // ★押せる面は `components/Button.tsx` が唯一の持ち主(第33巡)。
 import { Press } from "@/components/Button";
 
@@ -82,7 +82,7 @@ export function Popover({ label, closing, onClose, children }: {
           // ときは中身の側が縮んで収まる。
           flex: "0 1 auto", minHeight: 0,
           background: LIFT, color: PAPER,
-          borderRadius: RADIUS.xl, boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
+          borderRadius: RADIUS.xl, boxShadow: DARK_SHADOW,
           padding: `${SPACE.sm}px ${SPACE.lg}px ${SPACE.md}px`,
           display: "flex", flexDirection: "column", overflow: "hidden",
         }}

@@ -80,7 +80,12 @@ function migrate(s: any): AppState {
   }
 
   const merged = { ...structuredClone(DEFAULT_STATE), ...s };
-  merged.magazine = merged.magazine ?? null;
+  // ★★第135巡に死んだ欄を外した（`magazine`・`pendingReview`・`weekendMeta`・`shelfOrder`。どこからも読まれて
+  //   いなかった）。古い保存に残っていても落とす。★`magazine` に綴じられたまま残った `planned` の Item は候補へ戻す
+  //   （今までは起動時の日付の繰り越しがやっていた ―― 戻さないとどの画面にも出ない）。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const legacy = merged as any;
+  delete legacy.magazine; delete legacy.pendingReview; delete legacy.weekendMeta; delete legacy.shelfOrder;
   merged.profile = merged.profile ?? structuredClone(DEFAULT_STATE.profile);
   // 旧形式(「気になっていること」を自由文で持つProfile.currentFocus、
   // 好み/興味を区別するInterest.category、旧Interest.kind)からの移行。
@@ -112,11 +117,10 @@ function migrate(s: any): AppState {
     }
     merged.profile.interests = Array.from(byLabel.values());
   }
-  merged.weekendMeta = merged.weekendMeta ?? structuredClone(DEFAULT_STATE.weekendMeta);
   merged.goals = merged.goals ?? [];
-  merged.pendingReview = merged.pendingReview ?? [];
   merged.sources = merged.sources ?? [];
   merged.items = merged.items ?? [];
+  for (const it of merged.items) if (it.status === "planned") it.status = "candidate";
   merged.bindLog = merged.bindLog ?? [];
   merged.generatedPlans = merged.generatedPlans ?? null;
   merged.tasks = merged.tasks ?? [];
@@ -214,11 +218,6 @@ function migrate(s: any): AppState {
     ];
     delete merged.keeps;
     delete merged.records;
-    // マガジンの参照は {id, type} → idの配列へ。
-    if (merged.magazine?.itemIds) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      merged.magazine.itemIds = merged.magazine.itemIds.map((r: any) => (typeof r === "string" ? r : r.id));
-    }
   }
 
   // Wishから使われていなかった分類(旧categoryId/category、do/buy/go)を落とし、

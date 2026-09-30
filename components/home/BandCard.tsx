@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { groundOf } from "@/components/AppBackdrop";
-import { INK, PAPER, SANS, SCRIM_BLUR, SCRIM_TINT, SOFT_SHADOW_LG, mixHex } from "@/lib/constants";
+import { CARD_RADIUS, INK, PAPER, SANS, SCRIM_BLUR, SCRIM_TINT, SOFT_SHADOW_LG, mixHex } from "@/lib/constants";
 import { haptic, img } from "@/lib/helpers";
 import { PillContent, pillBoxStyle } from "./BandPill";
 import { PAN_SLOP, PILL_EDGE } from "@/lib/pullDrag";
@@ -137,8 +137,8 @@ export function BandCard({ item, from, grab, autoOpen, onClose }: {
     x: lerp(from.x, to.x, e), y: lerp(from.y, to.y, e),
     w: lerp(from.w, to.w, e), h: lerp(from.h, to.h, e),
   };
-  // ★★角丸は「ピル（高さの半分）」から `RADIUS.sheet` へ。
-  const rad = lerp(from.h / 2, RADIUS.sheet, e);
+  // ★★角丸は「ピル（高さの半分）」から大きな札の角（`CARD_RADIUS`）へ（第135巡に `RADIUS.sheet` から統一）。
+  const rad = lerp(from.h / 2, CARD_RADIUS, e);
 
   /** ★札の中身（**本物と、高さを測る写しが同じものを読む**）。 */
   const body = (

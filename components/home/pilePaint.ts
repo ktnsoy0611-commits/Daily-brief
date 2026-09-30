@@ -1,4 +1,4 @@
-import { BD_GREY, DISPLAY, OFFER_BEZEL, OFFER_LABEL_CAP, OFFER_LABEL_W, mixHex } from "@/lib/constants";
+import { BD_GREY, DISPLAY, JOURNAL_FACE, OFFER_BEZEL, OFFER_LABEL_CAP, OFFER_LABEL_W, mixHex } from "@/lib/constants";
 import { img } from "@/lib/helpers";
 import { traceHub } from "@/lib/reelHub";
 import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
@@ -242,6 +242,11 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
  * 同じ ―― 芯の形は `lib/reelHub.ts` の1か所）。★芯の点の列を毎フレーム引かないよう焼く。
  * 返る `w`/`h` は**余白を含む整数の箱**。
  */
+/** ★墨の円の半径（外の円 `r` からベゼルの幅を引いたもの）。 */
+function reelInner(r: number): number {
+  return r * (1 - OFFER_BEZEL);
+}
+
 export function reelBitmap(p: Piece, dpr: number): Baked | undefined {
   if (!p.r) return undefined;
   const d = Math.ceil(p.r * 2) + BAKE_PAD * 2;
@@ -259,11 +264,17 @@ export function reelBitmap(p: Piece, dpr: number): Baked | undefined {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingQuality = "high";
   ctx.translate(d / 2, d / 2);
-  ctx.fillStyle = p.face;
+  // ★★★**外周に JOURNAL の青のベゼル**（第135巡にユーザー指定「**大きさは今のままで、図形を少し小さくして、
+  //   その分周りにベゼルを**」）。外の円（＝体・影・当たり判定）は `p.r` のまま、墨の円と芯だけが内へ縮む。
+  //   幅は提案の写真のベゼルと同じ `r × OFFER_BEZEL`（どちらも 2×2 マス ＝ 同じ幅になる）。
+  const inner = reelInner(p.r);
+  ctx.fillStyle = JOURNAL_FACE;
   ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = p.face;
+  ctx.beginPath(); ctx.arc(0, 0, inner, 0, Math.PI * 2); ctx.fill();
   // ★★★**芯はグレー**（第101巡にユーザー指定「白ではなくグレーにしてあまり目立たないように」）。
   ctx.fillStyle = p.ink;
-  traceHub(ctx, p.r * 2);
+  traceHub(ctx, inner * 2);
   ctx.fill();
   const w = d; const h = d;
   const made = { canvas: cv, w, h };
@@ -808,9 +819,15 @@ export function drawPile(
       const bmp = reelBitmap(p, dpr);
       if (bmp) ctx.drawImage(bmp.canvas, -bmp.w / 2, -bmp.h / 2, bmp.w, bmp.h);
       else {
-        // ★焼く前の代役は**墨の面だけ**（芯の点の列を毎フレーム引かない）。
+        // ★焼く前の代役は**青の縁と墨の面だけ**（芯の点の列を毎フレーム引かない）。
+        const was = ctx.fillStyle;
+        ctx.fillStyle = JOURNAL_FACE;
         ctx.beginPath();
         ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = was;
+        ctx.beginPath();
+        ctx.arc(0, 0, reelInner(p.r), 0, Math.PI * 2);
         ctx.fill();
       }
     } else if (p.kind === "word") {

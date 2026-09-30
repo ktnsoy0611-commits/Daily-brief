@@ -3,6 +3,7 @@
 import { useId } from "react";
 import { DISPLAY, INK, OFFER_BEZEL, OFFER_LABEL_CAP, OFFER_LABEL_W, PAPER, TITLE } from "@/lib/constants";
 import { cardShapePath, type CardShape } from "@/lib/cardShape";
+import { useDecodedSrc } from "@/lib/decodedImage";
 import { LEAD, TRACK, WEIGHT } from "@/lib/tokens";
 
 // ★★★**ホームの山の「提案の図形」と同じ見え方の札（DOM／SVG 版）**（2026-09-28・第134巡にユーザー指定
@@ -26,6 +27,9 @@ export function ShapeCard({ shape, face, ink, photo, label, more, size }: {
 }) {
   const id = useId().replace(/:/g, "");   /* ★目盛りの外（id に使えない文字を落とす） */
   const d = cardShapePath(shape);
+  // ★★写真は**解き終わってから**差し込む（`lib/decodedImage.ts`。送りの最中に主の糸で解かせない）。
+  //   それまでは面の色だけ（英語の語も出さない ―― 写真が来ると分かっているので字が一瞬出て消えるのを避ける）。
+  const shown = useDecodedSrc(photo);
   // ★縁は「半径 × OFFER_BEZEL」。器の一辺 ＝ 直径 ＝ 1 なので、半径 0.5 × 比 × 2（線の内側の半分だけ残る）。
   const stroke = OFFER_BEZEL;
   // ★字の大きさは「一辺に対する比」で持ち、px（一辺が分かるとき）か cqw（器の幅に合わせるとき）で渡す。
@@ -44,16 +48,16 @@ export function ShapeCard({ shape, face, ink, photo, label, more, size }: {
           )}
         </defs>
         <path d={d} fill={face} />
-        {photo && (
+        {shown && (
           <g clipPath={`url(#c${id})`}>
-            <image href={photo} x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"
+            <image href={shown} x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"
               filter={more !== undefined ? `url(#b${id})` : undefined} />
             {more !== undefined && <rect x="0" y="0" width="1" height="1" fill={PAPER} opacity="0.35" />}
             <path d={d} fill="none" stroke={face} strokeWidth={stroke} strokeLinejoin="round" />
           </g>
         )}
       </svg>
-      {(!photo || more !== undefined) && (
+      {(!photo || (more !== undefined && shown)) && (
         <span style={{
           position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
           fontFamily: more !== undefined ? TITLE : DISPLAY, fontSize: len(more !== undefined ? OFFER_LABEL_CAP : k),

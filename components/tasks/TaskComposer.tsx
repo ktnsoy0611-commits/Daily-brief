@@ -10,7 +10,7 @@ import { Press, pressedRecently } from "@/components/Button";
 import { CAP, keepKeyboard, Popover } from "@/components/tasks/Popover";
 import { SolidCanvas } from "@/components/tasks/SolidCanvas";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
-import { CHARCOAL, PAPER, SANS, TASK_FACE } from "@/lib/constants";
+import { CARD_RADIUS, CHARCOAL, DARK_SHADOW_UP, PAPER, SANS, TASK_FACE } from "@/lib/constants";
 import { bodyInkOn } from "@/lib/palette";
 import { isViewportDebug } from "@/lib/debugViewport";
 import { pushGround } from "@/lib/ground";
@@ -925,9 +925,9 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
             キーボードの裏には届かなかった。 */}
       <div data-band onMouseDown={keepKeyboard} style={{
         position: "relative", background: LIFT,
-        borderRadius: "26px 26px 0 0",
+        borderRadius: `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0`,
         // 角丸が読めるように、地との境目へ影を落とす。
-        boxShadow: "0 -16px 34px rgba(0,0,0,0.34)",
+        boxShadow: DARK_SHADOW_UP,
         // ★★キーボードが出ているあいだは**セーフエリアぶんを取らない**
         // (第25巡)。器の下端はキーボードの上端で、そこにホームバーは無い。
         // 34px 取ると丸ごと死んだ隙間になる(実機で「アイコンとキーボードまでの
@@ -1012,8 +1012,8 @@ export function TaskComposer({ data, mode, onCommit, onConfirm, onDelete, onClos
           // ★器が見えている矩形そのものなので、ここは**ただの下端**でよい
           //   (第24巡。`--kb` を見るなという注意書きごと不要になった)。
           position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 4,
-          background: LIFT, borderRadius: "28px 28px 0 0",
-          boxShadow: "0 -18px 40px rgba(0,0,0,0.40)",
+          background: LIFT, borderRadius: `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0`,
+          boxShadow: DARK_SHADOW_UP,
           padding: `${SPACE.lg}px ${SPACE.lg}px max(${SPACE.lg}px, env(safe-area-inset-bottom))`,
           // ★高さは**固定**(2026-08-17にユーザー指定「期日と期間を切り替えても
           // ウィンドウの上端の位置は変えず、上側に合わせてレイアウト」)。

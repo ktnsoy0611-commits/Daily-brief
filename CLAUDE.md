@@ -75,11 +75,19 @@
   「タブバーや要素が一瞬消える」）。古い列は `T_ITEM` のあいだ下に残す（`leaving`）ので**画面が空くフレームが無い**
   （実測 304 フレームで 0）。★隠れた列は不透明度 0 の層（`visibility: hidden` にしない。第135巡）。★横のトラック（`.app-track`・`slots`）は削除。**`transform` で列を動かさない**（中の山・帯・
   送りは画面の座標を測る）。★★★**バーは列の外に1本だけ**（列ごとに持つと一緒に滑った・抜けた）。選んでいる印の再タップ ＝ 先頭のモジュールへ
-  （`jumps`）。`goTab(id)` もモジュールまで運ぶ。確認用の `DEV` は**設定（その他）から**開く。
+  （`jumps`）。`goTab(id)` もモジュールまで運ぶ。★★★**切り替えは押したボタンから円が広がって現れる**（第135巡。`.app-reveal` の `clip-path`・`--rx`/`--ry`/`--rr`。古い列は下に残る）。
 - ★★★`components/AppNav.tsx` — **下のバー**（第134巡）。HOME／EXPLORE／TASK／JOURNAL を同じ格で並べ、選んでいる
-  アプリだけ**アイコンの右に名前を出して墨のピルで囲う**（伸び縮みと墨の面が滑らかに移る）。★★アイコンは**見て分かる**
-  lucide の線（家／方位磁針／チェック／本。26px）―― 第1稿のアプリの顔の抽象は「全くダメ」と差し戻された。
-  ★バーは 72px（`TAB_MARK` 60。`CARD_RADIUS` はその半径に揃うので 36）。★未読の数の丸は外した（ユーザー指定）。
+  アプリだけ**アイコンの右に名前を出して墨のピルで囲う**（伸び縮みと墨の面が滑らかに移る）。★★★アイコンは**円と角丸の四角から
+  作る自前の線**（第135巡にユーザー指定。`AppMark`）… HOME ＝ 半円のアーチ／EXPLORE ＝ 重なる2枚の札／TASK ＝ 積んだ3本のピル／
+  JOURNAL ＝ 録音機。★第134巡の lucide（家・方位磁針・チェック・本）は角が立っていた。第1稿の抽象は「全くダメ」と差し戻し済み。
+  ★バーは 64px（`TAB_MARK` 52。`CARD_RADIUS` は連動で 32）・下へ寄せる（`NAV_BOTTOM_GAP`）。★未読の数の丸は外した（ユーザー指定）。
+  ★★★**下へ送ると 0.8 に畳む**（`lib/navCompact.ts`。`ModuleRail` が 24px 送るごとに知らせる。`transform` だけ）。
+  ★★★**バーの器（`AppShell` の nav）は指を全部受ける**（`pointerEvents: auto`・`touchAction: none`）―― 横や下を押しても背後に届かない。
+- ★`components/CreateMenu.tsx` の開閉（第135巡）… 白い輪は `pathLength` 1 の線で描き足し（`.cm-ring`）、**閉じるときは輪が先に消え、
+  円が `ease-exit` で縮む**（第134巡までは輪が最後まで残り、縮むのが見えなかった）。
+- ★★★**タイルは2つの型だけ**（第135巡。`lib/constants.ts`）… `TILE`（一覧の1行・紙・`RADIUS.xl`・`SPACE.lg`・`SOFT_SHADOW`）と
+  `HERO`（画面の主役の札・`CARD_RADIUS`・`SPACE.xl`・`SOFT_SHADOW_LG`）。暗い面の影は `DARK_SHADOW(_UP)`、升は `CELL_DARK`。
+  ★BRIEF の札と録音機は同じ頭の高さ `HERO_HEAD`（進みの線の段）と同じ幅の式。BRIEF の札の下に次の札が2枚ずれて覗く（`PEEK_POSE`）。
 - ★★★`components/AppModules.tsx` — **アプリの中の縦のモジュール**（EXPLORE ＝ BRIEF → STOCK／JOURNAL ＝ RECORD → LOG）。
   見出しと**今のモジュール名**は動かず、その下を `ModuleRail` が送る。右端に**位置の目盛り**。★★★**溜まったものは
   「1行 ＝ 1枚」**（STOCK は `useStockModule`、LOG は `useJournalLog` が行ごとの1枚とシートを返す）―― 送りのばねは
@@ -139,58 +147,6 @@
   （`lib/dayRecords.ts` の `goals`）。閉じたゴール（`Goal.status`）には札が届かない。
 - `components/tabs/ProfileTab.tsx` — 設定（好み・情報源・サインアウト・開発用の実験）。
   入口は**右下の輪の SETTING だけ**（`CreateMenu`）。
-- ★`components/tabs/DevStageTab.tsx` — **開発用の `DEV`**（第70巡。★第134巡から**設定の「その他」から開く**全画面）。中身は
-  「**券**」＝版面の見本帳と「**札**」＝BRIEF の札の4ドメイン（第94巡）と
-  「**場**」＝券と鋏の3D。**実機で見るためだけ**に在る。
-  ★★「札」は**本番の `CardFace`（`BriefTab` から export）をそのまま**並べる
-  ―― 見本用に別実装を作ると、形の割り当てが2か所になる。
-  ★★★**タブバーの高さは `navHeightPx()` から引く。自分で測らない**（`.app-nav` の
-  矩形は `NAV_H` と一致しない ―― Chromium 81px／実機 132px。第71巡に踏んだ）。
-  ★★Explore の刷新が本物になったら、このファイル／`components/explore/samples/`／
-  `lib/apps.ts` の `life-dev`／`lib/types.ts` の `LifeTabId`／
-  `components/TabIcons.tsx` の `ticket` を**まとめて消す**。
-- ★`components/explore/samples/` — **券の見本帳**（**4案**）。
-  P1 天地／P2 逆天地／P3 **全面（この案だけ紙が色）**／P4 活字
-  ＋ `TicketParts.tsx` ＋ `index.ts`。
-  ★★★**写真はデュオトーン**（第81巡）。SVG のフィルタ1本で「影の色 → 紙」の帯へ
-  **写す**。★**混色ではできない**（切り捨て／非線形になる）。詳細は `design.md` §3-d。
-  ★★★**大きな英語は版面の幅に合わせて組む**（`FitLine`。段から選ばない＝目盛りの外）。
-  `wdth` 70 で絞り、**書体を増やさずに2つ目の声**を作っている。
-  ★★括弧がラベルを消す … `(12.02 – 03.16)` ／ `WITH 会場 (地名)`。
-  ★★色が出るのは**大きな英語**と**写真のデュオトーン**と**鋏痕**だけ。
-  ★★振っている軸は1つ ―― **大きな英語と写真がどう出会うか**。
-  ★★見本帳は**案ごとに違うドメイン**で並ぶ（`DevStageTab` の `SAMPLES` 4枚）。
-  ★★★**切り欠きの安全域は `SAFE`**（＝幅の 14%）。`%` の縦余白は**幅**で解決される
-  ので、切り欠きの半径と正確に一致する。**避けるのは文字だけ。写真は噛ませる。**
-  ★★★**マスクした要素に `box-shadow` は出ない**（影ごと切り抜かれる）。
-  券の影は親の **`filter: drop-shadow`**（`TICKET_SHADOW`）。
-  ★★**役と段は1対1**（題 `head` 20 ／ 会期・会場 `body` 13 ／ 要約 `small` 11 ／
-  印 `nano` 7 の**4段だけ**）。**写真が余りを全部取る**ので spacer を置かない。
-  ★★紙の形は**角丸 0 ＋ 上下の縁のギザギザ ＋ 四隅の大きな円の切り欠き**
-  （`scallopMask`。層6枚を `mask-composite: intersect`。使えない環境では
-  **ひとりでに素の矩形へ戻る**）。★★★**層を小さな箱に `no-repeat` で置かないこと**
-  ―― 箱の外は α が 0 になり、`intersect` が**券を丸ごと消す**（第78巡に消した）。
-  ★★**間隔ではなく「数」で持つ**（`calc(100% / N)`。px だと右端が切れる）。
-  比は `TICKET_ASPECT`＝**3/4**、数で要るときは `TICKET_H_PER_W`。
-  ★★**選ばれた1案を `Ticket.tsx` へ畳んだら、ディレクトリごと消す。**
-- ★**刷新中の部品**（`/dev/explore` と `DEV` タブにしか無い。4タブは手つかず）…
-  `components/explore/Ticket.tsx`（券）/ `PunchMark.tsx`（鋏痕）/ `lib/ticket.ts`、
-  改札鋏（★**three.js／WebGL**。第17巡に SVG の自前投影をやめた）…
-  `components/explore/Nipper.tsx`（画角・器・動き）／`NipperViews.tsx`（三面図。開発用）
-  ＋ `lib/nipperMesh.ts`（**立体の作り方**。面取り・厚み・針金・段の当て方）
-  ＋ `lib/nipperRig.ts`（**組み立てと光**。本番と三面図が同じものを見るための1か所）。
-  ★★**鋏の形は `lib/nipperShape.ts` が正**。ただし**2段の生成物で、手で直さない**
-  ―― 平面図4枚 → `tools/trace-nipper.mjs` → `lib/nipperShapeRaw.ts`（**生**のトレース）
-  → `tools/clean-nipper.mts` → `lib/nipperShape.ts`（**整えた**形。立体はこれを読む）。
-  パスの語彙（型と `L`/`A`/`piece`）は `lib/nipperPath.ts`（唯一の手書き）。
-  **形を直すときは図を描き直すか、整理の規則の目盛りを直して走らせ直す。**
-  元データは `docs/archive/nipper-shape-21.ts` に凍結（誰も import しない。消さない）。
-  目で数値を打ち込んでいた 9〜15巡目はプロポーションが合わなかった。
-  設計の正は `docs/explore-redesign.md`。
-  ★★券と鋏を**同じ3D空間**に置く器 … `components/explore/TicketStage.tsx`
-  （**券の面は「深さだけ書く板」**なので、下に敷いた DOM の券がそのまま見える
-  ＝版面は劣化しないのに、鋏が券の奥へ回れば隠れる）。
-  ★禁じられているのは **CSS の 3D 変形**であって WebGL ではない（design.md 冒頭）。
 
 ## タスク（TASK）
 - ★★★`components/tasks/TimelineTab.tsx` — **TASK の最初の画面 ＝ 日付の列**（第135巡にユーザー指定「**gravity を削除して、
@@ -366,8 +322,10 @@
   ★★ここには**4つの実機の不具合を生き延びた作り**が入っている（3か月を横に並べて送る／
   軸の固定 8px ／戻り跳ねの1フレーム対策／隣の月は触るまで作らない／1マスに丸と札は
   2つまで）。**素朴に書き直すと全部戻る。**
-- `components/GeoType.tsx` — 幾何アルファベット（★第134巡から**どこからも使われていない**。見出しを戻すときのために残す）。`components/TabIcons.tsx` — 面で描いたアイコン。
-- `components/BottomSheet.tsx` / `PlanGenerateSheet.tsx` / `AddWishSheet.tsx` / `SignInGate.tsx` / `LeafletMap.tsx` / `Binder.tsx`（ゴールのみ）。
+- `components/TabIcons.tsx` — 面で描いたアイコン。
+- `components/BottomSheet.tsx` / `PlanGenerateSheet.tsx` / `AddWishSheet.tsx` / `SignInGate.tsx` / `LeafletMap.tsx`（★今は誰も使わない。地図を別の形で出すために残す ―― ユーザー指定）/ `Binder.tsx`（★旧バインダー。ログに使うかもしれないので残す ―― ユーザー指定）。
+- ★★★`lib/decodedImage.ts` — **DOM／SVG の写真を「解き終わってから」差し込む**（第135巡。`useDecodedSrc`）。SVG の `<image>` は
+  初めて描く瞬間に主の糸で画素を解くので、STOCK の送りの最中に原寸の OGP 画像の解きが入ってかくついていた。`ShapeCard` が使う。
 
 ## データ・ロジック
 - `lib/types.ts` — **データモデルの正**。`lib/constants.ts` — 色・書体・部品の寸法。
@@ -899,7 +857,7 @@
   WebKit でも再現しない。実機の WebKit だけ**）。`clipPathUnits="objectBoundingBox"`
   のパスを 0〜1 の器で書けば、画像としての寸法計算が存在しない。
   ★★★**id は札ごとに変える**（`useId()`）―― `AppShell` はタブを全部載せたまま
-  横へ送るので、BRIEF の札と `DEV` の見本帳が**同時に存在する**。
+  横へ送るので、同じ形の札が**同時に存在する**。
   ★★★**形の正は点の列**（`cardShapePoints`）。SVG の `clip-path`（札）も
   canvas の輪郭（**ホームの山の提案**。`traceCardShape`）も**そこから導く**。
   ★★★**正規化（`fitBox`）は一様**（第123巡にユーザー指摘「**特に六角形の図形が
@@ -994,7 +952,7 @@
   （印の無い長い区間は窓の 0.8 ごとに止まる所を足す）。最後のモジュールの上端も必ず線まで上がる。
   ★★★**押し始めは捕獲相で受ける**（札の写真は押し始めを `stopPropagation` するので、泡立ちでは写真の上から送れなかった）。
   降りてほしい部品は `claimFromRail(pointerId)`。★★★**`lostpointercapture` は自分の器の分だけ**（泡立って来た札の知らせで
-  送りが止まっていた）。★`components/dev/RailDemo.tsx`（`DEV` の「送り」）は見本として残っている。
+  送りが止まっていた）。
 - `lib/scroll.ts` — **スクロールの語彙はここだけ**（指の 1:1 ＋投げ＋減衰＋最寄りへ吸着）。
   ★★第134巡に**連鎖のバネ `chainSpring`** を `GravityTab` から持ち上げた（ALIGN とモジュール送りが同じ数を読む）。
   強さを触るのは `SCROLL_GAIN` と `FLICK_K` の2つだけ。いまは ALIGN の縦送りが使う。
@@ -1021,26 +979,6 @@
   ★**画面の上下の帯**は別件で、`statusBarStyle: "default"` で解決済み（第35巡）。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
-- ★★★`lib/printGrain.ts`（券・CSS の面）— **質感の入口はいまここだけ**。
-  ★★★`lib/paperTexture.ts` の `paperize()` は**第92巡に図形から外した**
-  （ユーザー指定）。**どこからも呼ばれていない**が、戻せるように消していない。
-  ★★**`PAPER_ALPHA` を 0 にして誤魔化さないこと。呼ばないのが正。**
-  以下は戻すときのための記録 —— **素材は同じ 1 枚**（`public/crumple.webp`。第77巡に
-  ユーザー指定でしわ紙へ。作り方は `tools/make-crumple.mjs`。元画像はリポジトリに
-  無く、引数で渡す）。「券は板紙・図形は切った紙。混ぜない」は第76巡に**撤回**。
-  ★★★**テクスチャは明暗だけを足すもので、色を変えるものではない。**
-  タイルは**平均 128 の無彩色**で、**128 は `soft-light` の恒等点**だから地の色が
-  原理的に動かない。★★**`multiply` を使わないこと** ―― 原理的に暗くしかできず、
-  質感だけを乗せられない（実測 ΔE 0.135・彩度 −20%。`soft-light` は ΔE 0.001）。
-  ★★★**しわは低い刻みなので拡大縮小してよい。網点は高い刻みなのでいけない。**
-  **どちらの規則を当てるかはテクスチャの刻みで決まる** ―― しわは**繰り返さず**
-  面いっぱいへ伸ばす（継ぎ目も周期も存在しない）、網点は 1画像画素=1デバイス画素で
-  敷き整数周期で切る。★写真からは**照明のかたよりだけ**を抜く（半径 96）。
-  ★canvas 側は `soft-light` のあと **`destination-in` で元の α に切り抜く**
-  （ブレンドは `source-over` で合成されるので、透明な地にも乗ってしまう）。
-  ★強さの目盛りは `PAPER_ALPHA`（図形 0.5）と `GRAIN_ALPHA`（券 0.55）の2つだけ。
-  ★`paper-kraft` / `make-paper.py` / `print-grain` / `make-grain.mjs` / `halftone` /
-  `make-halftone.mjs` は**まだ消していない**（試している最中）。決まったら消す。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
   ★ブリーフの取得は **Jina → 直接**の2段（第64巡）。**失敗は必ず HTTP コードごと
   `SiteTrace` に残す** — 残さなかったせいで6日間の停止に気づけなかった。
@@ -1218,7 +1156,7 @@
 
 **Awwwards の「Site of the Day」級の UI/UX。** そこへ届く道は、汎用の UI キットで
 見た目を揃えることではなく、**自分の語彙をひとつも破らないこと**。手で作った顔
-（`GeoType` の幾何アルファベット / `SolidCanvas` の図形 / matter.js / Leaflet）が
+（`SolidCanvas` の図形 / matter.js / Leaflet）が
 このアプリの価値なので、それを平均的な見た目へ寄せる変更はしない。
 
 ## 守ること

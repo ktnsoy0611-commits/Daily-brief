@@ -1,17 +1,11 @@
-import { AREA_COORDS, AREA_FALLBACK, AREA_LATLNG, AUTO_THRESHOLD, BRIEF_RETENTION_DAYS, INTEREST_RULES, KEEP_MAX_AGE_DAYS, KIND_DOMAIN } from "./constants";
-import type { BriefState, Item, ItemDomain, ItemOrigin, Wish } from "./types";
+import { AREA_COORDS, AREA_FALLBACK, AREA_LATLNG, BRIEF_RETENTION_DAYS, KEEP_MAX_AGE_DAYS, KIND_DOMAIN } from "./constants";
+import type { BriefState, Item, ItemDomain } from "./types";
 
 export const pad = (n: number) => String(n).padStart(2, "0");
 
 export function todayKey() {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-export function todayLabel() {
-  const d = new Date();
-  const days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${days[d.getDay()]}`;
 }
 
 export function shortDate(iso: string) {
@@ -79,19 +73,10 @@ export function ratingLabel(r: 1 | 2 | 3 | null | undefined) {
 export function mapsUrl(query: string) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
-export function searchUrl(query: string) {
-  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-}
 export function img(seed: string, w = 400, h = 300) {
   // 実URL(OGP画像など)はそのまま使う。それ以外(旧来のシード)はプレースホルダへ。
   if (/^https?:\/\//i.test(seed)) return seed;
   return `https://picsum.photos/seed/${seed}/${w}/${h}`;
-}
-
-export function hashStr(s: string) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h;
 }
 
 // hex色をpercent(-100〜100)分だけ明るく/暗くする。カードの単色塗りに
@@ -132,12 +117,6 @@ export function itemLatLng(item: { area?: string; lat?: number; lng?: number }):
 export function domainOf(item: Item): ItemDomain {
   return KIND_DOMAIN[item.kind];
 }
-// KEEP/WISHバッジ: ブリーフ由来はKEEP、ウィッシュ由来はWISH、手動はバッジ無し。
-export function originBadge(origin: ItemOrigin | undefined): "keep" | "wish" | undefined {
-  if (origin === "wish") return "wish";
-  if (origin === "manual") return undefined;
-  return "keep";
-}
 // ウィッシュから生まれたカード(sourceWishId一致)のうち、少なくとも1件が
 // 「バインドされた」(現在プランに入っている、または既に実行済み=かつて
 // バインドされた)状態かどうか。アーカイブのウィッシュ一覧のチェックマークに使う。
@@ -175,17 +154,6 @@ export function pruneOldBriefs(briefs: Record<string, BriefState>): { pruned: Re
   return { pruned, changed };
 }
 
-// おすすめプランは木曜日に更新される、という仕様のための「週キー」。
-// 直近の木曜日の日付をキーにすることで、木曜日を跨ぐたびに自動で変わる。
-export function mostRecentThursday(d = new Date()) {
-  const day = d.getDay();
-  const diff = (day - 4 + 7) % 7;
-  const thu = new Date(d);
-  thu.setDate(d.getDate() - diff);
-  thu.setHours(0, 0, 0, 0);
-  return thu.toISOString().slice(0, 10);
-}
-
 // 実座標(緯度経度)を、自作地図の0〜100%座標へ正規化する(フェーズB、
 // SYSTEM-DESIGN.md §8.1「スタイライズド地図+実座標」)。生活圏=東京23区を
 // 囲む固定のバウンディングボックスに対して線形投影する。緯度は北ほど地図の
@@ -214,21 +182,6 @@ export function pinPosition(item: { id: string; area?: string; lat?: number; lng
   return { x: Math.min(95, Math.max(5, base.x + jx)), y: Math.min(92, Math.max(8, base.y + jy)) };
 }
 
-// ---- 興味の自動検出（プロトタイプ: キーワード頻度。現在は未使用） --
-// 好み/興味は「興味・好み」1リストへ統合し、チップ本体はCoworkの週次分析が
-// taste-state.md で所有する(HANDOFF §8.14 優先度3)。このアプリ側の単純な
-// キーワード頻度検出は現在どこからも呼ばれていない(参考として残置)。
-export function detectInterests(wishes: Wish[], items: Item[]): { label: string; weight: number }[] {
-  const titles = [...wishes.map((w) => w.title), ...items.map((i) => i.title)];
-  const results: { label: string; weight: number }[] = [];
-  INTEREST_RULES.forEach((rule) => {
-    const count = titles.filter((t) => rule.match.test(t)).length;
-    if (count >= AUTO_THRESHOLD) {
-      results.push({ label: rule.label, weight: count });
-    }
-  });
-  return results;
-}
 
 // 選んだItemのidから、今日のマガジン(プランタブの確定リスト)を組み立てる。
 // プランタブ自身の操作と、ストックタブを含む他タブから使う共通のフローティング

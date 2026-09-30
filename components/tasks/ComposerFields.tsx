@@ -4,7 +4,7 @@ import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { useEffect, useRef } from "react";
 import { Press } from "@/components/Button";
 import { CAP, DIM, LIFT } from "@/components/tasks/Popover";
-import { PAPER, SANS } from "@/lib/constants";
+import { CELL_DARK, PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import type { TaskWeight } from "@/lib/types";
 
@@ -16,7 +16,7 @@ import type { TaskWeight } from "@/lib/types";
 // 値はその場で親の下書きへ書き、確定ボタンは持たない(閉じれば確定している)。
 
 /** 墨の上の面。 */
-const CELL = "rgba(250,250,249,0.08)";
+const CELL = CELL_DARK;
 
 /** 重要度。**円の大きさ**がそのまま段を表す。 */
 export function WeightPicker({ value, onPick }: {

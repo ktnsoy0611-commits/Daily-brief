@@ -1,9 +1,8 @@
 "use client";
 
 import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { ms as msOf, T_ITEM, T_OUT } from "@/lib/motion";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { ms as msOf, T_IN, T_OUT } from "@/lib/motion";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AddWishSheet } from "@/components/AddWishSheet";
 import { AppBackdrop, groundOf } from "@/components/AppBackdrop";
 import { inkVarsOn } from "@/lib/palette";
@@ -13,22 +12,22 @@ import { AppNav } from "@/components/AppNav";
 import { SignInGate } from "@/components/SignInGate";
 import { useVoiceRecorder } from "@/components/VoiceRecorder";
 import { VoiceOverlay } from "@/components/VoiceStudio";
-import { DevStageTab } from "@/components/tabs/DevStageTab";
 import { HomeTab } from "@/components/tabs/HomeTab";
 import { ProfileTab } from "@/components/tabs/ProfileTab";
 import { TaskComposer, type ComposerData } from "@/components/tasks/TaskComposer";
 import { TaskSpace } from "@/components/tasks/TaskSpace";
 import { ViewportProbe } from "@/components/tasks/ViewportProbe";
-import { APPS, DEFAULT_TAB, type AppDef } from "@/lib/apps";
+import { APPS, DEFAULT_TAB, appDef, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
 import { whenPileSettled } from "@/lib/bootQuiet";
 import { setActiveApp } from "@/lib/appActive";
-import { BD_GREY, CHARCOAL, INK, NAV_H, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
+import { setNavCompact } from "@/lib/navCompact";
+import { BD_GREY, CHARCOAL, INK, NAV_H, PAPER, RUST, SANS, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { kickViewport } from "@/lib/viewportKick";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
-import { haptic, hasPlace, isExpiredItem, pruneOldBriefs, todayKey } from "@/lib/helpers";
+import { haptic, isExpiredItem, pruneOldBriefs } from "@/lib/helpers";
 import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, TabId, TabProps, Task, VoiceControls } from "@/lib/types";
 
 // 読み込み待機画面。2x2のグリッドの上を、黒い幾何学が動き回る
@@ -67,6 +66,9 @@ function Toast({ text }: { text: string }) {
 // ★★★第134巡までは `active` と `phase` を中身へ流していたので、バーを押した瞬間に2アプリぶん、
 //   さらに `T_ITEM` 後に古い列が隠れる瞬間にもう一度、中身が丸ごと描き直されていた
 //   （実測 CPU×4 … 押した瞬間 93〜220ms・0.45 秒後 54〜88ms の長い仕事）。
+/** ★列が円く広がって現れる長さ（`T_IN` に対する比。`app/globals.css` の `.app-reveal` と同じ）。 */
+const REVEAL_K = 0.8;
+
 interface AppColumnProps {
   a: AppDef;
   tab: TabId;
@@ -79,9 +81,31 @@ interface AppColumnProps {
   jump: { tab: TabId; n: number };
 }
 
-function AppColumn({ a, tab, mounted, phase, memoryMode, tabProps, jump }: AppColumnProps) {
+function AppColumn({ a, tab, mounted, phase, memoryMode, tabProps, jump, reveal }: AppColumnProps & {
+  /** ★★現す起点（そのアプリのバーの印の中心・画面の座標）と合図の数。 */
+  reveal?: { x: number; y: number; n: number };
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const shownN = useRef(0);
+  // ★★★**新しい列は、押したアプリの印から円く広がって現れる**（第135巡にユーザー指定「タブを切り替える時の
+  //   アニメーションをもっと良いものに」）。右下の「作る」の丸と同じ語彙（墨の円が丸から広がる）。
+  //   ★`clip-path` なので**位置も寸法も変わらない**（中の山・帯・送りは画面の座標を測るので `transform` は使えない）。
+  //   ★古い列は下に残っている（`leaving`）ので、広がる円の外はずっと古い画面 ―― 空くフレームは無い。
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || phase !== "active" || !reveal || reveal.n === shownN.current) return;
+    shownN.current = reveal.n;
+    const R = Math.hypot(Math.max(reveal.x, window.innerWidth - reveal.x), Math.max(reveal.y, window.innerHeight - reveal.y));
+    // ★動きは CSS の `.app-reveal`（曲線と時間は `:root` の語彙）。起点と半径だけここから渡す。
+    el.style.setProperty("--rx", `${reveal.x}px`);
+    el.style.setProperty("--ry", `${reveal.y}px`);
+    el.style.setProperty("--rr", `${Math.ceil(R)}px`);
+    el.classList.remove("app-reveal");
+    void el.offsetWidth;
+    el.classList.add("app-reveal");
+  }, [phase, reveal]);
   return (
-        <div style={{
+        <div ref={ref} style={{
           // ★★★**4つの列は同じ場所に重ねて置く**（第134巡の2度目にユーザー指摘「**スワイプしているわけではない
           //   のでアプリ間をスライドするアニメーションは消す**」「**タブバーや要素が一瞬消える**」）。
           //   新しい列を**古い列の上に重ねて不透明度だけで現す**（`T_ITEM`・`--ease-settle`）。古い列は現れ終わる
@@ -96,7 +120,6 @@ function AppColumn({ a, tab, mounted, phase, memoryMode, tabProps, jump }: AppCo
           zIndex: phase === "active" ? 2 : phase === "leaving" ? 1 : 0,
           visibility: "visible", willChange: "opacity",
           opacity: phase === "hidden" ? 0 : 1,
-          transition: phase === "active" ? "opacity var(--t-item) var(--ease-settle)" : "none",
           pointerEvents: phase === "active" ? "auto" : "none",
           // ★★アプリの地色は**この列が持つ**(2026-08-12)。タブや中身の側で地色を塗らないこと。
           background: groundOf(a.id),
@@ -151,16 +174,26 @@ export function AppShell() {
   const [leaving, setLeaving] = useState<AppId | null>(null);
   const leaveTimer = useRef(0);
   const appIdRef = useRef<AppId>("home");
+  const [reveal, setReveal] = useState<{ x: number; y: number; n: number }>({ x: 0, y: 0, n: 0 });
   const setAppId = useCallback((id: AppId) => {
     const cur = appIdRef.current;
     if (cur === id) return;
     appIdRef.current = id;
     setLeaving(cur);
     setAppIdState(id);
+    // ★★現す起点 ＝ 行き先のアプリのバーの印の中心（押した所でも `goTab` でも同じ所から広がる）。
+    const mark = document.querySelector<HTMLElement>(`nav.app-nav button[aria-label="${appDef(id).label}"]`)?.getBoundingClientRect();
+    setReveal((r) => ({
+      x: mark ? mark.left + mark.width / 2 : window.innerWidth / 2,
+      y: mark ? mark.top + mark.height / 2 : window.innerHeight,
+      n: r.n + 1,
+    }));
     // ★表示中の部品へ知らせる（`lib/appActive.ts`）。同じ出来事の中なので、列の見え方と同じ描画に載る。
     setActiveApp(id);
+    // ★アプリを替えたらタブバーは広げる（畳むのは送りの中だけの話）。
+    setNavCompact(false);
     window.clearTimeout(leaveTimer.current);
-    leaveTimer.current = window.setTimeout(() => setLeaving(null), msOf(T_ITEM));
+    leaveTimer.current = window.setTimeout(() => setLeaving(null), msOf(T_IN) * REVEAL_K);
   }, []);
   useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
   const [tabByApp, setTabByApp] = useState<Record<AppId, TabId>>({ ...DEFAULT_TAB });
@@ -237,37 +270,12 @@ export function AppShell() {
     let alive = true;
     DataStore.load().then(async (s) => {
       if (!alive) return;
-      // マガジンは「その日専用」。日付が変わっても未回答(✓も×もされていない)
-      // ままの項目が残っていたら、ダッシュボードの通知キューに移してリセットする。
       let mutated = false;
-      if (s.magazine && s.magazine.dateKey !== todayKey()) {
-        // 場所を持たない作品・モノは候補プールに残り続けるだけなので通知は
-        // 不要。場所が絡むItemだけ「行きましたか？」の確認待ちに回す。
-        const staleIds = (s.magazine.itemIds ?? []).filter((id) => {
-          const item = s.items.find((i) => i.id === id);
-          return item && item.status !== "done" && hasPlace(item);
-        });
-        const existing = new Set(s.pendingReview ?? []);
-        staleIds.forEach((id) => existing.add(id));
-        s.pendingReview = Array.from(existing);
-        // 綴じられないまま日付をまたいだバインダーは解散し、中のカードは
-        // 候補(candidate)へ戻す。プランの地図はもうplanned単体では表示
-        // しない(現在のmagazineに綴じられているものだけ表示する)ため、
-        // ここで戻さないと、どの画面からも見えず触れないゾンビItemになる。
-        (s.magazine.itemIds ?? []).forEach((id) => {
-          const item = s.items.find((i) => i.id === id);
-          if (item && item.status === "planned") item.status = "candidate";
-        });
-        s.magazine = null;
-        mutated = true;
-      }
       // 会期・予約期間が過ぎた(または場所が絡むのに30日経った)Itemを自動で削除。
       // 終わったはずの展覧会やライブが候補に残り続けるのを防ぐ。
       const expiredIds = s.items.filter(isExpiredItem).map((i) => i.id);
       if (expiredIds.length > 0) {
         s.items = s.items.filter((i) => !expiredIds.includes(i.id));
-        if (s.magazine) s.magazine.itemIds = s.magazine.itemIds.filter((id) => !expiredIds.includes(id));
-        s.pendingReview = (s.pendingReview ?? []).filter((id) => !expiredIds.includes(id));
         mutated = true;
       }
       // 古いブリーフの号(その日限りで二度と参照されない)を間引く。
@@ -566,8 +574,6 @@ export function AppShell() {
     [appState, persist, showToast, goTab, voice, openWishSheet, focusCard, clearFocusCard],
   );
 
-  // ★★確認用の `DEV`（第134巡に EXPLORE のタブから設定の中へ移した）。
-  const [showDev, setShowDev] = useState(false);
 
   // 認証ゲート(Supabase構成済みのときだけ)。未構成なら以下の2分岐は素通り。
   if (isSupabaseConfigured && !authReady) {
@@ -622,30 +628,6 @@ export function AppShell() {
   // (execMapModeはロックの判定にはもう使わないが、選択編集の状態管理
   // 自体はExecuteTab内で引き続き必要)。
   // 設定画面は3アプリ共通の1枚なので、横スライドのトラックとは別に出す。
-  // ★★確認用の見本帳。3アプリ共通の1枚なので、設定と同じくトラックとは別に出す。
-  if (showDev) {
-    return (
-      <div data-app-shell style={{
-        height: "100svh", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center",
-        fontFamily: SANS, color: INK, background: BD_GREY, position: "relative",
-        ...({ "--nav-h": NAV_H, "--pad-top": TAB_PAD_TOP } as React.CSSProperties),
-      }}>
-        <div data-tab-scroll-root style={{
-          width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
-          overflowY: "auto", overflowX: "clip", padding: `var(--pad-top) ${SPACE.lg}px 0`,
-        }}>
-          <DevStageTab />
-        </div>
-        <button onClick={() => setShowDev(false)} aria-label="DEV を閉じる" style={{
-          // ★右下（タブバーの「作る」の丸と同じ場所）。上は見本の切り替えが使う。
-          position: "absolute", bottom: `calc(${SPACE.lg}px + env(safe-area-inset-bottom))`, right: SPACE.lg, zIndex: 40,
-          width: TAB_MARK, height: TAB_MARK, borderRadius: RADIUS.circle, border: "none", cursor: "pointer",
-          background: INK, color: PAPER, display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
-        }}><X size={20} strokeWidth={2} /></button>
-      </div>
-    );
-  }
-
   if (showProfile) {
     return (
       // ★★設定は**全画面のオーバーレイ**。第78巡にユーザー指定で**暗い地**へ
@@ -657,8 +639,7 @@ export function AppShell() {
           padding: `max(${SPACE.lg}px, env(safe-area-inset-top)) ${SPACE.lg}px ${SPACE.xl}px`,
         }}>
           {storageMode === "memory" && <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
-          <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)}
-            onOpenDev={() => { setShowProfile(false); setShowDev(true); }} />
+          <ProfileTab appState={appState} persist={persist} onClose={() => setShowProfile(false)} />
         </div>
         {toast && <Toast text={toast} />}
 
@@ -700,6 +681,7 @@ export function AppShell() {
           memoryMode={storageMode === "memory"}
           tabProps={tabProps}
           jump={jumps[a.id]}
+          reveal={a.id === appId ? reveal : undefined}
         />
       ))}
 
@@ -710,7 +692,9 @@ export function AppShell() {
       <nav className="app-nav" style={{
         position: "absolute", left: 0, right: 0, bottom: 0,
         display: "flex", flexDirection: "column", alignItems: "center",
-        padding: `0 ${SPACE.lg}px`, zIndex: 25, pointerEvents: "none",
+        // ★★★**バーの左右と下も指を受け止める**（第135巡にユーザー指定「タブバーの横や下に触れても背後の画面を
+        //   誤タッチしないように」）。帯（画面の幅 × バーの上端から画面の下端）ぜんぶで指を受け、何もしない。
+        padding: `0 ${SPACE.lg}px`, zIndex: 25, pointerEvents: "auto", touchAction: "none",
         ...inkVarsOn(groundOf(appId)),
       }}>
         <AppNav current={appId} onGo={onGo} onCreate={onRecord} />

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Press } from "@/components/Button";
-import { CHARCOAL, PAPER, SANS } from "@/lib/constants";
+import { CELL_DARK, CHARCOAL, PAPER, SANS } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { ms, T_ITEM } from "@/lib/motion";
 import { RADIUS, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
@@ -68,7 +68,7 @@ export const QUICK_H = 62;
 export const ON_G = PAPER;
 export const DIM = "rgba(250,250,249,0.44)";
 /** カードの地。 */
-export const CELL = "rgba(250,250,249,0.07)";
+export const CELL = CELL_DARK;
 /** 浮かせるもの(カレンダー・ダイアル)の地。 */
 export const FLOAT = CHARCOAL;
 /** 今日のマスの塗り。選んでいる日(アクセント)と混ざらないよう沈ませる。 */

@@ -7,7 +7,7 @@ import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from "
 import { Masthead, SectionLabel } from "@/components/common";
 import { GrowthFace, type GoalOutcome } from "@/components/explore/GrowthFace";
 import { appTitle } from "@/lib/apps";
-import { BRIEF_CARD_ASPECT, CARD_RADIUS, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GOAL_ASK_INTERVAL_DAYS, GREEN, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SHADE_DEEP } from "@/lib/constants";
+import { BRIEF_CARD_ASPECT, CARD_RADIUS, HERO_DASH, HERO_HEAD, KIND_DOMAIN, BD_GREY, BLUE, CHECKIN_INTERVAL_DAYS, GOAL_ASK_INTERVAL_DAYS, GREEN, HAIRLINE, INK, MILESTONE_INTERVAL_DAYS, MUTED, PAPER, RUST, SANS, SOFT_SHADOW_LG, SWIPE_THRESHOLD, CHARCOAL, SHADE_DEEP } from "@/lib/constants";
 import { daysBetween, haptic, img, shade, todayKey } from "@/lib/helpers";
 import { BRIEF_POOL_CAP } from "@/lib/homeBand";
 import { CardDetail } from "@/components/explore/CardDetail";
@@ -289,11 +289,20 @@ const BRIEF_AR = (() => {
   return a / b;
 })();
 
-// 育成カード用フッター(あとで/記録する)の高さぶんの予約枠。isGrowthを
-// 問わず常にこの高さを確保しておくことで、フッターの有無によって
-// カードの実寸が変わる(=スワイプで昇格した瞬間にガクッと動く)ことが
-// 構造的に起こらないようにする。
-const GROWTH_FOOTER_SLOT = 58;
+// ★★★**札の大きさは JOURNAL の録音機と同じ式**（第135巡にユーザー指摘「Explore のカードが Journal に比べて
+//   何故か小さい。カード系やタイル系も大きさを揃えて」）。第134巡までは札の下に**もう使っていない**育成カードの
+//   ボタンの予約枠（58px）と枠の上下の余白（24px）が残っていて、札だけ高さで頭打ちになっていた（実測 260 対 326 幅）。
+//   → 予約枠と余白を外し、録音機と同じ「見出しの帯（`HERO_HEAD`）の下の高さ × 2:3 と列の幅の小さいほう」にした。
+// ★★★**次の2枚が少し傾いて後ろから覗く**（ユーザー指定「stock と同様に、下のカードがずれて端だけ少し見えている
+//   感じ」）。姿は `PEEK_POSE`（深さ 1・2）。手前を払うほど、後ろの札は1つ手前の姿へ寄っていく。
+/** 深さごとの姿（横 px・縦 px・傾き deg）。★目盛りの外（手ざわり。STOCK の束の傾き −5〜4° と同じ幅）。 */
+const PEEK_POSE: readonly (readonly [number, number, number])[] = [[0, 0, 0], [SPACE.sm, SPACE.xs, 3], [-SPACE.sm, SPACE.sm, -3]];
+const poseAt = (depth: number, p: number) => {
+  const a = PEEK_POSE[Math.min(depth, PEEK_POSE.length - 1)];
+  const b = PEEK_POSE[Math.max(0, depth - 1)];
+  const k = (i: number) => a[i] + (b[i] - a[i]) * p;
+  return `translate(${k(0)}px, ${k(1)}px) scale(1) rotate(${k(2)}deg)`;
+};
 
 export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard, bare }: TabProps & {
   /** ★モジュールの中に置くとき（見出しは `AppModules` が持つ）。 */
@@ -337,14 +346,13 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard, 
   // 実際のビューポート/ヘッダー/フッターの実寸とズレることがあり、
   // 本文がカードの外へそのままはみ出す不具合の一因になっていた。
   const arenaRef = useRef<HTMLDivElement>(null);
-  const [cardBox, setCardBox] = useState<{ w: number; h: number; lift: number } | null>(null);
+  const [cardBox, setCardBox] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
     const el = arenaRef.current;
     if (!el) return;
     const measure = () => {
       const rect = el.getBoundingClientRect();
-      // 枠自身の上下パディング（`SPACE.md` × 2）は余白として残す。
-      const availH = rect.height - SPACE.md * 2;
+      const availH = rect.height;
       const availW = rect.width;
       if (availW <= 0 || availH <= 0) return;
       // ★★★**比は `BRIEF_CARD_ASPECT` の1か所から導く**（2026-09-13・第96巡）。
@@ -353,17 +361,7 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard, 
       //   ★`ITEM_CARD_ASPECT` とは**別物**（あちらを変えてもここは動かない）。
       const w = Math.min(availW, CARD_MAX_W, availH * BRIEF_AR);
       const h = w / BRIEF_AR;
-      // ★★★**札を「画面の中心」へ寄せる**（2026-09-13・第97巡）。
-      //   枠の下にはフッターの予約枠（`GROWTH_FOOTER_SLOT`）が**常に居る**ので、
-      //   枠の中で中央に置くと、**画面の中では予約枠の半分だけ上へずれる**
-      //   （実測 … 列の上から札の上 45 ／ 札の下から列の下 103）。
-      //   ユーザー指摘「**下に変な隙間**」はこれ。
-      //   ★★★**予約枠そのものは消さない** ―― 育成カードが先頭へ昇格した瞬間に
-      //   札の実寸が変わる（本文の折り返しがガクッと動く）のを止めているのがこれ。
-      //   ★★★**札を縮めてまで中心へは寄せない** ―― 余っている高さの範囲でだけ
-      //   下げる。余りが無い（＝高さで頭打ちの）画面では札の大きさが最優先。
-      const slack = Math.max(0, (availH - h) / 2);
-      setCardBox({ w, h, lift: Math.min(slack, GROWTH_FOOTER_SLOT / 2) });
+      setCardBox({ w, h });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -726,9 +724,7 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard, 
   // 実際にindexが進んでこのカードがtop役になる頃には、transformの値は
   // 既に定位置(0,0)・scale(1)に収まっているため、役割切り替えの瞬間には
   // 見た目上なにも変化しない=原理的にガクつきようがなくなる。
-  const peekTransform = exit
-    ? "translate(0, 0px) scale(1) rotate(0deg)"
-    : `translate(0, 8px) scale(${0.95 + Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1) * 0.05}) rotate(0deg)`;
+  const peekP = exit ? 1 : Math.min(Math.abs(drag.dx) / SWIPE_THRESHOLD, 1);
   const peekTransition = exit
     ? "transform var(--t-out) var(--ease-sheet)"
     : drag.active ? "none" : "transform var(--t-item) var(--ease-sheet)";
@@ -740,17 +736,16 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard, 
   // transformアニメーションとして連続させる(上のpeekTransform/exit連動と
   // 合わせて、役割が切り替わる瞬間には要素の位置もtransition設定も
   // 何一つ変化しない状態を作る)。
-  const visibleCards: { card: DeckCard; isTop: boolean }[] = [
-    ...(deck[index] ? [{ card: deck[index], isTop: true }] : []),
-    ...(deck[index + 1] ? [{ card: deck[index + 1], isTop: false }] : []),
-  ];
+  const visibleCards: { card: DeckCard; isTop: boolean; depth: number }[] = [0, 1, 2]
+    .filter((d) => deck[index + d])
+    .map((d) => ({ card: deck[index + d], isTop: d === 0, depth: d }));
 
   return (
     <>
       {!bare && <Masthead title={appTitle("life")} />}
-      <div style={{ display: "flex", gap: SPACE.xs, padding: `${bare ? 0 : SPACE.md}px ${SPACE.xs}px ${SPACE.lg}px` }}>
+      <div style={{ display: "flex", gap: SPACE.xs, padding: `${bare ? 0 : SPACE.md}px ${SPACE.xs}px ${SPACE.lg}px`, height: HERO_HEAD, boxSizing: "border-box", alignItems: "flex-start" }}>
         {deck.map((c, i) => (
-          <span key={c.id} style={{ flex: 1, height: 3, borderRadius: RADIUS.sm, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (isGrowthCard(c) ? GREEN : BLUE) : allDecisions[c.id] ? SHADE_DEEP : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background var(--t-item) var(--ease-settle)" }} />
+          <span key={c.id} style={{ flex: 1, height: HERO_DASH, borderRadius: RADIUS.sm, background: allDecisions[c.id] === "keep" || allDecisions[c.id] === "answered" ? (isGrowthCard(c) ? GREEN : BLUE) : allDecisions[c.id] ? SHADE_DEEP : i === index && !done ? INK : "rgba(26,26,24,0.1)", transition: "background var(--t-item) var(--ease-settle)" }} />
         ))}
       </div>
 
@@ -773,16 +768,14 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard, 
               このタブは滞在中ずっとdocument.body.style.overflowを
               hiddenにロックしているため、ここをvisibleにしても実際に
               ページがスクロール/横に伸びることはない。 */}
-          <div ref={arenaRef} style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: `${SPACE.md}px 0` }}>
+          <div ref={arenaRef} style={{ flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
             <main style={{
               position: "relative",
               width: cardBox ? cardBox.w : "min(88vw, 340px)",
               height: cardBox ? cardBox.h : undefined,
               aspectRatio: cardBox ? undefined : BRIEF_CARD_ASPECT,
-              /* ★下のフッターの予約枠のぶんだけ下げる（大きさは1pxも変えない）。 */
-              transform: cardBox ? `translateY(${cardBox.lift}px)` : undefined,
             }}>
-              {visibleCards.map(({ card, isTop }) => (
+              {visibleCards.map(({ card, isTop, depth }) => (
                 <div
                   key={card.id}
                   {...(isTop ? { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp, onLostPointerCapture: onPointerUp } : {})}
@@ -790,8 +783,9 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard, 
                     position: "absolute", inset: 0, zIndex: 2, transform: topTransform, transition: topTransition,
                     touchAction: isGrowth ? "auto" : "none", cursor: isGrowth ? "default" : drag.active ? "grabbing" : "grab",
                   } : {
-                    position: "absolute", inset: 0, zIndex: 1, transform: peekTransform, transition: peekTransition,
+                    position: "absolute", inset: 0, zIndex: 2 - depth, transform: poseAt(depth, peekP), transition: peekTransition,
                   }}
+                  className={isTop ? undefined : "vs-in"}
                 >
                   <CardFace card={card} dx={isTop ? drag.dx : 0} isTop={isTop}
                     onOpenBinder={isTop ? (from) => setDetail({ card: card as BriefCard, from }) : undefined}
@@ -808,46 +802,6 @@ export function BriefTab({ appState, persist, goTab, focusCard, clearFocusCard, 
               ))}
             </main>
           </div>
-          {/* 育成カード(テキスト入力を伴う)はドラッグを無効にしているため、
-              代わりにボタンで決定させる必要がある。通常カードはスワイプだけで
-              完結するため、下部にボタンは置かない。以前はSKIP/KEEPの控えめな
-              ヒント文字を置いていたが、カードのドロップシャドウがその文字と
-              重なる位置で境目のように見えてしまっていたため撤廃した。 */}
-          {/* isGrowthに関わらず常にこの高さの枠を確保する(理由は上の
-              コメント参照)。position+zIndexを明示しないと、この非配置
-              (static)要素はAppShell側のnav手前のグラデーション
-              (zIndex:15、画面下端に常駐)より低い描画レイヤーに置かれ、
-              フッターがタブバーの直前でうっすら覆われて見づらくなる。
-              バインド！ボタンと同じzIndex:26にして、常にグラデーション・
-              navより手前に出す。
-              ★zIndexを上げただけでは直りきらなかった: z-indexは「重なった
-              時にどちらが手前か」を決めるだけで、要素の透明な部分(ボタン
-              同士の隙間・下のpaddingの余白)まで裏を隠すわけではない。
-              この枠自体がbackground:transparentのままだったため、隙間から
-              下のグラデーション(zIndex:15)がそのまま透けて見え続けていた。
-              育成カードでボタンが出ている間だけ、枠自体にページ背景色(BG)を
-              敷き、矩形の範囲を丸ごと不透明にすることで、隙間からの透過を
-              構造的に無くした(通常カードの時はこの枠は中身が無く見えない
-              ため、透明のままにしてカードの影の抜けに影響しないようにする)。
-              ★上記だけでは別の境目が生まれた: このフッターのすぐ上にある
-              カード自体のSOFT_SHADOW_LG(ぼかしの効いたドロップシャドウ)は
-              枠(arenaRef)の外まで滲み出て、本来は徐々にページ背景色へ
-              溶け込んでいくはずだった。ところがフッターは矩形のまま一枚岩の
-              不透明なBGで、かつzIndexがカードより高いため、影がまだ薄く
-              残っている途中の位置でスパッと不透明な壁に切り取られてしまい、
-              「影がここで終わっている」という直線的な境目に見えていた。
-              フッターの上端を単色の壁ではなく、影の減衰と同じ向きに
-              透明→不透明へ滲むグラデーションにすることで、影の自然な
-              フェードアウトと視覚的に連続するようにした(境目そのものを
-              無くすのではなく、境目が見えなくなるまで滑らかにする)。
-              フェードは20pxで完了させ、下側の大部分(タブバー直前の
-              もやが出る領域=26px分)は引き続き完全に不透明なままにして
-              いるため、もやを隙間から通す構造的な穴は生まれない。 */}
-          <footer style={{
-            position: "relative", zIndex: 26, minHeight: GROWTH_FOOTER_SLOT, flexShrink: 0,
-          }}>
-            {/* ★★第134巡に「あとで／記録する」は札の中の下の1列へ移した（`GrowthFace`）。枠の高さだけ残す。 */}
-          </footer>
         </div>
       ) : deck.length === 0 ? (
         // デッキがまだ無い(夜間Cronが未生成、または候補ゼロ)状態。クライアントには

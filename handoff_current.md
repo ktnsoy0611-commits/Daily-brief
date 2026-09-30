@@ -1,4 +1,4 @@
-# いまどこにいるか（2026-09-29／下のバーとモジュールの骨組みが入った・第134巡）
+# いまどこにいるか（2026-09-30／バー・切り替え・タイルの統一・不要物の削除・第135巡）
 
 **ホームが動いている**（帯3段＋山＋日付の板）。★軸の操作＝**帯のピルを引いて日付を
 割り当てる**と、**山の図形を帯へ戻す**。★第110〜118巡に「落とし直し」を根絶して
@@ -20,6 +20,21 @@
 `docs/home-spec.md`（**§6 が引き下ろしの正**）／`docs/project_knowledge.md` §3-h／`design.md`。
 
 ## 直近完了
+
+### ★★★第135巡（後半）── バー・切り替え・タイル・削除・ベゼル・STOCK の送り
+- **削除（ユーザー承認）** … `DEV` と券・改札鋏・three.js 一式／`GeoType`・`TaskRow`・`paperTexture`・紙の素材4枚と作る道具／
+  日のログの my-brain 同期／`magazine`・`weekendMeta`・`pendingReview`・`shelfOrder`（読み込み時に消す・`planned` は `candidate` へ）。
+  ★★**バインダー（`Binder.tsx`・`bindLog`）と地図（`LeafletMap`・地図の計算）は残す**（ユーザー指定。ログと別の表示に使う）。
+- **バー** … 64px（丸 52）・下へ寄せる（`NAV_BOTTOM_GAP`）・下へ送ると 0.8 に畳む（`lib/navCompact.ts`。`ModuleRail` が 24px ごとに知らせる）・
+  バーの器が指を全部受ける（横・下を押しても背後に届かない。実測 3/3）・アイコンは円と角丸の四角から（家のアーチ／重なる2枚の札／積んだピル／録音機）。
+- **切り替え** … 押したボタンから円が広がって新しいアプリが現れる（`.app-reveal` の `clip-path`。覆われないフレーム 0/305）。
+- **右下の丸** … 白い輪は線で描き足す／閉じるときは輪が先に消え、円が `ease-exit` で縮む（2拍）。
+- **タイル** … `TILE`（紙・`RADIUS.xl`・`SPACE.lg`・`SOFT_SHADOW`）と `HERO`（`CARD_RADIUS`・`SPACE.xl`・`SOFT_SHADOW_LG`）の2つへ。
+  暗い面の影は `DARK_SHADOW(_UP)`、升は `CELL_DARK`。BRIEF の札と録音機は同じ頭の高さ `HERO_HEAD` と同じ幅の式（札が小さかった）。
+- **BRIEF** … 下に次の札が2枚ずれて覗く（`PEEK_POSE`。払うほど前へ出る）。
+- **ホームの墨の円に JOURNAL の青のベゼル**（外は同じ大きさ・幅は提案と同じ `r × OFFER_BEZEL`）。
+- **STOCK の送りのかくつき** … SVG の `<image>` は初めて描く瞬間に主の糸で画素を解く（写真は他所の原寸 OGP）→ `lib/decodedImage.ts` で
+  解き終わってから差し込む。★Chromium は解きを別の糸でやるので元から 0 件（再現は実機の WebKit だけ）。実機で要確認。
 
 ### ★★★第135巡 ── 切り替えの重さの根治／TASK の最初の画面を日付の列へ
 - 全アプリの中身が切り替えのたびに2回ずつ描き直されていた（録音の呼び返しが毎回作り直され `tabProps` が変わる）→ 0回。
@@ -67,27 +82,12 @@
   焦点 4×2。字は「箱の高さ ÷ 2」の刻み（`fitTask`）。旧い物差し（`rowSpecOf`／`OFFER_D`／`FOCUS_K`／
   `PILE_WORD_MAX` など）は削除。仕様 `docs/home-spec.md` §7-c0。
 - ベゼル … 写真は形いっぱいに切り抜き、輪郭を `2 × 幅` で引く（縮めた形で切ると太さがばらつく）。
-- 検証 … 4/9/14件の実寸がすべてマスの整数倍（1マス 70.6／59.1／50.5px）・帯からの余裕 38/65/119px
-  （前は 9件で −16px）／機械チェック 0 件・`tsc`・`eslint`・`build`／Chromium・WebKit・本番で `pageerror` 0／
-  回帰（写し取り 300 画素・戻す A0/B1・ASSIGN 16/16・払いの反転 0）通る。
-
-### ★★★第133巡（後半）── 帯を2段・A3・タップで「なぜ」／準備タスク／ニュースに写真
-
-- 帯 ＝ 上 ニュース・下 他の全部（段の番号は 2 と 1。0 は空）。版面は `BandPill.tsx` の1つ（墨の線・
-  写真か色の丸・2段組・44px）。全部のピルがタップで札（`BandCard.tsx`）―― なぜ・内容は規則で作る。
-- 準備タスク（`lib/prepSuggest.ts`）… 呼ぶ画面が第52巡から無かった → 起動時に3件ずつ頼む。帯には3件まで。
-- ニュース ＝ Yahoo!ニュースの主要（写真 `og:image`・本文 `og:description`）。
-- 検証 … 機械チェック 0 件・`tsc`・`eslint`（既存の警告 3）・`build`／Chromium と WebKit で 2段・写真・
-  札が開く・準備の生成（API を代役にして 5 回呼ばれ `suggestions` 2件）・`pageerror` 0／
-  回帰（写し取り・提案は帯へ戻らない・ASSIGN・払い・山と帯の余裕）すべて通る。
 
 ### ★★★第133巡 ── JOURNAL を録音機 ＋ 回る円1つへ
 
 - 録音画面 ＝ 縦長の角丸の四角（札と同じ 2:3・ベゼル・角丸）に墨の円1つ・数字と波形・キーの段
   （`lib/recorder.ts`）。**切り出しは円の左半分＝頭・右半分＝尻**。タブのアイコンも同じ形。
 - 山の JOURNAL ＝ **墨の円**（直径 ＝ 板 × 2 ＝ 提案の円と同じ）。`lib/cassette.ts` は削除。
-- **検証** … 機械チェック13本 0 件・`tsc`・`eslint`（既存の警告 3）・`build`／Chromium で録音・停止・
-  左右の半分を回す（秒数が左端／右端に出る）・`pageerror` 0／WebKit で録音画面 `pageerror` 0。
 
 ### 第131〜132巡（要点）
 
@@ -97,23 +97,13 @@
 
 - 役の入れ替え（TASK＝オレンジ・JOURNAL＝青・提案＝黄・NEWS＝墨）／字は全部「太い墨」800／提案は帯へ戻せない。
 
-### 第124〜126巡（要点。全文は `docs/project_knowledge.md` §3-h）
-
-- **第126巡** … 書体を Noto Sans JP へ戻す（LINE Seed JP は commit `0b04755`）／Explore の
-  「ガクガク」は**`p` を単調に＋2段目を `EASE_EXIT`**／帯の払いは**`bandStop` を呼ばない・
-  `glide`・横払いは引き下ろしにしない**（`PAN_SLOP` ＋ `PULL_LIVE`）。
-- **第125巡** … 1段の文字数を `ROW_WIDE` 倍（★`rowSpecOf` の幅は**下限**）／帯の送りは
-  **`anim.currentTime` へ畳む**（`transform` へ足すと2周ぶんで尽きる）。
-- **第124巡** … 提案は**写真があるものだけ**（`offerPick` と `pileOffers` の**2か所**）／
-  ニュース 8:2／タスク＝**ひとつの大きなピル**（段の高さ ＝ 板 ÷ 2・`FIT_W` 0.86）。
-
 ### 第113〜123巡（要点。全文は `docs/project_knowledge.md` §3-h）
 
 - 未読は山へ／`createPortal`・`--nav-h` を読まない／引き下ろす＝KEEP／落とし所は絵の中心／起動の代金／
   ★★★**隙間と席はレイアウトが持つ**／★★★**並びは「留め金」**（`bandPins`。挿し口は左どなりの id）。
 
 ## 次の一手
- TASK は表に出るたびに山を落とし直す（第60巡の指定）ので一瞬空に見える
+★★★**実機で見てもらう（第135巡）** … STOCK の送り（写真の解き）・バーの畳み・円で現れる切り替え・右下の丸の閉じ方・BRIEF の覗く札。
 ★★★**実機で骨組みを見てもらう**（第134巡）… バーの押し心地・送りの手ざわり・BRIEF の札から上へ払えるか・STOCK の頭。
 ★残り … HOME の図形から入るときの「飛んで着地する」演出は未実装／LOG・PLAN・TASK の作り直し（中身はユーザーと決める）。
 
@@ -124,7 +114,7 @@
    焦点が無い）、②**ピルの上の図形を押して掴めるか**（捕獲相の横取り。iOS の WebKit で
    `setPointerCapture` を祖先へ掛けて move/up が届くか）、③**ニュースの輪郭のピルの弱さ**、
    ④（撤去済み）、⑤落ち始めの重さ（第134巡に手当て。実機で要確認）。
-3. ★**残る宿題** … 起動の代金（和文の断片のレイアウト・`BandRow` の強制レイアウト）／**`magazine` と `ItemStatus "planned"` は死んだ欄**。
+3. ★**残る宿題** … 起動の代金（和文の断片のレイアウト・`BandRow` の強制レイアウト）。
 
 ## 未解決
 
@@ -146,7 +136,7 @@
 - Explore … **詳細 `CardDetail.tsx` ＋ 変形 `lib/cardMorph.ts`**／**札の形
   `lib/cardShape.ts`**（★`cardShapeReach`・`inCardShape`・`fitBox` は一様）。
 - 図形 … `lib/solid.ts`（**ひとつの大きなピル**）／`lib/taskSize.ts`（`ROW_WIDE`）／
-  `lib/wordPlate.ts`（板）／`lib/cassette.ts`＋`lib/reelHub.ts`。
+  `lib/wordPlate.ts`（板）／`lib/recorder.ts`＋`lib/reelHub.ts`。
 - 語彙 … 色 `lib/constants.ts` の `PALETTE`(**4行**) ＋ 地 `BD_GREY`／**和文は `JP`**
   （`SANS` も `GOTHIC` も読む。図形の字は 800）／**帯の行 `bandLines`・字 `BAND_TEXT`**／
   動き `lib/motion.ts`（★**CSS に任せられない曲線は `easeAt(…)`。写経しない**／

@@ -12,7 +12,7 @@ import { StockGroup } from "@/components/explore/StockGroup";
 import { cardShapeOf } from "@/lib/cardShape";
 import { categoryOfKind } from "@/lib/deckStyle";
 import { TabIcon } from "@/components/TabIcons";
-import { BLUE, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
+import { BLUE, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, TILE, WHITE } from "@/lib/constants";
 import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { domainOf, haptic, hasPlace, img, isWishBound, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
@@ -422,13 +422,14 @@ export function useStockModule({ appState, persist, showToast, openWishSheet }: 
             <TabIcon name="sparkle" color={PAPER} size={15} />
           </button>
         </div>
-        <div style={{ display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: SPACE.sm }}>
           {allWishesDesc.map((w) => {
             const bound = isWishBound(w, appState.items);
             return (
               <button key={w.id} onClick={() => setWishDetail(w)} style={{
-                display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.md}px 0`,
-                background: "none", border: "none", borderTop: `1px solid ${HAIRLINE}`, cursor: "pointer", textAlign: "left", width: "100%",
+                // ★★一覧の札（`TILE`。第135巡に線で区切る行から統一）。
+                ...TILE, display: "flex", alignItems: "center", gap: SPACE.md,
+                border: "none", cursor: "pointer", textAlign: "left", width: "100%",
               }}>
                 <span style={{
                   flexShrink: 0, width: 19, height: 19, borderRadius: RADIUS.circle, display: "flex", alignItems: "center", justifyContent: "center",

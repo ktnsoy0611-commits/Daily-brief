@@ -6,7 +6,7 @@ import { drawPixelScreen, waveCols, type Tone } from "@/lib/pixelScreen";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { claimFromRail } from "@/lib/moduleRail";
-import { CARD_RADIUS, CHARCOAL, INK, JOURNAL_FACE, MUTED, SANS, SCHEME, SOFT_SHADOW_LG, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
+import { CARD_RADIUS, CHARCOAL, HERO_HEAD, INK, JOURNAL_FACE, MUTED, SANS, SCHEME, SOFT_SHADOW_LG, STUDIO, STUDIO_KEY, navHeightPx } from "@/lib/constants";
 import { hubPath } from "@/lib/reelHub";
 import { RECORDER_AR, RECORDER_BEZEL_PER_W, RECORDER_DECK_GAP_PER_H, RECORDER_DECK_H_PER_W, RECORDER_DECK_Y_PER_W, RECORDER_INNER_W_PER_W, RECORDER_KEY_LIP_PER_H, RECORDER_REEL_CY_PER_W, RECORDER_REEL_D_PER_W, RECORDER_SCREEN_H_PER_W, RECORDER_SCREEN_Y_PER_W } from "@/lib/recorder";
 import { PILE_INSET } from "@/lib/pileBox";
@@ -336,11 +336,13 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true, fit
   //   高さから幅を決める。余った高さは上下に等分する。
   // ★`navHeightPx()` を使う ―― `.app-nav` の矩形は `NAV_H` と一致しない。自分で測らない。
   const bodyBottom = fit ? h : h - navHeightPx() - DECK_LIFT;
-  const topLimit = fit ? 0 : BAND_TOP + SPACE.lg;
+  // ★★★**モジュールの中（`fit`）では BRIEF の札と同じ式**（第135巡）… 上に `HERO_HEAD` を空け、幅は器いっぱい
+  //   （器 ＝ 送りの1枚で、左右の余白はもう送りが持っている。第134巡は `PILE_INSET` を二重に引いて 32px 狭かった）。
+  const topLimit = fit ? HERO_HEAD : BAND_TOP + SPACE.lg;
   const availH = Math.max(200, bodyBottom - topLimit);
-  const bodyW = Math.min(Math.max(120, w - PILE_INSET * 2), availH * RECORDER_AR);
+  const bodyW = Math.min(Math.max(120, fit ? w : w - PILE_INSET * 2), availH * RECORDER_AR);
   const bodyH = bodyW / RECORDER_AR;
-  const bodyTop = topLimit + Math.max(0, (availH - bodyH) / 2);
+  const bodyTop = topLimit + (fit ? 0 : Math.max(0, (availH - bodyH) / 2));
   const bodyLeft = (w - bodyW) / 2;
   const bezel = bodyW * RECORDER_BEZEL_PER_W;
 

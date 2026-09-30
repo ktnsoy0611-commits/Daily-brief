@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/Button";
-import { CARD_RADIUS, INK, MUTED, NOTE_BLUR, NOTE_GLASS, SANS, SOFT_SHADOW_LG, TAB_PAD_TOP } from "@/lib/constants";
+import { HERO, INK, MUTED, NOTE_BLUR, NOTE_GLASS, SANS, SOFT_SHADOW_LG, TAB_PAD_TOP } from "@/lib/constants";
 import { haptic } from "@/lib/helpers";
 import { ms, T_OUT } from "@/lib/motion";
 import type { Remind } from "@/lib/remind";
@@ -98,8 +98,8 @@ export function RemindCard({ item, onAnswer, onLater }: {
       {/* ★★★**ぼかす面は動かす器と分ける**（第133巡）―― 変形している要素そのものに `backdrop-filter` を
           掛けると、Chromium はぼかす範囲を取り違えて一部しかぼけなかった（実測）。 */}
       <div style={{
-        padding: SPACE.lg,
-        borderRadius: CARD_RADIUS,
+        padding: HERO.padding,
+        borderRadius: HERO.borderRadius,
         background: NOTE_GLASS,
         backdropFilter: NOTE_BLUR, WebkitBackdropFilter: NOTE_BLUR,
         boxShadow: SOFT_SHADOW_LG,

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, type CSSProperties, ty
 import {
   makeRail, pieceY, railClaimed, railDrag, railGoTo, railHold, railIndex, railLayout, railPieceAt, railRelease, railStep, railUnclaim, RAIL_STEP_MS,
 } from "@/lib/moduleRail";
+import { setNavCompact } from "@/lib/navCompact";
 
 // ★★★**モジュール送りの器**（2026-09-28・第134巡）。算数は `lib/moduleRail.ts`。ここは器・指・ループだけ。
 // ★1枚ずつを `position: absolute` に置き、`translate3d` だけで動かす（レイアウトを起こさない）。
@@ -15,6 +16,8 @@ import {
 // ★目盛りの外（指の遊び）。
 
 const SLOP = 8;
+/** ★タブバーを畳む／広げるまでに同じ向きへ送る距離（px）。★目盛りの外（手ざわり）。 */
+const NAV_FOLD = 24;
 /** 1フレームに進める刻みの上限（画面を離れて戻ったときに貯まった時間で飛ばない）。 */
 const MAX_STEPS = 4;
 /** 離した瞬間の速さを測る窓（ms）。 */
@@ -48,6 +51,8 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, jump, s
   const grab = useRef<{ id: number; x0: number; y0: number; y: number; won: boolean; lost: boolean; samples: { t: number; y: number }[] } | null>(null);
   const justDragged = useRef(false);
 
+  const lastX = useRef(0);
+  const travel = useRef(0);
   const paint = useCallback(() => {
     const r = rail.current;
     els.current.forEach((el, i) => {
@@ -55,6 +60,16 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, jump, s
     });
     const idx = railIndex(r);
     if (idx !== shownIndex.current) { shownIndex.current = idx; onIndexRef.current?.(idx); }
+    // ★★★**下へ送ったらタブバーを畳み、上へ戻したら広げる**（第135巡。`lib/navCompact.ts`）。行ったり来たりの
+    //   小さな揺れで畳み直さないよう、同じ向きに `NAV_FOLD` 進んだら切り替える。先頭へ戻ったら必ず広げる。
+    const x = r.x.p;
+    const d = x - lastX.current;
+    lastX.current = x;
+    if (Math.abs(d) > 0.01) {
+      travel.current = Math.sign(d) === Math.sign(travel.current) ? travel.current + d : d;
+      if (x < NAV_FOLD || travel.current < -NAV_FOLD) setNavCompact(false);
+      else if (travel.current > NAV_FOLD) setNavCompact(true);
+    }
   }, []);
 
   // ★ループは効果の中の閉じた関数（React Compiler が「宣言の前に使う」を拒むため、ref で起こす）。

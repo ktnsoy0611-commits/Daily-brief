@@ -5,7 +5,7 @@ import { useState } from "react";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
 import { Button } from "@/components/Button";
 import { SectionLabel } from "@/components/common";
-import { CARD_RADIUS, INK, LATIN, MUTED, PAPER, SANS, SECOND, SOFT_SHADOW } from "@/lib/constants";
+import { INK, LATIN, MUTED, SANS, SECOND, TILE } from "@/lib/constants";
 import { haptic, ratingLabel, shortDate } from "@/lib/helpers";
 import { LEAD, SPACE, TRACK, TYPE, WEIGHT } from "@/lib/tokens";
 import type { AppState, CheckIn, Goal } from "@/lib/types";
@@ -93,7 +93,7 @@ function GoalRow({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
   return (
     <button type="button" onClick={onOpen} style={{
       display: "flex", flexDirection: "column", gap: SPACE.xs, width: "100%", textAlign: "left", cursor: "pointer",
-      background: PAPER, border: "none", borderRadius: CARD_RADIUS, boxShadow: SOFT_SHADOW, padding: SPACE.lg,
+      ...TILE, border: "none",
     }}>
       <span style={{ fontFamily: LATIN, fontSize: TYPE.micro, fontWeight: WEIGHT.bold, lineHeight: LEAD.flat, letterSpacing: TRACK.caps, color: MUTED }}>
         {tag}{goal.endedAt ? ` ${shortDate(goal.endedAt)}` : ""}

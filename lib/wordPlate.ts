@@ -195,6 +195,11 @@ export interface WordPlate {
    *   `SPLIT_PAD`）は削除した。復活させない。
    */
   badge?: { num: string; top: string; bottom: string; ground: string };
+  /**
+   * ★★★**TASK の「自由」のピル**（第135巡にユーザー指定「**自由の文字…もピルにして、図形として落として**」）。
+   * 日付の板と同じ作り（地の面・墨の細い線）で、中は語が1つ。字の大きさは日付の板の右の2行と同じ。
+   */
+  label?: { ground: string };
 }
 
 /** ★月の略号（`WD_SHORT` と同じ3文字の語彙）。 */
@@ -230,6 +235,26 @@ export function badgePlate(
     // ★`pill` は「角丸 ＝ 高さの半分のピル」の印（指の当たり判定が読む）。色は線の墨。
     pill: ink, badge: { num, top, bottom, ground },
   };
+}
+
+/** ★★TASK の「自由」のピル（`bw`×`bh` ＝ 格子のマス）。字は描くときに箱へ合わせて組む。 */
+export function labelPlate(word: string, W: number, H: number, ground: string, ink: string): WordPlate {
+  return {
+    word, fs: 0, sx: 1, ink, fam: SANS,
+    dx: 0, dy: 0, w: W, h: H, bw: W, bh: H,
+    pill: ink, label: { ground },
+  };
+}
+
+/** ★「自由」のピルに要る横のマスの数（語の幅 ＋ 両端の余白。`cells` 個のうち最小）。 */
+export function labelCells(word: string, unit: number, cells: readonly number[]): number {
+  const probe = document.createElement("canvas").getContext("2d");
+  if (!probe) return cells[cells.length - 1];
+  const H = unit;
+  const cap = ((H - H * BADGE_BEZEL * 2) / 2) * BADGE_CAP;
+  const m = fitCap(probe, word, 1e6, cap, LABEL_REF);
+  const need = m.width + H * BADGE_PAD_R * 2;
+  return cells.find((c) => c * unit >= need) ?? cells[cells.length - 1];
 }
 
 /** 語 → 板の寸法。★`GravityTab.makeWordPiece` の前半そのまま。 */
@@ -273,6 +298,7 @@ export function drawWordPlate(
   x: number, y: number, angle: number, dpr: number,
 ): void {
   if (plate.badge) { drawBadgePlate(ctx, plate, x, y, angle); return; }
+  if (plate.label) { drawLabelPlate(ctx, plate, x, y, angle); return; }
   const wb = wordBitmap(plate.word, plate.fs, plate.sx, plate.ink, plate.fam,
     plate.w, plate.h, plate.dx, plate.dy, dpr, PLATE_TRACK);
   ctx.save();
@@ -291,18 +317,70 @@ export function drawWordPlate(
 }
 
 /** 字を箱（幅・大文字の高さ）へ収まるいちばん大きな大きさにして返す。 */
-function fitCap(ctx: CanvasRenderingContext2D, text: string, maxW: number, capH: number): TextMetrics {
-  let fs = capH;
-  for (let i = 0; i < 5; i++) {
-    ctx.font = canvasFont(WEIGHT.heavy, fs, SANS);
+/**
+ * ★★★**基準の大きさで1回だけ測り、比例で解く**（第135巡）。第134巡までは大きさを変えながら最大5回測って
+ * いたが、**和文（「自由」など）は大きさが変わるたびに代わりの書体の準備がやり直しになる**（実測 CPU×4 で
+ * 1回 約 100ms。TASK を初めて開いたとき 0.9〜1.0 秒 詰まった）。字の幅と高さは大きさに比例するので、
+ * 基準（`CAP_REF`）で測った値を掛けるだけで同じ答えになる。★戻り値は測った値を比例させたもの。
+ */
+const CAP_REF = 100;
+/** ★「自由」の語の大きさを決める代表（ラテンの大文字の高さ）。 */
+const LABEL_REF = "FREE";
+const refMemo = new Map<string, { w: number; a: number; d: number }>();
+const refOf = (ctx: CanvasRenderingContext2D, text: string) => {
+  let r = refMemo.get(text);
+  if (!r) {
+    ctx.font = canvasFont(WEIGHT.heavy, CAP_REF, SANS);
     const m = ctx.measureText(text);
-    const h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
-    const k = Math.min(maxW / Math.max(1, m.width), capH / Math.max(1, h));
-    if (Math.abs(k - 1) < 0.01) return m;
-    fs *= k;
+    r = { w: m.width, a: m.actualBoundingBoxAscent, d: m.actualBoundingBoxDescent };
+    if (refMemo.size > 400) refMemo.clear();
+    refMemo.set(text, r);
   }
+  return r;
+};
+/**
+ * @param ref ★★大きさを決める**代表の文字列**（第135巡）。渡すと、大きさは `ref` で決まり、`text` はその大きさで
+ *   組む ―― 板ごと・語ごとに大きさが少しずつ違うと、**そのたびに書体の準備が走る**（和文の代わりの書体は
+ *   特に重い）。同じ役の字は同じ大きさ（例 … 日にちは "00"、曜日と月は "WED"、「自由」の語は "FREE"）。
+ */
+function fitCap(ctx: CanvasRenderingContext2D, text: string, maxW: number, capH: number, ref?: string): Pick<TextMetrics, "width" | "actualBoundingBoxAscent" | "actualBoundingBoxDescent"> {
+  const base = refOf(ctx, ref ?? text);
+  const k = Math.min(maxW / Math.max(0.01, base.w), capH / Math.max(0.01, base.a + base.d));
+  // ★★大きさは 0.25px に丸める（描くたびに違う大きさ ＝ 違う書体の準備、にしない）。
+  const fs = Math.max(1, Math.round(CAP_REF * k * 4) / 4);
+  const q = fs / CAP_REF;
+  const r = ref ? refOf(ctx, text) : base;
   ctx.font = canvasFont(WEIGHT.heavy, fs, SANS);
-  return ctx.measureText(text);
+  return { width: r.w * q, actualBoundingBoxAscent: r.a * q, actualBoundingBoxDescent: r.d * q };
+}
+/** ★書体が遅れて届いたら捨てる（代わりの書体で測った大きさが残らないように）。 */
+export function clearWordFits() { refMemo.clear(); }
+
+/** ★★「自由」のピルを描く（日付の板と同じ地・線、字は右の2行と同じ大きさで真ん中に1語）。 */
+function drawLabelPlate(
+  ctx: CanvasRenderingContext2D, plate: WordPlate, x: number, y: number, angle: number,
+): void {
+  const l = plate.label;
+  if (!l) return;
+  const W = plate.bw; const H = plate.bh;
+  const e = H * BADGE_EDGE;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.roundRect(-W / 2, -H / 2, W, H, H / 2);
+  ctx.fillStyle = l.ground;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.roundRect(-W / 2 + e / 2, -H / 2 + e / 2, W - e, H - e, (H - e) / 2);
+  ctx.lineWidth = e;
+  ctx.strokeStyle = plate.ink;
+  ctx.stroke();
+  const cap = ((H - H * BADGE_BEZEL * 2) / 2) * BADGE_CAP;
+  const m = fitCap(ctx, plate.word, 1e6, cap, LABEL_REF);
+  ctx.fillStyle = plate.ink;
+  ctx.fillText(plate.word, -m.width / 2, (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+  ctx.restore();
 }
 
 /**
@@ -336,16 +414,16 @@ function drawBadgePlate(
   ctx.arc(cx, 0, D / 2, 0, Math.PI * 2);
   ctx.fillStyle = plate.ink;
   ctx.fill();
-  const mid = (m: TextMetrics) => (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+  const mid = (m: { actualBoundingBoxAscent: number; actualBoundingBoxDescent: number }) => (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
   ctx.fillStyle = b.ground;
-  const mn = fitCap(ctx, b.num, D * BADGE_NUM_W, D * BADGE_NUM_H);
+  const mn = fitCap(ctx, b.num, D * BADGE_NUM_W, D * BADGE_NUM_H, "00");
   ctx.fillText(b.num, cx - mn.width / 2, mid(mn));
   ctx.fillStyle = plate.ink;
   const x0 = cx + D / 2 + H * BADGE_GAP;
   const room = W / 2 - H * BADGE_PAD_R - x0;
   // ★2行は同じ大きさ（長いほうで測る）。
   const longer = b.top.length >= b.bottom.length ? b.top : b.bottom;
-  const m = fitCap(ctx, longer, room, (D / 2) * BADGE_CAP);
+  const m = fitCap(ctx, longer, room, (D / 2) * BADGE_CAP, "WED");
   ctx.fillText(b.top, x0, -D / 4 + mid(m));
   ctx.fillText(b.bottom, x0, D / 4 + mid(m));
   ctx.restore();

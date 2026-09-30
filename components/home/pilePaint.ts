@@ -4,7 +4,7 @@ import { traceHub } from "@/lib/reelHub";
 import { cardShapeReach, traceCardShape } from "@/lib/cardShape";
 import { halfWidthAtStack, stackOutline } from "@/lib/solid";
 import { ROW_FILL, canvasFont, drawFitted, ensureGlyphs, layoutInRows, missingGlyphs, warmGlyphs } from "@/lib/textFit";
-import { drawWordPlate } from "@/lib/wordPlate";
+import { clearWordFits, drawWordPlate } from "@/lib/wordPlate";
 import { splitReadable } from "@/lib/lineBreak";
 import { TASK_SLACK } from "@/lib/taskSize";
 import { WORD_WEIGHT } from "@/lib/solidPaint";
@@ -41,7 +41,7 @@ export interface Baked { canvas: HTMLCanvasElement; w: number; h: number }
 
 const bakeCache = new Map<string, Baked>();
 /** 焼いた絵を全部捨てる（★**書体が遅れて届いたとき**に呼ぶ。次の frame で戻る）。 */
-export function clearPileBitmaps() { bakeCache.clear(); labelFs.clear(); fitMemo.clear(); }
+export function clearPileBitmaps() { bakeCache.clear(); labelFs.clear(); fitMemo.clear(); clearWordFits(); }
 
 /**
  * ★★★**1フレームに焼いてよい枚数**（2026-09-16・第115巡）。
@@ -110,7 +110,8 @@ function spriteOf(
   ctx.translate(bw / 2, bh / 2);
   paint(ctx);
   const made = { canvas: cv, w: bw, h: bh };
-  if (bakeCache.size > 80) bakeCache.clear();
+  // ★★ホームの山と TASK の日付の列（14日ぶん）が同じ入れ物を使う（第135巡に 80 → 160）。
+  if (bakeCache.size > 160) bakeCache.clear();
   bakeCache.set(key, made);
   return made;
 }
@@ -231,7 +232,7 @@ export function taskBitmap(p: Piece, dpr: number): Baked | undefined {
   if (fit) drawFitted(ctx, fit, p.face_, w / 2, h / 2, p.ink, fit.size * dpr);
   ctx.restore();
   const made = { canvas: cv, w, h };
-  if (bakeCache.size > 80) bakeCache.clear();
+  if (bakeCache.size > 160) bakeCache.clear();
   bakeCache.set(key, made);
   return made;
 }
@@ -266,7 +267,7 @@ export function reelBitmap(p: Piece, dpr: number): Baked | undefined {
   ctx.fill();
   const w = d; const h = d;
   const made = { canvas: cv, w, h };
-  if (bakeCache.size > 80) bakeCache.clear();
+  if (bakeCache.size > 160) bakeCache.clear();
   bakeCache.set(key, made);
   return made;
 }
@@ -739,6 +740,8 @@ function contactShadows(c: CanvasRenderingContext2D, p: Piece, env: PileBounds):
 
 export function drawPileShadows(
   cv: HTMLCanvasElement, pieces: Piece[], w: number, h: number, skip?: string | null, env?: PileBounds,
+  /** ★横の送り（TASK の日付の列。世界の x から引く）。 */
+  ox = 0,
 ): void {
   const res = PILE_SHADOW.res;
   const pw = Math.max(1, Math.round(w * res)); const ph = Math.max(1, Math.round(h * res));
@@ -747,7 +750,7 @@ export function drawPileShadows(
   if (!c) return;
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, pw, ph);
-  c.setTransform(res, 0, 0, res, 0, 0);
+  c.setTransform(res, 0, 0, res, -ox * res, 0);
   for (const p of pieces) {
     if (skip && p.id === skip) continue;
     const b = p.body;
@@ -818,7 +821,7 @@ export function drawPile(
         // ★★焼いて貼る（`spriteOf`）。★箱は面と字のどちらか大きいほう＋余白。
         const bw = Math.max(pl.bw, pl.w) + BAKE_PAD * 2;
         const bh = Math.max(pl.bh, pl.h) + BAKE_PAD * 2;
-        const key = ["plate", pl.word, pl.badge?.ground ?? "",
+        const key = ["plate", pl.word, pl.badge?.ground ?? pl.label?.ground ?? "",
           pl.bw.toFixed(2), pl.bh.toFixed(2), pl.fs.toFixed(2), pl.ink, pl.pill ?? "", dpr.toFixed(2)].join("|");
         const bmp = spriteOf(key, bw, bh, dpr, (c) => drawWordPlate(c, pl, 0, 0, 0, dpr));
         if (bmp) blit(ctx, bmp);

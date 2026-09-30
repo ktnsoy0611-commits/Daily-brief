@@ -515,7 +515,8 @@ export type LifeTabId = "brief" | "stock";
 // タスクが落ちて積み上がる。
 // ★第52巡に TOP/UNDER を破棄。タスク図形は常に GRAVITY 空間にだけ在り、詳細
 // リスト・俯瞰は GRAVITY 内の物理モード(ALIGN/TIMELINE)で見せる。
-export type TasksTabId = "tasks-drift" | "tasks-gravity";
+// ★★第135巡に最初の画面を日付の列（`tasks-timeline`）へ。`tasks-gravity` はいま ALIGN の仮の入口。
+export type TasksTabId = "tasks-timeline" | "tasks-drift" | "tasks-gravity";
 // アーカイブ(旧・独立タブ)はジャーナルへ統合した。「レコード」=カセット
 // プレイヤーをタップして声で記録する、「今日」=その日の記録、
 // 「アーカイブ」=過去の日々を1日1枚のカードで積む(HANDOFF §10)。

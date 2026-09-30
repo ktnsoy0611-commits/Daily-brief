@@ -440,11 +440,18 @@ const bez = (a: number, b: number, c: number, d: number, t: number) => {
   return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
 };
 
-export function GravityTab({ appState, persist, showToast, goTab, appActive, active = true, dragged }: TabProps & {
+export function GravityTab({ appState, persist, showToast, goTab, appActive, active = true, dragged, autoAlign }: TabProps & {
   appActive?: boolean;
   active?: boolean;
   dragged?: React.MutableRefObject<boolean>;
+  /**
+   * ★★★**表に出たら ALIGN を開いたままにする**（第135巡。TASK の最初の画面を日付の列に替え、GRAVITY を外した）。
+   * ユーザー指定「**一旦右上に仮のタブを増設してそこから飛べるようにしておき、保持する。のちに改修**」。
+   * ★左へ払っても山へは戻らない（戻り先は仮のタブ）。
+   */
+  autoAlign?: boolean;
 }) {
+  const enterAlignRef = useRef<() => void>(() => {});
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pendingBakeRef = useRef(false);
@@ -1543,6 +1550,21 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     shownRef.current = on;
   }, [appActive, active, ready, dropAll]);
 
+  // ★★仮の ALIGN の入口（第135巡）… 表に出ていて山の図形が出来たら ALIGN へ入る（出来るまで少し待って何度か見る）。
+  //   ★上の「表に出たら落とし直す」は最初の1回（世界を作ったとき）を通らないので、別に見る。
+  useEffect(() => {
+    if (!autoAlign || !ready || !appActive || !active) return;
+    let n = 0; let timer = 0;
+    const inAlign = () => (modeRef.current as Mode) === "align";
+    const tryAlign = () => {
+      if (inAlign()) return;
+      if (piecesRef.current.length && !phaseRef.current) enterAlignRef.current();
+      if (!inAlign() && ++n < 30) timer = window.setTimeout(tryAlign, 100);
+    };
+    timer = window.setTimeout(tryAlign, 0);
+    return () => window.clearTimeout(timer);
+  }, [autoAlign, ready, appActive, active]);
+
   useEffect(() => {
     if (modeRef.current !== "pile" || phaseRef.current) return;
     const M = matterRef.current; const engine = engineRef.current;
@@ -1655,6 +1677,8 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
     if (engine) engine.gravity.y = 0;
     haptic(10); wake();
   }, [buildItems, bakeUnitFor, snapshot, layoutAlign, wake]);
+
+  useEffect(() => { enterAlignRef.current = enterAlign; }, [enterAlign]);
 
   /** ★★TIMELINE を開く … 床を抜いて、あとは物理に任せる。 */
   const openTimeline = useCallback(() => {
@@ -2166,9 +2190,9 @@ export function GravityTab({ appState, persist, showToast, goTab, appActive, act
         if (d.edge && d.axis === "x" && dx > SWIPE_PX && !phaseRef.current) enterAlign();
       } else if (m === "align" && phaseRef.current === "align-in") {
         // ★入っている最中でも、左へ払えば折り返して閉じる。
-        if (d.axis === "x" && dx < -SWIPE_PX) leaveAlign();
+        if (d.axis === "x" && dx < -SWIPE_PX && !autoAlign) leaveAlign();
       } else if (m === "align" && !phaseRef.current) {
-        if (d.axis === "x" && dx < -SWIPE_PX) leaveAlign();
+        if (d.axis === "x" && dx < -SWIPE_PX && !autoAlign) leaveAlign();
         // 投げ。減衰しきったところで最寄りの整数へ。連鎖ばねが遅れて追う。
         else if (d.axis === "y") { flickThrow(scrollRef.current, d.vy, ARC_RATE); wake(); }
       } else if (m === "timeline") {

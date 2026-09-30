@@ -1,9 +1,9 @@
 import { BD_GREY, INK, KIND_DOMAIN, MUTED, PAPER, SHAPE_FACE, TASK_FACE } from "@/lib/constants";
-import { cardShapeOf, cardShapePoints, type CardShape } from "@/lib/cardShape";
+import { cardShapeOf, cardShapePoints, inCardShape, type CardShape } from "@/lib/cardShape";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import { categoryOfKind } from "@/lib/deckStyle";
 import { GRID_COLS, pillInk, taskCellsOf } from "@/lib/taskSize";
-import { PHYS_GAP } from "@/lib/solid";
+import { halfWidthAtStack, PHYS_GAP } from "@/lib/solid";
 import { PILE_INSET, floorYOf, pileWOf } from "@/lib/pileBox";
 import { badgePlate, type WordPlate } from "@/lib/wordPlate";
 
@@ -47,12 +47,14 @@ export const MASS_K = 1.6;
  * ★★GRAVITY（`GravityTab`）は 0.55／0.9 のまま（別の画面。ユーザーの指定はホーム）。
  * ★目盛りの外（物理の場）。
  */
-const BODY = { restitution: 0.04, friction: 0.15, frictionStatic: 0.25, frictionAir: 0.012 };
-const FLOOR_FRICTION = { friction: 0.15, frictionStatic: 0.2 };
-const WALL_FRICTION = { friction: 0.08, frictionStatic: 0.12 };
-const WALL_T = 200;
+// ★★★**TASK の日付の列（`components/tasks/TimelineTab.tsx`）も同じ値を読む**（第135巡にユーザー指定
+//   「**完全にホームと同じ仕組みを使って**」）。だから `export` している。片方だけの値を作らないこと。
+export const BODY = { restitution: 0.04, friction: 0.15, frictionStatic: 0.25, frictionAir: 0.012 };
+export const FLOOR_FRICTION = { friction: 0.15, frictionStatic: 0.2 };
+export const WALL_FRICTION = { friction: 0.08, frictionStatic: 0.12 };
+export const WALL_T = 200;
 /** ★左右の壁の最低の長さ（器が低くても図形が抜けない）。★目盛りの外（物理の場）。 */
-const WALL_MIN_H = 1200;
+export const WALL_MIN_H = 1200;
 /** ★床よりこれだけ下まで行ったら「もう戻れない」＝上から落とし直す。★同上。 */
 const LOST_BELOW = 900;
 /** ★左右の壁よりこれだけ外に出たら「外へ出た」。★同上。 */
@@ -159,14 +161,14 @@ export function focusOf(tasks: { id: string; dueTime?: string }[], now: number):
   return best?.id ?? null;
 }
 /** ★落とす順を決める前の印（`buildPieces` の最後で時刻に置き換わる）。 */
-const QUEUED = -1;
+export const QUEUED = -1;
 /**
  * 出どころの高さ＝**自分の背丈の半分 ＋ `DROP_ABOVE` ＋ 0〜`DROP_SCATTER`**。
  * ★★★**高さをばらす**（2026-09-11）。等間隔に1つずつ落とすと、どれも同じ速さで
  * 同じ距離を落ちるので、**一列に並んで順番に降りてくる**（コンベアに見えた）。
  */
-const DROP_ABOVE = 24;
-const DROP_SCATTER = 200;
+export const DROP_ABOVE = 24;
+export const DROP_SCATTER = 200;
 type Pt = { x: number; y: number };
 
 /**
@@ -190,7 +192,7 @@ type Pt = { x: number; y: number };
  *   ―― GRAVITY で確定済みの判断で、山として引っ掛からないほうが正しい。
  * @param pts 絵の輪郭（px・外接箱の中心が原点）。細かいほど正確（間引きはここでやる）。
  */
-function hullBody(m: M, pts: Pt[], opts: object): Body {
+export function hullBody(m: M, pts: Pt[], opts: object): Body {
   const verts = hullOutline(pts);
   const body = m.Bodies.fromVertices(0, 0, [verts], opts);
   // ★`fromVertices` は重心を (0,0) に置く＝絵の中心（元の原点）は −重心 の所に居る。
@@ -276,11 +278,25 @@ export function pillPoints(w: number, h: number): Pt[] {
   return pts;
 }
 
+/**
+ * ★★★**ピルの体**（タスク・TASK の「自由」）。形は絵と同じピルの凸包、重さは「塗る面積 ÷ マス²」×`MASS_K`
+ * （＝全部の体で同じ密度。第109巡の理由）。★★**質量だけ与えて、回り慣性は触らない**（2026-09-09。
+ * `setMass` は慣性も一緒に比例させるので、形と重さから正しい回りにくさが出る）。
+ * ★`unit` ＝ 1マスの一辺（px）。
+ */
+export function pillBody(m: M, w: number, h: number, unit: number): Body {
+  const body = hullBody(m, pillPoints(w, h), BODY);
+  m.Body.setMass(body, (w / unit) * (h / unit) * pillInk(w / h) * MASS_K);
+  return body;
+}
+/** ★体を使い回してよいかの署名（寸法と行の数）。 */
+export const pillSig = (w: number, h: number, lines = 0) => `task|${w.toFixed(2)}|${h.toFixed(2)}|${lines}`;
+
 /** ★提案の札の形の輪郭の点（px・外接箱 `size` 四方の中心が原点）。点の列は `lib/cardShape.ts`。 */
 const offerPoints = (shape: CardShape, size: number): Pt[] =>
   cardShapePoints(shape).map(([x, y]) => ({ x: (x - 0.5) * size, y: (y - 0.5) * size }));
 
-const frac = (s: string) => {
+export const frac = (s: string) => {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return (Math.imul(h, 2654435761) >>> 0) / 4294967296;
@@ -301,10 +317,19 @@ const spawnXOf = (w: number, bw: number, r1: number): number => {
  * ★`bh` は**絵の高さ**（体の外接箱ではない）。渡されなければ外接箱から取る。
  */
 export function respawn(m: M, body: Body, w: number, seed: string, bh?: number): void {
-  const r1 = frac(seed); const r2 = frac(`${seed}y`); const r3 = frac(`${seed}a`);
+  const r1 = frac(seed); const r2 = frac(`${seed}y`);
   const bw = body.bounds.max.x - body.bounds.min.x;
   const up = (bh ?? body.bounds.max.y - body.bounds.min.y) / 2 + DROP_ABOVE + r2 * DROP_SCATTER;
-  m.Body.setPosition(body, { x: spawnXOf(w, bw, r1), y: -up });
+  launch(m, body, spawnXOf(w, bw, r1), -up, seed);
+}
+
+/**
+ * ★★★**そこから落とす**（位置・傾き・回り・横の初速）。ホームの山と TASK の日付の列が同じ1本を読む
+ * （第135巡）。`respawn` は「どこから」を器の上に決めてここへ渡すだけ。
+ */
+export function launch(m: M, body: Body, x: number, y: number, seed: string): void {
+  const r1 = frac(seed); const r3 = frac(`${seed}a`);
+  m.Body.setPosition(body, { x, y });
   // ★★★**どの図形も傾いて落ち、自由に回る**（2026-09-19・第123巡にユーザー指定
   //   「**提案の図形も自由に回転したり動くようにしてください**」）。
   //   ★★**第121巡の「回らない体は傾けない」（`inverseInertia === 0` の枝）は
@@ -687,15 +712,11 @@ export function buildPieces(
     const pw = cl.cols * unit;
     const ph = cl.rows * unit;
     // ★★**絵と同じピルで当たる**（第101巡。GRAVITY／DRIFT と同じ `stackOutline`）。
-    const sig = `task|${pw.toFixed(2)}|${ph.toFixed(2)}|${cl.lines}`;
+    const sig = pillSig(pw, ph, cl.lines);
     const kept = same(t.id, sig);
-    const body = kept ?? hullBody(m, pillPoints(pw, ph), BODY);
+    const body = kept ?? pillBody(m, pw, ph, unit);
     let fresh = false;
     if (!kept) {
-      // ★★★**質量だけ与えて、回り慣性は触らない**（2026-09-09）。`setMass` は
-      //   慣性も一緒に比例させるので、形と重さから正しい回りにくさが出る。
-      // ★★密度は全部の体で同じ（塗る面積 ÷ マス²）。
-      m.Body.setMass(body, cl.cols * cl.rows * pillInk(pw / ph) * MASS_K);
       fresh = toss(body, t.id, ph);
       stamp(body, sig);
     }
@@ -884,4 +905,48 @@ export function ghostBodyOf(
   const inertia = body.inertia;
   m.Body.setInertia(body, Infinity);
   return { body, inertia };
+}
+
+/**
+ * ★★★**指がその図形に触れているか**（絵と同じ形で見る）。ホームの山と TASK の日付の列が同じ1本を読む
+ * （第135巡に `Pile.tsx` から持ち上げた）。`px`/`py` は世界の座標。
+ */
+export function hitPiece(p: Piece, px: number, py: number, slop: number): boolean {
+  const b = p.body;
+  const dx = px - b.position.x; const dy = py - b.position.y;
+  // ★回っている図形は、**体の向きへ座標を戻してから**見る。
+  const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
+  const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
+  // ★★★**円で描くものは半径で見る**（忘れると押しても飛ばない）。
+  //   ★★JOURNAL の円（`reel`。第133巡）も半径で見る。
+  if (p.kind === "offer" && p.r && p.shape) {
+    // ★★★**提案は「絵と同じ形」で見る**（2026-09-18・第121巡）。絵は
+    //   `traceCardShape(…, p.r * 2)` ＝ **2r 四方いっぱい**なので、`p.r` の円で
+    //   見ると**出っ張りを押しても掴めず、へこみの何も無い所で掴めた**。
+    // ★★**遊びは「形を太らせる」ことで入れる** ―― 器を `2r + 2·slop` と
+    //   見なして正規化すれば、どの向きにもおよそ `slop` ぶん広がる。
+    const k = p.r * 2 + slop * 2;
+    return inCardShape(p.shape, lx / k, ly / k);
+  }
+  if ((p.kind === "offer" || p.kind === "reel") && p.r) {
+    return Math.hypot(dx, dy) <= p.r + slop;
+  }
+  const pw = p.w ?? 0; const ph = p.h ?? 0;
+  if (Math.abs(ly) > ph / 2 + slop) return false;
+  // ★★★**タスクは「絵と同じ輪郭」で見る**（2026-09-14・第104巡）。
+  //   ★★**式は `halfWidthAtStack`**（絵と物理と同じ1か所。`lib/solid.ts`）。
+  if (p.kind === "task" && pw > 0 && ph > 0) {
+    const hw = halfWidthAtStack(1, pw / ph, ly / ph);
+    return Math.abs(lx) <= hw * pw + slop;
+  }
+  // ★★★**板も「絵と同じ形」で見る**（2026-09-18・第122巡）。板は**角丸が
+  //   高さの半分のピル**（`lib/wordPlate.ts` の `roundRect`）なので、外接箱で
+  //   当てると**四隅の外の何も描かれていない所が触れる**（箱の 4.9%）。
+  if (p.kind === "word" && p.plate?.pill && pw > 0 && ph > 0) {
+    const rad = ph / 2;
+    const qx = Math.max(0, Math.abs(lx) - (pw / 2 - rad));
+    const qy = Math.max(0, Math.abs(ly) - (ph / 2 - rad));
+    return Math.abs(lx) <= pw / 2 + slop && Math.hypot(qx, qy) <= rad + slop;
+  }
+  return Math.abs(lx) <= pw / 2 + slop;
 }

@@ -48,10 +48,11 @@ export const APPS: AppDef[] = [
     id: "tasks",
     label: "タスク",
     en: "TASK",
-    // ★TASK は作り直すまで1枚のまま（中で縦の払いを使っているので、送りを掛けない）。
-    //   DRIFT ⇄ GRAVITY は中の払いで行き来する。
+    // ★TASK は作り直すまで1枚のまま（送りを掛けない）。★★第135巡から最初は**日付の列**（TIMELINE）。
+    //   ALIGN（`tasks-gravity`）と DRIFT は右上の仮のタブから開く（のちに作り直す）。
     tabs: [
-      { id: "tasks-gravity", label: "タスク", en: "GRAVITY", icon: "pile" },
+      { id: "tasks-timeline", label: "タスク", en: "TIMELINE", icon: "pile" },
+      { id: "tasks-gravity", label: "一覧", en: "ALIGN", icon: "pile" },
       { id: "tasks-drift", label: "候補", en: "DRIFT", icon: "drift" },
     ],
   },
@@ -76,7 +77,7 @@ export const appTitle = (id: AppId): string => appDef(id).en;
 // 各アプリを開いたとき最初に見せるタブ。
 export const DEFAULT_TAB: Record<AppId, TabId> = {
   home: "home",
-  tasks: "tasks-gravity",
+  tasks: "tasks-timeline",
   life: "brief",
   journal: "journal-record",
 };

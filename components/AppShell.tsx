@@ -505,7 +505,7 @@ export function AppShell() {
     //   ときだけ**カメラをそこへ降ろす — 他のアプリに居るときに勝手に画面が
     //   変わるのは、頼んでいない移動なのでしない(次に開いたときには静かに
     //   積まれている)。降りた先で `GravityTab` が画面の上端の外から落とす。
-    if (appId === "tasks" && !done) goTab("tasks-gravity");
+    if (appId === "tasks" && !done) goTab("tasks-timeline");
   }, [appState, persist, appId, goTab]);
   const closeStudio = useCallback(() => {
     // 録音中/確認中のまま閉じたら、その録音は捨てる。

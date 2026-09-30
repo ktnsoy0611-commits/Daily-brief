@@ -193,6 +193,17 @@
   ★禁じられているのは **CSS の 3D 変形**であって WebGL ではない（design.md 冒頭）。
 
 ## タスク（TASK）
+- ★★★`components/tasks/TimelineTab.tsx` — **TASK の最初の画面 ＝ 日付の列**（第135巡にユーザー指定「**gravity を削除して、
+  画像の画面を初期画面に。ホームを踏襲。自由もピルにして図形として落として。完全にホームと同じ仕組みで**」）。
+  1画面に3日・先は14日・横に払うと1日ずつ止まる。**物理も絵もホームの山の部品**（`pileWorld` の `BODY`/`pillBody`/`launch`/
+  `clearOverlap`/`hitPiece`、`pilePaint` の `drawPile`/`drawPileShadows`/`setPileLook`/`warmPile`）。列の見出しは**ホームの日付の板**
+  （4×2 マス・床の下の静かな札）・**区切りの線は引かない**・日付の無いタスクは出さない・空いた日は「自由」の語のピル
+  （`lib/wordPlate.ts` の `labelPlate`）。★世界と下焼きは**先読みで載った時点**に済ませ、落とすのは初めて見えたとき
+  （和文の書体の初回の費用を空き時間へ）。世界は残す（開くたびに落とし直さない）。タップでタスクの編集画面。
+- ★**ALIGN と DRIFT は右上の仮のタブ**（`TaskSpace` の `TEMP_TABS`。ユーザー指定「**一旦右上に仮のタブ…保持する。のちに改修**」）。
+  ALIGN ＝ 旧 `GravityTab` を `autoAlign`（表に出たら ALIGN へ入る・左へ払っても山へ戻らない）。★GRAVITY の山は出さない。
+  以下は旧 GRAVITY の記録（ALIGN・DRIFT の中身として残っている）。
+
 **タスク図形は常に GRAVITY 空間にだけ在る**（第52巡に TOP/UNDER の4層を破棄）。
 別画面へ遷移せず、スワイプで**GRAVITY の物理法則を一時的に変える**ことで詳細リスト
 （ALIGN）と俯瞰（TIMELINE）を見せる。タブは DRIFT（候補）＋ GRAVITY の2つで、

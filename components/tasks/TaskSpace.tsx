@@ -3,13 +3,20 @@
 import { useAppActive } from "@/lib/appActive";
 import { useEffect, useRef, useState } from "react";
 import { SPACE } from "@/lib/tokens";
+import { Button } from "@/components/Button";
 import { Masthead } from "@/components/common";
+import { TimelineTab } from "@/components/tasks/TimelineTab";
 import { DriftTab } from "@/components/tabs/DriftTab";
 import { GravityTab } from "@/components/tabs/GravityTab";
 import { appTitle } from "@/lib/apps";
-import { TAB_PAD_TOP } from "@/lib/constants";
+import { MAST_H, MAST_SIZE, TAB_PAD_TOP } from "@/lib/constants";
 import type { TabId, TabProps } from "@/lib/types";
 
+// ★★★**第135巡に最初の画面を日付の列（`TimelineTab`）へ替えた**（ユーザー指定「**Task は gravity を削除して、
+//   画像の画面を初期画面に**」）。GRAVITY の山は出さない。ALIGN と DRIFT は**右上の仮のタブ**から開く
+//   （ユーザー指定「**一旦右上に仮のタブを増設してそこから飛べるようにしておき、保持する。のちに改修**」）。
+//   ★以下のカメラ（ALIGN ＝ 地上・DRIFT ＝ 上空）はその仮の入口の中身として残っている。
+//
 // ★★タスクアプリの器 ＝**カメラ**(2026-08-25・第62巡に作り直し)。
 //
 // ユーザーの心象は **GRAVITY＝地上 / DRIFT＝上空**で、指で払うと
@@ -34,56 +41,81 @@ import type { TabId, TabProps } from "@/lib/types";
  *  ★合計の移動が画面 1.6 枚ぶんになるので「遠くまで上がった」が出る。 */
 const SKY_GAP = "60%";
 
+/** ★仮のタブ（右上）。★第135巡の仮置き ―― TASK を作り直すときに消す。 */
+const TEMP_TABS: { id: TabId; en: string }[] = [
+  { id: "tasks-timeline", en: "TIMELINE" },
+  { id: "tasks-gravity", en: "ALIGN" },
+  { id: "tasks-drift", en: "DRIFT" },
+];
+/** ★仮のタブの高さ（`Button` の `sm`）。見出しの字の中心に揃える。★目盛りの外（部品の寸法）。 */
+const TEMP_TAB_H = 28;
+
 export function TaskSpace({ tab, ...tabProps }: TabProps & { tab: TabId }) {
   const appActive = useAppActive("tasks");
   const onDrift = tab === "tasks-drift";
+  const onTimeline = tab !== "tasks-drift" && tab !== "tasks-gravity";
+
+  // ★★ALIGN・DRIFT の世界（旧 GRAVITY）は**開いたときに初めて作る**（使わないなら重さも払わない）。
+  const [legacyReady, setLegacyReady] = useState(!onTimeline);
+  useEffect(() => { if (!onTimeline) setLegacyReady(true); }, [onTimeline]);
 
   // ★★上空は**一度出したら外さない**(`AppShell` の `mountedApps` と同じ作法)。
   //   パンの最中は地上と上空が両方見えるので、片方が居ないと**空白が流れていく**。
-  //   ★第61巡に DRIFT の場を canvas ローカルにしたので、出しっぱなしでも位置は狂わない。
   const [skyReady, setSkyReady] = useState(onDrift);
   useEffect(() => { if (onDrift) setSkyReady(true); }, [onDrift]);
 
   // ★効果線は**パンの半ばだけ**(ユーザー指定「距離がある感じを出すために、
   //   アニメーションの半ばで効果線」)。タブが変わった瞬間に一度だけ流す。
-  // ★★第64巡に**カメラの中の「空の余白」へ移した**(下の `.task-speed` を見ること)。
   const [pan, setPan] = useState<"up" | "down" | null>(null);
   const prevRef = useRef(onDrift);
   useEffect(() => {
     if (prevRef.current === onDrift) return;
-    setPan(onDrift ? "up" : "down");
+    if (!onTimeline) setPan(onDrift ? "up" : "down");
     prevRef.current = onDrift;
-  }, [onDrift]);
+  }, [onDrift, onTimeline]);
 
   return (
     <main className="full-bleed" style={{ position: "relative", flex: 1, minHeight: 0, overflow: "clip" }}>
-      {/* ★カメラ。`--cam` は「いまどちらを見ているか」だけで決まる。 */}
-      <div className="task-cam" style={{ ["--cam" as string]: onDrift ? `calc(100% + ${SKY_GAP})` : "0px" }}>
-        {/* 上空 … 地上の真上。あいだに `SKY_GAP` ぶんの空を空ける。 */}
-        {skyReady && (
-          <div style={{ position: "absolute", left: 0, right: 0, height: "100%", bottom: `calc(100% + ${SKY_GAP})` }}>
-            <DriftTab {...tabProps} appActive={appActive} active={onDrift} />
-          </div>
-        )}
-        {/* ★★効果線 …**空のぶんの余白そのもの**(2026-08-26・第64巡にユーザー指定
-            「画面全体ではなく、また均一ではなくして少し出るくらい。画面が遷移する時の
-            余白あたりに出るように」)。第62〜63巡は画面に固定した全面の柄だったので
-            「画面全体に均一」に見えていた。地上と上空のあいだ(`SKY_GAP`)に敷けば、
-            カメラに乗って流れ、**パンの半ばにだけ画面を横切る**。 */}
-        {pan && (
-          <div key={pan} className="task-speed"
-            style={{ position: "absolute", left: 0, right: 0, bottom: "100%", height: SKY_GAP }}
-            onAnimationEnd={() => setPan(null)} />
-        )}
-        {/* 地上 */}
-        <div style={{ position: "absolute", inset: 0 }}>
-          <GravityTab {...tabProps} appActive={appActive} active={!onDrift} />
-        </div>
+      {/* ★★★最初の画面 ＝ 日付の列（ホームの山と同じ物理と絵）。 */}
+      <div style={{ position: "absolute", inset: 0, visibility: onTimeline ? "visible" : "hidden" }}>
+        <TimelineTab {...tabProps} active={onTimeline} />
       </div>
+      {legacyReady && (
+        <div style={{ position: "absolute", inset: 0, visibility: onTimeline ? "hidden" : "visible" }}>
+          {/* ★カメラ。`--cam` は「いまどちらを見ているか」だけで決まる。 */}
+          <div className="task-cam" style={{ ["--cam" as string]: onDrift ? `calc(100% + ${SKY_GAP})` : "0px" }}>
+            {skyReady && (
+              <div style={{ position: "absolute", left: 0, right: 0, height: "100%", bottom: `calc(100% + ${SKY_GAP})` }}>
+                <DriftTab {...tabProps} appActive={appActive} active={onDrift} />
+              </div>
+            )}
+            {pan && (
+              <div key={pan} className="task-speed"
+                style={{ position: "absolute", left: 0, right: 0, bottom: "100%", height: SKY_GAP }}
+                onAnimationEnd={() => setPan(null)} />
+            )}
+            <div style={{ position: "absolute", inset: 0 }}>
+              <GravityTab {...tabProps} appActive={appActive} active={!onDrift && !onTimeline} autoAlign />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* アプリ名の札は画面に固定。 */}
       <div style={{ position: "absolute", top: TAB_PAD_TOP, left: SPACE.lg, right: SPACE.lg, pointerEvents: "none", zIndex: 3 }}>
         <Masthead title={appTitle("tasks")} />
+      </div>
+      {/* ★★仮のタブ（右上。見出しの字の中心の高さ）。 */}
+      <div style={{
+        position: "absolute", right: SPACE.lg, zIndex: 4, display: "flex", gap: SPACE.xs,
+        top: `calc(${TAB_PAD_TOP} + ${MAST_H - MAST_SIZE / 2 - TEMP_TAB_H / 2}px)`,
+      }}>
+        {TEMP_TABS.map((t) => (
+          <Button key={t.id} size="sm" variant={t.id === tab || (t.id === "tasks-timeline" && onTimeline) ? "primary" : "ghost"}
+            onClick={() => tabProps.goTab(t.id)}>
+            {t.en}
+          </Button>
+        ))}
       </div>
     </main>
   );

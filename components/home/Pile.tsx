@@ -8,16 +8,14 @@ import { DISPLAY, onNavHeight } from "@/lib/constants";
 import { ms, T_ITEM } from "@/lib/motion";
 import { clearSolidBitmaps } from "@/lib/solidPaint";
 import {
-  GRAVITY_Y, MASS_K, UNIT, buildPieces, clearOverlap, focusOf, ghostBodyOf, isLost, makeWalls,
+  GRAVITY_Y, MASS_K, UNIT, buildPieces, clearOverlap, focusOf, ghostBodyOf, hitPiece, isLost, makeWalls,
   refitPile, respawn, sink, type Piece,
 } from "./pileWorld";
 import { PILE_INSET, floorYOf } from "@/lib/pileBox";
 import { pileDropping, pileSettled } from "@/lib/bootQuiet";
 import { SPACE } from "@/lib/tokens";
 import { bandAim, bandBus } from "./bandMotion";
-import { inCardShape } from "@/lib/cardShape";
 import type { BandRowId } from "@/lib/homeBand";
-import { halfWidthAtStack } from "@/lib/solid";
 import { ensureGlyphs } from "@/lib/textFit";
 import { SHAPE_FACE } from "@/lib/constants";
 import {
@@ -1147,46 +1145,6 @@ export function Pile({
    * ★★★**その1点に、その図形が描かれているか**（回りを戻して、絵と同じ式で見る）。
    * @param slop 指の太さぶんの遊び（px）。0 なら**描かれているところだけ**。
    */
-  const hitPiece = (p: Piece, px: number, py: number, slop: number): boolean => {
-    const b = p.body;
-    const dx = px - b.position.x; const dy = py - b.position.y;
-    // ★回っている図形は、**体の向きへ座標を戻してから**見る。
-    const ca = Math.cos(-b.angle); const sa = Math.sin(-b.angle);
-    const lx = dx * ca - dy * sa; const ly = dx * sa + dy * ca;
-    // ★★★**円で描くものは半径で見る**（忘れると押しても飛ばない）。
-    //   ★★JOURNAL の円（`reel`。第133巡）も半径で見る。
-    if (p.kind === "offer" && p.r && p.shape) {
-      // ★★★**提案は「絵と同じ形」で見る**（2026-09-18・第121巡）。絵は
-      //   `traceCardShape(…, p.r * 2)` ＝ **2r 四方いっぱい**なので、`p.r` の円で
-      //   見ると**出っ張りを押しても掴めず、へこみの何も無い所で掴めた**。
-      // ★★**遊びは「形を太らせる」ことで入れる** ―― 器を `2r + 2·slop` と
-      //   見なして正規化すれば、どの向きにもおよそ `slop` ぶん広がる。
-      const k = p.r * 2 + slop * 2;
-      return inCardShape(p.shape, lx / k, ly / k);
-    }
-    if ((p.kind === "offer" || p.kind === "reel") && p.r) {
-      return Math.hypot(dx, dy) <= p.r + slop;
-    }
-    const pw = p.w ?? 0; const ph = p.h ?? 0;
-    if (Math.abs(ly) > ph / 2 + slop) return false;
-    // ★★★**タスクは「絵と同じ輪郭」で見る**（2026-09-14・第104巡）。
-    //   ★★**式は `halfWidthAtStack`**（絵と物理と同じ1か所。`lib/solid.ts`）。
-    if (p.kind === "task" && pw > 0 && ph > 0) {
-      const hw = halfWidthAtStack(1, pw / ph, ly / ph);
-      return Math.abs(lx) <= hw * pw + slop;
-    }
-    // ★★★**板も「絵と同じ形」で見る**（2026-09-18・第122巡）。板は**角丸が
-    //   高さの半分のピル**（`lib/wordPlate.ts` の `roundRect`）なので、外接箱で
-    //   当てると**四隅の外の何も描かれていない所が触れる**（箱の 4.9%）。
-    if (p.kind === "word" && p.plate?.pill && pw > 0 && ph > 0) {
-      const rad = ph / 2;
-      const qx = Math.max(0, Math.abs(lx) - (pw / 2 - rad));
-      const qy = Math.max(0, Math.abs(ly) - (ph / 2 - rad));
-      return Math.abs(lx) <= pw / 2 + slop && Math.hypot(qx, qy) <= rad + slop;
-    }
-    return Math.abs(lx) <= pw / 2 + slop;
-  };
-
   /**
    * ★★★**当たり判定 ―― 「画面でいちばん上に描かれているもの」を掴む**
    * （2026-09-19・第123巡にユーザー指摘「**やはりまだ当たり判定がおかしいようです**」）。

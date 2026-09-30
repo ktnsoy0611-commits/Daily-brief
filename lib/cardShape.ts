@@ -289,9 +289,16 @@ function rawShapePoints(shape: CardShape): Pt[] {
 
 /** 0〜1 の器の中の SVG のパス。★`clipPathUnits="objectBoundingBox"` がそのまま読む。 */
 export function cardShapePath(shape: CardShape): string {
+  // ★★覚える（第135巡）。288 点を毎回 `toFixed` で文字列にしていたので、札の束・切り抜きの定義が
+  //   描き直されるたびに積もっていた（実測 CPU×4 で切り替え1回に 18〜41ms）。
+  const had = PATHS.get(shape);
+  if (had) return had;
   const pts = cardShapePoints(shape);
-  return `M${pts.map(([x, y]) => `${x.toFixed(4)} ${y.toFixed(4)}`).join("L")}Z`;
+  const d = `M${pts.map(([x, y]) => `${x.toFixed(4)} ${y.toFixed(4)}`).join("L")}Z`;
+  PATHS.set(shape, d);
+  return d;
 }
+const PATHS = new Map<CardShape, string>();
 
 /**
  * ★canvas に**中心が原点・外接箱が `size` 四方**の輪郭を引く（塗りも線も呼ぶ側）。

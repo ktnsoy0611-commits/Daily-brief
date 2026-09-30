@@ -44,7 +44,15 @@ export function useVoiceRecorder(opts: {
   onDone: (r: VoiceResult) => void;
   onError: (message: string) => void;
 }) {
-  const { onDone, onError } = opts;
+  // ★★★**呼び返しは「いちばん新しいもの」を ref で持つ**（第135巡）。呼ぶ側（`AppShell`）はその場で書いた
+  //   関数を渡すので、依存に入れると**描くたびに `toggle`／`send` が作り直され**、それを載せた `voice` →
+  //   `tabProps` が変わって**全アプリの中身が毎回描き直されていた**（実測 … アプリを1回切り替えるたびに
+  //   見えていないアプリまで2回ずつ）。ここで止めれば、操作の関数は録音の状態が変わったときだけ変わる。
+  const doneRef = useRef(opts.onDone);
+  const errorRef = useRef(opts.onError);
+  useEffect(() => { doneRef.current = opts.onDone; errorRef.current = opts.onError; });
+  const onDone = useCallback((r: VoiceResult) => doneRef.current(r), []);
+  const onError = useCallback((m: string) => errorRef.current(m), []);
   const [state, setState] = useState<RecordState>("idle");
   const [startedAt, setStartedAt] = useState(0);
   const [durationMs, setDurationMs] = useState(0);

@@ -84,16 +84,24 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, jump, s
   }, [paint]);
   const wake = () => wakeRef.current();
 
+  // ★★★**測り直すのは「顔ぶれが変わった」ときと「寸法が変わった」ときだけ**（第135巡）。
+  //   第134巡までは `pieces`（親が描くたびに新しい配列）に依っていたので、親が描き直すたびに
+  //   **全文書のレイアウトを強制して**全部の1枚の高さを読み直していた（実測 CPU×4 で切り替えのたびに
+  //   23〜70ms）。寸法の変化は `ResizeObserver` が知らせる（その時点でレイアウトは済んでいるので安い）。
+  const countRef = useRef(pieces.length);
+  countRef.current = pieces.length;
+  const sig = pieces.map((p) => p.key).join("|");
   const measure = useCallback(() => {
     const b = box.current;
     if (!b) return;
-    els.current.length = pieces.length;
+    const n = countRef.current;
+    els.current.length = n;
     // ★★1枚ぶんの見る窓の高さを配る（`--rail-h`）。1画面で完結するモジュール（BRIEF・RECORD）が
     //   自分の高さをこれから決める。
     b.style.setProperty("--rail-h", `${b.clientHeight}px`);
-    const hs = pieces.map((_, i) => els.current[i]?.offsetHeight ?? 0);
+    const hs = Array.from({ length: n }, (_, i) => els.current[i]?.offsetHeight ?? 0);
     // ★1枚の中の「ここでも止まる」印（`data-rail-snap`）。読むのは測り直すときだけ。
-    const inner = pieces.map((_, i) => {
+    const inner = Array.from({ length: n }, (_, i) => {
       const el = els.current[i];
       if (!el) return [];
       const top = el.getBoundingClientRect().top;
@@ -102,9 +110,9 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, jump, s
     railLayout(rail.current, hs, gap, b.clientHeight, endPad, inner);
     paint();
     wakeRef.current();
-  }, [pieces, gap, endPad, paint]);
+  }, [gap, endPad, paint]);
 
-  useLayoutEffect(() => { measure(); }, [measure]);
+  useLayoutEffect(() => { measure(); }, [measure, sig]);
   const jumpN = jump?.n ?? 0;
   const jumpPiece = jump?.piece ?? 0;
   // ★★運ぶのは**合図の数が変わったときだけ**（中身が増えて行き先の番号がずれても、勝手に運び直さない）。
@@ -148,11 +156,13 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, jump, s
   }, []);
 
   useEffect(() => {
-    const ro = new ResizeObserver(() => measure());
+    // ★付けた直後の1回目の知らせは読み飛ばす（すぐ上の `useLayoutEffect` が測ったばかり）。
+    let first = true;
+    const ro = new ResizeObserver(() => { if (first) { first = false; return; } measure(); });
     if (box.current) ro.observe(box.current);
     els.current.forEach((el) => el && ro.observe(el));
     return () => ro.disconnect();
-  }, [measure]);
+  }, [measure, sig]);
 
   const onDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("[data-rail-lock]")) return;

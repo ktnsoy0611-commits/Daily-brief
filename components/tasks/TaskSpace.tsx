@@ -1,5 +1,6 @@
 "use client";
 
+import { useAppActive } from "@/lib/appActive";
 import { useEffect, useRef, useState } from "react";
 import { SPACE } from "@/lib/tokens";
 import { Masthead } from "@/components/common";
@@ -33,7 +34,8 @@ import type { TabId, TabProps } from "@/lib/types";
  *  ★合計の移動が画面 1.6 枚ぶんになるので「遠くまで上がった」が出る。 */
 const SKY_GAP = "60%";
 
-export function TaskSpace({ tab, appActive, ...tabProps }: TabProps & { tab: TabId; appActive: boolean }) {
+export function TaskSpace({ tab, ...tabProps }: TabProps & { tab: TabId }) {
+  const appActive = useAppActive("tasks");
   const onDrift = tab === "tasks-drift";
 
   // ★★上空は**一度出したら外さない**(`AppShell` の `mountedApps` と同じ作法)。

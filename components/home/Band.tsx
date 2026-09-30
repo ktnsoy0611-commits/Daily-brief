@@ -1,5 +1,6 @@
 "use client";
 
+import { isAppActive, onActiveApp } from "@/lib/appActive";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BAND_H } from "@/lib/constants";
 import { BAND_ROW, type BandItem, type BandRowId } from "@/lib/homeBand";
@@ -593,6 +594,9 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     st.on = true;
     window.clearTimeout(st.timer); st.timer = 0;
     if (st.raf) return;                       // ★送っている最中はそのまま
+    // ★★★**ホームを見ていない間は送らない**（第135巡）。送るたびに2周ぶんのピルの矩形を読む（＝全文書の
+    //   レイアウト）ので、別のアプリを見ている間も 8 秒ごとに裏で重い仕事をしていた。戻ったら下の購読が再開する。
+    if (!isAppActive("home")) return;
     const cycle = bandHoldMs() + ms(T_ITEM);
     const now = performance.now();
     const lag = (ROW_LAG[row] ?? 0) * cycle;
@@ -643,6 +647,13 @@ function BandRow({ row, items, pull, taken, onTake, armed, onArm }: {
     };
     st.raf = requestAnimationFrame(frame);
   };
+  // ★ホームへ戻ったら、止まっていた送りを予約し直す／離れたら今の送りを捨てる（`on` は保つ）。
+  useEffect(() => onActiveApp(() => {
+    const st = stepRef.current;
+    if (isAppActive("home")) { if (st.on && lockRef.current === 0) armSteps(bandHoldMs() * RESUME); return; }
+    window.clearTimeout(st.timer); cancelAnimationFrame(st.raf);
+    st.timer = 0; st.raf = 0;
+  }), [armSteps]);
   // ★★★**後始末はタイマーを捨てるだけ。`on` は触らない** ―― 開発時の StrictMode は付けて・外して・
   //   付け直すので、外すときに `on` を落とすと**付け直したあと二度と送らない**（実測 … 時計が 0 のまま）。
   useEffect(() => {

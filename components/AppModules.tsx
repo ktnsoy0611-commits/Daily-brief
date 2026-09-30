@@ -8,6 +8,7 @@ import { BriefTab } from "@/components/tabs/BriefTab";
 import { useJournalLog } from "@/components/tabs/JournalTab";
 import { useStockModule } from "@/components/tabs/StockTab";
 import { appTitle } from "@/lib/apps";
+import { useAppActive } from "@/lib/appActive";
 import { INK, MUTED, navHeightPx, onNavHeight } from "@/lib/constants";
 import { RADIUS, SPACE } from "@/lib/tokens";
 import type { AppId, TabId, TabProps } from "@/lib/types";
@@ -30,7 +31,6 @@ interface Piece extends RailPiece { module: string; tabs: TabId[] }
 
 interface ModulesProps {
   tabProps: TabProps;
-  active: boolean;
   /** ★そのモジュールへ運ぶ合図（`goTab` とバーの再タップ。`n` が変わるたびに1回）。 */
   jump: { tab: TabId; n: number };
 }
@@ -55,20 +55,26 @@ function ExploreModules({ tabProps, jump }: ModulesProps) {
   return <ModuleShell app="life" pieces={pieces} jump={jump} overlay={stock.overlay} />;
 }
 
-function JournalModules({ tabProps, active, jump }: ModulesProps) {
+function JournalModules({ tabProps, jump }: ModulesProps) {
   const log = useJournalLog(tabProps);
   const pieces: Piece[] = [
     {
       key: "record", module: "RECORD", tabs: ["journal-record"],
       node: (
         <div style={{ height: SCREEN_H, position: "relative" }}>
-          <VoiceStudio voice={tabProps.voice} active={active} fit />
+          <RecordPiece voice={tabProps.voice} />
         </div>
       ),
     },
     ...log.pieces.map((p) => ({ key: p.key, node: p.node, module: "LOG", tabs: p.tab ? [p.tab] : [] })),
   ];
   return <ModuleShell app="journal" pieces={pieces} jump={jump} overlay={log.overlay} />;
+}
+
+/** ★表示中かどうかを購読するのは**録音機だけ**（第135巡）。送りの中身は切り替えで描き直さない。 */
+function RecordPiece({ voice }: { voice: TabProps["voice"] }) {
+  const active = useAppActive("journal");
+  return <VoiceStudio voice={voice} active={active} fit />;
 }
 
 function ModuleShell({ app, pieces, jump, overlay }: {

@@ -294,6 +294,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true, fit
   //     「最初に図形が落ちてくる時に重い」の**いちばん大きな1つ**がこれだった。
   //   ★見えていないあいだ寸法は変わらないので、**戻ってきたときに測り直せば足りる**
   //     （`appActive` が真になった瞬間に `read()` が1度走る）。
+  const watching = !!fit || appActive;
   useLayoutEffect(() => {
     const el = boxRef.current;
     const cv = canvasRef.current;
@@ -310,15 +311,16 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true, fit
       //   測る前の寸法で描いた絵が残る ―― 実測で待機中の字が拡大されて重なっていた）。
       if (was.w !== cv.clientWidth || was.h !== cv.clientHeight) drawRef.current();
     };
-    // ★モジュールの中（`fit`）では、見えていなくても**1度だけ**測る（見えた瞬間に寸法が替わって録音機が跳ねない）。
-    //   見張り（`ResizeObserver`）は見えているあいだだけ（第115巡の理由）。
-    if (!appActive) { if (fit) read(); return; }
+    // ★★モジュールの中（`fit`）は器の寸法が決まっている（送りの1枚）ので、**見張りを付けっぱなしにして、
+    //   表示中の切り替えでは何もしない**（第135巡。切り替えのたびに `read()` がレイアウトを強制していた ――
+    //   実測 CPU×4 で出入りのたびに 20〜23ms）。`ResizeObserver` は寸法が本当に変わったときしか鳴らない。
+    //   ★全画面の録音（`fit` でない）は第115巡のまま、見えているあいだだけ見張る。
+    if (!watching) return;
     const ro = new ResizeObserver(read);
     ro.observe(el);
     ro.observe(cv);
-    read();
     return () => ro.disconnect();
-  }, [appActive, fit]);
+  }, [watching]);
 
   // ---- 円の配置 --------------------------------------------------------------
   const w = size.w || 390;

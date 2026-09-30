@@ -6,6 +6,7 @@ import { pillLook } from "@/components/home/BandPill";
 import { AssignRail } from "@/components/home/AssignRail";
 import { AssignSheet } from "@/components/home/AssignSheet";
 import { RemindCard } from "@/components/home/RemindCard";
+import { useAppActive } from "@/lib/appActive";
 import { Band } from "@/components/home/Band";
 import { Pile } from "@/components/home/Pile";
 import { pillWidth } from "@/components/home/pillGhost";
@@ -50,7 +51,7 @@ let remindAsked = 0;
 /** ★1回の起動で聞くのは `REMIND_PER_RUN` 件まで（しつこくしない）。★目盛りの外（仕様の数）。 */
 const REMIND_PER_RUN = 3;
 
-export function HomeTab({ appState, goTab, persist, showToast, appActive = true }: TabProps & { appActive?: boolean }) {
+export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
   const day = todayKey();
   const today = useMemo(() => new Date(), []);
   /**
@@ -378,31 +379,6 @@ export function HomeTab({ appState, goTab, persist, showToast, appActive = true 
     });
   }, [appState, persist, day, showToast]);
 
-  // ★★★**忘れ防止の通知**（第133巡。`lib/remind.ts`）。ホームが見えてから少し置いて（山が落ち着く頃）、
-  //   近い予定の準備を1件ずつ「済んだ？」と聞く。
-  const [remindReady, setRemindReady] = useState(false);
-  const [remindTick, setRemindTick] = useState(0);
-  useEffect(() => {
-    if (!appActive) return;
-    const id = window.setTimeout(() => setRemindReady(true), ms(T_IN) * 2);
-    return () => window.clearTimeout(id);
-  }, [appActive]);
-  const reminder = useMemo(() => {
-    if (!remindReady || !appActive || remindAsked >= REMIND_PER_RUN) return null;
-    return pickReminders(appState).find((r) => !remindLater.has(`${r.taskId}|${r.sugId}`)) ?? null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appState.tasks, appState.remindStats, remindReady, appActive, remindTick]);
-  const onRemind = useCallback((r: Remind, done: boolean) => {
-    remindAsked += 1;
-    persist(answerRemind(appState, r, done));
-    showToast(done ? "済みにしました" : "また聞きます");
-  }, [appState, persist, showToast]);
-  const onRemindLater = useCallback((r: Remind) => {
-    remindAsked += 1;
-    remindLater.add(`${r.taskId}|${r.sugId}`);
-    setRemindTick((n) => n + 1);
-  }, []);
-
   // ★★★**口とブラックホールは置かない**（2026-09-09 ユーザー指定で削除）。
   //   山で図形にできるのは**掴んで運ぶこと**だけ。完了も削除もここでは起こさない
   //   ―― 何をどうやって片づけるかは、引き下ろしの動きと一緒に決める。
@@ -412,7 +388,7 @@ export function HomeTab({ appState, goTab, persist, showToast, appActive = true 
       {/* ★左上の名前。**3アプリとまったく同じ組み方**（幾何アルファベットの
           `Masthead`）。ホームも列の1つなので、顔を揃える。 */}
       <Masthead title={appTitle("home")} />
-      <RemindCard item={reminder} onAnswer={onRemind} onLater={onRemindLater} />
+      <HomeRemind appState={appState} persist={persist} showToast={showToast} />
       {/* ★★★**帯は山の上に重ねる**（2026-09-10 ユーザー指定「ピルの後ろに背景が
           あって図形が落ちてくるのが見えない」）。縦に並べると、山の器は帯の
           **下から**始まるので、**図形は帯の高さぶん見えないところを落ちてくる**。
@@ -464,4 +440,38 @@ export function HomeTab({ appState, goTab, persist, showToast, appActive = true 
       )}
     </div>
   );
+}
+
+/**
+ * ★★★**忘れ防止の通知**（第133巡。`lib/remind.ts`）。ホームが見えてから少し置いて（山が落ち着く頃）、
+ *   近い予定の準備を1件ずつ「済んだ？」と聞く。
+ * ★★第135巡に `HomeTab` から切り出した ―― 表示中かどうかを購読するのは**ここだけ**なので、
+ *   アプリを切り替えても `HomeTab`（帯・山）は描き直されない。
+ */
+function HomeRemind({ appState, persist, showToast }: Pick<TabProps, "appState" | "persist" | "showToast">) {
+  const appActive = useAppActive("home");
+  const [remindReady, setRemindReady] = useState(false);
+  const [remindTick, setRemindTick] = useState(0);
+  useEffect(() => {
+    if (!appActive) return;
+    const id = window.setTimeout(() => setRemindReady(true), ms(T_IN) * 2);
+    return () => window.clearTimeout(id);
+  }, [appActive]);
+  const reminder = useMemo(() => {
+    if (!remindReady || !appActive || remindAsked >= REMIND_PER_RUN) return null;
+    return pickReminders(appState).find((r) => !remindLater.has(`${r.taskId}|${r.sugId}`)) ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appState.tasks, appState.remindStats, remindReady, appActive, remindTick]);
+  const onRemind = useCallback((r: Remind, done: boolean) => {
+    remindAsked += 1;
+    persist(answerRemind(appState, r, done));
+    showToast(done ? "済みにしました" : "また聞きます");
+  }, [appState, persist, showToast]);
+  const onRemindLater = useCallback((r: Remind) => {
+    remindAsked += 1;
+    remindLater.add(`${r.taskId}|${r.sugId}`);
+    setRemindTick((n) => n + 1);
+  }, []);
+
+  return <RemindCard item={reminder} onAnswer={onRemind} onLater={onRemindLater} />;
 }

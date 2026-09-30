@@ -22,6 +22,7 @@ import { ViewportProbe } from "@/components/tasks/ViewportProbe";
 import { APPS, DEFAULT_TAB, type AppDef } from "@/lib/apps";
 import { isViewportDebug } from "@/lib/debugViewport";
 import { whenPileSettled } from "@/lib/bootQuiet";
+import { setActiveApp } from "@/lib/appActive";
 import { BD_GREY, CHARCOAL, INK, NAV_H, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -58,15 +59,17 @@ function Toast({ text }: { text: string }) {
   );
 }
 
-// ★1アプリぶんの列(背景＋スクロールルート＋タブバー)。**React.memo** で
-// 包んであるのが要点: シェル側の state(トースト・ダッシュボードの開閉など)が
-// 動いても、props が同じ列は再レンダーされない。以前はシェルの再レンダーが
-// そのままマウント済みの全アプリのタブへ流れ込み、実機で毎フレーム200ms級の
-// long task を出していた(ユーザー報告「タブの切り替えが非常に重い」)。
+// ★1アプリぶんの列。**2段に分けてある**（第135巡）。
+// ・`AppColumn` … 列の見え方（重なり順・不透明度・`visibility`）だけ。切り替えのたびに変わる。
+// ・`AppContent` … 中身（HomeTab／TaskSpace／AppModules）。**React.memo** で、`active` も `phase` も
+//   受け取らない ―― だから切り替えても**1つも描き直されない**。表示中かどうかが要る部品は
+//   `lib/appActive.ts` の `useAppActive` を自分で購読する。
+// ★★★第134巡までは `active` と `phase` を中身へ流していたので、バーを押した瞬間に2アプリぶん、
+//   さらに `T_ITEM` 後に古い列が隠れる瞬間にもう一度、中身が丸ごと描き直されていた
+//   （実測 CPU×4 … 押した瞬間 93〜220ms・0.45 秒後 54〜88ms の長い仕事）。
 interface AppColumnProps {
   a: AppDef;
   tab: TabId;
-  active: boolean;
   mounted: boolean;
   /** ★★列の見え方 … いま表示中／入れ替わりで下に残っている（新しい列がその上へ現れ終わるまで）／隠れている。 */
   phase: "active" | "leaving" | "hidden";
@@ -76,25 +79,22 @@ interface AppColumnProps {
   jump: { tab: TabId; n: number };
 }
 
-const AppColumn = memo(function AppColumn({ a, tab, active, mounted, phase, memoryMode, tabProps, jump }: AppColumnProps) {
-  // ★★★**アプリの中身は3通り**（第134巡）… HOME ＝ 1枚きり／TASK ＝ 作り直すまで1枚（中で縦の払いを使う）／
-  //   EXPLORE・JOURNAL ＝ 縦のモジュール（`AppModules`）。どれも列そのものはスクロールさせない。
-  const isTasks = a.id === "tasks";
-  const isModules = a.id === "life" || a.id === "journal";
+function AppColumn({ a, tab, mounted, phase, memoryMode, tabProps, jump }: AppColumnProps) {
   return (
         <div style={{
           // ★★★**4つの列は同じ場所に重ねて置く**（第134巡の2度目にユーザー指摘「**スワイプしているわけではない
           //   のでアプリ間をスライドするアニメーションは消す**」「**タブバーや要素が一瞬消える**」）。
-          //   横一列のトラックを送る作りは、切り替えのたびに**列の置き直し（`transform`）とトラックの移動**が
-          //   別々のフレームで効き、バーごと列が動いたり一瞬抜けたりしていた。
-          //   → 新しい列を**古い列の上に重ねて不透明度だけで現す**（`T_ITEM`・`--ease-settle`）。古い列は現れ終わる
-          //   まで下に残る（`leaving`）ので、**どの瞬間も画面に何も無いフレームが無い**。隠れた列は `visibility:
-          //   hidden`（寸法はそのまま ＝ 戻っても測り直しも作り直しも起きない）。★`transform` は使わない（中の
-          //   山・帯・送りは画面上の座標を測るので、動かすと切り替えの途中で測り違える）。
+          //   新しい列を**古い列の上に重ねて不透明度だけで現す**（`T_ITEM`・`--ease-settle`）。古い列は現れ終わる
+          //   まで下に残る（`leaving`）ので、**どの瞬間も画面に何も無いフレームが無い**。★`transform` は使わない
+          //   （中の山・帯・送りは画面上の座標を測るので、動かすと切り替えの途中で測り違える）。
+          // ★★★**隠れた列は `visibility: hidden` にしない。不透明度 0 の層として描いたまま置く**（第135巡）。
+          //   `visibility` で隠すと、戻すたびに列ぜんぶの様式の計算・描画・層の組み直しがやり直しになり、
+          //   それだけで切り替えの瞬間に 70〜170ms（CPU×4）詰まっていた。層（`will-change: opacity`）なら
+          //   不透明度を変えるだけで、描き直しが要らない。指は `pointerEvents` で受けない。
           position: "absolute", inset: 0, isolation: "isolate",
           display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden",
           zIndex: phase === "active" ? 2 : phase === "leaving" ? 1 : 0,
-          visibility: phase === "hidden" ? "hidden" : "visible",
+          visibility: "visible", willChange: "opacity",
           opacity: phase === "hidden" ? 0 : 1,
           transition: phase === "active" ? "opacity var(--t-item) var(--ease-settle)" : "none",
           pointerEvents: phase === "active" ? "auto" : "none",
@@ -103,6 +103,17 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, phase, memo
           // ★★★**地の上に直接いる文字の色を、ここで決めて配る**（第77巡）。
           ...inkVarsOn(groundOf(a.id)),
         }}>
+          <AppContent a={a} tab={tab} mounted={mounted} memoryMode={memoryMode} tabProps={tabProps} jump={jump} />
+        </div>
+  );
+}
+
+const AppContent = memo(function AppContent({ a, tab, mounted, memoryMode, tabProps, jump }: Omit<AppColumnProps, "phase">) {
+  // ★★★**アプリの中身は3通り**（第134巡）… HOME ＝ 1枚きり／TASK ＝ 作り直すまで1枚（中で縦の払いを使う）／
+  //   EXPLORE・JOURNAL ＝ 縦のモジュール（`AppModules`）。どれも列そのものはスクロールさせない。
+  const isTasks = a.id === "tasks";
+  const isModules = a.id === "life" || a.id === "journal";
+  return (
           <div data-tab-scroll-root style={{
             width: "100%", maxWidth: 420, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
             // ★★縦の送りはモジュールの器（`ModuleRail`）が自分でやる。列はスクロールしない。
@@ -112,7 +123,7 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, phase, memo
             overflowAnchor: "none",
             padding: `var(--pad-top) ${SPACE.lg}px 0`,
           }}>
-            {active && memoryMode && <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
+            {memoryMode && <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: RUST, letterSpacing: TRACK.normal, padding: `${SPACE.sm}px ${SPACE.xs}px 0`, textAlign: "right" }}>メモリ動作中</div>}
             {mounted && (
               // ★★key はアプリで固定する（モジュールを送っても・`goTab` でも中身を作り直さない ――
               //   matter.js の山や送りの位置が崩れるため）。
@@ -123,17 +134,14 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, phase, memo
                 paddingBottom: "var(--nav-h)",
                 position: "relative", zIndex: 16,
               }}>
-                {a.id === "home" && <HomeTab {...tabProps} appActive={active} />}
-                {isTasks && <TaskSpace {...tabProps} tab={tab} appActive={active} />}
-                {isModules && <AppModules app={a.id as "life" | "journal"} tabProps={tabProps} active={active} jump={jump} />}
+                {a.id === "home" && <HomeTab {...tabProps} />}
+                {isTasks && <TaskSpace {...tabProps} tab={tab} />}
+                {isModules && <AppModules app={a.id as "life" | "journal"} tabProps={tabProps} jump={jump} />}
               </div>
             )}
           </div>
-
-        </div>
   );
 });
-
 export function AppShell() {
   const [appState, setAppState] = useState<AppState | null>(null);
   // ★★★**いま開いているアプリ**（第134巡）。バーを押すと、新しい列が古い列の上に不透明度で現れる
@@ -142,14 +150,17 @@ export function AppShell() {
   const [appId, setAppIdState] = useState<AppId>("home");
   const [leaving, setLeaving] = useState<AppId | null>(null);
   const leaveTimer = useRef(0);
+  const appIdRef = useRef<AppId>("home");
   const setAppId = useCallback((id: AppId) => {
-    setAppIdState((cur) => {
-      if (cur === id) return cur;
-      setLeaving(cur);
-      window.clearTimeout(leaveTimer.current);
-      leaveTimer.current = window.setTimeout(() => setLeaving(null), msOf(T_ITEM));
-      return id;
-    });
+    const cur = appIdRef.current;
+    if (cur === id) return;
+    appIdRef.current = id;
+    setLeaving(cur);
+    setAppIdState(id);
+    // ★表示中の部品へ知らせる（`lib/appActive.ts`）。同じ出来事の中なので、列の見え方と同じ描画に載る。
+    setActiveApp(id);
+    window.clearTimeout(leaveTimer.current);
+    leaveTimer.current = window.setTimeout(() => setLeaving(null), msOf(T_ITEM));
   }, []);
   useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
   const [tabByApp, setTabByApp] = useState<Record<AppId, TabId>>({ ...DEFAULT_TAB });
@@ -684,7 +695,6 @@ export function AppShell() {
           key={a.id}
           a={a}
           tab={tabByApp[a.id]}
-          active={a.id === appId}
           mounted={mountedApps.includes(a.id)}
           phase={a.id === appId ? "active" : a.id === leaving ? "leaving" : "hidden"}
           memoryMode={storageMode === "memory"}

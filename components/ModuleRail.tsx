@@ -107,8 +107,11 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, jump, s
   useLayoutEffect(() => { measure(); }, [measure]);
   const jumpN = jump?.n ?? 0;
   const jumpPiece = jump?.piece ?? 0;
+  // ★★運ぶのは**合図の数が変わったときだけ**（中身が増えて行き先の番号がずれても、勝手に運び直さない）。
+  const jumpedN = useRef(0);
   useEffect(() => {
-    if (!jumpN) return;
+    if (!jumpN || jumpN === jumpedN.current) return;
+    jumpedN.current = jumpN;
     railGoTo(rail.current, jumpPiece);
     wakeRef.current();
   }, [jumpN, jumpPiece]);

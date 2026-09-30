@@ -2,12 +2,12 @@
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Check } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import type { RailPiece } from "@/components/ModuleRail";
 import { BottomSheet, OverlayCard } from "@/components/BottomSheet";
-import { Masthead, SectionLabel } from "@/components/common";
+import { SectionLabel } from "@/components/common";
 import { GoalsSection } from "@/components/journal/GoalsSection";
-import { appTitle } from "@/lib/apps";
-import { GREEN, GREEN_INK, HAIRLINE, INK, MUTED, NAV_OFFSET, PAPER, SANS, SOFT_SHADOW, itemKindOf, SECOND } from "@/lib/constants";
+import { GREEN, GREEN_INK, INK, MUTED, PAPER, SANS, SOFT_SHADOW, itemKindOf, SECOND } from "@/lib/constants";
 import { buildDayRecords, dayRecordCount, groupByMonth, type DayRecord } from "@/lib/dayRecords";
 import { dayInfo, img, ratingLabel, todayKey } from "@/lib/helpers";
 import type { JournalEntry, JournalTabId, TabProps, VoiceNote } from "@/lib/types";
@@ -221,14 +221,14 @@ function GoalNotes({ day }: { day: DayRecord }) {
   );
 }
 
-export function JournalTab({ appState, persist, tab, bare }: TabProps & {
-  tab: JournalTabId;
-  /** ★LOG のモジュールの中に置くとき（見出しとタブバーの逃がしは `AppModules` が持つ）。 */
-  bare?: boolean;
-}) {
-  // ★★`data-rail-snap` … モジュールの送りが「ここでも止まる」印（長い一覧は1行ずつ止まる）。
-  const snap = bare ? { "data-rail-snap": "" } : {};
-  const mainPad = bare ? undefined : `calc(${NAV_OFFSET} + 12px)`;
+/**
+ * ★★★**LOG は「行ごとの1枚」の列を返す**（2026-09-30・第134巡の2度目。ユーザー指摘「**スクロールのアニメーションは、
+ *   バネ感のある動作をするモジュールとしないものがある**」）。送りのばねは1枚ずつに掛かるので、今日の節・ゴール・
+ *   月の見出し・日の1枚を**別々の1枚**にする（`components/tabs/StockTab.tsx` の `useStockModule` と同じ作法）。
+ * ★LOG の中身は作り直す（いまは今日＋ゴール＋アーカイブ）。★日の詳細（`DaySheet`）は `overlay`（送りの外）。
+ * ★`tab` … その1枚が `goTab("journal-today" | "journal-archive")` の行き先か。
+ */
+export function useJournalLog({ appState, persist }: TabProps): { pieces: (RailPiece & { tab?: JournalTabId })[]; overlay: ReactNode } {
   const [openDay, setOpenDay] = useState<DayRecord | null>(null);
   const days = buildDayRecords(appState);
   const summaries = appState.daySummaries ?? {};
@@ -237,70 +237,59 @@ export function JournalTab({ appState, persist, tab, bare }: TabProps & {
     ?? { dateKey: today, label: dayInfo(new Date().toISOString()).label, items: [], tasks: [], entries: [], goals: [] };
   const past = days.filter((d) => d.dateKey !== today);
   const months = groupByMonth(past);
+  const notes = (appState.voiceNotes ?? []).slice(0, 12);
+  const label = (text: string) => <SectionLabel text={text} style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />;
+  /** 節の下の余白（送りの隙間 `SPACE.lg` に足して `SPACE.xl` にする）。 */
+  const below = { paddingBottom: SPACE.xl - SPACE.lg };
 
-  if (tab === "journal-today") {
-    const notes = (appState.voiceNotes ?? []).slice(0, 12);
-    const empty = dayRecordCount(todayRec) === 0 && !summaries[todayRec.dateKey] && notes.length === 0;
-    return (
-      <main style={{ paddingBottom: mainPad }}>
-        {!bare && <Masthead title={appTitle("journal")} />}
-        {empty ? null : (
-          <>
-            {summaries[todayRec.dateKey] && <SummaryBlock text={summaries[todayRec.dateKey].text} />}
-            {(todayRec.items.length > 0 || todayRec.tasks.length > 0) && (
-              <section {...snap} style={{ marginBottom: SPACE.xl }}>
-                <SectionLabel text="やったこと" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
-                <DoneList day={todayRec} />
-              </section>
-            )}
-            {todayRec.entries.length > 0 && (
-              <section {...snap} style={{ marginBottom: notes.length + todayRec.goals.length > 0 ? SPACE.xl : 0 }}>
-                <SectionLabel text="記録" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
-                  {todayRec.entries.map((e) => <EntryCard key={e.id} entry={e} />)}
-                </div>
-              </section>
-            )}
-            {todayRec.goals.length > 0 && (
-              <section {...snap} style={{ marginBottom: notes.length > 0 ? SPACE.xl : 0 }}>
-                <SectionLabel text="ゴール" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
-                <GoalNotes day={todayRec} />
-              </section>
-            )}
-            {notes.length > 0 && (
-              <section {...snap}>
-                <SectionLabel text="声のメモ" style={{ margin: `0 ${SPACE.xs}px ${SPACE.md}px` }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
-                  {notes.map((n) => <VoiceNoteCard key={n.id} note={n} />)}
-                </div>
-              </section>
-            )}
-          </>
-        )}
-      </main>
-    );
+  const pieces: (RailPiece & { tab?: JournalTabId })[] = [];
+  const todayParts: RailPiece[] = [];
+  if (summaries[todayRec.dateKey]) todayParts.push({ key: "log-summary", node: <div style={below}><SummaryBlock text={summaries[todayRec.dateKey].text} /></div> });
+  if (todayRec.items.length > 0 || todayRec.tasks.length > 0) {
+    todayParts.push({ key: "log-done", node: <section style={below}>{label("やったこと")}<DoneList day={todayRec} /></section> });
   }
-
-  return (
-    <main style={{ paddingBottom: mainPad }}>
-      {!bare && <Masthead title={appTitle("journal")} />}
-      {/* ★★★ゴールはログの節（第134巡。EXPLORE の GOALS タブを畳んだ先）。 */}
-      <div {...snap} style={{ marginBottom: SPACE.xl }}>
-        <GoalsSection appState={appState} persist={persist} />
-      </div>
-      {past.length === 0 ? null : (
-        <div style={{ display: "flex", flexDirection: "column", gap: SPACE.xl }}>
-          {months.map((m) => (
-            <section key={m.month} {...snap}>
-              <div style={{ fontSize: TYPE.small, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, margin: `0 ${SPACE.xs}px ${SPACE.md}px`, borderTop: `1px solid ${HAIRLINE}`, paddingTop: SPACE.md }}>{m.label}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
-                {m.days.map((d) => <div key={d.dateKey} {...snap}><DayCard day={d} summary={summaries[d.dateKey]?.text} onOpen={() => setOpenDay(d)} /></div>)}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
-      {openDay && <DaySheet day={openDay} summary={summaries[openDay.dateKey]?.text} onClose={() => setOpenDay(null)} />}
-    </main>
-  );
+  if (todayRec.entries.length > 0) {
+    todayParts.push({
+      key: "log-entries",
+      node: (
+        <section style={below}>
+          {label("記録")}
+          <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
+            {todayRec.entries.map((e) => <EntryCard key={e.id} entry={e} />)}
+          </div>
+        </section>
+      ),
+    });
+  }
+  if (todayRec.goals.length > 0) {
+    todayParts.push({ key: "log-goals-today", node: <section style={below}>{label("ゴール")}<GoalNotes day={todayRec} /></section> });
+  }
+  if (notes.length > 0) {
+    todayParts.push({
+      key: "log-notes",
+      node: (
+        <section style={below}>
+          {label("声のメモ")}
+          <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md }}>
+            {notes.map((n) => <VoiceNoteCard key={n.id} note={n} />)}
+          </div>
+        </section>
+      ),
+    });
+  }
+  todayParts.forEach((p, i) => pieces.push(i === 0 ? { ...p, tab: "journal-today" } : p));
+  // ★★★ゴールはログの節（第134巡。EXPLORE の GOALS タブを畳んだ先）。
+  pieces.push({ key: "log-goals", tab: "journal-archive", node: <div style={below}><GoalsSection appState={appState} persist={persist} /></div> });
+  if (!todayParts.length) pieces[pieces.length - 1].tab = "journal-archive";
+  for (const m of months) {
+    pieces.push({
+      key: `log-month-${m.month}`,
+      node: <div style={{ fontSize: TYPE.small, letterSpacing: TRACK.caps, color: MUTED, fontWeight: WEIGHT.bold, margin: `0 ${SPACE.xs}px`, lineHeight: LEAD.flat }}>{m.label}</div>,
+    });
+    for (const d of m.days) {
+      pieces.push({ key: `log-day-${d.dateKey}`, node: <DayCard day={d} summary={summaries[d.dateKey]?.text} onOpen={() => setOpenDay(d)} /> });
+    }
+  }
+  const overlay = openDay ? <DaySheet day={openDay} summary={summaries[openDay.dateKey]?.text} onClose={() => setOpenDay(null)} /> : null;
+  return { pieces, overlay };
 }

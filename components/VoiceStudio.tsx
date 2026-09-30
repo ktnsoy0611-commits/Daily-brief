@@ -275,10 +275,14 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true, fit
   // 見え方から推測していたが、実機では一度も閾値に達せず「円が出てこない」
   // 不具合になった。どのアプリを表示しているかは AppShell が知っているので、
   // 推測せずそれをそのまま使う。
-  const shown = appActive;
+  // ★★★**モジュールの中（`fit`）では出しっぱなし・入場もしない**（第134巡の2度目にユーザー指摘「**タブを切り替えた
+  //   時に要素が一瞬消える**」）。アプリの切り替えは列の不透明度で現れる（`AppShell`）ので、ここで円を消して
+  //   入り直させると、**列が現れる途中で録音機だけが抜けて、あとから入ってくる**。出るときも同じで、
+  //   `appActive` が偽になった瞬間に消えていた（古い列はまだ見えている）。
+  const shown = fit ? true : appActive;
   useEffect(() => {
-    if (appActive) setEnterKey((n) => n + 1);
-  }, [appActive]);
+    if (appActive && !fit) setEnterKey((n) => n + 1);
+  }, [appActive, fit]);
 
   // ★★★**見えていない間は寸法を測らない**（2026-09-16・第115巡）。
   //   ★★★**`AppShell` はタブを全部載せたまま横へ送る**ので、ホームを見ている間も
@@ -293,7 +297,7 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true, fit
   useLayoutEffect(() => {
     const el = boxRef.current;
     const cv = canvasRef.current;
-    if (!el || !cv || !appActive) return;
+    if (!el || !cv) return;
     const read = () => {
       // ★値が同じなら setState しない。ResizeObserver は波形の帯が広がる
       // 間ずっと発火するので、毎回新しいオブジェクトを入れると1フレームごとに
@@ -306,12 +310,15 @@ export function VoiceStudio({ voice, dim, onClose, active: appActive = true, fit
       //   測る前の寸法で描いた絵が残る ―― 実測で待機中の字が拡大されて重なっていた）。
       if (was.w !== cv.clientWidth || was.h !== cv.clientHeight) drawRef.current();
     };
+    // ★モジュールの中（`fit`）では、見えていなくても**1度だけ**測る（見えた瞬間に寸法が替わって録音機が跳ねない）。
+    //   見張り（`ResizeObserver`）は見えているあいだだけ（第115巡の理由）。
+    if (!appActive) { if (fit) read(); return; }
     const ro = new ResizeObserver(read);
     ro.observe(el);
     ro.observe(cv);
     read();
     return () => ro.disconnect();
-  }, [appActive]);
+  }, [appActive, fit]);
 
   // ---- 円の配置 --------------------------------------------------------------
   const w = size.w || 390;

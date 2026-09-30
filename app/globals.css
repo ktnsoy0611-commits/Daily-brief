@@ -178,28 +178,14 @@ body {
   margin-bottom: calc(-1 * var(--nav-h));
 }
 
-/* ★アプリの横スライドとダッシュボードの引き上げは、Reactのstateではなく
-   **CSSカスタムプロパティ**で駆動する(2026-08-02)。
-   以前は navDragX / dashP を60fpsで setState していたため、指を動かすたびに
-   AppShellが再レンダーされ、マウント済みの全アプリのタブが毎フレーム作り直され
-   ていた(実機で1フレーム約200msのlong task が連続。ユーザー報告「タブの切り替えが
-   非常に重く、タップしても切り替わらない」の直接の原因)。
-   いまはポインタのハンドラが documentElement へ --drag / --dash を書くだけで、
-   Reactのレンダーは1回も走らない。指を離したときだけ、下のtransitionが
-   最終値まで滑らかに運ぶ。
-   ※カスタムプロパティ自体をtransitionするには @property の登録が要る(Safari
-   16.4+)ので、そこには頼らず「変数から算出される transform / width / opacity
-   といった、もともとアニメーション可能なプロパティ」の側にtransitionを掛けている。 */
-.app-track {
-  transform: translateX(calc(var(--app-offset, 0%) + var(--drag, 0px)));
-  transition: transform var(--t-item) var(--ease-sheet);
-}
+/* ★★第134巡に**アプリの列を横に並べて送るトラック（`.app-track`）を撤去**した。列は同じ場所に重ね、
+   不透明度だけで入れ替える（`components/AppShell.tsx` の `AppColumn`）。 */
 /* ★背景は「ベタ塗りの1色」だけになった(2026-08-11)。図形も、去る/来るの
    アニメーションもすべて撤去してある(components/AppBackdrop.tsx)。
    色の切り替えだけをそこで transition している。 */
 
 /* ★★第134巡に**指で横へ払うアプリの切り替え**と**下から引き上げるダッシュボード**を撤去した
-   （バーを押すだけ。`components/AppNav.tsx`）。`--drag` は 0 のまま残っている。 */
+   （バーを押すだけ。`components/AppNav.tsx`）。 */
 
 /* オーバーレイのスクロール領域でOS標準のスクロールバーを隠すための
    ユーティリティ。スクロール自体は無効化しない。 */

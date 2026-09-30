@@ -1,7 +1,7 @@
 "use client";
 
 import { SPACE, TYPE, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
-import { ms as msOf, T_OUT } from "@/lib/motion";
+import { ms as msOf, T_ITEM, T_OUT } from "@/lib/motion";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { AddWishSheet } from "@/components/AddWishSheet";
@@ -24,7 +24,6 @@ import { isViewportDebug } from "@/lib/debugViewport";
 import { whenPileSettled } from "@/lib/bootQuiet";
 import { BD_GREY, CHARCOAL, INK, NAV_H, PAPER, RUST, SANS, TAB_MARK, TAB_PAD_TOP } from "@/lib/constants";
 import { DataStore } from "@/lib/dataStore";
-import { unreadCards } from "@/lib/homeBand";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { kickViewport } from "@/lib/viewportKick";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
@@ -69,29 +68,36 @@ interface AppColumnProps {
   tab: TabId;
   active: boolean;
   mounted: boolean;
-  /** ★列を置く場所のずれ（列の幅の倍数）。0なら本来の場所。 */
-  wrap: number;
+  /** ★★列の見え方 … いま表示中／入れ替わりで下に残っている（新しい列がその上へ現れ終わるまで）／隠れている。 */
+  phase: "active" | "leaving" | "hidden";
   memoryMode: boolean;
   tabProps: TabProps;
   /** ★★モジュールへ運ぶ合図（`goTab` とバーの再タップ）。 */
   jump: { tab: TabId; n: number };
-  unread: number;
-  onGo: (id: AppId) => void;
-  onRecord: (from: HTMLElement) => void;
 }
 
-const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memoryMode, tabProps, jump, unread, onGo, onRecord }: AppColumnProps) {
+const AppColumn = memo(function AppColumn({ a, tab, active, mounted, phase, memoryMode, tabProps, jump }: AppColumnProps) {
   // ★★★**アプリの中身は3通り**（第134巡）… HOME ＝ 1枚きり／TASK ＝ 作り直すまで1枚（中で縦の払いを使う）／
   //   EXPLORE・JOURNAL ＝ 縦のモジュール（`AppModules`）。どれも列そのものはスクロールさせない。
   const isTasks = a.id === "tasks";
   const isModules = a.id === "life" || a.id === "journal";
   return (
         <div style={{
-          position: "relative", isolation: "isolate", width: `${100 / APPS.length}%`, height: "100%",
+          // ★★★**4つの列は同じ場所に重ねて置く**（第134巡の2度目にユーザー指摘「**スワイプしているわけではない
+          //   のでアプリ間をスライドするアニメーションは消す**」「**タブバーや要素が一瞬消える**」）。
+          //   横一列のトラックを送る作りは、切り替えのたびに**列の置き直し（`transform`）とトラックの移動**が
+          //   別々のフレームで効き、バーごと列が動いたり一瞬抜けたりしていた。
+          //   → 新しい列を**古い列の上に重ねて不透明度だけで現す**（`T_ITEM`・`--ease-settle`）。古い列は現れ終わる
+          //   まで下に残る（`leaving`）ので、**どの瞬間も画面に何も無いフレームが無い**。隠れた列は `visibility:
+          //   hidden`（寸法はそのまま ＝ 戻っても測り直しも作り直しも起きない）。★`transform` は使わない（中の
+          //   山・帯・送りは画面上の座標を測るので、動かすと切り替えの途中で測り違える）。
+          position: "absolute", inset: 0, isolation: "isolate",
           display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden",
-          // ★列を置く場所のずれ。バーで離れたアプリへ移るとき、行き先の列を**隣へ**置いて
-          //   1枚ぶんだけ滑らせる（あいだのアプリを素通りさせない）。値が変わるのは切り替えの瞬間だけ。
-          transform: wrap ? `translateX(${wrap * 100}%)` : undefined,
+          zIndex: phase === "active" ? 2 : phase === "leaving" ? 1 : 0,
+          visibility: phase === "hidden" ? "hidden" : "visible",
+          opacity: phase === "hidden" ? 0 : 1,
+          transition: phase === "active" ? "opacity var(--t-item) var(--ease-settle)" : "none",
+          pointerEvents: phase === "active" ? "auto" : "none",
           // ★★アプリの地色は**この列が持つ**(2026-08-12)。タブや中身の側で地色を塗らないこと。
           background: groundOf(a.id),
           // ★★★**地の上に直接いる文字の色を、ここで決めて配る**（第77巡）。
@@ -124,47 +130,28 @@ const AppColumn = memo(function AppColumn({ a, tab, active, mounted, wrap, memor
             )}
           </div>
 
-          {/* ★★タブバーは**フローから外して画面の上に浮かせる**(2026-08-12)。
-              ★position:fixed にはしないこと(iOS Safari の URL バー伸縮でずれる)。列の中の absolute。
-              ★★★第134巡に**4つのアプリを同じ格で並べるバー**へ（`components/AppNav.tsx`）。
-              アプリの中のタブ・横に払う切り替え・上へ引き上げるダッシュボードは撤去した。 */}
-          <nav className="app-nav" style={{
-            position: "absolute", left: 0, right: 0, bottom: 0,
-            display: "flex", flexDirection: "column", alignItems: "center",
-            padding: `0 ${SPACE.lg}px`, zIndex: 25, pointerEvents: "none",
-            ...inkVarsOn(groundOf(a.id)),
-          }}>
-            <AppNav current={a.id} unread={unread} onGo={onGo} onCreate={onRecord} />
-          </nav>
         </div>
   );
 });
 
 export function AppShell() {
   const [appState, setAppState] = useState<AppState | null>(null);
-  // ★★★**いま開いているアプリ**（第134巡に作り直し）。バーで押したアプリへ**1枚ぶんだけ**滑って移る ――
-  //   行き先の列を「いまの列の隣」（並びの向きの側）へ置き直してから、トラックを1つ送る（`slots`）。
-  //   あいだのアプリを素通りさせない。★横に払って替える操作は撤去した（帯・札・一覧の横の払いと取り合う）。
+  // ★★★**いま開いているアプリ**（第134巡）。バーを押すと、新しい列が古い列の上に不透明度で現れる
+  //   （`AppColumn` の `phase`）。古い列は `T_ITEM` のあいだ下に残す（`leaving`）。
   // ★★★起動して最初に見るのは**ホーム**（2026-09-07 ユーザー確定）。
-  const homeIdx = APPS.findIndex((a) => a.id === "home");
-  const [pos, setPos] = useState(homeIdx);
-  /** ★列ごとに、いまトラックのどの位置に置いてあるか（通し番号）。 */
-  const [slots, setSlots] = useState<Record<AppId, number>>(() => Object.fromEntries(APPS.map((a, j) => [a.id, j])) as Record<AppId, number>);
-  const appId = (Object.entries(slots).find(([, p]) => p === pos)?.[0] ?? "home") as AppId;
+  const [appId, setAppIdState] = useState<AppId>("home");
+  const [leaving, setLeaving] = useState<AppId | null>(null);
+  const leaveTimer = useRef(0);
   const setAppId = useCallback((id: AppId) => {
-    setSlots((sl) => {
-      const curId = (Object.entries(sl).find(([, p]) => p === pos)?.[0] ?? "home") as AppId;
-      if (curId === id) return sl;
-      const dir = APPS.findIndex((a) => a.id === id) > APPS.findIndex((a) => a.id === curId) ? 1 : -1;
-      const nextPos = pos + dir;
-      const out = { ...sl };
-      // ★行き先の位置に居座っている別の列は、画面の外（さらに先）へ退かす。
-      for (const k of Object.keys(out) as AppId[]) if (k !== id && out[k] === nextPos) out[k] = nextPos + dir * APPS.length;
-      out[id] = nextPos;
-      setPos(nextPos);
-      return out;
+    setAppIdState((cur) => {
+      if (cur === id) return cur;
+      setLeaving(cur);
+      window.clearTimeout(leaveTimer.current);
+      leaveTimer.current = window.setTimeout(() => setLeaving(null), msOf(T_ITEM));
+      return id;
     });
-  }, [pos]);
+  }, []);
+  useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
   const [tabByApp, setTabByApp] = useState<Record<AppId, TabId>>({ ...DEFAULT_TAB });
   /** ★★モジュールへ運ぶ合図（アプリごと。`n` が変わるたびに1回運ぶ）。 */
   const [jumps, setJumps] = useState<Record<AppId, { tab: TabId; n: number }>>(
@@ -201,14 +188,6 @@ export function AppShell() {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
-  // ★横スライドの位置はCSS変数で持つ。--app-offset は通し番号が変わったときだけ、
-  // --drag は指が動いている間だけ書く(どちらもReactのレンダーを起こさない)。
-  // ★背景はこの2つを一切見ない。指の動きから切り離し、アプリが確定した
-  // 瞬間に自分のアニメーションを流す(components/AppBackdrop.tsx)。
-  const setTrackVars = useCallback((p: number) => {
-    document.documentElement.style.setProperty("--app-offset", `${(-p * 100) / APPS.length}%`);
-  }, []);
-  useEffect(() => { setTrackVars(pos); }, [pos, setTrackVars]);
   const [showProfile, setShowProfile] = useState(false);
   const [storageMode, setStorageMode] = useState(DataStore.mode);
   // 認証状態。Supabase未構成(環境変数なし)のときは認証ゲートを一切出さず、
@@ -576,8 +555,6 @@ export function AppShell() {
     [appState, persist, showToast, goTab, voice, openWishSheet, focusCard, clearFocusCard],
   );
 
-  // ★★未読の提案の数（バーの EXPLORE の印の右肩。第132巡）。
-  const unread = useMemo(() => (appState ? unreadCards(appState).length : 0), [appState]);
   // ★★確認用の `DEV`（第134巡に EXPLORE のタブから設定の中へ移した）。
   const [showDev, setShowDev] = useState(false);
 
@@ -701,33 +678,33 @@ export function AppShell() {
           1つだけ置く。グリッド自体は動かず、アプリを移ると各マスの大きさが
           変わって図形が切り替わる。 */}
       <AppBackdrop appId={appId} />
-      {/* ★3アプリを横一列に並べたトラック。タブバーも中身も、この1枚が
-          まとめて動く(=「タブバーごとスワイプされる」)。各列が自分の
-          スクロールルートと自分のタブバーを持つので、タブの数が3/4/2と
-          違っても隣のタブバーがそのまま流れ込んで見える。 */}
-      {/* 位置は globals.css の .app-track が --app-offset(アプリの番号) と
-          --drag(指の量) から算出する。ドラッグ中はJSがCSS変数を書くだけで、
-          Reactのレンダーは1回も走らない。 */}
-      <div className="app-track" style={{
-        position: "absolute", inset: 0, display: "flex", width: `${APPS.length * 100}%`,
-      }}>
-      {APPS.map((a, j) => (
+      {/* ★★4つの列は同じ場所に重なる（`AppColumn` の `phase`）。 */}
+      {APPS.map((a) => (
         <AppColumn
           key={a.id}
           a={a}
           tab={tabByApp[a.id]}
           active={a.id === appId}
           mounted={mountedApps.includes(a.id)}
-          wrap={slots[a.id] - j}
+          phase={a.id === appId ? "active" : a.id === leaving ? "leaving" : "hidden"}
           memoryMode={storageMode === "memory"}
           tabProps={tabProps}
           jump={jumps[a.id]}
-          unread={unread}
-          onGo={onGo}
-          onRecord={onRecord}
         />
       ))}
-      </div>
+
+      {/* ★★★**タブバーは1本だけ**。アプリの列の外に置くので、切り替えのあいだも**1px も動かず・消えない**
+          （第134巡の2度目。列ごとに持っていたときは列と一緒に滑ったり抜けたりした）。
+          ★position:fixed にはしないこと(iOS Safari の URL バー伸縮でずれる)。シェルの中の absolute。
+          ★地の上の色は `inkVarsOn()` が置く（出どころは1つ）。 */}
+      <nav className="app-nav" style={{
+        position: "absolute", left: 0, right: 0, bottom: 0,
+        display: "flex", flexDirection: "column", alignItems: "center",
+        padding: `0 ${SPACE.lg}px`, zIndex: 25, pointerEvents: "none",
+        ...inkVarsOn(groundOf(appId)),
+      }}>
+        <AppNav current={appId} onGo={onGo} onCreate={onRecord} />
+      </nav>
 
       {toast && <Toast text={toast} />}
 

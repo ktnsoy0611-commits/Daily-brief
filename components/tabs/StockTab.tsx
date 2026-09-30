@@ -2,16 +2,16 @@
 
 import { SPACE, TYPE, LEAD, TRACK, WEIGHT, RADIUS } from "@/lib/tokens";
 import { Activity, BookOpen, Check, Film, MapPin, Music, Music2, Newspaper, Package, Palette, Search, Sparkles, UtensilsCrossed, X } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { RailPiece } from "@/components/ModuleRail";
 import { BottomSheet, closeOnSelfClick, OverlayCard } from "@/components/BottomSheet";
 import { Button } from "@/components/Button";
-import { BinderModal, type IconType, Masthead, SectionLabel } from "@/components/common";
+import { BinderModal, type IconType, SectionLabel } from "@/components/common";
 import { ShapeCard } from "@/components/explore/ShapeCard";
 import { StockGroup } from "@/components/explore/StockGroup";
 import { cardShapeOf } from "@/lib/cardShape";
 import { categoryOfKind } from "@/lib/deckStyle";
 import { TabIcon } from "@/components/TabIcons";
-import { appTitle } from "@/lib/apps";
 import { BLUE, GREEN, GREEN_INK, HAIRLINE, INK, ITEM_DOMAINS, MUTED, PAPER, RUST, SANS, domainDefOf, itemKindOf, kindsOfDomain, SECOND, WHITE } from "@/lib/constants";
 import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { domainOf, haptic, hasPlace, img, isWishBound, todayKey } from "@/lib/helpers";
@@ -195,12 +195,15 @@ function AddItemSheet({ domain, sheetTitle, onAdd, onClose }: {
 // 書く自由文の受信箱で、ブリーフが形にして返したカードだけがここに並ぶ)。
 // ブリーフのKEEP由来のカードにはKEEP、ウィッシュが形になったカードには
 // WISHのバッジが付き、手動追加したものと見分けられる。
-export function StockTab({ appState, persist, showToast, openWishSheet, bare }: TabProps & {
-  /** ★EXPLORE のモジュールの中に置くとき（見出しは `AppModules` が持つ）。 */
-  bare?: boolean;
-}) {
-  // ★★`data-rail-snap` … モジュールの送りが「ここでも止まる」印（長い一覧は1行ずつ止まる）。
-  const snap = bare ? { "data-rail-snap": "" } : {};
+/**
+ * ★★★**STOCK は「行ごとの1枚」の列を返す**（2026-09-30・第134巡の2度目。ユーザー指摘「**スクロールのアニメーションは、
+ *   バネ感のある動作をするモジュールとしないものがある。どんな時でも成立するように**」）。
+ * ★送り（`ModuleRail`）のばねは**1枚ずつ**に掛かる。STOCK を丸ごと1枚にしていたので、STOCK の中を送っているあいだは
+ *   **全部が1枚の板として固く動き**、BRIEF と STOCK の境目でだけ柔らかかった。→ 頭の列・RECENTLY ADDED・束の1つずつ・
+ *   ウィッシュを**別々の1枚**にして返す（`AppModules` が並べる）。シートと詳細は `overlay`（送りの外に置く）。
+ * ★行と行のあいだの広さは送りの隙間（`SPACE.lg`）＋ その1枚の下の余白（`padding`）で作る。
+ */
+export function useStockModule({ appState, persist, showToast, openWishSheet }: TabProps): { pieces: RailPiece[]; overlay: ReactNode } {
   const [planSheet, setPlanSheet] = useState(false);
   /** ★検索（`null` ＝ 閉じている）。 */
   const [query, setQuery] = useState<string | null>(null);
@@ -301,7 +304,7 @@ export function StockTab({ appState, persist, showToast, openWishSheet, bare }: 
   const recent = stocked.slice(0, RECENT_N);
   const hits = query && query.trim() ? stocked.filter((i) => matchItem(i, query.trim())) : [];
   // ★束の幅は列の実寸（束の中の札の大きさは幅に比例する）。
-  const mainRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
   const [colW, setColW] = useState(0);
   useEffect(() => {
     const el = mainRef.current;
@@ -314,58 +317,68 @@ export function StockTab({ appState, persist, showToast, openWishSheet, bare }: 
   }, []);
   const openItems = openDomain ? domainItems[openDomain] : [];
 
-  return (
-    <>
-      {!bare && <Masthead title={appTitle("life")} />}
-
-      <main ref={mainRef} style={{ flex: 1, paddingTop: bare ? 0 : SPACE.lg, paddingBottom: SPACE.xxl }}>
-        {/* ★★★**頭の列 ―― プランを作るピル ＋ その右に検索**（第134巡にユーザー指定「**プラン生成は stock の上に
-            ピル状のボタンをつけ、そのボタンの右に検索アイコンを付けて、容易に stock が検索できるように**」）。
-            ★PLAN のタブ（地図・バインド）は撤去した。プランはここから作る。★検索を開くと、ピルが検索の欄に替わる。 */}
-        <div style={{ display: "flex", gap: SPACE.sm, alignItems: "center", marginBottom: SPACE.xl }}>
-          {query === null ? (
-            <>
-              <Button variant="primary" size="lg" onClick={() => { haptic(6); setPlanSheet(true); }} style={{ flex: 1 }}>
-                <Sparkles size={16} strokeWidth={2.2} />
-                プランを作る
-              </Button>
-              <Button variant="icon" size="lg" aria-label="ストックを検索" onClick={() => { haptic(5); setQuery(""); }}
-                style={{ border: `1px solid ${HAIRLINE}`, background: PAPER }}>
-                <Search size={18} strokeWidth={2} />
-              </Button>
-            </>
-          ) : (
-            <>
-              <label style={{
-                flex: 1, display: "flex", alignItems: "center", gap: SPACE.sm, height: SPACE.xxl + SPACE.lg,
-                padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.pill, background: PAPER, border: `1px solid ${HAIRLINE}`,
-              }}>
-                <Search size={16} strokeWidth={2} color={MUTED} />
-                <input
-                  autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ストックを検索"
-                  enterKeyHint="search"
-                  style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, color: INK }}
-                />
-              </label>
-              <Button variant="icon" size="lg" aria-label="検索を閉じる" onClick={() => setQuery(null)}
-                style={{ border: `1px solid ${HAIRLINE}`, background: PAPER }}>
-                <X size={18} strokeWidth={2} />
-              </Button>
-            </>
-          )}
-        </div>
-
-        {query !== null && query.trim() !== "" ? (
-          // ★検索の結果。束をほどいて、当たったものだけを同じ形の3列で並べる。
-          <section style={{ marginBottom: GROUP_GAP }}>
-            <SectionLabel text={`${hits.length}件`} style={{ marginBottom: SPACE.md }} />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", rowGap: SPACE.lg, columnGap: SPACE.md }}>
-              {hits.map((i) => shapeTile(i, INK))}
-            </div>
-          </section>
-        ) : (<>
-        {recent.length > 0 && (
-          <section {...snap} style={{ marginBottom: GROUP_GAP }}>
+  // ★★行と行のあいだ ＝ 送りの隙間（`SPACE.lg`）＋ この余白。
+  const below = (px: number) => ({ paddingBottom: Math.max(0, px - SPACE.lg) });
+  const pieces: RailPiece[] = [];
+  // ★★★**頭の列 ―― プランを作るピル ＋ その右に検索**（第134巡にユーザー指定「**プラン生成は stock の上に
+  //   ピル状のボタンをつけ、そのボタンの右に検索アイコンを付けて、容易に stock が検索できるように**」）。
+  //   ★PLAN のタブ（地図・バインド）は撤去した。プランはここから作る。★検索を開くと、ピルが検索の欄に替わる。
+  pieces.push({
+    key: "stock-head",
+    node: (
+      <div ref={mainRef} style={{ display: "flex", gap: SPACE.sm, alignItems: "center", ...below(SPACE.xl) }}>
+        {query === null ? (
+          <>
+            <Button variant="primary" size="lg" onClick={() => { haptic(6); setPlanSheet(true); }} style={{ flex: 1 }}>
+              <Sparkles size={16} strokeWidth={2.2} />
+              プランを作る
+            </Button>
+            <Button variant="icon" size="lg" aria-label="ストックを検索" onClick={() => { haptic(5); setQuery(""); }}
+              style={{ border: `1px solid ${HAIRLINE}`, background: PAPER }}>
+              <Search size={18} strokeWidth={2} />
+            </Button>
+          </>
+        ) : (
+          <>
+            <label style={{
+              flex: 1, display: "flex", alignItems: "center", gap: SPACE.sm, height: SPACE.xxl + SPACE.lg,
+              padding: `0 ${SPACE.lg}px`, borderRadius: RADIUS.pill, background: PAPER, border: `1px solid ${HAIRLINE}`,
+            }}>
+              <Search size={16} strokeWidth={2} color={MUTED} />
+              <input
+                autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ストックを検索"
+                enterKeyHint="search"
+                style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontFamily: SANS, fontSize: TYPE.lead, fontWeight: WEIGHT.text, color: INK }}
+              />
+            </label>
+            <Button variant="icon" size="lg" aria-label="検索を閉じる" onClick={() => setQuery(null)}
+              style={{ border: `1px solid ${HAIRLINE}`, background: PAPER }}>
+              <X size={18} strokeWidth={2} />
+            </Button>
+          </>
+        )}
+      </div>
+    ),
+  });
+  if (query !== null && query.trim() !== "") {
+    // ★検索の結果。束をほどいて、当たったものだけを同じ形の3列で並べる。
+    pieces.push({
+      key: "stock-hits",
+      node: (
+        <section style={below(GROUP_GAP)}>
+          <SectionLabel text={`${hits.length}件`} style={{ marginBottom: SPACE.md }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", rowGap: SPACE.lg, columnGap: SPACE.md }}>
+            {hits.map((i) => shapeTile(i, INK))}
+          </div>
+        </section>
+      ),
+    });
+  } else {
+    if (recent.length > 0) {
+      pieces.push({
+        key: "stock-recent",
+        node: (
+          <section style={below(GROUP_GAP)}>
             <SectionLabel text="RECENTLY ADDED" style={{ marginBottom: SPACE.md }} />
             {/* ★横に送る1列。★目盛りの外（札の実寸 `RECENT_TILE`）。 */}
             <div className="no-scrollbar bleed-x" style={{ display: "flex", gap: SPACE.md, overflowX: "auto", paddingInline: SPACE.lg, WebkitOverflowScrolling: "touch" }}>
@@ -374,64 +387,69 @@ export function StockTab({ appState, persist, showToast, openWishSheet, bare }: 
               ))}
             </div>
           </section>
-        )}
-        {/* ★★★**束の列**（第134巡。参照画像の UI）。束と束のあいだは広く（`xxl` × 2）。 */}
-        <div style={{ display: "flex", flexDirection: "column", gap: GROUP_GAP, marginBottom: GROUP_GAP }}>
-          {/* ★並びは「いちばん新しく入れた束」から。空の束は後ろ。 */}
-          {colW > 0 && ITEM_DOMAINS.slice().sort((a, b) =>
-            (domainItems[b.id][0]?.addedAt ?? "").localeCompare(domainItems[a.id][0]?.addedAt ?? "")).map((d) => (
-            <div key={d.id} {...snap}>
+        ),
+      });
+    }
+    // ★★★**束の列**（第134巡。参照画像の UI）。束と束のあいだは広く（`xxl` × 2）。★並びは「いちばん新しく入れた束」から。
+    if (colW > 0) {
+      for (const d of ITEM_DOMAINS.slice().sort((a, b) =>
+        (domainItems[b.id][0]?.addedAt ?? "").localeCompare(domainItems[a.id][0]?.addedAt ?? ""))) {
+        pieces.push({
+          key: `stock-group-${d.id}`,
+          node: (
+            <div style={below(GROUP_GAP)}>
               <StockGroup title={d.label} domain={d.id} items={domainItems[d.id]} width={colW}
                 onOpen={() => setOpenDomain(d.id)}
                 onAdd={() => { haptic(); setAdding(d.id); }} />
             </div>
-          ))}
+          ),
+        });
+      }
+    }
+  }
+  // ★ウィッシュ。棚(4ドメイン)の下に、書いたものすべてを新しい順に並べる平たいリスト。左のチェックは
+  //   「派生カードが実際に実行されたか」の自動判定(isWishBound)で、タップでの手動トグルは持たない。
+  pieces.push({
+    key: "stock-wishes",
+    node: (
+      <section>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: SPACE.md }}>
+          <SectionLabel text="ウィッシュ" />
+          <button onClick={openWishSheet} aria-label="ウィッシュを書く" style={{
+            width: 30, height: 30, borderRadius: RADIUS.circle, background: INK, border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0,
+          }}>
+            <TabIcon name="sparkle" color={PAPER} size={15} />
+          </button>
         </div>
-        </>)}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {allWishesDesc.map((w) => {
+            const bound = isWishBound(w, appState.items);
+            return (
+              <button key={w.id} onClick={() => setWishDetail(w)} style={{
+                display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.md}px 0`,
+                background: "none", border: "none", borderTop: `1px solid ${HAIRLINE}`, cursor: "pointer", textAlign: "left", width: "100%",
+              }}>
+                <span style={{
+                  flexShrink: 0, width: 19, height: 19, borderRadius: RADIUS.circle, display: "flex", alignItems: "center", justifyContent: "center",
+                  background: bound ? GREEN : "transparent", border: `1.5px solid ${bound ? GREEN : "rgba(26,26,24,0.25)"}`,
+                }}>
+                  {bound && <Check size={11} strokeWidth={3} color={GREEN_INK} />}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.title}</div>
+                  <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.hair }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    ),
+  });
 
-        {/* ★ウィッシュ。棚(4ドメイン)の下に、書いたものすべてを新しい順に
-            並べる平たいリスト。左のチェックは「派生カードが実際に実行された
-            か」の自動判定(isWishBound)で、タップでの手動トグルは持たない。 */}
-        <section {...snap} style={{ marginTop: SPACE.md }}>
-          {/* ★ウィッシュを書く入口。タブバーの右端は録音に譲ったので、
-              一覧のあるここに置いた(見出しの右の丸ボタン)。 */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: SPACE.md }}>
-            <SectionLabel text="ウィッシュ" />
-            <button onClick={openWishSheet} aria-label="ウィッシュを書く" style={{
-              width: 30, height: 30, borderRadius: RADIUS.circle, background: INK, border: "none", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0,
-            }}>
-              <TabIcon name="sparkle" color={PAPER} size={15} />
-            </button>
-          </div>
-        </section>
-        {allWishesDesc.length > 0 && (
-          <section>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {allWishesDesc.map((w) => {
-                const bound = isWishBound(w, appState.items);
-                return (
-                  <button key={w.id} onClick={() => setWishDetail(w)} style={{
-                    display: "flex", alignItems: "center", gap: SPACE.md, padding: `${SPACE.md}px 0`,
-                    background: "none", border: "none", borderTop: `1px solid ${HAIRLINE}`, cursor: "pointer", textAlign: "left", width: "100%",
-                  }}>
-                    <span style={{
-                      flexShrink: 0, width: 19, height: 19, borderRadius: RADIUS.circle, display: "flex", alignItems: "center", justifyContent: "center",
-                      background: bound ? GREEN : "transparent", border: `1.5px solid ${bound ? GREEN : "rgba(26,26,24,0.25)"}`,
-                    }}>
-                      {bound && <Check size={11} strokeWidth={3} color={GREEN_INK} />}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontFamily: SANS, fontSize: TYPE.body, fontWeight: WEIGHT.bold, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.title}</div>
-                      <div style={{ fontSize: TYPE.micro, fontWeight: WEIGHT.text, color: MUTED, marginTop: SPACE.hair }}>{domainDefOf(w.category).label}{w.status === "fulfilled" ? " ・ 叶えた" : ""}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        )}
-      </main>
+  const overlay = (
+    <>
 
       {openDomain && (
         <BottomSheet onClose={() => setOpenDomain(null)} maxHeight="74vh">
@@ -525,4 +543,5 @@ export function StockTab({ appState, persist, showToast, openWishSheet, bare }: 
         )} />
     </>
   );
+  return { pieces, overlay };
 }

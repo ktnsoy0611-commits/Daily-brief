@@ -21,11 +21,16 @@ import type { AppId, TabId, TabProps } from "@/lib/types";
 //   **モジュールの中で上下に払う操作を作らない**（作るならその面を `data-rail-lock` で囲む）。
 // ★HOME と TASK はここを通らない（HOME は1枚きり・TASK は作り直すまで中で縦の払いを使う）。
 
-/** 1画面のモジュールの下に、次のモジュールを覗かせる量（タブバーの上に `PEEK − 隙間` だけ見える）。
- *  ★目盛りの外（覗かせる量。STOCK の頭の列 48px がちょうど見える）。 */
-const PEEK = SPACE.xxl * 2;
-/** 1画面で完結するモジュールの高さ（見る窓 − タブバー − 覗き）。`--rail-h` は `ModuleRail` が配る。 */
-const SCREEN_H = `calc(var(--rail-h, 100svh) - var(--nav-h) - ${PEEK}px)`;
+/** ★★★**モジュールとモジュールのあいだ**（2026-10-03・第136巡にユーザー指摘「**カードのすぐ下にプランを作るがあり
+ *  近過ぎる。モジュール間のスペーシングが適切でない。必ずしも画面に入っていなくてよい**」）。
+ *  ★第134〜135巡は行と行と同じ `SPACE.lg`(16) で、次のモジュールの頭をタブバーの上に覗かせていた ―― 塊の切れ目が
+ *  行の切れ目と同じ幅なので、BRIEF の札と STOCK の頭が1つの塊に見えた。→ 切れ目は行の隙間の4倍。
+ *  ★1画面のモジュールは「見る窓 − タブバー − この隙間」の高さ。次のモジュールは**画面の下端より下**から始める
+ *  （タブバーのまわりに頭が半端に覗かない。位置は右端の目盛りが言う）―― 送る途中に見える切れ目は この隙間 ＋ タブバー。
+ *  ★目盛りの外（塊の切れ目。`SPACE.xxl` × 2）。 */
+const MODULE_GAP = SPACE.xxl * 2;
+/** 1画面で完結するモジュールの高さ（見る窓 − タブバー − 切れ目）。`--rail-h` は `ModuleRail` が配る。 */
+const SCREEN_H = `calc(var(--rail-h, 100svh) - var(--nav-h) - ${MODULE_GAP}px)`;
 
 interface Piece extends RailPiece { module: string; tabs: TabId[] }
 
@@ -94,6 +99,11 @@ function ModuleShell({ app, pieces, jump, overlay }: {
   const target = Math.max(0, pieces.findIndex((p) => p.tabs.includes(jump.tab)));
   const railJump = useMemo(() => ({ piece: target, n: jump.n }), [target, jump.n]);
 
+  // ★モジュールの最後の1枚の下にだけ、切れ目の残り（切れ目 ＋ タブバー − 行の隙間）を足す。止まる所は各1枚の上端のまま。
+  const railPieces = pieces.map((p, i) => (i + 1 < pieces.length && pieces[i + 1].module !== p.module
+    ? { ...p, node: <div style={{ paddingBottom: `calc(${MODULE_GAP - SPACE.lg}px + var(--nav-h))` }}>{p.node}</div> }
+    : p));
+
   return (
     <div className="full-bleed" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", paddingTop: "var(--pad-top)" }}>
       <div style={{ padding: `0 ${SPACE.lg}px` }}>
@@ -103,7 +113,7 @@ function ModuleShell({ app, pieces, jump, overlay }: {
       </div>
       <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <ModuleRail
-          pieces={pieces} gap={SPACE.lg} padX={SPACE.lg} endPad={nav + SPACE.lg}
+          pieces={railPieces} gap={SPACE.lg} padX={SPACE.lg} endPad={nav + SPACE.lg}
           onIndex={setIdx} jump={railJump} style={{ flex: 1, minHeight: 0 }}
         />
         {/* ★★**位置の目盛り**（第134巡の構成案）。画面の右端に墨の短い線をモジュールの数だけ。今いる所だけ長い。

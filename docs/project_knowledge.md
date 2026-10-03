@@ -1086,8 +1086,13 @@ Appleは`apple-mobile-web-app-status-bar-style`に`default`(白地に黒文字�
   BRIEF の札と録音機は頭の高さ `HERO_HEAD` と幅の式を共有（札が録音機より小さかったのは、残っていた足の枠 58px と余白と、
   録音機の側だけ `PILE_INSET` を2度引いていたため）。BRIEF の札の下に次の札が2枚ずれて覗き、払うほど前へ出る。
 - **ホームの墨の円の青いベゼル** … 外の円（体・影・当たり判定）は同じ大きさ、墨の円と芯だけが `r × OFFER_BEZEL` 内へ縮む。
-- ★★★**DOM／SVG の写真は解き終わってから差し込む**（`lib/decodedImage.ts`）… SVG の `<image>` は初めて描く瞬間に主の糸で解く。
-  STOCK の写真は他所の原寸 OGP なので、送りの最中に解きが入ってかくついた。Chromium は解きを別の糸でやるので再現しない。
+- ★★★**DOM の札の写真は表示の大きさへ1度だけ縮めて canvas に焼く**（第136巡。`lib/photoThumb.ts`・`ShapeCard`）… 第135巡は
+  原寸の OGP 画像を SVG の `<image>` に渡し、解いた原寸を最大 60 枚抱え（実測 28枚で 105MB）、束の札ごとに CSS の
+  `drop-shadow` を掛けていた ―― 画像の数に比例して重い（ユーザー報告「画像が増えるとフレームレートが落ちる」）。
+  いまは 7.5MB・`drop-shadow` 0。★Chromium の**ソフトウェア合成**では canvas の層が逆に重く出る（iPhone は GPU 合成）ので、
+  検証は GPU 合成（`--use-angle=swiftshader`）で測る。
+- **モジュールの切れ目** … `MODULE_GAP`(64) ＋ タブバー。1画面のモジュールは「見る窓 − タブバー − 64」で、次のモジュールは
+  画面の下端より下から始める（第136巡にユーザー指摘。第134〜135巡は行と同じ 16px で頭をタブバーの上に覗かせていた）。
 - **削除（ユーザー承認）** … `DEV`・券・改札鋏・three.js／`GeoType`・`TaskRow`・紙の素材と道具／日のログの my-brain 同期／
   `magazine`・`weekendMeta`・`pendingReview`・`shelfOrder`（読み込み時に消す）・`ItemStatus "planned"`（`candidate` へ）。
   ★★**旧バインダー（`Binder.tsx`・`bindLog`）と地図（`LeafletMap`・地図の計算）は残す**（ログ・別の地図の表示に使う。ユーザー指定）。

@@ -53,8 +53,8 @@ export function StockGroup({ title, domain, items, width, onOpen, onAdd }: {
         style={{ position: "relative", width, height: Math.round(size * 1.12), cursor: "pointer" }}
       >
         {items.length === 0 ? (
-          <div style={{ position: "absolute", left: (width - size) / 2, top: 0, filter: `drop-shadow(${SOFT_SHADOW})` }}>
-            <ShapeCard shape={shape} face={DOMAIN_COLOR[domain]} ink={bodyInkOn(DOMAIN_COLOR[domain])} label="" size={size} />
+          <div style={{ position: "absolute", left: (width - size) / 2, top: 0 }}>
+            <ShapeCard shape={shape} face={DOMAIN_COLOR[domain]} ink={bodyInkOn(DOMAIN_COLOR[domain])} label="" size={size} shadow />
             {/* ★空の束 ＝ 形そのものが「追加」の入口。字（Anton の＋）は小さすぎたので線の＋。 */}
             <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: bodyInkOn(DOMAIN_COLOR[domain]) }}>
               <Plus size={Math.round(size * 0.28)} strokeWidth={2} />
@@ -66,9 +66,10 @@ export function StockGroup({ title, domain, items, width, onOpen, onAdd }: {
           return (
             <div key={it.id} style={{
               position: "absolute", left: x0 + step * i, top: size * (0.05 + LIFT[i % LIFT.length]),
-              transform: `rotate(${TILT[i % TILT.length]}deg)`, filter: `drop-shadow(${SOFT_SHADOW})`,
+              // ★★影は札の canvas に焼く（`shadow`）。CSS の `drop-shadow` は札ごとに別の面を作り、送りの最中に重かった（第136巡）。
+              transform: `rotate(${TILT[i % TILT.length]}deg)`,
             }}>
-              <ShapeCard shape={shape} face={face} ink={bodyInkOn(face)} size={size}
+              <ShapeCard shape={shape} face={face} ink={bodyInkOn(face)} size={size} shadow
                 photo={it.images?.[0] ? img(it.images[0], 400, 400) : undefined}
                 label={categoryOfKind(it.kind)} more={last ? extra : undefined} />
             </div>

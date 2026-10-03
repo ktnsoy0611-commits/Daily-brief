@@ -92,7 +92,8 @@
   見出しと**今のモジュール名**は動かず、その下を `ModuleRail` が送る。右端に**位置の目盛り**。★★★**溜まったものは
   「1行 ＝ 1枚」**（STOCK は `useStockModule`、LOG は `useJournalLog` が行ごとの1枚とシートを返す）―― 送りのばねは
   1枚ずつに掛かるので、丸ごと1枚にしたモジュールの中だけ固く動いていた（ユーザー指摘「バネ感のあるものとないもの」）。1画面のモジュールは
-  `calc(var(--rail-h) − var(--nav-h) − PEEK)`（次のモジュールの頭がタブバーの上に覗く）。HOME と TASK は通らない
+  `calc(var(--rail-h) − var(--nav-h) − MODULE_GAP)`。★★★**モジュールの切れ目は `MODULE_GAP`(64) ＋ タブバー**（第136巡にユーザー指摘
+  「カードのすぐ下にプランを作るがあり近過ぎる」）―― 次のモジュールは画面の下端より下から始める（覗かせない）。HOME と TASK は通らない
   （HOME は1枚きり・TASK は作り直すまで中で縦の払いを使う）。
   ★★★**残りのアプリの先読みは「落ち着いてから、1つずつ」**（第115巡）。
   `requestIdleCallback(..., {timeout})` で**まとめて**載せていたので、**ホームの山が
@@ -324,8 +325,10 @@
   2つまで）。**素朴に書き直すと全部戻る。**
 - `components/TabIcons.tsx` — 面で描いたアイコン。
 - `components/BottomSheet.tsx` / `PlanGenerateSheet.tsx` / `AddWishSheet.tsx` / `SignInGate.tsx` / `LeafletMap.tsx`（★今は誰も使わない。地図を別の形で出すために残す ―― ユーザー指定）/ `Binder.tsx`（★旧バインダー。ログに使うかもしれないので残す ―― ユーザー指定）。
-- ★★★`lib/decodedImage.ts` — **DOM／SVG の写真を「解き終わってから」差し込む**（第135巡。`useDecodedSrc`）。SVG の `<image>` は
-  初めて描く瞬間に主の糸で画素を解くので、STOCK の送りの最中に原寸の OGP 画像の解きが入ってかくついていた。`ShapeCard` が使う。
+- ★★★`lib/photoThumb.ts` — **DOM の札の写真は「表示の大きさへ1度だけ縮めた絵」**（第136巡。`useThumb`・`thumbPx`）。
+  原寸の OGP 画像（解いた画素 1枚 3〜16MB）を抱えず、`decode()` 後に中央の正方形を縮めた canvas にして原寸は手放す
+  （1フレーム `SHRINK_MS` まで）。`ShapeCard` が面・写真・縁・影を canvas 1枚に焼く（束の影も焼く。CSS の `drop-shadow` は使わない）。
+  ★第135巡の `lib/decodedImage.ts`（解き終わってから SVG へ）は置き換えた ―― 原寸を最大 60 枚抱えていた（実測 28枚で 105MB）。
 
 ## データ・ロジック
 - `lib/types.ts` — **データモデルの正**。`lib/constants.ts` — 色・書体・部品の寸法。

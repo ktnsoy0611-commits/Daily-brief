@@ -61,6 +61,8 @@ export interface Rail {
   focus: number;
   /** 1枚ずつの追従。 */
   ys: Spring[];
+  /** ★1つ前の刻みの `ys` の位置（描くときに刻みと刻みのあいだを補間する。`pieceYAt`）。 */
+  prev: number[];
   tops: number[];
   heights: number[];
   gap: number;
@@ -70,7 +72,7 @@ export interface Rail {
 
 export const makeRail = (): Rail => ({
   raw: 0, x: spring(0), target: null, held: false, focus: 0,
-  ys: [], tops: [], heights: [], gap: 0, snaps: [0], max: 0,
+  ys: [], prev: [], tops: [], heights: [], gap: 0, snaps: [0], max: 0,
 });
 
 /** 止まる所と止まる所の間がこれより開いたら、あいだに止まる所を足す（見る窓の高さに対する比）。 */
@@ -108,6 +110,7 @@ export function railLayout(r: Rail, heights: number[], gap: number, viewH: numbe
   r.snaps = snaps;
   while (r.ys.length < heights.length) r.ys.push(spring(r.x.p));
   r.ys.length = heights.length;
+  r.prev = r.ys.map((y) => y.p);
   if (!r.held && r.target === null) {
     const s = nearestSnap(r, r.x.p);
     if (Math.abs(r.snaps[s] - r.x.p) > EPS) r.target = r.snaps[s];
@@ -188,8 +191,24 @@ export function railGoTo(r: Rail, i: number): void {
 /** 1枚の上端（器の上端から）。 */
 export const pieceY = (r: Rail, i: number): number => r.tops[i] - r.ys[i].p;
 
+/**
+ * ★★★**描くときの1枚の上端 ＝ 1つ前の刻みと今の刻みのあいだを `a`（0〜1）で補間した位置**（2026-10-04・第136巡）。
+ * ★ユーザー報告「**スクロールするときに引っかかりやフレームレートの低下**」の真因 ―― 送りの物理は 60Hz の
+ *   固定の刻み（`RAIL_STEP_MS`。120Hz で2倍速にしないため）で進むのに、**描くのは画面の更新ごと**だった。
+ *   120Hz の実機では**2フレームに1回しか位置が変わらず**、刻みと画面の位相がずれるたびに 0・1・2 歩が
+ *   不揃いに混ざる（模擬 … 定常の払いで **59 フレーム中 29 フレームが 1px も動かず**、1フレームの移動のばらつき 98%）。
+ *   60Hz の Chromium と Playwright では起きないので、試験では一度も見えなかった。
+ * → 物理はそのまま（手ざわりの係数を変えない）、**描く位置だけ**刻みのあいだを補間する（遅れは最大1刻み）。
+ */
+export const pieceYAt = (r: Rail, i: number, a: number): number => {
+  const p = r.ys[i].p;
+  const q = r.prev[i] ?? p;
+  return r.tops[i] - (q + (p - q) * a);
+};
+
 /** 1刻み進める。**まだ動いていれば true**。 */
 export function railStep(r: Rail): boolean {
+  for (let i = 0; i < r.ys.length; i += 1) r.prev[i] = r.ys[i].p;
   let moving = r.held;
   if (!r.held && r.target !== null) {
     springTo(r.x, r.target, SNAP_K, SNAP_D);
@@ -214,6 +233,6 @@ export function railStep(r: Rail): boolean {
   }
   let still = !moving;
   for (const s of r.ys) if (Math.abs(s.p - r.x.p) > EPS || Math.abs(s.v) > EPS) { still = false; break; }
-  if (still) { for (const s of r.ys) { s.p = r.x.p; s.v = 0; } return false; }
+  if (still) { for (let i = 0; i < r.ys.length; i += 1) { r.ys[i].p = r.x.p; r.ys[i].v = 0; r.prev[i] = r.x.p; } return false; }
   return true;
 }

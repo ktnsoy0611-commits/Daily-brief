@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import {
-  makeRail, pieceY, railClaimed, railDrag, railGoTo, railHold, railIndex, railLayout, railPieceAt, railRelease, railStep, railUnclaim, RAIL_STEP_MS,
+  makeRail, pieceYAt, railClaimed, railDrag, railGoTo, railHold, railIndex, railLayout, railPieceAt, railRelease, railStep, railUnclaim, RAIL_STEP_MS,
 } from "@/lib/moduleRail";
 import { setNavCompact } from "@/lib/navCompact";
 
@@ -53,10 +53,17 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, jump, s
 
   const lastX = useRef(0);
   const travel = useRef(0);
-  const paint = useCallback(() => {
+  // ★★★`a` ＝ 刻みと刻みのあいだのどこを描くか（`pieceYAt`）。ループの外から呼ぶとき（測り直し）は今の刻みそのもの。
+  //   ★変わらない1枚には書かない（書くたびに様式の計算と層の更新が走る）。
+  const shownY = useRef<number[]>([]);
+  const paint = useCallback((a = 1) => {
     const r = rail.current;
     els.current.forEach((el, i) => {
-      if (el && i < r.ys.length) el.style.transform = `translate3d(0, ${pieceY(r, i)}px, 0)`;
+      if (!el || i >= r.ys.length) return;
+      const y = Math.round(pieceYAt(r, i, a) * 100) / 100;
+      if (shownY.current[i] === y && el.style.transform) return;
+      shownY.current[i] = y;
+      el.style.transform = `translate3d(0, ${y}px, 0)`;
     });
     const idx = railIndex(r);
     if (idx !== shownIndex.current) { shownIndex.current = idx; onIndexRef.current?.(idx); }
@@ -85,7 +92,7 @@ export function ModuleRail({ pieces, gap, padX = 0, endPad = 0, onIndex, jump, s
       let n = 0;
       while (acc >= RAIL_STEP_MS && n < MAX_STEPS) { moving = railStep(r) || moving; acc -= RAIL_STEP_MS; n += 1; }
       if (n === 0) moving = true;
-      paint();
+      paint(Math.min(1, acc / RAIL_STEP_MS));
       if (moving || r.held) raf = requestAnimationFrame(tick);
     };
     wakeRef.current = () => {

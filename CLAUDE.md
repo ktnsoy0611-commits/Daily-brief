@@ -956,6 +956,9 @@
   ★★★**押し始めは捕獲相で受ける**（札の写真は押し始めを `stopPropagation` するので、泡立ちでは写真の上から送れなかった）。
   降りてほしい部品は `claimFromRail(pointerId)`。★★★**`lostpointercapture` は自分の器の分だけ**（泡立って来た札の知らせで
   送りが止まっていた）。
+  ★★★**描く位置は刻みと刻みのあいだを補間する**（第136巡。`pieceYAt`）―― 物理は 60Hz の固定の刻みなのに 120Hz の実機で
+  描いていたので、**2フレームに1回しか動かず**（模擬 59 中 29 フレーム静止）「引っかかり」になっていた。60Hz の試験では見えない。
+  ★ホームの山・帯・TASK の日付の列も同じ 60Hz 刻みで描いている（未対処）。
 - `lib/scroll.ts` — **スクロールの語彙はここだけ**（指の 1:1 ＋投げ＋減衰＋最寄りへ吸着）。
   ★★第134巡に**連鎖のバネ `chainSpring`** を `GravityTab` から持ち上げた（ALIGN とモジュール送りが同じ数を読む）。
   強さを触るのは `SCROLL_GAIN` と `FLICK_K` の2つだけ。いまは ALIGN の縦送りが使う。
@@ -1201,6 +1204,10 @@ git checkout main && git merge --ff-only <作業ブランチ> && git push -u ori
 
 ユーザーが「変更が確認できません」と言ったら、まず `git log --oneline origin/main -1`
 で `main` の先頭を疑うこと。
+★★★**`main` へ届いても本番に出ないことがある**（第136巡に踏んだ）―― 作業ブランチと `main` へ同じコミットを1秒差で
+送ったら、Vercel が Preview だけ作り **Production を作らなかった**（2b5f7c0。ユーザーは2日間古い版を見ていた）。
+**`main` を先に push し**、`gh api "repos/ktnsoy0611-commits/daily-brief/deployments?per_page=6"` で
+**`Production – daily-brief` の行がそのコミットに在る**ことを確かめてから作業ブランチを送る。
 
 ## 作業を終えるたびに必ず行う後始末
 コードやドキュメントに変更を加えたら、**コミットの前に**必ず次の3つを行う。

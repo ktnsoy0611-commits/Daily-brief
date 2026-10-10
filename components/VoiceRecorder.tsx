@@ -41,6 +41,9 @@ export const LEVEL_MS = 45;
 /** 短すぎる録音(誤爆・言い直し)は送らない。 */
 const MIN_MS = 700;
 
+/** 文字起こしの送信を待つ上限（ms）。サーバーの上限（60秒）より少し長い。★目盛りの外（待ち時間）。 */
+const SEND_LIMIT_MS = 75000;
+
 export function useVoiceRecorder(opts: {
   onDone: (r: VoiceResult) => void;
   onError: (message: string) => void;
@@ -289,6 +292,7 @@ export function useVoiceRecorder(opts: {
     if (!raw) { setState("idle"); return; }
     setState("sending");
     haptic(12);
+    let sent = false;
     const kept = durationMs * Math.max(0.02, trim.end - trim.start);
     try {
       const cut = (trim.start > 0.001 || trim.end < 0.999) ? await trimAudio(raw, trim.start, trim.end) : null;
@@ -296,7 +300,8 @@ export function useVoiceRecorder(opts: {
       const ext = blob.type.includes("wav") ? "wav" : blob.type.includes("mp4") ? "m4a" : "webm";
       const form = new FormData();
       form.append("audio", blob, `voice.${ext}`);
-      const res = await authedFetch("/api/transcribe", { method: "POST", body: form });
+      // ★送信全体に締切（`SEND_LIMIT_MS`）。締切が無いと、応答が来ないとき SENDING のまま永久に止まる（第137巡に実機で踏んだ）。
+      const res = await authedFetch("/api/transcribe", { method: "POST", body: form, timeoutMs: SEND_LIMIT_MS });
       const data = await res.json().catch(() => null);
       if (data?.ok && typeof data.text === "string" && data.text.trim()) {
         onDone({
@@ -305,6 +310,7 @@ export function useVoiceRecorder(opts: {
           durationMs: Math.round(kept),
           savedToMyBrain: !!data.savedToMyBrain,
         });
+        sent = true;
       } else if (data?.reason === "no_key") {
         onError("文字起こしの設定がまだ有効になっていません");
       } else {
@@ -313,11 +319,17 @@ export function useVoiceRecorder(opts: {
     } catch {
       onError("通信に失敗しました");
     } finally {
-      blobRef.current = null;
-      levelsRef.current = [];
-      timesRef.current = [];
-      setDurationMs(0);
-      setState("idle");
+      // ★★送れなかったときは録音を捨てない ―― 切り出しの画面（review）へ戻し、もう一度 SEND を押せるようにする
+      //   （第136巡までは失敗しても音声を捨てていたので、話した内容が失われた）。
+      if (sent) {
+        blobRef.current = null;
+        levelsRef.current = [];
+        timesRef.current = [];
+        setDurationMs(0);
+        setState("idle");
+      } else {
+        setState("review");
+      }
     }
   }, [durationMs, onDone, onError]);
 

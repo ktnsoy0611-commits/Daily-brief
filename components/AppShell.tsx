@@ -294,7 +294,12 @@ export function AppShell() {
     // するたびに読み直す。
   }, [authReady, userId]);
 
+  // ★★★**通信を待ってから書き戻すときは `latestRef`（その時点の最新）から作る**（第137巡）。起動時の取り込み2つは
+  //   effect が走った瞬間の `appState` を写して書き戻していたので、**返事を待つあいだのスワイプや KEEP を消していた**。
+  const latestRef = useRef<AppState | null>(null);
+  useEffect(() => { latestRef.current = appState; });
   const persist = useCallback((next: AppState) => {
+    latestRef.current = next;
     setAppState(next);
     DataStore.save(next).then(setStorageMode);
   }, []);
@@ -322,7 +327,9 @@ export function AppShell() {
         ...(Array.isArray(data.interest) ? data.interest : []),
       ];
       if (brainTaste.length === 0) return; // Coworkの結果がまだ無ければ触らない
-      const next = structuredClone(appState);
+      const base = latestRef.current;
+      if (!base) return;
+      const next = structuredClone(base);
       next.profile = next.profile ?? { interests: [] };
       const dismissed = new Set(next.profile.dismissedInterests ?? []);
       const userManual = next.profile.interests.filter((i) => i.source === "user" && !dismissed.has(i.label));
@@ -353,7 +360,9 @@ export function AppShell() {
       const entries: JournalEntry[] = Array.isArray(data.journal) ? data.journal : [];
       const summaries: Record<string, { text: string; at: string }> = data.summaries && typeof data.summaries === "object" ? data.summaries : {};
       if (cands.length === 0 && entries.length === 0 && Object.keys(summaries).length === 0) return;
-      const next = structuredClone(appState);
+      const base = latestRef.current;
+      if (!base) return;
+      const next = structuredClone(base);
       next.inbox = next.inbox ?? [];
       next.journal = next.journal ?? [];
       const seenCand = new Set([...next.inbox.map((c) => c.id), ...(next.profile.handledInbox ?? [])]);
@@ -465,13 +474,14 @@ export function AppShell() {
   // 文字起こしへ送る。結果はここへ溜まり、夜間にCoworkが読んで
   // インボックスの候補(タスク・ジャーナル・ウィッシュ等)へ分類する。
   const addVoiceNote = useCallback((r: { text: string; at: string; durationMs: number }) => {
-    if (!appState) return;
-    const next = structuredClone(appState);
+    const base = latestRef.current; // ★文字起こしを待ったあと（最新から作る）
+    if (!base) return;
+    const next = structuredClone(base);
     next.voiceNotes = next.voiceNotes ?? [];
     next.voiceNotes.unshift({ id: `voice-${Date.now()}`, at: r.at, text: r.text, durationMs: r.durationMs, status: "new" });
     persist(next);
     showToast("声のメモを保存しました");
-  }, [appState, persist, showToast]);
+  }, [persist, showToast]);
   const recorder = useVoiceRecorder({ onDone: addVoiceNote, onError: (m) => showToast(m) });
   // ★録音の入口はタブバー右端の丸ボタンひとつ。押すと全画面のオーバーレイ
   // (VoiceOverlay)が開き、そこでタップして録音を始め、もう一度タップで

@@ -27,13 +27,83 @@ let cloudActive = false;
 // ★`aiLedger` ＝ Gemini の1日の回数の台帳（`lib/aiLedger.ts`。サーバーだけが書く）。
 const SERVER_OWNED_KEYS: ReadonlySet<string> = new Set<string>(["generatedDecks", "cronStatus", "aiLedger"]);
 
-async function hasSession(): Promise<boolean> {
-  if (!isSupabaseConfigured || !supabase) return false;
+// ★★★**保存は「1本の列」で、届くまでやり直す**（2026-10-10・第137巡。ユーザー報告「Explore をスワイプしているのに
+//   好みが更新されない」）。第136巡までの穴は3つ ――
+//   ① **1度でも失敗すると `cloudActive` を落とし、その起動のあいだ以後の保存は端末の中だけ**。次に開くと
+//      クラウドを読むので、**その間の操作（スワイプ・KEEP・タスク）が黙って消えた**。
+//   ② **保存が並んで走る**（スワイプのたびに全キーを upsert）。後から出した保存が先に着くと、古い状態が上書きする。
+//   ③ **締切が無い**。Supabase の中の鍵（ロック）待ちで返らないと、保存は永久に終わらない。
+//   → 保存は1本の列（`queued` は最後の1つだけ持つ）・締切 `SAVE_LIMIT_MS`・失敗したら `RETRY_MS` 後と
+//     画面の復帰・回線の復帰でやり直す。**送る前に端末へ控え（`PENDING_KEY`）を書き、届いたら消す** ――
+//     届く前にアプリが閉じられても、次に開いたとき**控えがクラウドより新しければ控えを使って送り直す**。
+const SAVE_LIMIT_MS = 20000; // ★目盛りの外（待ち時間）
+const RETRY_MS = 15000; // ★目盛りの外（待ち時間）
+const PENDING_KEY = `${STORAGE_KEY}:pendingCloud`;
+let cloudUserId: string | null = null;
+let queued: AppState | null = null;
+let saving: Promise<void> | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let hooked = false;
+
+async function sessionUserId(): Promise<string | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
   try {
     const { data } = await supabase.auth.getSession();
-    return !!data.session;
+    return data.session?.user.id ?? null;
   } catch {
-    return false;
+    return null;
+  }
+}
+
+/** サーバーが持つキーを除いた中身（控えとクラウドへ送るもの）。 */
+function clientPart(state: AppState): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(state).filter(([key]) => !SERVER_OWNED_KEYS.has(key)));
+}
+
+function writePending(state: AppState) {
+  if (memoryMode) return;
+  try { window.localStorage.setItem(PENDING_KEY, JSON.stringify({ at: Date.now(), state: clientPart(state) })); } catch { /* 控えが書けなくても送る */ }
+}
+function clearPending() {
+  if (memoryMode) return;
+  try { window.localStorage.removeItem(PENDING_KEY); } catch { /* noop */ }
+}
+function readPending(): { at: number; state: Record<string, unknown> } | null {
+  if (memoryMode) return null;
+  try {
+    const raw = window.localStorage.getItem(PENDING_KEY);
+    const v = raw ? JSON.parse(raw) : null;
+    return v && typeof v.at === "number" && v.state && typeof v.state === "object" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function kick() {
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  if (!queued || saving || !cloudActive) return;
+  saving = flush().finally(() => { saving = null; });
+}
+
+function hook() {
+  if (hooked || typeof window === "undefined") return;
+  hooked = true;
+  window.addEventListener("online", kick);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") kick(); });
+}
+
+async function flush(): Promise<void> {
+  while (queued) {
+    const s = queued;
+    queued = null;
+    writePending(s);
+    if (await saveCloud(s)) {
+      if (!queued) clearPending();
+      continue;
+    }
+    queued = queued ?? s;
+    if (!retryTimer) retryTimer = setTimeout(kick, RETRY_MS);
+    return;
   }
 }
 
@@ -259,17 +329,19 @@ function loadLocal(): AppState {
 async function saveCloud(state: AppState): Promise<boolean> {
   if (!supabase) return false;
   try {
-    const { data: sess } = await supabase.auth.getSession();
-    const userId = sess.session?.user.id;
+    const userId = cloudUserId ?? (await sessionUserId());
     if (!userId) return false;
-    const rows = Object.entries(state)
-      .filter(([key]) => !SERVER_OWNED_KEYS.has(key))
-      .map(([key, value]) => ({ user_id: userId, key, value, updated_at: new Date().toISOString() }));
-    const { error } = await supabase.from("app_state").upsert(rows, { onConflict: "user_id,key" });
-    if (error) throw error;
+    const at = new Date().toISOString();
+    const rows = Object.entries(clientPart(state)).map(([key, value]) => ({ user_id: userId, key, value, updated_at: at }));
+    const res = await Promise.race([
+      supabase.from("app_state").upsert(rows, { onConflict: "user_id,key" }),
+      new Promise<null>((r) => setTimeout(() => r(null), SAVE_LIMIT_MS)),
+    ]);
+    if (!res) throw new Error("timeout");
+    if (res.error) throw res.error;
     return true;
   } catch (e) {
-    console.warn("Supabaseへの保存に失敗。localStorageにフォールバックします:", e);
+    console.warn("Supabaseへの保存に失敗。あとで送り直します:", e);
     return false;
   }
 }
@@ -281,12 +353,27 @@ export const DataStore = {
   },
   async load(): Promise<AppState> {
     // クラウド優先: 構成済みかつログイン済みのときだけ。
-    if (isSupabaseConfigured && supabase && (await hasSession())) {
+    const uid = isSupabaseConfigured && supabase ? await sessionUserId() : null;
+    if (supabase && uid) {
       try {
-        const { data, error } = await supabase.from("app_state").select("key, value");
+        const { data, error } = await supabase.from("app_state").select("key, value, updated_at");
         if (error) throw error;
         cloudActive = true;
+        cloudUserId = uid;
+        hook();
         if (data && data.length > 0) {
+          // ★届かなかった控えがクラウドより新しければ、控えを使って送り直す（サーバーのキーはクラウドのまま）。
+          const pending = readPending();
+          const newest = Math.max(0, ...data.filter((r) => !SERVER_OWNED_KEYS.has(r.key)).map((r) => Date.parse(r.updated_at) || 0));
+          if (pending && pending.at > newest) {
+            const obj: Record<string, unknown> = Object.fromEntries(data.map((r) => [r.key, r.value]));
+            const merged = migrate({ ...obj, ...pending.state });
+            memoryStore = merged;
+            queued = merged;
+            kick();
+            return merged;
+          }
+          clearPending();
           const cloud = assembleFromRows(data);
           memoryStore = cloud;
           return cloud;
@@ -309,8 +396,10 @@ export const DataStore = {
     memoryStore = state;
     // クラウドが有効なら、まずクラウドへ。失敗したらlocalStorageへ落ちる。
     if (cloudActive) {
-      if (await saveCloud(state)) return "cloud";
-      cloudActive = false;
+      queued = state;
+      kick();
+      if (saving) await saving;
+      return "cloud";
     }
     if (memoryMode) return "memory";
     try {
@@ -324,6 +413,8 @@ export const DataStore = {
   },
   async clear() {
     memoryStore = null;
+    queued = null;
+    clearPending();
     if (cloudActive && supabase) {
       try {
         const { data: sess } = await supabase.auth.getSession();

@@ -184,6 +184,30 @@ export async function GET(req: Request) {
   // 直接書き足す可能性がある方)をラベル単位で合わせて使う。
   const { data } = await supa.from("app_state").select("key,value").eq("user_id", ownerId).in("key", ["sources", "profile", "wishes", "briefs", "generatedDecks", "items", "crawlState", "fixedSources", "sourceStats", "goals"]);
   const byKey: Record<string, unknown> = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
+  // ★★診断（第137巡。ユーザー報告「スワイプしているのに好みが更新されない」）。**件数と時刻だけ**を返す
+  //   （題や本文は出さない ―― Actions のログに残るため）。アプリの保存が届いているかを外から確かめる。
+  const diag = await (async () => {
+    try {
+      const { data: meta } = await supa.from("app_state").select("key,updated_at").eq("user_id", ownerId);
+      const updated = Object.fromEntries((meta ?? []).map((r) => [r.key, r.updated_at]));
+      const briefs = (byKey.briefs ?? {}) as Record<string, { decisions?: Record<string, unknown> }>;
+      const perEd = Object.keys(briefs).sort().slice(-20).map((k) => {
+        const vals = Object.values(briefs[k]?.decisions ?? {});
+        return `${k}:keep${vals.filter((v) => v === "keep").length}/skip${vals.filter((v) => v === "skip").length}/all${vals.length}`;
+      });
+      const decks = (byKey.generatedDecks ?? {}) as Record<string, unknown[]>;
+      const deckSizes = Object.keys(decks).sort().map((k) => `${k}:${(decks[k] ?? []).length}`);
+      const items = Array.isArray(byKey.items) ? (byKey.items as { origin?: string; addedAt?: string }[]) : [];
+      const added: Record<string, number> = {};
+      for (const it of items) {
+        const d = typeof it?.addedAt === "string" ? it.addedAt.slice(0, 10) : "";
+        if (d >= "2026-09-15") added[`${d}:${it.origin ?? "-"}`] = (added[`${d}:${it.origin ?? "-"}`] ?? 0) + 1;
+      }
+      return { updated, perEd, deckSizes, added };
+    } catch (e) {
+      return { error: String(e) };
+    }
+  })();
   const rawSources = Array.isArray(byKey.sources) ? (byKey.sources as unknown[]) : [];
   const appFavoriteSources: { url: string; label?: string }[] = rawSources
     .filter((s): s is { url: string; label?: string } => !!s && typeof s === "object" && typeof (s as { url?: unknown }).url === "string")
@@ -650,6 +674,6 @@ export async function GET(req: Request) {
     note: result?.note ?? (skipGen ? `未消化のカードが${undigested}枚あるため、今回は生成を見送りました。` : undefined),
     skipped: skipGen, undigested,
     sites: result?.sites ?? [], dropped: result?.dropped, tokens: result?.tokens,
-    logWrote, proposedSource, mybrainSync, chipsSynced,
+    logWrote, proposedSource, mybrainSync, chipsSynced, diag,
   });
 }

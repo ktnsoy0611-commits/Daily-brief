@@ -226,6 +226,20 @@ export interface TaskSuggestion {
   askAfter?: string;
 }
 
+// ★★★**tips の雲の中身**（2026-10-10・第137巡。ユーザー承認の下書き1）―― 当日その場で確かめる一言。
+//   準備タスクの提案と同じ1回の呼び出しで届く（`lib/taskSuggest.ts`）。見せるのは新しい TASK の画面（3日以内のタスクだけ）。
+export interface TaskTip {
+  id: string;
+  /** 雲に載る 2〜6字の名詞（例: 診察券）。 */
+  word: string;
+  /** 開いた雲の問い（30字以内）。 */
+  check: string;
+  /** 「やることに」で作るサブタスクの題。 */
+  todo: string;
+  /** 「確認した」を押した。 */
+  checked?: boolean;
+}
+
 // ★タスクの「側面の情報」。立体の側面になる4つ(2026-08-13にユーザー確定)。
 // title は Task.title / InboxCandidate.title をそのまま使うので、ここには
 // 持たない(同じ意味の値を二重に持たない)。
@@ -291,6 +305,10 @@ export interface Task extends TaskSides {
   suggestions?: TaskSuggestion[];
   // 提案を作った時刻。未設定なら「まだ一度も作っていない」= 開いたときに作る。
   suggestedAt?: string;
+  // ★提案を作ったときの「題｜期日」（変わったら頼み直す。`lib/prepSuggest.ts`）。
+  suggestedFor?: string;
+  // ★当日に確かめる一言（tips の雲）。最大2つ。
+  tips?: TaskTip[];
   // 重要度。未設定は中扱い。
   weight?: TaskWeight;
 }

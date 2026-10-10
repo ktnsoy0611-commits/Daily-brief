@@ -29,6 +29,7 @@ import { kickViewport } from "@/lib/viewportKick";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import { haptic, isExpiredItem, pruneOldBriefs } from "@/lib/helpers";
 import type { AppId, AppState, InboxCandidate, ItemDomain, JournalEntry, TabId, TabProps, Task, VoiceControls } from "@/lib/types";
+import { authedFetch } from "@/lib/authedFetch";
 
 // 読み込み待機画面。2x2のグリッドの上を、黒い幾何学が動き回る
 // (globals.css の load-rect / load-dot / load-fan)。背景と同じ語彙で、
@@ -308,7 +309,7 @@ export function AppShell() {
   useEffect(() => {
     if (!appState || pulledMyBrainRef.current) return;
     pulledMyBrainRef.current = true;
-    fetch("/api/mybrain/read").then((r) => r.json()).then((data) => {
+    authedFetch("/api/mybrain/read").then((r) => r.json()).then((data) => {
       if (!data?.ok) return;
       // 好み・興味チップはCoworkが taste-state.md を所有する。アプリはそれを取り込んで
       // 表示するだけ。ユーザーが手で足したチップ(source:"user")は残し、それ以外
@@ -346,7 +347,7 @@ export function AppShell() {
   useEffect(() => {
     if (!appState || pulledInboxRef.current) return;
     pulledInboxRef.current = true;
-    fetch("/api/mybrain/inbox").then((r) => r.json()).then((data) => {
+    authedFetch("/api/mybrain/inbox").then((r) => r.json()).then((data) => {
       if (!data?.ok) return;
       const cands: InboxCandidate[] = Array.isArray(data.candidates) ? data.candidates : [];
       const entries: JournalEntry[] = Array.isArray(data.journal) ? data.journal : [];

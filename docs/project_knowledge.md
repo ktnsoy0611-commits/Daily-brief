@@ -6503,8 +6503,15 @@ my-brain の `sources/stats.md` へ書く。Cowork の発掘タスクはこの�
   （`SERVER_OWNED_KEYS`）に14日ぶん、断られた回数と理由も。
   ★`callGemini`（`lib/briefPipeline.ts`）が数える・429/408/5xx を最大2回やり直す（**"PerDay" の 429 はやり直さない**）・
   待ちに上限。計量器の出どころは `lib/aiMeter.ts`（`briefPipeline` はクライアントの束にも入るので `node:async_hooks` を持ち込まない）。
-  ★★**AI の口は本人だけ**（`lib/ownerAuth.ts`。クライアントは `lib/authedFetch.ts` でトークンを付ける）―― 第136巡までは
-  誰でも叩けて、外から叩かれると回数がそのまま減った。
+  ★★**AI の口と my-brain の口は本人だけ**（`lib/ownerAuth.ts`。クライアントは `lib/authedFetch.ts` でトークンを付ける）――
+  第136巡までは誰でも叩けて、外から叩かれると回数がそのまま減り、**日記のまとめ・候補・好みも誰でも読めた**
+  （`/api/mybrain/*`・`/api/resolve-place` も含む）。★残る公開の口は `/api/news`（他所のニュースだけ）と cron（秘密で守る）。
+  ★★**準備タスクの提案は tips の雲と1回で**（第137巡にユーザー承認の下書き1。`Task.tips`）。頼み直すのは
+  題か期日が変わった時・期日の7日前を過ぎて前の提案がそれより古い時・tips が入る前に頼んだきりの時（`needOf`）。
+  ★★★**Vercel の置き場所は3つあり、鍵があるのは `daily-brief`（`daily-brief-lyart-six.vercel.app`）だけ**（第137巡に判明）。
+  `daily-brief-22k7` は Supabase だけ・`daily-brief-w9ct` は何も無い ―― ここから入ると AI が全部 `no_key` になる。
+  ★★★**定期タスクの実物は `list_triggers` で読める**（毎日まとめ／定期評価／情報源収集）。毎日まとめは「main に入れる」の
+  指示が無く、8月から毎晩 `claude/…` の枝に置いて main に入っていなかった（62本）。文面の正は `COWORK-ROUTINES.md`。
   ★★★**ブリーフを「情報源をまとめて1回で頼む」形に戻さない**（§8.19 ―― 1サイトの本文が削られて札が0枚になった）。
 - **地図** … Leaflet + CartoDB Positron タイル（`components/LeafletMap.tsx`）。
   座標は Places API（New）で解決（`app/api/resolve-place/route.ts`）。

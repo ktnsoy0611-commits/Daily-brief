@@ -1,4 +1,5 @@
 import type { AppState } from "@/lib/types";
+import { authedFetch } from "@/lib/authedFetch";
 
 export type MyBrainSyncResult = { ok: true; wrote: string[] } | { ok: false; reason: string };
 
@@ -16,7 +17,7 @@ export async function syncTasteToMyBrain(appState: AppState): Promise<MyBrainSyn
   const dismissed = appState.profile?.dismissedInterests ?? [];
   const sources = (appState.sources ?? []).map((s) => ({ url: s.url, label: s.label }));
   try {
-    const res = await fetch("/api/mybrain/sync", {
+    const res = await authedFetch("/api/mybrain/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ manualInterests, dismissed, sources }),

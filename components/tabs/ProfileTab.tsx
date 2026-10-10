@@ -339,7 +339,7 @@ export function ProfileTab({ appState, persist, onClose }: {
   const [poolSources, setPoolSources] = useState<{ url: string; label?: string }[]>([]);
   useEffect(() => {
     let alive = true;
-    fetch("/api/mybrain/read").then((r) => r.json()).then((d) => {
+    authedFetch("/api/mybrain/read").then((r) => r.json()).then((d) => {
       if (alive && d?.ok && Array.isArray(d.sources)) {
         setPoolSources(d.sources.filter((s: unknown): s is { url: string; label?: string } => !!s && typeof (s as { url?: unknown }).url === "string"));
       }

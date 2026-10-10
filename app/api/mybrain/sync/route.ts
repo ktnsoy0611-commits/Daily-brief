@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isOwner } from "@/lib/ownerAuth";
 import { syncMyBrain, type SyncTasteInput } from "@/lib/myBrainWrite";
 
 // 設定画面(好み・興味・お気に入りの情報源)やウィッシュ追加など、ユーザーが
@@ -11,6 +12,7 @@ export const runtime = "nodejs";
 export const maxDuration = 20;
 
 export async function POST(req: Request) {
+  if (!(await isOwner(req))) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   let body: SyncTasteInput;
   try {
     body = await req.json();

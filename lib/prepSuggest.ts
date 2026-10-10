@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { todayKey } from "./helpers";
-import type { AppState, TaskSuggestion } from "./types";
+import type { AppState, Task, TaskSuggestion, TaskTip } from "./types";
 import { authedFetch } from "@/lib/authedFetch";
 
 // ★★★**準備タスクを AI に頼む「きっかけ」はここ1つ**（2026-09-27・第133巡）。
@@ -25,6 +25,41 @@ const PREP_DAYS = 14;
 /** ★1回に頼む件数。★目盛りの外（呼ぶ回数の上限）。 */
 const PER_RUN = 3;
 
+/** ★期日の何日前にもう一度頼むか（予定が近づいて見えてくる準備がある）。★目盛りの外（仕様の数）。 */
+const AGAIN_DAYS = 7;
+/** ★準備の提案の上限（`lib/taskSuggest.ts` の `SUGGEST_LIMIT` と同じ数。あちらは Gemini を抱えるので読まない）。 */
+const KEEP_MAX = 6;
+
+const sigOf = (t: Task) => `${t.title}|${t.dueDate ?? ""}`;
+const norm = (x: string) => x.normalize("NFKC").replace(/\s/g, "");
+
+// ★★★**頼み直す条件**（2026-10-10・第137巡。ユーザー承認の下書き1）… ①まだ頼んでいない ②題か期日が変わった
+//   ③期日の `AGAIN_DAYS` 日前を過ぎたのに、それより前に頼んだきり（予定が近づくと見える準備がある）
+//   ④tips の雲が入る前（第136巡まで）に頼んだきり（`suggestedFor` が無い）。
+type Why = "first" | "changed" | "again";
+export function needOf(t: Task, today: string): Why | null {
+  if (!t.suggestedAt) return "first";
+  if (t.suggestedFor !== sigOf(t)) return t.suggestedFor ? "changed" : "again";
+  if (t.dueDate && within(t.dueDate, today, AGAIN_DAYS)) {
+    const cut = Date.parse(`${t.dueDate}T00:00:00`) - AGAIN_DAYS * 86400000;
+    if (Date.parse(t.suggestedAt) < cut) return "again";
+  }
+  return null;
+}
+
+// ★頼み直しの結果を前の提案と合わせる。題か期日が変わったら入れ替える（前の提案は別の予定のもの）。
+//   それ以外は前の提案を残し（「まだ」の数を消さない）、新しいものを後ろへ足す。
+function mergeSuggestions(prev: TaskSuggestion[], got: TaskSuggestion[], why: Why): TaskSuggestion[] {
+  if (why !== "again") return got;
+  const seen = new Set(prev.map((x) => norm(x.title)));
+  return [...prev, ...got.filter((x) => !seen.has(norm(x.title)))].slice(0, KEEP_MAX);
+}
+// ★tips は入れ替える。ただし同じ語で「確認した」を押していたものは押したままにする。
+function mergeTips(prev: TaskTip[], got: TaskTip[]): TaskTip[] {
+  const checked = new Set(prev.filter((x) => x.checked).map((x) => norm(x.word)));
+  return got.map((x) => (checked.has(norm(x.word)) ? { ...x, checked: true } : x));
+}
+
 /** ★★module のただ1つの入れ物（同じ起動の中で2度頼まない）。 */
 const tried = new Set<string>();
 let running = false;
@@ -46,7 +81,7 @@ export function usePrepSuggest(state: AppState | null, persist: (next: AppState)
     if (!state || running) return;
     const today = todayKey();
     const targets = (state.tasks ?? []).filter((t) =>
-      !t.done && !!t.dueDate && !t.suggestedAt && !tried.has(t.id)
+      !t.done && !!t.dueDate && !tried.has(t.id) && !!needOf(t, today)
       && within(t.dueDate, today, PREP_DAYS)).slice(0, PER_RUN);
     if (!targets.length) return;
     running = true;
@@ -57,7 +92,7 @@ export function usePrepSuggest(state: AppState | null, persist: (next: AppState)
       .slice(-200)
       .map((t) => ({ title: t.title, subtasks: (t.subtasks ?? []).filter((s) => s.done).map((s) => s.title) }));
     (async () => {
-      const got: Record<string, TaskSuggestion[]> = {};
+      const got: Record<string, { s: TaskSuggestion[]; tips: TaskTip[]; why: Why; sig: string }> = {};
       for (const t of targets) {
         try {
           const res = await authedFetch("/api/suggest-subtasks", {
@@ -70,7 +105,9 @@ export function usePrepSuggest(state: AppState | null, persist: (next: AppState)
             }),
           });
           const j = await res.json();
-          if (j?.ok && Array.isArray(j.suggestions)) got[t.id] = j.suggestions as TaskSuggestion[];
+          if (j?.ok && Array.isArray(j.suggestions)) {
+            got[t.id] = { s: j.suggestions as TaskSuggestion[], tips: Array.isArray(j.tips) ? (j.tips as TaskTip[]) : [], why: needOf(t, today) ?? "first", sig: sigOf(t) };
+          }
         } catch { /* 次に開いたとき頼み直す */ }
       }
       running = false;
@@ -79,10 +116,13 @@ export function usePrepSuggest(state: AppState | null, persist: (next: AppState)
       const next = structuredClone(cur);
       const at = new Date().toISOString();
       for (const t of next.tasks ?? []) {
-        const s = got[t.id];
-        if (!s) continue;
-        t.suggestions = s;
+        const g = got[t.id];
+        // ★頼んでいるあいだに題か期日がまた変わったら当てない（次の起動で新しい題で頼む）。
+        if (!g || sigOf(t) !== g.sig) continue;
+        t.suggestions = mergeSuggestions(t.suggestions ?? [], g.s, g.why);
+        t.tips = mergeTips(t.tips ?? [], g.tips);
         t.suggestedAt = at;
+        t.suggestedFor = g.sig;
       }
       persist(next);
     })();

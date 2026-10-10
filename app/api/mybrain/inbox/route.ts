@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isOwner } from "@/lib/ownerAuth";
 import { parseCandidates, parseDaySummaries } from "@/lib/inboxImport";
 import { PATHS, dayPath, monthKey } from "@/lib/myBrainPaths";
 import { readMyBrainFile } from "@/lib/myBrainWrite";
@@ -13,7 +14,9 @@ export const maxDuration = 15;
 
 const summaryPath = (d: Date) => dayPath(monthKey(d), "summary");
 
-export async function GET() {
+// ★本人だけ（2026-10-10・第137巡）―― その日のまとめ（日記）と候補が誰でも読めた。
+export async function GET(req: Request) {
+  if (!(await isOwner(req))) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   const now = new Date();
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   // 月をまたいだ直後も取りこぼさないよう、今月と先月を読む。

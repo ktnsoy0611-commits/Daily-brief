@@ -17,6 +17,7 @@ import { PlanGenerateSheet } from "@/components/PlanGenerateSheet";
 import { domainOf, haptic, hasPlace, img, isWishBound, todayKey } from "@/lib/helpers";
 import { bodyInkOn, colorOfKind } from "@/lib/palette";
 import type { Item, ItemDomain, ItemKind, TabProps, Wish } from "@/lib/types";
+import { authedFetch } from "@/lib/authedFetch";
 
 // 種類ごとのアイコン。Itemの全kindをここで引ける。
 export const KIND_ICON: Record<ItemKind, IconType> = {
@@ -54,7 +55,7 @@ const FIELD_INPUT: CSSProperties = { width: "100%", boxSizing: "border-box", bor
 // query(店名の名寄せ)のどちらか/両方を渡す。失敗時はsource:"none"。
 async function resolvePlace(input: { url?: string; query?: string }): Promise<{ lat?: number; lng?: number; placeId?: string; name?: string; source: string }> {
   try {
-    const res = await fetch("/api/resolve-place", {
+    const res = await authedFetch("/api/resolve-place", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isOwner } from "@/lib/ownerAuth";
 import { loadMyBrain } from "@/lib/myBrain";
 
 // my-brainのtaste(好み・興味・生活圏)と情報源を読むだけの薄いルート。
@@ -9,7 +10,9 @@ import { loadMyBrain } from "@/lib/myBrain";
 export const runtime = "nodejs";
 export const maxDuration = 15;
 
-export async function GET() {
+// ★本人だけ（2026-10-10・第137巡）―― 好み・生活圏が誰でも読めた。
+export async function GET(req: Request) {
+  if (!(await isOwner(req))) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   const brain = await loadMyBrain();
   // 好み/興味は「興味・好み」1リストへ統合済み(HANDOFF §8.14 優先度3)。
   return NextResponse.json({

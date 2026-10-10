@@ -28,12 +28,12 @@
   （ピル＋円は「貼っただけ」と却下）・開閉は円と面をばねで移す／雫は**墨**（白は見えないと却下）／EXPLORE の**残像は外す**（ユーザー指定）／
   **右へ払う＝済む・左へ払う＝消す（元に戻す4秒）・長押しで運んで日付の受け皿へ＝割り当て／付け替え**。今の TASK 画面は新しいのができたら外す（承認済み）。
   答え待ち4つ（雲と雫／払う・運ぶ／Explore の動きと範囲／済んだ数を出さない）。
-- **仕組み（第137巡）** … ユーザー確定 ＝ **案A（Claude の定期タスク＋Gemini）**。入れた … Gemini の1日の台帳（`lib/aiLedger.ts`・
-  仕事ごとの上限・太平洋時間0時）・429/5xx のやり直しと待ちの上限・失敗の記録（cronStatus.gemini／台帳）・**AI の口を本人だけに**
-  （`ownerAuth`/`authedFetch`。それまで誰でも叩けた）。誤り4つも直した（声の候補の再来・voice.md の日付・ゴール札・鍵）。
-  ★ブリーフの「まとめて頼む」は取り下げ（§8.19 で0枚の真因）。**答え待ち … 指示文の下書き3つ**
-  （https://claude.ai/artifact/2ukUP5mkKNp5uojV4eXBmi ：準備＋tips の雲／毎晩の状態と気づき `insight.md`／週1の振り返り `me/state.md`）
-  と、定期タスクが本当に動いているか。点検の頁 https://claude.ai/artifact/QygJGdGD3kiBnEynKSLuYg 。
+- **仕組み（第137巡）** … 案A（Claude の定期タスク＋Gemini）で確定。Gemini の1日の台帳（`lib/aiLedger.ts`）・やり直し・失敗の記録・
+  **AI と my-brain の口を本人だけに**（`ownerAuth`/`authedFetch`。日記のまとめまで誰でも読めた）。準備の提案に **tips の雲**と頼み直し。
+  ★★★**判明**：①毎日まとめは毎晩動くが「main に入れる」が無く 62本の枝に置いていた（アプリにまとめ0件）②声のメモは8/9が最後・
+  録音の「設定が有効になっていません」は**鍵の無い Vercel の置き場所（22k7）**から入ったときの答え ③my-brain は公開リポジトリ。
+  ★**ユーザー待ち** … 貼り付けの頁 https://claude.ai/artifact/Amn6jytpr3uBZ9BhxhfjqQ （4本の文面・録音の確かめ方）。
+  lyart-six で録音が通るか・ホーム画面のアイコンの入れ直し・my-brain の非公開化。JOURNAL に insight/state を出す見た目は未提案。
 ### ★★★第136巡 ── モジュールの切れ目／STOCK の写真
 - **モジュールの切れ目** … `MODULE_GAP`(64) ＋ タブバー。次のモジュールは画面の下端より下から（BRIEF の札と「プランを作る」が近過ぎた）。
 - **STOCK の写真** … 表示の大きさへ1度だけ縮めて canvas に焼く（`lib/photoThumb.ts`・`ShapeCard`。影も焼く）。

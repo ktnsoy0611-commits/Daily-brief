@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isOwner } from "@/lib/ownerAuth";
 
 // 場所の座標解決サーバー関数(フェーズB)。
 // SYSTEM-DESIGN.md §8.1 / docs/archive/brief-pipeline-2026-07.md §8.1-1 の多段フォールバック:
@@ -147,7 +148,9 @@ async function placesTextSearch(query: string): Promise<Resolved | null> {
   }
 }
 
+// ★本人だけ（Places API の回数を外から減らされないように）。
 export async function POST(req: Request) {
+  if (!(await isOwner(req))) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   let body: { url?: string; query?: string };
   try {
     body = await req.json();

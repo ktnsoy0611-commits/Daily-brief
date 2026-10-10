@@ -989,6 +989,8 @@
   AI の口の本人確認**（第137巡）。仕事ごとの上限 `AI_CAPS`・太平洋時間の0時で切替・台帳は `app_state.aiLedger`。
   `callGemini` が数えてやり直す（`withBudget(job, fn)` の中で）。★**新しい AI の口を足したら必ず `isOwner` と `withBudget` を通す**。
   ★ブリーフを「まとめて1回で頼む」形に戻さない（§8.19）。分担 ＝ Gemini（その場）＋ Claude の定期タスク（考える・日記）。
+  ★`/api/mybrain/*` と `/api/resolve-place` も本人だけ。★★★**Vercel は3つの置き場所があり、鍵があるのは `daily-brief-lyart-six` だけ**。
+  ★★★**定期タスクの実物は `list_triggers` で読める**（文面の正は `COWORK-ROUTINES.md`。ずれていないか確かめる）。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
   ★ブリーフの取得は **Jina → 直接**の2段（第64巡）。**失敗は必ず HTTP コードごと
   `SiteTrace` に残す** — 残さなかったせいで6日間の停止に気づけなかった。
@@ -1141,6 +1143,7 @@
   期日が `PREP_DAYS`(14) 日以内・未完了・`suggestedAt` が無いタスクを `PER_RUN`(3) 件ずつ
   `/api/suggest-subtasks` へ（プロンプトは `lib/taskSuggest.ts` の承認済みのまま）。
   ★★★**第52巡のタスク画面の作り直しで呼ぶ画面が消え、一度も呼ばれていなかった。**
+  ★★第137巡に **tips の雲（`Task.tips`）を同じ1回で**もらい、**頼み直し**（題・期日が変わった／期日の7日前／tips 以前）を足した。
   結果は `Task.suggestions` → 帯の下の段（`follow-`）。似た過去のタスクは**サーバーが探す**
   （`history` を渡す。`taskSuggest.ts` は Gemini を抱えるのでクライアントへ持ち込まない）。
 - ★★★`lib/lineBreak.ts` — **2行に割る「読める切れ目」はここ1か所**（第133巡）。帯（`bandLines`）と

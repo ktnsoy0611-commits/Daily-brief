@@ -150,42 +150,18 @@
   入口は**右下の輪の SETTING だけ**（`CreateMenu`）。
 
 ## タスク（TASK）
-- ★★★`components/tasks/TimelineTab.tsx` — **TASK の最初の画面 ＝ 日付の列**（第135巡にユーザー指定「**gravity を削除して、
-  画像の画面を初期画面に。ホームを踏襲。自由もピルにして図形として落として。完全にホームと同じ仕組みで**」）。
-  1画面に3日・先は14日・横に払うと1日ずつ止まる。**物理も絵もホームの山の部品**（`pileWorld` の `BODY`/`pillBody`/`launch`/
-  `clearOverlap`/`hitPiece`、`pilePaint` の `drawPile`/`drawPileShadows`/`setPileLook`/`warmPile`）。列の見出しは**ホームの日付の板**
-  （4×2 マス・床の下の静かな札）・**区切りの線は引かない**・日付の無いタスクは出さない・空いた日は「自由」の語のピル
-  （`lib/wordPlate.ts` の `labelPlate`）。★世界と下焼きは**先読みで載った時点**に済ませ、落とすのは初めて見えたとき
-  （和文の書体の初回の費用を空き時間へ）。世界は残す（開くたびに落とし直さない）。タップでタスクの編集画面。
-- ★**ALIGN と DRIFT は右上の仮のタブ**（`TaskSpace` の `TEMP_TABS`。ユーザー指定「**一旦右上に仮のタブ…保持する。のちに改修**」）。
-  ALIGN ＝ 旧 `GravityTab` を `autoAlign`（表に出たら ALIGN へ入る・左へ払っても山へ戻らない）。★GRAVITY の山は出さない。
-  以下は旧 GRAVITY の記録（ALIGN・DRIFT の中身として残っている）。
-
-**タスク図形は常に GRAVITY 空間にだけ在る**（第52巡に TOP/UNDER の4層を破棄）。
-別画面へ遷移せず、スワイプで**GRAVITY の物理法則を一時的に変える**ことで詳細リスト
-（ALIGN）と俯瞰（TIMELINE）を見せる。タブは DRIFT（候補）＋ GRAVITY の2つで、
-**GRAVITY＝地上／DRIFT＝上空**を**2Dのカメラ**が縦に送る（第62巡）。
-- `components/tabs/GravityTab.tsx` — **タスクの本体**。matter.js の山（pile）と、
-  **3つの物理モード**（`pile` / `align` / `timeline`）。左端→右スワイプで ALIGN
-  （**左に円弧**で図形が並び、右に文字。中央が大きく、上下スワイプで回る）、
-  **上**スワイプで TIMELINE（**地面から巨大な曜日が指に連れて伸び**、図形が
-  日付レーンへ下から詰まる）、**下**スワイプで**効果線を伴って DRIFT へ**
-  （DRIFT からは**上**スワイプで戻る）。★山は**表に出るたびに落とし直す**（毎回ちがう並び）。
-  その日の**日付と曜日の英語**も、枠の無い黒い文字の板として一緒に落ちる。
-  ★★モード中は **body の位置で描かない** — レイアウトが決めた**スロットへ絵の中心を
-  置く**（`ox/oy` 補正をやめたのがズレの根治。詳しくは `docs/project_knowledge.md` §4）。
-  ★山では**長押しで図形を掴んで運べる**（すぐ動かすとスワイプ）。口=完了/ゴミ箱=削除。
-- `components/tasks/TaskSpace.tsx` — **カメラ**。**GRAVITY＝地上／DRIFT＝上空**を
-  縦に積み、器ごと `translateY` で送る（`--cam`）。効果線は**パンの半ば**だけ。
-  画面に固定した `Masthead`（TASK）もここ。
-- `components/tasks/LayerName.tsx` — 層の名前（GRAVITY / ALIGN / TIMELINE / DRIFT）。
-- `components/tasks/DropTargets.tsx` — **口とブラックホール**（掴んでいる間だけ
-  「作る」の丸から分離して出る）。DRIFT と GRAVITY の共通部品。当たり判定 `targetAt`、
-  **近さ** `aimTargets`、合図 `fireTarget` もここ。
-- `components/tabs/DriftTab.tsx` — 候補が**無重力で漂う**層（1枚の canvas＋matter.js）。
-  ホールドで図形を運び、右下から出る**口＝完了 / ゴミ箱＝削除**へ落とす（第44巡）。
-  上スワイプで**カメラが地上の GRAVITY へ**。★★**場は自分の寸法だけで決める**
-  （画面の座標を測らない。列が動くとずれる。第61巡に根治）。
+- ★★★`components/tasks/TaskBoard.tsx` — **TASK の画面**（第137巡に作り直した。ユーザー承認の試作
+  https://claude.ai/artifact/VpzPX2vMvLk9ZE8w5pSAek ）。上 ＝ **先回りの札**（`SuggestDeck`。準備の提案と声の候補。
+  右へ払う＝取り入れる（札が墨の雫になって親の包みへ飛ぶ）／左＝要らない／声の札は日付を選ぶ）、下 ＝ **日付ごとの包み**
+  （`TaskPod`。オレンジの面・日付が無ければ輪郭。サブタスクは中の紙のピル、左の丸で済む）。
+  **包みを右へ払う＝済む／左＝消す（元に戻す 4.2 秒）／長押し＝運んで日付の受け皿（`DateDock`）へ／軽く押す＝入力画面**。
+  ★**tips の雲**（`TipCloud`・形は `lib/cloudShape.ts`）… 3日以内のタスクに2つまで・息をして漂う・押すと同じ雲のまま開く・
+  外を押すと閉じるだけ（下の包みは開かない）。★中身と操作の規則は **`lib/taskBoard.ts` の1か所**（日付の並び・札の山・
+  受け皿の升・下書きを書き換える関数）。★柔らかさは `lib/softMotion.ts`（60Hz の固定の刻み・押すと潰れて離すとぷるん）。
+  ★★書き込みは「その時点の最新」から（`latest`）。
+  ★★★**第135巡の日付の列（`TimelineTab`）・旧 GRAVITY（`GravityTab`／ALIGN）・`DriftTab`・`DropTargets`・`TaskAddButton`・
+  `lib/taskDemo.ts` と、その CSS（`task-cam`・`task-speed`・`drift-target`・`tl-*`）は第137巡に削除した**（ユーザー承認
+  「新しいのができたら今の task は外して良い」）。`tab`（tasks-timeline／gravity／drift）はどれでも `TaskSpace` ＝ `TaskBoard` へ。
 - `components/tasks/` — `TaskComposer`（入力画面。ツールバー＋ポップオーバー）/
   `WhenSheet`（日程。**ここだけキーボードを閉じる**。★★盤は `components/DateGrid.tsx`）/
   `ComposerToolbar` /
@@ -194,7 +170,6 @@
   `SolidCanvas` /
   `ViewportProbe`（★開発用の数値表示。`lib/debugViewport.ts` と対。直ったら撤去）。
   タスクの追加は`CreateMenu`（タブバー右端の輪）からのみ（第36巡に＋を撤去）。
-  `TaskAddButton.tsx`は動作確認用の`DemoSeedButton`だけが残っている。
 - `lib/solid.ts` `lib/solidPaint.ts` `lib/textFit.ts` `lib/taskSize.ts` — 図形・描画・寸法。
   ★★★**形は「ひとつの大きなピル」**（第124巡にユーザー指定「**タスクは、一つの
   大きいピルの形にしてください。その時2段の時の大きさを日付と曜日の図形の高さと
@@ -961,7 +936,7 @@
   ★ホームの山・帯・TASK の日付の列も同じ 60Hz 刻みで描いている（未対処）。
 - `lib/scroll.ts` — **スクロールの語彙はここだけ**（指の 1:1 ＋投げ＋減衰＋最寄りへ吸着）。
   ★★第134巡に**連鎖のバネ `chainSpring`** を `GravityTab` から持ち上げた（ALIGN とモジュール送りが同じ数を読む）。
-  強さを触るのは `SCROLL_GAIN` と `FLICK_K` の2つだけ。いまは ALIGN の縦送りが使う。
+  強さを触るのは `SCROLL_GAIN` と `FLICK_K` の2つだけ。★ALIGN（旧 `GravityTab`）は第137巡に削除。
 - `lib/motion.ts` — **動きの語彙（曲線4本・時間5つ・＋の丸の場所）**。
   CSS 側は `app/globals.css` の `:root`。数字はこの2つだけ。増やさない。
   JS のタイマーは `ms(T_OUT)` のようにここから引く（数字を書き写さない）。

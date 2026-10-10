@@ -53,8 +53,15 @@ export type DayFile = "facts" | "voice" | "summary" | "feedback";
 
 export const dayPath = (month: string, kind: DayFile) => `days/${month}/${kind}.md`;
 
-// Date から月キー(YYYY-MM)。
-export const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+// ★日本時間の暦（年・月・日・時・分）。サーバー（Vercel）の時計は世界標準時なので、
+//   `getHours()` などをそのまま使うと朝 0〜9 時の録音が前の日に入っていた（2026-10-10）。
+export const jstParts = (d: Date) => {
+  const j = new Date(d.getTime() + 9 * 3600 * 1000);
+  return { y: j.getUTCFullYear(), m: j.getUTCMonth() + 1, d: j.getUTCDate(), h: j.getUTCHours(), min: j.getUTCMinutes() };
+};
+
+// Date から月キー(YYYY-MM)。日本時間の月。
+export const monthKey = (d: Date) => { const p = jstParts(d); return `${p.y}-${String(p.m).padStart(2, "0")}`; };
 
 // ---- 旧パス(移行前に書かれたファイル) --------------------------------------
 // 移行が済むまでは、読むときだけ旧パスへフォールバックする(書き込みは新パス

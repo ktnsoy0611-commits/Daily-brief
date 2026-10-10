@@ -197,10 +197,14 @@ export function HomeTab({ appState, goTab, persist, showToast }: TabProps) {
       const c = (next.inbox ?? []).find((x) => x.id === id);
       if (!c) return;
       next.inbox = (next.inbox ?? []).filter((x) => x.id !== id);
+      // ★★「処理済み」の印を付ける（`DriftTab` の `accept` と同じ）。付けないと、Claude の定期タスクが
+      //   候補のファイルに足していくだけなので、次に開いたとき同じ候補がまた帯に戻ってきた（2026-10-10）。
+      next.profile.handledInbox = Array.from(new Set([...(next.profile.handledInbox ?? []), id])).slice(-500);
       landOn = `task-${Date.now()}`;
       next.tasks.unshift({
         id: landOn, title: c.title, dueDate: iso,
         endDate: c.endDate, dueTime: c.dueTime, endTime: c.endTime,
+        context: c.context, belongings: c.belongings,
         weight: c.weight ?? 2, note: c.note, done: false, createdAt: now,
       } as Task);
     } else if (it.kind === "followup") {

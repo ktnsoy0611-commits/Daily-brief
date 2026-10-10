@@ -332,7 +332,9 @@ export async function GET(req: Request) {
     const cutoff = Date.now() - 7 * 86400000;
     let recent = 0;
     for (const [ek, deck] of Object.entries(decks)) {
-      const m = ek.match(/^(\d{4})-(\d{2})-(\d{2})-/);
+      // ★号のキーは 2026-08-03 から日付だけ（"YYYY-MM-DD"）。末尾の "-" を要求していたので
+      //   いつも 0 枚と数え、「週2枚まで」が効いていなかった（2026-10-10）。
+      const m = ek.match(/^(\d{4})-(\d{2})-(\d{2})/);
       if (!m) continue;
       const t = Date.parse(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
       if (Number.isNaN(t) || t < cutoff) continue;

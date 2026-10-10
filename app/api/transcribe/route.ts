@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { dayPath, monthKey } from "@/lib/myBrainPaths";
+import { dayPath, jstParts, monthKey } from "@/lib/myBrainPaths";
 import { writeMyBrainFile, readMyBrainFile } from "@/lib/myBrainWrite";
 
 // ★声のメモの文字起こし。タブバー右の丸ボタンを長押しして録音した音声を
@@ -43,10 +43,11 @@ async function viaOpenAI(key: string, file: File): Promise<{ ok: true; text: str
 async function viaGemini(key: string, file: File): Promise<{ ok: true; text: string } | { ok: false; detail: string }> {
   const buf = Buffer.from(await file.arrayBuffer());
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // ★鍵は見出しで渡す（URL はログに残りやすい。ほかの呼び出しと同じ形）。
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         contents: [{
           role: "user",
@@ -74,9 +75,11 @@ async function viaGemini(key: string, file: File): Promise<{ ok: true; text: str
 // 候補を作る。失敗しても文字起こし自体は返す(ベストエフォート)。
 async function appendToMyBrain(text: string, at: Date): Promise<boolean> {
   const path = dayPath(monthKey(at), "voice");
-  const stamp = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")} ${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  // ★日本時間で書く（サーバーの時計は世界標準時。夜の「1日を仕分ける」が日付で読む）。
+  const j = jstParts(at), pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${j.y}-${pad(j.m)}-${pad(j.d)} ${pad(j.h)}:${pad(j.min)}`;
   const existing = await readMyBrainFile(path);
-  const head = `# 声のメモ（${at.getFullYear()}年${at.getMonth() + 1}月）\n\nアプリで録音し、文字起こししたもの。分類前の生のテキスト。\n`;
+  const head = `# 声のメモ（${j.y}年${j.m}月）\n\nアプリで録音し、文字起こししたもの。分類前の生のテキスト。\n`;
   const entry = `\n## ${stamp}\n\n${text.trim()}\n`;
   const next = (existing ?? head) + entry;
   const res = await writeMyBrainFile(path, next, `声のメモを追記 (${stamp})`);

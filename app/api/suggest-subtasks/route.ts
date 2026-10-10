@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { withBudget } from "@/lib/aiLedger";
+import { isOwner } from "@/lib/ownerAuth";
 import { PATHS } from "@/lib/myBrainPaths";
 import { readMyBrainFile } from "@/lib/myBrainWrite";
 import { findSimilarTasks, patternsFromMd, suggestSubtasks } from "@/lib/taskSuggest";
@@ -14,6 +16,7 @@ export const maxDuration = 30;
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : undefined);
 
 export async function POST(req: Request) {
+  if (!(await isOwner(req))) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   let body: { title?: unknown; dueDate?: unknown; note?: unknown; existing?: unknown; pastSimilar?: unknown; history?: unknown };
   try {
     body = await req.json();
@@ -54,14 +57,14 @@ export async function POST(req: Request) {
   // この人の傾向。無くても提案は出す(一般的な手配だけになる)。
   const patterns = patternsFromMd(await readMyBrainFile(PATHS.patterns));
 
-  const result = await suggestSubtasks({
+  const result = await withBudget("suggest", () => suggestSubtasks({
     title,
     dueDate: str(body.dueDate, 20),
     note: str(body.note, 200),
     existing,
     patterns,
     pastSimilar,
-  });
+  }));
   const status = result.ok || !result.reason.startsWith("gemini_") ? 200 : 502;
   return NextResponse.json(result, { status });
 }

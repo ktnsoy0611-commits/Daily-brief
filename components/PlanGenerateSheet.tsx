@@ -10,6 +10,7 @@ import { haptic, img } from "@/lib/helpers";
 import type { GeneratedPlan, PlanWeight } from "@/lib/planPipeline";
 import { PLAN_WEIGHTS } from "@/lib/planPipeline";
 import type { Item } from "@/lib/types";
+import { authedFetch } from "@/lib/authedFetch";
 
 // 重さ(かける時間)の表示語彙。3案はこの軸だけで分かれる。
 const WEIGHT_DEF: Record<PlanWeight, { label: string; hint: string }> = {
@@ -160,7 +161,7 @@ export function PlanGenerateSheet({ pool, plans, area, interests, onGenerated, o
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/generate-plan", {
+      const res = await authedFetch("/api/generate-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: planCandidatePayload(target), area: selectedArea, interests }),

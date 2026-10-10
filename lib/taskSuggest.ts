@@ -145,8 +145,9 @@ export async function suggestSubtasks(input: SuggestInput): Promise<SuggestResul
   if (!key) return { ok: false, reason: "no_key" };
   if (!input.title.trim()) return { ok: false, reason: "no_task" };
   const todayJp = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-  const res = await callGemini(key, SYSTEM_SUGGEST, buildSuggestPrompt(input, todayJp), true, 1024);
-  if (!res.ok) return { ok: false, reason: `gemini_${res.status}`, detail: res.detail };
+  // ★待ちは 10 秒・やり直し1回まで（`/api/suggest-subtasks` の `maxDuration` 30 秒に収める）。
+  const res = await callGemini(key, SYSTEM_SUGGEST, buildSuggestPrompt(input, todayJp), true, 1024, { timeoutMs: 10000, retries: 1 });
+  if (!res.ok) return { ok: false, reason: res.status === 0 ? "budget" : `gemini_${res.status}`, detail: res.detail };
   const raw = extractJsonArray<unknown>(res.text);
   if (!raw) return { ok: false, reason: "parse_failed", detail: res.text.slice(0, 200) };
   return { ok: true, suggestions: validateSuggestions(raw, input.existing ?? []) };

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trimAudio } from "@/lib/audioTrim";
 import { haptic } from "@/lib/helpers";
 import type { RecordState, VoiceTrim } from "@/lib/types";
+import { authedFetch } from "@/lib/authedFetch";
 
 // ★声のメモの録音(2026-08-11・全面作り直し)。
 //
@@ -295,7 +296,7 @@ export function useVoiceRecorder(opts: {
       const ext = blob.type.includes("wav") ? "wav" : blob.type.includes("mp4") ? "m4a" : "webm";
       const form = new FormData();
       form.append("audio", blob, `voice.${ext}`);
-      const res = await fetch("/api/transcribe", { method: "POST", body: form });
+      const res = await authedFetch("/api/transcribe", { method: "POST", body: form });
       const data = await res.json().catch(() => null);
       if (data?.ok && typeof data.text === "string" && data.text.trim()) {
         onDone({

@@ -15,6 +15,7 @@
 //
 // GEMINI_API_KEY / JINA_API_KEY は NEXT_PUBLIC_ を付けずサーバー側だけが読む。
 
+import { currentMeter, noteError, takeOne } from "./aiMeter";
 import { ITEM_DOMAINS, kindsOfDomain } from "./constants";
 
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
@@ -428,24 +429,56 @@ function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
 }
 // モデル解決(404時のフォールバック含む)・使用トークンの集計をまとめた唯一の
 // Gemini呼び出し口。プラン生成(lib/planPipeline.ts)からも使うためexportする。
+// ★★★**1日の回数を数え、断られたらやり直し、待ち時間に上限を付ける**（2026-10-10・第137巡）。
+//   ・`withBudget`（`lib/aiLedger.ts`）の中なら、その仕事の残りから1回ぶん取る。取れなければ呼ばずに `status: 0`・"budget"。
+//   ・429（回数の上限）・408・5xx は間隔を倍々に広げて（少しずらして）やり直す（`RETRY_MS`。Gemini の文書の作法）。
+//     ★**1日の上限（"PerDay"）で断られたらやり直さない**（太平洋時間の0時まで戻らない）。
+//     ★やり直しも1回として数える（Gemini の側でも数えられる）。
+//   ・1回の待ち時間は `timeoutMs`（呼び手の `maxDuration` より短く）。第136巡までは上限が無かった。
+//   ・断られた理由は計量器に残す（台帳へ。第136巡までは 429 を捨てていて、上限か情報源が空かを区別できなかった）。
+/** やり直しまでの待ち（ms）。★目盛りの外（待ち時間）。 */
+const RETRY_MS = [1500, 4000];
+const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+let resolvedModel: string | null = null;
 export async function callGemini(
   key: string, systemText: string, userText: string, jsonMode: boolean, maxOutputTokens = 3072,
+  opts: { timeoutMs?: number; retries?: number } = {},
 ): Promise<{ ok: true; text: string; usage: TokenUsage } | { ok: false; status: number; detail: string }> {
+  const meter = currentMeter();
+  const timeoutMs = opts.timeoutMs ?? 45000;
+  const retries = Math.min(opts.retries ?? RETRY_MS.length, RETRY_MS.length);
   const reqBody = JSON.stringify({
     systemInstruction: { parts: [{ text: systemText }] },
     contents: [{ role: "user", parts: [{ text: userText }] }],
     generationConfig: { temperature: 0.3, maxOutputTokens, ...(jsonMode ? { responseMimeType: "application/json" } : {}) },
   });
   const callModel = (model: string) =>
-    fetch(endpointFor(model), { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: reqBody });
-  let res = await callModel(DEFAULT_MODEL);
-  if (res.status === 404) {
-    const alt = await listFlashModel(key);
-    if (alt) res = await callModel(alt);
-  }
-  if (!res.ok) {
-    const detail = (await res.text().catch(() => "")).slice(0, 500);
-    return { ok: false, status: res.status, detail };
+    fetch(endpointFor(model), {
+      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: reqBody,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  let res: Response | null = null;
+  let detail = "";
+  for (let attempt = 0; ; attempt++) {
+    if (!takeOne(meter)) return { ok: false, status: 0, detail: "budget" };
+    try {
+      res = await callModel(resolvedModel ?? DEFAULT_MODEL);
+      if (res.status === 404 && !resolvedModel) {
+        // ★404 で選び直したモデルは覚える（毎回一覧を取り直さない）。
+        const alt = await listFlashModel(key);
+        if (alt) { resolvedModel = alt; res = await callModel(alt); }
+      }
+    } catch (e) {
+      res = null;
+      detail = e instanceof Error ? e.name : "fetch_failed";
+    }
+    if (res?.ok) break;
+    const status = res ? res.status : 408;
+    if (res) detail = (await res.text().catch(() => "")).slice(0, 500);
+    noteError(meter, status);
+    const perDay = status === 429 && /PerDay/i.test(detail);
+    if (!RETRY_STATUS.has(status) || perDay || attempt >= retries) return { ok: false, status, detail };
+    await new Promise((r) => setTimeout(r, RETRY_MS[attempt] * (0.8 + Math.random() * 0.4)));
   }
   const data = await res.json();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

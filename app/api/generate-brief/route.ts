@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { withBudget } from "@/lib/aiLedger";
+import { isOwner } from "@/lib/ownerAuth";
 import { buildDeck, type InterestSignal, type WishInput } from "@/lib/briefPipeline";
 
 // ブリーフ生成の実験用サーバー関数(フェーズC-0「プロンプト実験場」)。
@@ -41,6 +43,7 @@ function parseWishes(v: unknown): WishInput[] {
 }
 
 export async function POST(req: Request) {
+  if (!(await isOwner(req))) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   let body: { wishes?: unknown; taste?: unknown; interest?: unknown; sources?: string[]; count?: number };
   try {
     body = await req.json();
@@ -57,7 +60,8 @@ export async function POST(req: Request) {
   const sources = (body.sources ?? []).filter((u) => typeof u === "string").map((u) => u.trim());
   const count = body.count ?? 3;
 
-  const result = await buildDeck({ taste: { taste, wishes }, sources, count });
+  // ★実験もブリーフと同じ1日の上限で数える（`AI_CAPS.brief`）。
+  const result = await withBudget("brief", () => buildDeck({ taste: { taste, wishes }, sources, count }));
   const status = result.ok ? 200 : result.reason.startsWith("gemini_") || result.reason === "fetch_failed" ? 502 : 200;
   return NextResponse.json(result, { status });
 }

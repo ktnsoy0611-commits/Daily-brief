@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { todayKey } from "./helpers";
 import type { AppState, TaskSuggestion } from "./types";
+import { authedFetch } from "@/lib/authedFetch";
 
 // ★★★**準備タスクを AI に頼む「きっかけ」はここ1つ**（2026-09-27・第133巡）。
 //   ユーザー指定「**補足のタスクを AI に分析させて、タスクの提案を作らせる機能は作りたい。
@@ -59,7 +60,7 @@ export function usePrepSuggest(state: AppState | null, persist: (next: AppState)
       const got: Record<string, TaskSuggestion[]> = {};
       for (const t of targets) {
         try {
-          const res = await fetch("/api/suggest-subtasks", {
+          const res = await authedFetch("/api/suggest-subtasks", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

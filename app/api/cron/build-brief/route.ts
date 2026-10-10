@@ -1,6 +1,7 @@
 import { PATHS, dayPath } from "@/lib/myBrainPaths";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { withBudget, type Meter } from "@/lib/aiLedger";
 import { buildDeck, jinaIsKeyless, type InterestSignal, type SiteTrace, type TasteInput } from "@/lib/briefPipeline";
 import { loadMyBrain } from "@/lib/myBrain";
 import { deleteMyBrainFile, readMyBrainFile, syncMyBrain, writeMyBrainFile } from "@/lib/myBrainWrite";
@@ -345,15 +346,18 @@ export async function GET(req: Request) {
 
   // 3. 生成。countは「この号で最大何枚まで」(目標GEN_TARGET=10、ただし残り
   // 容量まで)。バックログが上限ならbuildDeckを呼ばない=トークンを使わない。
+  // ★★1日の上限で数える（`AI_CAPS.brief`）。断られた回数と理由は生成記録（cronStatus.gemini）と台帳に残す
+  //   ―― 第136巡までは 429 を捨てていて、札が減っても「上限に当たった」と分からなかった。
+  let gem: Meter | undefined;
   const result = skipGen
     ? null
-    : await buildDeck({
+    : await withBudget("brief", (m) => { gem = m; return buildDeck({
         taste, sources, count: genCount,
         exclude: { urls: excludeUrls, names: excludeNames },
         digests: prevDigests,
         forceFresh: manualRun, // 手動「今すぐ生成」は更新なしスキップを無効化して必ず抽出
         goalQuota,             // ゴール関連カードは週に1〜2枚だけ(§8.21)
-      });
+      }); });
   if (result && !result.ok) {
     const status = result.reason.startsWith("gemini_") || result.reason === "fetch_failed" ? 502 : 200;
     return NextResponse.json({ ...result, brainFiles: brain.filesRead }, { status });
@@ -506,6 +510,7 @@ export async function GET(req: Request) {
           candidateCount: result?.candidateCount,
           dropped: result?.dropped,
           pooled, totalTokens: result?.tokens.totalTokens ?? 0,
+          gemini: gem ? { calls: gem.used, errors: gem.errors, left: Number.isFinite(gem.left) ? gem.left : null } : undefined,
           note: result?.note ?? (skipGen ? `未消化のカードが${undigested}枚あるため、今回は生成を見送りました。` : undefined),
         },
         updated_at: new Date().toISOString(),

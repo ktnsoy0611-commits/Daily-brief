@@ -247,8 +247,9 @@ export async function buildPlans(input: {
   if (candidates.length === 0) return { ok: false, reason: "no_candidates" };
 
   const user = buildPlanUserPrompt(candidates, input.area ?? null, todayJp, input.interests ?? []);
-  const res = await callGemini(key, SYSTEM_PLAN, user, true, 3072);
-  if (!res.ok) return { ok: false, reason: `gemini_${res.status}`, detail: res.detail };
+  // ★待ちは 25 秒・やり直し1回まで（`/api/generate-plan` の `maxDuration` 60 秒に収める）。
+  const res = await callGemini(key, SYSTEM_PLAN, user, true, 3072, { timeoutMs: 25000, retries: 1 });
+  if (!res.ok) return { ok: false, reason: res.status === 0 ? "budget" : `gemini_${res.status}`, detail: res.detail };
 
   const raw = extractJsonArray<RawPlan>(res.text);
   if (!raw) return { ok: false, reason: "parse_failed", detail: res.text.slice(0, 300) };

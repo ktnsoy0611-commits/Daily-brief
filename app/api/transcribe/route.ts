@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { withBudget } from "@/lib/aiLedger";
+import { currentMeter, noteError, takeOne } from "@/lib/aiMeter";
+import { isOwner } from "@/lib/ownerAuth";
 import { dayPath, jstParts, monthKey } from "@/lib/myBrainPaths";
 import { writeMyBrainFile, readMyBrainFile } from "@/lib/myBrainWrite";
 
@@ -40,9 +43,25 @@ async function viaOpenAI(key: string, file: File): Promise<{ ok: true; text: str
   }
 }
 
+// ★★数えるだけで止めない（`AI_CAPS.transcribe` は 0 ―― 止めると録った声が失われる）。429・5xx は1回だけやり直す。
 async function viaGemini(key: string, file: File): Promise<{ ok: true; text: string } | { ok: false; detail: string }> {
   const buf = Buffer.from(await file.arrayBuffer());
-  const res = await fetch(
+  const meter = currentMeter();
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    takeOne(meter);
+    res = await fetchGemini(key, file, buf).catch(() => null);
+    if (res?.ok) break;
+    noteError(meter, res ? res.status : 408);
+    if (res && ![408, 429, 500, 502, 503, 504].includes(res.status)) break;
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 1500));
+  }
+  if (!res) return { ok: false, detail: "fetch_failed" };
+  return readGemini(res);
+}
+
+function fetchGemini(key: string, file: File, buf: Buffer) {
+  return fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: "POST",
@@ -58,8 +77,12 @@ async function viaGemini(key: string, file: File): Promise<{ ok: true; text: str
         }],
         generationConfig: { temperature: 0, maxOutputTokens: 4096 },
       }),
+      signal: AbortSignal.timeout(25000),
     },
   );
+}
+
+async function readGemini(res: Response): Promise<{ ok: true; text: string } | { ok: false; detail: string }> {
   const body = await res.text();
   if (!res.ok) return { ok: false, detail: body.slice(0, 300) };
   try {
@@ -87,6 +110,7 @@ async function appendToMyBrain(text: string, at: Date): Promise<boolean> {
 }
 
 export async function POST(req: Request) {
+  if (!(await isOwner(req))) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   let file: File | null = null;
   try {
     const form = await req.formData();
@@ -101,7 +125,8 @@ export async function POST(req: Request) {
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!openaiKey && !geminiKey) return NextResponse.json({ ok: false, reason: "no_key" });
 
-  const result = openaiKey ? await viaOpenAI(openaiKey, file) : await viaGemini(geminiKey!, file);
+  const audio = file;
+  const result = openaiKey ? await viaOpenAI(openaiKey, audio) : await withBudget("transcribe", () => viaGemini(geminiKey!, audio));
   if (!result.ok) return NextResponse.json({ ok: false, reason: "transcribe_failed", detail: result.detail }, { status: 502 });
 
   const at = new Date();

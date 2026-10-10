@@ -6494,6 +6494,18 @@ my-brain の `sources/stats.md` へ書く。Cowork の発掘タスクはこの�
   ハイドレーションが失敗し、アプリ全体のクライアント側が動かなくなる。**
   `<style href="tokens" precedence="default">` にすると React が `<head>` へ
   持ち上げる。★症状が「特定の画面の効果が走らない」に見えるので原因に辿り着きにくい。
+- ★★★**AI の分担と使いすぎの見張り**（2026-10-10・第137巡にユーザー確定「**定期実行と gemini でいきましょう**」）
+  … その場で答える仕事 ＝ **Gemini**（ブリーフ・帯の並べ替え・準備タスク・プラン・文字起こし）／考える仕事と日記の中身 ＝
+  **Claude の定期タスク**（Cowork。`COWORK-ROUTINES.md`）。Claude API は使わない（Max でないと別払い・音声不可）。
+  ★**Gemini の上限の数字は公開されていない**（AI Studio の画面だけ・無料枠は予告なく減る）→ **アプリが仕事ごとに
+  1日の回数を数えて止める**（`lib/aiLedger.ts` の `AI_CAPS`：ブリーフ 40／並べ替え 8／準備 15／プラン 6／合計 80。
+  文字起こしは数えるだけ ―― 止めると録った声が失われる）。1日は**太平洋時間の0時**。台帳は `app_state.aiLedger`
+  （`SERVER_OWNED_KEYS`）に14日ぶん、断られた回数と理由も。
+  ★`callGemini`（`lib/briefPipeline.ts`）が数える・429/408/5xx を最大2回やり直す（**"PerDay" の 429 はやり直さない**）・
+  待ちに上限。計量器の出どころは `lib/aiMeter.ts`（`briefPipeline` はクライアントの束にも入るので `node:async_hooks` を持ち込まない）。
+  ★★**AI の口は本人だけ**（`lib/ownerAuth.ts`。クライアントは `lib/authedFetch.ts` でトークンを付ける）―― 第136巡までは
+  誰でも叩けて、外から叩かれると回数がそのまま減った。
+  ★★★**ブリーフを「情報源をまとめて1回で頼む」形に戻さない**（§8.19 ―― 1サイトの本文が削られて札が0枚になった）。
 - **地図** … Leaflet + CartoDB Positron タイル（`components/LeafletMap.tsx`）。
   座標は Places API（New）で解決（`app/api/resolve-place/route.ts`）。
   Google マップ URL に埋まった `@lat,lng` を正規表現で先に抜き、API 呼び出しを省く。

@@ -985,6 +985,10 @@
   ★**画面の上下の帯**は別件で、`statusBarStyle: "default"` で解決済み（第35巡）。
 - `lib/ground.ts` — **画面の地色（html の背景 ＋ theme-color）を知っている唯一の場所**。
   背景が途切れたらここを見る。全画面の面を作ったら `pushGround` を呼ぶ。
+- ★★★`lib/aiLedger.ts` ＋ `lib/aiMeter.ts` ＋ `lib/ownerAuth.ts` ＋ `lib/authedFetch.ts` — **Gemini の1日の回数の台帳と、
+  AI の口の本人確認**（第137巡）。仕事ごとの上限 `AI_CAPS`・太平洋時間の0時で切替・台帳は `app_state.aiLedger`。
+  `callGemini` が数えてやり直す（`withBudget(job, fn)` の中で）。★**新しい AI の口を足したら必ず `isOwner` と `withBudget` を通す**。
+  ★ブリーフを「まとめて1回で頼む」形に戻さない（§8.19）。分担 ＝ Gemini（その場）＋ Claude の定期タスク（考える・日記）。
 - `lib/briefPipeline.ts` `lib/deckStyle.ts` `lib/planPipeline.ts` `lib/taskSuggest.ts` — 生成。
   ★ブリーフの取得は **Jina → 直接**の2段（第64巡）。**失敗は必ず HTTP コードごと
   `SiteTrace` に残す** — 残さなかったせいで6日間の停止に気づけなかった。

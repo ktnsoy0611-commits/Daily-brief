@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { withBudget } from "@/lib/aiLedger";
+import { isOwner } from "@/lib/ownerAuth";
 import { buildPlans, type PlanCandidate } from "@/lib/planPipeline";
 import { ITEM_KINDS } from "@/lib/constants";
 import type { ItemKind } from "@/lib/types";
@@ -55,6 +57,7 @@ function parseInterests(v: unknown): string[] {
 }
 
 export async function POST(req: Request) {
+  if (!(await isOwner(req))) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   let body: { items?: unknown; area?: unknown; interests?: unknown };
   try {
     body = await req.json();
@@ -65,7 +68,7 @@ export async function POST(req: Request) {
   const candidates = parseCandidates(body.items);
   const area = typeof body.area === "string" && body.area.trim() ? body.area.trim() : null;
 
-  const result = await buildPlans({ candidates, area, interests: parseInterests(body.interests) });
+  const result = await withBudget("plan", () => buildPlans({ candidates, area, interests: parseInterests(body.interests) }));
   const status = result.ok || !result.reason.startsWith("gemini_") ? 200 : 502;
   return NextResponse.json(result, { status });
 }

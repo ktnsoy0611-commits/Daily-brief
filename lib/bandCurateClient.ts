@@ -6,6 +6,7 @@ import type { CurateCandidate, CurateInput, CurateScore } from "./bandCurate";
 import { genreOfKind } from "./deckStyle";
 import { bandItems, type BandItem } from "./homeBand";
 import type { AppState, ItemKind } from "./types";
+import { authedFetch } from "@/lib/authedFetch";
 
 // ★★★**帯の下の段の AI 評価を「いつ頼むか」と「材料の組み立て」**（2026-09-27・第133巡）。
 //   プロンプトと順位は `lib/bandCurate.ts`、呼ぶ口は `app/api/curate-band/route.ts`。
@@ -130,7 +131,7 @@ export function useBandCuration(state: AppState | null): CurateScore[] | null {
     const send = () => {
     inflight = sig;
     const body = inputOf(state, items, now);
-    fetch("/api/curate-band", {
+    authedFetch("/api/curate-band", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     })
       .then((r) => r.json())

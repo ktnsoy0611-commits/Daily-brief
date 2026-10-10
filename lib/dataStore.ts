@@ -24,7 +24,8 @@ let cloudActive = false;
 // upsertで上書きしないよう save 時に除外する。load では全キーを読むため、Cronが
 // 書いたデッキ(generatedDecks)はクライアントに反映されるが、クライアントの保存が
 // それを消すことはない。
-const SERVER_OWNED_KEYS: ReadonlySet<string> = new Set<string>(["generatedDecks", "cronStatus"]);
+// ★`aiLedger` ＝ Gemini の1日の回数の台帳（`lib/aiLedger.ts`。サーバーだけが書く）。
+const SERVER_OWNED_KEYS: ReadonlySet<string> = new Set<string>(["generatedDecks", "cronStatus", "aiLedger"]);
 
 async function hasSession(): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return false;

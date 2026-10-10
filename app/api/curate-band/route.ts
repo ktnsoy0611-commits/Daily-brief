@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { withBudget } from "@/lib/aiLedger";
 import { callGemini, extractJsonArray } from "@/lib/briefPipeline";
+import { isOwner } from "@/lib/ownerAuth";
 import { SYSTEM_CURATE, buildCuratePrompt, validateScores, type CurateInput } from "@/lib/bandCurate";
 import { PATHS } from "@/lib/myBrainPaths";
 import { readMyBrainFile } from "@/lib/myBrainWrite";
@@ -23,6 +25,7 @@ const strs = (v: unknown, n: number, max: number) =>
 export async function POST(req: Request) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return NextResponse.json({ ok: false, reason: "no_key" });
+  if (!(await isOwner(req))) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -45,8 +48,9 @@ export async function POST(req: Request) {
     candidates,
   };
   const patterns = patternsFromMd(await readMyBrainFile(PATHS.patterns));
-  const res = await callGemini(key, SYSTEM_CURATE, buildCuratePrompt(input, patterns), true, 4096);
-  if (!res.ok) return NextResponse.json({ ok: false, reason: `gemini_${res.status}` }, { status: 502 });
+  // ★1日の上限は `AI_CAPS.curate`（並べ替えは無くても帯は規則の並びで出る ―― いちばん先に止めてよい仕事）。
+  const res = await withBudget("curate", () => callGemini(key, SYSTEM_CURATE, buildCuratePrompt(input, patterns), true, 4096, { timeoutMs: 10000, retries: 1 }));
+  if (!res.ok) return NextResponse.json({ ok: false, reason: res.status === 0 ? "budget" : `gemini_${res.status}` }, { status: res.status === 0 ? 429 : 502 });
   const raw = extractJsonArray<unknown>(res.text);
   if (!raw) return NextResponse.json({ ok: false, reason: "parse_failed" }, { status: 502 });
   return NextResponse.json({ ok: true, scores: validateScores(raw, new Set(candidates.map((c) => c.id))) });

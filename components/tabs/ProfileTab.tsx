@@ -14,6 +14,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { haptic, shortDate } from "@/lib/helpers";
 import { syncTasteToMyBrain } from "@/lib/myBrainSyncClient";
 import type { AppState } from "@/lib/types";
+import { authedFetch } from "@/lib/authedFetch";
 
 // ★★★**この画面だけの色の語彙**（2026-08-31・第78巡にユーザー指定「setting も、
 // task 入力や journal 入力のオーバーレイと合わせて背景を暗い感じに」）。
@@ -569,7 +570,7 @@ export function ProfileTab({ appState, persist, onClose }: {
     setGenTokens(null);
     setGenCandidateCount(0);
     try {
-      const res = await fetch("/api/generate-brief", {
+      const res = await authedFetch("/api/generate-brief", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

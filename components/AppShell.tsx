@@ -298,6 +298,22 @@ export function AppShell() {
   //   effect が走った瞬間の `appState` を写して書き戻していたので、**返事を待つあいだのスワイプや KEEP を消していた**。
   const latestRef = useRef<AppState | null>(null);
   useEffect(() => { latestRef.current = appState; });
+  // ★★**長く眠っていたら開き直したのと同じに読み直す**（第137巡）。iOS は PWA を何日も眠らせたまま戻すので、
+  //   画面の中身が古いまま操作が始まり、別の端末や夜の処理が書いたものを古い中身で上書きしていた。
+  //   まだ届いていない保存があるときは読み直さない（読み直すと消える）。
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const STALE_MS = 10 * 60 * 1000; // ★目盛りの外（待ち時間）
+    let hiddenAt = 0;
+    const onVis = () => {
+      if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+      if (!hiddenAt || Date.now() - hiddenAt < STALE_MS || DataStore.busy || !latestRef.current) return;
+      hiddenAt = 0;
+      DataStore.load().then((s) => { if (!DataStore.busy) { latestRef.current = s; setAppState(s); } }).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
   const persist = useCallback((next: AppState) => {
     latestRef.current = next;
     setAppState(next);

@@ -40,6 +40,8 @@ const SAVE_LIMIT_MS = 20000; // ★目盛りの外（待ち時間）
 const RETRY_MS = 15000; // ★目盛りの外（待ち時間）
 const PENDING_KEY = `${STORAGE_KEY}:pendingCloud`;
 let cloudUserId: string | null = null;
+/** クラウドに在るとわかっている中身（キー → JSON）。読んだとき・送れたときに更新する。 */
+const sent = new Map<string, string>();
 let queued: AppState | null = null;
 let saving: Promise<void> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -332,13 +334,20 @@ async function saveCloud(state: AppState): Promise<boolean> {
     const userId = cloudUserId ?? (await sessionUserId());
     if (!userId) return false;
     const at = new Date().toISOString();
-    const rows = Object.entries(clientPart(state)).map(([key, value]) => ({ user_id: userId, key, value, updated_at: at }));
+    // ★★**変わったキーだけ送る**（第137巡）。全キーを毎回送ると、古い状態を抱えた画面（眠っていた PWA・別の端末）が
+    //   1つ保存しただけで、**触っていないキー（スワイプの判断・ストック）まで古い中身で上書き**する。
+    const json: Record<string, string> = {};
+    const rows = Object.entries(clientPart(state))
+      .filter(([key, value]) => (json[key] = JSON.stringify(value) ?? "null") !== sent.get(key))
+      .map(([key, value]) => ({ user_id: userId, key, value, updated_at: at }));
+    if (!rows.length) return true;
     const res = await Promise.race([
       supabase.from("app_state").upsert(rows, { onConflict: "user_id,key" }),
       new Promise<null>((r) => setTimeout(() => r(null), SAVE_LIMIT_MS)),
     ]);
     if (!res) throw new Error("timeout");
     if (res.error) throw res.error;
+    for (const r of rows) sent.set(r.key, json[r.key]);
     return true;
   } catch (e) {
     console.warn("Supabaseへの保存に失敗。あとで送り直します:", e);
@@ -347,6 +356,10 @@ async function saveCloud(state: AppState): Promise<boolean> {
 }
 
 export const DataStore = {
+  /** まだクラウドへ届いていない保存があるか（送っている最中も含む）。 */
+  get busy(): boolean {
+    return !!queued || !!saving;
+  },
   get mode(): StorageMode {
     if (cloudActive) return "cloud";
     return memoryMode ? "memory" : "persistent";
@@ -361,6 +374,8 @@ export const DataStore = {
         cloudActive = true;
         cloudUserId = uid;
         hook();
+        sent.clear();
+        for (const r of data ?? []) sent.set(r.key, JSON.stringify(r.value) ?? "null");
         if (data && data.length > 0) {
           // ★届かなかった控えがクラウドより新しければ、控えを使って送り直す（サーバーのキーはクラウドのまま）。
           const pending = readPending();
